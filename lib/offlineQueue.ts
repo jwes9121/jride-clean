@@ -1,20 +1,50 @@
-// Minimal in-memory queue used only so components can build safely.
+import { useEffect, useState } from "react";
 
-export type OfflineJob = { id: string; payload?: unknown };
+/** Hook: returns current online status (true = online) */
+export function useOnlineStatus(): boolean {
+  const [online, setOnline] = useState<boolean>(true);
 
-let _queue: OfflineJob[] = [];
+  useEffect(() => {
+    const handler = () =>
+      setOnline(typeof navigator !== "undefined" ? navigator.onLine : true);
 
-/** Return current offline queue (read-only usage in UI). */
-export function getOfflineQueue(): OfflineJob[] {
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handler);
+      window.addEventListener("offline", handler);
+      handler();
+      return () => {
+        window.removeEventListener("online", handler);
+        window.removeEventListener("offline", handler);
+      };
+    }
+  }, []);
+
+  return online;
+}
+
+/** Minimal in-memory queue so UI can compile safely */
+type OfflineItem = unknown;
+let _queue: OfflineItem[] = [];
+
+/** This is what OfflineIndicator imports */
+export function getOfflineQueue(): OfflineItem[] {
   return _queue;
 }
 
-/** Optionally used elsewhere in the app; harmless if never called. */
-export function enqueue(job: OfflineJob) {
-  _queue.push(job);
+/** No-ops you can wire up later if needed */
+export async function enqueue(_item: OfflineItem): Promise<void> {
+  _queue.push(_item);
 }
-
-/** Helper to clear – not required, but nice to have. */
-export function clearQueue() {
+export async function flush(): Promise<void> {
   _queue = [];
 }
+export function clear(): void {
+  _queue = [];
+}
+export function size(): number {
+  return _queue.length;
+}
+
+/** Optional default export (not required) */
+const offlineQueue = { enqueue, flush, clear, size, useOnlineStatus, getOfflineQueue };
+export default offlineQueue;
