@@ -1,0 +1,15 @@
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Your global styles below (optional) */
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: #0f172a; /* slate-900 */
+  background-color: #ffffff;
+}

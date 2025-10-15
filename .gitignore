@@ -1,0 +1,16 @@
+﻿# dependencies & builds
+node_modules/
+.next/
+out/
+dist/
+.vercel/
+*.log
+
+# env & local
+.env*
+.DS_Store
+
+# old leftovers
+backup_*/
+jride-app_patch/
+app/app/
