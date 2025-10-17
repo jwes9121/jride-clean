@@ -1,19 +1,29 @@
-import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Sign in · JRide" };
+// app/auth/signin/page.tsx
+"use client";
+import { signIn } from "next-auth/react";
 
 export default function SignInPage() {
-  const callbackUrl = "/";
   return (
-    <div style={{display:"grid",placeItems:"center",minHeight:"60vh"}}>
-      <div style={{padding:"1.5rem",border:"1px solid #e5e7eb",borderRadius:12,maxWidth:380,width:"100%"}}>
-        <h1 style={{marginBottom:12,fontSize:22}}>Sign in</h1>
-        <p style={{margin:"0 0 16px 0",opacity:.85}}>Use your Google account:</p>
-        <a
-          href={`/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-          style={{display:"inline-block",textAlign:"center",width:"100%",padding:"0.6rem 1rem",borderRadius:10,border:"1px solid #e5e7eb",textDecoration:"none"}}
+    <div className="min-h-screen grid place-items-center p-6">
+      <div className="w-full max-w-sm rounded-2xl border p-6 space-y-3">
+        <h1 className="text-xl font-semibold">Sign in</h1>
+
+        <button
+          className="w-full rounded-xl border px-4 py-2"
+          onClick={() => signIn("google", { callbackUrl: "/" })}
         >
           Continue with Google
-        </a>
+        </button>
+
+        {/* Dev-only creds fallback */}
+        {process.env.NODE_ENV !== "production" && (
+          <button
+            className="w-full rounded-xl border px-4 py-2"
+            onClick={() => signIn("credentials", { email: "dev@example.com", callbackUrl: "/" })}
+          >
+            Dev login
+          </button>
+        )}
       </div>
     </div>
   );
