@@ -1,15 +1,14 @@
-// app/api/auth/[...nextauth]/route.ts
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
-export const runtime = "nodejs"; // IMPORTANT: OAuth should not run on edge
+export const runtime = "nodejs";
 
 const enableGoogle = process.env.ENABLE_GOOGLE === "1";
 
 const providers: NextAuthOptions["providers"] = [];
 
-// Google OAuth (dev & prod)
+// Explicitly use env values so no old fallback is picked
 if (enableGoogle && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
     Google({
@@ -22,7 +21,7 @@ if (enableGoogle && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SE
   );
 }
 
-// Dev-only Credentials fallback (optional)
+// Optional: dev-only credentials login
 if (process.env.NODE_ENV !== "production") {
   providers.push(
     Credentials({
@@ -39,34 +38,10 @@ if (process.env.NODE_ENV !== "production") {
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
+  trustHost: true,                     // important on Vercel/proxies
   providers,
   pages: { signIn: "/auth/signin" },
   session: { strategy: "jwt" },
-  callbacks: {
-    async redirect({ url, baseUrl }) {
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
-      try {
-        const u = new URL(url);
-        if (u.origin === baseUrl) return url;
-        const prod = process.env.NEXTAUTH_URL;
-        if (prod && u.origin === new URL(prod).origin) return url;
-      } catch {}
-      return baseUrl;
-    },
-    async jwt({ token, account, profile }) {
-      if (account?.provider === "google" && profile) {
-        token.provider = "google";
-        token.email ??= (profile as any).email;
-        token.name ??= (profile as any).name;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (token?.provider) (session as any).provider = token.provider;
-      return session;
-    },
-  },
-  debug: process.env.NEXTAUTH_DEBUG === "true",
 };
 
 const handler = NextAuth(authOptions);
