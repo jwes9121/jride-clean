@@ -14,3 +14,8 @@ dist/
 backup_*/
 jride-app_patch/
 app/app/
+
+.env
+.env.*
+!.env.example
+!*.example
