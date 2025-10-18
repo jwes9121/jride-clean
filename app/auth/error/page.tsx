@@ -1,53 +1,54 @@
-"use client";
+// app/auth/error/page.tsx
+'use client';
 
-import { Suspense } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import Link from 'next/link';
 
-// Render the part that uses the hook inside Suspense
-function ErrorInner() {
-  const params = useSearchParams();
-  const code = params.get("error") ?? "unknown";
+const messages = {
+  Configuration: 'Auth config issue.',
+  AccessDenied: 'Access denied.',
+  OAuthAccountNotLinked:
+    'To confirm your identity, sign in with the same account you used originally.',
+  OAuthCallback: 'OAuth callback failed.',
+  Callback: 'Sign-in callback failed.',
+  OAuthSignin: 'Error constructing auth request.',
+  EmailSignin: 'Email sign-in failed.',
+  CredentialsSignin: 'Invalid credentials.',
+  SessionRequired: 'Please sign in to continue.',
+  default: 'Something went wrong. Please try again.',
+} as const;
 
-  const friendly =
-    {
-      Configuration: "Auth config issue.",
-      AccessDenied: "Access denied.",
-      OAuthAccountNotLinked:
-        "This Google account is not linked to your email. Try a different sign-in option.",
-      OAuthCallback: "OAuth callback failed.",
-      Callback: "Sign-in callback failed.",
-      OAuthSignin: "OAuth sign-in failed.",
-      EmailSignin: "Email sign-in failed.",
-      CredentialsSignin: "Credentials sign-in failed.",
-      SessionRequired: "Please sign in.",
-      default: "Something went wrong.",
-    }[code as keyof any] ?? "Something went wrong.";
+type ErrorKey = keyof typeof messages;
+
+export default function AuthErrorPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string | string[] };
+}) {
+  // Next.js can give you string or string[]; normalize to a single string
+  const raw = Array.isArray(searchParams?.error)
+    ? searchParams?.error[0]
+    : searchParams?.error;
+
+  // Narrow the value to the keys of `messages`
+  const key = (raw ?? 'default') as ErrorKey;
+
+  const message = messages[key] ?? messages.default;
 
   return (
     <main className="min-h-[60vh] grid place-items-center p-6">
-      <div className="max-w-md w-full rounded-lg border p-6">
+      <div className="max-w-md w-full rounded-2xl border p-6 shadow-sm">
         <h1 className="text-xl font-semibold mb-2">Sign-in error</h1>
-        <p className="text-sm text-gray-600">
-          <span className="font-medium">{friendly}</span>
-          {code !== "unknown" && (
-            <>
-              {" "}
-              <span className="text-gray-500">(code: {code})</span>
-            </>
-          )}
-        </p>
-
-        <div className="mt-6 flex gap-3">
+        <p className="text-sm text-gray-600 mb-6">{message}</p>
+        <div className="flex gap-3">
           <Link
             href="/auth/signin"
-            className="rounded-md px-3 py-2 border bg-white hover:bg-gray-50"
+            className="px-4 py-2 rounded-lg border hover:bg-gray-50"
           >
             Try again
           </Link>
           <Link
             href="/"
-            className="rounded-md px-3 py-2 bg-black text-white hover:opacity-90"
+            className="px-4 py-2 rounded-lg bg-black text-white hover:opacity-90"
           >
             Go home
           </Link>
@@ -56,15 +57,3 @@ function ErrorInner() {
     </main>
   );
 }
-
-// Wrap hook usage in Suspense
-export default function Page() {
-  return (
-    <Suspense fallback={<div className="p-6">Loading…</div>}>
-      <ErrorInner />
-    </Suspense>
-  );
-}
-
-// Prevent static prerender/export issues
-export const dynamic = "force-dynamic";
