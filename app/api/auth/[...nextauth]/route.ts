@@ -1,6 +1,8 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
+export const runtime = "nodejs"; // optional, but can avoid edge/runtime confusion
+
 const handler = NextAuth({
   providers: [
     GoogleProvider({
