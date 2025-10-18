@@ -1,3 +1,11 @@
+type Booking = {
+  id: string;
+  passenger?: string;
+  pickup?: string;
+  dropoff?: string;
+  scheduledAt?: string | Date;
+  status?: "pending" | "assigned" | "completed" | "cancelled" | string;
+};
 "use client";
 
 import { useEffect, useState } from "react";
