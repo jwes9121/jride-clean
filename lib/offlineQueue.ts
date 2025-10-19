@@ -1,50 +1,21 @@
-import { useEffect, useState } from "react";
+// lib/offlineQueue.ts
+type Task = () => Promise<unknown>;
 
-/** Hook: returns current online status (true = online) */
-export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState<boolean>(true);
+const _queue: Task[] = [];
 
-  useEffect(() => {
-    const handler = () =>
-      setOnline(typeof navigator !== "undefined" ? navigator.onLine : true);
+export type OfflineQueueApi = {
+  isOnlineStatus: () => boolean;
+  getQueueLength: () => number;
+  enqueue: (t: Task) => void;
+  // add other helpers as you need
+};
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("online", handler);
-      window.addEventListener("offline", handler);
-      handler();
-      return () => {
-        window.removeEventListener("online", handler);
-        window.removeEventListener("offline", handler);
-      };
-    }
-  }, []);
+const api: OfflineQueueApi = {
+  isOnlineStatus: () => typeof navigator !== "undefined" ? navigator.onLine : true,
+  getQueueLength: () => _queue.length,
+  enqueue: (t) => _queue.push(t),
+};
 
-  return online;
-}
-
-/** Minimal in-memory queue so UI can compile safely */
-type OfflineItem = unknown;
-let _queue: OfflineItem[] = [];
-
-/** This is what OfflineIndicator imports */
-export function getOfflineQueue(): OfflineItem[] {
-  return _queue;
-}
-
-/** No-ops you can wire up later if needed */
-export async function enqueue(_item: OfflineItem): Promise<void> {
-  _queue.push(_item);
-}
-export async function flush(): Promise<void> {
-  _queue = [];
-}
-export function clear(): void {
-  _queue = [];
-}
-export function size(): number {
-  return _queue.length;
-}
-
-/** Optional default export (not required) */
-const offlineQueue = { enqueue, flush, clear, size, useOnlineStatus, getOfflineQueue };
-export default offlineQueue;
+export default api;
+// If you still need direct access elsewhere, you can also export the array:
+// export { _queue as queueArray };
