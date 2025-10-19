@@ -1,17 +1,22 @@
 // middleware.ts
-export { default } from "next-auth/middleware";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+
+// If you have logic, keep it here. Otherwise just pass through:
+export function middleware(_req: NextRequest) {
+  return NextResponse.next();
+}
 
 /**
- * Only run the auth middleware on the routes that must be protected.
- * VERY IMPORTANT: This matcher does NOT include /auth or /api/auth,
- * so NextAuth's own pages and callbacks are never intercepted.
+ * Run middleware on everything EXCEPT:
+ * - API routes (including NextAuth)
+ * - Next.js internals and assets
+ * - Favicons/robots/manifest
+ * - Auth pages (/auth/**) so the sign-in UI and callbacks are not intercepted
  */
 export const config = {
   matcher: [
-    "/admin/:path*",
-    "/dispatch/:path*",
-    "/delivery/:path*",
-    "/bookings/:path*",
-    // add any other *protected* app routes here
+    "/((?!api|api/auth|_next/static|_next/image|favicon.ico|robots.txt|manifest.webmanifest|auth).*)",
   ],
 };
+
