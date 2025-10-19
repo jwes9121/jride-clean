@@ -1,8 +1,9 @@
-export { auth as middleware } from "next-auth/middleware";
+// middleware.ts
+export { default } from "next-auth/middleware";
 
 export const config = {
+  // protect everything except Next.js assets and NextAuth endpoints
   matcher: [
-    "/dispatch/:path*",   // add any sections that must be logged-in
-    "/admin/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|api/auth|api/_diag).*)",
   ],
 };
