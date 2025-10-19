@@ -1,22 +1,17 @@
 // middleware.ts
-import { withAuth } from "next-auth/middleware";
+export { default } from "next-auth/middleware";
 
 /**
- * Protect ONLY the app areas that require auth.
- * NextAuth's own routes (/api/auth/*) are NOT matched here, so the OAuth flow works.
+ * Only run the auth middleware on the routes that must be protected.
+ * VERY IMPORTANT: This matcher does NOT include /auth or /api/auth,
+ * so NextAuth's own pages and callbacks are never intercepted.
  */
-export default withAuth({
-  pages: {
-    signIn: "/auth/signin",
-  },
-});
-
-// Only run middleware on private sections of the site.
 export const config = {
   matcher: [
     "/admin/:path*",
     "/dispatch/:path*",
     "/delivery/:path*",
     "/bookings/:path*",
+    // add any other *protected* app routes here
   ],
 };
