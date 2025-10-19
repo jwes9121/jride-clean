@@ -1,27 +1,14 @@
-type Booking = {
-  id: string;
-  passenger?: string;
-  pickup?: string;
-  dropoff?: string;
-  scheduledAt?: string | Date;
-  status?: "pending" | "assigned" | "completed" | "cancelled" | string;
-};
+// app/dispatch/BookingDashboard.tsx
 "use client";
 
 import { useEffect, useState } from "react";
+// If your tsconfig has the path alias `@/*` (most Next.js setups do), use this:
+import type { Booking } from "@/types/booking";
+// If that alias isn't set, use a relative import instead:
+// import type { Booking } from "../../types/booking";
 
-type Props = { title?: string };
-
-/** Minimal type so TS stops failing the build.
- *  Extend this later with the real fields you use.
- */
-type Booking = {
-  id: string;
-  passenger?: string;
-  pickup?: string;
-  dropoff?: string;
-  scheduledAt?: string | Date;
-  status?: "pending" | "assigned" | "completed" | "cancelled" | string;
+type Props = {
+  title?: string;
 };
 
 export default function BookingDashboard({ title = "Bookings" }: Props) {
@@ -30,46 +17,51 @@ export default function BookingDashboard({ title = "Bookings" }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
+    let ignore = false;
+
+    async function load() {
       try {
         setLoading(true);
-        // TODO: replace with your real fetch
+
+        // TODO: Replace with your real data source / API call.
+        // This stub just returns an empty list so the page compiles & builds.
         const data: Booking[] = [];
-        if (mounted) setBookings(data);
+
+        if (!ignore) setBookings(data);
       } catch (e: any) {
-        setError(e?.message ?? "Failed to load bookings");
+        if (!ignore) setError(e?.message ?? "Failed to load bookings");
       } finally {
-        if (mounted) setLoading(false);
+        if (!ignore) setLoading(false);
       }
-    })();
+    }
+
+    load();
     return () => {
-      mounted = false;
+      ignore = true;
     };
   }, []);
 
   return (
-    <section className="p-4">
-      <h2 className="text-xl font-semibold mb-3">{title}</h2>
+    <section className="space-y-4">
+      <h2 className="text-xl font-semibold">{title}</h2>
+
       {loading && <p>Loading…</p>}
       {error && <p className="text-red-600">{error}</p>}
-      {!loading && !error && bookings.length === 0 && (
-        <p className="text-neutral-600">No bookings yet.</p>
+
+      {!loading && !error && (
+        <ul className="divide-y divide-gray-200">
+          {bookings.length === 0 && (
+            <li className="py-2 text-gray-500">No bookings yet.</li>
+          )}
+          {bookings.map((b) => (
+            <li key={b.id} className="py-2">
+              <span className="font-medium">{b.passenger ?? "—"}</span>
+              <span className="mx-2">•</span>
+              <span>{b.status ?? "unknown"}</span>
+            </li>
+          ))}
+        </ul>
       )}
-      <ul className="mt-2 space-y-2">
-        {bookings.map((b) => (
-          <li key={b.id} className="rounded-md border p-3">
-            <div className="font-medium">{b.passenger ?? "Unknown passenger"}</div>
-            <div className="text-sm text-neutral-600">
-              {b.pickup ?? "—"} → {b.dropoff ?? "—"}
-            </div>
-            <div className="text-xs text-neutral-500">
-              {typeof b.scheduledAt === "string" ? b.scheduledAt : b.scheduledAt?.toString() ?? "—"} ·{" "}
-              {b.status ?? "pending"}
-            </div>
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }
