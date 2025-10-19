@@ -1,15 +1,22 @@
 // middleware.ts
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import { withAuth } from "next-auth/middleware";
 
-export function middleware(_req: NextRequest) {
-  // Add route guards here if you want (e.g., /admin)
-  return NextResponse.next();
-}
+/**
+ * Protect ONLY the app areas that require auth.
+ * NextAuth's own routes (/api/auth/*) are NOT matched here, so the OAuth flow works.
+ */
+export default withAuth({
+  pages: {
+    signIn: "/auth/signin",
+  },
+});
 
+// Only run middleware on private sections of the site.
 export const config = {
   matcher: [
-    // Run on everything EXCEPT NextAuth and static assets
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
+    "/admin/:path*",
+    "/dispatch/:path*",
+    "/delivery/:path*",
+    "/bookings/:path*",
   ],
 };
