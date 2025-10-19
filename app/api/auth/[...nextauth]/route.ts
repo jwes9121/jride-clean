@@ -1,14 +1,21 @@
+// app/api/auth/[...nextauth]/route.ts
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-// fail fast if required env is missing
-function req(name: string): string {
+/**
+ * IMPORTANT:
+ * - Do NOT export "authOptions" from this file (Next.js route type will fail).
+ * - Keep only GET/POST exports for the handler.
+ * - Remove "trustHost" if your installed next-auth typings complain about it.
+ */
+
+function req(name: "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET"): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing required env: ${name}`);
   return v;
 }
 
-const authOptions = {
+const handler = NextAuth({
   providers: [
     Google({
       clientId: req("GOOGLE_CLIENT_ID"),
@@ -19,15 +26,8 @@ const authOptions = {
     signIn: "/auth/signin",
     error: "/auth/error",
   },
-  callbacks: {
-    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
-      // Respect relative callbackUrls (e.g. "/profile") when present,
-      // but otherwise ALWAYS go to "/"
-      if (url?.startsWith("/")) return `${baseUrl}${url}`;
-      return `${baseUrl}/`;
-    },
-  },
-} satisfies Parameters<typeof NextAuth>[0];
+  // If your installed version complains about this line, delete it.
+  // trustHost: true,
+});
 
-const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
