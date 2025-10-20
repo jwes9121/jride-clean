@@ -19,22 +19,6 @@ function inferRoleByEmail(email?: string | null): AppRole {
   return "user";
 }
 
-declare module "next-auth" {
-  interface Session {
-    user?: {
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-      role?: AppRole;
-    }
-  }
-}
-declare module "next-auth/jwt" {
-  interface JWT {
-    role?: AppRole;
-  }
-}
-
 export const authConfig: NextAuthConfig = {
   providers: [
     Google({
@@ -45,23 +29,27 @@ export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
   callbacks: {
     async jwt({ token, trigger, session, account, user }) {
+      // attach role into the token
+      const t = token as any;
       if (trigger === "signIn" || account || user) {
-        token.role = inferRoleByEmail(token.email ?? user?.email ?? null);
+        t.role = inferRoleByEmail(token.email ?? user?.email ?? null);
       }
-      if (trigger === "update" && session?.user?.role) {
-        token.role = session.user.role;
+      if (trigger === "update" && (session as any)?.user?.role) {
+        t.role = (session as any).user.role;
       }
       return token;
     },
     async session({ session, token }) {
-      if (!session.user) session.user = {};
-      session.user.role = (token.role ?? inferRoleByEmail(session.user.email)) as AppRole;
+      // expose role on session.user
+      (session as any).user = (session as any).user ?? {};
+      (session as any).user.role = (token as any).role ?? inferRoleByEmail(session.user?.email);
       return session;
     },
     authorized({ auth, request }) {
-      const role = auth?.user?.role as AppRole | undefined;
+      const role = (auth?.user as any)?.role as AppRole | undefined;
       const { pathname } = request.nextUrl;
 
+      // Public
       if (
         pathname === "/" ||
         pathname.startsWith("/auth") ||
@@ -71,10 +59,12 @@ export const authConfig: NextAuthConfig = {
         pathname.startsWith("/offline")
       ) return true;
 
+      // Role-gated
       if (pathname.startsWith("/admin")) return role === "admin";
       if (pathname.startsWith("/dispatch")) return role === "dispatcher" || role === "admin";
       if (pathname.startsWith("/driver")) return role === "driver" || role === "admin";
 
+      // default: require sign-in
       return !!auth?.user;
     }
   },
