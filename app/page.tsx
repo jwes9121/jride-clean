@@ -1,11 +1,14 @@
 import { auth } from "@/auth";
-import { homeFor } from "@/lib/roles";
+import { homeFor, type AppRole } from "@/lib/roles";
 import { redirect } from "next/navigation";
 
 export default async function Home() {
   const session = await auth();
-  const role = session?.user?.role ?? "user";
-  // If you want logged-in users to go straight to their home:
+
+  // We removed module augmentation, so assert when reading `role`.
+  const role = ((session?.user as any)?.role ?? "user") as AppRole;
+
+  // If you want logged-in users to go straight to their role home:
   if (session?.user) {
     redirect(homeFor(role));
   }
