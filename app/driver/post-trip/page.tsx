@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 "use client";
 import { useSearchParams } from "next/navigation";
 import { platformDeduction } from "@/lib/fare";
@@ -13,13 +16,14 @@ export default function DriverPostTripPage() {
       <h1 className="text-xl font-semibold mb-2">Trip Completed!</h1>
       <ul className="text-sm mb-4">
         <li>• Total Fare Collected: ₱{total}</li>
-        <li>• Platform Deduction: ₱{deduction} {total >= 50 ? "(for trips ₱50 and above)" : "(none for trips under ₱50)"} </li>
+        <li>
+          • Platform Deduction: ₱{deduction}{" "}
+          {total >= 50 ? "(for trips ₱50 and above)" : "(none for trips under ₱50)"}
+        </li>
         <li>— ₱15 convenience/service fee</li>
         <li>— ₱5 system/LGU partnership share</li>
       </ul>
-      <h2 className="font-bold text-lg">
-        ✅ Net Amount Credited to Your Wallet: ₱{net}
-      </h2>
+      <h2 className="font-bold text-lg">✅ Net Amount Credited to Your Wallet: ₱{net}</h2>
     </main>
   );
 }
