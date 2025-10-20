@@ -40,7 +40,8 @@ export const authConfig: NextAuthConfig = {
     },
     async session({ session, token }) {
       (session as any).user = (session as any).user ?? {};
-      (session as any).user.role = (token as any).role ?? inferRoleByEmail(session.user?.email);
+      (session as any).user.role =
+        (token as any).role ?? inferRoleByEmail(session.user?.email);
       return session;
     },
     authorized({ auth, request }) {
@@ -57,8 +58,10 @@ export const authConfig: NextAuthConfig = {
       ) return true;
 
       if (pathname.startsWith("/admin")) return role === "admin";
-      if (pathname.startsWith("/dispatch")) return role === "dispatcher" || role === "admin";
-      if (pathname.startsWith("/driver")) return role === "driver" || role === "admin";
+      if (pathname.startsWith("/dispatch"))
+        return role === "dispatcher" || role === "admin";
+      if (pathname.startsWith("/driver"))
+        return role === "driver" || role === "admin";
 
       return !!auth?.user;
     },
