@@ -1,4 +1,4 @@
-export type FareBreakdown = {
+﻿export type FareBreakdown = {
   base: number;
   addPassengers: number;
   convenienceFee: number;
@@ -15,5 +15,7 @@ export function computeTricycleFare(passengers: number): FareBreakdown {
 }
 
 export function platformDeduction(total: number): number {
-  return total >= 50 ? 20 : 0; // ₱15 service + ₱5 LGU/system share
+  return total >= 50 ? 20 : 0; // â‚±15 service + â‚±5 LGU/system share
 }
+
+

@@ -1,7 +1,7 @@
-import Providers from "./providers";
+﻿import Providers from "./providers";
 import "./globals.css";
 
-export const metadata = { title: "Jride", description: "…" };
+export const metadata = { title: "Jride", description: "â€¦" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,3 +12,5 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
+

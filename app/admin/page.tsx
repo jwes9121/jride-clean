@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import BottomNavigation, { TabItem } from "@/components/BottomNavigation";
@@ -31,3 +31,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+

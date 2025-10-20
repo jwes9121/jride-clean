@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -20,5 +20,7 @@ export default function AuthCallbackPage() {
     handleCallback();
   }, [router]);
 
-  return <div className="p-6">Finishing sign-in…</div>;
+  return <div className="p-6">Finishing sign-inâ€¦</div>;
 }
+
+

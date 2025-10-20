@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 
@@ -26,7 +26,7 @@ interface DeliveryOrder {
 interface DeliveryStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
-  order: DeliveryOrder; // ✅ non-null
+  order: DeliveryOrder; // âœ… non-null
   onConfirm: (orderId: string, rating?: number, feedback?: string) => void;
 }
 
@@ -60,7 +60,7 @@ const DeliveryStatusModal: React.FC<DeliveryStatusModalProps> = ({
                 rating && rating >= star ? 'text-yellow-400' : 'text-gray-300'
               }`}
             >
-              ★
+              â˜…
             </button>
           ))}
         </div>
@@ -94,3 +94,5 @@ const DeliveryStatusModal: React.FC<DeliveryStatusModalProps> = ({
 };
 
 export default DeliveryStatusModal;
+
+

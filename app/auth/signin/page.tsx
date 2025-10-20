@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { signIn } from "next-auth/react";
 
 export default function SignInPage() {
@@ -10,7 +10,9 @@ export default function SignInPage() {
       >
         Continue with Google
       </button>
-      <p className="text-sm mt-2">You’ll be redirected to your dashboard.</p>
+      <p className="text-sm mt-2">Youâ€™ll be redirected to your dashboard.</p>
     </div>
   );
 }
+
+

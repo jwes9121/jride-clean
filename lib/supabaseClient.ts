@@ -12,3 +12,5 @@ if (!url || !anon) {
 }
 
 export const supabase = createClient(url ?? "", anon ?? "");
+
+

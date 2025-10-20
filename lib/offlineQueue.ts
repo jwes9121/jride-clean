@@ -1,4 +1,4 @@
-// lib/offlineQueue.ts
+﻿// lib/offlineQueue.ts
 type Task = () => Promise<unknown>;
 
 const _queue: Task[] = [];
@@ -19,3 +19,5 @@ const api: OfflineQueueApi = {
 export default api;
 // If you still need direct access elsewhere, you can also export the array:
 // export { _queue as queueArray };
+
+

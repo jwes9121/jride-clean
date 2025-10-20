@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import AuthModal from "@/components/AuthModal";
@@ -29,3 +29,5 @@ export default function DriverPayoutsPage() {
     </div>
   );
 }
+
+

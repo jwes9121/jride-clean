@@ -1,4 +1,4 @@
-// types/survey.ts
+﻿// types/survey.ts
 export type RatingKey =
   | "item_accuracy"
   | "timeliness"
@@ -11,3 +11,5 @@ export type Question = {
   key: RatingKey;
   label: string;
 };
+
+

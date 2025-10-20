@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -26,7 +26,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
     checkSession();
 
-    // 🔄 Listen for login/logout events
+    // ðŸ”„ Listen for login/logout events
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -59,7 +59,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
           onAuthSuccess={(userData) => {
-            console.log("✅ Auth success:", userData);
+            console.log("âœ… Auth success:", userData);
             setShowAuthModal(false);
           }}
           mode="signin"
@@ -68,3 +68,5 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     </>
   );
 }
+
+

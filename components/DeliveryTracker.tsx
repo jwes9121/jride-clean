@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 
@@ -95,7 +95,7 @@ export default function DeliveryTracker({ order, onClose }: DeliveryTrackerProps
       {/* Map Area */}
       <div className="flex-1 relative">
         <iframe
-          src={`https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3849.123!2d${driverLocation.lng}!3d${driverLocation.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2z${driverLocation.lat}°${driverLocation.lng}°!5e0!3m2!1sen!2sph!4v1234567890`}
+          src={`https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3849.123!2d${driverLocation.lng}!3d${driverLocation.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2z${driverLocation.lat}Â°${driverLocation.lng}Â°!5e0!3m2!1sen!2sph!4v1234567890`}
           width="100%"
           height="100%"
           style={{ border: 0 }}
@@ -125,7 +125,7 @@ export default function DeliveryTracker({ order, onClose }: DeliveryTrackerProps
               </div>
               <div>
                 <div className="font-semibold">{order.vendor_name}</div>
-                <div className="text-sm text-gray-600">₱{order.total_amount}</div>
+                <div className="text-sm text-gray-600">â‚±{order.total_amount}</div>
               </div>
             </div>
             
@@ -263,3 +263,5 @@ export default function DeliveryTracker({ order, onClose }: DeliveryTrackerProps
     </div>
   );
 }
+
+

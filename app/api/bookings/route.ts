@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { computeTricycleFare } from "@/lib/fare";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -65,3 +65,5 @@ export async function POST(req: Request) {
 export async function GET() {
   return NextResponse.json({ ok: true });
 }
+
+

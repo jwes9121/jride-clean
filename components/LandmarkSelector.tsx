@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -217,7 +217,7 @@ export default function LandmarkSelector({
                             )}
                             <p className="text-xs text-gray-500 mt-1">
                               {landmark.address}
-                              {landmark.town && ` • ${landmark.town}`}
+                              {landmark.town && ` â€¢ ${landmark.town}`}
                             </p>
                           </div>
                           <div className="ml-3 text-right">
@@ -257,7 +257,7 @@ export default function LandmarkSelector({
                             )}
                             <p className="text-xs text-gray-500 mt-1">
                               {landmark.address}
-                              {landmark.town && ` • ${landmark.town}`}
+                              {landmark.town && ` â€¢ ${landmark.town}`}
                             </p>
                           </div>
                           <div className="ml-3 text-right">
@@ -387,3 +387,5 @@ export default function LandmarkSelector({
     </div>
   );
 }
+
+

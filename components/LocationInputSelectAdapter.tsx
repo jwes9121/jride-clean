@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import LocationInput from "./LocationInput";
@@ -18,3 +18,5 @@ export default function LocationInputSelectAdapter({ onLocationSelect, ...rest }
     />
   );
 }
+
+

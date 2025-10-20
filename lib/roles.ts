@@ -1,4 +1,4 @@
-// lib/roles.ts
+﻿// lib/roles.ts
 export type AppRole = "admin" | "dispatcher" | "driver" | "user";
 
 function parseList(v?: string | null) {
@@ -26,3 +26,5 @@ export function homeFor(role: AppRole): string {
     default: return "/"; // regular user
   }
 }
+
+

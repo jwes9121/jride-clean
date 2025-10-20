@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 interface SoftLaunchModalProps {
   isOpen: boolean;
@@ -25,3 +25,5 @@ export default function SoftLaunchModal({ isOpen, onClose }: SoftLaunchModalProp
     </div>
   );
 }
+
+

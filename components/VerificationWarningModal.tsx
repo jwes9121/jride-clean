@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React from 'react'
 
@@ -112,3 +112,5 @@ const VerificationWarningModal: React.FC<VerificationWarningModalProps> = ({
 }
 
 export default VerificationWarningModal
+
+

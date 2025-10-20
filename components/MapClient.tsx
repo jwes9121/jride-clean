@@ -1,4 +1,4 @@
-export default function MapClient({ height = 420 }: { height?: number | string }) {
+﻿export default function MapClient({ height = 420 }: { height?: number | string }) {
   return (
     <div
       style={{
@@ -15,3 +15,5 @@ export default function MapClient({ height = 420 }: { height?: number | string }
     </div>
   );
 }
+
+

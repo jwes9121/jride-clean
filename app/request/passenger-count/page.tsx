@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -28,13 +28,15 @@ export default function PassengerCountPage() {
       </div>
 
       <p className="mt-4 text-xs text-yellow-700">
-        ⚠️ Tricycles can accommodate up to four (4) passengers only. Motorcycle (single) rides are limited to one (1).
+        âš ï¸ Tricycles can accommodate up to four (4) passengers only. Motorcycle (single) rides are limited to one (1).
       </p>
 
       <div className="mt-6 flex gap-3">
         <button onClick={() => router.push("/")} className="px-4 py-2 rounded border">Cancel</button>
-        <button onClick={() => router.push(`/request/confirm-fare?count=${count}`)} className="px-4 py-2 rounded bg-blue-600 text-white">Continue →</button>
+        <button onClick={() => router.push(`/request/confirm-fare?count=${count}`)} className="px-4 py-2 rounded bg-blue-600 text-white">Continue â†’</button>
       </div>
     </main>
   );
 }
+
+
