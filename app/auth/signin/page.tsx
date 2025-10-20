@@ -1,17 +1,16 @@
-// app/auth/signin/page.tsx
 "use client";
-
 import { signIn } from "next-auth/react";
 
-export default function SignIn() {
+export default function SignInPage() {
   return (
-    <main className="min-h-screen grid place-items-center p-6">
+    <div className="p-6">
       <button
         onClick={() => signIn("google", { callbackUrl: "/" })}
-        className="rounded px-4 py-2 bg-black text-white"
+        className="rounded px-4 py-2 border"
       >
         Continue with Google
       </button>
-    </main>
+      <p className="text-sm mt-2">You’ll be redirected to your dashboard.</p>
+    </div>
   );
 }
