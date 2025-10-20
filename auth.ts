@@ -1,7 +1,4 @@
-cd C:\Users\jwes9\Desktop\jride-clean
-
-Set-Content -Path .\auth.ts -Value @'
-import NextAuth, { NextAuthConfig } from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
 export type AppRole = "admin" | "dispatcher" | "driver" | "user";
@@ -27,7 +24,7 @@ export const authConfig: NextAuthConfig = {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    })
+    }),
   ],
   session: { strategy: "jwt" },
   callbacks: {
@@ -64,10 +61,9 @@ export const authConfig: NextAuthConfig = {
       if (pathname.startsWith("/driver")) return role === "driver" || role === "admin";
 
       return !!auth?.user;
-    }
+    },
   },
-  secret: process.env.NEXTAUTH_SECRET
+  secret: process.env.NEXTAUTH_SECRET,
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
-'@
