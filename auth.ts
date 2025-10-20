@@ -1,6 +1,23 @@
 import NextAuth, { NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
-import { inferRoleByEmail, homeFor, type AppRole } from "@/lib/roles";
+
+export type AppRole = "admin" | "dispatcher" | "driver" | "user";
+
+function parseList(v?: string | null) {
+  return (v ?? "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+const ADMIN = new Set(parseList(process.env.ADMIN_EMAILS));
+const DISPATCHER = new Set(parseList(process.env.DISPATCHER_EMAILS));
+const DRIVER = new Set(parseList(process.env.DRIVER_EMAILS));
+
+function inferRoleByEmail(email?: string | null): AppRole {
+  const e = (email ?? "").toLowerCase();
+  if (!e) return "user";
+  if (ADMIN.has(e)) return "admin";
+  if (DISPATCHER.has(e)) return "dispatcher";
+  if (DRIVER.has(e)) return "driver";
+  return "user";
+}
 
 declare module "next-auth" {
   interface Session {
@@ -23,44 +40,28 @@ export const authConfig: NextAuthConfig = {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+    })
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    // attach role into the token on sign-in or refresh
     async jwt({ token, trigger, session, account, user }) {
       if (trigger === "signIn" || account || user) {
         token.role = inferRoleByEmail(token.email ?? user?.email ?? null);
       }
-      // allow role updates if you ever edit it client-side
       if (trigger === "update" && session?.user?.role) {
         token.role = session.user.role;
       }
       return token;
     },
-    // expose role on session.user
     async session({ session, token }) {
       if (!session.user) session.user = {};
       session.user.role = (token.role ?? inferRoleByEmail(session.user.email)) as AppRole;
       return session;
     },
-    // centralized redirect logic after sign-in
-    async redirect({ url, baseUrl }) {
-      try {
-        const target = new URL(url, baseUrl);
-        // Allow absolute same-origin and relative redirects
-        if (target.origin === baseUrl || !target.origin.startsWith("http")) {
-          return target.toString();
-        }
-      } catch {}
-      return baseUrl; // fallback
-    },
-    // route-level authorization; middleware uses this
     authorized({ auth, request }) {
       const role = auth?.user?.role as AppRole | undefined;
       const { pathname } = request.nextUrl;
 
-      // Public
       if (
         pathname === "/" ||
         pathname.startsWith("/auth") ||
@@ -70,17 +71,14 @@ export const authConfig: NextAuthConfig = {
         pathname.startsWith("/offline")
       ) return true;
 
-      // Role-gated
       if (pathname.startsWith("/admin")) return role === "admin";
       if (pathname.startsWith("/dispatch")) return role === "dispatcher" || role === "admin";
       if (pathname.startsWith("/driver")) return role === "driver" || role === "admin";
 
-      // default: require sign-in
       return !!auth?.user;
-    },
+    }
   },
-  secret: process.env.NEXTAUTH_SECRET,
-  // debug: true,
+  secret: process.env.NEXTAUTH_SECRET
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
