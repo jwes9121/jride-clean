@@ -1,3 +1,6 @@
+cd C:\Users\jwes9\Desktop\jride-clean
+
+Set-Content -Path .\auth.ts -Value @'
 import NextAuth, { NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
@@ -29,7 +32,6 @@ export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
   callbacks: {
     async jwt({ token, trigger, session, account, user }) {
-      // attach role into the token
       const t = token as any;
       if (trigger === "signIn" || account || user) {
         t.role = inferRoleByEmail(token.email ?? user?.email ?? null);
@@ -40,7 +42,6 @@ export const authConfig: NextAuthConfig = {
       return token;
     },
     async session({ session, token }) {
-      // expose role on session.user
       (session as any).user = (session as any).user ?? {};
       (session as any).user.role = (token as any).role ?? inferRoleByEmail(session.user?.email);
       return session;
@@ -49,7 +50,6 @@ export const authConfig: NextAuthConfig = {
       const role = (auth?.user as any)?.role as AppRole | undefined;
       const { pathname } = request.nextUrl;
 
-      // Public
       if (
         pathname === "/" ||
         pathname.startsWith("/auth") ||
@@ -59,12 +59,10 @@ export const authConfig: NextAuthConfig = {
         pathname.startsWith("/offline")
       ) return true;
 
-      // Role-gated
       if (pathname.startsWith("/admin")) return role === "admin";
       if (pathname.startsWith("/dispatch")) return role === "dispatcher" || role === "admin";
       if (pathname.startsWith("/driver")) return role === "driver" || role === "admin";
 
-      // default: require sign-in
       return !!auth?.user;
     }
   },
@@ -72,3 +70,4 @@ export const authConfig: NextAuthConfig = {
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+'@
