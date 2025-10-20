@@ -1,5 +1,5 @@
 import { platformDeduction } from "@/lib/fare";
-import { auth } from "@/auth"; // optional if you want to greet user by name
+import { auth } from "@/auth";
 
 export default async function RequestSuccessPage({
   searchParams,
@@ -10,7 +10,6 @@ export default async function RequestSuccessPage({
   const count = Number(searchParams?.count ?? 1);
   const id = typeof searchParams?.id === "string" ? searchParams?.id : undefined;
 
-  // Optional: read session to personalize
   const session = await auth().catch(() => null);
   const name = session?.user?.name ?? "Passenger";
 
