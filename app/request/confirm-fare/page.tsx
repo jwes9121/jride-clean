@@ -3,10 +3,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { computeTricycleFare } from "@/lib/fare";
 
-type CreateBookingResponse = {
-  id?: string;
-  [key: string]: any;
-};
+type CreateBookingResponse = { id?: string };
 
 export default function ConfirmFarePage() {
   const params = useSearchParams();
@@ -21,35 +18,24 @@ export default function ConfirmFarePage() {
     setSubmitting(true);
     setErr(null);
     try {
-      // Call your existing API route (already present in your build list)
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Minimal payload – extend later with pickup/dropoff, notes, etc.
-        body: JSON.stringify({
-          mode: "tricycle",
-          passengers,
-          fare,
-          source: "web",     // useful for future analytics
-        }),
+        body: JSON.stringify({ mode: "tricycle", passengers, source: "web" })
       });
 
-      // If your backend returns JSON with an id, use it. Otherwise, fallback.
       let bookingId: string | undefined;
       try {
         const data: CreateBookingResponse = await res.json();
         bookingId = data?.id;
-      } catch (_) {}
+      } catch {}
 
-      if (!res.ok) {
-        throw new Error(`Failed to create booking (${res.status})`);
-      }
+      if (!res.ok) throw new Error(`Failed to create booking (${res.status})`);
 
-      // Route to success page, include total + id for display
       const idParam = bookingId ? `&id=${encodeURIComponent(bookingId)}` : "";
       router.replace(`/request/success?total=${fare.total}&count=${passengers}${idParam}`);
     } catch (e: any) {
-      setErr(e?.message ?? "Something went wrong while creating the booking.");
+      setErr(e?.message ?? "Something went wrong.");
     } finally {
       setSubmitting(false);
     }
@@ -72,18 +58,8 @@ export default function ConfirmFarePage() {
       {err && <p className="text-red-600 text-sm mb-3">Error: {err}</p>}
 
       <div className="flex gap-3">
-        <button
-          onClick={() => history.back()}
-          className="px-4 py-2 rounded border"
-          disabled={submitting}
-        >
-          ← Back
-        </button>
-        <button
-          onClick={handleConfirm}
-          className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-60"
-          disabled={submitting}
-        >
+        <button onClick={() => history.back()} className="px-4 py-2 rounded border" disabled={submitting}>← Back</button>
+        <button onClick={handleConfirm} className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-60" disabled={submitting}>
           {submitting ? "Confirming..." : "Confirm Booking →"}
         </button>
       </div>
