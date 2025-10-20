@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 "use client";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -21,7 +24,7 @@ export default function ConfirmFarePage() {
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "tricycle", passengers, source: "web" })
+        body: JSON.stringify({ mode: "tricycle", passengers, source: "web" }),
       });
 
       let bookingId: string | undefined;
@@ -58,8 +61,14 @@ export default function ConfirmFarePage() {
       {err && <p className="text-red-600 text-sm mb-3">Error: {err}</p>}
 
       <div className="flex gap-3">
-        <button onClick={() => history.back()} className="px-4 py-2 rounded border" disabled={submitting}>← Back</button>
-        <button onClick={handleConfirm} className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-60" disabled={submitting}>
+        <button onClick={() => history.back()} className="px-4 py-2 rounded border" disabled={submitting}>
+          ← Back
+        </button>
+        <button
+          onClick={handleConfirm}
+          className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-60"
+          disabled={submitting}
+        >
           {submitting ? "Confirming..." : "Confirm Booking →"}
         </button>
       </div>
