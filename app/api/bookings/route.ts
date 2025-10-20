@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { computeTricycleFare } from "@/lib/fare";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
+
+// Ensure this API route is never statically analyzed/prerendered
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type CreateBookingBody = {
   mode?: "tricycle" | "motorcycle";
@@ -34,6 +38,8 @@ export async function POST(req: Request) {
 
     const fare = computeTricycleFare(passengers);
 
+    // Create client lazily at runtime (env must be present)
+    const supabaseAdmin = getSupabaseAdmin();
     const { data, error } = await supabaseAdmin
       .from("bookings")
       .insert({
@@ -45,19 +51,19 @@ export async function POST(req: Request) {
         total: fare.total,
         status: "pending",
         user_email: session.user.email,
-        source: body.source ?? "web"
+        source: body.source ?? "web",
       })
       .select("id")
       .single();
 
     if (error) {
-      console.error("[bookings.insert] ", error);
+      console.error("[bookings.insert]", error);
       return NextResponse.json({ error: "Failed to create booking." }, { status: 500 });
     }
 
     return NextResponse.json({ id: data?.id, total: fare.total, passengers }, { status: 201 });
   } catch (e: any) {
-    console.error("[bookings.POST] ", e);
+    console.error("[bookings.POST]", e);
     return NextResponse.json({ error: e?.message ?? "Unexpected error" }, { status: 500 });
   }
 }
