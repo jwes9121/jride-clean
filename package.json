@@ -8,28 +8,20 @@
     "build": "next build --no-lint",
     "start": "next start",
     "lint": "next lint",
-    "prebuild": "rimraf \"backup_*\" \"jride-app_patch\" \"app/app\" || exit 0"
+    "clean": "rimraf .next && rimraf node_modules && rimraf --glob \"backup_*\""
   },
   "dependencies": {
-    "@supabase/auth-helpers-nextjs": "^0.10.0",
-    "@supabase/supabase-js": "^2.75.0",
-    "leaflet": "^1.9.4",
-    "lucide-react": "^0.545.0",
+    "@supabase/supabase-js": "^2.45.0",
     "next": "14.2.5",
-    "next-auth": "^4.24.7",
+    "next-auth": "^5.0.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "react-leaflet": "^4.2.1"
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@types/leaflet": "^1.9.21",
-    "@types/node": "^20.12.12",
+    "@types/node": "^22.5.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "rimraf": "^5.0.10",
-    "tailwindcss": "^3.4.18",
-    "typescript": "^5.6.2"
+    "rimraf": "^6.0.1",
+    "typescript": "^5.5.4"
   }
 }
