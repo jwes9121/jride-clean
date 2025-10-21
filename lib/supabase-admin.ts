@@ -1,16 +1,18 @@
 // lib/supabase-admin.ts
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-/** Create the admin client only when called (so build doesn’t explode). */
-export function getSupabaseAdmin() {
+let _admin: SupabaseClient | null = null;
+
+export function getSupabaseAdmin(): SupabaseClient {
+  if (_admin) return _admin;
+
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
-
-  if (!url || !key) {
-    throw new Error("Supabase admin env missing: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
+  const service = process.env.SUPABASE_SERVICE_ROLE;
+  if (!url || !service) {
+    throw new Error("Missing SUPABASE_URL/SUPABASE_SERVICE_ROLE");
   }
-
-  return createClient(url, key, {
+  _admin = createClient(url, service, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  return _admin;
 }
