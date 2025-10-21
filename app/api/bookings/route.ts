@@ -1,19 +1,20 @@
-// app/api/bookings/route.ts
+export const dynamic = "force-dynamic"; // don’t prerender this at build
+export const revalidate = 0;            // no ISR
+
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic"; // don’t attempt to prerender
-
-export async function POST(req: Request) {
-  const supabase = getSupabaseServer(); // <-- created here, not at import time
-  const body = await req.json();
-  // ... use supabase
-  return NextResponse.json({ ok: true });
-}
+import { getAdminClient } from "@/lib/supabase-server";
 
 export async function GET() {
-  const supabase = getSupabaseServer();
-  // ...
-  return NextResponse.json({ ok: true });
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("bookings").select("*").limit(1);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data });
+}
+
+export async function POST(req: Request) {
+  const payload = await req.json();
+  const supabase = getAdminClient();
+  const { data, error } = await supabase.from("bookings").insert(payload).select().single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data, { status: 201 });
 }
