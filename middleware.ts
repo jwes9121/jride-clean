@@ -1,12 +1,8 @@
 export { auth as middleware } from "@/auth";
 
-// Only protect real app sections; DO NOT include `/` or `/api/auth/*`
 export const config = {
   matcher: [
-    "/driver/:path*",
-    "/rider/:path*",
-    "/profile/:path*",
-    "/wallet/:path*",
-    "/request/:path*",
+    // Run on everything except Next.js assets and images
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
