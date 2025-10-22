@@ -1,7 +1,6 @@
 export { auth as middleware } from "@/auth";
 
-// Only protect the signed-in areas.
-// Do NOT include `/`, `/api/auth/*`, or any auth pages here.
+// Only protect real app sections; DO NOT include `/` or `/api/auth/*`
 export const config = {
   matcher: [
     "/driver/:path*",
