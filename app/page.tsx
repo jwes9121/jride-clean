@@ -1,22 +1,19 @@
+// app/page.tsx (server component)
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
-export default async function Home() {
+export default async function Page() {
   const session = await auth();
 
-  // If logged in, send them to their landing page once.
-  if (session?.user) {
-    // Change to whatever your app uses, e.g. /landing or /driver
-    redirect("/landing");
+  if (!session) {
+    // send to Google sign-in (same URL middleware uses)
+    redirect("/api/auth/signin?provider=google");
   }
 
-  // If not logged in, show a neutral page with a sign-in link.
-  // (No automatic redirect.)
-  return (
-    <main className="p-6">
-      <h1>Welcome</h1>
-      <p>If you just signed in, landing here means redirects are clean.</p>
-      <a href="/api/auth/signin?provider=google">Sign in with Google</a>
-    </main>
-  );
+  // If you redirect to a role-based home, do it here. Example:
+  // const role = session.user?.role ?? "user";
+  // redirect(role === "driver" ? "/driver" : "/rider");
+
+  // Or render a simple landing page for logged-in users:
+  return <main className="p-6">Welcome ??</main>;
 }
