@@ -1,9 +1,9 @@
-// MapClient.tsx
+// app/components/MapClient.tsx
 "use client";
 
 /**
- * Temporary no-op to avoid the big placeholder box.
- * Remove this when you re-enable the map and render the real map instead.
+ * Temporary stub: do not render the old placeholder while keeping imports happy.
+ * Replace with the real map later.
  */
 export default function MapClient() {
   return null;
