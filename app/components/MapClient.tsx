@@ -1,10 +1,10 @@
-﻿export default function MapClient({ height = 420 }: { height?: number | string }) {
-  return (
-    <div style={{
-      height, width: "100%", border: "1px dashed #cbd5e1", borderRadius: 12,
-      display: "grid", placeItems: "center", background: "#f8fafc"
-    }}>
-      <div style={{ opacity: .7 }}>Map temporarily disabled for deployment</div>
-    </div>
-  );
+// MapClient.tsx
+"use client";
+
+/**
+ * Temporary no-op to avoid the big placeholder box.
+ * Remove this when you re-enable the map and render the real map instead.
+ */
+export default function MapClient() {
+  return null;
 }
