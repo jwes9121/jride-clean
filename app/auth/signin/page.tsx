@@ -7,7 +7,7 @@ export default function SignInPage() {
     <div className="p-6">
       <button
         onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-        className="rounded-lg px-4 py-2 border"
+        className="border rounded-lg px-4 py-2"
       >
         Sign in with Google
       </button>
