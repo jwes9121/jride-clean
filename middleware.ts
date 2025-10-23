@@ -1,16 +1,17 @@
 import { auth } from "./auth";
 
 export default auth((req) => {
-  // Allow access to public routes without redirecting
+  // Public / allowed paths
   if (
     req.nextUrl.pathname.startsWith("/api/auth") ||
     req.nextUrl.pathname.startsWith("/auth") ||
     req.nextUrl.pathname.startsWith("/_next") ||
     req.nextUrl.pathname.startsWith("/favicon.ico") ||
-    req.nextUrl.pathname.match(/\.(.*)$/) // allow static files
+    /\.[a-zA-Z0-9]+$/.test(req.nextUrl.pathname) // static files
   ) {
     return;
   }
+  // No custom redirects here; let NextAuth do its thing.
 });
 
 export const config = {
