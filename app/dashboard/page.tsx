@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 import { auth } from "../../auth";
 import { redirect } from "next/navigation";
 
@@ -8,12 +7,15 @@ export const fetchCache = "force-no-store";
 
 export default async function Dashboard() {
   const session = await auth();
-  if (!session) redirect("/auth/signin");
+
+  if (!session) {
+    redirect("/auth/signin");
+  }
 
   return (
     <main className="p-6">
-      <h1 className="text-lg">Session: dashboard</h1>
-      {/* ...your dashboard content... */}
+      <h1>Dashboard</h1>
+      <p>Session active for {session.user?.email}</p>
     </main>
   );
 }
