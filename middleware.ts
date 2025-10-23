@@ -1,13 +1,18 @@
-// middleware.ts  (App Router + NextAuth v5)
-export { auth as middleware } from "@/auth";
+import { auth } from "./auth";
 
-// Do NOT match NextAuth endpoints or static files or your public auth pages
+export default auth((req) => {
+  // Allow access to public routes without redirecting
+  if (
+    req.nextUrl.pathname.startsWith("/api/auth") ||
+    req.nextUrl.pathname.startsWith("/auth") ||
+    req.nextUrl.pathname.startsWith("/_next") ||
+    req.nextUrl.pathname.startsWith("/favicon.ico") ||
+    req.nextUrl.pathname.match(/\.(.*)$/) // allow static files
+  ) {
+    return;
+  }
+});
+
 export const config = {
-  matcher: [
-    // protect everything except:
-    // - /api/auth/* (next-auth handlers)
-    // - /auth/*     (your own login/signup pages)
-    // - _next assets, favicon, and any file with an extension
-    "/((?!api/auth|auth|_next/static|_next/image|favicon.ico|.*\\..*).*)",
-  ],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };
