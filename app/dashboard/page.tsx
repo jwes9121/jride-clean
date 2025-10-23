@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 import Link from "next/link";
 import { auth } from "../../auth";
 import { redirect } from "next/navigation";
@@ -13,7 +12,6 @@ export default async function DashboardPage() {
 
   return (
     <>
-      {/* Inline header */}
       <header
         style={{
           borderBottom: "1px solid #eaeaea",
@@ -58,13 +56,7 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      {/* Top nav */}
-      <nav
-        style={{
-          borderBottom: "1px solid #eee",
-          background: "#fafafa",
-        }}
-      >
+      <nav style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
         <div
           style={{
             maxWidth: 1000,
@@ -81,12 +73,8 @@ export default async function DashboardPage() {
         </div>
       </nav>
 
-      {/* Main content */}
       <main style={{ maxWidth: 1000, margin: "0 auto", padding: "2rem 1rem" }}>
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-          Dashboard
-        </h1>
-
+        <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>Dashboard</h1>
         <section
           style={{
             border: "1px solid #eaeaea",
