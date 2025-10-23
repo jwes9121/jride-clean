@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx
 import { auth } from "../../auth";
 import { redirect } from "next/navigation";
 import Header from "../components/Header";
