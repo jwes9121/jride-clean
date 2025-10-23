@@ -1,4 +1,3 @@
-// app/rides/page.tsx
 import Link from "next/link";
 import { auth } from "../../auth";
 import { redirect } from "next/navigation";
@@ -50,7 +49,6 @@ export default async function RidesPage() {
 
       <main style={{ maxWidth: 1000, margin: "0 auto", padding: "2rem 1rem" }}>
         <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>Rides</h1>
-
         <section style={{ border: "1px solid #eaeaea", borderRadius: 12, background: "#fafafa", padding: "1.5rem" }}>
           <p>Nothing here yet. This will list active & recent rides.</p>
         </section>
