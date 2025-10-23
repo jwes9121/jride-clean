@@ -1,26 +1,31 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // Allow Google profile photos for <Image />
+  images: {
+    domains: ["lh3.googleusercontent.com"],
+  },
+
+  // Keep rendering dynamic to avoid any redirect-cache loops
   reactStrictMode: true,
+  output: "standalone",
   cacheHandler: false,
-  experimental: { staleTimes: { dynamic: 0 } },
-  headers() {
+  experimental: {
+    staleTimes: { dynamic: 0 },
+  },
+
+  // Send no-store headers by default (safe while we stabilize)
+  async headers() {
     return [
       {
         source: "/(.*)",
         headers: [
           { key: "Cache-Control", value: "no-store, max-age=0" },
           { key: "Pragma", value: "no-cache" },
-          { key: "Expires", value: "0" }
-        ]
-      }
+          { key: "Expires", value: "0" },
+        ],
+      },
     ];
   },
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "lh3.googleusercontent.com" }
-    ]
-  }
 };
 
 export default nextConfig;
