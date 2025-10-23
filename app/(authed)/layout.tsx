@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { auth } from "../auth"; // resolved from /app/(authed)/ to /app/auth.ts
+import { auth } from "../../auth";
 import { redirect } from "next/navigation";
 import TopNav from "../components/TopNav";
 
