@@ -5,12 +5,16 @@ export default function SignInPage() {
   return (
     <div className="p-6">
       <button
-        onClick={() => signIn("google", { callbackUrl: "/" })}
-        className="rounded px-4 py-2 border"
+        onClick={() =>
+          signIn("google", {
+            callbackUrl:
+              process.env.NEXT_PUBLIC_POST_LOGIN_URL || "/dashboard",
+          })
+        }
+        className="rounded-lg px-4 py-2 border"
       >
-        Continue with Google
+        Sign in with Google
       </button>
-      <p className="text-sm mt-2">You’ll be redirected to your dashboard.</p>
     </div>
   );
 }
