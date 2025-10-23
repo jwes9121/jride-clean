@@ -4,50 +4,41 @@ import { auth } from "../../auth";
 
 export default async function Header() {
   const session = await auth();
-  const user = session?.user;
+  const u = session?.user;
 
   return (
-    <header className="w-full border-b bg-white">
-      <div className="max-w-6xl mx-auto h-14 px-4 flex items-center justify-between">
-        {/* J-Ride logo / title */}
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-black flex items-center justify-center">
-            <span className="text-white text-xs font-bold">JR</span>
-          </div>
-          <span className="text-lg font-semibold tracking-tight">J-Ride</span>
+    <header style={{ borderBottom: "1px solid #eee", background: "#fff" }}>
+      <div style={{
+        maxWidth: 1000, margin: "0 auto", height: 56, display: "flex",
+        alignItems: "center", justifyContent: "space-between", padding: "0 16px"
+      }}>
+        {/* J-Ride logo/title */}
+        <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit" }}>
+          <div style={{
+            width: 28, height: 28, background: "#000", color: "#fff",
+            borderRadius: 12, display: "flex", alignItems: "center",
+            justifyContent: "center", fontSize: 12, fontWeight: 700
+          }}>JR</div>
+          <div style={{ fontWeight: 600 }}>J-Ride</div>
         </Link>
 
-        {/* Right side: user info or sign in link */}
-        {user ? (
-          <div className="flex items-center gap-3">
-            {/* use <img> so no Next image config is required */}
-            {user.image ? (
-              <img
-                src={user.image}
-                alt={user.name ?? "User"}
-                width={28}
-                height={28}
-                className="rounded-full border"
-                style={{ width: 28, height: 28 }}
-              />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-gray-300" />
-            )}
-            <span className="text-sm">{user.name ?? user.email}</span>
+        {/* Right side */}
+        {u ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {u.image
+              ? <img src={u.image} alt={u.name ?? "User"} width={28} height={28}
+                     style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid #ddd" }}/>
+              : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#ddd" }}/>}
+            <span style={{ fontSize: 14 }}>{u.name ?? u.email}</span>
             <form action="/api/auth/signout" method="post">
-              <button
-                className="text-sm text-red-600 border rounded-md px-2 py-1 hover:bg-gray-50"
-                type="submit"
-              >
+              <button type="submit"
+                      style={{ fontSize: 13, color: "#c00", border: "1px solid #eee", borderRadius: 6, padding: "6px 10px" }}>
                 Sign out
               </button>
             </form>
           </div>
         ) : (
-          <Link
-            href="/auth/signin"
-            className="text-sm border rounded-md px-3 py-2 hover:bg-gray-50"
-          >
+          <Link href="/auth/signin" style={{ fontSize: 14, border: "1px solid #eee", borderRadius: 6, padding: "6px 10px" }}>
             Sign in
           </Link>
         )}
