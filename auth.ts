@@ -4,13 +4,15 @@ import Google from "next-auth/providers/google";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [Google],
   trustHost: true,
+  // debug: true, // enable temporarily if needed
   callbacks: {
     async redirect({ url, baseUrl }) {
-      // If redirect URL is relative, join with baseUrl
+      // Relative -> join with base
       if (url.startsWith("/")) return `${baseUrl}${url}`;
-      // Only allow returning to the same origin
+      // Same origin -> allow
       if (new URL(url).origin === baseUrl) return url;
-      return baseUrl;
+      // Fallback
+      return `${baseUrl}/dashboard`;
     },
   },
 });
