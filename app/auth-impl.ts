@@ -1,13 +1,9 @@
-$root = (Get-Location).Path
-[System.IO.Directory]::CreateDirectory("$root\app") | Out-Null
-
-$authImpl = @'
+// app/auth-impl.ts
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { auth, signIn, signOut, handlers } = NextAuth({
   trustHost: true,
-  secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   providers: [
     Google({
@@ -15,26 +11,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
+  // Optional: tweak callbacks as you like
   callbacks: {
     async jwt({ token, account, profile }) {
-      if (account) token.provider = account.provider;
-      if (profile && typeof profile === "object") {
-        const p = profile as any;
-        token.name = p.name ?? token.name;
-        token.picture = p.picture ?? token.picture;
+      if (account?.provider === "google" && profile) {
+        token.name = profile.name as string;
+        token.picture = (profile as any).picture;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token) (session as any).provider = (token as any).provider;
+      if (session.user && token) {
+        session.user.name = token.name as string;
+        (session.user as any).image = token.picture as string | undefined;
+      }
       return session;
     },
   },
+  // Make sure AUTH_SECRET is set in env
+  secret: process.env.AUTH_SECRET,
 });
-
-export default auth;
-'@
-
-# Write with UTF-8 (no BOM)
-$utf8 = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText("$root\app\auth-impl.ts", $authImpl, $utf8)
