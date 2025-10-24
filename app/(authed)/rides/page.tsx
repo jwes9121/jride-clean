@@ -1,18 +1,27 @@
-// app/(authed)/rides/page.tsx
 export default function RidesPage() {
   return (
-    <section>
-      <h1 style={{ marginBottom: 12 }}>Rides</h1>
-      <div
+    <div
+      style={{
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <h1
         style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 16,
-          background: "#fafafa",
+          fontSize: "1.25rem",
+          fontWeight: 600,
+          marginBottom: "8px",
         }}
       >
-        Nothing here yet. This will list active & recent rides.
-      </div>
-    </section>
+        Rides
+      </h1>
+      <p
+        style={{
+          fontSize: ".9rem",
+          color: "#444",
+        }}
+      >
+        Rides view placeholder.
+      </p>
+    </div>
   );
 }
