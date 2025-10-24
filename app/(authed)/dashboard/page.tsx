@@ -1,22 +1,28 @@
-// app/(authed)/dashboard/page.tsx
-import { auth } from "@/app/auth";
-
-export default async function DashboardPage() {
-  const session = await auth();
+export default function DashboardPage() {
   return (
-    <section>
-      <h1 style={{ marginBottom: 12 }}>Dashboard</h1>
-      <div
+    <div
+      style={{
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <h1
         style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 16,
-          background: "#fafafa",
+          fontSize: "1.25rem",
+          fontWeight: 600,
+          marginBottom: "8px",
         }}
       >
-        <div>Welcome, <b>{session?.user?.name}</b></div>
-        <div style={{ opacity: 0.8 }}>{session?.user?.email}</div>
-      </div>
-    </section>
+        Dashboard
+      </h1>
+      <p
+        style={{
+          fontSize: ".9rem",
+          color: "#444",
+        }}
+      >
+        This is the dashboard under (authed). If you see this in prod,
+        auth + layout are working.
+      </p>
+    </div>
   );
 }
