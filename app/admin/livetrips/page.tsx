@@ -1,8 +1,3 @@
-// app/admin/livetrips/page.tsx
-
-// This MUST be a default export component so Next.js builds the route.
-// Later you can drop in the real map, Supabase live driver feed, etc.
-
 export default function LiveTripsPage() {
   return (
     <main
