@@ -1,5 +1,5 @@
 // TEMP STUB FOR BUILD
-// TODO: replace with real Supabase client for production logic
+// TODO: replace with real Supabase client
 
 export type FakeSupabase = {
   from: (table: string) => {
@@ -21,6 +21,10 @@ const supabaseStub: FakeSupabase = {
   }),
 };
 
+// Different components call this by different names.
+// We just export all of them so nothing crashes at build time.
+export const supabase = supabaseStub as any;
 export const supabaseBrowserClient = supabaseStub as any;
 export const supabaseServerClient = supabaseStub as any;
+
 export default supabaseStub;
