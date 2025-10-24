@@ -1,21 +1,33 @@
-// lib/offlineQueue.ts
-type Task = () => Promise<unknown>;
+// TEMP STUB FOR BUILD
+// TODO: implement offline job queue / retry later logic for PWA mode
 
-const _queue: Task[] = [];
-
-export type OfflineQueueApi = {
-  isOnlineStatus: () => boolean;
-  getQueueLength: () => number;
-  enqueue: (t: Task) => void;
-  // add other helpers as you need
+export type OfflineJob = {
+  id: string;
+  type: string;
+  payload: any;
+  createdAt: number;
 };
 
-const api: OfflineQueueApi = {
-  isOnlineStatus: () => typeof navigator !== "undefined" ? navigator.onLine : true,
-  getQueueLength: () => _queue.length,
-  enqueue: (t) => _queue.push(t),
-};
+let queue: OfflineJob[] = [];
 
-export default api;
-// If you still need direct access elsewhere, you can also export the array:
-// export { _queue as queueArray };
+// add a job to offline queue
+export function enqueueOfflineJob(type: string, payload: any) {
+  const job: OfflineJob = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    payload,
+    createdAt: Date.now(),
+  };
+  queue.push(job);
+  return job.id;
+}
+
+// read queued jobs
+export function getOfflineJobs() {
+  return [...queue];
+}
+
+// clear queue (e.g. after syncing)
+export function clearOfflineJobs() {
+  queue = [];
+}
