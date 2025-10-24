@@ -1,22 +1,18 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
+// app/(authed)/rides/page.tsx
 export default function RidesPage() {
   return (
-    <>
-      <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-        Rides
-      </h1>
-      <section
+    <section>
+      <h1 style={{ marginBottom: 12 }}>Rides</h1>
+      <div
         style={{
-          border: "1px solid #eaeaea",
+          border: "1px solid #eee",
           borderRadius: 12,
+          padding: 16,
           background: "#fafafa",
-          padding: "1.5rem",
         }}
       >
-        <p>Nothing here yet. This will list active & recent rides.</p>
-      </section>
-    </>
+        Nothing here yet. This will list active & recent rides.
+      </div>
+    </section>
   );
 }
