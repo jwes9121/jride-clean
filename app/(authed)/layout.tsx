@@ -2,14 +2,13 @@ import * as React from "react";
 import { auth } from "../../auth";
 import TopNav from "./TopNav";
 
-export const dynamic = "force-dynamic"; // avoids caching the session in layout
+export const dynamic = "force-dynamic";
 
 type AuthedLayoutProps = {
   children: React.ReactNode;
 };
 
 export default async function AuthedLayout({ children }: AuthedLayoutProps) {
-  // get the current session on the server
   const session = await auth();
 
   return (
