@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
+
   const callbackUrl = searchParams.get("callbackUrl") || "/";
 
   async function handleGoogle() {
@@ -24,9 +25,21 @@ export default function SignInPage() {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Sign in</h1>
+      <h1
+        style={{
+          fontSize: "1.25rem",
+          fontWeight: 600,
+        }}
+      >
+        Sign in
+      </h1>
 
-      <p style={{ fontSize: ".9rem", color: "#666" }}>
+      <p
+        style={{
+          fontSize: ".9rem",
+          color: "#666",
+        }}
+      >
         Use your Google account to continue.
       </p>
 
