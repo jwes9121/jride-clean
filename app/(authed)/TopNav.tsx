@@ -1,12 +1,9 @@
 "use client";
 
-import * as React from "react";
-
 type TopNavProps = {
   user?: {
     name?: string | null;
     email?: string | null;
-    // add anything else you want, e.g. role?: string
     role?: string;
   };
 };
@@ -25,7 +22,9 @@ export default function TopNav({ user }: TopNavProps) {
         background: "#fff",
       }}
     >
-      <div style={{ fontWeight: 600, fontSize: "1rem" }}>J-Ride Dashboard</div>
+      <div style={{ fontWeight: 600, fontSize: "1rem" }}>
+        J-Ride Dashboard
+      </div>
 
       <div
         style={{
