@@ -1,5 +1,5 @@
-$authShim = @'
-export * from "./auth-impl";
-export { default } from "./auth-impl";
-'@
-[System.IO.File]::WriteAllText("$root\app\auth.ts", $authShim, $utf8)
+// app/auth.ts  (shim everyone imports)
+export { auth, signIn, signOut, handlers } from "./auth-impl";
+export const { GET, POST } =
+  typeof handlers !== "undefined" ? handlers : ({} as any);
+export default auth;
