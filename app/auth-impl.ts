@@ -8,10 +8,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientSecret: process.env.Google_CLIENT_SECRET!, // <-- fix if you named it GOOGLE_CLIENT_SECRET
     }),
   ],
-  // Optional: tweak callbacks as you like
   callbacks: {
     async jwt({ token, account, profile }) {
       if (account?.provider === "google" && profile) {
@@ -21,13 +20,12 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (session.user && token) {
+      if (session.user) {
         session.user.name = token.name as string;
         (session.user as any).image = token.picture as string | undefined;
       }
       return session;
     },
   },
-  // Make sure AUTH_SECRET is set in env
   secret: process.env.AUTH_SECRET,
 });
