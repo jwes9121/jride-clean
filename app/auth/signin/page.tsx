@@ -1,29 +1,26 @@
 // app/auth/signin/page.tsx
 "use client";
-import { signIn, useSession } from "next-auth/react";
 
-export default function SignInPage() {
-  const { data: session } = useSession();
+import { signIn } from "next-auth/react";
 
-  if (session) {
-    return (
-      <div className="p-6">
-        <p>You are already signed in as {session.user?.email}</p>
-        <a href="/dashboard" className="underline text-blue-600">
-          Go to Dashboard
-        </a>
-      </div>
-    );
-  }
-
+export default function SignIn() {
   return (
-    <div className="p-6">
+    <main style={{ padding: 24 }}>
+      <h1>Sign in</h1>
+      <p>Use your Google account to continue.</p>
       <button
         onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-        className="border rounded-lg px-4 py-2"
+        style={{
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "1px solid #ddd",
+          background: "#f5f5ff",
+          cursor: "pointer",
+          marginTop: 12,
+        }}
       >
-        Sign in with Google
+        Continue with Google
       </button>
-    </div>
+    </main>
   );
 }
