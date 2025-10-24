@@ -5,13 +5,9 @@ import { signIn } from "next-auth/react";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
-
-  // Grab ?callbackUrl=... from the URL.
-  // If it's missing, default to "/".
   const callbackUrl = searchParams.get("callbackUrl") || "/";
 
   async function handleGoogle() {
-    // Pass callbackUrl so we return to /admin/livetrips (or whatever asked for auth)
     await signIn("google", {
       callbackUrl,
     });
