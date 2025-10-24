@@ -1,22 +1,18 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
+// app/(authed)/settings/page.tsx
 export default function SettingsPage() {
   return (
-    <>
-      <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-        Settings
-      </h1>
-      <section
+    <section>
+      <h1 style={{ marginBottom: 12 }}>Settings</h1>
+      <div
         style={{
-          border: "1px solid #eaeaea",
+          border: "1px solid #eee",
           borderRadius: 12,
+          padding: 16,
           background: "#fafafa",
-          padding: "1.5rem",
         }}
       >
-        <p>Account settings coming soon.</p>
-      </section>
-    </>
+        Account settings coming soon.
+      </div>
+    </section>
   );
 }
