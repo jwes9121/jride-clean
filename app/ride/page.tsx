@@ -1,37 +1,31 @@
-﻿'use client';
+import { supabaseBrowserClient } from "../../lib/supabaseClient";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-
-type Ride = {
-  id: string;
-  origin: string;
-  destination: string;
-};
-
-export default function RidePage() {
-  const [rides, setRides] = useState<Ride[]>([]);
-
-  useEffect(() => {
-    async function loadMyRides() {
-      const { data, error } = await supabase.from("rides").select("*");
-      if (!error && data) {
-        setRides(data);
-      }
-    }
-    loadMyRides();
-  }, []);
-
+export default async function RidePage() {
+  // You can hydrate active ride details here with Supabase later.
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-bold mb-4">My Rides</h1>
-      <ul>
-        {rides.map((ride) => (
-          <li key={ride.id}>
-            {ride.origin} → {ride.destination}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <main
+      style={{
+        padding: "24px",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "1.25rem",
+          fontWeight: 600,
+          marginBottom: "8px",
+        }}
+      >
+        Ride Status
+      </h1>
+      <p
+        style={{
+          fontSize: ".9rem",
+          color: "#444",
+        }}
+      >
+        (stub) Live ride info will appear here.
+      </p>
+    </main>
   );
 }
