@@ -11,6 +11,11 @@ export async function middleware(req: Request) {
     "/auth/error",
   ];
 
+  // Always allow:
+  // - Next.js internals/static
+  // - favicon/assets
+  // - auth pages
+  // - next-auth API
   if (
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/api/auth") ||
@@ -21,6 +26,7 @@ export async function middleware(req: Request) {
     return NextResponse.next();
   }
 
+  // Routes that REQUIRE auth
   const requiresAuth =
     pathname.startsWith("/admin") ||
     pathname.startsWith("/dispatcher") ||
