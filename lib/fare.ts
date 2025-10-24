@@ -1,19 +1,37 @@
+// TEMP STUB FOR BUILD
+// TODO: replace with real fare calculation logic
+
 export type FareBreakdown = {
-  base: number;
-  addPassengers: number;
-  convenienceFee: number;
+  baseFare: number;
+  distanceKm: number;
+  perKm: number;
   total: number;
+  currency: string;
 };
 
-export function computeTricycleFare(passengers: number): FareBreakdown {
-  const p = Math.max(1, Math.min(4, Math.floor(passengers || 1)));
-  const base = 30;                    // LLGU matrix
-  const addPassengers = p > 1 ? (p - 1) * 20 : 0;
-  const convenienceFee = 15;
-  const total = base + addPassengers + convenienceFee;
-  return { base, addPassengers, convenienceFee, total };
+export function estimateFare(
+  pickupTown: string,
+  dropoffTown: string,
+  distanceKm: number
+): FareBreakdown {
+  // dumb placeholder math:
+  // base ₱20 + ₱10/km
+  const base = 20;
+  const perKm = 10;
+  const total = base + perKm * distanceKm;
+
+  return {
+    baseFare: base,
+    distanceKm,
+    perKm,
+    total,
+    currency: "PHP",
+  };
 }
 
-export function platformDeduction(total: number): number {
-  return total >= 50 ? 20 : 0; // ₱15 service + ₱5 LGU/system share
+// Some code may expect this name:
+export function formatFare(breakdown: FareBreakdown): string {
+  return `₱${breakdown.total.toFixed(2)} (${breakdown.distanceKm.toFixed(
+    2
+  )} km est.)`;
 }
