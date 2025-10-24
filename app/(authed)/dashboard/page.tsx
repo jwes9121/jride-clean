@@ -1,22 +1,22 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// app/(authed)/dashboard/page.tsx
+import { auth } from "@/app/auth";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const session = await auth();
   return (
-    <>
-      <h1 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-        Dashboard
-      </h1>
-      <section
+    <section>
+      <h1 style={{ marginBottom: 12 }}>Dashboard</h1>
+      <div
         style={{
-          border: "1px solid #eaeaea",
+          border: "1px solid #eee",
           borderRadius: 12,
+          padding: 16,
           background: "#fafafa",
-          padding: "1.5rem",
         }}
       >
-        <p>Welcome to your dashboard.</p>
-      </section>
-    </>
+        <div>Welcome, <b>{session?.user?.name}</b></div>
+        <div style={{ opacity: 0.8 }}>{session?.user?.email}</div>
+      </div>
+    </section>
   );
 }
