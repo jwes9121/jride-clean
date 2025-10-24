@@ -1,5 +1,5 @@
 // TEMP STUB FOR BUILD
-// TODO: implement offline job queue / retry later logic for PWA mode
+// TODO: implement offline job queue / sync later
 
 export type OfflineJob = {
   id: string;
@@ -10,7 +10,6 @@ export type OfflineJob = {
 
 let queue: OfflineJob[] = [];
 
-// add a job to offline queue
 export function enqueueOfflineJob(type: string, payload: any) {
   const job: OfflineJob = {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -22,12 +21,10 @@ export function enqueueOfflineJob(type: string, payload: any) {
   return job.id;
 }
 
-// read queued jobs
 export function getOfflineJobs() {
   return [...queue];
 }
 
-// clear queue (e.g. after syncing)
 export function clearOfflineJobs() {
   queue = [];
 }
