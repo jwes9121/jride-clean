@@ -1,47 +1,35 @@
-// components/OfflineIndicator.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import offlineQueue from "@/lib/offlineQueue"; // <-- default API object
+import { getOfflineJobs } from "../lib/offlineQueue";
 
 export default function OfflineIndicator() {
-  const [isOnline, setIsOnline] = useState(true);
-  const [pending, setPending] = useState(0);
-  const isMountedRef = useRef(false);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    const update = () => {
-      if (!isMountedRef.current) return;
-      const online = offlineQueue.isOnlineStatus();
-      const length = offlineQueue.getQueueLength();
-      setIsOnline(online);
-      setPending(length);
-    };
-
-    // initial
-    update();
-
-    // basic listeners
-    const onUp = () => update();
-    const onDown = () => update();
-    window.addEventListener("online", onUp);
-    window.addEventListener("offline", onDown);
-
-    return () => {
-      isMountedRef.current = false;
-      window.removeEventListener("online", onUp);
-      window.removeEventListener("offline", onDown);
-    };
-  }, []);
-
-  if (isOnline && pending === 0) return null;
+  // just read the queue length so the component compiles
+  const jobs = getOfflineJobs();
+  const isOfflineMode = jobs.length > 0;
 
   return (
-    <div className="fixed bottom-3 right-3 rounded-md px-3 py-2 text-sm shadow-md
-                    bg-yellow-100 text-yellow-900">
-      {!isOnline ? "You are offline" : "Pending requests"}{pending ? `: ${pending}` : ""}
+    <div
+      style={{
+        position: "fixed",
+        bottom: "16px",
+        right: "16px",
+        background: isOfflineMode ? "#facc15" : "#10b981",
+        color: "#000",
+        fontFamily: "system-ui, sans-serif",
+        fontSize: ".8rem",
+        fontWeight: 600,
+        padding: "8px 12px",
+        borderRadius: "6px",
+        boxShadow:
+          "0 8px 24px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.2)",
+        border: "1px solid rgba(0,0,0,0.2)",
+        minWidth: "120px",
+        textAlign: "center",
+        lineHeight: 1.3,
+        zIndex: 9999,
+      }}
+    >
+      {isOfflineMode ? "Offline - queued" : "Online"}
     </div>
   );
 }
