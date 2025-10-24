@@ -14,8 +14,7 @@ export function estimateFare(
   dropoffTown: string,
   distanceKm: number
 ): FareBreakdown {
-  // dumb placeholder math:
-  // base ₱20 + ₱10/km
+  // placeholder logic
   const base = 20;
   const perKm = 10;
   const total = base + perKm * distanceKm;
@@ -29,7 +28,6 @@ export function estimateFare(
   };
 }
 
-// Some code may expect this name:
 export function formatFare(breakdown: FareBreakdown): string {
   return `₱${breakdown.total.toFixed(2)} (${breakdown.distanceKm.toFixed(
     2
