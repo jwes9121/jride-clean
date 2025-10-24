@@ -1,18 +1,27 @@
-// app/(authed)/settings/page.tsx
 export default function SettingsPage() {
   return (
-    <section>
-      <h1 style={{ marginBottom: 12 }}>Settings</h1>
-      <div
+    <div
+      style={{
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <h1
         style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 16,
-          background: "#fafafa",
+          fontSize: "1.25rem",
+          fontWeight: 600,
+          marginBottom: "8px",
         }}
       >
-        Account settings coming soon.
-      </div>
-    </section>
+        Settings
+      </h1>
+      <p
+        style={{
+          fontSize: ".9rem",
+          color: "#444",
+        }}
+      >
+        Settings placeholder.
+      </p>
+    </div>
   );
 }
