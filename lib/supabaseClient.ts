@@ -1,7 +1,6 @@
 // TEMP STUB FOR BUILD
 // TODO: replace with real Supabase client for production logic
 
-// Fake types to satisfy callers
 export type FakeSupabase = {
   from: (table: string) => {
     select: (cols?: string) => Promise<{ data: any; error: null }>;
@@ -12,7 +11,6 @@ export type FakeSupabase = {
   };
 };
 
-// extremely dumb no-op client (prevents runtime crashes on server components that import it)
 const supabaseStub: FakeSupabase = {
   from: () => ({
     select: async () => ({ data: null, error: null }),
@@ -23,9 +21,6 @@ const supabaseStub: FakeSupabase = {
   }),
 };
 
-// named export clients some code might expect
 export const supabaseBrowserClient = supabaseStub as any;
 export const supabaseServerClient = supabaseStub as any;
-
-// default export if something imports default
 export default supabaseStub;
