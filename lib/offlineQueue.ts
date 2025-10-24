@@ -1,5 +1,5 @@
 // TEMP STUB FOR BUILD
-// TODO: implement offline job queue / sync later
+// TODO: real offline queue for PWA mode
 
 export type OfflineJob = {
   id: string;
@@ -28,3 +28,13 @@ export function getOfflineJobs() {
 export function clearOfflineJobs() {
   queue = [];
 }
+
+// Some code does: import offlineQueue from "../lib/offlineQueue"
+// We'll give them a default object that matches that expectation.
+const offlineQueueDefault = {
+  enqueueOfflineJob,
+  getOfflineJobs,
+  clearOfflineJobs,
+};
+
+export default offlineQueueDefault;
