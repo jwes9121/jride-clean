@@ -3,63 +3,75 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
 export const {
-  handlers,  // { GET, POST } for the route handler
-  auth,      // helper to read the session in middleware / server
+  handlers,
+  auth,
   signIn,
   signOut,
 } = NextAuth({
   providers: [
-    // Google for real users (prod + dev)
+    // Google OAuth (real users)
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
 
-    // Optional dev backdoor.
-    // If you DON'T want manual email login in prod, set ENABLE_GOOGLE=1 in Vercel.
+    // Dev / emergency login.
+    // This should ONLY work if ENABLE_GOOGLE === "0".
     Credentials({
       name: "Dev Credentials",
       credentials: {
         email: { label: "Email", type: "text" },
       },
-      async authorize(credentials) {
-        // Only allow this path if ENABLE_GOOGLE === "0"
-        if (
-          process.env.ENABLE_GOOGLE === "0" &&
-          credentials?.email
-        ) {
-          return {
-            id: "dev-user",
-            name: credentials.email,
-            email: credentials.email,
-            role: "admin",
-          };
+
+      // NextAuth v5 expects (credentials, request) => Awaitable<User | null>
+      // We'll satisfy that AND keep role.
+      async authorize(
+        credentials: Partial<Record<"email", unknown>>,
+        _request
+      ) {
+        // if we're not in dev mode, disable Credentials login completely
+        if (process.env.ENABLE_GOOGLE !== "0") {
+          return null;
         }
 
-        // Otherwise block
-        return null;
+        const rawEmail = credentials?.email;
+
+        if (!rawEmail || typeof rawEmail !== "string") {
+          return null;
+        }
+
+        // Build a minimal User object with string fields
+        const user = {
+          id: "dev-user",
+          name: rawEmail,     // must be string
+          email: rawEmail,    // must be string
+          role: "admin",      // our custom field
+        };
+
+        // Cast to any so TS stops complaining that "role" isn't in the base User type
+        return user as any;
       },
     }),
   ],
 
+  // allow both localhost and production host
   trustHost: true,
 
-  // custom sign-in page
   pages: {
     signIn: "/auth/signin",
   },
 
   callbacks: {
-    // Adds extra fields into the token at login time
+    // runs whenever we create/update the JWT
     async jwt({ token, account, user }) {
-      // first login: attach role
+      // first login: attach role from user (dev creds) if present
       if (account && user) {
         token.role = (user as any).role ?? "user";
       }
       return token;
     },
 
-    // Controls what the client sees in `useSession()`
+    // controls what goes to the client session
     async session({ session, token }) {
       if (token && session.user) {
         (session.user as any).role = token.role ?? "user";
@@ -67,12 +79,12 @@ export const {
       return session;
     },
 
-    // Final redirect after login / signIn()
+    // final redirect after signIn("google", { callbackUrl })
     async redirect({ url, baseUrl }) {
-      // allow relative callbackUrl like /admin/livetrips
+      // if callbackUrl was relative (/admin/livetrips), keep it
       if (url.startsWith("/")) return `${baseUrl}${url}`;
 
-      // allow same-origin absolute URLs
+      // if same-origin absolute URL, allow it
       try {
         const target = new URL(url);
         const base = new URL(baseUrl);
@@ -80,14 +92,14 @@ export const {
           return url;
         }
       } catch {
-        /* ignore bad URLs */
+        // ignore bad URLs
       }
 
-      // fallback after login
+      // fallback: send home
       return `${baseUrl}/`;
     },
   },
 
-  // must match NEXTAUTH_SECRET in Vercel env
+  // must match NEXTAUTH_SECRET in Vercel
   secret: process.env.NEXTAUTH_SECRET,
 });
