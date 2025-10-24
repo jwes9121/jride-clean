@@ -1,20 +1,39 @@
-export const dynamic = "force-dynamic"; // don’t prerender this at build
-export const revalidate = 0;            // no ISR
-
 import { NextResponse } from "next/server";
-import { getAdminClient } from "@/lib/supabase-server";
+import { auth } from "../../../auth";
 
 export async function GET() {
-  const supabase = getAdminClient();
-  const { data, error } = await supabase.from("bookings").select("*").limit(1);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+  const session = await auth();
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  // replace this with real data if you already had logic
+  return NextResponse.json(
+    { ok: true, user: session.user },
+    { status: 200 }
+  );
 }
 
-export async function POST(req: Request) {
-  const payload = await req.json();
-  const supabase = getAdminClient();
-  const { data, error } = await supabase.from("bookings").insert(payload).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { status: 201 });
+export async function POST(request: Request) {
+  const session = await auth();
+
+  if (!session) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const body = await request.json();
+
+  // TODO: create booking in DB / Supabase
+
+  return NextResponse.json(
+    { ok: true, received: body, user: session.user },
+    { status: 200 }
+  );
 }
