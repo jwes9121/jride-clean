@@ -2,30 +2,31 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const { auth, signIn, signOut, handlers } = NextAuth({
-  trustHost: true,
-  session: { strategy: "jwt" },
+// (Optional) tweak callbacks to put name/email on the session like your UI expects.
+export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.Google_CLIENT_SECRET!, // <-- fix if you named it GOOGLE_CLIENT_SECRET
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
+  session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, account, profile }) {
-      if (account?.provider === "google" && profile) {
-        token.name = profile.name as string;
-        token.picture = (profile as any).picture;
-      }
+    async jwt({ token, profile }) {
+      if (profile?.name) token.name = profile.name as string;
+      if (profile?.email) token.email = profile.email as string;
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.name = token.name as string;
-        (session.user as any).image = token.picture as string | undefined;
+        session.user.name = (token.name as string) ?? session.user.name ?? null;
+        session.user.email =
+          (token.email as string) ?? session.user.email ?? null;
       }
       return session;
     },
   },
-  secret: process.env.AUTH_SECRET,
 });
+
+// default export makes `import auth from "@/app/auth"` work too
+export default auth;
