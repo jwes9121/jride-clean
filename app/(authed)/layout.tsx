@@ -1,21 +1,38 @@
-// app/(authed)/layout.tsx
-import React from "react";
-import { auth } from "@/app/auth";
-import { redirect } from "next/navigation";
-import TopNav from "../components/TopNav";
+import * as React from "react";
+import { auth } from "../../auth";
+import TopNav from "./TopNav";
 
-export default async function AuthedLayout({
-  children,
-}: {
+export const dynamic = "force-dynamic"; // avoids caching the session in layout
+
+type AuthedLayoutProps = {
   children: React.ReactNode;
-}) {
+};
+
+export default async function AuthedLayout({ children }: AuthedLayoutProps) {
+  // get the current session on the server
   const session = await auth();
-  if (!session) redirect("/auth/signin");
 
   return (
-    <>
-      <TopNav user={session.user} />
-      <main style={{ padding: "24px" }}>{children}</main>
-    </>
+    <div
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#f5f5f5",
+        color: "#111",
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <TopNav user={session?.user as any} />
+
+      <main
+        style={{
+          flex: 1,
+          padding: "24px",
+        }}
+      >
+        {children}
+      </main>
+    </div>
   );
 }
