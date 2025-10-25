@@ -1,5 +1,5 @@
-import { handlers } from "../../../auth";
+// app/api/auth/[...nextauth]/route.ts
+import { handlers } from "../../../../auth";
 
-// NextAuth v5 for App Router:
-// handlers has { GET, POST }
+// NextAuth v5 gives us GET and POST HTTP handlers to mount.
 export const { GET, POST } = handlers;
