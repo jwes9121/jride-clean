@@ -1,41 +1,109 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { signOut } from "../../../auth";
 
-export default function TopNav() {
-  const pathname = usePathname();
-  const Item = ({ href, label }: { href: string; label: string }) => {
-    const active = pathname === href;
-    return (
-      <Link
-        href={href}
-        style={{
-          textDecoration: active ? "underline" : "none",
-          fontWeight: active ? 700 : 400,
-        }}
-      >
-        {label}
-      </Link>
-    );
+type TopNavProps = {
+  user?: {
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  };
+};
+
+export default function TopNav({ user }: TopNavProps) {
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("Error signing out", err);
+    }
   };
 
   return (
-    <nav style={{ borderBottom: "1px solid #eee", background: "#fafafa" }}>
+    <header
+      style={{
+        width: "100%",
+        padding: "12px 16px",
+        borderBottom: "1px solid #ddd",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        background: "#fff",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <nav style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <Link
+          href="/dashboard"
+          style={{
+            fontSize: "0.95rem",
+            fontWeight: 600,
+            color: "#111",
+            textDecoration: "none",
+          }}
+        >
+          Dashboard
+        </Link>
+
+        <Link
+          href="/admin/livetrips"
+          style={{
+            fontSize: "0.9rem",
+            color: "#444",
+            textDecoration: "none",
+          }}
+        >
+          Live Trips
+        </Link>
+
+        <Link
+          href="/rides"
+          style={{
+            fontSize: "0.9rem",
+            color: "#444",
+            textDecoration: "none",
+          }}
+        >
+          Rides
+        </Link>
+      </nav>
+
       <div
         style={{
-          maxWidth: 1000,
-          margin: "0 auto",
           display: "flex",
-          gap: 16,
-          padding: "10px 12px",
-          fontSize: 14,
+          alignItems: "center",
+          gap: "12px",
+          fontSize: "0.8rem",
+          color: "#444",
         }}
       >
-        <Item href="/dashboard" label="Dashboard" />
-        <Item href="/rides" label="Rides" />
-        <Item href="/settings" label="Settings" />
+        <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 500 }}>
+            {user?.name || user?.email || "Authenticated User"}
+          </div>
+          {user?.role ? (
+            <div style={{ fontSize: "0.7rem", color: "#777" }}>
+              {user.role}
+            </div>
+          ) : null}
+        </div>
+
+        <button
+          onClick={handleSignOut}
+          style={{
+            border: "1px solid #ccc",
+            borderRadius: "6px",
+            padding: "6px 10px",
+            background: "#fff",
+            fontSize: "0.75rem",
+            cursor: "pointer",
+          }}
+        >
+          Sign out
+        </button>
       </div>
-    </nav>
+    </header>
   );
 }
