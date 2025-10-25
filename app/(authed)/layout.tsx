@@ -1,5 +1,5 @@
+// app/(authed)/layout.tsx
 import React from "react";
-// import NavBar from "./components/NavBar"; // we'll wire this later if you want header here
 
 export default function AuthedLayout({
   children,
@@ -8,7 +8,9 @@ export default function AuthedLayout({
 }) {
   return (
     <section className="min-h-screen bg-white text-gray-900">
-      {/* <NavBar /> */}
+      {/* Auth-protected group layout wrapper.
+         We intentionally removed TopNav/NavBar here to avoid build errors.
+         You can add NavBar later if you want. */}
       {children}
     </section>
   );
