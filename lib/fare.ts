@@ -1,33 +1,50 @@
 // lib/fare.ts
 
+export type FareBreakdown = {
+  total: number;
+  perHead: number;
+  currency: string;
+};
+
 /**
- * computeTriplycFare
- *
- * Unified fare calculation for tricycle rides.
+ * Unified fare calculator for a tricycle ("tricy") ride.
  *
  * Inputs:
- *  - origin: pickup location (string, ex. "Lagawe Public Market")
- *  - destination: dropoff location (string, ex. "Kiangan Plaza")
- *  - passengers: number of passengers (1+)
+ *  - origin: string
+ *  - destination: string
+ *  - passengers: number
  *
- * Current rules:
- *  - Base flagdown fare: ₱20
- *  - Each extra passenger after the first: +₱10 per head
+ * Pricing model (simple stub for now):
+ *  - Base fare = ₱20
+ *  - Each extra passenger after the first adds ₱10
  *
- * Later we can add distance logic, LGU zoning, nighttime surcharge, etc.
+ * Output:
+ *  {
+ *    total: number,       // total fare in pesos
+ *    perHead: number,     // split per passenger, rounded
+ *    currency: "PHP"
+ *  }
  */
 export function computeTriplycFare(
   origin: string,
   destination: string,
   passengers: number
-): number {
-  // base starting fare
-  const baseFare = 20;
+): FareBreakdown {
+  // base fare
+  const base = 20;
 
-  // charge ₱10 per extra passenger after 1
+  // extra passengers beyond first: +10 each
   const extras = passengers > 1 ? (passengers - 1) * 10 : 0;
 
-  // You can later adjust by origin/destination (e.g. crossing towns, uphill roads, etc.)
-  // For now, origin and destination are unused but kept in signature for future pricing rules.
-  return baseFare + extras;
+  const total = base + extras;
+
+  // avoid division by zero
+  const perHead =
+    passengers > 0 ? Math.ceil(total / passengers) : total;
+
+  return {
+    total,
+    perHead,
+    currency: "PHP",
+  };
 }
