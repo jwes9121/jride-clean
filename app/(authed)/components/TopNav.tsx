@@ -1,50 +1,103 @@
-// app/(authed)/components/TopNav.tsx
 "use client";
 
 import React from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { signOut } from "../../../auth";
 
-export default function TopNav({ user }: { user: any }) {
+type TopNavProps = {
+  user?: {
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  };
+};
+
+export default function TopNav({ user }: TopNavProps) {
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("Error signing out", err);
+    }
+  };
+
   return (
     <header
       style={{
+        width: "100%",
+        padding: "12px 16px",
+        borderBottom: "1px solid #ddd",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: 16,
-        padding: "12px 20px",
-        borderBottom: "1px solid #eee",
         background: "#fff",
+        fontFamily: "system-ui, sans-serif",
       }}
     >
-      <nav style={{ display: "flex", gap: 16 }}>
-        <b>J-Ride</b>
-        <Link href="/dashboard">Dashboard</Link>
-        <Link href="/rides">Rides</Link>
-        <Link href="/settings">Settings</Link>
+      <nav style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <Link
+          href="/dashboard"
+          style={{
+            fontSize: "0.95rem",
+            fontWeight: 600,
+            color: "#111",
+            textDecoration: "none",
+          }}
+        >
+          Dashboard
+        </Link>
+
+        <Link
+          href="/admin/livetrips"
+          style={{
+            fontSize: "0.9rem",
+            color: "#444",
+            textDecoration: "none",
+          }}
+        >
+          Live Trips
+        </Link>
+
+        <Link
+          href="/rides"
+          style={{
+            fontSize: "0.9rem",
+            color: "#444",
+            textDecoration: "none",
+          }}
+        >
+          Rides
+        </Link>
       </nav>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {user?.image && (
-          <Image
-            src={user.image}
-            alt={user?.name ?? "avatar"}
-            width={30}
-            height={30}
-            style={{ borderRadius: "50%" }}
-          />
-        )}
-        <span>{user?.name}</span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          fontSize: "0.8rem",
+          color: "#444",
+        }}
+      >
+        <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 500 }}>
+            {user?.name || user?.email || "Authenticated User"}
+          </div>
+          {user?.role ? (
+            <div style={{ fontSize: "0.7rem", color: "#777" }}>
+              {user.role}
+            </div>
+          ) : null}
+        </div>
+
         <button
-          onClick={() => signOut()}
+          onClick={handleSignOut}
           style={{
-            marginLeft: 8,
+            border: "1px solid #ccc",
+            borderRadius: "6px",
             padding: "6px 10px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "#fafafa",
+            background: "#fff",
+            fontSize: "0.75rem",
             cursor: "pointer",
           }}
         >
