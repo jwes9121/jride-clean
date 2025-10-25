@@ -1,11 +1,11 @@
-<<<<<<< HEAD
+﻿
 // TEMP STUB FOR BUILD
 // TODO: replace with real fare logic
 
 export type FareBreakdown = {
-=======
-﻿export type FareBreakdown = {
->>>>>>> fix/auth-v5-clean
+
+ï»¿export type FareBreakdown = {
+
   baseFare: number;
   distanceKm: number;
   perKm: number;
@@ -13,11 +13,11 @@ export type FareBreakdown = {
   currency: string;
 };
 
-<<<<<<< HEAD
+
 // Generic estimator for demo
-=======
+
 // Simple placeholder calculator
->>>>>>> fix/auth-v5-clean
+
 export function estimateFare(
   pickupTown: string,
   dropoffTown: string,
@@ -29,22 +29,22 @@ export function estimateFare(
 
   return {
     baseFare: base,
-<<<<<<< HEAD
+
     distanceKm,
     perKm,
     total,
-=======
+
     distanceKm: distanceKm,
     perKm: perKm,
     total: total,
->>>>>>> fix/auth-v5-clean
+
     currency: "PHP",
   };
 }
 
-<<<<<<< HEAD
+
 export function formatFare(breakdown: FareBreakdown): string {
-  return `₱${breakdown.total.toFixed(2)} (${breakdown.distanceKm.toFixed(
+  return `â‚±${breakdown.total.toFixed(2)} (${breakdown.distanceKm.toFixed(
     2
   )} km est.)`;
 }
@@ -62,7 +62,7 @@ export function platformDeduction(total: number): number {
 
 // Your ConfirmFareClient.tsx imports computeTriplycFare(params?)
 // We just return a fake object that looks like a "fare" response.
-=======
+
 // Format a readable string for UI
 export function formatFare(breakdown: FareBreakdown): string {
   return (
@@ -84,29 +84,29 @@ export function platformDeduction(total: number): number {
 }
 
 // used by ConfirmFareClient.tsx
->>>>>>> fix/auth-v5-clean
+
 export function computeTriplycFare(
   origin: string,
   destination: string,
   passengers: number
 ): { total: number; perHead: number; currency: string } {
-<<<<<<< HEAD
+
   // placeholder math
-=======
+
   // very dumb placeholder math
->>>>>>> fix/auth-v5-clean
+
   const base = 50;
   const perHead = 25 * passengers;
   const total = base + perHead;
 
   return {
-<<<<<<< HEAD
+
     total,
     perHead,
-=======
+
     total: total,
     perHead: perHead,
->>>>>>> fix/auth-v5-clean
+
     currency: "PHP",
   };
 }

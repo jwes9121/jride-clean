@@ -1,4 +1,4 @@
-// app/dash/page.tsx
+﻿// app/dash/page.tsx
 import { auth } from "../../auth";
 import { redirect } from "next/navigation";
 

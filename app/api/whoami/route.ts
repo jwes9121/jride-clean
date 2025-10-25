@@ -1,4 +1,4 @@
-// app/api/whoami/route.ts
+﻿// app/api/whoami/route.ts
 import { auth } from "../../../auth";
 
 export const dynamic = "force-dynamic";

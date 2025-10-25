@@ -1,4 +1,4 @@
-export default function RidesPage() {
+﻿export default function RidesPage() {
   return (
     <div
       style={{

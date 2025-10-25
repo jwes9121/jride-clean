@@ -1,4 +1,4 @@
-// app/whoami/page.tsx
+﻿// app/whoami/page.tsx
 import { auth } from "../../auth";
 import Link from "next/link";
 
@@ -12,7 +12,7 @@ export default async function WhoAmI() {
   return (
     <main style={{ maxWidth: 900, margin: "24px auto", padding: 16 }}>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
-        🚀 WHOAMI (server session)
+        ðŸš€ WHOAMI (server session)
       </h1>
 
       {!u ? (
@@ -23,7 +23,7 @@ export default async function WhoAmI() {
             <Link href="/auth/signin" style={{ textDecoration: "underline" }}>
               /auth/signin
             </Link>{" "}
-            (don’t use <code>/api/auth/signin</code> directly — that causes
+            (donâ€™t use <code>/api/auth/signin</code> directly â€” that causes
             <code> MissingCSRF</code>).
           </p>
         </div>

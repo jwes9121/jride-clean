@@ -24,8 +24,7 @@ export default function LiveTripsPage() {
         }}
       >
         This is the production /admin/livetrips page. If you can see this
-        after logging in with Google on app.jride.net, auth is working and
-        the route deployed correctly.
+        after logging in with Google on app.jride.net, auth is working.
       </p>
 
       <div
@@ -46,8 +45,4 @@ export default function LiveTripsPage() {
       </div>
     </main>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> fix/auth-v5-clean

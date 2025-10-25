@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+﻿
 // TEMP STUB FOR BUILD
 // TODO: replace with real Supabase client
 
@@ -28,7 +28,7 @@ export const supabase = supabaseStub as any;
 export const supabaseBrowserClient = supabaseStub as any;
 export const supabaseServerClient = supabaseStub as any;
 
-=======
+
 export type FakeSupabase = {
   from: (table: string) => {
     select: (cols?: string) => Promise<{ data: any; error: null }>;
@@ -54,5 +54,5 @@ export const supabase = supabaseStub as any;
 export const supabaseBrowserClient = supabaseStub as any;
 export const supabaseServerClient = supabaseStub as any;
 
->>>>>>> fix/auth-v5-clean
+
 export default supabaseStub;

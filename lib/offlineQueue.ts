@@ -1,9 +1,9 @@
-<<<<<<< HEAD
+﻿
 // TEMP STUB FOR BUILD
 // TODO: real offline queue for PWA mode
 
-=======
->>>>>>> fix/auth-v5-clean
+
+
 export type OfflineJob = {
   id: string;
   type: string;
@@ -12,12 +12,12 @@ export type OfflineJob = {
 };
 
 let queue: OfflineJob[] = [];
-<<<<<<< HEAD
+
 
 export function enqueueOfflineJob(type: string, payload: any) {
   const job: OfflineJob = {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-=======
+
 let isOnline = true;
 
 // simple list of listeners for UI updates
@@ -38,35 +38,35 @@ function notify() {
 export function enqueueOfflineJob(type: string, payload: any) {
   const job: OfflineJob = {
     id: Date.now().toString() + "-" + Math.random().toString(16).slice(2),
->>>>>>> fix/auth-v5-clean
+
     type,
     payload,
     createdAt: Date.now(),
   };
   queue.push(job);
-<<<<<<< HEAD
+
   return job.id;
 }
 
-=======
+
   notify();
   return job.id;
 }
 
 // read queued jobs
->>>>>>> fix/auth-v5-clean
+
 export function getOfflineJobs() {
   return [...queue];
 }
 
-<<<<<<< HEAD
+
 export function clearOfflineJobs() {
   queue = [];
 }
 
 // Some code does: import offlineQueue from "../lib/offlineQueue"
 // We'll give them a default object that matches that expectation.
-=======
+
 // clear queue
 export function clearOfflineJobs() {
   queue = [];
@@ -106,16 +106,16 @@ export function setOnlineStatus(next: boolean) {
 
 // default export to satisfy existing imports:
 //   import offlineQueue from "../lib/offlineQueue"
->>>>>>> fix/auth-v5-clean
+
 const offlineQueueDefault = {
   enqueueOfflineJob,
   getOfflineJobs,
   clearOfflineJobs,
-<<<<<<< HEAD
+
 };
 
 export default offlineQueueDefault;
-=======
+
   isOnlineStatus,
   getQueueLength,
   onChange,
@@ -123,4 +123,4 @@ export default offlineQueueDefault;
 };
 
 export default offlineQueueDefault;
->>>>>>> fix/auth-v5-clean
+
