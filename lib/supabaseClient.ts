@@ -1,5 +1,5 @@
 // Minimal safe stub to satisfy imports in production build.
-// You can replace with real Supabase init later.
+// You can replace this with real Supabase client initialization later.
 
 export type SupabaseSession = {
   user: {
@@ -11,10 +11,12 @@ export type SupabaseSession = {
 };
 
 export type SupabaseResult<T = any> = {
-  data: T | null;
+  data: T;
   error: { message: string } | null;
 };
 
+// This creates an object that pretends to be a Supabase client.
+// Every method returns a predictable structure so our app code doesn\'t crash.
 function makeStubClient() {
   return {
     auth: {
@@ -22,32 +24,67 @@ function makeStubClient() {
       getSession: async (): Promise<{ data: { session: SupabaseSession } }> => {
         return { data: { session: { user: null } } };
       },
+
       // mimic supabase.auth.onAuthStateChange()
       onAuthStateChange: (_cb: any) => {
         return { data: { subscription: { unsubscribe: () => {} } } };
       },
     },
-    from: (_table: string) => ({
-      select: async () => ({ data: null, error: null } as SupabaseResult),
-      insert: async () => ({ data: null, error: null } as SupabaseResult),
-      update: async () => ({ data: null, error: null } as SupabaseResult),
-      upsert: async () => ({ data: null, error: null } as SupabaseResult),
-      delete: async () => ({ data: null, error: null } as SupabaseResult),
-      eq: function () { return this; },
-      order: function () { return this; },
-      limit: function () { return this; },
-      single: async () => ({ data: null, error: null } as SupabaseResult),
-    }),
+
+    // pretend query builder
+    from(_table: string) {
+      // Return an object that has select/insert/update/etc,
+      // each returning { data, error } with data as [] by default.
+      return {
+        // allow .select("*") or .select("col1,col2") etc
+        async select(_cols?: string): Promise<SupabaseResult<any[]>> {
+          return { data: [], error: null };
+        },
+
+        async insert(_rows?: any): Promise<SupabaseResult<any[]>> {
+          return { data: [], error: null };
+        },
+
+        async update(_vals?: any): Promise<SupabaseResult<any[]>> {
+          return { data: [], error: null };
+        },
+
+        async upsert(_vals?: any): Promise<SupabaseResult<any[]>> {
+          return { data: [], error: null };
+        },
+
+        async delete(): Promise<SupabaseResult<any[]>> {
+          return { data: [], error: null };
+        },
+
+        // chain helpers like .eq("col", val).order(...).limit(...)
+        eq(_col: string, _val: any) {
+          return this;
+        },
+
+        order(_col: string, _opts?: any) {
+          return this;
+        },
+
+        limit(_n: number) {
+          return this;
+        },
+
+        async single(): Promise<SupabaseResult<any>> {
+          return { data: null, error: null };
+        },
+      };
+    },
   };
 }
 
-// single stub instance
+// single shared stub instance
 const stub = makeStubClient();
 
-// Some parts of the app might import different names.
-// Export them all so the build never complains.
+// export under multiple names so all imports in the repo resolve
 export const supabase = stub;
 export const supabaseClient = stub;
 export const supabaseAdmin = stub;
 export const supabaseAdminClient = stub;
+
 export default stub;
