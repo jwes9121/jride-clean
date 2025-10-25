@@ -1,87 +1,75 @@
-﻿import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
-import Credentials from "next-auth/providers/credentials";
+"use client";
 
-export const {
-  handlers,
-  auth,
-  signIn,
-  signOut,
-} = NextAuth({
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+import React from "react";
+import Link from "next/link";
+import { signOut } from "@/auth"; // NOTE: using @/auth (root alias). If @ doesn't work, use "../../auth"
 
-    Credentials({
-      name: "Dev Credentials",
-      credentials: {
-        email: { label: "Email", type: "text" },
-      },
-      async authorize(credentials, _request) {
-        // Only allow this path in fallback/dev mode
-        if (process.env.ENABLE_GOOGLE !== "0") {
-          return null;
-        }
+type TopNavProps = {
+  user?: {
+    name?: string | null;
+    email?: string | null;
+  } | null;
+};
 
-        const rawEmail = credentials?.email;
-        if (!rawEmail || typeof rawEmail !== "string") {
-          return null;
-        }
+export default function TopNav({ user }: TopNavProps) {
+  async function handleSignOut() {
+    "use server";
+    // You CANNOT call a server action directly inside a client component handler like this without wiring,
+    // so realistically we still need an <form action={...}> flow. This is why Option A is cleaner for now.
+  }
 
-        return {
-          id: "dev-user",
-          name: rawEmail,
-          email: rawEmail,
-          role: "admin",
-        } as any;
-      },
-    }),
-  ],
+  return (
+    <header className="w-full border-b bg-white px-4 py-2 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Link href="/" className="text-lg font-semibold">
+          J-Ride Dispatch
+        </Link>
 
-  trustHost: true,
+        <nav className="flex items-center gap-4 text-sm text-gray-600">
+          <Link href="/dispatch" className="hover:text-black">
+            Dispatch
+          </Link>
+          <Link href="/admin/livetrips" className="hover:text-black">
+            Live Trips
+          </Link>
+          <Link href="/admin" className="hover:text-black">
+            Admin
+          </Link>
+        </nav>
+      </div>
 
-  pages: {
-    signIn: "/auth/signin",
-  },
+      <div className="flex items-center gap-3 text-sm">
+        {user ? (
+          <>
+            <div className="text-right leading-tight">
+              <div className="font-medium text-gray-800">
+                {user.name || "User"}
+              </div>
+              <div className="text-gray-500 text-xs">
+                {user.email || ""}
+              </div>
+            </div>
 
-  callbacks: {
-    async jwt({ token, account, user }) {
-      if (account && user) {
-        token.role = (user as any).role ?? "user";
-      }
-      return token;
-    },
-
-    async session({ session, token }) {
-      if (token && session.user) {
-        (session.user as any).role = token.role ?? "user";
-      }
-      return session;
-    },
-
-    async redirect({ url, baseUrl }) {
-      // allow relative callbackUrl like /admin/livetrips
-      if (url.startsWith("/")) {
-        return baseUrl + url;
-      }
-
-      // allow same-origin absolute URLs
-      try {
-        const target = new URL(url);
-        const base = new URL(baseUrl);
-        if (target.origin === base.origin) {
-          return url;
-        }
-      } catch {
-        // ignore parse errors
-      }
-
-      // default after signin
-      return baseUrl + "/";
-    },
-  },
-
-  secret: process.env.NEXTAUTH_SECRET,
-});
+            {/* TODO: proper signOut form/action wiring for NextAuth v5 */}
+            <button
+              className="border rounded px-2 py-1 text-xs hover:bg-gray-50"
+              onClick={() => {
+                // temporary workaround
+                signOut({ redirectTo: "/auth/signin" });
+              }}
+            >
+              Sign out
+            </button>
+          </>
+        ) : (
+          <Link
+            href="/auth/signin"
+            className="border rounded px-2 py-1 text-xs hover:bg-gray-50"
+          >
+            Sign in
+          </Link>
+        )}
+      </div>
+    </header>
+  );
+}
