@@ -1,58 +1,53 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "../../../auth";
 import { computeTriplycFare } from "../../../lib/fare";
 
+// this is what frontend is probably POSTing
+// we make everything optional so the API never crashes TS
 type CreateBookingBody = {
-  mode?: string;         // 'tricycle' | 'motorcycle'
-  passengers?: number;
+  mode?: string;            // "tricycle" | "motorcycle"
   origin?: string;
   destination?: string;
+  passengers?: number;
+  distanceKm?: number;
+  minutes?: number;
 };
 
-export async function GET() {
-  // we allow GET to prove the route works and session can be read
-  const session = await auth();
-
-  if (!session) {
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
-    );
-  }
-
-  return NextResponse.json(
-    { ok: true, user: session.user },
-    { status: 200 }
-  );
-}
-
 export async function POST(req: Request) {
-  const session = await auth();
+  try {
+    // require login
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
-  if (!session || !session.user?.email) {
+    // read body
+    const body = (await req.json()) as CreateBookingBody;
+
+    // call fare helper using the single-object signature our stub expects
+    const fareQuote = computeTriplycFare({
+      mode: body.mode ?? "tricycle",
+      passengers: body.passengers ?? 1,
+      distanceKm: body.distanceKm ?? 2,
+      minutes: body.minutes ?? 5,
+    });
+
+    // respond with the computed estimate
     return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
+      {
+        ok: true,
+        fare: fareQuote,
+      },
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error("POST /api/bookings error:", err);
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
     );
   }
-
-  const body = (await req.json()) as CreateBookingBody;
-
-  // Use our stub fare calculator so build succeeds.
-  const fareQuote = computeTriplycFare(
-    body.origin ?? "",
-    body.destination ?? "",
-    body.passengers ?? 1
-  );
-
-  // Stub response for now
-  return NextResponse.json(
-    {
-      ok: true,
-      requestedBy: session.user.email,
-      mode: body.mode ?? "tricycle",
-      fare: fareQuote,
-    },
-    { status: 200 }
-  );
 }
