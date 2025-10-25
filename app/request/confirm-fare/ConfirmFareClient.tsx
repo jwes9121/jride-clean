@@ -1,7 +1,34 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { computeTriplycFare } from "../../../lib/fare";
+
+function computeTriplycFare(
+  origin: string,
+  destination: string,
+  passengers: number
+): {
+  total: number;
+  perHead: number;
+  currency: string;
+} {
+  // Basic stub pricing logic:
+  // - Base fare ₱20
+  // - +₱10 per extra passenger after the first
+  // You can evolve this later (town zones, distance, etc.)
+  const base = 20;
+  const extras = passengers > 1 ? (passengers - 1) * 10 : 0;
+  const total = base + extras;
+
+  // avoid divide by zero
+  const perHead =
+    passengers > 0 ? Math.ceil(total / passengers) : total;
+
+  return {
+    total,
+    perHead,
+    currency: "PHP",
+  };
+}
 
 export default function ConfirmFareClient() {
   const params = useSearchParams();
