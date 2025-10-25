@@ -1,4 +1,4 @@
-export type Booking = {
+﻿export type Booking = {
   id: string;
   passenger?: string;
   pickup?: string;
@@ -6,3 +6,5 @@ export type Booking = {
   status?: "pending" | "confirmed" | "completed" | "cancelled";
   createdAt?: string;
 };
+
+

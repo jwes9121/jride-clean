@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
@@ -103,7 +103,7 @@ export default function DispatcherControlPanel(_props: Props) {
             void ch.unsubscribe();
           }
           // If your client exposes removeChannel, it is sync to call:
-          // @ts-ignore – not all clients expose it on the same object
+          // @ts-ignore â€“ not all clients expose it on the same object
           if (typeof (supabase as any).removeChannel === "function") {
             // @ts-ignore
             (supabase as any).removeChannel(ch);
@@ -125,7 +125,7 @@ export default function DispatcherControlPanel(_props: Props) {
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">Dispatcher Control Panel</h2>
         <div className="text-sm text-gray-600">
-          {loading ? "Loading…" : `${drivers.length} drivers (${activeCount} active)`}
+          {loading ? "Loadingâ€¦" : `${drivers.length} drivers (${activeCount} active)`}
         </div>
       </div>
 
@@ -133,7 +133,7 @@ export default function DispatcherControlPanel(_props: Props) {
         {drivers.slice(0, 8).map((d) => (
           <div key={d.driver_id} className="border rounded-lg p-3">
             <div className="font-medium">{d.name || `Driver ${d.driver_id}`}</div>
-            <div className="text-xs text-gray-500">{d.phone || "—"}</div>
+            <div className="text-xs text-gray-500">{d.phone || "â€”"}</div>
             <div className="mt-1 text-sm">
               Status:{" "}
               <span className={d.status === "active" ? "text-green-600" : "text-gray-700"}>
@@ -149,3 +149,5 @@ export default function DispatcherControlPanel(_props: Props) {
     </div>
   );
 }
+
+

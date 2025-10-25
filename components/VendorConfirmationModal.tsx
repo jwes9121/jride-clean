@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 
@@ -26,7 +26,7 @@ interface DeliveryOrder {
 interface VendorConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  order: DeliveryOrder; // ✅ non-null
+  order: DeliveryOrder; // âœ… non-null
   onConfirm: (orderId: string, confirmed: boolean) => void;
 }
 
@@ -66,3 +66,5 @@ const VendorConfirmationModal: React.FC<VendorConfirmationModalProps> = ({
 };
 
 export default VendorConfirmationModal;
+
+

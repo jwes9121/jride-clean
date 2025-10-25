@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 
@@ -149,12 +149,12 @@ export default function ManualTripModal({ isOpen, onClose, onStartTrip }: Manual
                       : 'border-gray-200 text-gray-700 hover:bg-gray-50'
                   }`}
                 >
-                  ₱{preset}
+                  â‚±{preset}
                 </button>
               ))}
             </div>
             <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-500">₱</span>
+              <span className="text-sm text-gray-500">â‚±</span>
               <input
                 type="number"
                 value={estimatedFare}
@@ -241,7 +241,7 @@ export default function ManualTripModal({ isOpen, onClose, onStartTrip }: Manual
               </div>
               <div className="flex justify-between">
                 <span>Estimated Fare:</span>
-                <span className="font-medium text-green-600">₱{estimatedFare}</span>
+                <span className="font-medium text-green-600">â‚±{estimatedFare}</span>
               </div>
               <div className="flex justify-between">
                 <span>Duration:</span>
@@ -261,10 +261,10 @@ export default function ManualTripModal({ isOpen, onClose, onStartTrip }: Manual
               <div className="text-sm text-yellow-800">
                 <p className="font-medium mb-1">Important</p>
                 <ul className="text-xs space-y-1">
-                  <li>• You'll be marked as "Busy - Manual Trip"</li>
-                  <li>• No new booking requests during this trip</li>
-                  <li>• Remember to end trip when completed</li>
-                  <li>• Dispatcher can monitor your trip status</li>
+                  <li>â€¢ You'll be marked as "Busy - Manual Trip"</li>
+                  <li>â€¢ No new booking requests during this trip</li>
+                  <li>â€¢ Remember to end trip when completed</li>
+                  <li>â€¢ Dispatcher can monitor your trip status</li>
                 </ul>
               </div>
             </div>
@@ -292,3 +292,5 @@ export default function ManualTripModal({ isOpen, onClose, onStartTrip }: Manual
     </div>
   );
 }
+
+

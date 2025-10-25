@@ -1,7 +1,16 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "../../../auth";
+import { computeTriplycFare } from "../../../lib/fare";
+
+type CreateBookingBody = {
+  mode?: string;         // 'tricycle' | 'motorcycle'
+  passengers?: number;
+  origin?: string;
+  destination?: string;
+};
 
 export async function GET() {
+  // we allow GET to prove the route works and session can be read
   const session = await auth();
 
   if (!session) {
@@ -11,29 +20,39 @@ export async function GET() {
     );
   }
 
-  // replace this with real data if you already had logic
   return NextResponse.json(
     { ok: true, user: session.user },
     { status: 200 }
   );
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   const session = await auth();
 
-  if (!session) {
+  if (!session || !session.user?.email) {
     return NextResponse.json(
       { error: "Unauthorized" },
       { status: 401 }
     );
   }
 
-  const body = await request.json();
+  const body = (await req.json()) as CreateBookingBody;
 
-  // TODO: create booking in DB / Supabase
+  // Use our stub fare calculator so build succeeds.
+  const fareQuote = computeTriplycFare(
+    body.origin ?? "",
+    body.destination ?? "",
+    body.passengers ?? 1
+  );
 
+  // Stub response for now
   return NextResponse.json(
-    { ok: true, received: body, user: session.user },
+    {
+      ok: true,
+      requestedBy: session.user.email,
+      mode: body.mode ?? "tricycle",
+      fare: fareQuote,
+    },
     { status: 200 }
   );
 }

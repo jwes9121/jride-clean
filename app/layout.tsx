@@ -1,24 +1,16 @@
-// app/layout.tsx
-import type { Metadata } from "next";
-import Header from "./components/Header";
+﻿import Providers from "./providers";
+import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "J-Ride",
-  description: "Ifugao super-app",
-};
+export const metadata = { title: "Jride", description: "â€¦" };
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        {/* Global header on every page */}
-        <Header />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
 }
+
+

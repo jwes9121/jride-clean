@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 
@@ -91,7 +91,7 @@ export default function DriverWalletLedger({ isOpen, onClose }: DriverWalletLedg
 
   if (!isOpen) return null;
 
-  const formatCurrency = (amount: number) => `₱${amount.toFixed(2)}`;
+  const formatCurrency = (amount: number) => `â‚±${amount.toFixed(2)}`;
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
   const formatDateTime = (dateString: string) => new Date(dateString).toLocaleString();
 
@@ -437,3 +437,5 @@ export default function DriverWalletLedger({ isOpen, onClose }: DriverWalletLedg
     </div>
   );
 }
+
+

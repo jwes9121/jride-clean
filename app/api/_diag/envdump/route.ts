@@ -1,4 +1,4 @@
-export const runtime = "nodejs";
+﻿export const runtime = "nodejs";
 
 export async function GET() {
   const body = Object.fromEntries(
@@ -13,3 +13,5 @@ export async function GET() {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
+
+

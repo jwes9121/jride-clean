@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+﻿import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
@@ -9,24 +9,18 @@ export const {
   signOut,
 } = NextAuth({
   providers: [
-    // Google OAuth (prod + dev)
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
 
-    // Dev / emergency login.
-    // Only works if ENABLE_GOOGLE === "0".
     Credentials({
       name: "Dev Credentials",
       credentials: {
         email: { label: "Email", type: "text" },
       },
-      async authorize(
-        credentials: Partial<Record<"email", unknown>>,
-        _request
-      ) {
-        // Block credentials login unless we're explicitly allowing it
+      async authorize(credentials, _request) {
+        // Only allow this path in fallback/dev mode
         if (process.env.ENABLE_GOOGLE !== "0") {
           return null;
         }
@@ -36,14 +30,12 @@ export const {
           return null;
         }
 
-        const user = {
+        return {
           id: "dev-user",
-          name: rawEmail,     // must be string for TS
-          email: rawEmail,    // must be string for TS
-          role: "admin",      // custom field
-        };
-
-        return user as any;
+          name: rawEmail,
+          email: rawEmail,
+          role: "admin",
+        } as any;
       },
     }),
   ],
@@ -56,7 +48,6 @@ export const {
 
   callbacks: {
     async jwt({ token, account, user }) {
-      // first login
       if (account && user) {
         token.role = (user as any).role ?? "user";
       }
@@ -71,8 +62,10 @@ export const {
     },
 
     async redirect({ url, baseUrl }) {
-      // allow callbackUrl="/admin/livetrips"
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // allow relative callbackUrl like /admin/livetrips
+      if (url.startsWith("/")) {
+        return baseUrl + url;
+      }
 
       // allow same-origin absolute URLs
       try {
@@ -82,11 +75,11 @@ export const {
           return url;
         }
       } catch {
-        /* ignore */
+        // ignore parse errors
       }
 
-      // fallback after login
-      return `${baseUrl}/`;
+      // default after signin
+      return baseUrl + "/";
     },
   },
 

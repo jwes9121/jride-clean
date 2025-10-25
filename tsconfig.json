@@ -1,37 +1,46 @@
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "module": "ESNext",
-    "moduleResolution": "NodeNext",
-    "allowJs": true,
-    "checkJs": false,
-    "strict": true,
-    "noEmit": true,
-    "jsx": "preserve",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "moduleDetection": "force",
-    "resolveJsonModule": true,
-    "incremental": true,
-
-    // 🔥 THIS IS THE IMPORTANT PART
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    },
-
-    // Next.js likes this
-    "types": ["node", "react/next", "react-dom/next"]
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+﻿{
+    "compilerOptions":  {
+                            "target":  "ES2022",
+                            "lib":  [
+                                        "dom",
+                                        "dom.iterable",
+                                        "es2022"
+                                    ],
+                            "allowJs":  false,
+                            "skipLibCheck":  true,
+                            "strict":  true,
+                            "noEmit":  true,
+                            "module":  "esnext",
+                            "moduleResolution":  "bundler",
+                            "resolveJsonModule":  true,
+                            "isolatedModules":  true,
+                            "jsx":  "preserve",
+                            "baseUrl":  ".",
+                            "paths":  {
+                                          "@/*":  [
+                                                      "./*"
+                                                  ]
+                                      },
+                            "types":  [
+                                          "next",
+                                          "next/types/global",
+                                          "next/image-types/global"
+                                      ],
+                            "incremental":  true,
+                            "esModuleInterop":  true,
+                            "plugins":  [
+                                            {
+                                                "name":  "next"
+                                            }
+                                        ]
+                        },
+    "include":  [
+                    "next-env.d.ts",
+                    "**/*.ts",
+                    "**/*.tsx",
+                    ".next/types/**/*.ts"
+                ],
+    "exclude":  [
+                    "node_modules"
+                ]
 }

@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState } from 'react';
@@ -40,7 +40,7 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
     const fare = parseFloat(proposedFare);
     
     if (!fare || fare < minFare || fare > maxFare) {
-      alert(`Fare must be between ₱${minFare} and ₱${maxFare}`);
+      alert(`Fare must be between â‚±${minFare} and â‚±${maxFare}`);
       return;
     }
 
@@ -115,10 +115,10 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
         <div className="mb-6">
           <div className="text-center mb-4">
             <div className="text-lg font-bold text-orange-600">
-              Suggested Rate: ₱{suggestedFare} + ₱{bufferAmount} buffer
+              Suggested Rate: â‚±{suggestedFare} + â‚±{bufferAmount} buffer
             </div>
             <div className="text-sm text-gray-600">
-              Recommended: ₱{suggestedWithBuffer}
+              Recommended: â‚±{suggestedWithBuffer}
             </div>
           </div>
 
@@ -126,7 +126,7 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Your Proposed Fare</label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600">₱</span>
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600">â‚±</span>
                 <input
                   type="number"
                   value={proposedFare}
@@ -136,7 +136,7 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
                 />
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                Allowed range: ₱{minFare} - ₱{maxFare}
+                Allowed range: â‚±{minFare} - â‚±{maxFare}
               </div>
             </div>
 
@@ -146,21 +146,21 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
                 onClick={() => setQuickFare(suggestedFare)}
                 className="bg-gray-100 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-200 text-sm"
               >
-                ₱{suggestedFare}
+                â‚±{suggestedFare}
                 <div className="text-xs text-gray-500">Base</div>
               </button>
               <button
                 onClick={() => setQuickFare(suggestedWithBuffer)}
                 className="bg-orange-100 text-orange-700 py-2 rounded-lg font-semibold hover:bg-orange-200 text-sm"
               >
-                ₱{suggestedWithBuffer}
+                â‚±{suggestedWithBuffer}
                 <div className="text-xs text-orange-600">Suggested</div>
               </button>
               <button
                 onClick={() => setQuickFare(suggestedFare + 20)}
                 className="bg-blue-100 text-blue-700 py-2 rounded-lg font-semibold hover:bg-blue-200 text-sm"
               >
-                ₱{suggestedFare + 20}
+                â‚±{suggestedFare + 20}
                 <div className="text-xs text-blue-600">Premium</div>
               </button>
             </div>
@@ -173,7 +173,7 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
             disabled={isSubmitting || !proposedFare}
             className="w-full bg-orange-500 text-white py-3 rounded-xl font-semibold hover:bg-orange-600 disabled:bg-gray-300"
           >
-            {isSubmitting ? 'Sending...' : `Propose ₱${proposedFare || '0'}`}
+            {isSubmitting ? 'Sending...' : `Propose â‚±${proposedFare || '0'}`}
           </button>
           
           <button 
@@ -190,9 +190,9 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
             <div className="text-xs text-blue-700">
               <div className="font-medium mb-1">Fare Guidelines:</div>
               <ul className="space-y-1">
-                <li>• Consider distance and traffic conditions</li>
-                <li>• Weather and time of day factors</li>
-                <li>• Passenger will see your proposed fare</li>
+                <li>â€¢ Consider distance and traffic conditions</li>
+                <li>â€¢ Weather and time of day factors</li>
+                <li>â€¢ Passenger will see your proposed fare</li>
               </ul>
             </div>
           </div>
@@ -201,3 +201,5 @@ export default function DriverFareModal({ isOpen, onClose, rideRequest, onPropos
     </div>
   );
 }
+
+

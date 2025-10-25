@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 
@@ -173,7 +173,7 @@ export default function LandmarkApprovalModal({
                           )}
                           <div className="flex items-center space-x-1">
                             <i className="ri-user-line"></i>
-                            <span>{landmark.tagged_user?.full_name} • {formatDate(landmark.created_at)}</span>
+                            <span>{landmark.tagged_user?.full_name} â€¢ {formatDate(landmark.created_at)}</span>
                           </div>
                         </div>
                       </div>
@@ -289,10 +289,10 @@ export default function LandmarkApprovalModal({
                   <div>
                     <p className="text-sm font-medium text-yellow-800 mb-1">Quality Guidelines</p>
                     <ul className="text-xs text-yellow-700 space-y-1">
-                      <li>• Names should be clear and specific</li>
-                      <li>• Avoid duplicate or similar landmarks</li>
-                      <li>• Check location accuracy</li>
-                      <li>• Ensure it's a useful reference point</li>
+                      <li>â€¢ Names should be clear and specific</li>
+                      <li>â€¢ Avoid duplicate or similar landmarks</li>
+                      <li>â€¢ Check location accuracy</li>
+                      <li>â€¢ Ensure it's a useful reference point</li>
                     </ul>
                   </div>
                 </div>
@@ -394,3 +394,5 @@ export default function LandmarkApprovalModal({
     </>
   );
 }
+
+

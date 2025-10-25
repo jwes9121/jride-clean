@@ -1,31 +1,11 @@
-"use client";
+﻿"use client";
+export const dynamic = "force-static";
 
-import React, { useState } from "react";
-import AuthModal from "@/components/AuthModal";
-
-export default function DriverPayoutsPage() {
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
+export default function PayoutsPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      <main className="flex-1 p-4">
-        <h1 className="mb-4 text-xl font-semibold text-gray-800">Driver Payouts</h1>
-
-        <button
-          className="rounded-md border px-3 py-2 text-sm"
-          onClick={() => setShowAuthModal(true)}
-        >
-          Sign in to continue
-        </button>
-      </main>
-
-      {showAuthModal && (
-        <AuthModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-          mode="signin"
-        />
-      )}
-    </div>
+    <main className="p-6 max-w-md mx-auto">
+      <h1 className="text-xl font-semibold mb-3">Driver Payouts</h1>
+      <p className="text-sm text-gray-600">Payout summary will appear here.</p>
+    </main>
   );
 }

@@ -1,50 +1,25 @@
-"use client";
+﻿"use client";
 
-import { estimateFare, formatFare } from "../../../lib/fare";
+import { useSearchParams } from "next/navigation";
+import { platformDeduction } from "../../../lib/fare";
 
 export default function DriverPostTripClient() {
-  // This is just demo usage so build passes.
-  const demo = estimateFare("Lagawe", "Kiangan", 3.2);
+  const params = useSearchParams();
+  const totalParam = params.get("total") || "0";
+
+  const total = Number(totalParam);
+  const deduction = platformDeduction(total);
+  const net = total - deduction;
 
   return (
-    <section
-      style={{
-        padding: "16px",
-        border: "1px solid #ccc",
-        borderRadius: "8px",
-        fontFamily: "system-ui, sans-serif",
-        background: "#fff",
-        marginTop: "16px",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: "1rem",
-          fontWeight: 600,
-          marginBottom: "4px",
-        }}
-      >
-        Trip Summary
-      </h2>
-
-      <p
-        style={{
-          fontSize: ".9rem",
-          color: "#444",
-          marginBottom: "4px",
-        }}
-      >
-        Estimated fare: {formatFare(demo)}
+    <main className="p-6 max-w-md mx-auto">
+      <h1 className="font-semibold text-lg mb-2">Trip Summary</h1>
+      <p className="text-sm text-gray-700">Total: {total}</p>
+      <p className="text-sm text-gray-700">Platform deduction: {deduction}</p>
+      <p className="text-sm text-gray-900 font-medium">Net: {net}</p>
+      <p className="text-xs text-gray-500 mt-4">
+        (stub) DriverPostTripClient is rendering.
       </p>
-
-      <p
-        style={{
-          fontSize: ".8rem",
-          color: "#777",
-        }}
-      >
-        (stub) This is DriverPostTripClient.
-      </p>
-    </section>
+    </main>
   );
 }

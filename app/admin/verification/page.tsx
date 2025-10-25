@@ -1,36 +1,28 @@
-﻿'use client';
+"use client";
+export const dynamic = "force-static";
 
 import { useState } from "react";
-import Header from "@/components/Header";
 
 export default function VerificationPage() {
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
+  const [code, setCode] = useState("");
   return (
-    <div className="p-6">
-      <Header title="User Verification" />
-
-      <h2 className="text-2xl font-bold mb-4">User Verification</h2>
-
+    <main className="p-6 max-w-md mx-auto">
+      <h1 className="text-xl font-semibold mb-3">Admin Verification</h1>
+      <label className="block text-sm mb-2">Enter verification code</label>
+      <input
+        className="border rounded px-3 py-2 w-full mb-3"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        placeholder="XXXXXX"
+        inputMode="numeric"
+      />
       <button
-        onClick={() => setShowAuthModal(true)}
-        className="bg-blue-500 text-white px-4 py-2 rounded"
+        className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
+        disabled={!code}
+        onClick={() => alert(`Submitted code ${code}`)}
       >
-        Verify User
+        Verify
       </button>
-
-      {showAuthModal && (
-        <div className="mt-4 p-4 border rounded bg-gray-50">
-          <p>Verification modal would appear here.</p>
-          <button
-            onClick={() => setShowAuthModal(false)}
-            className="mt-2 bg-gray-300 px-3 py-1 rounded"
-          >
-            Close
-          </button>
-        </div>
-      )}
-    </div>
+    </main>
   );
 }
-

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error }, { status: 500 });
     return NextResponse.json({ booking: data });
   } else {
-    // Decline → free booking for next driver
+    // Decline â†’ free booking for next driver
     await supabase
       .from("bookings")
       .update({ status: "declined", driver_id: null })
@@ -41,3 +41,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Booking declined, reassign driver" });
   }
 }
+
+

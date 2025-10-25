@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import dynamic from "next/dynamic";
 
@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 const LeafletMapInner = dynamic(() => import("./LeafletMapInner"), {
   ssr: false,
   // optional loading fallback
-  loading: () => <div style={{height: 300}}>Loading map…</div>,
+  loading: () => <div style={{height: 300}}>Loading mapâ€¦</div>,
 });
 
 export default function LeafletMap(props: {
@@ -16,3 +16,5 @@ export default function LeafletMap(props: {
 }) {
   return <LeafletMapInner {...props} />;
 }
+
+

@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState } from 'react';
@@ -245,13 +245,15 @@ export default function AddressTaggingModal({
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
           <h4 className="font-semibold text-green-800 mb-2">Why save addresses?</h4>
           <ul className="text-sm text-green-700 space-y-1">
-            <li>✅ Faster bookings in low signal areas</li>
-            <li>✅ Help family members find this location</li>
-            <li>✅ Reduce GPS errors during pickup</li>
-            <li>✅ Works even when connection is poor</li>
+            <li>âœ… Faster bookings in low signal areas</li>
+            <li>âœ… Help family members find this location</li>
+            <li>âœ… Reduce GPS errors during pickup</li>
+            <li>âœ… Works even when connection is poor</li>
           </ul>
         </div>
       </div>
     </div>
   );
 }
+
+

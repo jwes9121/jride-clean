@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -44,3 +44,5 @@ export default function LeafletMapInner({
     </MapContainer>
   );
 }
+
+

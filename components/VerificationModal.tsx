@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 interface VerificationModalProps {
   isOpen: boolean;
@@ -25,4 +25,6 @@ export default function VerificationModal({ isOpen, onClose }: VerificationModal
     </div>
   );
 }
+
+
 

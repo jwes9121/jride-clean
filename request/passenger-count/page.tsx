@@ -1,4 +1,4 @@
-// app/request/passenger-count/page.tsx
+﻿// app/request/passenger-count/page.tsx
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -27,15 +27,17 @@ export default function PassengerCountPage() {
         ))}
       </div>
       <p className="mt-4 text-xs text-yellow-700">
-        ⚠️ Tricycles can accommodate up to four (4) passengers only.
+        âš ï¸ Tricycles can accommodate up to four (4) passengers only.
         Motorcycle (single) rides are limited to one (1) passenger.
       </p>
       <button
         onClick={() => router.push(`/request/confirm-fare?count=${count}`)}
         className="mt-6 px-4 py-2 bg-blue-600 text-white rounded"
       >
-        Continue →
+        Continue â†’
       </button>
     </main>
   );
 }
+
+

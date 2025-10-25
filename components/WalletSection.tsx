@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState } from 'react';
@@ -15,7 +15,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
   // Ensure values are numbers and handle undefined/null cases
   const safeWalletBalance = typeof walletBalance === 'number' ? walletBalance : 0;
   const safeRewardPoints = typeof rewardPoints === 'number' ? rewardPoints : 0;
-  const pointsValue = safeRewardPoints; // 1 point = ₱1
+  const pointsValue = safeRewardPoints; // 1 point = â‚±1
 
   return (
     <div className="bg-gradient-to-br from-orange-400 to-green-400 rounded-2xl p-6 text-white relative overflow-hidden">
@@ -31,7 +31,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
           <div>
             <h3 className="text-lg font-semibold opacity-90">J-Ride Wallet</h3>
             <div className="flex items-baseline space-x-1">
-              <span className="text-3xl font-bold">₱{safeWalletBalance.toFixed(2)}</span>
+              <span className="text-3xl font-bold">â‚±{safeWalletBalance.toFixed(2)}</span>
             </div>
           </div>
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
@@ -54,7 +54,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
             </div>
             <div className="text-right">
               <div className="text-xl font-bold">{safeRewardPoints}</div>
-              <div className="text-xs opacity-80">≈ ₱{pointsValue.toFixed(2)} credit</div>
+              <div className="text-xs opacity-80">â‰ˆ â‚±{pointsValue.toFixed(2)} credit</div>
             </div>
           </div>
 
@@ -62,11 +62,11 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
             <div className="bg-white/10 rounded-lg p-3 mt-3">
               <h4 className="font-semibold text-sm mb-2">How Reward Points Work:</h4>
               <ul className="text-xs space-y-1 opacity-90">
-                <li>• Earn 1 point per ₱30 spent</li>
-                <li>• 1 point = ₱1 ride credit</li>
-                <li>• Use points for free rides when balance is equal or more than fare</li>
-                <li>• Redeem only if points ≥ full fare amount</li>
-                <li>• No partial payments allowed</li>
+                <li>â€¢ Earn 1 point per â‚±30 spent</li>
+                <li>â€¢ 1 point = â‚±1 ride credit</li>
+                <li>â€¢ Use points for free rides when balance is equal or more than fare</li>
+                <li>â€¢ Redeem only if points â‰¥ full fare amount</li>
+                <li>â€¢ No partial payments allowed</li>
               </ul>
             </div>
           )}
@@ -78,7 +78,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
                 <span className="text-sm font-medium">You can get FREE rides!</span>
               </div>
               <p className="text-xs opacity-80 mt-1">
-                Use {Math.floor(safeRewardPoints / 30)} × ₱30 trips with points
+                Use {Math.floor(safeRewardPoints / 30)} Ã— â‚±30 trips with points
               </p>
             </div>
           )}
@@ -113,11 +113,11 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-lg font-bold">{Math.floor(safeRewardPoints / 30)}</div>
-                <div className="text-xs opacity-80">₱30 Trips</div>
+                <div className="text-xs opacity-80">â‚±30 Trips</div>
               </div>
               <div>
                 <div className="text-lg font-bold">{Math.floor((safeRewardPoints % 30) / 15)}</div>
-                <div className="text-xs opacity-80">₱15 Trips</div>
+                <div className="text-xs opacity-80">â‚±15 Trips</div>
               </div>
               <div>
                 <div className="text-lg font-bold">{safeRewardPoints % 15}</div>
@@ -130,3 +130,5 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
     </div>
   );
 }
+
+

@@ -1,50 +1,45 @@
-"use client";
+﻿"use client";
 
-import { estimateFare, formatFare } from "../../../lib/fare";
+import { useSearchParams, useRouter } from "next/navigation";
+import { computeTriplycFare } from "../../../lib/fare";
 
 export default function ConfirmFareClient() {
-  // demo calculation so TS and build are happy
-  const demo = estimateFare("Lamut", "Lagawe", 5.1);
+  const params = useSearchParams();
+  const router = useRouter();
+
+  const origin = params.get("origin") || "";
+  const destination = params.get("destination") || "";
+  const passengers = Number(params.get("count") || "1");
+
+  const fare = computeTriplycFare(origin, destination, passengers);
 
   return (
-    <section
-      style={{
-        padding: "16px",
-        border: "1px solid #ccc",
-        borderRadius: "8px",
-        fontFamily: "system-ui, sans-serif",
-        background: "#fff",
-        marginTop: "16px",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: "1rem",
-          fontWeight: 600,
-          marginBottom: "4px",
-        }}
-      >
-        Confirm Fare
-      </h2>
+    <main className="p-6 max-w-md mx-auto">
+      <h1 className="font-semibold text-lg mb-2">Confirm Fare</h1>
 
-      <p
-        style={{
-          fontSize: ".9rem",
-          color: "#444",
-          marginBottom: "4px",
-        }}
-      >
-        Estimated fare: {formatFare(demo)}
+      <div className="text-sm text-gray-700 mb-2">
+        <div>Origin: {origin}</div>
+        <div>Destination: {destination}</div>
+        <div>Passengers: {passengers}</div>
+      </div>
+
+      <div className="text-sm text-gray-900 font-medium">
+        Total: {fare.total} {fare.currency}
+      </div>
+      <div className="text-xs text-gray-500">
+        Per-head est: {fare.perHead} {fare.currency}
+      </div>
+
+      <p className="text-xs text-gray-500 mt-4">
+        (stub) ConfirmFareClient is rendering.
       </p>
 
-      <p
-        style={{
-          fontSize: ".8rem",
-          color: "#777",
-        }}
+      <button
+        className="mt-4 border rounded px-3 py-2 text-sm"
+        onClick={() => router.push("/")}
       >
-        (stub) This is ConfirmFareClient.
-      </p>
-    </section>
+        Done
+      </button>
+    </main>
   );
 }

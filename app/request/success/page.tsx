@@ -1,55 +1,13 @@
-import { auth } from "../../../auth";
-
-export default async function SuccessPage() {
-  const session = await auth();
-
+﻿export default function RequestSuccessPage() {
   return (
-    <main
-      style={{
-        padding: "24px",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "1.25rem",
-          fontWeight: 600,
-          marginBottom: "8px",
-        }}
-      >
-        Request Submitted ✅
-      </h1>
-
-      <p
-        style={{
-          fontSize: ".9rem",
-          color: "#444",
-          marginBottom: "12px",
-        }}
-      >
-        Thank you. We’ve received your booking.
+    <main className="p-6 max-w-md mx-auto text-center">
+      <h1 className="font-semibold text-lg mb-2">Request Submitted</h1>
+      <p className="text-sm text-gray-700">
+        Your booking request has been sent. A driver/dispatcher will review it.
       </p>
-
-      {session ? (
-        <p
-          style={{
-            fontSize: ".9rem",
-            color: "#666",
-          }}
-        >
-          Logged in as{" "}
-          <strong>{session.user?.email ?? session.user?.name}</strong>.
-        </p>
-      ) : (
-        <p
-          style={{
-            fontSize: ".9rem",
-            color: "#666",
-          }}
-        >
-          (No active session.)
-        </p>
-      )}
+      <p className="text-xs text-gray-500 mt-4">
+        (stub) This is the /request/success page.
+      </p>
     </main>
   );
 }

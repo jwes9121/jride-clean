@@ -1,61 +1,14 @@
-"use client";
-
-import { useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+﻿"use client";
+export const dynamic = "force-static";
 
 export default function SignInPage() {
-  const searchParams = useSearchParams();
-
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
-
-  async function handleGoogle() {
-    await signIn("google", {
-      callbackUrl,
-    });
-  }
-
   return (
-    <div
-      style={{
-        maxWidth: "320px",
-        margin: "80px auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: "1rem",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "1.25rem",
-          fontWeight: 600,
-        }}
-      >
-        Sign in
-      </h1>
-
-      <p
-        style={{
-          fontSize: ".9rem",
-          color: "#666",
-        }}
-      >
-        Use your Google account to continue.
-      </p>
-
-      <button
-        onClick={handleGoogle}
-        style={{
-          padding: "10px 16px",
-          borderRadius: "6px",
-          border: "1px solid #ccc",
-          fontSize: ".95rem",
-          fontWeight: 500,
-          cursor: "pointer",
-        }}
-      >
+    <main className="p-6 max-w-md mx-auto">
+      <h1 className="text-xl font-semibold mb-3">Sign in</h1>
+      <p className="mb-4 text-sm">Use your Google account to continue.</p>
+      <a className="inline-block px-4 py-2 rounded bg-blue-600 text-white" href="/api/auth/signin?provider=google">
         Continue with Google
-      </button>
-    </div>
+      </a>
+    </main>
   );
 }
