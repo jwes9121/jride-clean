@@ -1,8 +1,6 @@
-﻿
-// TEMP STUB FOR BUILD
-// TODO: real offline queue for PWA mode
-
-
+// In-memory offline job queue stub for production build.
+// This is enough for UI components like OfflineIndicator to render safely
+// without blowing up the Next.js build in Vercel.
 
 export type OfflineJob = {
   id: string;
@@ -11,116 +9,87 @@ export type OfflineJob = {
   createdAt: number;
 };
 
+// Internal queue state
 let queue: OfflineJob[] = [];
 
+// Connection state flag
+let isOnlineFlag = true;
 
-export function enqueueOfflineJob(type: string, payload: any) {
-  const job: OfflineJob = {
-    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-
-let isOnline = true;
-
-// simple list of listeners for UI updates
+// Listener callbacks for UI updates
 type Listener = () => void;
-const listeners: Listener[] = [];
+let listeners: Listener[] = [];
 
+// Utility to notify all subscribers (like a tiny event emitter)
 function notify() {
-  for (const l of listeners) {
+  for (const fn of listeners) {
     try {
-      l();
+      fn();
     } catch {
       // ignore listener errors
     }
   }
 }
 
-// enqueue new offline job
-export function enqueueOfflineJob(type: string, payload: any) {
-  const job: OfflineJob = {
-    id: Date.now().toString() + "-" + Math.random().toString(16).slice(2),
+// Public API:
 
+// enqueueOfflineJob() - add a job to the queue
+export function enqueueOfflineJob(type: string, payload: any): string {
+  const job: OfflineJob = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type,
     payload,
     createdAt: Date.now(),
   };
   queue.push(job);
-
-  return job.id;
-}
-
-
   notify();
   return job.id;
 }
 
-// read queued jobs
-
-export function getOfflineJobs() {
+// getOfflineJobs() - read all jobs
+export function getOfflineJobs(): OfflineJob[] {
   return [...queue];
 }
 
-
-export function clearOfflineJobs() {
-  queue = [];
-}
-
-// Some code does: import offlineQueue from "../lib/offlineQueue"
-// We'll give them a default object that matches that expectation.
-
-// clear queue
+// clearOfflineJobs() - wipe queue
 export function clearOfflineJobs() {
   queue = [];
   notify();
 }
 
-// ---- extra helpers expected by OfflineIndicator.tsx ----
-
-// return current "online" status
-export function isOnlineStatus() {
-  return isOnline;
-}
-
-// fake the pending count
-export function getQueueLength() {
+// getQueueLength() - convenience for UI badge/count
+export function getQueueLength(): number {
   return queue.length;
 }
 
-// allow UI to watch for changes
-export function onChange(cb: () => void) {
-  if (typeof cb === "function") {
-    listeners.push(cb);
-  }
-  return () => {
-    const idx = listeners.indexOf(cb);
-    if (idx >= 0) {
-      listeners.splice(idx, 1);
-    }
-  };
+// isOnlineStatus() - report if app thinks we're online
+export function isOnlineStatus(): boolean {
+  return isOnlineFlag;
 }
 
-// let something else toggle online/offline if needed
+// setOnlineStatus() - allow UI / network detector to flip status
 export function setOnlineStatus(next: boolean) {
-  isOnline = next;
+  isOnlineFlag = next;
   notify();
 }
 
-// default export to satisfy existing imports:
-//   import offlineQueue from "../lib/offlineQueue"
+// subscribe() - OfflineIndicator (or others) can subscribe to changes
+// returns unsubscribe()
+export function subscribe(listener: Listener): () => void {
+  listeners.push(listener);
+  return () => {
+    listeners = listeners.filter((l) => l !== listener);
+  };
+}
 
-const offlineQueueDefault = {
+// default export so older code that did `import offlineQueue from ...` still works
+const offlineQueue = {
   enqueueOfflineJob,
   getOfflineJobs,
   clearOfflineJobs,
-
-};
-
-export default offlineQueueDefault;
-
-  isOnlineStatus,
   getQueueLength,
-  onChange,
+  isOnlineStatus,
   setOnlineStatus,
+  subscribe,
 };
 
-export default offlineQueueDefault;
-
+export default offlineQueue;
