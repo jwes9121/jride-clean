@@ -1,75 +1,18 @@
-"use client";
+// auth.ts
+import NextAuth from "next-auth";
+import Google from "next-auth/providers/google";
 
-import React from "react";
-import Link from "next/link";
-import { signOut } from "@/auth"; // NOTE: using @/auth (root alias). If @ doesn't work, use "../../auth"
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  ],
 
-type TopNavProps = {
-  user?: {
-    name?: string | null;
-    email?: string | null;
-  } | null;
-};
+  // trustHost is important with NextAuth v5 to avoid callback URL weirdness.
+  trustHost: true,
 
-export default function TopNav({ user }: TopNavProps) {
-  async function handleSignOut() {
-    "use server";
-    // You CANNOT call a server action directly inside a client component handler like this without wiring,
-    // so realistically we still need an <form action={...}> flow. This is why Option A is cleaner for now.
-  }
-
-  return (
-    <header className="w-full border-b bg-white px-4 py-2 flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <Link href="/" className="text-lg font-semibold">
-          J-Ride Dispatch
-        </Link>
-
-        <nav className="flex items-center gap-4 text-sm text-gray-600">
-          <Link href="/dispatch" className="hover:text-black">
-            Dispatch
-          </Link>
-          <Link href="/admin/livetrips" className="hover:text-black">
-            Live Trips
-          </Link>
-          <Link href="/admin" className="hover:text-black">
-            Admin
-          </Link>
-        </nav>
-      </div>
-
-      <div className="flex items-center gap-3 text-sm">
-        {user ? (
-          <>
-            <div className="text-right leading-tight">
-              <div className="font-medium text-gray-800">
-                {user.name || "User"}
-              </div>
-              <div className="text-gray-500 text-xs">
-                {user.email || ""}
-              </div>
-            </div>
-
-            {/* TODO: proper signOut form/action wiring for NextAuth v5 */}
-            <button
-              className="border rounded px-2 py-1 text-xs hover:bg-gray-50"
-              onClick={() => {
-                // temporary workaround
-                signOut({ redirectTo: "/auth/signin" });
-              }}
-            >
-              Sign out
-            </button>
-          </>
-        ) : (
-          <Link
-            href="/auth/signin"
-            className="border rounded px-2 py-1 text-xs hover:bg-gray-50"
-          >
-            Sign in
-          </Link>
-        )}
-      </div>
-    </header>
-  );
-}
+  // You can add callbacks here to control redirect after login if you want.
+  // For now we’ll just let you through once you're signed in.
+});
