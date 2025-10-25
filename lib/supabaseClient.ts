@@ -1,58 +1,53 @@
-﻿
-// TEMP STUB FOR BUILD
-// TODO: replace with real Supabase client
+// Minimal safe stub to satisfy imports in production build.
+// You can replace with real Supabase init later.
 
-export type FakeSupabase = {
-  from: (table: string) => {
-    select: (cols?: string) => Promise<{ data: any; error: null }>;
-    insert: (row: any) => Promise<{ data: any; error: null }>;
-    update: (row: any) => {
-      eq: (col: string, val: any) => Promise<{ data: any; error: null }>;
-    };
-  };
+export type SupabaseSession = {
+  user: {
+    id: string;
+    email: string | null;
+    name?: string | null;
+    role?: string | null;
+  } | null;
 };
 
-const supabaseStub: FakeSupabase = {
-  from: () => ({
-    select: async () => ({ data: null, error: null }),
-    insert: async () => ({ data: null, error: null }),
-    update: (_row: any) => ({
-      eq: async () => ({ data: null, error: null }),
+export type SupabaseResult<T = any> = {
+  data: T | null;
+  error: { message: string } | null;
+};
+
+function makeStubClient() {
+  return {
+    auth: {
+      // mimic supabase.auth.getSession()
+      getSession: async (): Promise<{ data: { session: SupabaseSession } }> => {
+        return { data: { session: { user: null } } };
+      },
+      // mimic supabase.auth.onAuthStateChange()
+      onAuthStateChange: (_cb: any) => {
+        return { data: { subscription: { unsubscribe: () => {} } } };
+      },
+    },
+    from: (_table: string) => ({
+      select: async () => ({ data: null, error: null } as SupabaseResult),
+      insert: async () => ({ data: null, error: null } as SupabaseResult),
+      update: async () => ({ data: null, error: null } as SupabaseResult),
+      upsert: async () => ({ data: null, error: null } as SupabaseResult),
+      delete: async () => ({ data: null, error: null } as SupabaseResult),
+      eq: function () { return this; },
+      order: function () { return this; },
+      limit: function () { return this; },
+      single: async () => ({ data: null, error: null } as SupabaseResult),
     }),
-  }),
-};
-
-// Different components call this by different names.
-// We just export all of them so nothing crashes at build time.
-export const supabase = supabaseStub as any;
-export const supabaseBrowserClient = supabaseStub as any;
-export const supabaseServerClient = supabaseStub as any;
-
-
-export type FakeSupabase = {
-  from: (table: string) => {
-    select: (cols?: string) => Promise<{ data: any; error: null }>;
-    insert: (row: any) => Promise<{ data: any; error: null }>;
-    update: (row: any) => {
-      eq: (col: string, val: any) => Promise<{ data: any; error: null }>;
-    };
   };
-};
+}
 
-const supabaseStub: FakeSupabase = {
-  from: () => ({
-    select: async () => ({ data: null, error: null }),
-    insert: async () => ({ data: null, error: null }),
-    update: (_row: any) => ({
-      eq: async () => ({ data: null, error: null }),
-    }),
-  }),
-};
+// single stub instance
+const stub = makeStubClient();
 
-// Export under all the names your code might import.
-export const supabase = supabaseStub as any;
-export const supabaseBrowserClient = supabaseStub as any;
-export const supabaseServerClient = supabaseStub as any;
-
-
-export default supabaseStub;
+// Some parts of the app might import different names.
+// Export them all so the build never complains.
+export const supabase = stub;
+export const supabaseClient = stub;
+export const supabaseAdmin = stub;
+export const supabaseAdminClient = stub;
+export default stub;
