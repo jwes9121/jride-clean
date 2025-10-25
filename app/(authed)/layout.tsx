@@ -1,37 +1,18 @@
-import * as React from "react";
+import React from "react";
 import { auth } from "../../auth";
-import TopNav from "./TopNav";
+import TopNav from "./components/TopNav";
 
-export const dynamic = "force-dynamic";
-
-type AuthedLayoutProps = {
+export default async function AuthedLayout({
+  children,
+}: {
   children: React.ReactNode;
-};
-
-export default async function AuthedLayout({ children }: AuthedLayoutProps) {
+}) {
   const session = await auth();
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f5f5f5",
-        color: "#111",
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <TopNav user={session?.user as any} />
-
-      <main
-        style={{
-          flex: 1,
-          padding: "24px",
-        }}
-      >
-        {children}
-      </main>
-    </div>
+    <>
+      <TopNav user={session?.user} />
+      <main style={{ padding: "24px" }}>{children}</main>
+    </>
   );
 }
