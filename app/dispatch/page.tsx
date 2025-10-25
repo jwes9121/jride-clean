@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 type Ride = {
   id: string;
@@ -28,7 +28,7 @@ export default function DispatchPage() {
       <ul>
         {rides.map((ride) => (
           <li key={ride.id}>
-            {ride.origin} → {ride.destination}
+            {ride.origin} ? {ride.destination}
           </li>
         ))}
       </ul>

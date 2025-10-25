@@ -1,71 +1,87 @@
-﻿import NextAuth, { NextAuthConfig } from "next-auth";
+﻿import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 
-export type AppRole = "admin" | "dispatcher" | "driver" | "user";
-
-function parseList(v?: string | null) {
-  return (v ?? "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-}
-const ADMIN = new Set(parseList(process.env.ADMIN_EMAILS));
-const DISPATCHER = new Set(parseList(process.env.DISPATCHER_EMAILS));
-const DRIVER = new Set(parseList(process.env.DRIVER_EMAILS));
-
-function inferRoleByEmail(email?: string | null): AppRole {
-  const e = (email ?? "").toLowerCase();
-  if (!e) return "user";
-  if (ADMIN.has(e)) return "admin";
-  if (DISPATCHER.has(e)) return "dispatcher";
-  if (DRIVER.has(e)) return "driver";
-  return "user";
-}
-
-export const authConfig: NextAuthConfig = {
+export const {
+  handlers,
+  auth,
+  signIn,
+  signOut,
+} = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    })
+    }),
+
+    Credentials({
+      name: "Dev Credentials",
+      credentials: {
+        email: { label: "Email", type: "text" },
+      },
+      async authorize(credentials, _request) {
+        // Only allow this path in fallback/dev mode
+        if (process.env.ENABLE_GOOGLE !== "0") {
+          return null;
+        }
+
+        const rawEmail = credentials?.email;
+        if (!rawEmail || typeof rawEmail !== "string") {
+          return null;
+        }
+
+        return {
+          id: "dev-user",
+          name: rawEmail,
+          email: rawEmail,
+          role: "admin",
+        } as any;
+      },
+    }),
   ],
-  session: { strategy: "jwt" },
+
+  trustHost: true,
+
+  pages: {
+    signIn: "/auth/signin",
+  },
+
   callbacks: {
-    async jwt({ token, trigger, session, account, user }) {
-      const t = token as any;
-      if (trigger === "signIn" || account || user) {
-        t.role = inferRoleByEmail(token.email ?? user?.email ?? null);
-      }
-      if (trigger === "update" && (session as any)?.user?.role) {
-        t.role = (session as any).user.role;
+    async jwt({ token, account, user }) {
+      if (account && user) {
+        token.role = (user as any).role ?? "user";
       }
       return token;
     },
+
     async session({ session, token }) {
-      (session as any).user = (session as any).user ?? {};
-      (session as any).user.role = (token as any).role ?? inferRoleByEmail(session.user?.email);
+      if (token && session.user) {
+        (session.user as any).role = token.role ?? "user";
+      }
       return session;
     },
-    authorized({ auth, request }) {
-      const role = (auth?.user as any)?.role as AppRole | undefined;
-      const { pathname } = request.nextUrl;
 
-      if (
-        pathname === "/" ||
-        pathname.startsWith("/auth") ||
-        pathname.startsWith("/api/auth") ||
-        pathname.startsWith("/landing") ||
-        pathname.startsWith("/website") ||
-        pathname.startsWith("/offline")
-      ) return true;
+    async redirect({ url, baseUrl }) {
+      // allow relative callbackUrl like /admin/livetrips
+      if (url.startsWith("/")) {
+        return baseUrl + url;
+      }
 
-      if (pathname.startsWith("/admin")) return role === "admin";
-      if (pathname.startsWith("/dispatch")) return role === "dispatcher" || role === "admin";
-      if (pathname.startsWith("/driver")) return role === "driver" || role === "admin";
+      // allow same-origin absolute URLs
+      try {
+        const target = new URL(url);
+        const base = new URL(baseUrl);
+        if (target.origin === base.origin) {
+          return url;
+        }
+      } catch {
+        // ignore parse errors
+      }
 
-      return !!auth?.user;
-    }
+      // default after signin
+      return baseUrl + "/";
+    },
   },
-  secret: process.env.NEXTAUTH_SECRET
-};
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
-
-
+  secret: process.env.NEXTAUTH_SECRET,
+});

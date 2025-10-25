@@ -1,14 +1,14 @@
 ﻿"use client";
-import { signIn } from "next-auth/react";
+export const dynamic = "force-static";
 
 export default function LoginPage() {
   return (
-    <div className="p-6">
-      <button className="border rounded px-3 py-2" onClick={() => signIn("google")}>
+    <main className="p-6 max-w-md mx-auto">
+      <h1 className="text-xl font-semibold mb-3">Login</h1>
+      <p className="mb-4 text-sm">Use your Google account to continue.</p>
+      <a className="inline-block px-4 py-2 rounded bg-blue-600 text-white" href="/api/auth/signin?provider=google">
         Continue with Google
-      </button>
-    </div>
+      </a>
+    </main>
   );
 }
-
-

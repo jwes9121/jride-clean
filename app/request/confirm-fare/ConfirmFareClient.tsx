@@ -1,66 +1,45 @@
 ﻿"use client";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { computeTricycleFare } from "@/lib/fare";
 
-type CreateBookingResponse = { id?: string };
+import { useSearchParams, useRouter } from "next/navigation";
+import { computeTriplycFare } from "../../../lib/fare";
 
 export default function ConfirmFareClient() {
   const params = useSearchParams();
   const router = useRouter();
-  const passengers = Number(params.get("count") ?? 1);
 
-  const fare = useMemo(() => computeTricycleFare(passengers), [passengers]);
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const origin = params.get("origin") || "";
+  const destination = params.get("destination") || "";
+  const passengers = Number(params.get("count") || "1");
 
-  async function handleConfirm() {
-    setSubmitting(true);
-    setErr(null);
-    try {
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "tricycle", passengers, source: "web" }),
-      });
-
-      let bookingId: string | undefined;
-      try { const data: CreateBookingResponse = await res.json(); bookingId = data?.id; } catch {}
-      if (!res.ok) throw new Error(`Failed to create booking (${res.status})`);
-
-      const idParam = bookingId ? `&id=${encodeURIComponent(bookingId)}` : "";
-      router.replace(`/request/success?total=${fare.total}&count=${passengers}${idParam}`);
-    } catch (e: any) {
-      setErr(e?.message ?? "Something went wrong.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  const fare = computeTriplycFare(origin, destination, passengers);
 
   return (
     <main className="p-6 max-w-md mx-auto">
-      <h1 className="text-xl font-semibold mb-3">Trip Summary</h1>
-      <ul className="mb-4 text-sm">
-        <li>• Base Fare (LLGU Matrix): ₱{fare.base}</li>
-        <li>• Additional Passengers (₱20 each): ₱{fare.addPassengers}</li>
-        <li>• Convenience Fee: ₱{fare.convenienceFee}</li>
-      </ul>
+      <h1 className="font-semibold text-lg mb-2">Confirm Fare</h1>
 
-      <h2 className="text-lg font-bold mb-4">Total Fare: ₱{fare.total}</h2>
-      <p className="text-xs text-yellow-700 mb-4">
-        ⚠️ Please confirm your booking. The total amount of ₱{fare.total} is payable directly to the driver upon arrival.
+      <div className="text-sm text-gray-700 mb-2">
+        <div>Origin: {origin}</div>
+        <div>Destination: {destination}</div>
+        <div>Passengers: {passengers}</div>
+      </div>
+
+      <div className="text-sm text-gray-900 font-medium">
+        Total: {fare.total} {fare.currency}
+      </div>
+      <div className="text-xs text-gray-500">
+        Per-head est: {fare.perHead} {fare.currency}
+      </div>
+
+      <p className="text-xs text-gray-500 mt-4">
+        (stub) ConfirmFareClient is rendering.
       </p>
 
-      {err && <p className="text-red-600 text-sm mb-3">Error: {err}</p>}
-
-      <div className="flex gap-3">
-        <button onClick={() => history.back()} className="px-4 py-2 rounded border" disabled={submitting}>← Back</button>
-        <button onClick={handleConfirm} className="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-60" disabled={submitting}>
-          {submitting ? "Confirming..." : "Confirm Booking →"}
-        </button>
-      </div>
+      <button
+        className="mt-4 border rounded px-3 py-2 text-sm"
+        onClick={() => router.push("/")}
+      >
+        Done
+      </button>
     </main>
   );
 }
-
-

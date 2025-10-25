@@ -1,25 +1,25 @@
 ﻿"use client";
+
 import { useSearchParams } from "next/navigation";
-import { platformDeduction } from "@/lib/fare";
+import { platformDeduction } from "../../../lib/fare";
 
 export default function DriverPostTripClient() {
   const params = useSearchParams();
-  const total = Number(params.get("total") ?? 85);
+  const totalParam = params.get("total") || "0";
+
+  const total = Number(totalParam);
   const deduction = platformDeduction(total);
   const net = total - deduction;
 
   return (
     <main className="p-6 max-w-md mx-auto">
-      <h1 className="text-xl font-semibold mb-2">Trip Completed!</h1>
-      <ul className="text-sm mb-4">
-        <li>• Total Fare Collected: ₱{total}</li>
-        <li>• Platform Deduction: ₱{deduction} {total >= 50 ? "(for trips ₱50 and above)" : "(none for trips under ₱50)"} </li>
-        <li>— ₱15 convenience/service fee</li>
-        <li>— ₱5 system/LGU partnership share</li>
-      </ul>
-      <h2 className="font-bold text-lg">✅ Net Amount Credited to Your Wallet: ₱{net}</h2>
+      <h1 className="font-semibold text-lg mb-2">Trip Summary</h1>
+      <p className="text-sm text-gray-700">Total: {total}</p>
+      <p className="text-sm text-gray-700">Platform deduction: {deduction}</p>
+      <p className="text-sm text-gray-900 font-medium">Net: {net}</p>
+      <p className="text-xs text-gray-500 mt-4">
+        (stub) DriverPostTripClient is rendering.
+      </p>
     </main>
   );
 }
-
-

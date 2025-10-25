@@ -1,42 +1,29 @@
 ﻿"use client";
-import { useRouter } from "next/navigation";
+export const dynamic = "force-static";
+
 import { useState } from "react";
-
+import { useRouter } from "next/navigation";
 export default function PassengerCountPage() {
+  const [count, setCount] = useState(1);
   const router = useRouter();
-  const [count, setCount] = useState<number>(1);
-  const options = [1, 2, 3, 4];
-
   return (
     <main className="p-6 max-w-md mx-auto">
-      <h1 className="text-xl font-semibold mb-2">How many passengers will be riding?</h1>
-      <p className="text-sm mb-4">Please select the total number of passengers (including yourself).</p>
-
-      <div className="space-y-3">
-        {options.map((opt) => (
-          <label key={opt} className="flex items-center space-x-3 border rounded-lg p-3">
-            <input
-              type="radio"
-              name="passengers"
-              checked={count === opt}
-              onChange={() => setCount(opt)}
-              className="h-4 w-4"
-            />
-            <span className="text-sm">{opt} Passenger{opt > 1 && "s"}</span>
+      <h1 className="text-xl font-semibold mb-3">How many passengers will be riding?</h1>
+      <p className="mb-4 text-sm">Please select the total number of passengers (including yourself).</p>
+      <div className="space-y-2 mb-4">
+        {[1,2,3,4].map(n => (
+          <label key={n} className="flex items-center gap-2">
+            <input type="radio" name="passengers" value={n} checked={count===n} onChange={()=>setCount(n)} />
+            <span>{n} Passenger{n>1 ? "s" : ""}</span>
           </label>
         ))}
       </div>
-
-      <p className="mt-4 text-xs text-yellow-700">
-        âš ï¸ Tricycles can accommodate up to four (4) passengers only. Motorcycle (single) rides are limited to one (1).
+      <p className="text-xs text-yellow-700 mb-4">
+        ⚠️ Tricycles can accommodate up to four (4) passengers only. Motorcycle rides are limited to one (1) passenger.
       </p>
-
-      <div className="mt-6 flex gap-3">
-        <button onClick={() => router.push("/")} className="px-4 py-2 rounded border">Cancel</button>
-        <button onClick={() => router.push(`/request/confirm-fare?count=${count}`)} className="px-4 py-2 rounded bg-blue-600 text-white">Continue â†’</button>
-      </div>
+      <button className="px-4 py-2 rounded bg-green-600 text-white" onClick={()=>router.push(`/request/confirm-fare?count=${count}`)}>
+        Continue →
+      </button>
     </main>
   );
 }
-
-

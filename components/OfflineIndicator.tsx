@@ -1,8 +1,8 @@
-﻿// components/OfflineIndicator.tsx
+// components/OfflineIndicator.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import offlineQueue from "@/lib/offlineQueue"; // <-- default API object
+import offlineQueue from "../lib/offlineQueue"; // <-- default API object
 
 export default function OfflineIndicator() {
   const [isOnline, setIsOnline] = useState(true);

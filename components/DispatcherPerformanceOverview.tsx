@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 
 export default function DispatcherPerformanceOverview() {
   const [performance, setPerformance] = useState<any[]>([]);
@@ -13,7 +13,7 @@ export default function DispatcherPerformanceOverview() {
 
   useEffect(() => {
     loadPerformanceOverview();
-  }, [loadPerformanceOverview]); // âœ… dependency added
+  }, [loadPerformanceOverview]); // ✅ dependency added
 
   return (
     <div className="p-6">
