@@ -1,16 +1,26 @@
-﻿import { createClient } from "@supabase/supabase-js";
+export type FakeSupabase = {
+  from: (table: string) => {
+    select: (cols?: string) => Promise<{ data: any; error: null }>;
+    insert: (row: any) => Promise<{ data: any; error: null }>;
+    update: (row: any) => {
+      eq: (col: string, val: any) => Promise<{ data: any; error: null }>;
+    };
+  };
+};
 
-const url =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const anon =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+const supabaseStub: FakeSupabase = {
+  from: () => ({
+    select: async () => ({ data: null, error: null }),
+    insert: async () => ({ data: null, error: null }),
+    update: (_row: any) => ({
+      eq: async () => ({ data: null, error: null }),
+    }),
+  }),
+};
 
-if (!url || !anon) {
-  console.warn(
-    "Supabase env vars are missing: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY"
-  );
-}
+// Export under all the names your code might import.
+export const supabase = supabaseStub as any;
+export const supabaseBrowserClient = supabaseStub as any;
+export const supabaseServerClient = supabaseStub as any;
 
-export const supabase = createClient(url ?? "", anon ?? "");
-
-
+export default supabaseStub;
