@@ -1,86 +1,44 @@
 "use client";
 
-import React from "react";
-
-function computeTriplycFareLocal(
-  origin: string,
-  destination: string,
-  passengers: number
-): number {
-  // Basic placeholder fare logic:
-  // ₱20 base + ₱10 per extra passenger beyond 1
-  const baseFare = 20;
-  const extras = passengers > 1 ? (passengers - 1) * 10 : 0;
-
-  // You can later enhance with distance/origin/destination pricing rules.
-  return baseFare + extras;
-}
+import { useSearchParams, useRouter } from "next/navigation";
+import { computeTriplycFare } from "../../../lib/fare";
 
 export default function ConfirmFareClient() {
-  // Get query params on the client side
-  const search =
-    typeof window !== "undefined" ? window.location.search : "";
-  const params = new URLSearchParams(search);
+  const params = useSearchParams();
+  const router = useRouter();
 
-  const origin: string = params.get("origin") || "";
-  const destination: string = params.get("destination") || "";
-  const passengers: number = Number(params.get("count") || "1");
+  const origin = params.get("origin") || "";
+  const destination = params.get("destination") || "";
+  const passengers = Number(params.get("count") || "1");
 
-  // use ONLY our local helper
-  const fare: number = computeTriplycFareLocal(
-    origin,
-    destination,
-    passengers
-  );
+  const fare = computeTriplycFare(origin, destination, passengers);
 
   return (
     <main className="p-6 max-w-md mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Confirm Fare</h1>
+      <h1 className="font-semibold text-lg mb-2">Confirm Fare</h1>
 
-      <div className="space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-gray-600">Pickup:</span>
-          <span className="font-medium text-gray-900">
-            {origin || "—"}
-          </span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="text-gray-600">Dropoff:</span>
-          <span className="font-medium text-gray-900">
-            {destination || "—"}
-          </span>
-        </div>
-
-        <div className="flex justify-between">
-          <span className="text-gray-600">Passengers:</span>
-          <span className="font-medium text-gray-900">
-            {passengers}
-          </span>
-        </div>
-
-        <div className="flex justify-between text-lg pt-4 border-t mt-4">
-          <span className="text-gray-800 font-semibold">
-            Estimated Fare:
-          </span>
-          <span className="text-gray-900 font-bold">
-            ₱{fare}
-          </span>
-        </div>
+      <div className="text-sm text-gray-700 mb-2">
+        <div>Origin: {origin}</div>
+        <div>Destination: {destination}</div>
+        <div>Passengers: {passengers}</div>
       </div>
 
+      <div className="text-sm text-gray-900 font-medium">
+        Total: ₱{fare.total} {fare.currency}
+      </div>
+      <div className="text-xs text-gray-500">
+        Per-head est: ₱{fare.perHead} {fare.currency}
+      </div>
+
+      <p className="text-xs text-gray-500 mt-4">
+        (stub) ConfirmFareClient is rendering.
+      </p>
+
       <button
-        className="mt-6 w-full bg-black text-white text-sm font-medium py-2 rounded-lg hover:bg-gray-800 transition-colors"
-        onClick={() => {
-          console.log("Confirm ride", {
-            origin,
-            destination,
-            passengers,
-            fare,
-          });
-        }}
+        className="mt-4 border rounded px-3 py-2 text-sm"
+        onClick={() => router.push("/")}
       >
-        Confirm & Request Driver
+        Done
       </button>
     </main>
   );
