@@ -5,7 +5,7 @@ export type FareBreakdown = {
   total: number;
 };
 
-// Basic fare calculator used by rider estimate flow
+// For rider estimate / preview UI
 export function estimateFare(params: {
   distanceKm: number;
   minutes: number;
@@ -14,8 +14,8 @@ export function estimateFare(params: {
   const perKm = 15;
   const perMin = 2;
 
-  const distance = params.distanceKm * perKm;
-  const time = params.minutes * perMin;
+  const distance = (params.distanceKm ?? 0) * perKm;
+  const time = (params.minutes ?? 0) * perMin;
   const total = base + distance + time;
 
   return {
@@ -26,51 +26,39 @@ export function estimateFare(params: {
   };
 }
 
-// Turns a FareBreakdown into a peso string
-export function formatFare(breakdown: FareBreakdown): string {
-  return `₱${breakdown.total.toFixed(2)}`;
-}
-
-// === STUBS NEEDED BY OTHER PAGES / API ROUTES =======================
-
-// This is what driver/post-trip and confirm-fare screens call
-// We just return a "total" number so the UI can render something.
+// For driver trip confirmation / API booking, app code expects this name EXACTLY
 export function computeTriplycFare(opts: {
-  mode?: string;        // "tricycle" | "motorcycle" | etc.
+  mode?: string;          // "tricycle" | "motorcycle" | etc.
   passengers?: number;
   distanceKm?: number;
   minutes?: number;
 }): FareBreakdown {
+  // crude fallback math that won't crash
   const distanceKm = opts.distanceKm ?? 2;
   const minutes = opts.minutes ?? 5;
 
-  // reuse estimateFare logic under the hood
-  const est = estimateFare({ distanceKm, minutes });
-
-  // If they care about mode/passengers for surcharge later,
-  // you could tweak est.total here. For now we leave it alone.
-
-  return est;
+  return estimateFare({ distanceKm, minutes });
 }
 
-// Platform deduction (what % the platform keeps)
-// DriverPostTripClient.tsx imports this.
+// For driver post-trip payout screen, app code expects this name EXACTLY
+// Input: totalPeso (the full fare from computeTriplycFare().total)
+// Output: driver's share after platform fee
 export function platformDeduction(totalPeso: number): number {
-  // Example: 20% platform fee
-  const feeRate = 0.2;
-  const fee = totalPeso * feeRate;
-  // driver keeps the rest
-  return totalPeso - fee;
+  const feeRate = 0.2; // 20% platform fee
+  const driverShare = totalPeso - totalPeso * feeRate;
+  return driverShare;
 }
 
-// ====================================================================
+// Format helper for display
+export function formatFare(breakdown: FareBreakdown): string {
+  return `₱${breakdown.total.toFixed(2)}`;
+}
 
-// default export in case legacy code does `import fare from "@/lib/fare"`
+// Default export for any legacy `import fare from "@/lib/fare"`
 const fareApi = {
   estimateFare,
-  formatFare,
   computeTriplycFare,
   platformDeduction,
+  formatFare,
 };
-
 export default fareApi;
