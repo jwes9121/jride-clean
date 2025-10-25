@@ -1,64 +1,33 @@
-export type FareBreakdown = {
-  base: number;
-  distance: number;
-  time: number;
-  total: number;
-};
+// lib/fare.ts
 
-// For rider estimate / preview UI
-export function estimateFare(params: {
-  distanceKm: number;
-  minutes: number;
-}): FareBreakdown {
-  const base = 50;
-  const perKm = 15;
-  const perMin = 2;
+/**
+ * computeTriplycFare
+ *
+ * Unified fare calculation for tricycle rides.
+ *
+ * Inputs:
+ *  - origin: pickup location (string, ex. "Lagawe Public Market")
+ *  - destination: dropoff location (string, ex. "Kiangan Plaza")
+ *  - passengers: number of passengers (1+)
+ *
+ * Current rules:
+ *  - Base flagdown fare: ₱20
+ *  - Each extra passenger after the first: +₱10 per head
+ *
+ * Later we can add distance logic, LGU zoning, nighttime surcharge, etc.
+ */
+export function computeTriplycFare(
+  origin: string,
+  destination: string,
+  passengers: number
+): number {
+  // base starting fare
+  const baseFare = 20;
 
-  const distance = (params.distanceKm ?? 0) * perKm;
-  const time = (params.minutes ?? 0) * perMin;
-  const total = base + distance + time;
+  // charge ₱10 per extra passenger after 1
+  const extras = passengers > 1 ? (passengers - 1) * 10 : 0;
 
-  return {
-    base,
-    distance,
-    time,
-    total,
-  };
+  // You can later adjust by origin/destination (e.g. crossing towns, uphill roads, etc.)
+  // For now, origin and destination are unused but kept in signature for future pricing rules.
+  return baseFare + extras;
 }
-
-// For driver trip confirmation / API booking, app code expects this name EXACTLY
-export function computeTriplycFare(opts: {
-  mode?: string;          // "tricycle" | "motorcycle" | etc.
-  passengers?: number;
-  distanceKm?: number;
-  minutes?: number;
-}): FareBreakdown {
-  // crude fallback math that won't crash
-  const distanceKm = opts.distanceKm ?? 2;
-  const minutes = opts.minutes ?? 5;
-
-  return estimateFare({ distanceKm, minutes });
-}
-
-// For driver post-trip payout screen, app code expects this name EXACTLY
-// Input: totalPeso (the full fare from computeTriplycFare().total)
-// Output: driver's share after platform fee
-export function platformDeduction(totalPeso: number): number {
-  const feeRate = 0.2; // 20% platform fee
-  const driverShare = totalPeso - totalPeso * feeRate;
-  return driverShare;
-}
-
-// Format helper for display
-export function formatFare(breakdown: FareBreakdown): string {
-  return `₱${breakdown.total.toFixed(2)}`;
-}
-
-// Default export for any legacy `import fare from "@/lib/fare"`
-const fareApi = {
-  estimateFare,
-  computeTriplycFare,
-  platformDeduction,
-  formatFare,
-};
-export default fareApi;
