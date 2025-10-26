@@ -1,35 +1,27 @@
-"use client";
+import { redirect } from "next/navigation";
+import { auth, signIn } from "../../../auth";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { signInWithGoogle } from "./actions";
+export default async function SignInPage() {
+  // Check session on the server
+  const session = await auth();
 
-// we'll read the cookie client-side to guess if you're signed in
-// we don't need full session details here, just "do you have a session cookie?"
-function hasSessionCookie() {
-  // any cookie starting with `_Secure-` from NextAuth means you're logged in
-  // we'll just check document.cookie for "next-auth" patterns
-  if (typeof document === "undefined") return false;
-  return document.cookie.includes("next-auth.session-token")
-    || document.cookie.includes("__Secure-next-auth.session-token")
-    || document.cookie.includes("_Secure-"); // fallback: what we saw in prod
-}
+  // If you're already authenticated, skip this page
+  if (session) {
+    redirect("/dispatch");
+  }
 
-export default function SignInPage() {
-  const router = useRouter();
-
-  // if already signed in -> bounce to /dispatch immediately
-  useEffect(() => {
-    if (hasSessionCookie()) {
-      router.replace("/dispatch");
-    }
-  }, [router]);
-
+  // Otherwise, show the Google sign-in button
   return (
     <main className="p-6 max-w-sm mx-auto text-center">
       <h1 className="text-lg font-semibold mb-4">Sign in</h1>
 
-      <form action={signInWithGoogle}>
+      {/* Server Action form that triggers Google OAuth */}
+      <form
+        action={async () => {
+          "use server";
+          await signIn("google");
+        }}
+      >
         <button
           className="border rounded px-4 py-2 text-sm font-medium w-full"
           type="submit"
@@ -39,7 +31,8 @@ export default function SignInPage() {
       </form>
 
       <p className="text-xs text-gray-500 mt-4">
-        You’ll be redirected to Google, then back here.
+        You’ll be redirected to Google, then back here, then you’ll go to
+        Dispatch.
       </p>
     </main>
   );
