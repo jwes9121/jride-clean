@@ -9,14 +9,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
-
-  // persist session using JWT (no DB required)
-  session: {
-    strategy: "jwt",
-  },
-
+  session: { strategy: "jwt" },
   trustHost: true,
-
   callbacks: {
     async jwt({ token, account, profile }) {
       if (account && profile) {
@@ -34,14 +28,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return session;
     },
-
-    // 👇 This is the part that makes redirect work after Google login
     redirect({ url, baseUrl }) {
-      // If NextAuth tries to redirect to a relative path, keep it
       if (url.startsWith("/")) return `${baseUrl}${url}`;
-      // Allow same-origin redirects
       if (new URL(url).origin === baseUrl) return url;
-      // Default redirect: /dispatch
       return `${baseUrl}/dispatch`;
     },
   },
