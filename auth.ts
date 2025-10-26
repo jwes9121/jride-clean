@@ -1,3 +1,4 @@
+// auth.ts
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
@@ -9,18 +10,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
 
-  // Persist session as a signed JWT cookie instead of relying on a DB.
+  // persist login using a signed JWT cookie
   session: {
     strategy: "jwt",
   },
 
-  // Allow cookies to be issued on custom domains on Vercel.
+  // required for custom domains on Vercel / multiple hosts
   trustHost: true,
 
-  // We’ll also add a very small callback to make sure user is serializable.
   callbacks: {
+    // put profile info onto the token the first time they sign in
     async jwt({ token, account, profile }) {
-      // On first sign-in, account/profile are defined
       if (account && profile) {
         token.email = profile.email;
         token.name = profile.name;
@@ -28,14 +28,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return token;
     },
+
+    // expose that token info on session.user so your UI can read it
     async session({ session, token }) {
-      // Expose token info on session.user
-      if (token && session.user) {
+      if (session.user) {
         session.user.email = token.email as string | undefined;
         session.user.name = token.name as string | undefined;
         session.user.image = token.picture as string | undefined;
       }
       return session;
+    },
+
+    // after successful login, choose where to send them
+    redirect({ url, baseUrl }) {
+      // if NextAuth is trying to go to a relative path ("/something"), keep it
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
+
+      // if it's the same origin already, allow it
+      if (new URL(url).origin === baseUrl) {
+        return url;
+      }
+
+      // DEFAULT: send all successful sign-ins to Dispatch dashboard
+      return `${baseUrl}/dispatch`;
     },
   },
 });
