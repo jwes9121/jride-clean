@@ -1,4 +1,3 @@
-// auth.ts
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
@@ -10,9 +9,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
 
-  // trustHost is important with NextAuth v5 to avoid callback URL weirdness.
+  // Persist session as a signed JWT cookie instead of relying on a DB.
+  session: {
+    strategy: "jwt",
+  },
+
+  // Allow cookies to be issued on custom domains on Vercel.
   trustHost: true,
 
-  // You can add callbacks here to control redirect after login if you want.
-  // For now we’ll just let you through once you're signed in.
+  // We’ll also add a very small callback to make sure user is serializable.
+  callbacks: {
+    async jwt({ token, account, profile }) {
+      // On first sign-in, account/profile are defined
+      if (account && profile) {
+        token.email = profile.email;
+        token.name = profile.name;
+        token.picture = profile.picture;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      // Expose token info on session.user
+      if (token && session.user) {
+        session.user.email = token.email as string | undefined;
+        session.user.name = token.name as string | undefined;
+        session.user.image = token.picture as string | undefined;
+      }
+      return session;
+    },
+  },
 });
