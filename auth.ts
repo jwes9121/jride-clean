@@ -10,16 +10,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
 
-  // persist login using a signed JWT cookie
+  // persist session using JWT (no DB required)
   session: {
     strategy: "jwt",
   },
 
-  // required for custom domains on Vercel / multiple hosts
   trustHost: true,
 
   callbacks: {
-    // put profile info onto the token the first time they sign in
     async jwt({ token, account, profile }) {
       if (account && profile) {
         token.email = profile.email;
@@ -28,8 +26,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return token;
     },
-
-    // expose that token info on session.user so your UI can read it
     async session({ session, token }) {
       if (session.user) {
         session.user.email = token.email as string | undefined;
@@ -39,19 +35,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     },
 
-    // after successful login, choose where to send them
+    // 👇 This is the part that makes redirect work after Google login
     redirect({ url, baseUrl }) {
-      // if NextAuth is trying to go to a relative path ("/something"), keep it
-      if (url.startsWith("/")) {
-        return `${baseUrl}${url}`;
-      }
-
-      // if it's the same origin already, allow it
-      if (new URL(url).origin === baseUrl) {
-        return url;
-      }
-
-      // DEFAULT: send all successful sign-ins to Dispatch dashboard
+      // If NextAuth tries to redirect to a relative path, keep it
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allow same-origin redirects
+      if (new URL(url).origin === baseUrl) return url;
+      // Default redirect: /dispatch
       return `${baseUrl}/dispatch`;
     },
   },
