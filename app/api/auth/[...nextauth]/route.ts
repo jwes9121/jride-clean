@@ -1,7 +1,9 @@
 // app/api/auth/[...nextauth]/route.ts
 
-// This path is EXACTLY four `..` segments to reach the project root
-// from /app/api/auth/[...nextauth]/route.ts
-import { handlers } from "../../../../auth";
+// IMPORTANT:
+// We are five levels deep under /app,
+// so we need "../../../../../auth" to reach the root-level auth.ts.
+// DO NOT shorten this. DO NOT point to "app/auth".
+import { handlers } from "../../../../../auth";
 
 export const { GET, POST } = handlers;
