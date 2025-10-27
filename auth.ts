@@ -28,7 +28,7 @@ const authOptions: any = {
     async jwt(params: any) {
       const { token, account, profile } = params;
 
-      // First time login in this browser session
+      // First login in this browser session
       if (account && profile) {
         if (profile.email) {
           token.email = profile.email;
@@ -47,7 +47,7 @@ const authOptions: any = {
       return token;
     },
 
-    // Called whenever session() runs (server, client)
+    // Called whenever session() runs
     async session(params: any) {
       const { session, token } = params;
 
@@ -58,7 +58,7 @@ const authOptions: any = {
       }
 
       // NextAuth expects session.expires to exist.
-      // If it's missing, add a placeholder ~24h in the future.
+      // If it's missing, add a ~24h placeholder.
       if (!session.expires) {
         session.expires = new Date(
           Date.now() + 1000 * 60 * 60 * 24
@@ -69,9 +69,8 @@ const authOptions: any = {
     },
   },
 
-  // Required in prod
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// Export helpers for App Router
+// Export helpers for App Router / Next.js 13+
 export const { handlers, auth, signIn, signOut } = NextAuth(authOptions as any);
