@@ -1,14 +1,12 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
+import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-// If you want to restrict sign-in to certain emails (like dispatch/admin),
-// you can add them in env and uncomment the authorize check below.
+// Optional email allowlist (admin/dispatcher control)
 const ALLOWED_EMAILS = process.env.ADMIN_EMAILS
-  ? process.env.ADMIN_EMAILS.split(",").map(e => e.trim().toLowerCase())
+  ? process.env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase())
   : [];
 
-export const authOptions: NextAuthOptions = {
-  // We only use Google for now
+const authOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID as string,
@@ -16,20 +14,17 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
-  // Add JWT strategy so we can read info in middleware / server components
   session: {
-    strategy: "jwt",
+    strategy: "jwt" as const,
   },
 
   callbacks: {
     /**
-     * Called whenever a JWT is created/updated.
-     * We copy relevant profile info onto the token.
+     * Runs whenever the JWT is created or updated.
+     * We stash profile fields onto the token.
      */
     async jwt({ token, account, profile }) {
-      // If this is the first time the user signs in this session
       if (account && profile) {
-        // Basic fields we care about
         if (profile.email) {
           token.email = profile.email as string;
         }
@@ -37,8 +32,7 @@ export const authOptions: NextAuthOptions = {
           token.name = profile.name as string;
         }
 
-        // Google sometimes exposes `picture`
-        // types don't always include it, so we guard it.
+        // Google commonly returns `picture`
         const pic =
           (profile as Record<string, any>)?.picture ??
           (profile as Record<string, any>)?.avatar_url ??
@@ -47,13 +41,11 @@ export const authOptions: NextAuthOptions = {
           token.picture = pic as string;
         }
 
-        // OPTIONAL: email allowlist for admins/dispatch
-        // If you want to block anyone not in ALLOWED_EMAILS, you can do:
+        // If you want to block unknown emails in the future, uncomment:
         //
         // if (ALLOWED_EMAILS.length > 0) {
         //   const lowerEmail = String(profile.email || "").toLowerCase();
         //   if (!ALLOWED_EMAILS.includes(lowerEmail)) {
-        //     // We'll "poison" the token so session() can handle it.
         //     token.denied = true;
         //   }
         // }
@@ -63,10 +55,9 @@ export const authOptions: NextAuthOptions = {
     },
 
     /**
-     * Called whenever `auth()` or `getServerSession()` runs.
-     * We move token data onto `session.user`.
-     * IMPORTANT: We only assign when values exist so TS doesn't complain
-     * about possibly-undefined.
+     * Runs when we build the session object.
+     * We move token fields -> session.user safely (only if defined),
+     * to satisfy TypeScript and avoid undefined assignment errors.
      */
     async session({ session, token }) {
       if (session.user) {
@@ -80,7 +71,7 @@ export const authOptions: NextAuthOptions = {
           session.user.image = token.picture as string;
         }
 
-        // OPTIONAL: if you used token.denied above, you could expose it:
+        // If we used token.denied above, we could surface it:
         // if ((token as any).denied) {
         //   (session as any).denied = true;
         // }
@@ -90,10 +81,8 @@ export const authOptions: NextAuthOptions = {
     },
 
     /**
-     * (Optional) control sign-in.
-     * Return `true` to allow, `false` to block.
-     *
-     * If you want to restrict access to certain emails, you can uncomment below.
+     * Optional gate to allow/block login up front.
+     * Uncomment if/when you want to enforce allowlist on sign-in.
      */
     // async signIn({ profile }) {
     //   if (!profile?.email) return false;
@@ -103,22 +92,15 @@ export const authOptions: NextAuthOptions = {
     // },
   },
 
-  // We’ll keep default pages, but you already have /auth/signin UI.
-  // If you ever want to override the error page, etc., you can add:
+  // We let NextAuth control its own pages for callbacks.
+  // You've already got your own /auth/signin UI.
   // pages: {
   //   signIn: "/auth/signin",
   //   error: "/auth/error",
   // },
 
-  // This is required in production for NextAuth on Vercel.
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-/**
- * NextAuth 4.24+ App Router export style:
- *
- * - handlers.GET / handlers.POST are used by /api/auth/[...nextauth]/route.ts
- * - auth() is a helper to read the session server-side
- * - signIn()/signOut() are server actions you can call or link to
- */
+// Export in the App Router style: handlers, auth, signIn, signOut
 export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
