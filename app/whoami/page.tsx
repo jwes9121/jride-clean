@@ -1,4 +1,3 @@
-// app/whoami/page.tsx
 import { auth } from "@/configs/nextauth";
 
 export default async function WhoAmIPage() {
@@ -38,8 +37,7 @@ export default async function WhoAmIPage() {
       )}
 
       <p className="text-xs text-gray-500 mt-6">
-        This page is safe to leave in production. It's just a debug view of the
-        current session.
+        This page shows the active session. It's safe to leave in prod.
       </p>
     </main>
   );
