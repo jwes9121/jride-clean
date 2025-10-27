@@ -1,35 +1,27 @@
-// middleware.ts
 import { NextResponse } from "next/server";
-import { auth } from "./auth";
+import { auth } from "@/configs/nextauth";
 
+// This middleware protects certain routes by requiring login.
 export async function middleware(req: Request) {
   const session = await auth();
-
   const url = new URL(req.url);
   const pathname = url.pathname;
 
-  // What routes require auth?
-  // We will protect /dispatch and /admin*.
-  // We will NOT protect /auth or /api/auth.
-  const needsAuth =
-    pathname.startsWith("/dispatch") ||
-    pathname.startsWith("/admin");
+  // Routes that should require auth:
+  const protectedPrefixes = ["/dispatch", "/admin", "/dash"];
 
-  // If user is not signed in and is trying to access a protected page,
-  // send them to the signin screen instead of 404 or loop.
+  const needsAuth = protectedPrefixes.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+
   if (needsAuth && !session) {
     return NextResponse.redirect(new URL("/auth/signin", req.url));
   }
 
-  // Otherwise, allow request through.
   return NextResponse.next();
 }
 
-// VERY IMPORTANT: matcher defines which routes this middleware runs on.
-// DO NOT include /api/auth or /auth in here, or you'll break NextAuth.
+// Limit middleware to only these routes so /auth and public stuff still loads
 export const config = {
-  matcher: [
-    "/dispatch/:path*",
-    "/admin/:path*",
-  ],
+  matcher: ["/dispatch/:path*", "/admin/:path*", "/dash/:path*"],
 };
