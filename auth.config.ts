@@ -1,4 +1,4 @@
-// auth.ts
+// auth.config.ts
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
@@ -28,7 +28,6 @@ const authOptions: any = {
     async jwt(params: any) {
       const { token, account, profile } = params;
 
-      // First login in this browser session
       if (account && profile) {
         if (profile.email) {
           token.email = profile.email;
@@ -58,7 +57,6 @@ const authOptions: any = {
       }
 
       // NextAuth expects session.expires to exist.
-      // If it's missing, add a ~24h placeholder.
       if (!session.expires) {
         session.expires = new Date(
           Date.now() + 1000 * 60 * 60 * 24
@@ -72,5 +70,5 @@ const authOptions: any = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// Export helpers for App Router / Next.js 13+
+// Export NextAuth handlers for App Router
 export const { handlers, auth, signIn, signOut } = NextAuth(authOptions as any);
