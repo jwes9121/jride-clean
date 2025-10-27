@@ -1,11 +1,13 @@
-﻿import { redirect } from "next/navigation";
-import { auth } from "../auth";
+// app/page.tsx
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-export default async function Home() {
-  const session = await auth();
-  if (session) redirect("/dashboard?fresh=1");
-  redirect("/auth/signin?fresh=1");
+export default function HomePage() {
+  return (
+    <main className="p-6 max-w-lg mx-auto">
+      <h1 className="text-xl font-semibold mb-4">J-Ride Dispatch</h1>
+      <p className="text-sm text-gray-700">
+        Welcome. Please sign in at <code>/auth/signin</code> and then open{" "}
+        <code>/dispatch</code>.
+      </p>
+    </main>
+  );
 }
