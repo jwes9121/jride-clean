@@ -2,7 +2,6 @@
 
 export default function SignInPage() {
   function handleGoogleClick() {
-    // Send browser to the built-in NextAuth auth route for Google
     window.location.href = "/api/auth/signin/google";
   }
 
