@@ -1,5 +1,3 @@
-import { handlers } from "../../../auth";
+import { handlers } from "@/configs/nextauth";
 
-// NextAuth v5 for App Router:
-// handlers has { GET, POST }
 export const { GET, POST } = handlers;

@@ -1,6 +1,6 @@
-﻿// app/components/Header.tsx
+// app/components/Header.tsx
 import Link from "next/link";
-import { auth } from "../../auth";
+import { auth } from "@/configs/nextauth";
 
 export default async function Header() {
   const session = await auth();
