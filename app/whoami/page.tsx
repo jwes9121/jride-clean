@@ -17,7 +17,7 @@ export default async function WhoAmIPage() {
           >
             Sign in
           </a>{" "}
-          and come back.
+            and come back.
         </p>
       ) : (
         <div className="text-sm text-gray-700 space-y-2">
@@ -37,7 +37,7 @@ export default async function WhoAmIPage() {
       )}
 
       <p className="text-xs text-gray-500 mt-6">
-        This page shows the active session. It's safe to leave in prod.
+        This page shows the current session. Safe to leave in prod.
       </p>
     </main>
   );
