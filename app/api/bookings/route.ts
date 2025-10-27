@@ -1,5 +1,6 @@
+﻿import { auth, handlers, signIn, signOut } from "@/configs/nextauth";
 import { NextResponse } from "next/server";
-import { auth } from "../../../auth";
+
 import { computeTriplycFare } from "../../../lib/fare";
 
 // this is what frontend is probably POSTing

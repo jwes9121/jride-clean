@@ -1,48 +1,14 @@
+﻿"use client";
+
+import React from "react";
+
 export default function LiveTripsPage() {
   return (
-    <main
-      style={{
-        padding: "16px",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "1.25rem",
-          fontWeight: 600,
-          marginBottom: "8px",
-        }}
-      >
-        Live Trips
-      </h1>
-
-      <p
-        style={{
-          fontSize: ".9rem",
-          color: "#666",
-          marginBottom: "16px",
-        }}
-      >
-        This is the production /admin/livetrips page. If you can see this
-        after logging in with Google on app.jride.net, auth is working.
+    <main className="p-6">
+      <h1 className="text-xl font-semibold mb-2">Live Trips</h1>
+      <p className="text-sm text-gray-600">
+        Admin / Live Trips placeholder. Page is mounted.
       </p>
-
-      <div
-        style={{
-          width: "100%",
-          minHeight: "320px",
-          border: "1px solid #ccc",
-          borderRadius: "8px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: ".9rem",
-          color: "#444",
-          background: "#f9f9f9",
-        }}
-      >
-        Map / driver tracking panel goes here.
-      </div>
     </main>
   );
-}// deploy ping
+}

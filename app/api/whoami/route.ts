@@ -1,5 +1,5 @@
-﻿// app/api/whoami/route.ts
-import { auth } from "../../../auth";
+﻿import { auth, handlers, signIn, signOut } from "@/configs/nextauth";
+// app/api/whoami/route.ts
 
 export const dynamic = "force-dynamic";
 
@@ -10,3 +10,4 @@ export async function GET() {
     headers: { "content-type": "application/json" },
   });
 }
+

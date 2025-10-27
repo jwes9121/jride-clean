@@ -1,5 +1,6 @@
-﻿// app/dash/page.tsx
-import { auth } from "../../auth";
+﻿import { auth, handlers, signIn, signOut } from "@/configs/nextauth";
+// app/dash/page.tsx
+
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -78,3 +79,4 @@ export default async function DashPage() {
     </>
   );
 }
+

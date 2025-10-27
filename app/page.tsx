@@ -1,5 +1,5 @@
-﻿import { redirect } from "next/navigation";
-import { auth } from "../auth";
+﻿import { auth, handlers, signIn, signOut } from "@/configs/nextauth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,3 +9,4 @@ export default async function Home() {
   if (session) redirect("/dashboard?fresh=1");
   redirect("/auth/signin?fresh=1");
 }
+

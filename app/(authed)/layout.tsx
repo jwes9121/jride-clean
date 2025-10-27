@@ -1,18 +1,13 @@
-import React from "react";
-import { auth } from "../../auth";
-import TopNav from "./components/TopNav";
+﻿import React from "react";
 
-export default async function AuthedLayout({
+export default function AuthedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-
   return (
-    <>
-      <TopNav user={session?.user} />
-      <main style={{ padding: "24px" }}>{children}</main>
-    </>
+    <section className="min-h-screen bg-white text-gray-900">
+      {children}
+    </section>
   );
 }
