@@ -23,7 +23,15 @@ const authOptions = {
      * Runs whenever the JWT is created or updated.
      * We stash profile fields onto the token.
      */
-    async jwt({ token, account, profile }) {
+    async jwt({
+      token,
+      account,
+      profile,
+    }: {
+      token: Record<string, any>;
+      account?: Record<string, any> | null;
+      profile?: Record<string, any> | null;
+    }) {
       if (account && profile) {
         if (profile.email) {
           token.email = profile.email as string;
@@ -34,14 +42,14 @@ const authOptions = {
 
         // Google commonly returns `picture`
         const pic =
-          (profile as Record<string, any>)?.picture ??
-          (profile as Record<string, any>)?.avatar_url ??
+          profile.picture ??
+          profile.avatar_url ??
           null;
         if (pic) {
           token.picture = pic as string;
         }
 
-        // If you want to block unknown emails in the future, uncomment:
+        // If you want to enforce allowlist, uncomment:
         //
         // if (ALLOWED_EMAILS.length > 0) {
         //   const lowerEmail = String(profile.email || "").toLowerCase();
@@ -56,10 +64,16 @@ const authOptions = {
 
     /**
      * Runs when we build the session object.
-     * We move token fields -> session.user safely (only if defined),
-     * to satisfy TypeScript and avoid undefined assignment errors.
+     * We move token fields -> session.user safely (only if defined)
+     * to satisfy TypeScript and avoid assigning possibly-undefined.
      */
-    async session({ session, token }) {
+    async session({
+      session,
+      token,
+    }: {
+      session: Record<string, any>;
+      token: Record<string, any>;
+    }) {
       if (session.user) {
         if (token.email) {
           session.user.email = token.email as string;
@@ -71,9 +85,8 @@ const authOptions = {
           session.user.image = token.picture as string;
         }
 
-        // If we used token.denied above, we could surface it:
-        // if ((token as any).denied) {
-        //   (session as any).denied = true;
+        // if (token.denied) {
+        //   session.denied = true;
         // }
       }
 
@@ -81,10 +94,16 @@ const authOptions = {
     },
 
     /**
-     * Optional gate to allow/block login up front.
-     * Uncomment if/when you want to enforce allowlist on sign-in.
+     * Optional: gate login by email.
+     * Return true to allow, false to block.
+     *
+     * You can uncomment this once you're ready to restrict access.
      */
-    // async signIn({ profile }) {
+    // async signIn({
+    //   profile,
+    // }: {
+    //   profile?: Record<string, any> | null;
+    // }) {
     //   if (!profile?.email) return false;
     //   if (ALLOWED_EMAILS.length === 0) return true;
     //   const lowerEmail = profile.email.toLowerCase();
@@ -92,15 +111,8 @@ const authOptions = {
     // },
   },
 
-  // We let NextAuth control its own pages for callbacks.
-  // You've already got your own /auth/signin UI.
-  // pages: {
-  //   signIn: "/auth/signin",
-  //   error: "/auth/error",
-  // },
-
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// Export in the App Router style: handlers, auth, signIn, signOut
+// Export in App Router style so we can use auth(), signIn(), etc.
 export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
