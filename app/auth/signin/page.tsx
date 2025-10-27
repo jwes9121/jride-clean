@@ -1,7 +1,9 @@
+// app/auth/signin/page.tsx
 "use client";
 
 export default function SignInPage() {
-  function handleGoogleClick() {
+  function handleGoogle() {
+    // kick off Google OAuth using NextAuth's route
     window.location.href = "/api/auth/signin/google";
   }
 
@@ -10,8 +12,8 @@ export default function SignInPage() {
       <h1 className="text-lg font-semibold mb-4">Sign in</h1>
 
       <button
+        onClick={handleGoogle}
         className="border rounded px-4 py-2 text-sm font-medium w-full"
-        onClick={handleGoogleClick}
       >
         Continue with Google
       </button>
