@@ -1,12 +1,14 @@
-﻿// app/api/whoami/route.ts
-import { auth } from "../../../auth";
+// app/api/whoami/route.ts
 
-export const dynamic = "force-dynamic";
+// Temporary stub for production.
+// We'll fill this with real session-aware whoami later.
+
+import { NextResponse } from "next/server";
 
 export async function GET() {
-  const session = await auth();
-  return new Response(JSON.stringify(session ?? {}), {
-    status: 200,
-    headers: { "content-type": "application/json" },
+  return NextResponse.json({
+    ok: true,
+    user: null,
+    note: "whoami stub",
   });
 }
