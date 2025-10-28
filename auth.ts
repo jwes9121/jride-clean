@@ -26,29 +26,21 @@ const authSetup = NextAuth({
     },
   },
 
-  debug: true,
-  logger: {
-    error(code, metadata) {
-      console.error("NEXTAUTH ERROR:", code, metadata);
-    },
-    warn(code) {
-      console.warn("NEXTAUTH WARN:", code);
-    },
-    debug(code, metadata) {
-      console.log("NEXTAUTH DEBUG:", code, metadata);
-    },
-  },
+  // NOTE: We intentionally removed `debug` and `logger`
+  // because Auth.js v5 expects specific logger signatures
+  // and our custom logger was failing type-checking.
 
   secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
 });
 
-// Extract NextAuth handlers
+// Extract NextAuth handlers and helpers
 const { handlers, auth, signIn, signOut } = authSetup;
 
-// Export for app use
+// Export helpers for use in middleware, server components, etc.
 export { auth, signIn, signOut };
 
-// Export GET and POST for route.ts re-exports
+// Export GET and POST so route.ts can re-export them.
+// This is what wires up /api/auth/* (signin, callback, etc.) correctly in App Router.
 export const GET = handlers.GET;
 export const POST = handlers.POST;
