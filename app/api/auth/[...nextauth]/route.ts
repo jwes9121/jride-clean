@@ -1,6 +1,4 @@
-// NextAuth route for production on Vercel
-// Force Node.js runtime so Google OAuth works reliably
+// NextAuth route handler (production, Node.js runtime on Vercel)
 export const runtime = "nodejs";
 
-// Re-export NextAuth route handlers (GET/POST) from the root auth.ts
 export { handlers as GET, handlers as POST } from "../../../../auth";
