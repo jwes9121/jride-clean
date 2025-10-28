@@ -1,12 +1,8 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const {
-  handlers,
-  auth,
-  signIn,
-  signOut,
-} = NextAuth({
+// Initialize NextAuth with providers + config
+const authSetup = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -46,3 +42,15 @@ export const {
   secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
 });
+
+// authSetup gives us: handlers, auth, signIn, signOut
+const { handlers, auth, signIn, signOut } = authSetup;
+
+// Re-export what the rest of the app needs
+export { auth, signIn, signOut };
+
+// Explicitly export GET and POST so the route.ts can just do
+//   export { GET, POST } from "../../../../auth";
+// and Next.js / Vercel will wire /api/auth/* correctly (signin, callback, etc.)
+export const GET = handlers.GET;
+export const POST = handlers.POST;
