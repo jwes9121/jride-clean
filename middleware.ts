@@ -1,28 +1,47 @@
-﻿import { NextResponse } from "next/server";
-import { auth } from "@/configs/nextauth";
+// Middleware that protects certain app routes, but does NOT interfere with NextAuth OAuth.
 
-// This middleware can protect certain routes if we want.
-// For now we’ll allow everything, but we can gate /dispatch or /admin later.
+import { NextResponse } from "next/server";
+import { auth } from "./auth";
+
+// Routes that should require auth
+const PROTECTED_PREFIXES = ["/dispatch", "/admin", "/dash"];
+
+// Routes that must bypass middleware entirely (NextAuth auth flow, callbacks, errors, etc.)
+const AUTH_BYPASS_PREFIXES = [
+  "/api/auth",
+  "/auth/signin",
+  "/auth/error",
+  "/auth/callback",
+];
 
 export async function middleware(req: Request) {
-  const session = await auth();
-
-  // Example: protect /dispatch and /admin
   const url = new URL(req.url);
-  const pathname = url.pathname;
+  const { pathname } = url;
 
-  const protectedPaths = ["/dispatch", "/admin", "/dash"];
-  const needsAuth = protectedPaths.some((p) => pathname.startsWith(p));
-
-  if (needsAuth && !session) {
-    return NextResponse.redirect(new URL("/auth/signin", req.url));
+  // 1. Allow NextAuth/OAuth routes through untouched.
+  if (AUTH_BYPASS_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
+    return NextResponse.next();
   }
 
-  // otherwise allow request
+  // 2. If this path is protected, require a session.
+  const needsAuth = PROTECTED_PREFIXES.some(prefix => pathname.startsWith(prefix));
+
+  if (needsAuth) {
+    const session = await auth();
+    if (!session) {
+      // redirect to /auth/signin if not logged in
+      const signinUrl = new URL("/auth/signin", req.url);
+      return NextResponse.redirect(signinUrl);
+    }
+  }
+
+  // 3. Otherwise allow the request through.
   return NextResponse.next();
 }
 
-// Optional: only run middleware on some paths to reduce overhead.
+// Only run middleware for real app routes, skip _next/static etc.
 export const config = {
-  matcher: ["/dispatch/:path*", "/admin/:path*", "/dash/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/debug-auth-env).*)",
+  ],
 };
