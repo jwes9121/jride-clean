@@ -1,12 +1,8 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const {
-  handlers,
-  auth,
-  signIn,
-  signOut,
-} = NextAuth({
+// Initialize NextAuth with providers + config
+const authSetup = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -14,12 +10,10 @@ export const {
     }),
   ],
 
-  // force JWT to avoid db/session-store issues
   session: {
     strategy: "jwt",
   },
 
-  // force stable cookie name/settings
   cookies: {
     sessionToken: {
       name: "__Secure-next-auth.session-token",
@@ -32,7 +26,6 @@ export const {
     },
   },
 
-  // add debug + logger so we can see real runtime error in Vercel logs
   debug: true,
   logger: {
     error(code, metadata) {
@@ -49,3 +42,16 @@ export const {
   secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
 });
+
+// authSetup gives us these pieces from NextAuth
+const { handlers, auth, signIn, signOut } = authSetup;
+
+// Re-export what the rest of the app needs
+export { auth, signIn, signOut };
+
+// Explicitly export GET and POST so the route.ts can just do:
+//   export const runtime = "nodejs";
+//   export { GET, POST } from "../../../../auth";
+// and Next.js/Vercel will route /api/auth/* (signin, callback, error, etc).
+export const GET = handlers.GET;
+export const POST = handlers.POST;
