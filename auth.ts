@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-const authSetup = NextAuth({
+export const authSetup = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -9,12 +9,12 @@ const authSetup = NextAuth({
     }),
   ],
 
-  // Force JWT session so we don't need a DB
+  // Use stateless JWT sessions (no DB required)
   session: {
     strategy: "jwt",
   },
 
-  // Lock cookie name/flags for production
+  // Stable secure cookie config for prod
   cookies: {
     sessionToken: {
       name: "__Secure-next-auth.session-token",
@@ -27,16 +27,13 @@ const authSetup = NextAuth({
     },
   },
 
-  // Make sure NextAuth trusts the host we told it about in NEXTAUTH_URL
-  // and runs on that base.
-  trustHost: true, // lets NextAuth accept the host from the incoming request
-  // (If needed we could also do: basePath: "/api/auth", but with trustHost + correct NEXTAUTH_URL, it's usually fine.)
+  // trustHost lets Auth.js accept the incoming host (app.jride.net)
+  // and match it with NEXTAUTH_URL without complaining.
+  trustHost: true,
 
+  // must match NEXTAUTH_SECRET in Vercel
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-const { handlers, auth, signIn, signOut } = authSetup;
-
-export { auth, signIn, signOut };
-export const GET = handlers.GET;
-export const POST = handlers.POST;
+// Destructure what NextAuth gives us
+export const { handlers, auth, signIn, signOut } = authSetup;
