@@ -1,13 +1,21 @@
-﻿import { auth, handlers, signIn, signOut } from "@/configs/nextauth";
 // app/api/whoami/route.ts
 
-export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
+import { auth } from "@/configs/nextauth";
 
 export async function GET() {
   const session = await auth();
-  return new Response(JSON.stringify(session ?? {}), {
-    status: 200,
-    headers: { "content-type": "application/json" },
+
+  if (!session) {
+    return NextResponse.json({ authenticated: false, user: null });
+  }
+
+  return NextResponse.json({
+    authenticated: true,
+    user: {
+      email: session.user?.email ?? null,
+      name: session.user?.name ?? null,
+      image: session.user?.image ?? null,
+    },
   });
 }
-

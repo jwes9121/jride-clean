@@ -1,25 +1,60 @@
-﻿"use client";
+"use client";
 
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { platformDeduction } from "../../../lib/fare";
 
 export default function DriverPostTripClient() {
   const params = useSearchParams();
-  const totalParam = params.get("total") || "0";
+  const router = useRouter();
 
+  // total fare passed in the URL, e.g. /driver/post-trip?total=85
+  const totalParam = params.get("total") || "0";
   const total = Number(totalParam);
-  const deduction = platformDeduction(total);
-  const net = total - deduction;
+
+  // breakdown
+  const breakdown = platformDeduction(total);
+  // breakdown = {
+  //   gross: number,
+  //   platformCut: number,
+  //   driverTakeHome: number,
+  //   rate: number
+  // }
 
   return (
     <main className="p-6 max-w-md mx-auto">
-      <h1 className="font-semibold text-lg mb-2">Trip Summary</h1>
-      <p className="text-sm text-gray-700">Total: {total}</p>
-      <p className="text-sm text-gray-700">Platform deduction: {deduction}</p>
-      <p className="text-sm text-gray-900 font-medium">Net: {net}</p>
-      <p className="text-xs text-gray-500 mt-4">
-        (stub) DriverPostTripClient is rendering.
-      </p>
+      <h1 className="text-xl font-semibold mb-4">Trip Complete</h1>
+
+      <section className="text-sm text-gray-700 space-y-2">
+        <div className="flex justify-between">
+          <span className="text-gray-500">Total fare collected:</span>
+          <span className="font-medium text-gray-900">
+            ₱{breakdown.gross}
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-gray-500">
+            Platform fee ({Math.round(breakdown.rate * 100)}%):
+          </span>
+          <span className="font-medium text-gray-900">
+            ₱{breakdown.platformCut}
+          </span>
+        </div>
+
+        <div className="flex justify-between border-t pt-3 mt-3">
+          <span className="text-gray-800 font-semibold">You keep:</span>
+          <span className="text-gray-900 font-bold">
+            ₱{breakdown.driverTakeHome}
+          </span>
+        </div>
+      </section>
+
+      <button
+        className="mt-6 border rounded px-3 py-2 text-sm"
+        onClick={() => router.push("/driver")}
+      >
+        Done
+      </button>
     </main>
   );
 }
