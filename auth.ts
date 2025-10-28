@@ -1,7 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-// Initialize NextAuth with providers + config
 const authSetup = NextAuth({
   providers: [
     Google({
@@ -10,10 +9,12 @@ const authSetup = NextAuth({
     }),
   ],
 
+  // Force JWT session so we don't need a DB
   session: {
     strategy: "jwt",
   },
 
+  // Lock cookie name/flags for production
   cookies: {
     sessionToken: {
       name: "__Secure-next-auth.session-token",
@@ -26,21 +27,16 @@ const authSetup = NextAuth({
     },
   },
 
-  // NOTE: We intentionally removed `debug` and `logger`
-  // because Auth.js v5 expects specific logger signatures
-  // and our custom logger was failing type-checking.
+  // Make sure NextAuth trusts the host we told it about in NEXTAUTH_URL
+  // and runs on that base.
+  trustHost: true, // lets NextAuth accept the host from the incoming request
+  // (If needed we could also do: basePath: "/api/auth", but with trustHost + correct NEXTAUTH_URL, it's usually fine.)
 
   secret: process.env.NEXTAUTH_SECRET,
-  trustHost: true,
 });
 
-// Extract NextAuth handlers and helpers
 const { handlers, auth, signIn, signOut } = authSetup;
 
-// Export helpers for use in middleware, server components, etc.
 export { auth, signIn, signOut };
-
-// Export GET and POST so route.ts can re-export them.
-// This is what wires up /api/auth/* (signin, callback, etc.) correctly in App Router.
 export const GET = handlers.GET;
 export const POST = handlers.POST;
