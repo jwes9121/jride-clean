@@ -1,12 +1,9 @@
-// auth.ts
-
+// auth.ts (or wherever you configure NextAuth v5 / auth.js)
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+// import your DB client (Supabase, Prisma, etc.)
 
-// Create ONE NextAuth instance for the entire app
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  trustHost: true, // important for Vercel/custom domains
-
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -14,11 +11,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
 
-  // Keep config minimal and default. Do NOT override cookie names.
-  // Do NOT manually set session.strategy here unless needed.
-  // Do NOT define custom __Secure-next-auth.session-token, etc.
-  //
-  // This lets NextAuth v5 generate/verify the same JWT session consistently
-  // for both the route handler and for auth() in middleware/debug.
-  secret: process.env.NEXTAUTH_SECRET!,
+  trustHost: true,
+
+  callbacks: {
+    async session({ session, token }) {
+      // session.user.email should exist from Google
+      // Now: look up the role from your DB
+      // Pseudocode here, adapt based on how you query users:
+
+      // Example using Supabase client / query by email:
+      // const { data: rows } = await supabaseAdmin
+      //   .from("users")
+      //   .select("role")
+      //   .eq("email", session.user.email)
+      //   .single();
+
+      // For now (until you wire DB), hard-set yourself as admin:
+      let role = "user";
+      if (session.user?.email === "jwes9121@gmail.com") {
+        role = "admin";
+      }
+
+      // Attach the role into the session the browser/middleware sees
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          role,
+        },
+      };
+    },
+  },
 });
