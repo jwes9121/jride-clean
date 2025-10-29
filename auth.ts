@@ -1,9 +1,8 @@
-// auth.ts (root of the repo)
-
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const authOptions = {
+// Central auth config object that we'll feed to NextAuth()
+const authOptions: NextAuthConfig = {
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -11,12 +10,12 @@ export const authOptions = {
     }),
   ],
 
-  // We’re using JWT sessions (you already configured this)
+  // Force JWT sessions so we don't need a DB
   session: {
     strategy: "jwt",
   },
 
-  // Force a stable, secure cookie name so prod cookies don't get weird
+  // Stable, secure cookie name/flags for production
   cookies: {
     sessionToken: {
       name: "__Secure-next-auth.session-token",
@@ -29,21 +28,21 @@ export const authOptions = {
     },
   },
 
-  // Tell NextAuth “it's safe to trust the incoming host”
-  // (your NEXTAUTH_URL is also set in Vercel)
+  // tell NextAuth to trust the host header coming in
+  // (and you already have NEXTAUTH_URL in Vercel env)
   trustHost: true,
 
-  // MUST have NEXTAUTH_SECRET in prod, and you do ✅
+  // MUST be set in prod, and you do have NEXTAUTH_SECRET in Vercel
   secret: process.env.NEXTAUTH_SECRET!,
 };
 
-// This call to NextAuth(options) RETURNS all the helpers.
+// Call NextAuth() once with our config. This returns all helpers.
 const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
 
-// Re-export what the rest of the app / middleware / pages use:
+// Re-export what the rest of the app / middleware / pages will import:
 export { auth, signIn, signOut };
 
-// MOST IMPORTANT BIT for v5 + App Router + Vercel:
-// We must give Next.js concrete GET/POST handlers to attach to /api/auth/*.
+// Next.js App Router wants concrete GET/POST handlers mounted on /api/auth/*.
+// We expose them here, then [...nextauth]/route.ts re-exports them.
 export const GET = handlers.GET;
 export const POST = handlers.POST;
