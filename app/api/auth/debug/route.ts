@@ -1,10 +1,9 @@
+// app/api/auth/debug/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth, signIn, signOut } from "../../../../auth";
+import { auth, signIn, signOut, handlers } from "../../../../auth";
 
 export async function GET(req: NextRequest) {
-  //
-  // 1. Try to read the active session using NextAuth v5
-  //
+  // 1. See if auth() can read a valid session
   let sessionInfo: any = null;
   let sessionError: any = null;
   try {
@@ -20,18 +19,14 @@ export async function GET(req: NextRequest) {
     };
   }
 
-  //
-  // 2. Inspect headers so we can confirm domain + proto in prod
-  //
+  // 2. Headers / cookies
   const host = req.headers.get("host");
   const forwardedHost = req.headers.get("x-forwarded-host");
   const forwardedProto = req.headers.get("x-forwarded-proto");
   const forwardedFor = req.headers.get("x-forwarded-for");
   const cookieHeader = req.headers.get("cookie");
 
-  //
-  // 3. Environment sanity
-  //
+  // 3. Env vars
   const envCheck = {
     NEXTAUTH_SECRET: !!process.env.NEXTAUTH_SECRET,
     GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
@@ -43,41 +38,36 @@ export async function GET(req: NextRequest) {
     NODE_ENV: process.env.NODE_ENV || null,
   };
 
-  //
-  // 4. Export shape sanity (what root auth.ts is giving us)
-  //
+  // 4. Shape of what auth.ts is exporting in prod
   const exportShape = {
     hasAuth: typeof auth === "function",
     hasSignIn: typeof signIn === "function",
     hasSignOut: typeof signOut === "function",
-    // handlers is optional in your repo so we don't import it anymore
-    hasHandlersGET: false,
-    hasHandlersPOST: false,
+    hasHandlersGET: typeof handlers?.GET === "function",
+    hasHandlersPOST: typeof handlers?.POST === "function",
   };
 
-  //
-  // 5. Build response
-  //
-  const body = {
-    requestInfo: {
-      host,
-      forwardedHost,
-      forwardedProto,
-      forwardedFor,
-      cookiesPresent: !!cookieHeader,
+  return NextResponse.json(
+    {
+      requestInfo: {
+        host,
+        forwardedHost,
+        forwardedProto,
+        forwardedFor,
+        cookiesPresent: !!cookieHeader,
+      },
+      sessionInfo,
+      sessionError,
+      envCheck,
+      exportShape,
+      hint: [
+        "forwardedProto MUST be 'https' in production.",
+        "host/forwardedHost MUST be app.jride.net, not *.vercel.app.",
+        "cookiesPresent should be true after you log in once.",
+        "sessionInfo.user should NOT be null after successful Google login.",
+        "If cookiesPresent=true but sessionInfo.user=null, middleware or cookie domain/path is wrong and causes loops.",
+      ],
     },
-    sessionInfo,
-    sessionError,
-    envCheck,
-    exportShape,
-    hint: [
-      "forwardedProto MUST be 'https' in production.",
-      "host/forwardedHost MUST be app.jride.net, not *.vercel.app.",
-      "cookiesPresent should be true after you log in once.",
-      "sessionInfo.user should NOT be null after successful Google login.",
-      "If cookiesPresent=true but sessionInfo.user=null, middleware or cookie domain/path is wrong and causes loops.",
-    ],
-  };
-
-  return NextResponse.json(body, { status: 200 });
+    { status: 200 }
+  );
 }
