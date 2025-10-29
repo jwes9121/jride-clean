@@ -1,91 +1,39 @@
-// middleware.ts
 import { NextResponse } from "next/server";
 import { auth } from "./auth";
 
-// Routes that require being logged in at all
 const PROTECTED_PREFIXES = ["/dispatch", "/admin", "/dash"];
+const AUTH_BYPASS_PREFIXES = ["/api/auth", "/auth/signin", "/auth/error", "/auth/callback"];
 
-// Routes that must bypass middleware completely (login flow, callback, errors, etc.)
-const AUTH_BYPASS_PREFIXES = [
-  "/api/auth",
-  "/auth/signin",
-  "/auth/error",
-  "/auth/callback",
-];
-
-// For a given path, what role do we require?
 function requiredRoleForPath(pathname: string): "admin" | "dispatcher" | "user" {
-  if (pathname.startsWith("/admin")) {
-    return "admin"; // admin-only
-  }
-
-  if (pathname.startsWith("/dispatch")) {
-    return "dispatcher"; // dispatcher or admin
-  }
-
-  if (pathname.startsWith("/dash")) {
-    return "user"; // any logged-in user
-  }
-
+  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname.startsWith("/dispatch")) return "dispatcher";
+  if (pathname.startsWith("/dash")) return "user";
   return "user";
 }
 
 export default async function middleware(req: Request) {
-  const url = new URL(req.url);
-  const { pathname } = url;
+  const { pathname } = new URL(req.url);
 
-  // 1. Let auth callbacks / signin / error continue untouched
-  if (AUTH_BYPASS_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
-    return NextResponse.next();
-  }
+  if (AUTH_BYPASS_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
-  // 2. If this path isn't one we care about, allow it
-  const needsAuth = PROTECTED_PREFIXES.some(prefix =>
-    pathname.startsWith(prefix)
-  );
-  if (!needsAuth) {
-    return NextResponse.next();
-  }
+  const needsAuth = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+  if (!needsAuth) return NextResponse.next();
 
-  // 3. Get session
   const session = await auth();
+  if (!session?.user) return NextResponse.redirect(new URL("/auth/signin", req.url));
 
-  // 3a. If not logged in, send to /auth/signin
-  if (!session || !session.user) {
-    const signinUrl = new URL("/auth/signin", req.url);
-    return NextResponse.redirect(signinUrl);
-  }
-
-  // 4. Role check
   const userRole = (session.user as any).role ?? "user";
   const needRole = requiredRoleForPath(pathname);
 
-  // role rules:
-  // - admin can see everything
-  // - dispatcher can see dispatcher + user
-  // - user can only see user
-  const roleAllowsAccess = (() => {
-    if (needRole === "user") return true;
-    if (needRole === "dispatcher") {
-      return userRole === "dispatcher" || userRole === "admin";
-    }
-    if (needRole === "admin") {
-      return userRole === "admin";
-    }
-    return false;
-  })();
+  const ok =
+    needRole === "user" ||
+    (needRole === "dispatcher" && (userRole === "dispatcher" || userRole === "admin")) ||
+    (needRole === "admin" && userRole === "admin");
 
-  if (!roleAllowsAccess) {
-    // not allowed -> bounce somewhere safe
-    return NextResponse.redirect(new URL("/dispatch", req.url));
-  }
-
-  // 5. all good
+  if (!ok) return NextResponse.redirect(new URL("/dispatch", req.url));
   return NextResponse.next();
 }
 
-// IMPORTANT: matcher must NOT use capture groups or lookaheads.
-// We just directly list which routes middleware should run on.
 export const config = {
   matcher: [
     "/dispatch",
