@@ -1,14 +1,12 @@
-// auth.ts (root of repo)
+// auth.ts
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-// This is the ONLY source of truth for auth in the app.
+// Create ONE NextAuth instance for the entire app
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // Required in Vercel/custom domain setups
-  trustHost: true,
+  trustHost: true, // important for Vercel/custom domains
 
-  // Your providers (Google OAuth)
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -16,19 +14,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
 
-  // We are fine with the default session/cookie behavior.
-  // Do NOT force legacy cookie names.
-  // Do NOT override "__Secure-next-auth.session-token".
-  // Do NOT manually set session.strategy here unless we have a real reason.
+  // Keep config minimal and default. Do NOT override cookie names.
+  // Do NOT manually set session.strategy here unless needed.
+  // Do NOT define custom __Secure-next-auth.session-token, etc.
   //
-  // NextAuth v5 will default to JWT-style sessions anyway.
-  // If you later need callbacks (to inject role, etc.), we'll add them here.
-  //
-  // callbacks: {
-  //   async session({ session, token }) {
-  //     // you can enrich session.user here if needed
-  //     return session;
-  //   },
-  // },
+  // This lets NextAuth v5 generate/verify the same JWT session consistently
+  // for both the route handler and for auth() in middleware/debug.
   secret: process.env.NEXTAUTH_SECRET!,
 });
