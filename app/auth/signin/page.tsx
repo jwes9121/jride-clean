@@ -4,7 +4,7 @@ export default function SignInPage() {
   return (
     <main className="flex min-h-screen items-center justify-center">
       <div className="rounded-xl border p-6 shadow">
-        <h1 className="text-xl font-semibold mb-4">Sign in</h1>
+        <h2 className="text-xl font-semibold mb-4">Sign in</h2>
         <GoogleSignInButton />
       </div>
     </main>
