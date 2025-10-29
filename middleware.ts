@@ -1,41 +1,23 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { auth } from "./auth"; // <-- root-relative
+// middleware.ts at project root
+import { auth } from "./auth"
 
-const protectedPaths = [
-  "/",
-  "/dashboard",
-  "/dispatch",
-  "/admin",
-  "/admin/livetrips",
-  "/admin/verification",
-  "/whoami",
-];
-
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  const needsAuth = protectedPaths.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
-  );
-
-  if (!needsAuth) {
-    return NextResponse.next();
-  }
-
-  const session = await auth();
-
-  if (!session?.user) {
-    const signInUrl = new URL("/auth/signin", req.url);
-    signInUrl.searchParams.set("callbackUrl", req.url);
-    return NextResponse.redirect(signInUrl);
-  }
-
-  return NextResponse.next();
-}
+export default auth((req) => {
+  // you can add custom logic here if needed
+})
 
 export const config = {
   matcher: [
-    "/((?!api/auth|auth|_next/static|_next/image|favicon.ico|.*\\..*).*)",
+    // PROTECT these:
+    "/admin/:path*",
+    "/dispatch/:path*",
+    "/whoami",
+    "/api/secure/:path*",
+
+    // DO NOT protect:
+    // - /api/auth/*
+    // - /auth/*
+    // - static assets
+    // - _next/*
+    // - favicon, etc.
   ],
-};
+}
