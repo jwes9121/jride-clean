@@ -1,47 +1,48 @@
-// Middleware that protects certain app routes, but does NOT interfere with NextAuth OAuth.
-
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { auth } from "./auth";
 
-// Routes that should require auth
-const PROTECTED_PREFIXES = ["/dispatch", "/admin", "/dash"];
-
-// Routes that must bypass middleware entirely (NextAuth auth flow, callbacks, errors, etc.)
-const AUTH_BYPASS_PREFIXES = [
-  "/api/auth",
-  "/auth/signin",
-  "/auth/error",
-  "/auth/callback",
+// define which pages require login
+const protectedPaths = [
+  "/",
+  "/dashboard",
+  "/dispatch",
+  "/admin",
+  "/admin/livetrips",
+  "/admin/verification",
+  "/whoami",
 ];
 
-export async function middleware(req: Request) {
-  const url = new URL(req.url);
-  const { pathname } = url;
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-  // 1. Allow NextAuth/OAuth routes through untouched.
-  if (AUTH_BYPASS_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
+  // does this path need auth?
+  const needsAuth = protectedPaths.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
+
+  if (!needsAuth) {
+    // public route, let it through
     return NextResponse.next();
   }
 
-  // 2. If this path is protected, require a session.
-  const needsAuth = PROTECTED_PREFIXES.some(prefix => pathname.startsWith(prefix));
+  // check session via NextAuth v5
+  const session = await auth();
 
-  if (needsAuth) {
-    const session = await auth();
-    if (!session) {
-      // redirect to /auth/signin if not logged in
-      const signinUrl = new URL("/auth/signin", req.url);
-      return NextResponse.redirect(signinUrl);
-    }
+  if (!session?.user) {
+    // not logged in -> go to signin (public), not loop
+    const signInUrl = new URL("/auth/signin", req.url);
+    signInUrl.searchParams.set("callbackUrl", req.url);
+    return NextResponse.redirect(signInUrl);
   }
 
-  // 3. Otherwise allow the request through.
+  // logged in, pass through
   return NextResponse.next();
 }
 
-// Only run middleware for real app routes, skip _next/static etc.
+// IMPORTANT: exclude auth-related and static stuff
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/debug-auth-env).*)",
+    "/((?!api/auth|auth|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };
