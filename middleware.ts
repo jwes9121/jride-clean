@@ -5,7 +5,7 @@ import { auth } from "./auth";
 // Routes that require being logged in at all
 const PROTECTED_PREFIXES = ["/dispatch", "/admin", "/dash"];
 
-// Routes that must bypass middleware completely (login flow, callback, static, etc.)
+// Routes that must bypass middleware completely (login flow, callback, errors, etc.)
 const AUTH_BYPASS_PREFIXES = [
   "/api/auth",
   "/auth/signin",
@@ -13,21 +13,18 @@ const AUTH_BYPASS_PREFIXES = [
   "/auth/callback",
 ];
 
-// Helper: decide what level of access a route needs
+// For a given path, what role do we require?
 function requiredRoleForPath(pathname: string): "admin" | "dispatcher" | "user" {
-  // Admin pages
   if (pathname.startsWith("/admin")) {
-    return "admin";
+    return "admin"; // admin-only
   }
 
-  // Dispatch panel pages (dispatchers and admins should both see this)
   if (pathname.startsWith("/dispatch")) {
-    return "dispatcher";
+    return "dispatcher"; // dispatcher or admin
   }
 
-  // Dash or other internal pages -> basic logged-in user is enough for now
   if (pathname.startsWith("/dash")) {
-    return "user";
+    return "user"; // any logged-in user
   }
 
   return "user";
@@ -37,66 +34,65 @@ export default async function middleware(req: Request) {
   const url = new URL(req.url);
   const { pathname } = url;
 
-  // 1. Allow bypass routes through untouched
+  // 1. Let auth callbacks / signin / error continue untouched
   if (AUTH_BYPASS_PREFIXES.some(prefix => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
-  // 2. Check: does this route require login?
-  const needsAuth = PROTECTED_PREFIXES.some(prefix => pathname.startsWith(prefix));
+  // 2. If this path isn't one we care about, allow it
+  const needsAuth = PROTECTED_PREFIXES.some(prefix =>
+    pathname.startsWith(prefix)
+  );
   if (!needsAuth) {
-    // Public route, allow
     return NextResponse.next();
   }
 
-  // 3. Get the session (auth() comes from NextAuth v5 / auth.js root config)
+  // 3. Get session
   const session = await auth();
 
-  // 3a. No session? -> send to signin
+  // 3a. If not logged in, send to /auth/signin
   if (!session || !session.user) {
     const signinUrl = new URL("/auth/signin", req.url);
     return NextResponse.redirect(signinUrl);
   }
 
-  // 4. Role enforcement
-  // We'll assume you attach role info either:
-  //   - into the session as session.user.role
-  //   - OR you can later fetch from DB here if you haven't injected role into session yet.
-
-  // For now, try to read it from session.user.role.
-  // You will add this field in your auth.ts config (step 4 below).
+  // 4. Role check
   const userRole = (session.user as any).role ?? "user";
   const needRole = requiredRoleForPath(pathname);
 
-  // Allowed combinations:
-  // admin can see everything
-  // dispatcher can see dispatcher-level and user-level
-  // user can only see user-level
+  // role rules:
+  // - admin can see everything
+  // - dispatcher can see dispatcher + user
+  // - user can only see user
   const roleAllowsAccess = (() => {
-    if (needRole === "user") return true; // any logged-in user ok
+    if (needRole === "user") return true;
     if (needRole === "dispatcher") {
-        return userRole === "dispatcher" || userRole === "admin";
+      return userRole === "dispatcher" || userRole === "admin";
     }
     if (needRole === "admin") {
-        return userRole === "admin";
+      return userRole === "admin";
     }
     return false;
   })();
 
   if (!roleAllowsAccess) {
-    // Not authorized -> you can either redirect, or show 403
-    // We'll just redirect to /dispatch for now to keep UX simple
+    // not allowed -> bounce somewhere safe
     return NextResponse.redirect(new URL("/dispatch", req.url));
   }
 
-  // 5. All checks passed
+  // 5. all good
   return NextResponse.next();
 }
 
-// Only run middleware for real app routes, skip static assets, etc.
+// IMPORTANT: matcher must NOT use capture groups or lookaheads.
+// We just directly list which routes middleware should run on.
 export const config = {
   matcher: [
-    // Apply to everything except static assets, Next internals, icons, and the debug-auth page if you have one
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(png|jpg|svg|ico|css|js)$).*)",
+    "/dispatch",
+    "/dispatch/:path*",
+    "/admin",
+    "/admin/:path*",
+    "/dash",
+    "/dash/:path*",
   ],
 };
