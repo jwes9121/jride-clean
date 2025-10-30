@@ -1,25 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 
-/** ========= Types ========= */
-type Driver = {
-  id: string;
-  name: string | null;
-  town: string | null;
-  online: boolean;
-};
+const PickupMapModal = dynamic(() => import("@/components/PickupMapModal"), { ssr: false });
 
-type BookingStatus =
-  | "pending"
-  | "assigned"
-  | "en_route"
-  | "arrived"
-  | "completed"
-  | "cancelled"
-  | string;
-
+type Driver = { id: string; name: string | null; town: string | null; online: boolean };
+type BookingStatus = "pending" | "assigned" | "en_route" | "arrived" | "completed" | "cancelled" | string;
 type Booking = {
   id: string;
   rider_name: string | null;
@@ -30,9 +18,7 @@ type Booking = {
   assigned_driver_id: string | null;
   created_at: string;
 };
-
 type TownRow = { name: string; color: string };
-
 type Candidate = {
   driver_id: string;
   name: string | null;
@@ -41,11 +27,10 @@ type Candidate = {
   busy: boolean;
   lat: number | null;
   lng: number | null;
-  distance_km: number | null; // straight line
-  eta_min: number | null; // straight line at 20kph (fallback)
+  distance_km: number | null;
+  eta_min: number | null;
 };
 
-/** ========= Small toast ========= */
 type Toast = { id: string; title: string; description?: string };
 function useToast() {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -57,25 +42,16 @@ function useToast() {
   return { toasts, push };
 }
 
-/** ========= Road ETA helper (/api/eta) ========= */
-async function roadEta(
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number
-): Promise<{ minutes: number | null; km: number | null } | null> {
+async function roadEta(fromLat: number, fromLng: number, toLat: number, toLng: number) {
   const q = new URLSearchParams({
-    fromLat: String(fromLat),
-    fromLng: String(fromLng),
-    toLat: String(toLat),
-    toLng: String(toLng),
+    fromLat: String(fromLat), fromLng: String(fromLng),
+    toLat: String(toLat), toLng: String(toLng),
   });
   const r = await fetch(`/api/eta?${q.toString()}`, { cache: "no-store" });
   if (!r.ok) return null;
   return (await r.json()) as { minutes: number | null; km: number | null };
 }
 
-/** ========= Page ========= */
 export default function DispatchPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -85,26 +61,21 @@ export default function DispatchPage() {
   const [townDraft, setTownDraft] = useState<Record<string, string>>({});
   const [savingTownId, setSavingTownId] = useState<string | null>(null);
 
-  const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<
-    Record<string, string>
-  >({});
+  const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
-  const [overrideDriverByBooking, setOverrideDriverByBooking] = useState<
-    Record<string, string>
-  >({});
+  const [overrideDriverByBooking, setOverrideDriverByBooking] = useState<Record<string, string>>({});
   const [onlineOnly, setOnlineOnly] = useState(true);
 
-  const [candidatesByBooking, setCandidatesByBooking] = useState<
-    Record<string, Candidate[]>
-  >({});
-
-  // road ETA cache: bookingId:driverId -> pretty label (e.g., "~6m")
+  const [candidatesByBooking, setCandidatesByBooking] = useState<Record<string, Candidate[]>>({});
   const [etaCache, setEtaCache] = useState<Record<string, string>>({});
+
+  // Map modal
+  const [mapOpenFor, setMapOpenFor] = useState<string | null>(null);
+  const [mapInitial, setMapInitial] = useState<{ lat: number; lng: number } | null>(null);
 
   const { toasts, push } = useToast();
 
-  /** ===== Initial loads ===== */
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -120,36 +91,22 @@ export default function DispatchPage() {
     })();
   }, []);
 
-  /** ===== Realtime for bookings ===== */
   useEffect(() => {
     const channel = supabase.channel("bookings-rt");
-    channel.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "bookings" },
-      (payload) => {
-        const row = payload.new as Booking;
-        setBookings((prev) => {
-          const i = prev.findIndex((b) => b.id === row.id);
-          if (i === -1) return [row, ...prev];
-          const copy = [...prev];
-          copy[i] = row;
-          return copy;
-        });
-      }
-    );
-    // Do not return a Promise from useEffect — just subscribe and clean up
+    channel.on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, (payload) => {
+      const row = payload.new as Booking;
+      setBookings((prev) => {
+        const i = prev.findIndex((b) => b.id === row.id);
+        if (i === -1) return [row, ...prev];
+        const copy = [...prev];
+        copy[i] = row;
+        return copy;
+      });
+    });
     channel.subscribe();
-    return () => {
-      try {
-        // @ts-ignore - method exists in supabase-js v2
-        supabase.removeChannel(channel);
-      } catch {
-        /* noop */
-      }
-    };
+    return () => { try { /* @ts-ignore */ supabase.removeChannel(channel); } catch {} };
   }, []);
 
-  /** ===== Derived: busy driver ids ===== */
   const busyDriverIds = useMemo(() => {
     const s = new Set<string>();
     for (const b of bookings) {
@@ -160,7 +117,6 @@ export default function DispatchPage() {
     return s;
   }, [bookings]);
 
-  /** ===== Town helpers ===== */
   const townColor = (t?: string | null) => {
     if (!t) return "#e5e7eb";
     const row = towns.find((x) => x.name.toLowerCase() === t.trim().toLowerCase());
@@ -168,42 +124,29 @@ export default function DispatchPage() {
   };
   const townList = towns.map((t) => t.name);
 
-  /** ===== Load driver candidates (with straight-line ETA) when town exists ===== */
   useEffect(() => {
     (async () => {
-      const idsNeeding = bookings
-        .filter((b) => b.pickup_town && !candidatesByBooking[b.id])
-        .map((b) => b.id);
+      const idsNeeding = bookings.filter((b) => b.pickup_town && !candidatesByBooking[b.id]).map((b) => b.id);
       if (!idsNeeding.length) return;
       const updates: Record<string, Candidate[]> = {};
       for (const id of idsNeeding) {
         const { data, error } = await supabase.rpc("drivers_for_booking", { p_booking_id: id });
         if (!error && data) updates[id] = data as Candidate[];
       }
-      if (Object.keys(updates).length) {
-        setCandidatesByBooking((prev) => ({ ...prev, ...updates }));
-      }
+      if (Object.keys(updates).length) setCandidatesByBooking((prev) => ({ ...prev, ...updates }));
     })();
   }, [bookings, candidatesByBooking]);
 
-  /** ===== Actions (RPCs assumed to exist server-side) ===== */
   async function saveTown(bookingId: string) {
     const town = (townDraft[bookingId] ?? "").trim();
     if (!town) return;
     setSavingTownId(bookingId);
     try {
-      // Uses your existing RPC
-      const { data, error } = await supabase.rpc("set_booking_town", {
-        p_booking_id: bookingId,
-        p_pickup_town: town,
-      });
+      const { data, error } = await supabase.rpc("set_booking_town", { p_booking_id: bookingId, p_pickup_town: town });
       if (error) throw error;
       if (data) {
-        setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b))
-        );
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b)));
       }
-      // refresh candidates for this booking
       const { data: cand } = await supabase.rpc("drivers_for_booking", { p_booking_id: bookingId });
       if (cand) setCandidatesByBooking((prev) => ({ ...prev, [bookingId]: cand as Candidate[] }));
       push({ title: "Town saved" });
@@ -219,16 +162,11 @@ export default function DispatchPage() {
     if (!driverId) return push({ title: "Pick a driver first" });
     setAssigningId(bookingId);
     try {
-      const { data, error } = await supabase.rpc("assign_driver", {
-        p_booking_id: bookingId,
-        p_driver_id: driverId,
-      });
+      const { data, error } = await supabase.rpc("assign_driver", { p_booking_id: bookingId, p_driver_id: driverId });
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b
-          )
+          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
         );
       }
       push({ title: "Assigned ✅" });
@@ -244,20 +182,15 @@ export default function DispatchPage() {
     if (!driverId) return push({ title: "Pick a driver first (override)" });
     const reason = window.prompt("Override reason (required):")?.trim();
     if (!reason) return push({ title: "Override cancelled", description: "Reason required." });
-
     setAssigningId(bookingId);
     try {
       const { data, error } = await supabase.rpc("assign_driver_override", {
-        p_booking_id: bookingId,
-        p_driver_id: driverId,
-        p_reason: reason,
+        p_booking_id: bookingId, p_driver_id: driverId, p_reason: reason,
       });
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b
-          )
+          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
         );
       }
       push({ title: "Assigned (override) ✅" });
@@ -270,34 +203,55 @@ export default function DispatchPage() {
 
   async function setStatus(bookingId: string, next: BookingStatus) {
     try {
-      const { data, error } = await supabase.rpc("update_booking_status", {
-        p_booking_id: bookingId,
-        p_next: next,
-      });
+      const { data, error } = await supabase.rpc("update_booking_status", { p_booking_id: bookingId, p_next: next });
       if (error) throw error;
-      if (data)
-        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b)));
+      if (data) setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b)));
       push({ title: `Status: ${next}` });
     } catch (e: any) {
       push({ title: "Update failed", description: e?.message ?? "Unknown error" });
     }
   }
 
-  function canAssign(b: Booking) {
-    return !!b.pickup_town && b.status === "pending";
+  function canAssign(b: Booking) { return !!b.pickup_town && b.status === "pending"; }
+
+  // Open modal helper
+  function openPickupModal(b: Booking) {
+    const start =
+      b.pickup_lat != null && b.pickup_lng != null
+        ? { lat: b.pickup_lat, lng: b.pickup_lng }
+        : { lat: 16.803, lng: 121.104 }; // Ifugao center fallback
+    setMapInitial(start);
+    setMapOpenFor(b.id);
   }
 
-  /** ===== Render ===== */
+  async function savePickupFromModal(lat: number, lng: number) {
+    const bookingId = mapOpenFor!;
+    try {
+      const { data, error } = await supabase.rpc("set_booking_pickup_point", {
+        p_booking_id: bookingId, p_lat: lat, p_lng: lng,
+      });
+      if (error) throw error;
+      // update local booking + flush ETA cache for that booking
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, pickup_lat: lat, pickup_lng: lng } : b)));
+      setEtaCache((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((k) => { if (k.startsWith(bookingId + ":")) delete next[k]; });
+        return next;
+      });
+      push({ title: "Pickup saved ✅" });
+    } catch (e: any) {
+      push({ title: "Save pickup failed", description: e?.message ?? "Unknown error" });
+    } finally {
+      setMapOpenFor(null);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Dispatch</h1>
         <label className="text-sm flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={onlineOnly}
-            onChange={(e) => setOnlineOnly(e.target.checked)}
-          />
+          <input type="checkbox" checked={onlineOnly} onChange={(e) => setOnlineOnly(e.target.checked)} />
           <span>Online drivers only</span>
         </label>
       </div>
@@ -317,9 +271,7 @@ export default function DispatchPage() {
           </thead>
           <tbody>
             {bookings.map((b) => {
-              const candidates = (candidatesByBooking[b.id] ?? []).filter((c) =>
-                onlineOnly ? c.online : true
-              );
+              const candidates = (candidatesByBooking[b.id] ?? []).filter((c) => (onlineOnly ? c.online : true));
               const selected = selectedDriverByBooking[b.id] ?? "";
               const overrideSelected = overrideDriverByBooking[b.id] ?? "";
 
@@ -328,140 +280,88 @@ export default function DispatchPage() {
                   <td className="py-2">{new Date(b.created_at).toLocaleString()}</td>
                   <td>—</td>
 
-                  {/* Pickup Town + Save */}
                   <td className="py-2">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-block w-3 h-3 rounded-full"
-                        style={{ background: townColor(b.pickup_town) }}
-                      />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ background: townColor(b.pickup_town) }} />
                       <input
                         className="border rounded px-2 py-1 w-44"
                         placeholder="Set town"
                         value={townDraft[b.id] ?? b.pickup_town ?? ""}
                         list="dispatch-towns"
-                        onChange={(e) =>
-                          setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))
-                        }
+                        onChange={(e) => setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))}
                       />
                       <button
                         onClick={() => saveTown(b.id)}
                         disabled={savingTownId === b.id || !(townDraft[b.id] ?? b.pickup_town)}
-                        className={
-                          "px-3 py-1 rounded text-sm text-white " +
-                          (savingTownId === b.id ? "bg-gray-400" : "bg-black")
-                        }
+                        className={"px-3 py-1 rounded text-sm text-white " + (savingTownId === b.id ? "bg-gray-400" : "bg-black")}
                       >
                         {savingTownId === b.id ? "Saving…" : "Save"}
                       </button>
+                      <button
+                        onClick={() => openPickupModal(b)}
+                        className="px-3 py-1 rounded text-sm border bg-white"
+                        title="Pick exact pickup point on map"
+                      >
+                        Set pickup on map
+                      </button>
+                      {b.pickup_lat != null && b.pickup_lng != null && (
+                        <span className="text-xs opacity-60">
+                          ({b.pickup_lat.toFixed(4)}, {b.pickup_lng.toFixed(4)})
+                        </span>
+                      )}
                     </div>
-                    {!b.pickup_town && (
-                      <div className="text-xs opacity-60 mt-1">Set town to enable assignment</div>
-                    )}
+                    {!b.pickup_town && <div className="text-xs opacity-60 mt-1">Set town to enable assignment</div>}
                   </td>
 
-                  {/* Status pill */}
                   <td className="py-2">
                     <span
                       className={
                         "px-2 py-1 rounded text-xs " +
-                        (b.status === "assigned"
-                          ? "bg-green-100"
-                          : b.status === "en_route"
-                          ? "bg-blue-100"
-                          : b.status === "arrived"
-                          ? "bg-yellow-100"
-                          : b.status === "completed"
-                          ? "bg-emerald-100"
-                          : b.status === "cancelled"
-                          ? "bg-red-100"
-                          : "bg-gray-100")
+                        (b.status === "assigned" ? "bg-green-100" :
+                         b.status === "en_route" ? "bg-blue-100" :
+                         b.status === "arrived"  ? "bg-yellow-100" :
+                         b.status === "completed" ? "bg-emerald-100" :
+                         b.status === "cancelled" ? "bg-red-100" : "bg-gray-100")
                       }
                     >
                       {b.status}
                     </span>
                   </td>
 
-                  {/* Assign area */}
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Same-town candidates with ETA (upgrades from straight-line to road ETA) */}
                       <select
                         className="border rounded px-2 py-1"
                         value={selected}
-                        onChange={(e) =>
-                          setSelectedDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))
-                        }
+                        onChange={(e) => setSelectedDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))}
                         disabled={!canAssign(b) || candidates.length === 0}
-                        title={
-                          !b.pickup_town
-                            ? "Set town first"
-                            : candidates.length === 0
-                            ? "No available drivers"
-                            : "Pick driver"
-                        }
+                        title={!b.pickup_town ? "Set town first" : candidates.length === 0 ? "No available drivers" : "Pick driver"}
                       >
                         <option value="">
-                          {b.pickup_town
-                            ? candidates.length
-                              ? `Pick driver (${b.pickup_town})`
-                              : `No available drivers`
-                            : "Set town first"}
+                          {b.pickup_town ? (candidates.length ? `Pick driver (${b.pickup_town})` : `No available drivers`) : "Set town first"}
                         </option>
-
                         {candidates.map((c) => {
-                          // build label with possible road ETA
-                          let label = `${c.name ?? c.driver_id.slice(0, 8)}${
-                            c.busy ? " • busy" : ""
-                          }`;
-
-                          // use straight-line ETA as immediate hint
+                          let label = `${c.name ?? c.driver_id.slice(0, 8)}${c.busy ? " • busy" : ""}`;
                           if (c.eta_min != null) label += ` • ~${Math.max(1, Math.round(c.eta_min))}m (air)`;
-                          else if (c.distance_km != null)
-                            label += ` • ${c.distance_km.toFixed(1)}km (air)`;
-
-                          // if we have coordinates on both ends, lazy-fetch road ETA and cache it
-                          const hasPickup =
-                            b.pickup_lat != null && b.pickup_lng != null;
+                          else if (c.distance_km != null) label += ` • ${c.distance_km.toFixed(1)}km (air)`;
+                          const hasPickup = b.pickup_lat != null && b.pickup_lng != null;
                           const hasDriver = c.lat != null && c.lng != null;
                           const key = `${b.id}:${c.driver_id}`;
-
                           if (hasPickup && hasDriver) {
                             const cached = etaCache[key];
-                            if (cached) {
-                              label = `${c.name ?? c.driver_id.slice(0, 8)}${
-                                c.busy ? " • busy" : ""
-                              } • ${cached}`;
-                            } else {
+                            if (cached) label = `${c.name ?? c.driver_id.slice(0, 8)}${c.busy ? " • busy" : ""} • ${cached}`;
+                            else {
                               (async () => {
-                                const eta = await roadEta(
-                                  c.lat as number,
-                                  c.lng as number,
-                                  b.pickup_lat as number,
-                                  b.pickup_lng as number
-                                );
+                                const eta = await roadEta(c.lat as number, c.lng as number, b.pickup_lat as number, b.pickup_lng as number);
                                 if (eta) {
-                                  const pretty =
-                                    eta.minutes != null
-                                      ? `~${eta.minutes}m`
-                                      : eta.km != null
-                                      ? `${eta.km}km`
-                                      : "—";
-                                  setEtaCache((prev) =>
-                                    prev[key] ? prev : { ...prev, [key]: pretty }
-                                  );
+                                  const pretty = eta.minutes != null ? `~${eta.minutes}m` : eta.km != null ? `${eta.km}km` : "—";
+                                  setEtaCache((prev) => (prev[key] ? prev : { ...prev, [key]: pretty }));
                                 }
                               })();
                             }
                           }
-
                           return (
-                            <option
-                              key={c.driver_id}
-                              value={c.driver_id}
-                              disabled={c.busy}
-                              title={c.busy ? "Busy" : ""}
-                            >
+                            <option key={c.driver_id} value={c.driver_id} disabled={c.busy} title={c.busy ? "Busy" : ""}>
                               {label}
                             </option>
                           );
@@ -470,91 +370,40 @@ export default function DispatchPage() {
 
                       <button
                         onClick={() => handleAssign(b.id)}
-                        disabled={
-                          !canAssign(b) ||
-                          !selected ||
-                          (candidatesByBooking[b.id]?.find((c) => c.driver_id === selected)
-                            ?.busy ?? false) ||
-                          assigningId === b.id
-                        }
-                        className={
-                          "px-3 py-1 rounded text-sm text-white " +
-                          (assigningId === b.id || !canAssign(b) || !selected
-                            ? "bg-gray-400"
-                            : "bg-black")
-                        }
+                        disabled={!canAssign(b) ||
+                                  !selected ||
+                                  (candidatesByBooking[b.id]?.find((c) => c.driver_id === selected)?.busy ?? false) ||
+                                  assigningId === b.id}
+                        className={"px-3 py-1 rounded text-sm text-white " +
+                          (assigningId === b.id || !canAssign(b) || !selected ? "bg-gray-400" : "bg-black")}
                       >
                         {assigningId === b.id ? "Assigning…" : "Assign"}
                       </button>
 
-                      {/* Progress buttons */}
-                      <button
-                        onClick={() => setStatus(b.id, "en_route")}
-                        disabled={b.status !== "assigned"}
-                        className={
-                          "px-3 py-1 rounded text-sm " +
-                          (b.status === "assigned" ? "bg-white border" : "bg-gray-100 text-gray-400")
-                        }
-                      >
-                        En-route
-                      </button>
-                      <button
-                        onClick={() => setStatus(b.id, "arrived")}
-                        disabled={b.status !== "en_route"}
-                        className={
-                          "px-3 py-1 rounded text-sm " +
-                          (b.status === "en_route" ? "bg-white border" : "bg-gray-100 text-gray-400")
-                        }
-                      >
-                        Arrived
-                      </button>
-                      <button
-                        onClick={() => setStatus(b.id, "completed")}
-                        disabled={b.status !== "arrived"}
-                        className={
-                          "px-3 py-1 rounded text-sm " +
-                          (b.status === "arrived" ? "bg-white border" : "bg-gray-100 text-gray-400")
-                        }
-                      >
-                        Complete
-                      </button>
+                      <button onClick={() => setStatus(b.id, "en_route")} disabled={b.status !== "assigned"} className={"px-3 py-1 rounded text-sm " + (b.status === "assigned" ? "bg-white border" : "bg-gray-100 text-gray-400")}>En-route</button>
+                      <button onClick={() => setStatus(b.id, "arrived")}  disabled={b.status !== "en_route"} className={"px-3 py-1 rounded text-sm " + (b.status === "en_route" ? "bg-white border" : "bg-gray-100 text-gray-400")}>Arrived</button>
+                      <button onClick={() => setStatus(b.id, "completed")} disabled={b.status !== "arrived"} className={"px-3 py-1 rounded text-sm " + (b.status === "arrived" ? "bg-white border" : "bg-gray-100 text-gray-400")}>Complete</button>
 
-                      {/* Admin override (any town) */}
                       {b.pickup_town && b.status === "pending" && (
                         <div className="mt-2 p-2 border rounded bg-gray-50">
-                          <div className="text-xs font-semibold mb-1">
-                            Admin override (any town)
-                          </div>
+                          <div className="text-xs font-semibold mb-1">Admin override (any town)</div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <select
                               className="border rounded px-2 py-1"
                               value={overrideSelected}
-                              onChange={(e) =>
-                                setOverrideDriverByBooking((p) => ({
-                                  ...p,
-                                  [b.id]: e.target.value,
-                                }))
-                              }
+                              onChange={(e) => setOverrideDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))}
                             >
                               <option value="">Pick any driver (override)</option>
-                              {drivers
-                                .filter((d) => (onlineOnly ? d.online : true))
-                                .map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.name ?? d.id} {d.town ? `• ${d.town}` : ""}{" "}
-                                    {!d.online ? "• offline" : ""}
-                                  </option>
-                                ))}
+                              {drivers.filter((d) => (onlineOnly ? d.online : true)).map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name ?? d.id} {d.town ? `• ${d.town}` : ""} {!d.online ? "• offline" : ""}
+                                </option>
+                              ))}
                             </select>
                             <button
                               onClick={() => handleAssignOverride(b.id)}
                               disabled={!overrideSelected || assigningId === b.id}
-                              className={
-                                "px-3 py-1 rounded text-sm text-white " +
-                                (!overrideSelected || assigningId === b.id
-                                  ? "bg-gray-400"
-                                  : "bg-black")
-                              }
+                              className={"px-3 py-1 rounded text-sm text-white " + (!overrideSelected || assigningId === b.id ? "bg-gray-400" : "bg-black")}
                               title="Requires reason; audited"
                             >
                               {assigningId === b.id ? "Overriding…" : "Override assign"}
@@ -571,12 +420,15 @@ export default function DispatchPage() {
         </table>
       )}
 
-      {/* Town options for autocomplete */}
-      <datalist id="dispatch-towns">
-        {townList.map((t) => (
-          <option key={t} value={t} />
-        ))}
-      </datalist>
+      <datalist id="dispatch-towns">{townList.map((t) => <option key={t} value={t} />)}</datalist>
+
+      {/* Map modal */}
+      <PickupMapModal
+        open={!!mapOpenFor}
+        initial={mapInitial ?? undefined}
+        onClose={() => setMapOpenFor(null)}
+        onSave={(lat, lng) => savePickupFromModal(lat, lng)}
+      />
 
       {/* Toasts */}
       <div className="fixed bottom-4 right-4 space-y-2">
