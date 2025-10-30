@@ -2,36 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "../../../../auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-function err(msg: string, code = 400) { return NextResponse.json({ error: msg }, { status: code }); }
-function ok(payload: any) { return NextResponse.json(payload); }
-function isAllowed(r?: string) { return r === "admin" || r === "dispatcher"; }
+function jerr(msg: string, code = 400) {
+  return NextResponse.json({ error: msg }, { status: code });
+}
+function jok(data: any) {
+  return NextResponse.json(data);
+}
+const ALLOWED = new Set(["pending", "assigned", "en-route", "arrived", "complete"]);
+const CAN = (r?: string) => r === "admin" || r === "dispatcher";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
   const role = (session?.user as any)?.role;
-  const email = session?.user?.email || "";
-  if (!isAllowed(role)) return err("Forbidden", 403);
+  if (!CAN(role)) return jerr("Forbidden", 403);
 
-  let body: any = null;
-  try { body = await req.json(); } catch { return err("Invalid JSON"); }
-
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {
+    return jerr("Invalid JSON body");
+  }
   const booking_id = String(body.booking_id || "").trim();
-  const status = String(body.status || "").trim().toLowerCase();
-  if (!booking_id) return err("booking_id required");
-  const allowed = ["requested","assigned","enroute","arrived","completed","canceled"];
-  if (allowed.indexOf(status) < 0) return err("invalid status");
+  const status = String(body.status || "").trim();
+
+  if (!booking_id) return jerr("booking_id required");
+  if (!ALLOWED.has(status)) return jerr(`status must be one of: ${Array.from(ALLOWED).join(", ")}`);
 
   const sb = supabaseAdmin();
-  const { data, error } = await sb.from("bookings")
-    .update({ status, dispatcher_email: email })
+  const { data, error } = await sb
+    .from("bookings")
+    .update({ status })
     .eq("id", booking_id)
-    .select("*").single();
+    .select("*")
+    .limit(1)
+    .maybeSingle();
 
-  if (error) return err(error.message, 500);
+  if (error) return jerr(error.message, 500);
+  if (!data) return jerr("Booking not found", 404);
 
-  await sb.from("dispatcher_action_logs").insert({
-    booking_id, action: "status", actor_email: email, details: { status }
-  });
-
-  return ok({ row: data });
+  return jok({ row: data });
 }
