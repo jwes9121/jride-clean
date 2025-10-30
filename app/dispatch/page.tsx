@@ -13,7 +13,14 @@ type Booking = {
   id: string;
   rider_name: string | null;
   pickup_town: string | null;
-  status: "pending" | "assigned" | "en_route" | "arrived" | "completed" | "cancelled" | string;
+  status:
+    | "pending"
+    | "assigned"
+    | "en_route"
+    | "arrived"
+    | "completed"
+    | "cancelled"
+    | string;
   assigned_driver_id: string | null;
   created_at: string;
 };
@@ -35,17 +42,23 @@ export default function DispatchPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [savingTownId, setSavingTownId] = useState<string | null>(null);
-  const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<Record<string, string>>({});
-  const [overrideDriverByBooking, setOverrideDriverByBooking] = useState<Record<string, string>>({});
+  const [selectedDriverByBooking, setSelectedDriverByBooking] =
+    useState<Record<string, string>>({});
+  const [overrideDriverByBooking, setOverrideDriverByBooking] =
+    useState<Record<string, string>>({});
   const [townDraft, setTownDraft] = useState<Record<string, string>>({});
   const { toasts, push } = useToast();
 
+  // Initial fetch (safe: IIFE inside effect; effect itself is not async)
   useEffect(() => {
     (async () => {
       setLoading(true);
       const [d1, d2] = await Promise.all([
         supabase.from("drivers").select(),
-        supabase.from("bookings").select().order("created_at", { ascending: false }),
+        supabase
+          .from("bookings")
+          .select()
+          .order("created_at", { ascending: false }),
       ]);
       if (!d1.error && d1.data) setDrivers(d1.data as Driver[]);
       if (!d2.error && d2.data) setBookings(d2.data as Booking[]);
@@ -53,10 +66,14 @@ export default function DispatchPage() {
     })();
   }, []);
 
+  // Realtime subscription (critical fix: do NOT return subscribe() Promise)
   useEffect(() => {
-    const ch = supabase
-      .channel("bookings-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, (payload) => {
+    const channel = supabase.channel("bookings-rt");
+
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "bookings" },
+      (payload) => {
         const row = payload.new as Booking;
         setBookings((prev) => {
           const i = prev.findIndex((b) => b.id === row.id);
@@ -65,9 +82,16 @@ export default function DispatchPage() {
           copy[i] = row;
           return copy;
         });
-      })
-      .subscribe();
-    return () => supabase.removeChannel(ch);
+      }
+    );
+
+    // Subscribe without returning the Promise
+    channel.subscribe();
+
+    // Proper cleanup
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const driversByTown = useMemo(() => {
@@ -89,7 +113,11 @@ export default function DispatchPage() {
       });
       if (error) throw error;
       if (data) {
-        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b)));
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b
+          )
+        );
       }
       push({ title: "Town saved" });
     } catch (e: any) {
@@ -111,7 +139,11 @@ export default function DispatchPage() {
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, status: "assigned", assigned_driver_id: driverId }
+              : b
+          )
         );
       }
       push({ title: "Assigned ✅" });
@@ -138,7 +170,11 @@ export default function DispatchPage() {
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, status: "assigned", assigned_driver_id: driverId }
+              : b
+          )
         );
       }
       push({ title: "Assigned (override) ✅" });
@@ -151,11 +187,17 @@ export default function DispatchPage() {
 
   async function handleUnassign(bookingId: string) {
     try {
-      const { data, error } = await supabase.rpc("unassign_driver", { p_booking_id: bookingId });
+      const { data, error } = await supabase.rpc("unassign_driver", {
+        p_booking_id: bookingId,
+      });
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: "pending", assigned_driver_id: null } : b))
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, status: "pending", assigned_driver_id: null }
+              : b
+          )
         );
       }
       push({ title: "Unassigned" });
@@ -172,7 +214,9 @@ export default function DispatchPage() {
       });
       if (error) throw error;
       if (data) {
-        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b)));
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b))
+        );
       }
       push({ title: `Status: ${next}` });
     } catch (e: any) {
@@ -240,7 +284,10 @@ export default function DispatchPage() {
                     />
                     <button
                       onClick={() => saveTown(b.id)}
-                      className={"px-3 py-1 rounded text-sm text-white " + (savingTownId === b.id ? "bg-gray-400" : "bg-black")}
+                      className={
+                        "px-3 py-1 rounded text-sm text-white " +
+                        (savingTownId === b.id ? "bg-gray-400" : "bg-black")
+                      }
                       disabled={savingTownId === b.id}
                     >
                       {savingTownId === b.id ? "Saving…" : "Save"}
@@ -272,12 +319,15 @@ export default function DispatchPage() {
 
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Strict Assign (same-town only) */}
+                      {/* Strict same-town assign */}
                       <select
                         className="border rounded px-2 py-1"
                         value={selected}
                         onChange={(e) =>
-                          setSelectedDriverByBooking((prev) => ({ ...prev, [b.id]: e.target.value }))
+                          setSelectedDriverByBooking((prev) => ({
+                            ...prev,
+                            [b.id]: e.target.value,
+                          }))
                         }
                         disabled={!canAssign(b) || !hasTownDrivers}
                         title={
@@ -304,10 +354,15 @@ export default function DispatchPage() {
 
                       <button
                         onClick={() => handleAssign(b.id)}
-                        disabled={!canAssign(b) || !selected || !hasTownDrivers || assigningId === b.id}
+                        disabled={
+                          !canAssign(b) || !selected || !hasTownDrivers || assigningId === b.id
+                        }
                         className={
                           "px-3 py-1 rounded text-sm text-white " +
-                          (assigningId === b.id || !canAssign(b) || !selected || !hasTownDrivers
+                          (assigningId === b.id ||
+                          !canAssign(b) ||
+                          !selected ||
+                          !hasTownDrivers
                             ? "bg-gray-400"
                             : "bg-black")
                         }
@@ -319,45 +374,70 @@ export default function DispatchPage() {
                       <button
                         onClick={() => handleUnassign(b.id)}
                         disabled={!canUnassign(b)}
-                        className={"px-3 py-1 rounded text-sm " + (canUnassign(b) ? "bg-white border" : "bg-gray-100 text-gray-400 cursor-not-allowed")}
+                        className={
+                          "px-3 py-1 rounded text-sm " +
+                          (canUnassign(b)
+                            ? "bg-white border"
+                            : "bg-gray-100 text-gray-400 cursor-not-allowed")
+                        }
                       >
                         Unassign
                       </button>
 
-                      {/* Progress buttons */}
+                      {/* Progress */}
                       <button
                         onClick={() => setStatus(b.id, "en_route")}
                         disabled={!canEnRoute(b)}
-                        className={"px-3 py-1 rounded text-sm " + (canEnRoute(b) ? "bg-white border" : "bg-gray-100 text-gray-400")}
+                        className={
+                          "px-3 py-1 rounded text-sm " +
+                          (canEnRoute(b)
+                            ? "bg-white border"
+                            : "bg-gray-100 text-gray-400")
+                        }
                       >
                         En-route
                       </button>
                       <button
                         onClick={() => setStatus(b.id, "arrived")}
                         disabled={!canArrived(b)}
-                        className={"px-3 py-1 rounded text-sm " + (canArrived(b) ? "bg-white border" : "bg-gray-100 text-gray-400")}
+                        className={
+                          "px-3 py-1 rounded text-sm " +
+                          (canArrived(b)
+                            ? "bg-white border"
+                            : "bg-gray-100 text-gray-400")
+                        }
                       >
                         Arrived
                       </button>
                       <button
                         onClick={() => setStatus(b.id, "completed")}
                         disabled={!canComplete(b)}
-                        className={"px-3 py-1 rounded text-sm " + (canComplete(b) ? "bg-white border" : "bg-gray-100 text-gray-400")}
+                        className={
+                          "px-3 py-1 rounded text-sm " +
+                          (canComplete(b)
+                            ? "bg-white border"
+                            : "bg-gray-100 text-gray-400")
+                        }
                       >
                         Complete
                       </button>
                     </div>
 
-                    {/* Override block */}
+                    {/* Admin override block */}
                     {b.pickup_town && b.status === "pending" && (
                       <div className="mt-2 p-2 border rounded bg-gray-50">
-                        <div className="text-xs font-semibold mb-1">Admin override (any town)</div>
+                        <div className="text-xs font-semibold mb-1">
+                          Admin override (any town)
+                        </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <select
                             className="border rounded px-2 py-1"
-                            value={overrideSelected}
+                            value={overrideDriverByBooking[b.id] ?? ""}
                             onChange={(e) =>
-                              setOverrideDriverByBooking((prev) => ({ ...prev, [b.id]: e.target.value }))
+                              setOverrideDriverByBooking((prev) => ({
+                                ...prev,
+                                [b.id]: e.target.value,
+                              }))
                             }
                           >
                             <option value="">Pick any driver (override)</option>
@@ -369,10 +449,14 @@ export default function DispatchPage() {
                           </select>
                           <button
                             onClick={() => handleAssignOverride(b.id)}
-                            disabled={!overrideSelected || assigningId === b.id}
+                            disabled={
+                              !overrideDriverByBooking[b.id] || assigningId === b.id
+                            }
                             className={
                               "px-3 py-1 rounded text-sm text-white " +
-                              (!overrideSelected || assigningId === b.id ? "bg-gray-400" : "bg-black")
+                              (!overrideDriverByBooking[b.id] || assigningId === b.id
+                                ? "bg-gray-400"
+                                : "bg-black")
                             }
                             title="Requires reason; logs to audit"
                           >
@@ -386,7 +470,9 @@ export default function DispatchPage() {
                     )}
 
                     {!b.pickup_town && b.status === "pending" && (
-                      <div className="text-xs opacity-70 mt-1">Set town to enable assignment</div>
+                      <div className="text-xs opacity-70 mt-1">
+                        Set town to enable assignment
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -401,7 +487,9 @@ export default function DispatchPage() {
         {toasts.map((t) => (
           <div key={t.id} className="bg-black text-white rounded px-3 py-2 shadow">
             <div className="font-semibold">{t.title}</div>
-            {t.description && <div className="text-xs opacity-80">{t.description}</div>}
+            {t.description && (
+              <div className="text-xs opacity-80">{t.description}</div>
+            )}
           </div>
         ))}
       </div>
