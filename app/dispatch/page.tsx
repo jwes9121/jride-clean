@@ -5,7 +5,8 @@ import * as React from "react";
 type DispatchBooking = {
   id: string;
   town: string | null;
-  status: "pending" | "assigned" | "en-route" | "arrived" | "complete" | "accepted" | string;
+  // Keep it simple to avoid TS2367 when comparing string literals
+  status: string;
   driver_id: string | null;
 };
 
@@ -27,7 +28,10 @@ async function safeJson(res: Response) {
     throw new Error(txt || `Non-JSON response (${res.status})`);
   }
 }
-function toastSetter(setter: any, msg: { type: "ok" | "err"; text: string }) {
+function toastSetter(
+  setter: React.Dispatch<React.SetStateAction<{ type: "ok" | "err"; text: string } | null>>,
+  msg: { type: "ok" | "err"; text: string }
+) {
   setter(msg);
   setTimeout(() => setter(null), 2500);
 }
@@ -209,7 +213,7 @@ export default function DispatchPage() {
     }
   }
 
-  async function setStatus(bookingId: string, next: DispatchBooking["status"]) {
+  async function setStatus(bookingId: string, next: string) {
     setBusyId(bookingId);
     try {
       const res = await fetch("/api/dispatch/status", {
@@ -228,13 +232,14 @@ export default function DispatchPage() {
     }
   }
 
-  function StatusBadge({ s }: { s: DispatchBooking["status"] }) {
-    if (s === "assigned") return <Badge color="green">assigned ✓</Badge>;
-    if (s === "en-route") return <Badge color="blue">en-route</Badge>;
-    if (s === "arrived") return <Badge color="blue">arrived</Badge>;
-    if (s === "complete") return <Badge color="green">complete ✓</Badge>;
-    if (s === "pending") return <Badge color="amber">pending</Badge>;
-    return <Badge color="gray">{s}</Badge>;
+  function StatusBadge({ s }: { s: string }) {
+    const val = (s || "").toString();
+    if (val === "assigned") return <Badge color="green">assigned ✓</Badge>;
+    if (val === "en-route") return <Badge color="blue">en-route</Badge>;
+    if (val === "arrived") return <Badge color="blue">arrived</Badge>;
+    if (val === "complete") return <Badge color="green">complete ✓</Badge>;
+    if (val === "pending") return <Badge color="amber">pending</Badge>;
+    return <Badge color="gray">{val}</Badge>;
   }
 
   return (
@@ -267,10 +272,13 @@ export default function DispatchPage() {
           </thead>
           <tbody>
             {rows.map((b) => {
-              const assigned = b.status === "assigned" || !!b.driver_id;
-              const canEnroute = assigned && b.status !== "en-route" && b.status !== "arrived" && b.status !== "complete";
-              const canArrived = (b.status === "en-route" || b.status === "assigned") && b.status !== "arrived" && b.status !== "complete";
-              const canComplete = b.status !== "complete" && (b.status === "arrived" || b.status === "en-route" || b.status === "assigned");
+              // Normalize once to avoid TS literal-comparison warnings
+              const s = (b.status || "").toString();
+
+              const assigned = s === "assigned" || !!b.driver_id;
+              const canEnroute = assigned && !["en-route", "arrived", "complete"].includes(s);
+              const canArrived = (s === "en-route" || s === "assigned") && !["arrived", "complete"].includes(s);
+              const canComplete = s !== "complete" && ["arrived", "en-route", "assigned"].includes(s);
 
               return (
                 <tr key={b.id} className="border-b">
@@ -283,7 +291,7 @@ export default function DispatchPage() {
                     )}
                   </td>
                   <td className="py-2">
-                    <StatusBadge s={b.status} />
+                    <StatusBadge s={s} />
                   </td>
                   <td className="py-2">{b.driver_id ? b.driver_id.slice(0, 8) : "-"}</td>
                   <td className="py-2">
