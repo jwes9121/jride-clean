@@ -27,7 +27,10 @@ async function safeJson(res: Response) {
     throw new Error(txt || `Non-JSON response (${res.status})`);
   }
 }
-
+function toastSetter(setter: any, msg: { type: "ok" | "err"; text: string }) {
+  setter(msg);
+  setTimeout(() => setter(null), 2500);
+}
 function Badge({
   color = "gray",
   children,
@@ -49,7 +52,7 @@ function Badge({
   );
 }
 
-/* ---------- INLINE TOWN EDITOR ---------- */
+/* ---------- TOWN EDITOR ---------- */
 function TownEditor({
   bookingId,
   value,
@@ -61,7 +64,6 @@ function TownEditor({
 }) {
   const [town, setTown] = React.useState(value ?? "");
   const [busy, setBusy] = React.useState(false);
-
   async function save() {
     setBusy(true);
     try {
@@ -79,7 +81,6 @@ function TownEditor({
       setBusy(false);
     }
   }
-
   return (
     <span className="inline-flex gap-2 items-center">
       <input
@@ -166,10 +167,8 @@ function DriverSelect({
 /* ---------- PAGE ---------- */
 export default function DispatchPage() {
   const [rows, setRows] = React.useState<DispatchBooking[]>([]);
-  const [globalMsg, setGlobalMsg] = React.useState<{ type: "ok" | "err"; text: string } | null>(
-    null
-  );
-  const [assigning, setAssigning] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
@@ -179,18 +178,16 @@ export default function DispatchPage() {
 
   React.useEffect(() => {
     load();
-    // small auto-refresh to keep the table fresh
     const id = setInterval(load, 15000);
     return () => clearInterval(id);
   }, []);
 
-  function updateTownLocal(bookingId: string, town: string) {
+  function setTownLocal(bookingId: string, town: string) {
     setRows((prev) => prev.map((b) => (b.id === bookingId ? { ...b, town } : b)));
   }
 
   async function assignDriver(bookingId: string, driverId: string, driverLabel: string) {
-    setAssigning(bookingId);
-    setGlobalMsg(null);
+    setBusyId(bookingId);
     try {
       const res = await fetch("/api/dispatch/assign", {
         method: "POST",
@@ -204,28 +201,55 @@ export default function DispatchPage() {
           b.id === bookingId ? { ...b, driver_id: driverId, status: "assigned" } : b
         )
       );
-      setGlobalMsg({ type: "ok", text: `Assigned ✓ (${driverLabel || driverId.slice(0, 8)})` });
-      setTimeout(() => setGlobalMsg(null), 2500);
+      toastSetter(setToast, { type: "ok", text: `Assigned ✓ (${driverLabel || driverId.slice(0, 8)})` });
     } catch (e: any) {
-      setGlobalMsg({ type: "err", text: e?.message || "Failed to assign" });
+      toastSetter(setToast, { type: "err", text: e?.message || "Failed to assign" });
     } finally {
-      setAssigning(null);
+      setBusyId(null);
     }
+  }
+
+  async function setStatus(bookingId: string, next: DispatchBooking["status"]) {
+    setBusyId(bookingId);
+    try {
+      const res = await fetch("/api/dispatch/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: bookingId, status: next }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error || "Failed to update status");
+      setRows((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: next } : b)));
+      toastSetter(setToast, { type: "ok", text: `Status → ${next}` });
+    } catch (e: any) {
+      toastSetter(setToast, { type: "err", text: e?.message || "Update failed" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function StatusBadge({ s }: { s: DispatchBooking["status"] }) {
+    if (s === "assigned") return <Badge color="green">assigned ✓</Badge>;
+    if (s === "en-route") return <Badge color="blue">en-route</Badge>;
+    if (s === "arrived") return <Badge color="blue">arrived</Badge>;
+    if (s === "complete") return <Badge color="green">complete ✓</Badge>;
+    if (s === "pending") return <Badge color="amber">pending</Badge>;
+    return <Badge color="gray">{s}</Badge>;
   }
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Dispatch Panel</h1>
 
-      {globalMsg && (
+      {toast && (
         <div
           className={`px-3 py-2 rounded border text-sm ${
-            globalMsg.type === "ok"
+            toast.type === "ok"
               ? "bg-green-50 border-green-200 text-green-800"
               : "bg-red-50 border-red-200 text-red-800"
           }`}
         >
-          {globalMsg.text}
+          {toast.text}
         </div>
       )}
 
@@ -241,44 +265,68 @@ export default function DispatchPage() {
               <th className="py-2">Actions</th>
             </tr>
           </thead>
-        <tbody>
-          {rows.map((b) => {
-            const isAssigned = b.status === "assigned" || !!b.driver_id;
-            return (
-              <tr key={b.id} className="border-b">
-                <td className="py-2">{b.id.slice(0, 8)}</td>
-                <td className="py-2">
-                  {b.town ? (
-                    b.town
-                  ) : (
-                    <TownEditor bookingId={b.id} value={b.town} onSaved={(t) => updateTownLocal(b.id, t)} />
-                  )}
-                </td>
-                <td className="py-2">
-                  {isAssigned ? (
-                    <Badge color="green">assigned ✓</Badge>
-                  ) : b.status === "pending" ? (
-                    <Badge color="amber">pending</Badge>
-                  ) : (
-                    <Badge color="gray">{b.status}</Badge>
-                  )}
-                </td>
-                <td className="py-2">{b.driver_id ? b.driver_id.slice(0, 8) : "-"}</td>
-                <td className="py-2">
-                  {b.town ? (
-                    <DriverSelect
-                      town={b.town}
-                      disabled={isAssigned || assigning === b.id}
-                      onPick={(driverId, label) => assignDriver(b.id, driverId, label)}
-                    />
-                  ) : (
-                    <span className="text-xs text-gray-500">Set town to enable assignment</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
+          <tbody>
+            {rows.map((b) => {
+              const assigned = b.status === "assigned" || !!b.driver_id;
+              const canEnroute = assigned && b.status !== "en-route" && b.status !== "arrived" && b.status !== "complete";
+              const canArrived = (b.status === "en-route" || b.status === "assigned") && b.status !== "arrived" && b.status !== "complete";
+              const canComplete = b.status !== "complete" && (b.status === "arrived" || b.status === "en-route" || b.status === "assigned");
+
+              return (
+                <tr key={b.id} className="border-b">
+                  <td className="py-2">{b.id.slice(0, 8)}</td>
+                  <td className="py-2">
+                    {b.town ? (
+                      b.town
+                    ) : (
+                      <TownEditor bookingId={b.id} value={b.town} onSaved={(t) => setTownLocal(b.id, t)} />
+                    )}
+                  </td>
+                  <td className="py-2">
+                    <StatusBadge s={b.status} />
+                  </td>
+                  <td className="py-2">{b.driver_id ? b.driver_id.slice(0, 8) : "-"}</td>
+                  <td className="py-2">
+                    {b.town ? (
+                      <div className="flex items-center gap-2">
+                        <DriverSelect
+                          town={b.town}
+                          disabled={assigned || busyId === b.id}
+                          onPick={(driverId, label) => assignDriver(b.id, driverId, label)}
+                        />
+                        <button
+                          className="px-3 py-1 border rounded disabled:opacity-50"
+                          disabled={!canEnroute || busyId === b.id}
+                          onClick={() => setStatus(b.id, "en-route")}
+                          title="Mark as en-route"
+                        >
+                          En-route
+                        </button>
+                        <button
+                          className="px-3 py-1 border rounded disabled:opacity-50"
+                          disabled={!canArrived || busyId === b.id}
+                          onClick={() => setStatus(b.id, "arrived")}
+                          title="Mark as arrived"
+                        >
+                          Arrived
+                        </button>
+                        <button
+                          className="px-3 py-1 border rounded disabled:opacity-50"
+                          disabled={!canComplete || busyId === b.id}
+                          onClick={() => setStatus(b.id, "complete")}
+                          title="Mark as complete"
+                        >
+                          Complete
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">Set town to enable assignment</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
         </table>
       </div>
     </div>
