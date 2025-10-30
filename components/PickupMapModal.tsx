@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css"; // 👈 required for the map to appear
 
 type Props = {
   open: boolean;
@@ -15,21 +16,20 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(initial ?? null);
+  const [tokenMissing, setTokenMissing] = useState(false);
 
   useEffect(() => {
     if (!open) return;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!token) {
-      console.warn("NEXT_PUBLIC_MAPBOX_TOKEN is not set");
+      setTokenMissing(true);
       return;
     }
+    setTokenMissing(false);
     mapboxgl.accessToken = token;
 
-    const start =
-      initial ??
-      // Ifugao rough center fallback
-      { lat: 16.803, lng: 121.104 };
+    const start = initial ?? { lat: 16.803, lng: 121.104 }; // Ifugao center fallback
 
     const map = new mapboxgl.Map({
       container: mapDiv.current as HTMLDivElement,
@@ -62,7 +62,7 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
       markerRef.current = null;
       mapRef.current = null;
     };
-  }, [open]);
+  }, [open, initial]);
 
   if (!open) return null;
 
@@ -73,7 +73,22 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
           <div className="font-semibold">Set Pickup Location</div>
           <button className="text-sm underline" onClick={onClose}>Close</button>
         </div>
-        <div className="h-[60vh]" ref={mapDiv} />
+
+        {/* Map area */}
+        <div className="relative h-[60vh]">
+          <div ref={mapDiv} className="absolute inset-0" />
+          {tokenMissing && (
+            <div className="absolute inset-0 flex items-center justify-center text-center p-6">
+              <div className="text-sm">
+                <div className="font-semibold mb-2">Mapbox token missing</div>
+                <div>
+                  Set <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> in Vercel (Production), then redeploy.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="px-4 py-3 border-t flex items-center justify-between">
           <div className="text-xs opacity-70">
             {coords ? `Lat: ${coords.lat.toFixed(6)}  Lng: ${coords.lng.toFixed(6)}` : "Click map to set point"}
