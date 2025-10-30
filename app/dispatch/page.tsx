@@ -8,7 +8,14 @@ type Booking = {
   id: string;
   rider_name: string | null;
   pickup_town: string | null;
-  status: "pending" | "assigned" | "en_route" | "arrived" | "completed" | "cancelled" | string;
+  status:
+    | "pending"
+    | "assigned"
+    | "en_route"
+    | "arrived"
+    | "completed"
+    | "cancelled"
+    | string;
   assigned_driver_id: string | null;
   created_at: string;
 };
@@ -32,10 +39,12 @@ export default function DispatchPage() {
   const [townDraft, setTownDraft] = useState<Record<string, string>>({});
   const [savingTownId, setSavingTownId] = useState<string | null>(null);
 
-  const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<Record<string, string>>({});
+  const [selectedDriverByBooking, setSelectedDriverByBooking] =
+    useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
-  const [overrideDriverByBooking, setOverrideDriverByBooking] = useState<Record<string, string>>({});
+  const [overrideDriverByBooking, setOverrideDriverByBooking] =
+    useState<Record<string, string>>({});
 
   const { toasts, push } = useToast();
 
@@ -53,11 +62,14 @@ export default function DispatchPage() {
     })();
   }, []);
 
-  // Realtime
+  // Realtime (IMPORTANT: do not return a Promise from effect)
   useEffect(() => {
-    const ch = supabase
-      .channel("bookings-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, (payload) => {
+    const channel = supabase.channel("bookings-rt");
+
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "bookings" },
+      (payload) => {
         const row = payload.new as Booking;
         setBookings((prev) => {
           const i = prev.findIndex((b) => b.id === row.id);
@@ -66,9 +78,20 @@ export default function DispatchPage() {
           copy[i] = row;
           return copy;
         });
-      });
-    ch.subscribe();
-    return () => supabase.removeChannel(ch);
+      }
+    );
+
+    // Subscribe separately; discard the returned Promise to avoid React effect type errors
+    void channel.subscribe();
+
+    // Proper cleanup
+    return () => {
+      if ("unsubscribe" in channel && typeof (channel as any).unsubscribe === "function") {
+        (channel as any).unsubscribe();
+      } else {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   // Busy drivers
@@ -103,7 +126,11 @@ export default function DispatchPage() {
       });
       if (error) throw error;
       if (data) {
-        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b)));
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b
+          )
+        );
       }
       push({ title: "Town saved" });
     } catch (e: any) {
@@ -125,7 +152,11 @@ export default function DispatchPage() {
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, status: "assigned", assigned_driver_id: driverId }
+              : b
+          )
         );
       }
       push({ title: "Assigned ✅" });
@@ -152,7 +183,11 @@ export default function DispatchPage() {
       if (error) throw error;
       if (data) {
         setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, status: "assigned", assigned_driver_id: driverId }
+              : b
+          )
         );
       }
       push({ title: "Assigned (override) ✅" });
@@ -171,7 +206,9 @@ export default function DispatchPage() {
       });
       if (error) throw error;
       if (data) {
-        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b)));
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b))
+        );
       }
       push({ title: `Status: ${next}` });
     } catch (e: any) {
@@ -182,18 +219,6 @@ export default function DispatchPage() {
   // Helpers
   function canAssign(b: Booking) {
     return !!b.pickup_town && b.status === "pending";
-  }
-  function canUnassign(b: Booking) {
-    return b.status === "assigned";
-  }
-  function canEnRoute(b: Booking) {
-    return b.status === "assigned";
-  }
-  function canArrived(b: Booking) {
-    return b.status === "en_route";
-  }
-  function canComplete(b: Booking) {
-    return b.status === "arrived";
   }
 
   return (
@@ -225,16 +250,17 @@ export default function DispatchPage() {
               return (
                 <tr key={b.id} className="border-b">
                   <td className="py-2">{new Date(b.created_at).toLocaleString()}</td>
-                  <td>—{/* hook to show rider later */}</td>
+                  <td>—</td>
 
-                  {/* *** PICKUP TOWN INPUT + SAVE *** */}
                   <td className="py-2">
                     <div className="flex items-center gap-2">
                       <input
                         className="border rounded px-2 py-1 w-40"
                         placeholder="Set town"
                         value={townDraft[b.id] ?? b.pickup_town ?? ""}
-                        onChange={(e) => setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))}
+                        onChange={(e) =>
+                          setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))
+                        }
                       />
                       <button
                         onClick={() => saveTown(b.id)}
@@ -247,7 +273,11 @@ export default function DispatchPage() {
                         {savingTownId === b.id ? "Saving…" : "Save"}
                       </button>
                     </div>
-                    {!b.pickup_town && <div className="text-xs opacity-60 mt-1">Set town to enable assignment</div>}
+                    {!b.pickup_town && (
+                      <div className="text-xs opacity-60 mt-1">
+                        Set town to enable assignment
+                      </div>
+                    )}
                   </td>
 
                   <td>
@@ -271,14 +301,17 @@ export default function DispatchPage() {
                     </span>
                   </td>
 
-                  {/* ASSIGN Area */}
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* strict same-town assign */}
                       <select
                         className="border rounded px-2 py-1"
                         value={selected}
-                        onChange={(e) => setSelectedDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))}
+                        onChange={(e) =>
+                          setSelectedDriverByBooking((p) => ({
+                            ...p,
+                            [b.id]: e.target.value,
+                          }))
+                        }
                         disabled={!canAssign(b) || !hasTownDrivers}
                         title={
                           !b.pickup_town
@@ -298,7 +331,12 @@ export default function DispatchPage() {
                         {sameTownDrivers.map((d) => {
                           const busy = busyDriverIds.has(d.id);
                           return (
-                            <option key={d.id} value={d.id} disabled={busy} title={busy ? "Busy" : ""}>
+                            <option
+                              key={d.id}
+                              value={d.id}
+                              disabled={busy}
+                              title={busy ? "Busy" : ""}
+                            >
                               {d.name ?? d.id}
                               {d.town ? ` • ${d.town}` : ""}
                               {busy ? " • busy" : ""}
@@ -309,10 +347,20 @@ export default function DispatchPage() {
 
                       <button
                         onClick={() => handleAssign(b.id)}
-                        disabled={!canAssign(b) || !selected || !hasTownDrivers || busyDriverIds.has(selected) || assigningId === b.id}
+                        disabled={
+                          !canAssign(b) ||
+                          !selected ||
+                          !hasTownDrivers ||
+                          busyDriverIds.has(selected) ||
+                          assigningId === b.id
+                        }
                         className={
                           "px-3 py-1 rounded text-sm text-white " +
-                          (assigningId === b.id || !canAssign(b) || !selected || !hasTownDrivers || busyDriverIds.has(selected)
+                          (assigningId === b.id ||
+                          !canAssign(b) ||
+                          !selected ||
+                          !hasTownDrivers ||
+                          busyDriverIds.has(selected)
                             ? "bg-gray-400"
                             : "bg-black")
                         }
@@ -320,69 +368,55 @@ export default function DispatchPage() {
                         {assigningId === b.id ? "Assigning…" : "Assign"}
                       </button>
 
-                      {/* quick progress buttons */}
-                      <button
-                        onClick={() => setStatus(b.id, "en_route")}
-                        disabled={b.status !== "assigned"}
-                        className={"px-3 py-1 rounded text-sm " + (b.status === "assigned" ? "bg-white border" : "bg-gray-100 text-gray-400")}
-                      >
-                        En-route
-                      </button>
-                      <button
-                        onClick={() => setStatus(b.id, "arrived")}
-                        disabled={b.status !== "en_route"}
-                        className={"px-3 py-1 rounded text-sm " + (b.status === "en_route" ? "bg-white border" : "bg-gray-100 text-gray-400")}
-                      >
-                        Arrived
-                      </button>
-                      <button
-                        onClick={() => setStatus(b.id, "completed")}
-                        disabled={b.status !== "arrived"}
-                        className={"px-3 py-1 rounded text-sm " + (b.status === "arrived" ? "bg-white border" : "bg-gray-100 text-gray-400")}
-                      >
-                        Complete
-                      </button>
+                      {/* admin override */}
+                      {b.pickup_town && b.status === "pending" && (
+                        <div className="mt-2 p-2 border rounded bg-gray-50">
+                          <div className="text-xs font-semibold mb-1">
+                            Admin override (any town)
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <select
+                              className="border rounded px-2 py-1"
+                              value={overrideSelected}
+                              onChange={(e) =>
+                                setOverrideDriverByBooking((p) => ({
+                                  ...p,
+                                  [b.id]: e.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">Pick any driver (override)</option>
+                              {drivers.map((d) => {
+                                const busy = busyDriverIds.has(d.id);
+                                return (
+                                  <option key={d.id} value={d.id}>
+                                    {d.name ?? d.id}
+                                    {d.town ? ` • ${d.town}` : ""}
+                                    {busy ? " • busy" : ""}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <button
+                              onClick={() => handleAssignOverride(b.id)}
+                              disabled={!overrideSelected || assigningId === b.id}
+                              className={
+                                "px-3 py-1 rounded text-sm text-white " +
+                                (!overrideSelected || assigningId === b.id
+                                  ? "bg-gray-400"
+                                  : "bg-black")
+                              }
+                              title="Requires reason; audited"
+                            >
+                              {assigningId === b.id ? "Overriding…" : "Override assign"}
+                            </button>
+                          </div>
+                          <div className="text-[11px] opacity-70 mt-1">
+                            Only admins can override. Reason required; audited.
+                          </div>
+                        </div>
+                      )}
                     </div>
-
-                    {/* admin override block */}
-                    {b.pickup_town && b.status === "pending" && (
-                      <div className="mt-2 p-2 border rounded bg-gray-50">
-                        <div className="text-xs font-semibold mb-1">Admin override (any town)</div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <select
-                            className="border rounded px-2 py-1"
-                            value={overrideDriverByBooking[b.id] ?? ""}
-                            onChange={(e) => setOverrideDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))}
-                          >
-                            <option value="">Pick any driver (override)</option>
-                            {drivers.map((d) => {
-                              const busy = busyDriverIds.has(d.id);
-                              return (
-                                <option key={d.id} value={d.id}>
-                                  {d.name ?? d.id}
-                                  {d.town ? ` • ${d.town}` : ""}
-                                  {busy ? " • busy" : ""}
-                                </option>
-                              );
-                            })}
-                          </select>
-                          <button
-                            onClick={() => handleAssignOverride(b.id)}
-                            disabled={!overrideDriverByBooking[b.id] || assigningId === b.id}
-                            className={
-                              "px-3 py-1 rounded text-sm text-white " +
-                              (!overrideDriverByBooking[b.id] || assigningId === b.id ? "bg-gray-400" : "bg-black")
-                            }
-                            title="Requires reason; writes to audit"
-                          >
-                            {assigningId === b.id ? "Overriding…" : "Override assign"}
-                          </button>
-                        </div>
-                        <div className="text-[11px] opacity-70 mt-1">
-                          Only admins can override. Reason required; audited.
-                        </div>
-                      </div>
-                    )}
                   </td>
                 </tr>
               );
@@ -396,7 +430,9 @@ export default function DispatchPage() {
         {toasts.map((t) => (
           <div key={t.id} className="bg-black text-white rounded px-3 py-2 shadow">
             <div className="font-semibold">{t.title}</div>
-            {t.description && <div className="text-xs opacity-80">{t.description}</div>}
+            {t.description && (
+              <div className="text-xs opacity-80">{t.description}</div>
+            )}
           </div>
         ))}
       </div>
