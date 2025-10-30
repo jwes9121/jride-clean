@@ -36,6 +36,7 @@ export default function DispatchPage() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [savingTownId, setSavingTownId] = useState<string | null>(null);
   const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<Record<string, string>>({});
+  const [overrideDriverByBooking, setOverrideDriverByBooking] = useState<Record<string, string>>({});
   const [townDraft, setTownDraft] = useState<Record<string, string>>({});
   const { toasts, push } = useToast();
 
@@ -115,8 +116,34 @@ export default function DispatchPage() {
       }
       push({ title: "Assigned ✅" });
     } catch (e: any) {
-      // This will show the “town mismatch” message from the RPC if it happens
       push({ title: "Assign failed", description: e?.message ?? "Unknown error" });
+    } finally {
+      setAssigningId(null);
+    }
+  }
+
+  async function handleAssignOverride(bookingId: string) {
+    const driverId = overrideDriverByBooking[bookingId];
+    if (!driverId) return push({ title: "Pick a driver first (override)" });
+    const reason = window.prompt("Override reason (required):")?.trim();
+    if (!reason) return push({ title: "Override cancelled", description: "Reason required." });
+
+    setAssigningId(bookingId);
+    try {
+      const { data, error } = await supabase.rpc("assign_driver_override", {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_reason: reason,
+      });
+      if (error) throw error;
+      if (data) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
+        );
+      }
+      push({ title: "Assigned (override) ✅" });
+    } catch (e: any) {
+      push({ title: "Override failed", description: e?.message ?? "Unknown error" });
     } finally {
       setAssigningId(null);
     }
@@ -189,13 +216,14 @@ export default function DispatchPage() {
           <tbody>
             {bookings.map((b) => {
               const townKey = (b.pickup_town ?? "").trim().toLowerCase();
-              const pool = townKey ? (driversByTown[townKey] ?? []) : [];
+              const sameTownPool = townKey ? (driversByTown[townKey] ?? []) : [];
               const selected = selectedDriverByBooking[b.id] ?? "";
+              const overrideSelected = overrideDriverByBooking[b.id] ?? "";
               const driverName =
                 drivers.find((d) => d.id === b.assigned_driver_id)?.name ??
                 (b.assigned_driver_id ? b.assigned_driver_id : "-");
 
-              const hasTownDrivers = pool.length > 0;
+              const hasTownDrivers = sameTownPool.length > 0;
 
               return (
                 <tr key={b.id} className="border-b">
@@ -244,7 +272,7 @@ export default function DispatchPage() {
 
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Assign block (strict town match) */}
+                      {/* Strict Assign (same-town only) */}
                       <select
                         className="border rounded px-2 py-1"
                         value={selected}
@@ -267,7 +295,7 @@ export default function DispatchPage() {
                               : `No drivers in ${b.pickup_town}`
                             : "Set town first"}
                         </option>
-                        {pool.map((d) => (
+                        {sameTownPool.map((d) => (
                           <option key={d.id} value={d.id}>
                             {d.name ?? d.id} {d.town ? `• ${d.town}` : ""}
                           </option>
@@ -319,11 +347,46 @@ export default function DispatchPage() {
                         Complete
                       </button>
                     </div>
+
+                    {/* Override block */}
+                    {b.pickup_town && b.status === "pending" && (
+                      <div className="mt-2 p-2 border rounded bg-gray-50">
+                        <div className="text-xs font-semibold mb-1">Admin override (any town)</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <select
+                            className="border rounded px-2 py-1"
+                            value={overrideSelected}
+                            onChange={(e) =>
+                              setOverrideDriverByBooking((prev) => ({ ...prev, [b.id]: e.target.value }))
+                            }
+                          >
+                            <option value="">Pick any driver (override)</option>
+                            {drivers.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.name ?? d.id} {d.town ? `• ${d.town}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleAssignOverride(b.id)}
+                            disabled={!overrideSelected || assigningId === b.id}
+                            className={
+                              "px-3 py-1 rounded text-sm text-white " +
+                              (!overrideSelected || assigningId === b.id ? "bg-gray-400" : "bg-black")
+                            }
+                            title="Requires reason; logs to audit"
+                          >
+                            {assigningId === b.id ? "Overriding…" : "Override assign"}
+                          </button>
+                        </div>
+                        <div className="text-[11px] opacity-70 mt-1">
+                          Only admins can override. Reason is required; action is audited.
+                        </div>
+                      </div>
+                    )}
+
                     {!b.pickup_town && b.status === "pending" && (
                       <div className="text-xs opacity-70 mt-1">Set town to enable assignment</div>
-                    )}
-                    {b.pickup_town && !hasTownDrivers && (
-                      <div className="text-xs opacity-70 mt-1">No available drivers in this town.</div>
                     )}
                   </td>
                 </tr>
