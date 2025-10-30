@@ -36,6 +36,7 @@ export default function DispatchPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [townOptions, setTownOptions] = useState<string[]>([]);
   const [townDraft, setTownDraft] = useState<Record<string, string>>({});
   const [savingTownId, setSavingTownId] = useState<string | null>(null);
 
@@ -62,10 +63,19 @@ export default function DispatchPage() {
     })();
   }, []);
 
-  // Realtime (IMPORTANT: do not return a Promise from effect)
+  // Load town options (autocomplete)
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.rpc("list_dispatch_towns");
+      if (!error && Array.isArray(data)) {
+        setTownOptions((data as { town: string }[]).map((r) => r.town));
+      }
+    })();
+  }, []);
+
+  // Realtime (avoid returning a Promise from effect)
   useEffect(() => {
     const channel = supabase.channel("bookings-rt");
-
     channel.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "bookings" },
@@ -80,17 +90,10 @@ export default function DispatchPage() {
         });
       }
     );
-
-    // Subscribe separately; discard the returned Promise to avoid React effect type errors
     void channel.subscribe();
-
-    // Proper cleanup
     return () => {
-      if ("unsubscribe" in channel && typeof (channel as any).unsubscribe === "function") {
-        (channel as any).unsubscribe();
-      } else {
-        supabase.removeChannel(channel);
-      }
+      // @ts-ignore - supabase-js v2 has removeChannel
+      if (typeof supabase.removeChannel === "function") supabase.removeChannel(channel);
     };
   }, []);
 
@@ -131,6 +134,10 @@ export default function DispatchPage() {
             b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b
           )
         );
+      }
+      // keep the list fresh (in case a new town was typed)
+      if (town && !townOptions.includes(town)) {
+        setTownOptions((opts) => [...opts, town].sort());
       }
       push({ title: "Town saved" });
     } catch (e: any) {
@@ -252,12 +259,14 @@ export default function DispatchPage() {
                   <td className="py-2">{new Date(b.created_at).toLocaleString()}</td>
                   <td>—</td>
 
+                  {/* Pickup town with autocomplete */}
                   <td className="py-2">
                     <div className="flex items-center gap-2">
                       <input
-                        className="border rounded px-2 py-1 w-40"
+                        className="border rounded px-2 py-1 w-44"
                         placeholder="Set town"
                         value={townDraft[b.id] ?? b.pickup_town ?? ""}
+                        list="dispatch-towns"
                         onChange={(e) =>
                           setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))
                         }
@@ -274,9 +283,7 @@ export default function DispatchPage() {
                       </button>
                     </div>
                     {!b.pickup_town && (
-                      <div className="text-xs opacity-60 mt-1">
-                        Set town to enable assignment
-                      </div>
+                      <div className="text-xs opacity-60 mt-1">Set town to enable assignment</div>
                     )}
                   </td>
 
@@ -303,14 +310,12 @@ export default function DispatchPage() {
 
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* strict same-town assign */}
                       <select
                         className="border rounded px-2 py-1"
                         value={selected}
                         onChange={(e) =>
-                          setSelectedDriverByBooking((p) => ({
-                            ...p,
-                            [b.id]: e.target.value,
-                          }))
+                          setSelectedDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))
                         }
                         disabled={!canAssign(b) || !hasTownDrivers}
                         title={
@@ -331,12 +336,7 @@ export default function DispatchPage() {
                         {sameTownDrivers.map((d) => {
                           const busy = busyDriverIds.has(d.id);
                           return (
-                            <option
-                              key={d.id}
-                              value={d.id}
-                              disabled={busy}
-                              title={busy ? "Busy" : ""}
-                            >
+                            <option key={d.id} value={d.id} disabled={busy} title={busy ? "Busy" : ""}>
                               {d.name ?? d.id}
                               {d.town ? ` • ${d.town}` : ""}
                               {busy ? " • busy" : ""}
@@ -371,18 +371,13 @@ export default function DispatchPage() {
                       {/* admin override */}
                       {b.pickup_town && b.status === "pending" && (
                         <div className="mt-2 p-2 border rounded bg-gray-50">
-                          <div className="text-xs font-semibold mb-1">
-                            Admin override (any town)
-                          </div>
+                          <div className="text-xs font-semibold mb-1">Admin override (any town)</div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <select
                               className="border rounded px-2 py-1"
                               value={overrideSelected}
                               onChange={(e) =>
-                                setOverrideDriverByBooking((p) => ({
-                                  ...p,
-                                  [b.id]: e.target.value,
-                                }))
+                                setOverrideDriverByBooking((p) => ({ ...p, [b.id]: e.target.value }))
                               }
                             >
                               <option value="">Pick any driver (override)</option>
@@ -425,14 +420,19 @@ export default function DispatchPage() {
         </table>
       )}
 
+      {/* Town options source for the input list */}
+      <datalist id="dispatch-towns">
+        {townOptions.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+
       {/* Toasts */}
       <div className="fixed bottom-4 right-4 space-y-2">
         {toasts.map((t) => (
           <div key={t.id} className="bg-black text-white rounded px-3 py-2 shadow">
             <div className="font-semibold">{t.title}</div>
-            {t.description && (
-              <div className="text-xs opacity-80">{t.description}</div>
-            )}
+            {t.description && <div className="text-xs opacity-80">{t.description}</div>}
           </div>
         ))}
       </div>
