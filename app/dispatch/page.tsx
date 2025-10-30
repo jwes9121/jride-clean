@@ -1,334 +1,306 @@
 "use client";
-import * as React from "react";
 
-/* ---------- TYPES ---------- */
-type DispatchBooking = {
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+
+type Driver = {
   id: string;
-  town: string | null;
-  // Keep it simple to avoid TS2367 when comparing string literals
-  status: string;
-  driver_id: string | null;
-};
-
-type NearbyDriver = {
-  driver_id: string;
   name: string | null;
   town: string | null;
-  lat: number | null;
-  lng: number | null;
-  updated_at: string;
 };
 
-/* ---------- HELPERS ---------- */
-async function safeJson(res: Response) {
-  try {
-    return await res.json();
-  } catch {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `Non-JSON response (${res.status})`);
+type Booking = {
+  id: string;
+  rider_name: string | null;
+  pickup_town: string | null;
+  status: "pending" | "assigned" | "en_route" | "arrived" | "completed" | "cancelled" | string;
+  assigned_driver_id: string | null;
+  created_at: string;
+};
+
+type Toast = { id: string; title: string; description?: string };
+function useToast() {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  function push(t: Omit<Toast, "id">) {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, ...t }]);
+    setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 3000);
   }
-}
-function toastSetter(
-  setter: React.Dispatch<React.SetStateAction<{ type: "ok" | "err"; text: string } | null>>,
-  msg: { type: "ok" | "err"; text: string }
-) {
-  setter(msg);
-  setTimeout(() => setter(null), 2500);
-}
-function Badge({
-  color = "gray",
-  children,
-}: {
-  color?: "green" | "amber" | "blue" | "gray" | "red";
-  children: React.ReactNode;
-}) {
-  const map: Record<string, string> = {
-    green: "bg-green-100 text-green-800 border-green-200",
-    amber: "bg-amber-100 text-amber-800 border-amber-200",
-    blue: "bg-blue-100 text-blue-800 border-blue-200",
-    gray: "bg-gray-100 text-gray-800 border-gray-200",
-    red: "bg-red-100 text-red-800 border-red-200",
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs ${map[color]}`}>
-      {children}
-    </span>
-  );
+  return { toasts, push };
 }
 
-/* ---------- TOWN EDITOR ---------- */
-function TownEditor({
-  bookingId,
-  value,
-  onSaved,
-}: {
-  bookingId: string;
-  value: string | null;
-  onSaved: (newTown: string) => void;
-}) {
-  const [town, setTown] = React.useState(value ?? "");
-  const [busy, setBusy] = React.useState(false);
-  async function save() {
-    setBusy(true);
-    try {
-      const res = await fetch("/api/dispatch/bookings/update-town", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, town }),
-      });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(data.error || "Failed to save town");
-      onSaved(town);
-    } catch (e: any) {
-      alert(e?.message || "Failed to save town");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <span className="inline-flex gap-2 items-center">
-      <input
-        className="border rounded px-2 py-1 w-36"
-        placeholder="Set town"
-        value={town}
-        onChange={(e) => setTown(e.target.value)}
-      />
-      <button className="px-2 py-1 border rounded" onClick={save} disabled={!town || busy}>
-        {busy ? "Saving…" : "Save"}
-      </button>
-    </span>
-  );
-}
-
-/* ---------- DRIVER SELECT ---------- */
-function DriverSelect({
-  town,
-  disabled,
-  onPick,
-}: {
-  town: string;
-  disabled?: boolean;
-  onPick: (driverId: string, driverLabel: string) => void;
-}) {
-  const [drivers, setDrivers] = React.useState<NearbyDriver[]>([]);
-  const [selected, setSelected] = React.useState("");
-
-  React.useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        const res = await fetch(
-          `/api/dispatch/nearby-drivers?town=${encodeURIComponent(town)}`,
-          { cache: "no-store" }
-        );
-        const data = await safeJson(res);
-        if (res.ok && Array.isArray(data.rows) && active) setDrivers(data.rows);
-      } catch (err) {
-        console.error("Driver load failed", err);
-      }
-    }
-    if (town) load();
-    return () => {
-      active = false;
-    };
-  }, [town]);
-
-  const selectedLabel =
-    selected && drivers.find((d) => d.driver_id === selected)
-      ? (drivers.find((d) => d.driver_id === selected)!.name ?? selected.slice(0, 8))
-      : "";
-
-  return (
-    <span className="inline-flex gap-2 items-center">
-      <select
-        className="border rounded px-2 py-1"
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        disabled={disabled}
-      >
-        <option value="">{disabled ? "assigned" : "select driver"}</option>
-        {drivers.length > 0 ? (
-          drivers.map((d) => (
-            <option key={d.driver_id} value={d.driver_id}>
-              {d.name ? d.name : d.driver_id.slice(0, 8)} — {d.town}
-            </option>
-          ))
-        ) : (
-          <option disabled>No drivers</option>
-        )}
-      </select>
-      <button
-        className="px-3 py-1 border rounded"
-        onClick={() => selected && onPick(selected, selectedLabel)}
-        disabled={!selected || disabled}
-      >
-        Assign
-      </button>
-    </span>
-  );
-}
-
-/* ---------- PAGE ---------- */
 export default function DispatchPage() {
-  const [rows, setRows] = React.useState<DispatchBooking[]>([]);
-  const [toast, setToast] = React.useState<{ type: "ok" | "err"; text: string } | null>(null);
-  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [savingTownId, setSavingTownId] = useState<string | null>(null);
+  const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<Record<string, string>>({});
+  const [townDraft, setTownDraft] = useState<Record<string, string>>({});
+  const { toasts, push } = useToast();
 
-  async function load() {
-    const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
-    const data = await safeJson(res);
-    if (res.ok && Array.isArray(data.rows)) setRows(data.rows);
-  }
-
-  React.useEffect(() => {
-    load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [d1, d2] = await Promise.all([
+        supabase.from("drivers").select(),
+        supabase.from("bookings").select().order("created_at", { ascending: false }),
+      ]);
+      if (!d1.error && d1.data) setDrivers(d1.data as Driver[]);
+      if (!d2.error && d2.data) setBookings(d2.data as Booking[]);
+      setLoading(false);
+    })();
   }, []);
 
-  function setTownLocal(bookingId: string, town: string) {
-    setRows((prev) => prev.map((b) => (b.id === bookingId ? { ...b, town } : b)));
-  }
+  useEffect(() => {
+    const ch = supabase
+      .channel("bookings-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, (payload) => {
+        const row = payload.new as Booking;
+        setBookings((prev) => {
+          const i = prev.findIndex((b) => b.id === row.id);
+          if (i === -1) return [row, ...prev];
+          const copy = [...prev];
+          copy[i] = row;
+          return copy;
+        });
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
 
-  async function assignDriver(bookingId: string, driverId: string, driverLabel: string) {
-    setBusyId(bookingId);
+  const driversByTown = useMemo(() => {
+    const map: Record<string, Driver[]> = {};
+    for (const d of drivers) {
+      const k = (d.town ?? "—").toLowerCase();
+      (map[k] ??= []).push(d);
+    }
+    return map;
+  }, [drivers]);
+
+  async function saveTown(bookingId: string) {
+    const town = (townDraft[bookingId] ?? "").trim();
+    setSavingTownId(bookingId);
     try {
-      const res = await fetch("/api/dispatch/assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, driver_id: driverId }),
+      const { data, error } = await supabase.rpc("set_booking_town", {
+        p_booking_id: bookingId,
+        p_pickup_town: town,
       });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(data.error || "Failed to assign");
-      setRows((prev) =>
-        prev.map((b) =>
-          b.id === bookingId ? { ...b, driver_id: driverId, status: "assigned" } : b
-        )
-      );
-      toastSetter(setToast, { type: "ok", text: `Assigned ✓ (${driverLabel || driverId.slice(0, 8)})` });
+      if (error) throw error;
+      if (data) {
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, pickup_town: data.pickup_town } : b)));
+      }
+      push({ title: "Town saved" });
     } catch (e: any) {
-      toastSetter(setToast, { type: "err", text: e?.message || "Failed to assign" });
+      push({ title: "Save failed", description: e?.message ?? "Unknown error" });
     } finally {
-      setBusyId(null);
+      setSavingTownId(null);
     }
   }
 
-  async function setStatus(bookingId: string, next: string) {
-    setBusyId(bookingId);
+  async function handleAssign(bookingId: string) {
+    const driverId = selectedDriverByBooking[bookingId];
+    if (!driverId) return push({ title: "Pick a driver first" });
+    setAssigningId(bookingId);
     try {
-      const res = await fetch("/api/dispatch/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, status: next }),
+      const { data, error } = await supabase.rpc("assign_driver", {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
       });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(data.error || "Failed to update status");
-      setRows((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: next } : b)));
-      toastSetter(setToast, { type: "ok", text: `Status → ${next}` });
+      if (error) throw error;
+      if (data) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: "assigned", assigned_driver_id: driverId } : b))
+        );
+      }
+      push({ title: "Assigned ✅" });
     } catch (e: any) {
-      toastSetter(setToast, { type: "err", text: e?.message || "Update failed" });
+      push({ title: "Assign failed", description: e?.message ?? "Unknown error" });
     } finally {
-      setBusyId(null);
+      setAssigningId(null);
     }
   }
 
-  function StatusBadge({ s }: { s: string }) {
-    const val = (s || "").toString();
-    if (val === "assigned") return <Badge color="green">assigned ✓</Badge>;
-    if (val === "en-route") return <Badge color="blue">en-route</Badge>;
-    if (val === "arrived") return <Badge color="blue">arrived</Badge>;
-    if (val === "complete") return <Badge color="green">complete ✓</Badge>;
-    if (val === "pending") return <Badge color="amber">pending</Badge>;
-    return <Badge color="gray">{val}</Badge>;
+  async function handleUnassign(bookingId: string) {
+    try {
+      const { data, error } = await supabase.rpc("unassign_driver", { p_booking_id: bookingId });
+      if (error) throw error;
+      if (data) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: "pending", assigned_driver_id: null } : b))
+        );
+      }
+      push({ title: "Unassigned" });
+    } catch (e: any) {
+      push({ title: "Unassign failed", description: e?.message ?? "Unknown error" });
+    }
+  }
+
+  async function setStatus(bookingId: string, next: Booking["status"]) {
+    try {
+      const { data, error } = await supabase.rpc("update_booking_status", {
+        p_booking_id: bookingId,
+        p_next: next,
+      });
+      if (error) throw error;
+      if (data) {
+        setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: data.status } : b)));
+      }
+      push({ title: `Status: ${next}` });
+    } catch (e: any) {
+      push({ title: "Update failed", description: e?.message ?? "Unknown error" });
+    }
+  }
+
+  function canAssign(b: Booking) {
+    return !!b.pickup_town && b.status === "pending";
+  }
+  function canUnassign(b: Booking) {
+    return b.status === "assigned";
+  }
+  function canEnRoute(b: Booking) {
+    return b.status === "assigned";
+  }
+  function canArrived(b: Booking) {
+    return b.status === "en_route";
+  }
+  function canComplete(b: Booking) {
+    return b.status === "arrived";
   }
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Dispatch Panel</h1>
 
-      {toast && (
-        <div
-          className={`px-3 py-2 rounded border text-sm ${
-            toast.type === "ok"
-              ? "bg-green-50 border-green-200 text-green-800"
-              : "bg-red-50 border-red-200 text-red-800"
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
-
-      <div className="rounded border p-4 shadow">
-        <h2 className="font-semibold mb-2">Queue</h2>
+      {loading ? (
+        <div className="text-sm opacity-70">Loading…</div>
+      ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left border-b">
               <th className="py-2">ID</th>
-              <th className="py-2">Town</th>
-              <th className="py-2">Status</th>
-              <th className="py-2">Driver</th>
-              <th className="py-2">Actions</th>
+              <th>Town</th>
+              <th>Status</th>
+              <th>Driver</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((b) => {
-              // Normalize once to avoid TS literal-comparison warnings
-              const s = (b.status || "").toString();
-
-              const assigned = s === "assigned" || !!b.driver_id;
-              const canEnroute = assigned && !["en-route", "arrived", "complete"].includes(s);
-              const canArrived = (s === "en-route" || s === "assigned") && !["arrived", "complete"].includes(s);
-              const canComplete = s !== "complete" && ["arrived", "en-route", "assigned"].includes(s);
+            {bookings.map((b) => {
+              const townKey = (b.pickup_town ?? "—").toLowerCase();
+              const pool = driversByTown[townKey] ?? drivers;
+              const selected = selectedDriverByBooking[b.id] ?? "";
+              const driverName =
+                drivers.find((d) => d.id === b.assigned_driver_id)?.name ??
+                (b.assigned_driver_id ? b.assigned_driver_id : "-");
 
               return (
                 <tr key={b.id} className="border-b">
                   <td className="py-2">{b.id.slice(0, 8)}</td>
-                  <td className="py-2">
-                    {b.town ? (
-                      b.town
-                    ) : (
-                      <TownEditor bookingId={b.id} value={b.town} onSaved={(t) => setTownLocal(b.id, t)} />
-                    )}
+
+                  <td className="flex items-center gap-2 py-2">
+                    <input
+                      className="border rounded px-2 py-1"
+                      placeholder="Set town"
+                      value={townDraft[b.id] ?? b.pickup_town ?? ""}
+                      onChange={(e) =>
+                        setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))
+                      }
+                    />
+                    <button
+                      onClick={() => saveTown(b.id)}
+                      className={"px-3 py-1 rounded text-sm text-white " + (savingTownId === b.id ? "bg-gray-400" : "bg-black")}
+                      disabled={savingTownId === b.id}
+                    >
+                      {savingTownId === b.id ? "Saving…" : "Save"}
+                    </button>
                   </td>
-                  <td className="py-2">
-                    <StatusBadge s={s} />
+
+                  <td>
+                    <span
+                      className={
+                        "px-2 py-1 rounded text-xs " +
+                        (b.status === "assigned"
+                          ? "bg-green-100"
+                          : b.status === "en_route"
+                          ? "bg-blue-100"
+                          : b.status === "arrived"
+                          ? "bg-yellow-100"
+                          : b.status === "completed"
+                          ? "bg-emerald-100"
+                          : b.status === "cancelled"
+                          ? "bg-red-100"
+                          : "bg-gray-100")
+                      }
+                    >
+                      {b.status}
+                    </span>
                   </td>
-                  <td className="py-2">{b.driver_id ? b.driver_id.slice(0, 8) : "-"}</td>
+
+                  <td>{driverName}</td>
+
                   <td className="py-2">
-                    {b.town ? (
-                      <div className="flex items-center gap-2">
-                        <DriverSelect
-                          town={b.town}
-                          disabled={assigned || busyId === b.id}
-                          onPick={(driverId, label) => assignDriver(b.id, driverId, label)}
-                        />
-                        <button
-                          className="px-3 py-1 border rounded disabled:opacity-50"
-                          disabled={!canEnroute || busyId === b.id}
-                          onClick={() => setStatus(b.id, "en-route")}
-                          title="Mark as en-route"
-                        >
-                          En-route
-                        </button>
-                        <button
-                          className="px-3 py-1 border rounded disabled:opacity-50"
-                          disabled={!canArrived || busyId === b.id}
-                          onClick={() => setStatus(b.id, "arrived")}
-                          title="Mark as arrived"
-                        >
-                          Arrived
-                        </button>
-                        <button
-                          className="px-3 py-1 border rounded disabled:opacity-50"
-                          disabled={!canComplete || busyId === b.id}
-                          onClick={() => setStatus(b.id, "complete")}
-                          title="Mark as complete"
-                        >
-                          Complete
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">Set town to enable assignment</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Assign block */}
+                      <select
+                        className="border rounded px-2 py-1"
+                        value={selected}
+                        onChange={(e) =>
+                          setSelectedDriverByBooking((prev) => ({ ...prev, [b.id]: e.target.value }))
+                        }
+                        disabled={!canAssign(b)}
+                        title={canAssign(b) ? "Pick driver" : "Set town and be in 'pending' to assign"}
+                      >
+                        <option value="">{pool === drivers ? "Pick driver (any)" : `Pick driver (${b.pickup_town})`}</option>
+                        {pool.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name ?? d.id} {d.town ? `• ${d.town}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleAssign(b.id)}
+                        disabled={!canAssign(b) || !selected || assigningId === b.id}
+                        className={"px-3 py-1 rounded text-sm text-white " + (assigningId === b.id || !canAssign(b) || !selected ? "bg-gray-400" : "bg-black")}
+                      >
+                        {assigningId === b.id ? "Assigning…" : "Assign"}
+                      </button>
+
+                      {/* Unassign */}
+                      <button
+                        onClick={() => handleUnassign(b.id)}
+                        disabled={!canUnassign(b)}
+                        className={"px-3 py-1 rounded text-sm " + (canUnassign(b) ? "bg-white border" : "bg-gray-100 text-gray-400 cursor-not-allowed")}
+                        title="Return to pending"
+                      >
+                        Unassign
+                      </button>
+
+                      {/* Progress buttons */}
+                      <button
+                        onClick={() => setStatus(b.id, "en_route")}
+                        disabled={!canEnRoute(b)}
+                        className={"px-3 py-1 rounded text-sm " + (canEnRoute(b) ? "bg-white border" : "bg-gray-100 text-gray-400")}
+                      >
+                        En-route
+                      </button>
+                      <button
+                        onClick={() => setStatus(b.id, "arrived")}
+                        disabled={!canArrived(b)}
+                        className={"px-3 py-1 rounded text-sm " + (canArrived(b) ? "bg-white border" : "bg-gray-100 text-gray-400")}
+                      >
+                        Arrived
+                      </button>
+                      <button
+                        onClick={() => setStatus(b.id, "completed")}
+                        disabled={!canComplete(b)}
+                        className={"px-3 py-1 rounded text-sm " + (canComplete(b) ? "bg-white border" : "bg-gray-100 text-gray-400")}
+                      >
+                        Complete
+                      </button>
+                    </div>
+                    {!b.pickup_town && b.status === "pending" && (
+                      <div className="text-xs opacity-70 mt-1">Set town to enable assignment</div>
                     )}
                   </td>
                 </tr>
@@ -336,6 +308,16 @@ export default function DispatchPage() {
             })}
           </tbody>
         </table>
+      )}
+
+      {/* Toasts */}
+      <div className="fixed bottom-4 right-4 space-y-2">
+        {toasts.map((t) => (
+          <div key={t.id} className="bg-black text-white rounded px-3 py-2 shadow">
+            <div className="font-semibold">{t.title}</div>
+            {t.description && <div className="text-xs opacity-80">{t.description}</div>}
+          </div>
+        ))}
       </div>
     </div>
   );
