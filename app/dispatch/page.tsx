@@ -72,7 +72,7 @@ export default function DispatchPage() {
   const driversByTown = useMemo(() => {
     const map: Record<string, Driver[]> = {};
     for (const d of drivers) {
-      const k = (d.town ?? "—").toLowerCase();
+      const k = (d.town ?? "").trim().toLowerCase();
       (map[k] ??= []).push(d);
     }
     return map;
@@ -115,6 +115,7 @@ export default function DispatchPage() {
       }
       push({ title: "Assigned ✅" });
     } catch (e: any) {
+      // This will show the “town mismatch” message from the RPC if it happens
       push({ title: "Assign failed", description: e?.message ?? "Unknown error" });
     } finally {
       setAssigningId(null);
@@ -187,12 +188,14 @@ export default function DispatchPage() {
           </thead>
           <tbody>
             {bookings.map((b) => {
-              const townKey = (b.pickup_town ?? "—").toLowerCase();
-              const pool = driversByTown[townKey] ?? drivers;
+              const townKey = (b.pickup_town ?? "").trim().toLowerCase();
+              const pool = townKey ? (driversByTown[townKey] ?? []) : [];
               const selected = selectedDriverByBooking[b.id] ?? "";
               const driverName =
                 drivers.find((d) => d.id === b.assigned_driver_id)?.name ??
                 (b.assigned_driver_id ? b.assigned_driver_id : "-");
+
+              const hasTownDrivers = pool.length > 0;
 
               return (
                 <tr key={b.id} className="border-b">
@@ -241,27 +244,45 @@ export default function DispatchPage() {
 
                   <td className="py-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* Assign block */}
+                      {/* Assign block (strict town match) */}
                       <select
                         className="border rounded px-2 py-1"
                         value={selected}
                         onChange={(e) =>
                           setSelectedDriverByBooking((prev) => ({ ...prev, [b.id]: e.target.value }))
                         }
-                        disabled={!canAssign(b)}
-                        title={canAssign(b) ? "Pick driver" : "Set town and be in 'pending' to assign"}
+                        disabled={!canAssign(b) || !hasTownDrivers}
+                        title={
+                          !b.pickup_town
+                            ? "Set town to enable assignment"
+                            : !hasTownDrivers
+                            ? `No drivers in ${b.pickup_town}`
+                            : "Pick driver"
+                        }
                       >
-                        <option value="">{pool === drivers ? "Pick driver (any)" : `Pick driver (${b.pickup_town})`}</option>
+                        <option value="">
+                          {b.pickup_town
+                            ? hasTownDrivers
+                              ? `Pick driver (${b.pickup_town})`
+                              : `No drivers in ${b.pickup_town}`
+                            : "Set town first"}
+                        </option>
                         {pool.map((d) => (
                           <option key={d.id} value={d.id}>
                             {d.name ?? d.id} {d.town ? `• ${d.town}` : ""}
                           </option>
                         ))}
                       </select>
+
                       <button
                         onClick={() => handleAssign(b.id)}
-                        disabled={!canAssign(b) || !selected || assigningId === b.id}
-                        className={"px-3 py-1 rounded text-sm text-white " + (assigningId === b.id || !canAssign(b) || !selected ? "bg-gray-400" : "bg-black")}
+                        disabled={!canAssign(b) || !selected || !hasTownDrivers || assigningId === b.id}
+                        className={
+                          "px-3 py-1 rounded text-sm text-white " +
+                          (assigningId === b.id || !canAssign(b) || !selected || !hasTownDrivers
+                            ? "bg-gray-400"
+                            : "bg-black")
+                        }
                       >
                         {assigningId === b.id ? "Assigning…" : "Assign"}
                       </button>
@@ -271,7 +292,6 @@ export default function DispatchPage() {
                         onClick={() => handleUnassign(b.id)}
                         disabled={!canUnassign(b)}
                         className={"px-3 py-1 rounded text-sm " + (canUnassign(b) ? "bg-white border" : "bg-gray-100 text-gray-400 cursor-not-allowed")}
-                        title="Return to pending"
                       >
                         Unassign
                       </button>
@@ -301,6 +321,9 @@ export default function DispatchPage() {
                     </div>
                     {!b.pickup_town && b.status === "pending" && (
                       <div className="text-xs opacity-70 mt-1">Set town to enable assignment</div>
+                    )}
+                    {b.pickup_town && !hasTownDrivers && (
+                      <div className="text-xs opacity-70 mt-1">No available drivers in this town.</div>
                     )}
                   </td>
                 </tr>
