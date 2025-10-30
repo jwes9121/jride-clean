@@ -5,7 +5,7 @@ import * as React from "react";
 type DispatchBooking = {
   id: string;
   town: string | null;
-  status: string;
+  status: "pending" | "assigned" | "en-route" | "arrived" | "complete" | "accepted" | string;
   driver_id: string | null;
 };
 
@@ -28,7 +28,28 @@ async function safeJson(res: Response) {
   }
 }
 
-/* ---------- INLINE TOWN EDITOR (per row) ---------- */
+function Badge({
+  color = "gray",
+  children,
+}: {
+  color?: "green" | "amber" | "blue" | "gray" | "red";
+  children: React.ReactNode;
+}) {
+  const map: Record<string, string> = {
+    green: "bg-green-100 text-green-800 border-green-200",
+    amber: "bg-amber-100 text-amber-800 border-amber-200",
+    blue: "bg-blue-100 text-blue-800 border-blue-200",
+    gray: "bg-gray-100 text-gray-800 border-gray-200",
+    red: "bg-red-100 text-red-800 border-red-200",
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs ${map[color]}`}>
+      {children}
+    </span>
+  );
+}
+
+/* ---------- INLINE TOWN EDITOR ---------- */
 function TownEditor({
   bookingId,
   value,
@@ -40,7 +61,6 @@ function TownEditor({
 }) {
   const [town, setTown] = React.useState(value ?? "");
   const [busy, setBusy] = React.useState(false);
-  const disabled = !town || busy;
 
   async function save() {
     setBusy(true);
@@ -68,25 +88,22 @@ function TownEditor({
         value={town}
         onChange={(e) => setTown(e.target.value)}
       />
-      <button
-        className="px-2 py-1 border rounded"
-        onClick={save}
-        disabled={disabled}
-        title={disabled ? "Enter town" : "Save town"}
-      >
-        Save
+      <button className="px-2 py-1 border rounded" onClick={save} disabled={!town || busy}>
+        {busy ? "Saving…" : "Save"}
       </button>
     </span>
   );
 }
 
-/* ---------- DRIVER SELECT (per row) ---------- */
+/* ---------- DRIVER SELECT ---------- */
 function DriverSelect({
   town,
+  disabled,
   onPick,
 }: {
   town: string;
-  onPick: (driverId: string) => void;
+  disabled?: boolean;
+  onPick: (driverId: string, driverLabel: string) => void;
 }) {
   const [drivers, setDrivers] = React.useState<NearbyDriver[]>([]);
   const [selected, setSelected] = React.useState("");
@@ -111,14 +128,20 @@ function DriverSelect({
     };
   }, [town]);
 
+  const selectedLabel =
+    selected && drivers.find((d) => d.driver_id === selected)
+      ? (drivers.find((d) => d.driver_id === selected)!.name ?? selected.slice(0, 8))
+      : "";
+
   return (
     <span className="inline-flex gap-2 items-center">
       <select
         className="border rounded px-2 py-1"
         value={selected}
         onChange={(e) => setSelected(e.target.value)}
+        disabled={disabled}
       >
-        <option value="">select driver</option>
+        <option value="">{disabled ? "assigned" : "select driver"}</option>
         {drivers.length > 0 ? (
           drivers.map((d) => (
             <option key={d.driver_id} value={d.driver_id}>
@@ -131,8 +154,8 @@ function DriverSelect({
       </select>
       <button
         className="px-3 py-1 border rounded"
-        onClick={() => selected && onPick(selected)}
-        disabled={!selected}
+        onClick={() => selected && onPick(selected, selectedLabel)}
+        disabled={!selected || disabled}
       >
         Assign
       </button>
@@ -143,7 +166,10 @@ function DriverSelect({
 /* ---------- PAGE ---------- */
 export default function DispatchPage() {
   const [rows, setRows] = React.useState<DispatchBooking[]>([]);
-  const [error, setError] = React.useState("");
+  const [globalMsg, setGlobalMsg] = React.useState<{ type: "ok" | "err"; text: string } | null>(
+    null
+  );
+  const [assigning, setAssigning] = React.useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
@@ -153,10 +179,18 @@ export default function DispatchPage() {
 
   React.useEffect(() => {
     load();
+    // small auto-refresh to keep the table fresh
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
   }, []);
 
-  async function assignDriver(bookingId: string, driverId: string) {
-    setError("");
+  function updateTownLocal(bookingId: string, town: string) {
+    setRows((prev) => prev.map((b) => (b.id === bookingId ? { ...b, town } : b)));
+  }
+
+  async function assignDriver(bookingId: string, driverId: string, driverLabel: string) {
+    setAssigning(bookingId);
+    setGlobalMsg(null);
     try {
       const res = await fetch("/api/dispatch/assign", {
         method: "POST",
@@ -170,22 +204,30 @@ export default function DispatchPage() {
           b.id === bookingId ? { ...b, driver_id: driverId, status: "assigned" } : b
         )
       );
-    } catch (err: any) {
-      setError(err.message);
+      setGlobalMsg({ type: "ok", text: `Assigned ✓ (${driverLabel || driverId.slice(0, 8)})` });
+      setTimeout(() => setGlobalMsg(null), 2500);
+    } catch (e: any) {
+      setGlobalMsg({ type: "err", text: e?.message || "Failed to assign" });
+    } finally {
+      setAssigning(null);
     }
-  }
-
-  function saveTownLocally(bookingId: string, newTown: string) {
-    setRows((prev) =>
-      prev.map((b) => (b.id === bookingId ? { ...b, town: newTown } : b))
-    );
   }
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Dispatch Panel</h1>
 
-      {error && <p className="text-red-600">{error}</p>}
+      {globalMsg && (
+        <div
+          className={`px-3 py-2 rounded border text-sm ${
+            globalMsg.type === "ok"
+              ? "bg-green-50 border-green-200 text-green-800"
+              : "bg-red-50 border-red-200 text-red-800"
+          }`}
+        >
+          {globalMsg.text}
+        </div>
+      )}
 
       <div className="rounded border p-4 shadow">
         <h2 className="font-semibold mb-2">Queue</h2>
@@ -199,40 +241,44 @@ export default function DispatchPage() {
               <th className="py-2">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((b) => (
+        <tbody>
+          {rows.map((b) => {
+            const isAssigned = b.status === "assigned" || !!b.driver_id;
+            return (
               <tr key={b.id} className="border-b">
                 <td className="py-2">{b.id.slice(0, 8)}</td>
                 <td className="py-2">
                   {b.town ? (
                     b.town
                   ) : (
-                    <TownEditor
-                      bookingId={b.id}
-                      value={b.town}
-                      onSaved={(newTown) => saveTownLocally(b.id, newTown)}
-                    />
+                    <TownEditor bookingId={b.id} value={b.town} onSaved={(t) => updateTownLocal(b.id, t)} />
                   )}
                 </td>
-                <td className="py-2">{b.status}</td>
                 <td className="py-2">
-                  {b.driver_id ? b.driver_id.slice(0, 8) : "-"}
+                  {isAssigned ? (
+                    <Badge color="green">assigned ✓</Badge>
+                  ) : b.status === "pending" ? (
+                    <Badge color="amber">pending</Badge>
+                  ) : (
+                    <Badge color="gray">{b.status}</Badge>
+                  )}
                 </td>
+                <td className="py-2">{b.driver_id ? b.driver_id.slice(0, 8) : "-"}</td>
                 <td className="py-2">
                   {b.town ? (
                     <DriverSelect
                       town={b.town}
-                      onPick={(driverId) => assignDriver(b.id, driverId)}
+                      disabled={isAssigned || assigning === b.id}
+                      onPick={(driverId, label) => assignDriver(b.id, driverId, label)}
                     />
                   ) : (
-                    <span className="text-xs text-gray-500">
-                      Set town to enable assignment
-                    </span>
+                    <span className="text-xs text-gray-500">Set town to enable assignment</span>
                   )}
                 </td>
               </tr>
-            ))}
-          </tbody>
+            );
+          })}
+        </tbody>
         </table>
       </div>
     </div>
