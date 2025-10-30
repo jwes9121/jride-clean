@@ -1,5 +1,16 @@
 ﻿"use client";
-
+export default function AdminIndex() {
+  return (
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Admin</h1>
+      <ul className="list-disc pl-6">
+        <li><a className="underline" href="/admin/towns">Manage Towns & Colors</a></li>
+        <li><a className="underline" href="/admin/drivers">Manage Drivers (Online/Offline)</a></li>
+        <li><a className="underline" href="/admin/audit">Audit Log</a></li>
+      </ul>
+    </div>
+  );
+}
 import React, { useState } from "react";
 import BottomNavigation, { TabItem } from "@/components/BottomNavigation";
 
