@@ -63,8 +63,7 @@ async function roadEta(fromLat: number, fromLng: number, toLat: number, toLng: n
   return (await r.json()) as { minutes: number | null; km: number | null };
 }
 
-export default function Dispatch
-<EnvGuard />Page() {
+export default function Dispatch() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [towns, setTowns] = useState<TownRow[]>([]);
@@ -458,6 +457,7 @@ export default function Dispatch
     </div>
   );
 }
+
 
 
 
