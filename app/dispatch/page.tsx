@@ -52,7 +52,13 @@ async function roadEta(fromLat: number, fromLng: number, toLat: number, toLng: n
   return (await r.json()) as { minutes: number | null; km: number | null };
 }
 
-export default function DispatchPage() {
+export default function Dispatch
+{/* JRIDE_SUPABASE_ENV_GUARD */}
+{(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
+  <div className="my-3 p-3 rounded bg-yellow-50 text-yellow-800 border">
+    Supabase env not set. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in Vercel.
+  </div>
+)}Page() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [towns, setTowns] = useState<TownRow[]>([]);
@@ -82,7 +88,13 @@ export default function DispatchPage() {
       const [d1, d2, d3] = await Promise.all([
         supabase.from("drivers").select(),
         supabase.from("bookings").select().order("created_at", { ascending: false }),
-        supabase.rpc("list_dispatch_towns"),
+        supabase.rpc("list_dispatch
+{/* JRIDE_SUPABASE_ENV_GUARD */}
+{(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
+  <div className="my-3 p-3 rounded bg-yellow-50 text-yellow-800 border">
+    Supabase env not set. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in Vercel.
+  </div>
+)}_towns"),
       ]);
       if (!d1.error && d1.data) setDrivers(d1.data as Driver[]);
       if (!d2.error && d2.data) setBookings(d2.data as Booking[]);
@@ -250,6 +262,12 @@ export default function DispatchPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Dispatch</h1>
+{/* JRIDE_SUPABASE_ENV_GUARD */}
+{(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
+  <div className="my-3 p-3 rounded bg-yellow-50 text-yellow-800 border">
+    Supabase env not set. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in Vercel.
+  </div>
+)}
         <label className="text-sm flex items-center gap-2">
           <input type="checkbox" checked={onlineOnly} onChange={(e) => setOnlineOnly(e.target.checked)} />
           <span>Online drivers only</span>
@@ -287,7 +305,13 @@ export default function DispatchPage() {
                         className="border rounded px-2 py-1 w-44"
                         placeholder="Set town"
                         value={townDraft[b.id] ?? b.pickup_town ?? ""}
-                        list="dispatch-towns"
+                        list="dispatch
+{/* JRIDE_SUPABASE_ENV_GUARD */}
+{(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
+  <div className="my-3 p-3 rounded bg-yellow-50 text-yellow-800 border">
+    Supabase env not set. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in Vercel.
+  </div>
+)}-towns"
                         onChange={(e) => setTownDraft((prev) => ({ ...prev, [b.id]: e.target.value }))}
                       />
                       <button
@@ -420,7 +444,13 @@ export default function DispatchPage() {
         </table>
       )}
 
-      <datalist id="dispatch-towns">{townList.map((t) => <option key={t} value={t} />)}</datalist>
+      <datalist id="dispatch
+{/* JRIDE_SUPABASE_ENV_GUARD */}
+{(!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) && (
+  <div className="my-3 p-3 rounded bg-yellow-50 text-yellow-800 border">
+    Supabase env not set. Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in Vercel.
+  </div>
+)}-towns">{townList.map((t) => <option key={t} value={t} />)}</datalist>
 
       {/* Map modal */}
       <PickupMapModal
@@ -442,5 +472,6 @@ export default function DispatchPage() {
     </div>
   );
 }
+
 
 

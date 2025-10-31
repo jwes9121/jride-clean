@@ -8,7 +8,7 @@ const nextConfig = {
       "form-action '\''self'\''",
       "script-src '\''self'\''",
       "worker-src '\''self'\'' blob:",
-      "style-src '\''self'\'' '\''unsafe-inline'\''",
+      "style-src '\''self'\'' '\''unsafe-inline'\'' blob:",   // <- allow blob: styles too
       "img-src '\''self'\'' data: blob: https://*",
       "font-src '\''self'\'' data:",
       "connect-src '\''self'\'' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.mapbox.com",
