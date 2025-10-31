@@ -27,7 +27,11 @@ export default function MapboxMap({
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
   useEffect(() => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    // Accept either env var name (Vercel screenshot shows NEXT_PUBLIC_MAPBOX_TOKEN)
+    const token =
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ??
+      process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
     if (!token) {
       console.error('Missing NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN');
       return;
