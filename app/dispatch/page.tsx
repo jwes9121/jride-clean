@@ -427,7 +427,7 @@ export default function DispatchPage() {
         open={!!mapOpenFor}
         initial={mapInitial ?? undefined}
         onClose={() => setMapOpenFor(null)}
-        onSave={(lat, lng) => savePickupFromModal(lat, lng)}
+        onSave={(pos) => pos && savePickupFromModal(pos.lat, pos.lng)}
       />
 
       {/* Toasts */}
@@ -442,3 +442,4 @@ export default function DispatchPage() {
     </div>
   );
 }
+
