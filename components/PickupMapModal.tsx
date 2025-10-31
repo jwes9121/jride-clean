@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css"; // REQUIRED for canvas to render
+import "mapbox-gl/dist/mapbox-gl.css";
 
 type Props = {
   open: boolean;
@@ -18,6 +18,7 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
 
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(initial ?? null);
   const [diag, setDiag] = useState<string>("");
+  const [tileErr, setTileErr] = useState<string | null>(null);
 
   function show(msg: string) {
     setDiag(msg);
@@ -28,87 +29,106 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
   useEffect(() => {
     if (!open) return;
 
-    (async () => {
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      if (!token) {
-        show("NEXT_PUBLIC_MAPBOX_TOKEN not found in client env. Set it in Vercel and redeploy.");
-        return;
-      }
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) {
+      show("NEXT_PUBLIC_MAPBOX_TOKEN not found in client env. Set it in Vercel and redeploy.");
+      return;
+    }
 
-      // Try CSP-safe worker; ok to skip if not available
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        // @ts-ignore - package ships JS only, no .d.ts in some versions
-        mapboxgl.workerClass = require("mapbox-gl/dist/mapbox-gl-csp-worker").default;
-        show("CSP worker loaded.");
-      } catch {
-        show("CSP worker not used (ok if your browser doesn't require it).");
-      }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // @ts-ignore
+      mapboxgl.workerClass = require("mapbox-gl/dist/mapbox-gl-csp-worker").default;
+      show("CSP worker loaded.");
+    } catch {
+      show("CSP worker not used (ok if your browser doesn't require it).");
+    }
 
-      mapboxgl.accessToken = token;
+    mapboxgl.accessToken = token;
 
-      if (!mapboxgl.supported({ failIfMajorPerformanceCaveat: false })) {
-        show("Mapbox GL not supported by this browser/device.");
-        return;
-      }
+    if (!mapboxgl.supported({ failIfMajorPerformanceCaveat: false })) {
+      show("Mapbox GL not supported by this browser/device.");
+      return;
+    }
 
-      const start = initial ?? { lat: 16.803, lng: 121.104 }; // Ifugao center fallback
-      const container = mapDiv.current as HTMLDivElement;
-      if (!container) {
-        show("Map container not ready.");
-        return;
-      }
+    const start = initial ?? { lat: 16.803, lng: 121.104 }; // Ifugao center
+    const container = mapDiv.current as HTMLDivElement;
+    if (!container) {
+      show("Map container not ready.");
+      return;
+    }
 
-      const map = new mapboxgl.Map({
-        container,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [start.lng, start.lat],
-        zoom: 14,
-        attributionControl: true,
-      });
-      mapRef.current = map;
+    // Make sure canvas is visible even before tiles
+    container.style.background = "#eef2f7"; // light gray
 
-      const mk = new mapboxgl.Marker({ draggable: true })
-        .setLngLat([start.lng, start.lat])
-        .addTo(map);
-      markerRef.current = mk;
-      setCoords({ lat: start.lat, lng: start.lng });
+    const map = new mapboxgl.Map({
+      container,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [start.lng, start.lat],
+      zoom: 14,
+      attributionControl: true,
+    });
+    mapRef.current = map;
 
-      mk.on("dragend", () => {
-        const ll = mk.getLngLat();
-        setCoords({ lat: ll.lat, lng: ll.lng });
-      });
+    // Add zoom controls so you can see the canvas UI
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-      map.on("click", (e) => {
-        mk.setLngLat(e.lngLat);
-        setCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-      });
+    // Marker
+    const mk = new mapboxgl.Marker({ draggable: true })
+      .setLngLat([start.lng, start.lat])
+      .addTo(map);
+    markerRef.current = mk;
+    setCoords({ lat: start.lat, lng: start.lng });
 
-      map.on("load", () => {
-        show("MAPBOX_INIT_OK");
-        // Resize a few times to settle inside modal
-        map.resize();
-        setTimeout(() => map.resize(), 50);
-        setTimeout(() => map.resize(), 300);
-      });
+    mk.on("dragend", () => {
+      const ll = mk.getLngLat();
+      setCoords({ lat: ll.lat, lng: ll.lng });
+    });
 
-      map.on("error", (e) => {
-        show(`Map error: ${e?.error?.message ?? "unknown"}`);
-      });
-    })();
+    map.on("click", (e) => {
+      mk.setLngLat(e.lngLat);
+      setCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    });
+
+    // Force sizing/repaint inside modal
+    map.on("load", () => {
+      show("MAPBOX_INIT_OK");
+      map.resize();
+      map.triggerRepaint();
+      setTimeout(() => { map.resize(); map.triggerRepaint(); }, 50);
+      setTimeout(() => { map.resize(); map.triggerRepaint(); }, 300);
+    });
+
+    // Catch tile/style errors
+    map.on("error", (e) => {
+      const msg = e?.error?.message || "unknown";
+      // eslint-disable-next-line no-console
+      console.warn("Map error:", e);
+      // Common messages: "Forbidden", "Unauthorized", "NetworkError when attempting to fetch resource."
+      setTileErr(msg);
+      show(`Map error: ${msg}`);
+    });
 
     return () => {
-      try { markerRef.current?.remove(); } catch {}
-      try { mapRef.current?.remove(); } catch {}
+      try { mk.remove(); } catch {}
+      try { map.remove(); } catch {}
       markerRef.current = null;
       mapRef.current = null;
       setDiag("");
+      setTileErr(null);
     };
   }, [open, initial]);
 
   if (!open) return null;
 
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  // Static image fallback if vector tiles won’t load (domain restriction / blocker)
+  const staticUrl = (() => {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    const c = coords ?? { lat: 16.803, lng: 121.104 };
+    if (!token) return null;
+    // Static API: center@zoom/widthxheight@2x
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${c.lng},${c.lat},14,0/800x400@2x?access_token=${token}`;
+  })();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -118,22 +138,28 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
           <button className="text-sm underline" onClick={onClose}>Close</button>
         </div>
 
-        {/* Map area */}
-        <div className="relative h-[60vh]">
+        <div className="relative h-[70vh] min-h-[420px]">
+          {/* Interactive map canvas */}
           <div ref={mapDiv} className="absolute inset-0" />
+
+          {/* Diagnostics */}
           {!!diag && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
-              <div className="bg-white/90 border rounded px-3 py-2 text-xs text-gray-700 max-w-[520px]">
+              <div className="bg-white/90 border rounded px-3 py-2 text-xs text-gray-700 max-w-[560px]">
                 {diag}
+                {tileErr && (
+                  <div className="mt-1">
+                    <div><b>Hint</b>: If this says “Forbidden/Unauthorized/NetworkError”, either your token is URL-restricted or a blocker is stopping <code>api.mapbox.com</code>. Allow domain <code>app.jride.net</code> in Mapbox token settings and disable blockers for this site.</div>
+                  </div>
+                )}
               </div>
             </div>
           )}
-          {!diag && !token && (
-            <div className="absolute inset-0 flex items-center justify-center text-center p-6">
-              <div className="text-sm">
-                <div className="font-semibold mb-2">Token missing</div>
-                Set <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> in Vercel and redeploy.
-              </div>
+
+          {/* Static fallback only if there was a tile error */}
+          {tileErr && staticUrl && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <img src={staticUrl} alt="Map fallback" className="max-w-full max-h-full rounded border" />
             </div>
           )}
         </div>
