@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css"; // use package css, no CDN
+import "mapbox-gl/dist/mapbox-gl.css";
 
 type Props = {
   open: boolean;
@@ -16,10 +16,12 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
 
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(initial ?? null);
-  const [diagLines, setDiagLines] = useState<string[]>([]);
+  const [coords, setCoords] = useState(initial ?? null);
+  const [diag, setDiag] = useState<string>("");
+
   function log(msg: string) {
-    setDiagLines((prev) => [...prev, msg]);
+    setDiag((d) => (d ? d + "\n" : "") + msg);
+    // eslint-disable-next-line no-console
     console.log("[PickupMapModal]", msg);
   }
 
@@ -32,40 +34,33 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
       return;
     }
 
-    // v2 path: load CSP worker if available (ok if not)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       // @ts-ignore
       mapboxgl.workerClass = require("mapbox-gl/dist/mapbox-gl-csp-worker").default;
-      log("CSP worker hooked (v2)");
+      log("CSP worker loaded (v2).");
     } catch {
-      log("CSP worker not used (ok)");
+      log("CSP worker not used (ok).");
     }
 
     mapboxgl.accessToken = token;
 
-    // Connectivity sanity check — directly fetch the style JSON
-    const styleTestUrl = `https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${token}`;
-    fetch(styleTestUrl)
-      .then((r) => log(`STYLE_TEST status=${r.status}`))
-      .catch((e) => log(`STYLE_TEST error=${e?.message || e}`));
+    // HARD connectivity ping — should appear in Network as api.mapbox.com
+    const styleURL = `https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${token}`;
+    fetch(styleURL)
+      .then((r) => log(`STYLE_TEST -> ${r.status}`))
+      .catch((e) => log(`STYLE_TEST ERR -> ${e?.message || e}`));
 
     if (!mapboxgl.supported({ failIfMajorPerformanceCaveat: false })) {
       log("ERR: Mapbox GL not supported by this browser/device");
       return;
     }
 
-    const start = initial ?? { lat: 16.803, lng: 121.104 }; // Ifugao center
-    const container = mapDiv.current as HTMLDivElement;
-    if (!container) {
-      log("ERR: Map container not ready");
-      return;
-    }
-
-    container.style.background = "#eef2f7";
+    const start = initial ?? { lat: 16.803, lng: 121.104 };
+    const el = mapDiv.current!;
+    el.style.background = "#eef2f7";
 
     const map = new mapboxgl.Map({
-      container,
+      container: el,
       style: "mapbox://styles/mapbox/streets-v12",
       center: [start.lng, start.lat],
       zoom: 14,
@@ -73,7 +68,8 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
     });
     mapRef.current = map;
 
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    // Put controls on **left** so they never sit under our debug box
+    map.addControl(new mapboxgl.NavigationControl(), "top-left");
 
     const mk = new mapboxgl.Marker({ draggable: true })
       .setLngLat([start.lng, start.lat])
@@ -95,21 +91,19 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
       log("MAPBOX_INIT_OK");
       map.resize();
       map.triggerRepaint();
-      setTimeout(() => { map.resize(); map.triggerRepaint(); }, 50);
-      setTimeout(() => { map.resize(); map.triggerRepaint(); }, 300);
+      setTimeout(() => { map.resize(); map.triggerRepaint(); }, 80);
     });
 
     map.on("error", (e) => {
-      const msg = e?.error?.message || "unknown";
-      log(`MAP_ERROR ${msg}`);
+      log(`MAP_ERROR ${e?.error?.message || "unknown"}`);
     });
 
     return () => {
       try { mk.remove(); } catch {}
       try { map.remove(); } catch {}
-      markerRef.current = null;
       mapRef.current = null;
-      setDiagLines([]);
+      markerRef.current = null;
+      setDiag("");
     };
   }, [open, initial]);
 
@@ -125,10 +119,11 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
 
         <div className="relative h-[70vh] min-h-[420px]">
           <div ref={mapDiv} className="absolute inset-0" />
-          {diagLines.length > 0 && (
-            <div className="absolute inset-0 pointer-events-none flex items-start justify-end p-3">
-              <div className="bg-white/90 border rounded px-3 py-2 text-xs text-gray-700 max-w-[560px] whitespace-pre-wrap">
-                {diagLines.join("\n")}
+          {/* Debug panel moved to bottom-left so controls are visible top-left */}
+          {!!diag && (
+            <div className="absolute bottom-3 left-3 pointer-events-none max-w-[560px]">
+              <div className="bg-white/90 border rounded px-3 py-2 text-xs text-gray-700 whitespace-pre-wrap">
+                {diag}
               </div>
             </div>
           )}
