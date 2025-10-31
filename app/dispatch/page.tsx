@@ -424,7 +424,7 @@ export default function DispatchPage() {
 
       {/* Map modal */}
       <PickupMapModal
-        open={!!mapOpenFor}
+        isOpen={!!mapOpenFor}
         initial={mapInitial ?? undefined}
         onClose={() => setMapOpenFor(null)}
         onSave={(pos) => pos && savePickupFromModal(pos.lat, pos.lng)}
@@ -442,4 +442,5 @@ export default function DispatchPage() {
     </div>
   );
 }
+
 
