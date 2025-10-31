@@ -1,26 +1,28 @@
 ﻿/** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
-    // Allow Mapbox worker and requests
+    // Relaxed enough for Next.js inline scripts + Mapbox worker/tiles.
+    // Tighten later with nonces/hashes if you want.
     const csp = [
       "default-src 'self'",
-      // allow styles (Next inlines styles, Mapbox CSS)
+      // Next uses some inline bootstrap scripts; allow them
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // Styles (Next + Mapbox CSS)
       "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
-      // scripts from self
-      "script-src 'self'",
-      // worker for mapbox (blob worker)
+      // Workers (Mapbox)
       "worker-src 'self' blob:",
-      // images (map tiles can be data/blob)
+      // Images (tiles may be data/blob)
       "img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com",
-      // fonts (Mapbox fonts)
+      // Fonts (Mapbox fonts)
       "font-src 'self' data: https://api.mapbox.com",
-      // connections to Mapbox APIs
+      // XHR/fetch to Mapbox APIs
       "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
-      // media fallback
+      // Media fallbacks
       "media-src 'self' data: blob:",
-      // base
+      // Base
       "base-uri 'self'"
     ].join('; ');
+
     return [
       {
         source: "/(.*)",
@@ -35,4 +37,5 @@ const nextConfig = {
     ];
   }
 };
+
 export default nextConfig;
