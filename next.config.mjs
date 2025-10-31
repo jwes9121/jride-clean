@@ -1,22 +1,23 @@
 ﻿/** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
-    // Relaxed enough for Next.js inline scripts + Mapbox worker/tiles.
-    // Tighten later with nonces/hashes if you want.
     const csp = [
       "default-src 'self'",
-      // Next uses some inline bootstrap scripts; allow them
+      // Next uses inline bootstrap + sometimes eval in dev/bundles
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      // Styles (Next + Mapbox CSS)
+      // Styles for Next + Mapbox CDN CSS
       "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
-      // Workers (Mapbox)
+      // Workers (Mapbox needs blob worker)
       "worker-src 'self' blob:",
-      // Images (tiles may be data/blob)
+      // Images (map tiles and sprites can be data/blob)
       "img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com",
       // Fonts (Mapbox fonts)
       "font-src 'self' data: https://api.mapbox.com",
-      // XHR/fetch to Mapbox APIs
-      "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
+      // XHR/fetch/websocket: Supabase + Mapbox
+      "connect-src 'self' " +
+        "https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com " +
+        "https://*.supabase.co wss://*.supabase.co " +
+        "https://*.supabase.in wss://*.supabase.in",
       // Media fallbacks
       "media-src 'self' data: blob:",
       // Base
