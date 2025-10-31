@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -19,10 +19,8 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(initial ?? null);
   const [diag, setDiag] = useState<string>("");
 
-  // small helper to show status overlay inside the modal
   function show(msg: string) {
     setDiag(msg);
-    // also log to console for deeper inspection
     // eslint-disable-next-line no-console
     console.log("[PickupMapModal]", msg);
   }
@@ -37,10 +35,11 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
         return;
       }
 
-      // Use CSP-safe worker if available (prevents blank map on some setups)
+      // Try CSP-safe worker; ok to skip if not available
       try {
-        const wk = await import("mapbox-gl/dist/mapbox-gl-csp-worker");
-        (mapboxgl as any).workerClass = (wk as any).default;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // @ts-ignore - package ships JS only, no .d.ts in some versions
+        mapboxgl.workerClass = require("mapbox-gl/dist/mapbox-gl-csp-worker").default;
         show("CSP worker loaded.");
       } catch {
         show("CSP worker not used (ok if your browser doesn't require it).");
@@ -53,14 +52,13 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
         return;
       }
 
-      const start = initial ?? { lat: 16.803, lng: 121.104 }; // Ifugao center
+      const start = initial ?? { lat: 16.803, lng: 121.104 }; // Ifugao center fallback
       const container = mapDiv.current as HTMLDivElement;
       if (!container) {
         show("Map container not ready.");
         return;
       }
 
-      // Create map
       const map = new mapboxgl.Map({
         container,
         style: "mapbox://styles/mapbox/streets-v12",
@@ -80,6 +78,7 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
         const ll = mk.getLngLat();
         setCoords({ lat: ll.lat, lng: ll.lng });
       });
+
       map.on("click", (e) => {
         mk.setLngLat(e.lngLat);
         setCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
@@ -87,14 +86,13 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
 
       map.on("load", () => {
         show("MAPBOX_INIT_OK");
-        // fix size after modal animation
+        // Resize a few times to settle inside modal
         map.resize();
         setTimeout(() => map.resize(), 50);
         setTimeout(() => map.resize(), 300);
       });
 
       map.on("error", (e) => {
-        // network / token / style errors land here
         show(`Map error: ${e?.error?.message ?? "unknown"}`);
       });
     })();
@@ -123,7 +121,6 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
         {/* Map area */}
         <div className="relative h-[60vh]">
           <div ref={mapDiv} className="absolute inset-0" />
-          {/* Diagnostics overlay */}
           {!!diag && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
               <div className="bg-white/90 border rounded px-3 py-2 text-xs text-gray-700 max-w-[520px]">
@@ -131,7 +128,6 @@ export default function PickupMapModal({ open, onClose, onSave, initial }: Props
               </div>
             </div>
           )}
-          {/* Static image fallback — if this shows, your token works and network is fine */}
           {!diag && !token && (
             <div className="absolute inset-0 flex items-center justify-center text-center p-6">
               <div className="text-sm">
