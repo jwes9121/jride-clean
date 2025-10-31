@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import mapboxgl from 'mapbox-gl/dist/mapbox-gl-csp';
+import MapboxWorker from 'mapbox-gl/dist/mapbox-gl-csp-worker';
+import 'mapbox-gl/dist/mapbox-gl.css';
+mapboxgl.workerClass = MapboxWorker as unknown as typeof Worker;
 
 type Props = {
   open: boolean;
