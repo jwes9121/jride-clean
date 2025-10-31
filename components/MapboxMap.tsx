@@ -1,25 +1,18 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-
-// IMPORTANT: use the CSP build (no unsafe-eval required)
 import mapboxgl from 'mapbox-gl/dist/mapbox-gl-csp';
 import MapboxWorker from 'mapbox-gl/dist/mapbox-gl-csp-worker';
-
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-mapboxgl.workerClass = MapboxWorker as unknown as typeof Worker;
+// Bind the dedicated CSP worker
+(mapboxgl as any).workerClass = MapboxWorker as unknown as typeof Worker;
 
 type MapboxMapProps = {
-  /** [lng, lat] center; default: Lagawe municipal hall-ish */
   center?: [number, number];
-  /** zoom level; default: 13 */
   zoom?: number;
-  /** height in px or tailwind class from parent; default: 100% container height */
   className?: string;
-  /** Map style URL; default Mapbox Streets v12 */
   styleUrl?: string;
-  /** Optional: markers to plot */
   markers?: { id: string; lng: number; lat: number }[];
 };
 
@@ -34,13 +27,12 @@ export default function MapboxMap({
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
   useEffect(() => {
-    // token guard
     const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
     if (!token) {
-      console.error('Mapbox token missing: set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN');
+      console.error('Missing NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN');
       return;
     }
-    mapboxgl.accessToken = token;
+    (mapboxgl as any).accessToken = token;
 
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -51,27 +43,21 @@ export default function MapboxMap({
       zoom,
       attributionControl: true,
     });
-
     mapRef.current = map;
 
-    // Add controls
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    // Plot markers (simple example)
-    markers.forEach(m => {
+    markers.forEach((m) => {
       new mapboxgl.Marker().setLngLat([m.lng, m.lat]).addTo(map);
     });
 
-    // Resize on mount to avoid “blank map” when container was hidden
-    // (common when used in modals or tabs)
-    const resize = () => map.resize();
-    setTimeout(resize, 0);
+    setTimeout(() => map.resize(), 100);
 
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, [center.toString(), zoom, styleUrl, markers.map(m => m.id).join(',')]); // stable-ish deps
+  }, [center[0], center[1], zoom, styleUrl, markers.map((m) => m.id).join(',')]);
 
   return <div ref={mapContainerRef} className={className} />;
 }
