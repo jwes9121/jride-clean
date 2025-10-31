@@ -1,4 +1,4 @@
-// app/layout.tsx
+﻿// app/layout.tsx
 import React from "react";
 import "./globals.css";
 import NavBar from "./components/NavBar";
@@ -27,3 +27,4 @@ export default function RootLayout({
     </html>
   );
 }
+
