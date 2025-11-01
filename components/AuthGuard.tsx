@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
+import supabase from "@/lib/supabaseClient";
 import AuthModal from "./AuthModal";
 
 interface AuthGuardProps {
@@ -75,3 +75,4 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
   return <>{children}</>;
 }
+
