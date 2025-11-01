@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 // CSP-safe bundle + worker
-import mapboxgl, { NavigationControl, Marker } from "mapbox-gl/dist/mapbox-gl-csp";
+import mapboxgl from "mapbox-gl/dist/mapbox-gl-csp";
 import MapboxWorker from "mapbox-gl/dist/mapbox-gl-csp-worker";
 
 // Some versions need the assignment on .workerClass, others on root.
@@ -72,18 +72,18 @@ export default function MapboxMap({
       });
       mapRef.current = map;
 
-      map.addControl(new NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
 
-      const currentMarkers: Marker[] = [];
+      const currentMarkers: mapboxgl.Marker[] = [];
       const addMarkers = () => {
         while (currentMarkers.length) {
           try { currentMarkers.pop()?.remove(); } catch {}
         }
         markers.forEach((m) => {
-          const marker = new mapboxgl.Marker({ color: m.color || "#2563eb" })
+          const mapboxgl.Marker = new mapboxgl.mapboxgl.Marker({ color: m.color || "#2563eb" })
             .setLngLat([m.lng, m.lat])
             .addTo(map);
-          currentMarkers.push(marker as Marker);
+          currentMarkers.push(mapboxgl.Marker as mapboxgl.Marker);
         });
       };
 
@@ -133,3 +133,4 @@ export default function MapboxMap({
     />
   );
 }
+
