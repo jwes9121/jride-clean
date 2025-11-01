@@ -1,6 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* App-wide tweaks */
-html, body, #__next { height: 100%; }
+html,body{height:100%}
