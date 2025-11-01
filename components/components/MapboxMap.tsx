@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -142,4 +142,5 @@ export default function MapboxMap({
     />
   );
 }
+
 

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import MapboxMap from "./MapboxMap";
@@ -78,3 +78,4 @@ export default function PickupMapModal({ isOpen, initial, onClose, onSave }: Pro
     </div>
   );
 }
+

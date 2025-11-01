@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import supabase from "@/lib/supabaseClient";
 
 type Town = { name: string; color: string };
 
@@ -45,7 +45,7 @@ export default function TownsAdminPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Admin · Towns</h1>
+      <h1 className="text-2xl font-bold">Admin Â· Towns</h1>
 
       <div className="flex gap-2 items-end">
         <label className="text-sm">
@@ -57,7 +57,7 @@ export default function TownsAdminPage() {
           <input className="border rounded px-2 py-1" value={color} onChange={(e)=>setColor(e.target.value)} placeholder="maroon / #800000" />
         </label>
         <button onClick={upsert} disabled={!name || !color || loading} className={"px-3 py-1 rounded text-sm text-white " + (loading?"bg-gray-400":"bg-black")}>
-          {loading ? "Saving…" : "Save"}
+          {loading ? "Savingâ€¦" : "Save"}
         </button>
       </div>
 
@@ -81,3 +81,4 @@ export default function TownsAdminPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 interface FareDispatcherReviewProps {
   isOpen: boolean;
@@ -173,5 +173,6 @@ export default function FareDispatcherReview({
     </div>
   );
 }
+
 
 

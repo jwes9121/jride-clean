@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useState } from 'react';
@@ -130,5 +130,6 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
     </div>
   );
 }
+
 
 

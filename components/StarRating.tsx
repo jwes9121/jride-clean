@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo } from "react";
 import type { RatingKey } from "@/types/survey";
@@ -58,5 +58,6 @@ export function StarRating({
     </div>
   );
 }
+
 
 

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 
@@ -94,5 +94,6 @@ const DeliveryStatusModal: React.FC<DeliveryStatusModalProps> = ({
 };
 
 export default DeliveryStatusModal;
+
 
 

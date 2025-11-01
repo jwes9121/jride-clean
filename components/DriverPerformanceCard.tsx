@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -56,5 +56,6 @@ const DriverPerformanceCard: React.FC<DriverPerformanceCardProps> = ({
 };
 
 export default DriverPerformanceCard;
+
 
 

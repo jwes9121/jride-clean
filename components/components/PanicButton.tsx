@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 
@@ -207,5 +207,6 @@ export default function PanicButton({ userId, userType, rideId, onPanicTriggered
     </button>
   );
 }
+
 
 

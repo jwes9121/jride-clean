@@ -1,4 +1,4 @@
-﻿// components/OfflineIndicator.tsx
+// components/OfflineIndicator.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -45,5 +45,6 @@ export default function OfflineIndicator() {
     </div>
   );
 }
+
 
 

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 interface PenaltyNotificationModalProps {
   isOpen: boolean
@@ -159,5 +159,6 @@ export default function PenaltyNotificationModal({
     </div>
   )
 }
+
 
 

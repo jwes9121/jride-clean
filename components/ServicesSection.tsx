@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 export default function ServicesSection() {
   return (
@@ -24,5 +24,6 @@ export default function ServicesSection() {
     </section>
   );
 }
+
 
 

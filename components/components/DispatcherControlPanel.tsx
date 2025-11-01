@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
@@ -149,5 +149,6 @@ export default function DispatcherControlPanel(_props: Props) {
     </div>
   );
 }
+
 
 

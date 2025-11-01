@@ -81,3 +81,4 @@ export default function TopNav({ user }: TopNavProps) {
     </header>
   );
 }
+

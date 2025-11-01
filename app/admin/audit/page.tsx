@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import supabase from "@/lib/supabaseClient";
 
 type Row = {
   created_at: string;
@@ -33,10 +33,10 @@ export default function AuditPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Admin · Audit</h1>
+      <h1 className="text-2xl font-bold">Admin Â· Audit</h1>
       {err && <div className="text-red-600 text-sm">{err}</div>}
       {loading ? (
-        <div className="text-sm opacity-70">Loading…</div>
+        <div className="text-sm opacity-70">Loadingâ€¦</div>
       ) : (
         <table className="w-full text-sm">
           <thead>
@@ -57,10 +57,10 @@ export default function AuditPage() {
                 <td className="py-2 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="whitespace-nowrap">{r.actor_email}</td>
                 <td className="whitespace-nowrap">{r.action}</td>
-                <td className="whitespace-nowrap">{r.reason ?? "—"}</td>
-                <td className="whitespace-nowrap">{r.booking_id.slice(0, 8)}…</td>
-                <td className="whitespace-nowrap">{r.rider_name ?? "—"}</td>
-                <td className="whitespace-nowrap">{r.pickup_town ?? "—"}</td>
+                <td className="whitespace-nowrap">{r.reason ?? "â€”"}</td>
+                <td className="whitespace-nowrap">{r.booking_id.slice(0, 8)}â€¦</td>
+                <td className="whitespace-nowrap">{r.rider_name ?? "â€”"}</td>
+                <td className="whitespace-nowrap">{r.pickup_town ?? "â€”"}</td>
                 <td className="text-xs">
                   <pre className="whitespace-pre-wrap">{JSON.stringify(r.details, null, 2)}</pre>
                 </td>
@@ -73,3 +73,4 @@ export default function AuditPage() {
     </div>
   );
 }
+

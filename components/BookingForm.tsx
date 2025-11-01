@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { Booking } from '@/types/booking'
@@ -104,5 +104,6 @@ export default function BookingForm({
     </form>
   )
 }
+
 
 

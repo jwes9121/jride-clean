@@ -1,4 +1,4 @@
-﻿// app/auth/error/page.tsx
+// app/auth/error/page.tsx
 "use client";
 
 import Link from "next/link";

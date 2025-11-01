@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 
@@ -263,5 +263,6 @@ export default function DeliveryTracker({ order, onClose }: DeliveryTrackerProps
     </div>
   );
 }
+
 
 

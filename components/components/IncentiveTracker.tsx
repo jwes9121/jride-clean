@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -57,5 +57,6 @@ const IncentiveTracker: React.FC<IncentiveTrackerProps> = ({ driverId }) => {
 };
 
 export default IncentiveTracker;
+
 
 

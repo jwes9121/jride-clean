@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 
@@ -66,5 +66,6 @@ const VendorConfirmationModal: React.FC<VendorConfirmationModalProps> = ({
 };
 
 export default VendorConfirmationModal;
+
 
 

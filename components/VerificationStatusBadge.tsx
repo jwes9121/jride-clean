@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 
 export interface VerificationStatusBadgeProps {
   status: "pending" | "verified" | "unverified" | "rejected";
@@ -33,5 +33,6 @@ export default function VerificationStatusBadge({
     </span>
   );
 }
+
 
 
