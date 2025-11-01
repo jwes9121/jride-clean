@@ -1,95 +1,40 @@
-// In-memory offline job queue stub for production build.
-// This is enough for UI components like OfflineIndicator to render safely
-// without blowing up the Next.js build in Vercel.
+/**
+ * Minimal offline queue for client-side fetch-like work.
+ * Persists to localStorage; flushes on "online".
+ */
+type Job = { id: string; url: string; method?: string; body?: any; headers?: Record<string,string>; };
+const KEY = "jr_offline_queue_v1";
 
-export type OfflineJob = {
-  id: string;
-  type: string;
-  payload: any;
-  createdAt: number;
-};
+function ls() { try { return typeof window === "undefined" ? null : window.localStorage; } catch { return null; } }
+function load(): Job[] { const s = ls(); if (!s) return []; try { return JSON.parse(s.getItem(KEY) || "[]"); } catch { return []; } }
+function save(list: Job[]) { const s = ls(); if (!s) return; try { s.setItem(KEY, JSON.stringify(list)); } catch {} }
+function uuid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
-// Internal queue state
-let queue: OfflineJob[] = [];
-
-// Connection state flag
-let isOnlineFlag = true;
-
-// Listener callbacks for UI updates
-type Listener = () => void;
-let listeners: Listener[] = [];
-
-// Utility to notify all subscribers (like a tiny event emitter)
-function notify() {
-  for (const fn of listeners) {
-    try {
-      fn();
-    } catch {
-      // ignore listener errors
-    }
-  }
+async function run(job: Job) {
+  await fetch(job.url, {
+    method: job.method || "POST",
+    headers: { "content-type": "application/json", ...(job.headers || {}) },
+    body: job.body ? JSON.stringify(job.body) : undefined,
+    keepalive: true,
+  });
 }
 
-// Public API:
-
-// enqueueOfflineJob() - add a job to the queue
-export function enqueueOfflineJob(type: string, payload: any): string {
-  const job: OfflineJob = {
-    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    type,
-    payload,
-    createdAt: Date.now(),
-  };
-  queue.push(job);
-  notify();
-  return job.id;
+export async function flush() {
+  if (typeof window === "undefined") return;
+  const next: Job[] = [];
+  for (const j of load()) { try { await run(j); } catch { next.push(j); } }
+  save(next);
 }
 
-// getOfflineJobs() - read all jobs
-export function getOfflineJobs(): OfflineJob[] {
-  return [...queue];
+export function enqueue(job: Omit<Job,"id">) {
+  if (typeof window === "undefined") return;
+  const list = load(); list.push({ id: uuid(), ...job }); save(list);
 }
 
-// clearOfflineJobs() - wipe queue
-export function clearOfflineJobs() {
-  queue = [];
-  notify();
-}
-
-// getQueueLength() - convenience for UI badge/count
-export function getQueueLength(): number {
-  return queue.length;
-}
-
-// isOnlineStatus() - report if app thinks we're online
-export function isOnlineStatus(): boolean {
-  return isOnlineFlag;
-}
-
-// setOnlineStatus() - allow UI / network detector to flip status
-export function setOnlineStatus(next: boolean) {
-  isOnlineFlag = next;
-  notify();
-}
-
-// subscribe() - OfflineIndicator (or others) can subscribe to changes
-// returns unsubscribe()
-export function subscribe(listener: Listener): () => void {
-  listeners.push(listener);
-  return () => {
-    listeners = listeners.filter((l) => l !== listener);
-  };
-}
-
-// default export so older code that did `import offlineQueue from ...` still works
-const offlineQueue = {
-  enqueueOfflineJob,
-  getOfflineJobs,
-  clearOfflineJobs,
-  getQueueLength,
-  isOnlineStatus,
-  setOnlineStatus,
-  subscribe,
-};
-
-export default offlineQueue;
+(function initOnce(){
+  if (typeof window === "undefined") return;
+  if ((window as any).__jr_offline_queue_init) return;
+  (window as any).__jr_offline_queue_init = true;
+  flush(); window.addEventListener("online", flush);
+})();
+export default { enqueue, flush };
