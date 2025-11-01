@@ -1,50 +1,65 @@
-// components/OfflineIndicator.tsx
 "use client";
-
 import { useEffect, useRef, useState } from "react";
-import offlineQueue from "@/lib/offlineQueue"; // <-- default API object
+
+// Must match the key used by the offline queue.
+const LS_KEY = "jr_offline_queue_v1";
+
+function safeQueueLength(): number {
+  try {
+    if (typeof window === "undefined") return 0;
+    const raw = window.localStorage.getItem(LS_KEY);
+    if (!raw) return 0;
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function safeOnline(): boolean {
+  try {
+    if (typeof navigator === "undefined") return true;
+    return !!navigator.onLine;
+  } catch {
+    return true;
+  }
+}
 
 export default function OfflineIndicator() {
-  const [isOnline, setIsOnline] = useState(true);
-  const [pending, setPending] = useState(0);
-  const isMountedRef = useRef(false);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [pending, setPending] = useState<number>(0);
+  const mounted = useRef(false);
 
   useEffect(() => {
-    isMountedRef.current = true;
+    mounted.current = true;
 
     const update = () => {
-      if (!isMountedRef.current) return;
-      const online = offlineQueue.isOnlineStatus();
-      const length = offlineQueue.getQueueLength();
-      setIsOnline(online);
-      setPending(length);
+      if (!mounted.current) return;
+      setIsOnline(safeOnline());
+      setPending(safeQueueLength());
     };
 
-    // initial
     update();
 
-    // basic listeners
-    const onUp = () => update();
-    const onDown = () => update();
-    window.addEventListener("online", onUp);
-    window.addEventListener("offline", onDown);
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", update);
+      window.addEventListener("offline", update);
+      const id = window.setInterval(update, 5000);
+      return () => {
+        mounted.current = false;
+        window.removeEventListener("online", update);
+        window.removeEventListener("offline", update);
+        window.clearInterval(id);
+      };
+    }
 
-    return () => {
-      isMountedRef.current = false;
-      window.removeEventListener("online", onUp);
-      window.removeEventListener("offline", onDown);
-    };
+    return () => { mounted.current = false; };
   }, []);
 
-  if (isOnline && pending === 0) return null;
-
   return (
-    <div className="fixed bottom-3 right-3 rounded-md px-3 py-2 text-sm shadow-md
-                    bg-yellow-100 text-yellow-900">
-      {!isOnline ? "You are offline" : "Pending requests"}{pending ? `: ${pending}` : ""}
+    <div className="text-xs text-gray-500">
+      <span>Network: {isOnline ? "online" : "offline"}</span>
+      {pending > 0 && <span className="ml-2">Queued: {pending}</span>}
     </div>
   );
 }
-
-
-
