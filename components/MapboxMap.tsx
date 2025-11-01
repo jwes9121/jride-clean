@@ -3,16 +3,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-// CSP-safe bundle + worker
+// ✅ CSP-safe bundle + worker: use default export only
 import mapboxgl from "mapbox-gl/dist/mapbox-gl-csp";
 import MapboxWorker from "mapbox-gl/dist/mapbox-gl-csp-worker";
 
-// Some versions need the assignment on .workerClass, others on root.
-// Do both, they are harmless if already set.
+// Assign worker for CSP builds (harmless if already set)
 try {
-  (mapboxgl as any).workerClass = (MapboxWorker as any);
-  // @ts-ignore
-  (mapboxgl as any).worker = (MapboxWorker as any);
+  (mapboxgl as any).workerClass = MapboxWorker;
+  // Some envs also look at .worker
+  (mapboxgl as any).worker = MapboxWorker as any;
 } catch {}
 
 type LatLng = { lat: number; lng: number };
@@ -40,7 +39,6 @@ export default function MapboxMap({
   const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Guard SSR
     if (typeof window === "undefined") return;
     if (!containerRef.current) return;
 
@@ -54,7 +52,6 @@ export default function MapboxMap({
       return;
     }
 
-    // Set token (try/catch for safety)
     try {
       (mapboxgl as any).accessToken = token;
     } catch (e: any) {
@@ -72,18 +69,22 @@ export default function MapboxMap({
       });
       mapRef.current = map;
 
+      // Controls
       map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
 
+      // Manage markers
       const currentMarkers: mapboxgl.Marker[] = [];
       const addMarkers = () => {
+        // clear previous
         while (currentMarkers.length) {
           try { currentMarkers.pop()?.remove(); } catch {}
         }
+        // add new
         markers.forEach((m) => {
-          const mapboxgl.Marker = new mapboxgl.mapboxgl.Marker({ color: m.color || "#2563eb" })
+          const marker = new mapboxgl.Marker({ color: m.color || "#2563eb" })
             .setLngLat([m.lng, m.lat])
             .addTo(map);
-          currentMarkers.push(mapboxgl.Marker as mapboxgl.Marker);
+          currentMarkers.push(marker);
         });
       };
 
@@ -109,7 +110,7 @@ export default function MapboxMap({
       setInitError(e?.message || String(e));
       return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center.lat, center.lng, zoom, JSON.stringify(markers), !!onClickLatLng]);
 
   if (initError) {
@@ -133,4 +134,3 @@ export default function MapboxMap({
     />
   );
 }
-
