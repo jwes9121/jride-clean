@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import offlineQueue from "@/lib/offlineQueue"; // <-- default API object
+import offlineQueue, { isOnlineStatus as _isOnlineStatus, getQueueLength as _getQueueLength } from "@/lib/offlineQueue"; // <-- default API object
 
 export default function OfflineIndicator() {
   const [isOnline, setIsOnline] = useState(true);
@@ -14,8 +14,8 @@ export default function OfflineIndicator() {
 
     const update = () => {
       if (!isMountedRef.current) return;
-      const online = offlineQueue.isOnlineStatus();
-      const length = offlineQueue.getQueueLength();
+      const online = _isOnlineStatus();
+      const length = _getQueueLength();
       setIsOnline(online);
       setPending(length);
     };
