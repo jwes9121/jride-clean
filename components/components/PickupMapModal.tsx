@@ -1,7 +1,21 @@
 'use client';
-Ã¯Â»Â¿import { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+
+// Mapbox CSP worker (NO workerClass). Works with mapbox-gl v2 on Next.js
+try {
+  (mapboxgl as any).workerUrl = new URL(
+    "mapbox-gl/dist/mapbox-gl-csp-worker.js",
+    import.meta.url
+  ).toString();
+} catch {
+  // SSR/older bundlers: silently ignore
+}
+
+// Token must be set via NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
 
 type Props = {
   initialLat?: number;
@@ -10,72 +24,66 @@ type Props = {
   onSave: (lat: number, lng: number) => void;
 };
 
-// --- Mapbox CSP worker (no workerClass) ---
-try {
-  // @ts-ignore Ã¢â‚¬â€œ mapbox-gl provides a CSP worker we can point to
-  (mapboxgl as any).workerUrl = new URL(
-    'mapbox-gl/dist/mapbox-gl-csp-worker.js',
-    import.meta.url
-  ).toString();
-} catch {
-  /* noop Ã¢â‚¬â€œ SSR or older bundlers */
-}
-
-// Read token from env (must be set in Vercel/ENV)
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
-
 export default function PickupMapModal({
   initialLat = 16.8165,
   initialLng = 121.1005,
   onClose,
   onSave,
 }: Props) {
-  const mapRef = useRef<HTMLDivElement | null>(null);
-  const mapInstance = useRef<mapboxgl.Map | null>(null);
+  const mapDiv = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   const [lat, setLat] = useState(initialLat);
   const [lng, setLng] = useState(initialLng);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return;
+    if (!mapDiv.current || mapRef.current) return;
 
-    mapInstance.current = new mapboxgl.Map({
-      container: mapRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [initialLng, initialLat],
-      zoom: 14,
-      // Strong CSP + PWA friendly
-      attributionControl: true,
-      cooperativeGestures: true,
-    });
+    try {
+      const map = new mapboxgl.Map({
+        container: mapDiv.current,
+        style: "mapbox://styles/mapbox/streets-v12",
+        center: [initialLng, initialLat],
+        zoom: 14,
+        attributionControl: true,
+        cooperativeGestures: true,
+      });
+      mapRef.current = map;
 
-    markerRef.current = new mapboxgl.Marker({ draggable: true })
-      .setLngLat([initialLng, initialLat])
-      .addTo(mapInstance.current);
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
-    const onDragEnd = () => {
-      const p = markerRef.current!.getLngLat();
-      setLng(p.lng);
-      setLat(p.lat);
-    };
-    markerRef.current.on('dragend', onDragEnd);
+      const marker = new mapboxgl.Marker({ draggable: true })
+        .setLngLat([initialLng, initialLat])
+        .addTo(map);
+      markerRef.current = marker;
 
-    const onClick = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
-      const { lngLat } = e;
-      markerRef.current!.setLngLat(lngLat);
-      setLng(lngLat.lng);
-      setLat(lngLat.lat);
-    };
-    mapInstance.current.on('click', onClick);
+      const onDragEnd = () => {
+        const p = marker.getLngLat();
+        setLng(p.lng);
+        setLat(p.lat);
+      };
+      marker.on("dragend", onDragEnd);
 
-    return () => {
-      mapInstance.current?.off('click', onClick);
-      markerRef.current?.remove();
-      mapInstance.current?.remove();
-      markerRef.current = null;
-      mapInstance.current = null;
-    };
+      const onClick = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+        const p = e.lngLat;
+        marker.setLngLat(p);
+        setLng(p.lng);
+        setLat(p.lat);
+      };
+      map.on("click", onClick);
+
+      return () => {
+        map.off("click", onClick);
+        marker.remove();
+        map.remove();
+        markerRef.current = null;
+        mapRef.current = null;
+      };
+    } catch (e: any) {
+      setErr(e?.message ?? "Map init error");
+    }
   }, [initialLat, initialLng]);
 
   return (
@@ -83,21 +91,21 @@ export default function PickupMapModal({
       <div className="w-[96vw] max-w-[980px] rounded-lg bg-white shadow-lg">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-lg font-semibold">Set Pickup Location</h2>
-          <button
-            className="rounded px-2 py-1 text-sm hover:bg-gray-100"
-            onClick={onClose}
-          >
+          <button className="rounded px-2 py-1 text-sm hover:bg-gray-100" onClick={onClose}>
             Close
           </button>
         </div>
 
         <div className="p-3">
-          <div
-            ref={mapRef}
-            style={{ width: '100%', height: '60vh', borderRadius: 8, overflow: 'hidden' }}
-          />
+          {err ? (
+            <div className="flex h-[60vh] items-center justify-center text-sm text-red-600">
+              Map failed to load: {err}
+            </div>
+          ) : (
+            <div ref={mapDiv} style={{ width: "100%", height: "60vh", borderRadius: 8, overflow: "hidden" }} />
+          )}
           <div className="mt-3 text-sm text-gray-600">
-            Lat <span className="font-mono">{lat.toFixed(6)}</span>{' '}
+            Lat <span className="font-mono">{lat.toFixed(6)}</span>{" "}
             Lng <span className="font-mono">{lng.toFixed(6)}</span>
           </div>
         </div>
