@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
@@ -9,6 +9,7 @@ export default function WebsitePage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   return <WebsiteAuth />;
 }
+
 
 
 
