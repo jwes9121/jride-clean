@@ -1,6 +1,8 @@
+<<<<<<< HEAD
 'use client';
-
-ï»¿"use client";
+=======
+﻿"use client";
+>>>>>>> 262f109 (chore: env migration to new Supabase keys)
 
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
@@ -15,13 +17,13 @@ type Props = {
 
 // --- Mapbox CSP worker (no workerClass) ---
 try {
-  // @ts-ignore â€“ mapbox-gl provides a CSP worker we can point to
+  // @ts-ignore – mapbox-gl provides a CSP worker we can point to
   (mapboxgl as any).workerUrl = new URL(
     'mapbox-gl/dist/mapbox-gl-csp-worker.js',
     import.meta.url
   ).toString();
 } catch {
-  /* noop â€“ SSR or older bundlers */
+  /* noop – SSR or older bundlers */
 }
 
 // Read token from env (must be set in Vercel/ENV)
