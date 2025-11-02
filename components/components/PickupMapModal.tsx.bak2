@@ -1,5 +1,8 @@
 'use client';
-Ã¯Â»Â¿import { useEffect, useRef, useState } from 'react';
+
+ï»¿"use client";
+
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -12,13 +15,13 @@ type Props = {
 
 // --- Mapbox CSP worker (no workerClass) ---
 try {
-  // @ts-ignore Ã¢â‚¬â€œ mapbox-gl provides a CSP worker we can point to
+  // @ts-ignore â€“ mapbox-gl provides a CSP worker we can point to
   (mapboxgl as any).workerUrl = new URL(
     'mapbox-gl/dist/mapbox-gl-csp-worker.js',
     import.meta.url
   ).toString();
 } catch {
-  /* noop Ã¢â‚¬â€œ SSR or older bundlers */
+  /* noop â€“ SSR or older bundlers */
 }
 
 // Read token from env (must be set in Vercel/ENV)
