@@ -140,15 +140,13 @@ export default function Dispatch() {
         </div>
       )}
 
-      <PickupMapModal
-        isOpen={openMapFor !== null}
-        initial={initialPos ?? undefined}
-        onClose={() => setOpenMapFor(null)}
-        onSave={(lat, lng) => { void savePickup({ lat, lng }); }}
-      />
-    </div>
-  );
-}
+      {openMapFor !== null && (
+  <PickupMapModal
+    initial={initialPos ?? undefined}
+    onClose={() => setOpenMapFor(null)}
+    onSave={(lat, lng) => { void savePickup({ lat, lng }); }}
+  />
+)}
 
 
 
