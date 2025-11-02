@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 export const dynamic = 'force-dynamic';
 
 import React from "react";
@@ -72,7 +72,7 @@ export default function Dispatch() {
 
       {err && <div className="p-2 rounded border border-red-300 bg-red-50 text-red-700 text-sm">{err}</div>}
       {loading ? (
-        <div>Loadingâ€¦</div>
+        <div>Loading…</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <section className="rounded-lg border p-3">
@@ -84,7 +84,7 @@ export default function Dispatch() {
                 <ul className="space-y-1">
                   {drivers.map((d) => (
                     <li key={d.id} className="flex items-center justify-between">
-                      <span>{d.name ?? d.id.slice(0, 8)} {d.town ? <span className="opacity-60">â€” {d.town}</span> : null}</span>
+                      <span>{d.name ?? d.id.slice(0, 8)} {d.town ? <span className="opacity-60">— {d.town}</span> : null}</span>
                       <span className={"text-xs px-2 py-0.5 rounded " + (d.online ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600")}>
                         {d.online ? "online" : "offline"}
                       </span>
@@ -144,11 +144,12 @@ export default function Dispatch() {
         isOpen={openMapFor !== null}
         initial={initialPos ?? undefined}
         onClose={() => setOpenMapFor(null)}
-        onSave={savePickup}
+        onSave={(lat, lng) => { void savePickup({ lat, lng }); }}
       />
     </div>
   );
 }
+
 
 
 
