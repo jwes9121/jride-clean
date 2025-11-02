@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 'use client';
+=======
+﻿"use client";
+>>>>>>> 262f109 (chore: env migration to new Supabase keys)
 
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';

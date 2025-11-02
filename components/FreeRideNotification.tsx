@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 
@@ -97,7 +97,7 @@ export default function FreeRideNotification() {
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-3">
           <div className="flex items-center justify-between mb-2">
             <span className="font-semibold">Free Ride Credit</span>
-            <span className="text-2xl font-bold">â‚±{freeRideData.creditAmount}</span>
+            <span className="text-2xl font-bold">Ã¢â€šÂ±{freeRideData.creditAmount}</span>
           </div>
           
           {freeRideData.expiresAt && (
@@ -116,10 +116,10 @@ export default function FreeRideNotification() {
             <div>
               <p className="text-sm font-medium">How to use your free ride:</p>
               <ul className="text-xs opacity-90 mt-1 space-y-1">
-                <li>â€¢ Book any ride up to â‚±{freeRideData.creditAmount}</li>
-                <li>â€¢ Select "Free Ride Credit" as payment method</li>
-                <li>â€¢ Credit expires in {freeRideData.expiresAt ? formatTimeRemaining(freeRideData.expiresAt) : 'soon'}</li>
-                <li>â€¢ Can only be used once</li>
+                <li>Ã¢â‚¬Â¢ Book any ride up to Ã¢â€šÂ±{freeRideData.creditAmount}</li>
+                <li>Ã¢â‚¬Â¢ Select "Free Ride Credit" as payment method</li>
+                <li>Ã¢â‚¬Â¢ Credit expires in {freeRideData.expiresAt ? formatTimeRemaining(freeRideData.expiresAt) : 'soon'}</li>
+                <li>Ã¢â‚¬Â¢ Can only be used once</li>
               </ul>
             </div>
           </div>

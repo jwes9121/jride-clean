@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -12,8 +12,8 @@ function computeTriplycFare(
   currency: string;
 } {
   // Basic stub pricing logic:
-  // - Base fare ₱20
-  // - +₱10 per extra passenger after the first
+  // - Base fare â‚±20
+  // - +â‚±10 per extra passenger after the first
   // You can evolve this later (town zones, distance, etc.)
   const base = 20;
   const extras = passengers > 1 ? (passengers - 1) * 10 : 0;
@@ -51,10 +51,10 @@ export default function ConfirmFareClient() {
       </div>
 
       <div className="text-sm text-gray-900 font-medium">
-        Total: ₱{fare.total} {fare.currency}
+        Total: â‚±{fare.total} {fare.currency}
       </div>
       <div className="text-xs text-gray-500">
-        Per-head est: ₱{fare.perHead} {fare.currency}
+        Per-head est: â‚±{fare.perHead} {fare.currency}
       </div>
 
       <p className="text-xs text-gray-500 mt-4">

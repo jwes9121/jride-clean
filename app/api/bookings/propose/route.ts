@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
 // Disabled in clean build: avoids Supabase init at import time.
 // Replace with the real implementation later.

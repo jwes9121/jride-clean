@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import { useRouter } from "next/navigation";
@@ -7,7 +7,7 @@ import { Home, Package, ShoppingBag, MapPin, User } from "lucide-react";
 /** You may import this type elsewhere if you want, but it's optional */
 export type TabItem = { key: string; label: string };
 
-/** Allow callers to pass strings OR objects â€” and make `tabs` OPTIONAL */
+/** Allow callers to pass strings OR objects Ã¢â‚¬â€ and make `tabs` OPTIONAL */
 type TabsProp = Array<string | TabItem>;
 
 interface BottomNavigationProps {

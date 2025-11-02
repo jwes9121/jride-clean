@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 
@@ -6,7 +6,7 @@ interface StatusAction {
   status: string;
   label: string;
   icon: string;
-  requiresInput?: boolean; // ðŸ‘ˆ NEW: optional property
+  requiresInput?: boolean; // Ã°Å¸â€˜Ë† NEW: optional property
 }
 
 interface ErrandStatusModalProps {
@@ -26,7 +26,7 @@ export default function ErrandStatusModal({
 
   if (!isOpen) return null;
 
-  // ðŸ‘‡ Example status actions
+  // Ã°Å¸â€˜â€¡ Example status actions
   const statusActions: StatusAction[] = [
     { status: "pending", label: "Pending", icon: "ri-time-line" },
     { status: "in_progress", label: "In Progress", icon: "ri-loader-2-line" },
@@ -41,7 +41,7 @@ export default function ErrandStatusModal({
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold">Update Errand Status</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            âœ•
+            Ã¢Å“â€¢
           </button>
         </div>
 

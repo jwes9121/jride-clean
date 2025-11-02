@@ -1,4 +1,4 @@
-// app/components/Header.tsx
+﻿// app/components/Header.tsx
 import Link from "next/link";
 import { auth } from "@/configs/nextauth";
 

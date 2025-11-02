@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { platformDeduction } from "../../../lib/fare";
@@ -28,7 +28,7 @@ export default function DriverPostTripClient() {
         <div className="flex justify-between">
           <span className="text-gray-500">Total fare collected:</span>
           <span className="font-medium text-gray-900">
-            ₱{breakdown.gross}
+            â‚±{breakdown.gross}
           </span>
         </div>
 
@@ -37,14 +37,14 @@ export default function DriverPostTripClient() {
             Platform fee ({Math.round(breakdown.rate * 100)}%):
           </span>
           <span className="font-medium text-gray-900">
-            ₱{breakdown.platformCut}
+            â‚±{breakdown.platformCut}
           </span>
         </div>
 
         <div className="flex justify-between border-t pt-3 mt-3">
           <span className="text-gray-800 font-semibold">You keep:</span>
           <span className="text-gray-900 font-bold">
-            ₱{breakdown.driverTakeHome}
+            â‚±{breakdown.driverTakeHome}
           </span>
         </div>
       </section>

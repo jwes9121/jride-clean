@@ -1,4 +1,4 @@
-// app/components/NavBar.tsx
+﻿// app/components/NavBar.tsx
 "use client";
 
 import React from "react";

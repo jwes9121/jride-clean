@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 
@@ -26,7 +26,7 @@ interface DeliveryOrder {
 interface VendorConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  order: DeliveryOrder; // âœ… non-null
+  order: DeliveryOrder; // Ã¢Å“â€¦ non-null
   onConfirm: (orderId: string, confirmed: boolean) => void;
 }
 

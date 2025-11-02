@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import type { RatingKey, Ratings, Question } from "@/types/survey";

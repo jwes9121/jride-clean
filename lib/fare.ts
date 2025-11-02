@@ -1,4 +1,4 @@
-// lib/fare.ts
+﻿// lib/fare.ts
 
 export type FareBreakdown = {
   total: number;
@@ -10,8 +10,8 @@ export type FareBreakdown = {
  * computeTriplycFare
  *
  * Simple pricing model:
- * - base fare ₱20
- * - each passenger after the first adds ₱10
+ * - base fare â‚±20
+ * - each passenger after the first adds â‚±10
  *
  * returns object with total, perHead, currency
  */

@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 
 type RideShareModalProps = {
-  /** The ride weâ€™re deciding on (optional, for display only) */
+  /** The ride weÃ¢â‚¬â„¢re deciding on (optional, for display only) */
   ride?: { id?: string | number; [k: string]: any } | null;
   /** Pending passenger info (optional, for display only) */
   pendingPassenger?: { name?: string; [k: string]: any } | null;
@@ -34,7 +34,7 @@ export default function RideShareModal({
               className="rounded p-1 text-gray-500 hover:bg-gray-100"
               onClick={onClose}
             >
-              âœ•
+              Ã¢Å“â€¢
             </button>
           ) : null}
         </div>

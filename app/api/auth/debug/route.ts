@@ -1,4 +1,4 @@
-// app/api/auth/debug/route.ts
+﻿// app/api/auth/debug/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { auth, signIn, signOut, handlers } from "../../../../auth";
 

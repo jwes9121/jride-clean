@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import { useRouter } from "next/navigation";
@@ -38,7 +38,7 @@ export default function Header({
               className="rounded p-2 hover:bg-gray-100"
             >
               <span className="sr-only">Back</span>
-              â†
+              Ã¢â€ Â
             </button>
           ) : null}
           {title ? <h1 className="text-base font-semibold">{title}</h1> : null}

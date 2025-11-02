@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 
@@ -32,7 +32,7 @@ export default function RideShareConfirmationModal({
 }: RideShareConfirmationModalProps) {
   if (!isOpen) return null;
 
-  // friendly fallbacks so the UI still renders even if page doesnâ€™t supply details
+  // friendly fallbacks so the UI still renders even if page doesnÃ¢â‚¬â„¢t supply details
   const driver = driverName ?? ride?.driverName ?? ride?.driver?.name ?? "Driver";
   const pickup = pickupLocation ?? ride?.pickupLocation ?? ride?.pickup?.address ?? "Pickup location";
   const dropoff = dropoffLocation ?? ride?.dropoffLocation ?? ride?.dropoff?.address ?? "Dropoff location";
@@ -57,7 +57,7 @@ export default function RideShareConfirmationModal({
             className="rounded p-1 text-gray-500 hover:bg-gray-100"
             onClick={onClose}
           >
-            âœ•
+            Ã¢Å“â€¢
           </button>
         </div>
 
@@ -74,7 +74,7 @@ export default function RideShareConfirmationModal({
             <li>Pickup: <span className="text-gray-800">{pickup}</span></li>
             <li>Dropoff: <span className="text-gray-800">{dropoff}</span></li>
             {price !== undefined ? (
-              <li>Fare: <span className="text-gray-800">â‚±{price}</span></li>
+              <li>Fare: <span className="text-gray-800">Ã¢â€šÂ±{price}</span></li>
             ) : null}
           </ul>
           {ride?.id ? (

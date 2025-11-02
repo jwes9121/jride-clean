@@ -1,4 +1,4 @@
-export type Booking = {
+﻿export type Booking = {
   id: string;
   passenger?: string;
   pickup?: string;

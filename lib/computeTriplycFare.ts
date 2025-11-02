@@ -1,4 +1,4 @@
-// lib/computeTriplycFare.ts
+﻿// lib/computeTriplycFare.ts
 
 /**
  * Rough fare computation for tricycle booking.

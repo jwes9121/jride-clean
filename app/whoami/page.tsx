@@ -1,4 +1,4 @@
-import { auth } from "@/configs/nextauth";
+﻿import { auth } from "@/configs/nextauth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";

@@ -1,4 +1,4 @@
-export function registerServiceWorker() {
+﻿export function registerServiceWorker() {
   if (typeof window === 'undefined') return;
   if (!('serviceWorker' in navigator)) return;
 

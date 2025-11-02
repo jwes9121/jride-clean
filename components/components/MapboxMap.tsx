@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-// ✅ CSP-safe bundle + worker: use default export only
+// âœ… CSP-safe bundle + worker: use default export only
 import mapboxgl from "mapbox-gl/dist/mapbox-gl-csp";
 import MapboxWorker from "mapbox-gl/dist/mapbox-gl-csp-worker";
 

@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 
 // app/(authed)/layout.tsx
 export default function AuthedLayout({

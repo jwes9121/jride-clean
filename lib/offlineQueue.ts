@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Very small offline queue for client-side fetch-like work.
  * Persists to localStorage, flushes when back online. No-ops during SSR.
  */

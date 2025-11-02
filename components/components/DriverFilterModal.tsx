@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -119,7 +119,7 @@ export default function DriverFilterModal({ isOpen, onClose, onSave }: DriverFil
                   </div>
                 </div>
                 <p className="text-xs text-blue-600 mt-1">
-                  {isNightTime() ? 'ðŸŒ™ Night time active - Enhanced safety mode' : 'â˜€ï¸ Day time - Standard mode'}
+                  {isNightTime() ? 'Ã°Å¸Å’â„¢ Night time active - Enhanced safety mode' : 'Ã¢Ëœâ‚¬Ã¯Â¸Â Day time - Standard mode'}
                 </p>
               </div>
 
@@ -127,10 +127,10 @@ export default function DriverFilterModal({ isOpen, onClose, onSave }: DriverFil
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <h5 className="font-semibold text-green-800 text-sm mb-1">Safety Benefits:</h5>
                   <ul className="text-xs text-green-700 space-y-1">
-                    <li>âœ… Only accept passengers with Google/Facebook verification</li>
-                    <li>âœ… Reduced risk of problematic passengers</li>
-                    <li>âœ… Higher passenger accountability</li>
-                    <li>âœ… Enhanced trip safety during night hours</li>
+                    <li>Ã¢Å“â€¦ Only accept passengers with Google/Facebook verification</li>
+                    <li>Ã¢Å“â€¦ Reduced risk of problematic passengers</li>
+                    <li>Ã¢Å“â€¦ Higher passenger accountability</li>
+                    <li>Ã¢Å“â€¦ Enhanced trip safety during night hours</li>
                   </ul>
                 </div>
               )}

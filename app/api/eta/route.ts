@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 function num(v: string | null): number | null {

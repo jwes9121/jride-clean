@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect } from 'react';
 interface DispatcherAuthProps {
   onLogin: () => void;
@@ -120,9 +120,9 @@ export default function DispatcherAuth({ onLogin }: DispatcherAuthProps) {
             <div>
               <h3 className="text-sm font-medium text-blue-900 mb-1">Access Instructions</h3>
               <ul className="text-xs text-blue-700 space-y-1">
-                <li>â€¢ Contact admin for dispatcher credentials</li>
-                <li>â€¢ Use your assigned Dispatcher ID</li>
-                <li>â€¢ Portal works on mobile browsers</li>
+                <li>Ã¢â‚¬Â¢ Contact admin for dispatcher credentials</li>
+                <li>Ã¢â‚¬Â¢ Use your assigned Dispatcher ID</li>
+                <li>Ã¢â‚¬Â¢ Portal works on mobile browsers</li>
               </ul>
             </div>
           </div>

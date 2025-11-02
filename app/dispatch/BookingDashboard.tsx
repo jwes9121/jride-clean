@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import type { Booking } from "@/types/booking"; // <- import only
@@ -29,15 +29,15 @@ export default function BookingDashboard({ title = "Bookings" }: Props) {
   return (
     <section className="space-y-4">
       <h2 className="text-xl font-semibold">{title}</h2>
-      {loading && <p>Loadingâ€¦</p>}
+      {loading && <p>LoadingÃ¢â‚¬Â¦</p>}
       {error && <p className="text-red-600">{error}</p>}
       {!loading && !error && (
         <ul className="divide-y divide-gray-200">
           {bookings.length === 0 && <li className="py-2 text-gray-500">No bookings yet.</li>}
           {bookings.map(b => (
             <li key={b.id} className="py-2">
-              <span className="font-medium">{b.passenger ?? "â€”"}</span>
-              <span className="mx-2">â€¢</span>
+              <span className="font-medium">{b.passenger ?? "Ã¢â‚¬â€"}</span>
+              <span className="mx-2">Ã¢â‚¬Â¢</span>
               <span>{b.status ?? "unknown"}</span>
             </li>
           ))}

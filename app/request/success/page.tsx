@@ -1,4 +1,4 @@
-export default function RequestSuccessPage() {
+﻿export default function RequestSuccessPage() {
   return (
     <main className="p-6 max-w-md mx-auto text-center">
       <h1 className="font-semibold text-lg mb-2">Request Submitted</h1>

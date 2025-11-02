@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 interface PenaltyNotificationModalProps {
   isOpen: boolean
@@ -61,7 +61,7 @@ export default function PenaltyNotificationModal({
                   {penalty.type === 'reward' ? 'Bonus Amount:' : 'Penalty Amount:'}
                 </span>
                 <span className={`font-bold text-lg ${style.accent}`}>
-                  â‚±{penalty.amount.toFixed(2)}
+                  Ã¢â€šÂ±{penalty.amount.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -93,9 +93,9 @@ export default function PenaltyNotificationModal({
               <i className="ri-lightbulb-line text-blue-600 mt-0.5 mr-2 flex-shrink-0"></i>
               <div className="text-xs text-blue-800">
                 <p className="font-medium mb-1">Avoid Future Penalties:</p>
-                <p>â€¢ Respond to order confirmations within 3 minutes</p>
-                <p>â€¢ Maintain honest passenger count declarations</p>
-                <p>â€¢ Follow all service guidelines</p>
+                <p>Ã¢â‚¬Â¢ Respond to order confirmations within 3 minutes</p>
+                <p>Ã¢â‚¬Â¢ Maintain honest passenger count declarations</p>
+                <p>Ã¢â‚¬Â¢ Follow all service guidelines</p>
               </div>
             </div>
           </div>
@@ -107,7 +107,7 @@ export default function PenaltyNotificationModal({
               <i className="ri-wallet-line text-orange-600 mt-0.5 mr-2 flex-shrink-0"></i>
               <div className="text-xs text-orange-800">
                 <p className="font-medium mb-1">Payment Deduction:</p>
-                <p>Amount deducted from wallet â†’ points â†’ next top-up. Continue following guidelines to avoid suspension.</p>
+                <p>Amount deducted from wallet Ã¢â€ â€™ points Ã¢â€ â€™ next top-up. Continue following guidelines to avoid suspension.</p>
               </div>
             </div>
           </div>

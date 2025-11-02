@@ -1,4 +1,4 @@
-export const runtime = "nodejs";
+﻿export const runtime = "nodejs";
 
 export async function GET() {
   const body = Object.fromEntries(

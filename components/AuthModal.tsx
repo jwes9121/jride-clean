@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 
@@ -8,7 +8,7 @@ export interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode?: AuthMode;
-  onAuthSuccess?: (userData?: any) => void; // â† optional
+  onAuthSuccess?: (userData?: any) => void; // Ã¢â€ Â optional
 }
 
 export default function AuthModal({

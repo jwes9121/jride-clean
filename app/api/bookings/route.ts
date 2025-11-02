@@ -1,10 +1,10 @@
-// app/api/bookings/route.ts
+﻿// app/api/bookings/route.ts
 
 import { NextResponse } from "next/server";
 import { auth } from "@/configs/nextauth";
 
 export async function GET() {
-  // check session first — this shows dispatcher-only behavior later
+  // check session first â€” this shows dispatcher-only behavior later
   const session = await auth();
 
   if (!session || !session.user?.email) {

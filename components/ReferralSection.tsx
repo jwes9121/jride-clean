@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -90,7 +90,7 @@ export default function ReferralSection() {
 
   const shareReferralCode = async () => {
     if (stats?.referralCode && stats?.referralLink) {
-      const shareText = `Join J-Ride using my referral code: ${stats.referralCode}\n\nNew passengers get â‚±30 free ride credit!\nI get 15 points (â‚±15 ride credit) when you complete your first ride.\n\nSign up here: ${stats.referralLink}`;
+      const shareText = `Join J-Ride using my referral code: ${stats.referralCode}\n\nNew passengers get Ã¢â€šÂ±30 free ride credit!\nI get 15 points (Ã¢â€šÂ±15 ride credit) when you complete your first ride.\n\nSign up here: ${stats.referralLink}`;
       
       if (navigator.share) {
         try {
@@ -136,7 +136,7 @@ export default function ReferralSection() {
           Refer Friends & Earn Points
         </h3>
         <p className="text-sm text-gray-600 mt-1">
-          Refer new passengers and earn 15 points (â‚±15 ride credit) each
+          Refer new passengers and earn 15 points (Ã¢â€šÂ±15 ride credit) each
         </p>
       </div>
 
@@ -216,10 +216,10 @@ export default function ReferralSection() {
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
               <h4 className="font-medium text-blue-800 mb-2">How Referrals Work:</h4>
               <ul className="text-sm text-blue-700 space-y-1">
-                <li>â€¢ New passengers get â‚±30 free ride credit (valid 7 days)</li>
-                <li>â€¢ You earn 15 points when they complete their first ride</li>
-                <li>â€¢ 1 point = â‚±1 ride credit (auto-applied at checkout)</li>
-                <li>â€¢ {JSON.parse(localStorage.getItem('j-ride-user') || '{}').user_type === 'driver' ? 'Drivers can only refer passengers' : 'Passengers can refer other passengers'}</li>
+                <li>Ã¢â‚¬Â¢ New passengers get Ã¢â€šÂ±30 free ride credit (valid 7 days)</li>
+                <li>Ã¢â‚¬Â¢ You earn 15 points when they complete their first ride</li>
+                <li>Ã¢â‚¬Â¢ 1 point = Ã¢â€šÂ±1 ride credit (auto-applied at checkout)</li>
+                <li>Ã¢â‚¬Â¢ {JSON.parse(localStorage.getItem('j-ride-user') || '{}').user_type === 'driver' ? 'Drivers can only refer passengers' : 'Passengers can refer other passengers'}</li>
               </ul>
             </div>
 
