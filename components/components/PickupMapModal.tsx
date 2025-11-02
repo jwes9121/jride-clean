@@ -1,81 +1,102 @@
-"use client";
+'use client';
 
-import React from "react";
-import MapboxMap from "./MapboxMap";
-
-type LatLng = { lat: number; lng: number };
+import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 
 type Props = {
-  isOpen: boolean;
-  initial?: LatLng;
-  onClose: () => void;
-  onSave: (pos: LatLng | null) => Promise<void> | void;
+  initialLat: number;
+  initialLng: number;
+  onSave: (lat: number, lng: number) => void;
+  onCancel: () => void;
 };
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; msg?: string }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, msg: error?.message || String(error) };
-  }
-  componentDidCatch(error: any, info: any) {
-    console.error("[PickupMapModal] crashed:", error, info);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="p-4 text-sm text-red-700 bg-red-50 rounded">
-          Map component crashed: {this.state.msg ?? "unknown error"}
-        </div>
-      );
+const MAPBOX_VERSION = 'v2.15.0';
+
+export default function PickupMapModal({ initialLat, initialLng, onSave, onCancel }: Props) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapObj = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const [pos, setPos] = useState({ lat: initialLat, lng: initialLng });
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !mapRef.current) return;
+
+    try {
+      // Access token
+      mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+
+      // CSP-safe worker (NO workerClass!):
+      if (!(mapboxgl as any).workerUrl) {
+        (mapboxgl as any).workerUrl = URL.createObjectURL(
+          new Blob(
+            [
+              `importScripts('https://api.mapbox.com/mapbox-gl-js/${MAPBOX_VERSION}/mapbox-gl-csp-worker.js');`,
+            ],
+            { type: 'application/javascript' }
+          )
+        );
+      }
+
+      // Create map
+      mapObj.current = new mapboxgl.Map({
+        container: mapRef.current,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [pos.lng, pos.lat],
+        zoom: 14,
+      });
+
+      mapObj.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }));
+
+      // Marker
+      markerRef.current = new mapboxgl.Marker({ draggable: true })
+        .setLngLat([pos.lng, pos.lat])
+        .addTo(mapObj.current);
+
+      const onDragEnd = () => {
+        const ll = markerRef.current!.getLngLat();
+        setPos({ lat: ll.lat, lng: ll.lng });
+      };
+      markerRef.current.on('dragend', onDragEnd);
+
+      // Click to set
+      mapObj.current.on('click', (e) => {
+        const { lat, lng } = e.lngLat;
+        markerRef.current!.setLngLat([lng, lat]);
+        setPos({ lat, lng });
+      });
+
+      return () => {
+        markerRef.current?.remove();
+        mapObj.current?.remove();
+      };
+    } catch (e: any) {
+      setErr(e?.message ?? 'Map init error');
     }
-    return this.props.children;
-  }
-}
-
-export default function PickupMapModal({ isOpen, initial, onClose, onSave }: Props) {
-  const [picked, setPicked] = React.useState<LatLng | null>(initial ?? null);
-  React.useEffect(() => setPicked(initial ?? null), [initial]);
-
-  if (!isOpen) return null;
-  const center = picked ?? initial ?? { lat: 16.8042, lng: 121.1157 }; // Ifugao approx.
+  }, []); // run once
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <div className="w-[92vw] max-w-3xl bg-white rounded-xl shadow-xl">
-        <div className="flex items-center justify-between p-3 border-b">
-          <div className="font-medium">Set Pickup Location</div>
-          <button onClick={onClose} className="px-2 py-1 rounded hover:bg-gray-100">Close</button>
-        </div>
-
-        <div className="p-3">
-          <ErrorBoundary>
-            <MapboxMap
-              center={center}
-              zoom={14}
-              markers={picked ? [{ ...picked, color: "#16a34a" }] : []}
-              onClickLatLng={(pos) => setPicked(pos)}
-              height={420}
-            />
-          </ErrorBoundary>
-          <div className="mt-2 text-xs text-gray-500">
-            {picked ? `Lat ${picked.lat.toFixed(6)} Lng ${picked.lng.toFixed(6)}` : "Click on map to choose a point"}
+    <div className="p-2">
+      <div style={{ height: 420, background: '#fee', borderRadius: 6 }}>
+        {err ? (
+          <div className="h-full flex items-center justify-center text-red-600 text-sm">
+            Map failed to load: {err}
           </div>
-        </div>
+        ) : (
+          <div ref={mapRef} style={{ height: '420px', borderRadius: 6 }} />
+        )}
+      </div>
 
-        <div className="p-3 flex items-center justify-end gap-2 border-t">
-          <button onClick={onClose} className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200">Cancel</button>
-          <button
-            onClick={() => onSave(picked)}
-            className="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Save pickup
-          </button>
-        </div>
+      <div className="mt-2 text-xs">
+        Lat {pos.lat.toFixed(6)} Lng {pos.lng.toFixed(6)}
+      </div>
+
+      <div className="mt-3 flex gap-2 justify-end">
+        <button onClick={onCancel} className="px-3 py-1 rounded bg-gray-200">Cancel</button>
+        <button onClick={() => onSave(pos.lat, pos.lng)} className="px-3 py-1 rounded bg-blue-600 text-white">
+          Save pickup
+        </button>
       </div>
     </div>
   );
 }
-
