@@ -1,125 +1,44 @@
-'use client';
+"use client";
+import { useState } from "react";
 
-import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
-
-// Mapbox CSP worker (NO workerClass). Works with mapbox-gl v2 on Next.js
-try {
-  (mapboxgl as any).workerUrl = new URL(
-    "mapbox-gl/dist/mapbox-gl-csp-worker.js",
-    import.meta.url
-  ).toString();
-} catch {
-  // SSR/older bundlers: silently ignore
-}
-
-// Token must be set via NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
+export type LatLng = { lat: number; lng: number };
 
 type Props = {
-  initialLat?: number;
-  initialLng?: number;
+  initial?: LatLng;
   onClose: () => void;
   onSave: (lat: number, lng: number) => void;
 };
 
-export default function PickupMapModal({
-  initialLat = 16.8165,
-  initialLng = 121.1005,
-  onClose,
-  onSave,
-}: Props) {
-  const mapDiv = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
-
-  const [lat, setLat] = useState(initialLat);
-  const [lng, setLng] = useState(initialLng);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!mapDiv.current || mapRef.current) return;
-
-    try {
-      const map = new mapboxgl.Map({
-        container: mapDiv.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [initialLng, initialLat],
-        zoom: 14,
-        attributionControl: true,
-        cooperativeGestures: true,
-      });
-      mapRef.current = map;
-
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
-
-      const marker = new mapboxgl.Marker({ draggable: true })
-        .setLngLat([initialLng, initialLat])
-        .addTo(map);
-      markerRef.current = marker;
-
-      const onDragEnd = () => {
-        const p = marker.getLngLat();
-        setLng(p.lng);
-        setLat(p.lat);
-      };
-      marker.on("dragend", onDragEnd);
-
-      const onClick = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
-        const p = e.lngLat;
-        marker.setLngLat(p);
-        setLng(p.lng);
-        setLat(p.lat);
-      };
-      map.on("click", onClick);
-
-      return () => {
-        map.off("click", onClick);
-        marker.remove();
-        map.remove();
-        markerRef.current = null;
-        mapRef.current = null;
-      };
-    } catch (e: any) {
-      setErr(e?.message ?? "Map init error");
-    }
-  }, [initialLat, initialLng]);
+export default function PickupMapModal({ initial, onClose, onSave }: Props) {
+  const [lat, setLat] = useState<number>(initial?.lat ?? 16.999);
+  const [lng, setLng] = useState<number>(initial?.lng ?? 121.1);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-[96vw] max-w-[980px] rounded-lg bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-lg font-semibold">Set Pickup Location</h2>
-          <button className="rounded px-2 py-1 text-sm hover:bg-gray-100" onClick={onClose}>
-            Close
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-4 shadow-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-medium">Pick a location</h2>
+          <button onClick={onClose} className="rounded-md px-2 py-1 text-sm hover:bg-gray-100" aria-label="Close">✕</button>
         </div>
-
-        <div className="p-3">
-          {err ? (
-            <div className="flex h-[60vh] items-center justify-center text-sm text-red-600">
-              Map failed to load: {err}
-            </div>
-          ) : (
-            <div ref={mapDiv} style={{ width: "100%", height: "60vh", borderRadius: 8, overflow: "hidden" }} />
-          )}
-          <div className="mt-3 text-sm text-gray-600">
-            Lat <span className="font-mono">{lat.toFixed(6)}</span>{" "}
-            Lng <span className="font-mono">{lng.toFixed(6)}</span>
+        <div className="mb-4 rounded-lg border p-3">
+          <p className="mb-2 text-sm text-gray-600">(Map placeholder) Hook to Mapbox later.)</p>
+          <div className="flex gap-3">
+            <label className="flex-1 text-sm">Lat
+              <input className="mt-1 w-full rounded-md border px-2 py-1" type="number" step="0.000001"
+                     value={Number.isFinite(lat)?lat:0}
+                     onChange={(e)=>{ const v=parseFloat(e.target.value); setLat(Number.isFinite(v)?v:0); }} />
+            </label>
+            <label className="flex-1 text-sm">Lng
+              <input className="mt-1 w-full rounded-md border px-2 py-1" type="number" step="0.000001"
+                     value={Number.isFinite(lng)?lng:0}
+                     onChange={(e)=>{ const v=parseFloat(e.target.value); setLng(Number.isFinite(v)?v:0); }} />
+            </label>
           </div>
         </div>
-
-        <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <button className="rounded px-3 py-2 text-sm hover:bg-gray-100" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            onClick={() => onSave(lat, lng)}
-          >
-            Save pickup
-          </button>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border px-3 py-2 hover:bg-gray-50">Cancel</button>
+          <button onClick={()=>onSave(lat,lng)} className="rounded-lg bg-black px-3 py-2 text-white hover:opacity-90">Save</button>
         </div>
       </div>
     </div>
