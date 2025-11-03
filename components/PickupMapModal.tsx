@@ -1,4 +1,5 @@
-﻿"use client";
+import "mapbox-gl/dist/mapbox-gl.css";
+"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 
