@@ -31,7 +31,6 @@ type Nearest = {
   lng: number;
   distance_km: number;
   updated_at: string;
-  distance_km: number;
 } | null;
 
 export default function DispatchPageComponent() {
@@ -192,7 +191,7 @@ export default function DispatchPageComponent() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               placeholder="Notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value))}
+              onChange={(e) => setNotes(e.target.value)}
             />
           </div>
 
@@ -321,3 +320,5 @@ export default function DispatchPageComponent() {
     </div>
   );
 }
+
+
