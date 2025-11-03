@@ -2,133 +2,120 @@
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useRef, useState } from "react";
-// (keep your dynamic JS import of `mapbox-gl` inside useEffect/handler)
 
-
-import React, { useEffect, useRef, useState } from "react";
-
-// IMPORTANT: dynamic import to avoid SSR issues with mapbox-gl
-// We also lazy-load the CSS in effect to avoid Next SSR complaints.
 type LatLng = { lat: number; lng: number };
 
 type Props = {
   open: boolean;
-  initial?: LatLng;              // optional starting pin
-  onSave: (lat: number, lng: number) => void;
+  initial?: LatLng;               // optional starting pin
   onClose: () => void;
+  onSave: (lat: number, lng: number) => void;
 };
 
-export default function PickupMapModal({ open, initial, onSave, onClose }: Props) {
+export default function PickupMapModal({ open, initial, onClose, onSave }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const markerRef = useRef<any>(null);
   const mapRef = useRef<any>(null);
-  const [pending, setPending] = useState<boolean>(false);
-  const [coord, setCoord] = useState<LatLng | null>(initial ?? null);
+  const markerRef = useRef<any>(null);
 
+  const [coords, setCoords] = useState<LatLng | null>(initial ?? null);
+
+  // keep local coords in sync when modal opens or initial changes
+  useEffect(() => {
+    if (open) setCoords(initial ?? null);
+  }, [open, initial]);
+
+  // create/teardown the map when modal opens/closes
   useEffect(() => {
     if (!open) return;
 
-    let cleanup = () => {};
+    let disposed = false;
+
     (async () => {
-      setPending(true);
-      // Lazy load mapbox & css only when modal opens
       const mapboxgl = (await import("mapbox-gl")).default;
+      mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 
-      // Token from NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
-      const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-      if (!token) {
-        console.warn("NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN not set");
-      }
-      mapboxgl.accessToken = token || "";
+      const start = coords ?? { lat: 16.8, lng: 121.12 };
+      const mountEl = containerRef.current;
+      if (!mountEl) return;
 
-      if (!containerRef.current) return;
-
-      const start = initial ?? { lat: 16.8, lng: 121.1 }; // Ifugao-ish fallback
       const map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: "mapbox://styles/mapbox/streets-v12",
+        container: mountEl,
+        style: "mapbox://styles/mapbox/streets-v11",
         center: [start.lng, start.lat],
         zoom: 13,
       });
       mapRef.current = map;
 
-      // Add zoom controls
-      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
-
-      // Drop marker
       const marker = new mapboxgl.Marker({ draggable: true })
         .setLngLat([start.lng, start.lat])
         .addTo(map);
       markerRef.current = marker;
 
-      const updateFromMarker = () => {
+      const sync = () => {
         const ll = marker.getLngLat();
-        setCoord({ lat: ll.lat, lng: ll.lng });
+        setCoords({ lat: ll.lat, lng: ll.lng });
       };
-      marker.on("dragend", updateFromMarker);
 
-      // click to move marker
+      marker.on("dragend", sync);
       map.on("click", (e: any) => {
-        const { lng, lat } = e.lngLat;
-        marker.setLngLat([lng, lat]);
-        setCoord({ lat, lng });
+        marker.setLngLat(e.lngLat);
+        sync();
       });
 
-      setCoord(start);
-      setPending(false);
-
-      cleanup = () => {
-        try { marker.remove(); } catch {}
-        try { map.remove(); } catch {}
-        markerRef.current = null;
-        mapRef.current = null;
-      };
+      map.on("remove", () => {
+        marker.off("dragend", sync);
+      });
     })();
 
-    return () => cleanup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    return () => {
+      disposed = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+      markerRef.current = null;
+    };
+  }, [open]); // open only — we move marker by clicks/drag, not by props
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      {/* Panel */}
-      <div className="relative z-[1001] w-[90vw] max-w-[900px] rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">Pick a location</h2>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60">
+      <div className="w-[min(96vw,1000px)] bg-white rounded-md shadow">
+        <div className="flex items-center justify-between p-3 border-b">
+          <h3 className="font-semibold">Pick a location</h3>
           <button
             onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200"
+            className="px-2 py-1 text-sm rounded bg-gray-100 hover:bg-gray-200"
           >
             Close
           </button>
         </div>
 
-        <div className="h-[65vh]">
-          <div ref={containerRef} className="h-full w-full" />
-        </div>
+        <div ref={containerRef} className="h-[70vh] w-full" />
 
-        <div className="flex items-center justify-between p-4 border-t">
-          <div className="text-sm text-gray-600">
-            {coord ? (
-              <>Lat: <b>{coord.lat.toFixed(6)}</b> &nbsp; Lng: <b>{coord.lng.toFixed(6)}</b></>
-            ) : (
-              <>Click on the map to drop a pin</>
-            )}
+        <div className="flex items-center justify-between gap-3 p-3 border-t text-sm">
+          <div>
+            Lat: {coords?.lat?.toFixed(6) ?? "—"} &nbsp; Lng:{" "}
+            {coords?.lng?.toFixed(6) ?? "—"}
           </div>
-          <button
-            disabled={pending || !coord}
-            onClick={() => coord && onSave(coord.lat, coord.lng)}
-            className="rounded-md px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            Use this location
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={!coords}
+              onClick={() => coords && onSave(coords.lat, coords.lng)}
+              className="px-3 py-2 rounded bg-indigo-600 text-white disabled:opacity-50"
+            >
+              Use this location
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
