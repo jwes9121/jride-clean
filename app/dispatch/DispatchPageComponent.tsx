@@ -34,6 +34,16 @@ type Nearest = {
 } | null;
 
 export default function DispatchPageComponent() {
+
+  // Debug: expose public envs for one-time check in browser console (window.__JRIDE_ENV)
+  if (typeof window !== "undefined") {
+    // @ts-ignore
+    window.__JRIDE_ENV = {
+      url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      key: (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").slice(0, 8) + "..."
+    };
+  }
+
   // coords
   const [pickup, setPickup] = useState<{ lat?: number; lng?: number }>({});
   const [dropoff, setDropoff] = useState<{ lat?: number; lng?: number }>({});
@@ -320,5 +330,6 @@ export default function DispatchPageComponent() {
     </div>
   );
 }
+
 
 

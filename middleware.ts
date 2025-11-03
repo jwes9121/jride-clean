@@ -24,6 +24,7 @@ export function middleware() {
   return res;
 }
 
+// exclude auth/static/assets/files with extensions
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|api/auth|auth|.*\\.[\\w]+$).*)",
