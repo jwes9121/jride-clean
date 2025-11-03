@@ -28,7 +28,6 @@ export default function PickupMapModal({ open, initial, onSave, onClose }: Props
       setPending(true);
       // Lazy load mapbox & css only when modal opens
       const mapboxgl = (await import("mapbox-gl")).default;
-      await import("mapbox-gl/dist/mapbox-gl.css");
 
       // Token from NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
       const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
