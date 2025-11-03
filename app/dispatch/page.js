@@ -1,8 +1,14 @@
+<<<<<<< HEAD
 // app/dispatch/page.js
 import { createClient } from "@supabase/supabase-js";
 import dynamic from "next/dynamic";
 
 // Client component (TSX file is fine; Next can import it)
+=======
+import { createClient } from "@supabase/supabase-js";
+import dynamic from "next/dynamic";
+
+>>>>>>> ffce4da (Dispatch: JS route only (page.js); remove any page.tsx)
 const DispatchNewRide = dynamic(() => import("@/components/DispatchNewRide"), { ssr: false });
 
 async function fetchRides() {
@@ -12,16 +18,23 @@ async function fetchRides() {
     { auth: { persistSession: false } }
   );
 
+<<<<<<< HEAD
   const { data, error } = await supabase
+=======
+  const { data } = await supabase
+>>>>>>> ffce4da (Dispatch: JS route only (page.js); remove any page.tsx)
     .from("rides")
     .select("id, passenger_name, pickup_address, status, driver_id, created_at")
     .order("created_at", { ascending: false })
     .limit(50);
 
+<<<<<<< HEAD
   if (error) {
     console.error("fetchRides error:", error.message);
     return [];
   }
+=======
+>>>>>>> ffce4da (Dispatch: JS route only (page.js); remove any page.tsx)
   return data ?? [];
 }
 
@@ -37,7 +50,11 @@ export default async function DispatchPage() {
           {rides.map((r) => (
             <div key={r.id} className="p-3 border rounded">
               <div className="text-sm">#{r.id}</div>
+<<<<<<< HEAD
               <div className="text-sm">Passenger: {r.passenger_name ?? "â€”"}</div>
+=======
+              <div className="text-sm">Passenger: {r.passenger_name ?? "—"}</div>
+>>>>>>> ffce4da (Dispatch: JS route only (page.js); remove any page.tsx)
               <div className="text-sm">Pickup: {r.pickup_address ?? "lat/lng"}</div>
               <div className="text-sm">Status: {r.status}</div>
               <div className="text-sm">Driver: {r.driver_id ?? "unassigned"}</div>
