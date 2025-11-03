@@ -1,5 +1,9 @@
-import "mapbox-gl/dist/mapbox-gl.css";
 "use client";
+
+import "mapbox-gl/dist/mapbox-gl.css";
+import React, { useEffect, useRef, useState } from "react";
+// (keep your dynamic JS import of `mapbox-gl` inside useEffect/handler)
+
 
 import React, { useEffect, useRef, useState } from "react";
 
