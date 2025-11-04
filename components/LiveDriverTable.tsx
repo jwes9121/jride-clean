@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-
-=======
 "use client";
 import React, { useEffect, useState } from "react";
 
@@ -68,4 +65,3 @@ export default function LiveDriverTable() {
     </div>
   );
 }
->>>>>>> 4773cdf (Admin Live Trips: proxy endpoint + table (polling fallback))
