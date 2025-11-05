@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
@@ -22,7 +23,9 @@ export default function LiveSidebar() {
   async function loadRides() {
     const { data, error } = await supabase
       .from("rides")
-      .select("id,status,pickup_lat,pickup_lng,town,rider_name,created_at,driver_id")
+      .select(
+        "id,status,pickup_lat,pickup_lng,town,rider_name,created_at,driver_id"
+      )
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -33,11 +36,13 @@ export default function LiveSidebar() {
     loadRides();
     const ch = supabase
       .channel("rides_sidebar")
-      .on("postgres_changes", { event: "*", schema: "public", table: "rides" }, () => loadRides())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rides" },
+        () => loadRides()
+      )
       .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
+    return () => void supabase.removeChannel(ch);
   }, []);
 
   async function assignNearest(r: Ride) {
@@ -68,7 +73,9 @@ export default function LiveSidebar() {
   }
 
   const shown = filterTown
-    ? rides.filter(r => (r.town || "").toLowerCase() === filterTown.toLowerCase())
+    ? rides.filter(
+        (r) => (r.town || "").toLowerCase() === filterTown.toLowerCase()
+      )
     : rides;
 
   return (
@@ -80,11 +87,7 @@ export default function LiveSidebar() {
           value={filterTown}
           onChange={(e) => setFilterTown(e.target.value)}
         />
-        <button
-          className="rounded-xl border px-3 py-2"
-          onClick={loadRides}
-          title="Refresh"
-        >
+        <button className="rounded-xl border px-3 py-2" onClick={loadRides}>
           Refresh
         </button>
       </div>
@@ -92,9 +95,12 @@ export default function LiveSidebar() {
       <div className="space-y-2 max-h-[calc(100vh-160px)] overflow-auto pr-1">
         {shown.map((r) => (
           <div key={r.id} className="rounded-2xl border p-3 hover:shadow-sm">
-            <div className="text-sm opacity-70">{new Date(r.created_at || "").toLocaleString()}</div>
+            <div className="text-sm opacity-70">
+              {new Date(r.created_at || "").toLocaleString()}
+            </div>
             <div className="font-semibold">
-              {r.rider_name || "Rider"} — <span className="uppercase">{r.status}</span>
+              {r.rider_name || "Rider"} —{" "}
+              <span className="uppercase">{r.status}</span>
             </div>
             <div className="text-sm">
               {r.town ? `Town: ${r.town}` : "Town: (none)"}
@@ -104,15 +110,25 @@ export default function LiveSidebar() {
               <button
                 disabled={!!r.driver_id || busyId === r.id}
                 onClick={() => assignNearest(r)}
-                className={`px-3 py-2 rounded-xl text-sm border ${busyId===r.id ? "opacity-60" : ""}`}
-                title={r.driver_id ? "Already assigned" : "Assign nearest driver in same town"}
+                className={`px-3 py-2 rounded-xl text-sm border ${
+                  busyId === r.id ? "opacity-60" : ""
+                }`}
+                title={
+                  r.driver_id ? "Already assigned" : "Assign nearest in town"
+                }
               >
-                {busyId === r.id ? "Assigning…" : (r.driver_id ? "Assigned" : "Assign Nearest")}
+                {busyId === r.id
+                  ? "Assigning…"
+                  : r.driver_id
+                  ? "Assigned"
+                  : "Assign Nearest"}
               </button>
             </div>
           </div>
         ))}
-        {shown.length === 0 && <div className="opacity-60 text-sm">No rides found.</div>}
+        {shown.length === 0 && (
+          <div className="opacity-60 text-sm">No rides found.</div>
+        )}
       </div>
     </div>
   );
