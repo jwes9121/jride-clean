@@ -1,5 +1,5 @@
-﻿"use client";
-import mapboxgl, { Map, Marker, LngLatLike } from "mapbox-gl";
+"use client";
+import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase-browser";
@@ -10,12 +10,11 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 type Props = {
   initial?: LiveDriver[];
-  center?: LngLatLike;
+  center?: mapboxgl.LngLatLike;
   zoom?: number;
 };
 
 function colorFromId(id: string) {
-  // Stable pastel from id: hash to HSL
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   const hue = h % 360;
@@ -28,14 +27,14 @@ export default function LiveDriverMap({
   zoom = 12,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<Map | null>(null);
-  const markersRef = useRef<Map<string, Marker>>(new Map());
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
   const [drivers, setDrivers] = useState<Record<string, LiveDriver>>(() =>
     Object.fromEntries(initial.map((d) => [d.driver_id, d]))
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [follow, setFollow] = useState<boolean>(true); // default ON
+  const [follow, setFollow] = useState<boolean>(true);
 
   const selected = selectedId ? drivers[selectedId] : null;
 
@@ -45,7 +44,6 @@ export default function LiveDriverMap({
     return b;
   }, [drivers]);
 
-  // Initialize map
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new mapboxgl.Map({
@@ -71,7 +69,6 @@ export default function LiveDriverMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel("driver_locations")
@@ -124,13 +121,12 @@ export default function LiveDriverMap({
       el.style.background = color;
       el.style.border = "2px solid white";
 
-      // click -> select + follow
       el.addEventListener("click", () => {
         setSelectedId((prev) => (prev === d.driver_id ? null : d.driver_id));
         setFollow(true);
       });
 
-      marker = new mapboxgl.Marker({ element: el, rotationAlignment: "map" })
+      const newMarker = new mapboxgl.Marker({ element: el, rotationAlignment: "map" })
         .setLngLat([d.lng, d.lat])
         .setPopup(
           new mapboxgl.Popup({ closeButton: false, offset: 12 }).setHTML(
@@ -142,23 +138,24 @@ export default function LiveDriverMap({
           )
         )
         .addTo(map);
-      markersRef.current.set(d.driver_id, marker);
+
+      markersRef.current.set(d.driver_id, newMarker);
+      marker = newMarker;
     } else {
       marker.setLngLat([d.lng, d.lat]);
-      // update color each time in case palette rule changes
-      const el = marker.getElement() as HTMLDivElement;
-      el.style.background = color;
+      (marker.getElement() as HTMLDivElement).style.background = color;
     }
 
-    if (typeof d.heading === "number") marker.setRotation(d.heading);
+    {
+    const mm = markersRef.current.get(d.driver_id);
+    if (typeof d.heading === "number" && mm) mm.setRotation(d.heading);
+}
 
-    // If following this driver, keep camera on them
     if (follow && selectedId === d.driver_id) {
       map.easeTo({ center: [d.lng, d.lat], duration: 400, zoom: Math.max(map.getZoom(), 14) });
     }
   }, [follow, selectedId]);
 
-  // When selected driver changes, nudge camera
   useEffect(() => {
     if (!selected) return;
     const map = mapRef.current;

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -88,7 +88,7 @@ export default function MapboxMap({
         });
       };
 
-      const clickHandler = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+      const clickHandler = (e: mapboxgl.MapMouseEvent) => {
         if (onClickLatLng) {
           const { lng, lat } = e.lngLat.wrap();
           onClickLatLng({ lng, lat });

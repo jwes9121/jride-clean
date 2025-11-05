@@ -66,7 +66,7 @@ export default function PickupMapModal({
       };
       marker.on("dragend", onDragEnd);
 
-      const onClick = (e: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+      const onClick = (e: mapboxgl.MapMouseEvent) => {
         const p = e.lngLat;
         marker.setLngLat(p);
         setLng(p.lng);
