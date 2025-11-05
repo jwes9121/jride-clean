@@ -1,28 +1,35 @@
-import LiveDriverMap from "@/components/maps/LiveDriverMap";
+import LiveDriverMap, { Geofence } from "@/components/maps/LiveDriverMap";
 import LiveSidebar from "@/components/sidebars/LiveSidebar";
+import type { FeatureCollection, Feature, Polygon } from "geojson";
 
-const geofences = [
-  // Replace with real GeoJSONs per town
+// Type the GeoJSON explicitly so "type" stays a literal and not widened to string.
+const lagawePolygon: Feature<Polygon> = {
+  type: "Feature",
+  properties: { name: "Lagawe" },
+  geometry: {
+    type: "Polygon",
+    coordinates: [
+      [
+        [121.05, 16.78],
+        [121.1, 16.78],
+        [121.1, 16.83],
+        [121.05, 16.83],
+        [121.05, 16.78],
+      ],
+    ],
+  },
+};
+
+const lagaweFC: FeatureCollection<Polygon> = {
+  type: "FeatureCollection",
+  features: [lagawePolygon],
+};
+
+const geofences: Geofence[] = [
   {
     name: "Lagawe",
-    geojson: {
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: { name: "Lagawe" },
-          geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [121.05,16.78],[121.10,16.78],[121.10,16.83],[121.05,16.83],[121.05,16.78]
-              ]
-            ]
-          }
-        }
-      ]
-    }
-  }
+    geojson: lagaweFC,
+  },
 ];
 
 export default function Page() {
