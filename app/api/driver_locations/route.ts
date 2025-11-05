@@ -1,19 +1,26 @@
-﻿import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const revalidate = 0;
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(url, key, { auth: { persistSession: false } });
 
 export async function GET() {
-  try {
-    const supabase = supabaseAdmin();
-    const { data, error } = await supabase
-      .from("driver_locations")
-      .select("driver_id,lat,lng,heading,speed,updated_at")
-      .order("updated_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("driver_locations")
+    .select("driver_id, lat, lng, is_available")
+    .order("last_seen", { ascending: false });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data ?? []);
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "server error" }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const fc = {
+    type: "FeatureCollection",
+    features: (data || []).map((d) => ({
+      type: "Feature",
+      properties: { driver_id: d.driver_id, is_available: d.is_available },
+      geometry: { type: "Point", coordinates: [d.lng, d.lat] },
+    })),
+  };
+
+  return NextResponse.json(fc);
 }
