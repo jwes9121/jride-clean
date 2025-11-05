@@ -5,12 +5,13 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import type * as GeoJSON from "geojson"; // <- explicit types
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 export type Geofence = {
   name: string;
-  geojson: GeoJSON.FeatureCollection; // one or more polygons
+  geojson: GeoJSON.FeatureCollection<GeoJSON.Geometry>; // accept any geometry
   fillColor?: string;
 };
 
@@ -104,12 +105,9 @@ export default function LiveDriverMap({
           () => {
             const m = mapRef.current;
             if (!m) return;
-            const src = m.getSource("drivers") as
-              | mapboxgl.GeoJSONSource
-              | undefined;
+            const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
             if (!src) return;
 
-            // Simple: refetch all points (swap to patching later if needed)
             fetch("/api/driver-locations")
               .then((r) => r.json())
               .then((geojson) => src.setData(geojson))
