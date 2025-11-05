@@ -1,23 +1,39 @@
-﻿import LiveDriverMap from "@/components/maps/LiveDriverMap";
+import LiveDriverMap from "@/components/maps/LiveDriverMap";
+import LiveSidebar from "@/components/sidebars/LiveSidebar";
 
-async function loadInitial() {
-  try {
-    const r = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/driver_locations`, { cache: "no-store" });
-    if (!r.ok) return [];
-    return await r.json();
-  } catch {
-    return [];
+const geofences = [
+  // Replace with real GeoJSONs per town
+  {
+    name: "Lagawe",
+    geojson: {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { name: "Lagawe" },
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                [121.05,16.78],[121.10,16.78],[121.10,16.83],[121.05,16.83],[121.05,16.78]
+              ]
+            ]
+          }
+        }
+      ]
+    }
   }
-}
+];
 
-export const revalidate = 0;
-
-export default async function LiveTripsPage() {
-  const initial = await loadInitial();
+export default function Page() {
   return (
-    <main className="p-4 md:p-6">
-      <h1 className="text-2xl font-semibold mb-4">Live Driver Map</h1>
-      <LiveDriverMap initial={initial} />
-    </main>
+    <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="lg:col-span-2 h-[calc(100vh-120px)]">
+        <LiveDriverMap geofences={geofences} />
+      </div>
+      <div className="lg:col-span-1 h-[calc(100vh-120px)]">
+        <LiveSidebar />
+      </div>
+    </div>
   );
 }
