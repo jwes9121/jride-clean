@@ -5,13 +5,13 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import type * as GeoJSON from "geojson"; // <- explicit types
+import type * as GeoJSON from "geojson";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 export type Geofence = {
   name: string;
-  geojson: GeoJSON.FeatureCollection<GeoJSON.Geometry>; // accept any geometry
+  geojson: GeoJSON.FeatureCollection<GeoJSON.Geometry>;
   fillColor?: string;
 };
 
@@ -29,7 +29,7 @@ export default function LiveDriverMap({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const supabase = createClientComponentClient();
 
-  // Init map once
+  // Init map once and add sources/layers + initial load of drivers
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -42,7 +42,7 @@ export default function LiveDriverMap({
     mapRef.current = m;
 
     m.on("load", () => {
-      // Drivers source + layer
+      // ---- Driver source + layer
       if (!m.getSource("drivers")) {
         m.addSource("drivers", {
           type: "geojson",
@@ -62,7 +62,7 @@ export default function LiveDriverMap({
         });
       }
 
-      // Geofences
+      // ---- Geofences (fill + outline)
       geofences.forEach((f, idx) => {
         const srcId = `geofence-${idx}`;
         if (!m.getSource(srcId)) {
@@ -83,16 +83,31 @@ export default function LiveDriverMap({
             id: `${srcId}-line`,
             type: "line",
             source: srcId,
-            paint: {
-              "line-width": 2,
-            },
+            paint: { "line-width": 2 },
           });
         }
       });
+
+      // ---- Initial load of driver pins (so they show immediately)
+      fetch("/api/driver-locations")
+        .then((r) => r.json())
+        .then((geojson) => {
+          const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
+          if (src && geojson) src.setData(geojson);
+        })
+        .catch(() => {});
     });
+
+    // optional: destroy map on unmount to avoid leaks (no async cleanup)
+    return () => {
+      try {
+        m.remove();
+      } catch {}
+      mapRef.current = null;
+    };
   }, [center, zoom, geofences]);
 
-  // Realtime: keep source updated (no async cleanup)
+  // Realtime refresh of driver pins (fetch-all on change; simple & robust)
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
@@ -107,7 +122,6 @@ export default function LiveDriverMap({
             if (!m) return;
             const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
             if (!src) return;
-
             fetch("/api/driver-locations")
               .then((r) => r.json())
               .then((geojson) => src.setData(geojson))
