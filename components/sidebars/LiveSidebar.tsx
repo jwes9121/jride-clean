@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Ride = {
   id: string;
@@ -12,37 +11,33 @@ type Ride = {
   rider_name?: string | null;
   created_at?: string;
   driver_id?: string | null;
+  vehicle_type?: string | null;
 };
 
 export default function LiveSidebar() {
-  const supabase = createClientComponentClient();
   const [rides, setRides] = useState<Ride[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [filterTown, setFilterTown] = useState<string>("");
+  const [err, setErr] = useState<string>("");
 
   async function loadRides() {
-    const { data, error } = await supabase
-      .from("rides")
-      .select(
-        "id,status,pickup_lat,pickup_lng,town,rider_name,created_at,driver_id"
-      )
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (!error && data) setRides(data as any);
+    setErr("");
+    try {
+      const res = await fetch("/api/rides/list", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      setRides(json.rows || []);
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to load rides");
+      setRides([]);
+    }
   }
 
   useEffect(() => {
-    loadRides();
-    const ch = supabase
-      .channel("rides_sidebar")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "rides" },
-        () => loadRides()
-      )
-      .subscribe();
-    return () => void supabase.removeChannel(ch);
+    void loadRides();
+    // simple polling to keep it fresh; you can remove if realtime wired later
+    const t = setInterval(loadRides, 5000);
+    return () => clearInterval(t);
   }, []);
 
   async function assignNearest(r: Ride) {
@@ -60,11 +55,11 @@ export default function LiveSidebar() {
         }),
       });
       const json = await res.json();
-      if (json?.status === "assigned") {
-        await loadRides();
-      } else {
-        alert(json?.message || json?.error || "No driver found.");
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+      if (json?.status !== "assigned") {
+        alert(json?.message || "No driver found.");
       }
+      await loadRides();
     } catch (e: any) {
       alert(e?.message ?? "Failed to assign");
     } finally {
@@ -73,9 +68,7 @@ export default function LiveSidebar() {
   }
 
   const shown = filterTown
-    ? rides.filter(
-        (r) => (r.town || "").toLowerCase() === filterTown.toLowerCase()
-      )
+    ? rides.filter(r => (r.town || "").toLowerCase() === filterTown.toLowerCase())
     : rides;
 
   return (
@@ -92,6 +85,8 @@ export default function LiveSidebar() {
         </button>
       </div>
 
+      {err && <div className="text-sm text-red-600">{err}</div>}
+
       <div className="space-y-2 max-h-[calc(100vh-160px)] overflow-auto pr-1">
         {shown.map((r) => (
           <div key={r.id} className="rounded-2xl border p-3 hover:shadow-sm">
@@ -99,36 +94,25 @@ export default function LiveSidebar() {
               {new Date(r.created_at || "").toLocaleString()}
             </div>
             <div className="font-semibold">
-              {r.rider_name || "Rider"} —{" "}
-              <span className="uppercase">{r.status}</span>
+              {r.rider_name || "Rider"} — <span className="uppercase">{r.status}</span>
             </div>
             <div className="text-sm">
-              {r.town ? `Town: ${r.town}` : "Town: (none)"}
+              {(r.town ? `Town: ${r.town}` : "Town: (none)")} • {(r.vehicle_type || "—")}
               {r.driver_id ? ` • Driver: ${r.driver_id}` : ""}
             </div>
             <div className="mt-2 flex gap-2">
               <button
                 disabled={!!r.driver_id || busyId === r.id}
                 onClick={() => assignNearest(r)}
-                className={`px-3 py-2 rounded-xl text-sm border ${
-                  busyId === r.id ? "opacity-60" : ""
-                }`}
-                title={
-                  r.driver_id ? "Already assigned" : "Assign nearest in town"
-                }
+                className={`px-3 py-2 rounded-xl text-sm border ${busyId===r.id ? "opacity-60" : ""}`}
+                title={r.driver_id ? "Already assigned" : "Assign nearest driver in same town"}
               >
-                {busyId === r.id
-                  ? "Assigning…"
-                  : r.driver_id
-                  ? "Assigned"
-                  : "Assign Nearest"}
+                {busyId === r.id ? "Assigning…" : (r.driver_id ? "Assigned" : "Assign Nearest")}
               </button>
             </div>
           </div>
         ))}
-        {shown.length === 0 && (
-          <div className="opacity-60 text-sm">No rides found.</div>
-        )}
+        {shown.length === 0 && <div className="opacity-60 text-sm">No rides found.</div>}
       </div>
     </div>
   );
