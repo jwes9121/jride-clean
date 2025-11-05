@@ -21,6 +21,18 @@ type Props = {
   geofences?: Geofence[];
 };
 
+async function fetchDriversFC(): Promise<GeoJSON.FeatureCollection | null> {
+  // Your server shows an underscore route working; try that first
+  const urls = ["/api/driver_locations", "/api/driver-locations"];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { cache: "no-store" });
+      if (r.ok) return (await r.json()) as GeoJSON.FeatureCollection;
+    } catch {}
+  }
+  return null;
+}
+
 export default function LiveDriverMap({
   center = [121.06, 16.8],
   zoom = 13,
@@ -28,8 +40,9 @@ export default function LiveDriverMap({
 }: Props) {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const supabase = createClientComponentClient();
+  const didFitRef = useRef(false);
 
-  // Init map once and add sources/layers + initial load of drivers
+  // Init map once
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -41,28 +54,8 @@ export default function LiveDriverMap({
     });
     mapRef.current = m;
 
-    m.on("load", () => {
-      // ---- Driver source + layer
-      if (!m.getSource("drivers")) {
-        m.addSource("drivers", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-      }
-      if (!m.getLayer("drivers-circle")) {
-        m.addLayer({
-          id: "drivers-circle",
-          type: "circle",
-          source: "drivers",
-          paint: {
-            "circle-radius": 6,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
-          },
-        });
-      }
-
-      // ---- Geofences (fill + outline)
+    m.on("load", async () => {
+      // --- Geofences first (so drivers can sit above them)
       geofences.forEach((f, idx) => {
         const srcId = `geofence-${idx}`;
         if (!m.getSource(srcId)) {
@@ -88,17 +81,57 @@ export default function LiveDriverMap({
         }
       });
 
-      // ---- Initial load of driver pins (so they show immediately)
-      fetch("/api/driver-locations")
-        .then((r) => r.json())
-        .then((geojson) => {
-          const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
-          if (src && geojson) src.setData(geojson);
-        })
-        .catch(() => {});
+      // --- Drivers source + layer
+      if (!m.getSource("drivers")) {
+        m.addSource("drivers", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!m.getLayer("drivers-circle")) {
+        m.addLayer({
+          id: "drivers-circle",
+          type: "circle",
+          source: "drivers",
+          paint: {
+            "circle-radius": 6,
+            "circle-color": "#2563eb",     // visible blue
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+      }
+
+      // Make sure drivers are on top of everything else
+      try {
+        m.moveLayer("drivers-circle");
+      } catch {
+        /* ignore if already top */
+      }
+
+      // Initial load so pins show immediately
+      const fc = await fetchDriversFC();
+      if (fc) {
+        const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
+        if (src) src.setData(fc);
+
+        // Optional: fit to pins once (helps when pins are off-screen)
+        if (!didFitRef.current && Array.isArray(fc.features) && fc.features.length > 0) {
+          const bounds = new mapboxgl.LngLatBounds();
+          fc.features.forEach((f: any) => {
+            if (f?.geometry?.type === "Point" && Array.isArray(f.geometry.coordinates)) {
+              bounds.extend(f.geometry.coordinates as [number, number]);
+            }
+          });
+          if (!bounds.isEmpty()) {
+            m.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 0 });
+            didFitRef.current = true;
+          }
+        }
+      }
     });
 
-    // optional: destroy map on unmount to avoid leaks (no async cleanup)
+    // Clean up map on unmount (no async cleanup)
     return () => {
       try {
         m.remove();
@@ -107,7 +140,7 @@ export default function LiveDriverMap({
     };
   }, [center, zoom, geofences]);
 
-  // Realtime refresh of driver pins (fetch-all on change; simple & robust)
+  // Realtime refresh (fetch-all on any change)
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
@@ -117,15 +150,14 @@ export default function LiveDriverMap({
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "driver_locations" },
-          () => {
+          async () => {
             const m = mapRef.current;
             if (!m) return;
             const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
             if (!src) return;
-            fetch("/api/driver-locations")
-              .then((r) => r.json())
-              .then((geojson) => src.setData(geojson))
-              .catch(() => {});
+
+            const fc = await fetchDriversFC();
+            if (fc) src.setData(fc);
           }
         )
         .subscribe();
