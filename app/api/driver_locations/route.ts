@@ -14,11 +14,11 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const fc = {
-    type: "FeatureCollection",
+    type: "FeatureCollection" as const,
     features: (data || []).map((d) => ({
-      type: "Feature",
+      type: "Feature" as const,
       properties: { driver_id: d.driver_id, is_available: d.is_available },
-      geometry: { type: "Point", coordinates: [d.lng, d.lat] },
+      geometry: { type: "Point" as const, coordinates: [d.lng, d.lat] as [number, number] },
     })),
   };
 
