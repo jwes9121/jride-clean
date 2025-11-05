@@ -8,8 +8,7 @@ type Ride = {
   pickup_lat: number;
   pickup_lng: number;
   town?: string | null;
-  rider_name?: string | null;
-  created_at?: string;
+  created_at?: string | null;
   driver_id?: string | null;
   vehicle_type?: string | null;
 };
@@ -35,7 +34,6 @@ export default function LiveSidebar() {
 
   useEffect(() => {
     void loadRides();
-    // simple polling to keep it fresh; you can remove if realtime wired later
     const t = setInterval(loadRides, 5000);
     return () => clearInterval(t);
   }, []);
@@ -91,10 +89,10 @@ export default function LiveSidebar() {
         {shown.map((r) => (
           <div key={r.id} className="rounded-2xl border p-3 hover:shadow-sm">
             <div className="text-sm opacity-70">
-              {new Date(r.created_at || "").toLocaleString()}
+              {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
             </div>
             <div className="font-semibold">
-              {r.rider_name || "Rider"} — <span className="uppercase">{r.status}</span>
+              Ride • <span className="uppercase">{r.status}</span>
             </div>
             <div className="text-sm">
               {(r.town ? `Town: ${r.town}` : "Town: (none)")} • {(r.vehicle_type || "—")}
@@ -104,10 +102,18 @@ export default function LiveSidebar() {
               <button
                 disabled={!!r.driver_id || busyId === r.id}
                 onClick={() => assignNearest(r)}
-                className={`px-3 py-2 rounded-xl text-sm border ${busyId===r.id ? "opacity-60" : ""}`}
-                title={r.driver_id ? "Already assigned" : "Assign nearest driver in same town"}
+                className={`px-3 py-2 rounded-xl text-sm border ${
+                  busyId === r.id ? "opacity-60" : ""
+                }`}
+                title={
+                  r.driver_id ? "Already assigned" : "Assign nearest driver in same town"
+                }
               >
-                {busyId === r.id ? "Assigning…" : (r.driver_id ? "Assigned" : "Assign Nearest")}
+                {busyId === r.id
+                  ? "Assigning…"
+                  : r.driver_id
+                  ? "Assigned"
+                  : "Assign Nearest"}
               </button>
             </div>
           </div>
