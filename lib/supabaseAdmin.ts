@@ -1,10 +1,12 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE!; // server-only (Vercel env)
 
 export function supabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  return createClient(url, key, {
+  // fresh client per request avoids cross-request leakage
+  return createClient(url, serviceKey, {
     auth: { persistSession: false },
+    global: { headers: { "x-application-name": "jride-admin" } },
   });
 }
