@@ -1,16 +1,19 @@
 ﻿import { NextResponse } from "next/server";
-
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const revalidate = 0;
 
 export async function GET() {
-  const r = await fetch(`${url}/rest/v1/driver_locations?select=driver_id,lat,lng,heading,speed,updated_at&order=updated_at.desc`, {
-    headers: { apikey: anon, Authorization: `Bearer ${anon}` },
-    cache: "no-store",
-  });
-  if (!r.ok) return NextResponse.json({ error: await r.text() }, { status: r.status });
-  const data = await r.json();
-  return NextResponse.json(data);
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("driver_locations")
+      .select("driver_id,lat,lng,heading,speed,updated_at")
+      .order("updated_at", { ascending: false });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(data ?? []);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "server error" }, { status: 500 });
+  }
 }

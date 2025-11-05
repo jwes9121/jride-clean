@@ -1,8 +1,13 @@
 ﻿import LiveDriverMap from "@/components/maps/LiveDriverMap";
 
 async function loadInitial() {
-  const r = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/driver_locations`, { cache: "no-store" });
-  try { return await r.json(); } catch { return []; }
+  try {
+    const r = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ""}/api/driver_locations`, { cache: "no-store" });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch {
+    return [];
+  }
 }
 
 export const revalidate = 0;
