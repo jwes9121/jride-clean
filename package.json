@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
-    "@supabase/supabase-js": "^2.75.0",
+    "@supabase/supabase-js": "^2.79.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.545.0",
     "mapbox-gl": "^2.15.0",

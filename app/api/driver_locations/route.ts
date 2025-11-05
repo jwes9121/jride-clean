@@ -1,34 +1,16 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const revalidate = 0;
 
 export async function GET() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    return NextResponse.json(
-      { error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY on the server" },
-      { status: 500 }
-    );
-  }
-
-  const u = new URL(`${url.replace(/\/+$/,"")}/rest/v1/driver_locations`);
-  u.searchParams.set("select", "driver_id,lat,lng,updated_at");
-  u.searchParams.set("order", "updated_at.desc");
-  u.searchParams.set("limit", "200");
-
-  try {
-    const resp = await fetch(u.toString(), {
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        "Accept-Profile": "public",
-        "Content-Profile": "public",
-      },
-      cache: "no-store",
-    });
-    const data = await resp.json().catch(() => ([]));
-    return NextResponse.json(data, { status: resp.status });
-  } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 502 });
-  }
+  const r = await fetch(`${url}/rest/v1/driver_locations?select=driver_id,lat,lng,heading,speed,updated_at&order=updated_at.desc`, {
+    headers: { apikey: anon, Authorization: `Bearer ${anon}` },
+    cache: "no-store",
+  });
+  if (!r.ok) return NextResponse.json({ error: await r.text() }, { status: r.status });
+  const data = await r.json();
+  return NextResponse.json(data);
 }
