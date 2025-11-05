@@ -1,4 +1,5 @@
 "use client";
+
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef } from "react";
@@ -7,25 +8,30 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
-type Geofence = {
+export type Geofence = {
   name: string;
-  geojson: GeoJSON.FeatureCollection; // Polygon(s)
+  geojson: GeoJSON.FeatureCollection; // one or more polygons
   fillColor?: string;
 };
 
 type Props = {
   center?: [number, number];
   zoom?: number;
-  geofences?: Geofence[]; // pass from page
+  geofences?: Geofence[];
 };
 
-export default function LiveDriverMap({ center = [121.06, 16.80], zoom = 13, geofences = [] }: Props) {
+export default function LiveDriverMap({
+  center = [121.06, 16.8],
+  zoom = 13,
+  geofences = [],
+}: Props) {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const supabase = createClientComponentClient();
 
   // Init map once
   useEffect(() => {
     if (mapRef.current) return;
+
     const m = new mapboxgl.Map({
       container: "live-map",
       style: "mapbox://styles/mapbox/streets-v12",
@@ -35,9 +41,12 @@ export default function LiveDriverMap({ center = [121.06, 16.80], zoom = 13, geo
     mapRef.current = m;
 
     m.on("load", () => {
-      // Driver layer source (empty; you update via realtime)
+      // Drivers source + layer
       if (!m.getSource("drivers")) {
-        m.addSource("drivers", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        m.addSource("drivers", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
       }
       if (!m.getLayer("drivers-circle")) {
         m.addLayer({
@@ -47,7 +56,7 @@ export default function LiveDriverMap({ center = [121.06, 16.80], zoom = 13, geo
           paint: {
             "circle-radius": 6,
             "circle-stroke-width": 2,
-            "circle-stroke-color": "#fff",
+            "circle-stroke-color": "#ffffff",
           },
         });
       }
@@ -82,28 +91,28 @@ export default function LiveDriverMap({ center = [121.06, 16.80], zoom = 13, geo
     });
   }, [center, zoom, geofences]);
 
-  // Realtime drivers (no async cleanup!)
+  // Realtime: keep source updated (no async cleanup)
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
     const subscribe = () => {
       channel = supabase
         .channel("driver_locations_realtime")
-        .on("postgres_changes",
+        .on(
+          "postgres_changes",
           { event: "*", schema: "public", table: "driver_locations" },
-          (payload) => {
+          () => {
             const m = mapRef.current;
             if (!m) return;
-
-            const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
+            const src = m.getSource("drivers") as
+              | mapboxgl.GeoJSONSource
+              | undefined;
             if (!src) return;
 
-            // Fetch latest driver list (simple approach)
-            fetch("/api/driver-locations") // OPTIONAL: implement this if you don’t have it
-              .then(r => r.json())
-              .then((geojson) => {
-                src.setData(geojson);
-              })
+            // Simple: refetch all points (swap to patching later if needed)
+            fetch("/api/driver-locations")
+              .then((r) => r.json())
+              .then((geojson) => src.setData(geojson))
               .catch(() => {});
           }
         )
