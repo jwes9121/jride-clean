@@ -7,13 +7,17 @@ const key =
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
 export async function GET() {
-  // last 50, newest first
+  // Select only columns we know exist in your schema
   const { data, error } = await supabase
     .from("rides")
-    .select("id,status,pickup_lat,pickup_lng,town,rider_name,created_at,driver_id,vehicle_type")
+    .select(
+      "id, status, pickup_lat, pickup_lng, town, created_at, driver_id, vehicle_type"
+    )
     .order("created_at", { ascending: false })
     .limit(50);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ rows: data ?? [] });
 }
