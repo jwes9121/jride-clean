@@ -1,5 +1,7 @@
-export const dynamic = "force-dynamic"; export const revalidate = 0;
-"use client";
+﻿"use client";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import React, { useEffect, useMemo, useState } from "react";
 import type { DriverLocation, Ride } from "@/types";
 import LiveTripsHeader from "@/components/realtime/LiveTripsHeader";
@@ -12,11 +14,13 @@ import {
   subscribeRides,
 } from "@/components/realtime/supabaseRealtime";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
+
 function PageInner() {
   const [drivers, setDrivers] = useState<DriverLocation[]>([]);
   const [rides, setRides] = useState<Ride[]>([]);
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const toast = useToast();
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -30,6 +34,7 @@ function PageInner() {
     })();
     return () => { mounted = false; };
   }, []);
+
   useEffect(() => {
     const un = subscribeDriverLocations((evt) => {
       setDrivers((prev) => {
@@ -46,6 +51,7 @@ function PageInner() {
     });
     return () => un();
   }, []);
+
   useEffect(() => {
     const un = subscribeRides((evt) => {
       setRides((prev) => {
@@ -62,10 +68,12 @@ function PageInner() {
     });
     return () => un();
   }, []);
+
   const driversOnline = useMemo(
     () => drivers.filter((d) => d.status === "online").length,
     [drivers]
   );
+
   async function handleRefresh() {
     const [d0, r0] = await Promise.all([
       fetchInitialDriverLocations(),
@@ -75,6 +83,7 @@ function PageInner() {
     setRides(r0);
     toast({ type: "info", message: "Refreshed live data." });
   }
+
   async function handleAssignNearest(rideId: string) {
     setSelectedRideId(rideId);
     try {
@@ -100,6 +109,7 @@ function PageInner() {
       toast({ type: "error", title: "Assign error", message: String(e?.message ?? e) });
     }
   }
+
   return (
     <div className="p-4 space-y-4">
       <LiveTripsHeader
@@ -127,6 +137,7 @@ function PageInner() {
     </div>
   );
 }
+
 export default function LiveTripsPage() {
   return (
     <ToastProvider>
@@ -134,4 +145,3 @@ export default function LiveTripsPage() {
     </ToastProvider>
   );
 }
-export const dynamic = "force-dynamic"; export const revalidate = 0;
