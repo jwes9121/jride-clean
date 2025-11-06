@@ -1,4 +1,5 @@
-﻿"use client";
+export const dynamic = "force-dynamic"; export const revalidate = 0;
+"use client";
 export default function Page(){
   return (
     <div style={{padding:20}}>
@@ -12,5 +13,4 @@ export default function Page(){
     </div>
   );
 }
-export const dynamic = "force-dynamic"; export const revalidate = 0;
 export const dynamic = "force-dynamic"; export const revalidate = 0;
