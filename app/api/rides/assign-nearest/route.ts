@@ -1,33 +1,28 @@
-// app/api/rides/assign-nearest/route.ts
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic"; // no caching
-export const revalidate = 0;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!; // server-only
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SRK = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-type Body = { ride_id: string };
-
+// POST { ride_id: string }
 export async function POST(req: Request) {
   try {
-    const { ride_id } = (await req.json()) as Body;
+    const { ride_id } = await req.json();
     if (!ride_id) {
       return NextResponse.json({ status: "error", message: "ride_id required" }, { status: 400 });
     }
 
-    const resp = await fetch(`${URL}/rest/v1/rpc/assign_nearest_driver_v1`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SRK,
-        Authorization: `Bearer ${SRK}`,
-      },
-      body: JSON.stringify({ p_ride_id: ride_id }),
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
+      auth: { persistSession: false }
     });
 
-    const data = await resp.json();
-    return NextResponse.json(data, { status: resp.ok ? 200 : 400 });
+    // call the v2 RPC (the one you just verified)
+    const { data, error } = await supabase.rpc("assign_nearest_driver_v2", { p_ride_id: ride_id });
+
+    if (error) {
+      return NextResponse.json({ status: "error", message: error.message }, { status: 500 });
+    }
+    return NextResponse.json(data ?? { status: "error", message: "no response" });
   } catch (e: any) {
     return NextResponse.json({ status: "error", message: String(e?.message ?? e) }, { status: 500 });
   }
