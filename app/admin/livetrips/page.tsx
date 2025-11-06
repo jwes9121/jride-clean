@@ -142,3 +142,4 @@ export default function LiveTripsPage() {
     </ToastProvider>
   );
 }
+export const dynamic = "force-dynamic"; export const revalidate = 0;

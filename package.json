@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "jride-app",
   "private": true,
   "version": "1.0.0",
@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --no-lint",
-    "start": "next start",
+    "start":"next start",
     "lint": "next lint",
     "clean": "rimraf .next && rimraf node_modules && rimraf --glob \"backup_*\"",
     "prebuild": "rimraf --glob \"backup_*\" && rimraf \"jride-app_patch\" \"app/app\" || exit 0"
@@ -38,3 +38,4 @@
     "node": ">=18.17"
   }
 }
+
