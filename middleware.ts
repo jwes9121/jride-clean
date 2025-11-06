@@ -26,7 +26,7 @@ const csp = [
   `frame-ancestors ${SELF}`,
 ].join("; ");
 
-export function middleware(req: NextRequest) {
+export function middleware(req: NextRequest){ if (req.nextUrl.pathname === "/admin/livetrips"){ const url=req.nextUrl.clone(); url.pathname="/admin/livetest"; return NextResponse.redirect(url);}
   const res = NextResponse.next();
   const url = req.nextUrl.pathname;
   const skip =
@@ -46,3 +46,4 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/|favicon.ico|.*\\..*|api/auth|api/rides/assign-nearest).*)"],
 };
+
