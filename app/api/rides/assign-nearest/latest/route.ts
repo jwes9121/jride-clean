@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function admin() {
@@ -9,24 +9,37 @@ function admin() {
   );
 }
 
+// Health probe so GET never 405s
+export async function GET() {
+  return NextResponse.json({ ok: true, hint: "POST to assign latest pending ride" });
+}
+
 export async function POST() {
   try {
     const sb = admin();
-    const { data: ride } = await sb
+
+    // 1) newest pending ride
+    const { data: ride, error: findErr } = await sb
       .from("rides")
       .select("id,status,created_at")
-      .eq("status","pending")
-      .order("created_at",{ascending:false})
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
       .limit(1)
       .single();
 
-    if (!ride) return NextResponse.json({ status: "no_pending_ride" });
+    if (findErr || !ride) {
+      return NextResponse.json({ status: "no_pending_ride" }, { status: 200 });
+    }
 
-    const { data: result, error } = await sb
+    // 2) call the DB function (we already proved this works)
+    const { data: result, error: rpcErr } = await sb
       .rpc("assign_nearest_driver_v2", { p_ride_id: ride.id });
 
-    if (error) return NextResponse.json({ error: "RPC failed", detail: error.message }, { status: 500 });
-    return NextResponse.json({ ride_id: ride.id, ...(result ?? {}) });
+    if (rpcErr) {
+      return NextResponse.json({ error: "RPC failed", detail: rpcErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ride_id: ride.id, ...(result ?? {}) }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: "Unhandled", detail: e?.message ?? String(e) }, { status: 500 });
   }
