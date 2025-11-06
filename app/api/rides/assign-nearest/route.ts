@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function admin() {
@@ -9,45 +9,37 @@ function admin() {
   );
 }
 
-function isUuid(v: unknown) {
-  return typeof v === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+// Simple probe so GET never 405's (useful for health checks)
+export async function GET() {
+  return NextResponse.json({ ok: true, hint: "POST here to assign the latest pending ride" });
 }
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
-    const { ride_id } = await req.json().catch(() => ({}));
-    if (!isUuid(ride_id)) {
-      return NextResponse.json({ error: "Invalid ride_id" }, { status: 400 });
-    }
-
     const sb = admin();
-    const { data: ride, error } = await sb
+
+    // 1) newest pending ride
+    const { data: ride, error: findErr } = await sb
       .from("rides")
-      .select("id,status,driver_id")
-      .eq("id", ride_id)
+      .select("id,status,created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
       .single();
 
-    if (error || !ride) {
-      return NextResponse.json({ error: "Ride not found" }, { status: 404 });
+    if (findErr || !ride) {
+      return NextResponse.json({ status: "no_pending_ride" }, { status: 200 });
     }
 
-    // Idempotent behavior:
-    if (ride.status === "assigned" && ride.driver_id) {
-      return NextResponse.json({ status: "ok", driver_id: ride.driver_id });
-    }
-
-    if (ride.status !== "pending") {
-      return NextResponse.json({ error: "Ride is not pending", status: ride.status }, { status: 409 });
-    }
-
+    // 2) call the DB function (relaxed version already working in your DB)
     const { data: result, error: rpcErr } = await sb
-      .rpc("assign_nearest_driver_v2", { p_ride_id: ride_id });
+      .rpc("assign_nearest_driver_v2", { p_ride_id: ride.id });
 
     if (rpcErr) {
       return NextResponse.json({ error: "RPC failed", detail: rpcErr.message }, { status: 500 });
     }
-    return NextResponse.json(result ?? { status: "ok" });
+
+    return NextResponse.json({ ride_id: ride.id, ...(result ?? {}) }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: "Unhandled", detail: e?.message ?? String(e) }, { status: 500 });
   }
