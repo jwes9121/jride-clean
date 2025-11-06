@@ -18,6 +18,24 @@ export default function RiderBookPage() {
     );
   }
 
+  async function assignNow(id: string) {
+    try {
+      const res = await fetch("/api/rides/assign-nearest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rideId: id, town, maxAgeMinutes: 15 }),
+      });
+      const js = await res.json();
+      if (js.status === "assigned") {
+        alert(`✅ Assigned\nDriver: ${js.driver_id}${js.distance_meters ? ` (~${Math.round(js.distance_meters)} m)` : ""}`);
+      } else {
+        alert(`ℹ️ ${js.message || "No driver available"}`);
+      }
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to assign");
+    }
+  }
+
   async function createRide() {
     if (lat === "" || lng === "") return alert("Pick a location or use GPS.");
     const res = await fetch("/api/rides/create", {
@@ -27,13 +45,16 @@ export default function RiderBookPage() {
     });
     const json = await res.json();
     if (!res.ok) return alert(json?.error || "Failed");
+
     setRideId(json.rideId);
+
+    // 🔥 Auto-assign right after create
+    await assignNow(json.rideId);
   }
 
   return (
     <div className="p-6 max-w-xl space-y-4">
       <h1 className="text-xl font-semibold">Book a JRide</h1>
-
       <div className="space-y-2">
         <div className="flex gap-2">
           <input className="border rounded px-3 py-2 w-full" placeholder="Latitude"
@@ -48,9 +69,13 @@ export default function RiderBookPage() {
       </div>
 
       {rideId && (
-        <div className="mt-4">
+        <div className="mt-4 space-y-1">
           <div>Ride created: <b>{rideId}</b></div>
           <a className="text-blue-600 underline" href={`/rider/track/${rideId}`}>Track this ride</a>
+          <div>
+            <button className="border rounded px-3 py-2 mt-2"
+                    onClick={() => assignNow(rideId)}>Assign Now (manual)</button>
+          </div>
         </div>
       )}
     </div>
