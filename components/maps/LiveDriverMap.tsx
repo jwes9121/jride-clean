@@ -91,5 +91,6 @@ export default function LiveDriverMap({ drivers }: Props) {
     else map.once("load", ()=> (map.getSource("drivers") as mapboxgl.GeoJSONSource)?.setData(data as any));
   }, [data]);
 
-  return <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden" />;
+  return <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden" style={{minHeight:"520px", width:"100%"}} />;
 }
+

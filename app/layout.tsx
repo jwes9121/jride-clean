@@ -1,4 +1,5 @@
-export const metadata = { title: "JRide Admin" };
+﻿export const metadata = { title: "JRide Admin" };
+
 import "./globals.css";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

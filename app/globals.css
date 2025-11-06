@@ -1,5 +1,11 @@
 ﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 @import "mapbox-gl/dist/mapbox-gl.css";
 
+/* Simple base so things are visible even without Tailwind utilities */
+html, body {
+  min-height: 100%;
+  background: #f5f5f5;
+}
