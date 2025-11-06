@@ -1,177 +1,95 @@
-"use client";
-
+﻿"use client";
+import React, { useEffect, useMemo, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { useEffect, useRef } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { RealtimeChannel } from "@supabase/supabase-js";
-import type * as GeoJSON from "geojson";
+import type { DriverLocation } from "@/types";
+import { townColor } from "../realtime/townColors";
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-export type Geofence = {
-  name: string;
-  geojson: GeoJSON.FeatureCollection<GeoJSON.Geometry>;
-  fillColor?: string;
-};
+type Props = { drivers: DriverLocation[] };
 
-type Props = {
-  center?: [number, number];
-  zoom?: number;
-  geofences?: Geofence[];
-};
-
-async function fetchDriversFC(): Promise<GeoJSON.FeatureCollection | null> {
-  // Your server shows an underscore route working; try that first
-  const urls = ["/api/driver_locations", "/api/driver-locations"];
-  for (const u of urls) {
-    try {
-      const r = await fetch(u, { cache: "no-store" });
-      if (r.ok) return (await r.json()) as GeoJSON.FeatureCollection;
-    } catch {}
-  }
-  return null;
+function asFC(drivers: DriverLocation[]): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: drivers
+      .filter((d) => typeof d.lng === "number" && typeof d.lat === "number")
+      .map((d) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [d.lng as number, d.lat as number] },
+        properties: { id: d.id, name: d.name, town: d.town ?? "", status: d.status, color: townColor(d.town ?? undefined) },
+      })),
+  } as GeoJSON.FeatureCollection;
 }
 
-export default function LiveDriverMap({
-  center = [121.06, 16.8],
-  zoom = 13,
-  geofences = [],
-}: Props) {
+export default function LiveDriverMap({ drivers }: Props) {
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const supabase = createClientComponentClient();
-  const didFitRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const data = useMemo(() => asFC(drivers), [drivers]);
 
-  // Init map once
   useEffect(() => {
-    if (mapRef.current) return;
-
-    const m = new mapboxgl.Map({
-      container: "live-map",
+    if (!containerRef.current || mapRef.current) return;
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center,
-      zoom,
+      center: [121.066, 16.801],
+      zoom: 11,
     });
-    mapRef.current = m;
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    mapRef.current = map;
 
-    m.on("load", async () => {
-      // --- Geofences first (so drivers can sit above them)
-      geofences.forEach((f, idx) => {
-        const srcId = `geofence-${idx}`;
-        if (!m.getSource(srcId)) {
-          m.addSource(srcId, { type: "geojson", data: f.geojson });
-        }
-        if (!m.getLayer(`${srcId}-fill`)) {
-          m.addLayer({
-            id: `${srcId}-fill`,
-            type: "fill",
-            source: srcId,
-            paint: {
-              "fill-opacity": 0.15,
-            },
-          });
-        }
-        if (!m.getLayer(`${srcId}-line`)) {
-          m.addLayer({
-            id: `${srcId}-line`,
-            type: "line",
-            source: srcId,
-            paint: { "line-width": 2 },
-          });
-        }
-      });
+    map.on("load", () => {
+      if (!map.getSource("drivers")) {
+        map.addSource("drivers", { type: "geojson", data, cluster: true, clusterMaxZoom: 14, clusterRadius: 40 });
 
-      // --- Drivers source + layer
-      if (!m.getSource("drivers")) {
-        m.addSource("drivers", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-      }
-      if (!m.getLayer("drivers-circle")) {
-        m.addLayer({
-          id: "drivers-circle",
-          type: "circle",
-          source: "drivers",
+        map.addLayer({ id: "clusters", type: "circle", source: "drivers", filter: ["has","point_count"],
+          paint: { "circle-color": "#374151", "circle-radius": ["step", ["get","point_count"], 14, 10, 18, 25, 24], "circle-opacity": 0.85 } });
+
+        map.addLayer({ id: "cluster-count", type: "symbol", source: "drivers", filter: ["has","point_count"],
+          layout: { "text-field": ["get","point_count_abbreviated"], "text-size": 12 }, paint: { "text-color": "#fff" } });
+
+        map.addLayer({ id: "drivers-unclustered", type: "circle", source: "drivers", filter: ["!",["has","point_count"]],
           paint: {
-            "circle-radius": 6,
-            "circle-color": "#2563eb",     // visible blue
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "#ffffff",
-          },
-        });
-      }
+            "circle-color": ["get","color"], "circle-radius": 6,
+            "circle-stroke-color": ["match", ["get","status"], "online","#22c55e","busy","#f59e0b","#9ca3af"],
+            "circle-stroke-width": 2, "circle-opacity": 0.95
+          } });
 
-      // Make sure drivers are on top of everything else
-      try {
-        m.moveLayer("drivers-circle");
-      } catch {
-        /* ignore if already top */
-      }
-
-      // Initial load so pins show immediately
-      const fc = await fetchDriversFC();
-      if (fc) {
-        const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
-        if (src) src.setData(fc);
-
-        // Optional: fit to pins once (helps when pins are off-screen)
-        if (!didFitRef.current && Array.isArray(fc.features) && fc.features.length > 0) {
-          const bounds = new mapboxgl.LngLatBounds();
-          fc.features.forEach((f: any) => {
-            if (f?.geometry?.type === "Point" && Array.isArray(f.geometry.coordinates)) {
-              bounds.extend(f.geometry.coordinates as [number, number]);
-            }
+        map.on("click","clusters",(e)=>{
+          const features = map.queryRenderedFeatures(e.point,{ layers:["clusters"] });
+          const clusterId = features[0]?.properties?.cluster_id;
+          const src = map.getSource("drivers") as mapboxgl.GeoJSONSource;
+          if (!src || clusterId == null) return;
+          (src as any).getClusterExpansionZoom(clusterId,(err:any,zoom:number)=>{
+            if (err) return;
+            map.easeTo({ center: (features[0].geometry as any).coordinates, zoom });
           });
-          if (!bounds.isEmpty()) {
-            m.fitBounds(bounds, { padding: 40, maxZoom: 15, duration: 0 });
-            didFitRef.current = true;
-          }
-        }
+        });
+
+        map.on("click","drivers-unclustered",(e)=>{
+          const f = e.features?.[0]; if (!f) return;
+          const [lng, lat] = (f.geometry as any).coordinates;
+          const { name, town, status, id } = f.properties as any;
+          new mapboxgl.Popup({ offset: 10 })
+            .setLngLat([lng, lat])
+            .setHTML(`<div style="font:12px system-ui"><div style="font-weight:600">${name}</div><div>${town||"—"} · ${status}</div><div style="color:#6b7280">id: ${id}</div></div>`)
+            .addTo(map);
+        });
+
+        map.on("mouseenter","drivers-unclustered",()=> (map.getCanvas().style.cursor="pointer"));
+        map.on("mouseleave","drivers-unclustered",()=> (map.getCanvas().style.cursor=""));
       }
     });
 
-    // Clean up map on unmount (no async cleanup)
-    return () => {
-      try {
-        m.remove();
-      } catch {}
-      mapRef.current = null;
-    };
-  }, [center, zoom, geofences]);
+    return () => { map.remove(); mapRef.current = null; };
+  }, []);
 
-  // Realtime refresh (fetch-all on any change)
   useEffect(() => {
-    let channel: RealtimeChannel | null = null;
+    const map = mapRef.current; if (!map) return;
+    const src = map.getSource("drivers") as mapboxgl.GeoJSONSource;
+    if (src) src.setData(data as any);
+    else map.once("load", ()=> (map.getSource("drivers") as mapboxgl.GeoJSONSource)?.setData(data as any));
+  }, [data]);
 
-    const subscribe = () => {
-      channel = supabase
-        .channel("driver_locations_realtime")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "driver_locations" },
-          async () => {
-            const m = mapRef.current;
-            if (!m) return;
-            const src = m.getSource("drivers") as mapboxgl.GeoJSONSource | undefined;
-            if (!src) return;
-
-            const fc = await fetchDriversFC();
-            if (fc) src.setData(fc);
-          }
-        )
-        .subscribe();
-    };
-
-    subscribe();
-
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-        channel = null;
-      }
-    };
-  }, [supabase]);
-
-  return <div id="live-map" className="w-full h-full rounded-2xl border" />;
+  return <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden" />;
 }

@@ -1,88 +1,100 @@
-"use client";
-import { useEffect, useState } from "react";
+﻿"use client";
+import React, { useEffect, useMemo, useState } from "react";
+import type { DriverLocation, Ride } from "@/types";
+import LiveTripsHeader from "@/components/realtime/LiveTripsHeader";
+import { DriverPanel, RidePanel } from "@/components/realtime/Panels";
+import LiveDriverMap from "@/components/maps/LiveDriverMap";
+import { fetchActiveRides, fetchInitialDriverLocations, subscribeDriverLocations, subscribeRides } from "@/components/realtime/supabaseRealtime";
+import { ToastProvider, useToast } from "@/components/ui/Toast";
 
-type Ride = {
-  id: string;
-  pickup_lat: number;
-  pickup_lng: number;
-  town: string;
-  status: string;
-  driver_id: string | null;
-};
-
-async function fetchRides(): Promise<Ride[]> {
-  const res = await fetch("/api/rides/list", { cache: "no-store" });
-  const json = await res.json();
-  if (!res.ok || json.status !== "ok") throw new Error(json.body || json.message || "Load failed");
-  return json.data as Ride[];
-}
-
-export default function Page() {
-  const [loading, setLoading] = useState(false);
+function PageInner() {
+  const [drivers, setDrivers] = useState<DriverLocation[]>([]);
   const [rides, setRides] = useState<Ride[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
+  const toast = useToast();
 
-  const load = async () => {
-    try {
-      setError(null);
-      const data = await fetchRides();
-      setRides(data || []);
-    } catch (e: any) {
-      setError(e.message || "Failed to load rides");
-    }
-  };
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const [d0, r0] = await Promise.all([fetchInitialDriverLocations(), fetchActiveRides()]);
+      if (!mounted) return;
+      setDrivers(d0); setRides(r0);
+    })();
+    return () => { mounted = false; };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const un = subscribeDriverLocations((evt) => {
+      setDrivers((prev) => {
+        if (evt.type === "DELETE" && evt.old) return prev.filter((d) => d.id !== evt.old!.id);
+        if (evt.new) {
+          const next = [...prev]; const i = next.findIndex((d)=>d.id===evt.new!.id);
+          if (i>=0) next[i] = { ...(next[i] as any), ...(evt.new as any) }; else next.unshift(evt.new as any);
+          return next;
+        }
+        return prev;
+      });
+    });
+    return () => un();
+  }, []);
 
-  async function handleAssignNearest(ride: Ride) {
-    setLoading(true);
+  useEffect(() => {
+    const un = subscribeRides((evt) => {
+      setRides((prev) => {
+        if (evt.type === "DELETE" && evt.old) return prev.filter((r) => r.id !== evt.old!.id);
+        if (evt.new) {
+          const next = [...prev]; const i = next.findIndex((r)=>r.id===evt.new!.id);
+          if (i>=0) next[i] = { ...(next[i] as any), ...(evt.new as any) }; else next.unshift(evt.new as any);
+          return next;
+        }
+        return prev;
+      });
+    });
+    return () => un();
+  }, []);
+
+  const driversOnline = useMemo(() => drivers.filter((d)=>d.status==="online").length, [drivers]);
+
+  async function handleRefresh() {
+    const [d0, r0] = await Promise.all([fetchInitialDriverLocations(), fetchActiveRides()]);
+    setDrivers(d0); setRides(r0);
+    toast({ type:"info", message:"Refreshed live data." });
+  }
+
+  async function handleAssignNearest(rideId: string) {
+    setSelectedRideId(rideId);
     try {
       const res = await fetch("/api/rides/assign-nearest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ride_id: ride.id,
-          pickup_lat: ride.pickup_lat,
-          pickup_lng: ride.pickup_lng,
-          town: ride.town,
-        }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rideId }),
       });
-      const result = await res.json();
-      if (result.status === "ok") { alert(`Driver assigned: ${result.driver_id}`); await load(); }
-      else if (result.status === "no_driver") { alert("No available driver nearby."); }
-      else { alert(`Error: ${result.message || result.status}`); }
-    } finally { setLoading(false); }
+      if (!res.ok) {
+        const msg = await res.text();
+        toast({ type:"error", title:"Assign failed", message: msg.slice(0,160) }); return;
+      }
+      const j = await res.json();
+      toast({ type:"success", title:"Assign triggered", message: j?.message ?? "Nearest driver assignment attempted." });
+      const r0 = await fetchActiveRides(); setRides(r0);
+    } catch(e:any) {
+      toast({ type:"error", title:"Assign error", message: String(e?.message ?? e) });
+    }
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1 style={{ fontWeight: 700, fontSize: 22 }}>Admin / Live Trips</h1>
-      <button onClick={load} disabled={loading} style={{ margin: "12px 0" }}>Refresh</button>
-      {error && <div style={{ color: "red" }}>{error}</div>}
-      <table cellPadding={8} style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th>Ride ID</th><th>Town</th><th>Pickup</th><th>Status</th><th>Driver</th><th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rides.map((r) => (
-            <tr key={r.id} style={{ borderTop: "1px solid #ddd" }}>
-              <td>{r.id}</td>
-              <td>{r.town}</td>
-              <td>{r.pickup_lat?.toFixed(5)}, {r.pickup_lng?.toFixed(5)}</td>
-              <td>{r.status}</td>
-              <td>{r.driver_id || "-"}</td>
-              <td>
-                <button disabled={loading || r.status === "assigned"} onClick={() => handleAssignNearest(r)}>
-                  Assign Nearest
-                </button>
-              </td>
-            </tr>
-          ))}
-          {rides.length === 0 && <tr><td colSpan={6}>No rides found.</td></tr>}
-        </tbody>
-      </table>
+    <div className="p-4 space-y-4">
+      <LiveTripsHeader onRefresh={handleRefresh} ridesCount={rides.length} driversOnline={driversOnline} driversTotal={drivers.length} />
+      <div className="grid grid-cols-12 gap-4">
+        <div className="col-span-12 lg:col-span-8 h-[520px]">
+          <div className="h-full rounded-2xl overflow-hidden bg-white shadow">
+            <LiveDriverMap drivers={drivers} />
+          </div>
+        </div>
+        <div className="col-span-12 lg:col-span-4 space-y-4">
+          <DriverPanel drivers={drivers} />
+          <RidePanel rides={rides} onAssignNearest={handleAssignNearest}
+            selectedRideId={selectedRideId ?? undefined} onSelect={setSelectedRideId} />
+        </div>
+      </div>
     </div>
   );
 }
+export default function LiveTripsPage(){ return (<ToastProvider><PageInner/></ToastProvider>); }
