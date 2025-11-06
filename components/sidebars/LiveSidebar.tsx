@@ -39,7 +39,10 @@ export default function LiveSidebar() {
   }, []);
 
   async function assignNearest(r: Ride) {
-    if (!r.pickup_lat || !r.pickup_lng) return;
+    if (!r.pickup_lat || !r.pickup_lng) {
+      alert("Ride has no pickup coordinates.");
+      return;
+    }
     setBusyId(r.id);
     try {
       const res = await fetch("/api/rides/assign-nearest", {
@@ -47,16 +50,23 @@ export default function LiveSidebar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rideId: r.id,
-          pickup: { lat: r.pickup_lat, lng: r.pickup_lng },
           town: r.town || filterTown || "Lagawe",
-          maxAgeMinutes: 10,
+          maxAgeMinutes: 15,
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || res.statusText);
-      if (json?.status !== "assigned") {
-        alert(json?.message || "No driver found.");
+
+      // Always tell you what happened
+      if (json.status === "assigned" && json.driver_id) {
+        alert(`✅ Assigned\nDriver: ${json.driver_id}\n~${json.distance_meters ? Math.round(json.distance_meters) + " m" : ""}`);
+      } else if (json.status === "no-driver") {
+        alert(`⚠️ ${json.message || "No available driver"}`);
+      } else if (json.status === "error") {
+        alert(`❌ ${json.message || "Error assigning"}`);
+      } else {
+        alert(`ℹ️ ${json.message || "No change"}`);
       }
+
       await loadRides();
     } catch (e: any) {
       alert(e?.message ?? "Failed to assign");
@@ -102,18 +112,10 @@ export default function LiveSidebar() {
               <button
                 disabled={!!r.driver_id || busyId === r.id}
                 onClick={() => assignNearest(r)}
-                className={`px-3 py-2 rounded-xl text-sm border ${
-                  busyId === r.id ? "opacity-60" : ""
-                }`}
-                title={
-                  r.driver_id ? "Already assigned" : "Assign nearest driver in same town"
-                }
+                className={`px-3 py-2 rounded-xl text-sm border ${busyId === r.id ? "opacity-60" : ""}`}
+                title={r.driver_id ? "Already assigned" : "Assign nearest driver in same town"}
               >
-                {busyId === r.id
-                  ? "Assigning…"
-                  : r.driver_id
-                  ? "Assigned"
-                  : "Assign Nearest"}
+                {busyId === r.id ? "Assigning…" : r.driver_id ? "Assigned" : "Assign Nearest"}
               </button>
             </div>
           </div>
