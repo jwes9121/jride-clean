@@ -5,6 +5,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
+console.log("[MapboxMap] Build-time token present:", token ? "YES" : "NO");
 
 type DriverFeature = {
   id: string | number;
@@ -20,7 +21,7 @@ type Props = {
 
 export default function MapboxMap({
   drivers = [],
-  initialCenter = [121.1036, 16.8003], // Ifugao-ish default
+  initialCenter = [121.1036, 16.8003],
   initialZoom = 11,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -28,10 +29,15 @@ export default function MapboxMap({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    console.log("[MapboxMap] useEffect start");
+
+    if (!containerRef.current) {
+      console.log("[MapboxMap] containerRef is null");
+      return;
+    }
 
     if (!token) {
-      console.error("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN.");
+      console.error("[MapboxMap] Missing NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN");
       setError("Missing Mapbox access token (NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
       return;
     }
@@ -39,12 +45,13 @@ export default function MapboxMap({
     (mapboxgl as any).accessToken = token;
 
     if (!mapboxgl.supported()) {
-      console.error("Mapbox GL not supported in this browser.");
+      console.error("[MapboxMap] Mapbox GL not supported");
       setError("Mapbox GL is not supported in this browser.");
       return;
     }
 
     try {
+      console.log("[MapboxMap] Creating map...");
       const map = new mapboxgl.Map({
         container: containerRef.current,
         style: "mapbox://styles/mapbox/streets-v11",
@@ -57,7 +64,7 @@ export default function MapboxMap({
       map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
       map.on("load", () => {
-        // Simple markers from provided drivers (if any)
+        console.log("[MapboxMap] Map loaded, adding", drivers.length, "drivers");
         drivers.forEach((driver) => {
           new mapboxgl.Marker({
             color: driver.color || "#2563eb",
@@ -67,12 +74,13 @@ export default function MapboxMap({
         });
       });
     } catch (e: any) {
-      console.error("Error initializing Mapbox map:", e);
-      setError("Failed to initialize Mapbox map. Check console for details.");
+      console.error("[MapboxMap] Error initializing Mapbox:", e);
+      setError("Failed to initialize Mapbox map. See console for details.");
     }
 
     return () => {
       if (mapRef.current) {
+        console.log("[MapboxMap] Cleaning up map");
         mapRef.current.remove();
         mapRef.current = null;
       }
@@ -88,5 +96,5 @@ export default function MapboxMap({
     );
   }
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return <div ref={containerRef} className="w-full h-full bg-gray-100" />;
 }
