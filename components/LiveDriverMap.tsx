@@ -5,22 +5,22 @@ import mapboxgl from "mapbox-gl";
 
 const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
-if (!token) {
-  console.warn(
-    "[LiveDriverMap] NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN is not set. Map will not load."
-  );
-}
-
-mapboxgl.accessToken = token || "";
-
 export default function LiveDriverMap() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
   useEffect(() => {
+    // Only run in the browser, with a token, and once.
     if (!containerRef.current) return;
-    if (!token) return;
+    if (!token) {
+      console.warn(
+        "[LiveDriverMap] NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN is not set. Map will not load."
+      );
+      return;
+    }
     if (mapRef.current) return;
+
+    mapboxgl.accessToken = token;
 
     try {
       const map = new mapboxgl.Map({
@@ -31,10 +31,6 @@ export default function LiveDriverMap() {
       });
 
       mapRef.current = map;
-
-      map.on("load", () => {
-        console.log("[LiveDriverMap] Map loaded");
-      });
     } catch (err) {
       console.error("[LiveDriverMap] Failed to init map:", err);
     }
