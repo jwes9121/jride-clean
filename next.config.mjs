@@ -1,9 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // No `output: "export"` here.
+  // No custom `revalidate` here.
 };
 
 export default nextConfig;
