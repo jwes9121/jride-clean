@@ -1,146 +1,77 @@
-"use client";
+﻿"use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-// âœ… CSP-safe bundle + worker: use default export only
-import mapboxgl from "mapbox-gl/dist/mapbox-gl-csp";
-import MapboxWorker from "mapbox-gl/dist/mapbox-gl-csp-worker";
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
 
-/**
- * Assign worker for CSP builds.
- * Different bundlers ship the worker either as the constructor itself OR as { default: WorkerCtor }.
- * Normalize to the actual constructor to avoid "workerClass is not a constructor".
- */
-try {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const RawWorker: any = (MapboxWorker as any);
-  // unwrap possible "default"
-  const WorkerCtor = (RawWorker && RawWorker.default) ? RawWorker.default : RawWorker;
-  (mapboxgl as any).workerClass = WorkerCtor;
-  // Some environments also check .worker; harmless to assign
-  (mapboxgl as any).worker = WorkerCtor;
-} catch {}
-
-type LatLng = { lat: number; lng: number };
-type MarkerDef = LatLng & { id?: string; color?: string };
+type DriverFeature = {
+  id: string | number;
+  coordinates: [number, number]; // [lng, lat]
+  color?: string;
+};
 
 type Props = {
-  center: LatLng;
-  zoom?: number;
-  markers?: MarkerDef[];
-  onClickLatLng?: (pos: LatLng) => void;
-  className?: string;
-  height?: number | string;
+  drivers?: DriverFeature[];
+  initialCenter?: [number, number];
+  initialZoom?: number;
 };
 
 export default function MapboxMap({
-  center,
-  zoom = 13,
-  markers = [],
-  onClickLatLng,
-  className = "",
-  height = 420,
+  drivers = [],
+  initialCenter = [121.1036, 16.8003], // Ifugao-ish default
+  initialZoom = 11,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     if (!containerRef.current) return;
 
-    const token =
-      process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
-      process.env.NEXT_PUBLIC_MAPBOX ||
-      "";
-
-    if (!token) {
-      setInitError("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN.");
+    if (!mapboxgl.accessToken) {
+      setInitError("Missing Mapbox access token");
       return;
     }
 
-    try {
-      (mapboxgl as any).accessToken = token;
-    } catch (e: any) {
-      console.error("[Mapbox] Failed to set accessToken", e);
-      setInitError("Failed to set Mapbox access token.");
-      return;
-    }
+    // Init map once
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: initialCenter,
+      zoom: initialZoom,
+    });
 
-    try {
-      const map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [center.lng, center.lat],
-        zoom,
+    mapRef.current = map;
+
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    // Add markers once on load; for full realtime we can wire Supabase later
+    map.on("load", () => {
+      drivers.forEach((driver) => {
+        new mapboxgl.Marker({
+          color: driver.color || "#2563eb",
+        })
+          .setLngLat(driver.coordinates)
+          .addTo(map);
       });
-      mapRef.current = map;
+    });
 
-      // Controls
-      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
-
-      // Manage markers
-      const currentMarkers: mapboxgl.Marker[] = [];
-      const addMarkers = () => {
-        // clear previous
-        while (currentMarkers.length) {
-          try { currentMarkers.pop()?.remove(); } catch {}
-        }
-        // add new
-        markers.forEach((m) => {
-          const marker = new mapboxgl.Marker({ color: m.color || "#2563eb" })
-            .setLngLat([m.lng, m.lat])
-            .addTo(map);
-          currentMarkers.push(marker);
-        });
-      };
-
-      const clickHandler = (e: mapboxgl.MapMouseEvent) => {
-        if (onClickLatLng) {
-          const { lng, lat } = e.lngLat.wrap();
-          onClickLatLng({ lng, lat });
-        }
-      };
-
-      map.on("load", addMarkers);
-      map.on("styledata", addMarkers);
-      if (onClickLatLng) map.on("click", clickHandler);
-
-      return () => {
-        try {
-          if (onClickLatLng) map.off("click", clickHandler);
-          map.remove();
-        } catch {}
-      };
-    } catch (e: any) {
-      console.error("[Mapbox] init error:", e);
-      setInitError(e?.message || String(e));
-      return;
-    }
+    return () => {
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center.lat, center.lng, zoom, JSON.stringify(markers), !!onClickLatLng]);
+  }, []);
 
   if (initError) {
     return (
-      <div
-        className={`w-full rounded-lg overflow-hidden border ${className}`}
-        style={{ height: typeof height === "number" ? `${height}px` : height }}
-      >
-        <div className="h-full w-full flex items-center justify-center text-sm text-red-700 bg-red-50">
-          Map failed to load: {initError}
-        </div>
+      <div className="flex items-center justify-center h-full text-sm text-red-500">
+        {initError}
       </div>
     );
   }
 
-  return (
-    <div
-      ref={containerRef}
-      className={`w-full rounded-lg overflow-hidden border ${className}`}
-      style={{ height: typeof height === "number" ? `${height}px` : height }}
-    />
-  );
+  return <div ref={containerRef} className="w-full h-full" />;
 }
-
-
