@@ -118,7 +118,7 @@ export default function LiveDriverMap({
         });
       }
 
-      // Typed click handlers
+      // ---- CLICK HANDLERS (typed) ----
       map.on('click', 'clusters', (e: MapMouseEvent & EventData) => {
         const feats = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
         const clusterId = feats[0]?.properties?.cluster_id as number | undefined;
