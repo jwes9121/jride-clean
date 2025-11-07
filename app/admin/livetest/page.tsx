@@ -13,7 +13,7 @@ export default function AdminLiveTestPage() {
       </header>
 
       <section className="w-full h-[70vh] rounded-xl border">
-        <LiveDriverMap drivers={[]} />
+        <LiveDriverMap />
       </section>
     </main>
   );

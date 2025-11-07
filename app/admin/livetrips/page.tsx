@@ -13,7 +13,7 @@ export default function AdminLiveTripsPage() {
       </header>
 
       <section className="w-full h-[70vh] rounded-xl border">
-        <LiveDriverMap drivers={[]} />
+        <LiveDriverMap />
       </section>
     </main>
   );
