@@ -1,13 +1,22 @@
-'use client';
+// app/admin/livetest/page.tsx
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+import LiveDriverMap from "@/components/maps/LiveDriverMap";
 
-export default function Page() {
+export const revalidate = 0; // valid: no cache / always fresh
+
+export default function AdminLiveTestPage() {
   return (
-    <main className="min-h-screen p-6">
-      <h1 className="text-xl font-semibold mb-3">JRide /admin/livetest</h1>
-      <p>This is a minimal page to verify that the route builds correctly.</p>
+    <main className="p-4 space-y-4">
+      <header>
+        <h1 className="text-2xl font-semibold">JRide Live Driver Map — Test</h1>
+        <p className="text-sm text-gray-500">
+          Internal test page for validating live driver locations and clusters.
+        </p>
+      </header>
+
+      <section className="w-full h-[70vh] rounded-xl border">
+        <LiveDriverMap />
+      </section>
     </main>
   );
 }
