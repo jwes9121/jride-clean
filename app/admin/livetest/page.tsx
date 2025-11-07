@@ -1,6 +1,6 @@
 "use client";
 
-import LiveDriverMap from "@/components/components/LiveDriverMap";
+import LiveDriverMap from "@/components/LiveDriverMap";
 
 export default function LiveTestPage() {
   return (
