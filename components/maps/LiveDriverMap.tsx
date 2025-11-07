@@ -5,7 +5,10 @@ import mapboxgl, { Map, MapMouseEvent, EventData } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 type Props = {
-  features?: GeoJSON.FeatureCollection<GeoJSON.Point, { id?: string; [k: string]: any }>;
+  features?: GeoJSON.FeatureCollection<
+    GeoJSON.Point,
+    { id?: string; [k: string]: any }
+  >;
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
   center?: [number, number];
@@ -22,7 +25,7 @@ export default function LiveDriverMap({
   onSelect,
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
-  style,
+  style
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
@@ -37,7 +40,7 @@ export default function LiveDriverMap({
       style: 'mapbox://styles/mapbox/streets-v12',
       center,
       zoom,
-      attributionControl: true,
+      attributionControl: true
     });
     mapRef.current = map;
 
@@ -51,11 +54,11 @@ export default function LiveDriverMap({
             features ??
             ({
               type: 'FeatureCollection',
-              features: [],
+              features: []
             } as GeoJSON.FeatureCollection),
           cluster: true,
           clusterMaxZoom: 14,
-          clusterRadius: 50,
+          clusterRadius: 50
         });
       }
 
@@ -73,10 +76,10 @@ export default function LiveDriverMap({
               10,
               '#6EE7B7',
               30,
-              '#34D399',
+              '#34D399'
             ],
-            'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 30, 28],
-          },
+            'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 30, 28]
+          }
         });
       }
 
@@ -89,9 +92,9 @@ export default function LiveDriverMap({
           layout: {
             'text-field': ['get', 'point_count_abbreviated'],
             'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'],
-            'text-size': 12,
+            'text-size': 12
           },
-          paint: { 'text-color': '#064E3B' },
+          paint: { 'text-color': '#064E3B' }
         });
       }
 
@@ -106,16 +109,16 @@ export default function LiveDriverMap({
               'case',
               ['==', ['get', 'id'], selectedId ?? ''],
               '#ef4444',
-              '#2563eb',
+              '#2563eb'
             ],
             'circle-radius': 7,
             'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#ffffff',
-          },
+            'circle-stroke-color': '#ffffff'
+          }
         });
       }
 
-      // ✅ Typed map click handlers
+      // Typed click handlers
       map.on('click', 'clusters', (e: MapMouseEvent & EventData) => {
         const feats = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
         const clusterId = feats[0]?.properties?.cluster_id as number | undefined;
@@ -162,7 +165,7 @@ export default function LiveDriverMap({
       'case',
       ['==', ['get', 'id'], selectedId ?? ''],
       '#ef4444',
-      '#2563eb',
+      '#2563eb'
     ]);
   }, [selectedId]);
 
