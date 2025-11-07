@@ -1,12 +1,15 @@
-// app/admin/livetest/page.tsx
-export const dynamic = "force-dynamic";
+﻿export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+'use client';
 
 export default function Page() {
   return (
-    <main style={{ padding: 20 }}>
-      <h1>JRide /admin/livetest</h1>
-      <p>This is a minimal page to verify the route works.</p>
+    <main className="p-6">
+      <h1 className="text-xl font-semibold">JRide /admin/livetest</h1>
+      <p className="mt-2 text-sm text-gray-600">
+        This is a minimal page to verify the route works.
+      </p>
     </main>
   );
 }
