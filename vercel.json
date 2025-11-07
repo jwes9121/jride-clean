@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com; style-src 'self' 'unsafe-inline' https://api.mapbox.com https://*.tiles.mapbox.com; img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com; font-src 'self' data: https://api.mapbox.com https://*.tiles.mapbox.com; connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com https://qpemhlgjcotngxahjidj.supabase.co wss://qpemhlgjcotngxahjidj.supabase.co; worker-src 'self' blob:; child-src 'self' blob:;"
+          "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com; style-src 'self' 'unsafe-inline' https://api.mapbox.com https://*.tiles.mapbox.com; img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com; font-src 'self' data: https://api.mapbox.com https://*.tiles.mapbox.com; connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com https://qpemhlgjcotngxahjidj.supabase.co wss://qpemhlgjcotngxahjidj.supabase.co; worker-src 'self' blob:; child-src 'self' blob:; "
         }
       ]
     }
