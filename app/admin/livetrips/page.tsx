@@ -1,19 +1,40 @@
-"use client";
+'use client';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import React from "react";
-import LiveDriverMap from "@/components/maps/LiveDriverMap";
+type DriverPoint = {
+  id: string;
+  lat: number;
+  lng: number;
+  status: 'online' | 'offline';
+};
+
+const MOCK_DRIVERS: DriverPoint[] = [];
 
 export default function Page() {
-  // keep this simple for now; we can re-add realtime later
   return (
-    <main className="p-8">
-      <h1 className="text-2xl font-semibold mb-4">Live Driver Map</h1>
-      <div className="h-[520px] rounded-2xl overflow-hidden bg-white shadow">
-        <LiveDriverMap drivers={[]} />
-      </div>
+    <main className="min-h-screen p-6 space-y-4">
+      <h1 className="text-xl font-semibold">JRide /admin/livetrips</h1>
+      <p className="text-sm text-gray-600">
+        Temporary stub page to get the build passing. Realtime logic will be wired back in once
+        deployment is stable.
+      </p>
+
+      <section className="rounded-2xl bg-white shadow p-4">
+        <h2 className="font-semibold mb-2">Online Drivers</h2>
+        {MOCK_DRIVERS.length === 0 ? (
+          <p className="text-sm text-gray-500">No drivers yet.</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {MOCK_DRIVERS.map((d) => (
+              <li key={d.id}>
+                {d.id} — {d.lat}, {d.lng} ({d.status})
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }
