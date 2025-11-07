@@ -1,96 +1,242 @@
-﻿"use client";
-import React, { useEffect, useMemo, useRef } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
-import type { DriverLocation } from "@/types";
-import { townColor } from "../realtime/townColors";
+'use client';
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+import React, { useEffect, useRef } from 'react';
+import mapboxgl, { Map, MapMouseEvent, EventData } from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
-type Props = { drivers: DriverLocation[] };
+type Props = {
+  /** Optional GeoJSON features to render (drivers as points). */
+  features?: GeoJSON.FeatureCollection<GeoJSON.Point, { id?: string; [k: string]: any }>;
+  /** Optionally preselect a driver id. */
+  selectedId?: string | null;
+  /** Selection callback when a point is clicked; null means clear selection. */
+  onSelect?: (id: string | null) => void;
+  /** Initial center (lng, lat). */
+  center?: [number, number];
+  /** Initial zoom. */
+  zoom?: number;
+  /** Optional style for the containing div. */
+  style?: React.CSSProperties;
+};
 
-function asFC(drivers: DriverLocation[]): GeoJSON.FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: drivers
-      .filter((d) => typeof d.lng === "number" && typeof d.lat === "number")
-      .map((d) => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [d.lng as number, d.lat as number] },
-        properties: { id: d.id, name: d.name, town: d.town ?? "", status: d.status, color: townColor(d.town ?? undefined) },
-      })),
-  } as GeoJSON.FeatureCollection;
-}
+const DEFAULT_CENTER: [number, number] = [121.066, 16.801]; // Ifugao-ish fallback
+const DEFAULT_ZOOM = 12;
 
-export default function LiveDriverMap({ drivers }: Props) {
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+/**
+ * LiveDriverMap
+ * - Renders a Mapbox map with a clustered "drivers" source.
+ * - Handles clicks on clusters (expand) and points (select).
+ * - Updates the source data when `features` prop changes.
+ */
+export default function LiveDriverMap({
+  features,
+  selectedId = null,
+  onSelect,
+  center = DEFAULT_CENTER,
+  zoom = DEFAULT_ZOOM,
+  style,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const data = useMemo(() => asFC(drivers), [drivers]);
+  const mapRef = useRef<Map | null>(null);
+
+  // Configure access token once
+  mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
+    // Basic guard for missing token in dev
+    if (!mapboxgl.accessToken) {
+      // eslint-disable-next-line no-console
+      console.error(
+        'Mapbox access token missing. Set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN in your .env.local'
+      );
+    }
+
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: [121.066, 16.801],
-      zoom: 11,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center,
+      zoom,
+      attributionControl: true,
     });
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
     mapRef.current = map;
 
-    map.on("load", () => {
-      if (!map.getSource("drivers")) {
-        map.addSource("drivers", { type: "geojson", data, cluster: true, clusterMaxZoom: 14, clusterRadius: 40 });
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
 
-        map.addLayer({ id: "clusters", type: "circle", source: "drivers", filter: ["has","point_count"],
-          paint: { "circle-color": "#374151", "circle-radius": ["step", ["get","point_count"], 14, 10, 18, 25, 24], "circle-opacity": 0.85 } });
-
-        map.addLayer({ id: "cluster-count", type: "symbol", source: "drivers", filter: ["has","point_count"],
-          layout: { "text-field": ["get","point_count_abbreviated"], "text-size": 12 }, paint: { "text-color": "#fff" } });
-
-        map.addLayer({ id: "drivers-unclustered", type: "circle", source: "drivers", filter: ["!",["has","point_count"]],
-          paint: {
-            "circle-color": ["get","color"], "circle-radius": 6,
-            "circle-stroke-color": ["match", ["get","status"], "online","#22c55e","busy","#f59e0b","#9ca3af"],
-            "circle-stroke-width": 2, "circle-opacity": 0.95
-          } });
-
-        map.on("click","clusters",(e)=>{
-          const features = map.queryRenderedFeatures(e.point,{ layers:["clusters"] });
-          const clusterId = features[0]?.properties?.cluster_id;
-          const src = map.getSource("drivers") as mapboxgl.GeoJSONSource;
-          if (!src || clusterId == null) return;
-          (src as any).getClusterExpansionZoom(clusterId,(err:any,zoom:number)=>{
-            if (err) return;
-            map.easeTo({ center: (features[0].geometry as any).coordinates, zoom });
-          });
+    map.on('load', () => {
+      // Source
+      if (!map.getSource('drivers')) {
+        map.addSource('drivers', {
+          type: 'geojson',
+          data:
+            features ??
+            ({
+              type: 'FeatureCollection',
+              features: [],
+            } as GeoJSON.FeatureCollection),
+          cluster: true,
+          clusterMaxZoom: 14,
+          clusterRadius: 50,
         });
-
-        map.on("click","drivers-unclustered",(e)=>{
-          const f = e.features?.[0]; if (!f) return;
-          const [lng, lat] = (f.geometry as any).coordinates;
-          const { name, town, status, id } = f.properties as any;
-          new mapboxgl.Popup({ offset: 10 })
-            .setLngLat([lng, lat])
-            .setHTML(`<div style="font:12px system-ui"><div style="font-weight:600">${name}</div><div>${town||"—"} · ${status}</div><div style="color:#6b7280">id: ${id}</div></div>`)
-            .addTo(map);
-        });
-
-        map.on("mouseenter","drivers-unclustered",()=> (map.getCanvas().style.cursor="pointer"));
-        map.on("mouseleave","drivers-unclustered",()=> (map.getCanvas().style.cursor=""));
       }
+
+      // Clustered circles
+      if (!map.getLayer('clusters')) {
+        map.addLayer({
+          id: 'clusters',
+          type: 'circle',
+          source: 'drivers',
+          filter: ['has', 'point_count'],
+          paint: {
+            'circle-color': [
+              'step',
+              ['get', 'point_count'],
+              '#A7F3D0', // <= 10
+              10,
+              '#6EE7B7', // <= 30
+              30,
+              '#34D399', // > 30
+            ],
+            'circle-radius': [
+              'step',
+              ['get', 'point_count'],
+              16, // <= 10
+              10,
+              22, // <= 30
+              30,
+              28, // > 30
+            ],
+          },
+        });
+      }
+
+      // Cluster count
+      if (!map.getLayer('cluster-count')) {
+        map.addLayer({
+          id: 'cluster-count',
+          type: 'symbol',
+          source: 'drivers',
+          filter: ['has', 'point_count'],
+          layout: {
+            'text-field': ['get', 'point_count_abbreviated'],
+            'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'],
+            'text-size': 12,
+          },
+          paint: {
+            'text-color': '#064E3B',
+          },
+        });
+      }
+
+      // Unclustered points (drivers)
+      if (!map.getLayer('unclustered-point')) {
+        map.addLayer({
+          id: 'unclustered-point',
+          type: 'circle',
+          source: 'drivers',
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-color': [
+              'case',
+              ['==', ['get', 'id'], selectedId ?? ''],
+              '#ef4444', // selected
+              '#2563eb', // default
+            ],
+            'circle-radius': 7,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#ffffff',
+          },
+        });
+      }
+
+      // Click cluster to expand
+      map.on(
+        'click',
+        'clusters',
+        (e: MapMouseEvent & EventData) => {
+          const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+          const clusterId = features[0]?.properties?.cluster_id as number | undefined;
+          const src = map.getSource('drivers') as mapboxgl.GeoJSONSource | undefined;
+          if (!src || clusterId === undefined) return;
+
+          src.getClusterExpansionZoom(clusterId, (err, zoomLevel) => {
+            if (err) return;
+            const geom = features[0].geometry as GeoJSON.Point;
+            const [lng, lat] = geom.coordinates as [number, number];
+            map.easeTo({ center: [lng, lat], zoom: zoomLevel });
+          });
+        }
+      );
+
+      // Click a single point to select it
+      map.on(
+        'click',
+        'unclustered-point',
+        (e: MapMouseEvent & EventData) => {
+          const features = map.queryRenderedFeatures(e.point, { layers: ['unclustered-point'] });
+          const id =
+            (features[0]?.properties?.id as string | undefined) ??
+            null; /* driver id set in feature properties */
+          if (onSelect) onSelect(id);
+        }
+      );
+
+      // Cursor styling
+      map.on('mouseenter', 'clusters', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'clusters', () => {
+        map.getCanvas().style.cursor = '';
+      });
+      map.on('mouseenter', 'unclustered-point', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'unclustered-point', () => {
+        map.getCanvas().style.cursor = '';
+      });
     });
 
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [center, zoom, onSelect, selectedId, features]);
 
+  // Update source data when `features` change
   useEffect(() => {
-    const map = mapRef.current; if (!map) return;
-    const src = map.getSource("drivers") as mapboxgl.GeoJSONSource;
-    if (src) src.setData(data as any);
-    else map.once("load", ()=> (map.getSource("drivers") as mapboxgl.GeoJSONSource)?.setData(data as any));
-  }, [data]);
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
 
-  return <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden" style={{minHeight:"520px", width:"100%"}} />;
+    const src = map.getSource('drivers') as mapboxgl.GeoJSONSource | undefined;
+    if (src && features) {
+      src.setData(features as any);
+    }
+  }, [features]);
+
+  // Update selected styling by setting a paint expression dynamically
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer('unclustered-point')) return;
+
+    map.setPaintProperty('unclustered-point', 'circle-color', [
+      'case',
+      ['==', ['get', 'id'], selectedId ?? ''],
+      '#ef4444', // selected
+      '#2563eb', // default
+    ]);
+  }, [selectedId]);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        width: '100%',
+        height: '70vh',
+        borderRadius: 12,
+        overflow: 'hidden',
+        ...style,
+      }}
+    />
+  );
 }
-
