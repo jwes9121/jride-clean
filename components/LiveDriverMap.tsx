@@ -1,47 +1,75 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 
-const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+const MAPBOX_TOKEN =
+  process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 
 export default function LiveDriverMap() {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // Only run in the browser, with a token, and once.
-    if (!containerRef.current) return;
-    if (!token) {
-      console.warn(
-        "[LiveDriverMap] NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN is not set. Map will not load."
+    const container = mapContainerRef.current;
+
+    if (!container) {
+      console.error("[LiveDriverMap] No container element found.");
+      return;
+    }
+
+    if (!MAPBOX_TOKEN) {
+      console.error(
+        "[LiveDriverMap] Missing NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN. Map will not load."
       );
       return;
     }
-    if (mapRef.current) return;
 
-    mapboxgl.accessToken = token;
+    let map: any;
 
-    try {
-      const map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: "mapbox://styles/mapbox/streets-v11",
-        center: [0, 0],
-        zoom: 2,
-      });
+    async function init() {
+      try {
+        console.log("[LiveDriverMap] Initializing Mapbox map…");
 
-      mapRef.current = map;
-    } catch (err) {
-      console.error("[LiveDriverMap] Failed to init map:", err);
+        const mapboxglModule = await import("mapbox-gl");
+        const mapboxgl = mapboxglModule.default ?? mapboxglModule;
+
+        mapboxgl.accessToken = MAPBOX_TOKEN;
+
+        map = new mapboxgl.Map({
+          container,
+          style: "mapbox://styles/mapbox/streets-v11",
+          center: [121.1, 16.8], // Ifugao-ish; adjust anytime
+          zoom: 11
+        });
+
+        map.on("load", () => {
+          console.log("[LiveDriverMap] Map loaded successfully.");
+        });
+
+        map.on("error", (event: any) => {
+          console.error("[LiveDriverMap] Map error:", event?.error || event);
+        });
+      } catch (error) {
+        console.error("[LiveDriverMap] Failed to initialize:", error);
+      }
     }
 
+    init();
+
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
+      if (map) {
+        console.log("[LiveDriverMap] Cleaning up map instance.");
+        map.remove();
       }
     };
   }, []);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return (
+    <div className="w-full h-[70vh]">
+      <div
+        ref={mapContainerRef}
+        className="w-full h-full"
+      />
+    </div>
+  );
 }
