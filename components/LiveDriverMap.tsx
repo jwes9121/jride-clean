@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
-import type { Map as MapboxMap, GeoJSONSource } from "mapbox-gl";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-// TODO: update these to match your real schema
+// TODO: change to your real table name if different
 const DRIVER_TABLE = "live_driver_locations";
 
 type Status = "init" | "no_container" | "missing_token" | "ok" | "error";
@@ -40,13 +39,13 @@ function toFeatureCollection(drivers: DriverRow[]): GeoJSON.FeatureCollection {
           id: d.id,
           driverId: d.driver_id ?? d.id,
           status: d.status ?? "unknown",
-          updated_at: d.updated_at ?? null,
+          updated_at: d.updated_at ?? null
         },
         geometry: {
           type: "Point",
-          coordinates: [d.lng, d.lat],
-        },
-      })),
+          coordinates: [d.lng, d.lat]
+        }
+      }))
   };
 }
 
@@ -57,14 +56,15 @@ function createSupabase(): SupabaseClient | null {
     );
     return null;
   }
+
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    realtime: { params: { eventsPerSecond: 5 } },
+    realtime: { params: { eventsPerSecond: 5 } }
   });
 }
 
 export default function LiveDriverMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<MapboxMap | null>(null);
+  const mapRef = useRef<any>(null);
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -103,19 +103,22 @@ export default function LiveDriverMap() {
     (async () => {
       try {
         const mapboxglModule = await import("mapbox-gl");
-        const mapboxgl = mapboxglModule.default ?? mapboxglModule;
+        const mapboxgl: any =
+          (mapboxglModule as any).default || (mapboxglModule as any);
+
         mapboxgl.accessToken = MAPBOX_TOKEN;
 
         console.log("[LiveDriverMap] Creating map instance");
 
-        const map = new mapboxgl.Map({
+        const map: any = new mapboxgl.Map({
           container,
           style: "mapbox://styles/mapbox/streets-v12",
-          center: [121.1, 16.8], // adjust to your ops area
-          zoom: 9,
+          center: [121.1, 16.8], // adjust for your ops area
+          zoom: 9
         });
 
         mapRef.current = map;
+
         map.addControl(
           new mapboxgl.NavigationControl({ visualizePitch: true }),
           "top-right"
@@ -125,13 +128,12 @@ export default function LiveDriverMap() {
           if (destroyed) return;
           console.log("[LiveDriverMap] Map loaded, adding sources/layers");
 
-          // base source for drivers
           map.addSource("drivers", {
             type: "geojson",
             data: toFeatureCollection([]),
             cluster: true,
             clusterRadius: 40,
-            clusterMaxZoom: 16,
+            clusterMaxZoom: 16
           });
 
           // clustered bubbles
@@ -148,7 +150,7 @@ export default function LiveDriverMap() {
                 20,
                 18,
                 50,
-                24,
+                24
               ],
               "circle-color": [
                 "step",
@@ -157,10 +159,10 @@ export default function LiveDriverMap() {
                 20,
                 "#22C55E",
                 50,
-                "#EF4444",
+                "#EF4444"
               ],
-              "circle-opacity": 0.9,
-            },
+              "circle-opacity": 0.9
+            }
           });
 
           // cluster counts
@@ -172,11 +174,11 @@ export default function LiveDriverMap() {
             layout: {
               "text-field": ["get", "point_count_abbreviated"],
               "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-              "text-size": 12,
+              "text-size": 12
             },
             paint: {
-              "text-color": "#ffffff",
-            },
+              "text-color": "#ffffff"
+            }
           });
 
           // individual drivers
@@ -196,26 +198,26 @@ export default function LiveDriverMap() {
                 "#3B82F6",
                 "offline",
                 "#9CA3AF",
-                "#F97316",
+                "#F97316" // default
               ],
               "circle-stroke-width": 1.5,
-              "circle-stroke-color": "#ffffff",
-            },
+              "circle-stroke-color": "#ffffff"
+            }
           });
 
           // click cluster to zoom
-          map.on("click", "driver-clusters", (e) => {
+          map.on("click", "driver-clusters", (e: any) => {
             const features = map.queryRenderedFeatures(e.point, {
-              layers: ["driver-clusters"],
+              layers: ["driver-clusters"]
             });
             const clusterId = features[0]?.properties?.cluster_id;
-            const src = map.getSource("drivers") as GeoJSONSource;
+            const src = map.getSource("drivers") as any;
             if (!clusterId || !src) return;
-            src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+            src.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
               if (err || zoom == null) return;
               map.easeTo({
                 center: (features[0].geometry as any).coordinates,
-                zoom,
+                zoom
               });
             });
           });
@@ -227,16 +229,16 @@ export default function LiveDriverMap() {
             map.getCanvas().style.cursor = "";
           });
 
-          // Supabase: initial load + realtime
+          // Supabase: initial + realtime (only if env is configured)
           const supabase = createSupabase();
           supabaseRef.current = supabase;
 
           if (supabase) {
-            const source = map.getSource("drivers") as GeoJSONSource;
+            const src = map.getSource("drivers") as any;
 
-            // initial query
+            // initial load
             const { data, error } = await supabase
-              .from<DriverRow>(DRIVER_TABLE)
+              .from(DRIVER_TABLE)
               .select("*")
               .order("updated_at", { ascending: false })
               .limit(1000);
@@ -246,40 +248,39 @@ export default function LiveDriverMap() {
                 "[LiveDriverMap] Failed to load initial drivers",
                 error
               );
-            } else if (!destroyed && source) {
-              const fc = toFeatureCollection(data ?? []);
-              source.setData(fc);
+            } else if (!destroyed && src && data) {
+              const fc = toFeatureCollection(data as any);
+              src.setData(fc);
               console.log(
                 `[LiveDriverMap] Initial drivers loaded: ${fc.features.length}`
               );
             }
 
-            // realtime updates
             let cache: Record<string, DriverRow> = {};
-            (data ?? []).forEach((d) => {
-              cache[d.id] = d;
+            ((data as any[]) ?? []).forEach((d) => {
+              if (d && d.id) cache[d.id] = d as any;
             });
 
             const update = () => {
-              const src = map.getSource(
-                "drivers"
-              ) as GeoJSONSource | undefined;
-              if (!src) return;
-              src.setData(toFeatureCollection(Object.values(cache)));
+              const source = map.getSource("drivers") as any;
+              if (!source) return;
+              source.setData(
+                toFeatureCollection(Object.values(cache))
+              );
             };
 
             const channel = supabase
               .channel("live-driver-map")
-              .on<DriverRow>(
+              .on(
                 "postgres_changes",
                 {
                   event: "*",
                   schema: "public",
-                  table: DRIVER_TABLE,
+                  table: DRIVER_TABLE
                 },
-                (payload) => {
+                (payload: any) => {
                   if (payload.eventType === "DELETE") {
-                    const id = (payload.old as any)?.id;
+                    const id = payload.old?.id;
                     if (id) delete cache[id];
                   } else {
                     const row = payload.new as DriverRow;
@@ -294,7 +295,7 @@ export default function LiveDriverMap() {
                   if (!destroyed) update();
                 }
               )
-              .subscribe((status) => {
+              .subscribe((status: string) => {
                 console.log(
                   "[LiveDriverMap] Realtime channel status:",
                   status
