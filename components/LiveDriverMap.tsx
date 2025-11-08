@@ -2,13 +2,72 @@
 
 import { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
+import type { Map as MapboxMap, GeoJSONSource } from "mapbox-gl";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+
+// TODO: update these to match your real schema
+const DRIVER_TABLE = "live_driver_locations";
 
 type Status = "init" | "no_container" | "missing_token" | "ok" | "error";
 
+type DriverRow = {
+  id: string;
+  driver_id?: string | null;
+  lat: number;
+  lng: number;
+  status?: string | null;
+  updated_at?: string | null;
+};
+
+function toFeatureCollection(drivers: DriverRow[]): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: drivers
+      .filter(
+        (d) =>
+          typeof d.lat === "number" &&
+          !Number.isNaN(d.lat) &&
+          typeof d.lng === "number" &&
+          !Number.isNaN(d.lng)
+      )
+      .map((d) => ({
+        type: "Feature",
+        properties: {
+          id: d.id,
+          driverId: d.driver_id ?? d.id,
+          status: d.status ?? "unknown",
+          updated_at: d.updated_at ?? null,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [d.lng, d.lat],
+        },
+      })),
+  };
+}
+
+function createSupabase(): SupabaseClient | null {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.warn(
+      "[LiveDriverMap] Supabase env vars missing; realtime driver updates disabled."
+    );
+    return null;
+  }
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    realtime: { params: { eventsPerSecond: 5 } },
+  });
+}
+
 export default function LiveDriverMap() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+
   const [status, setStatus] = useState<Status>("init");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
@@ -39,29 +98,220 @@ export default function LiveDriverMap() {
       return;
     }
 
-    let map: any;
+    let destroyed = false;
 
     (async () => {
       try {
         const mapboxglModule = await import("mapbox-gl");
         const mapboxgl = mapboxglModule.default ?? mapboxglModule;
-
         mapboxgl.accessToken = MAPBOX_TOKEN;
+
         console.log("[LiveDriverMap] Creating map instance");
 
-        map = new mapboxgl.Map({
+        const map = new mapboxgl.Map({
           container,
-          style: "mapbox://styles/mapbox/streets-v11",
-          center: [121.1, 16.8], // adjust as needed
-          zoom: 11
+          style: "mapbox://styles/mapbox/streets-v12",
+          center: [121.1, 16.8], // adjust to your ops area
+          zoom: 9,
         });
 
-        map.on("load", () => {
-          console.log("[LiveDriverMap] Map loaded successfully");
+        mapRef.current = map;
+        map.addControl(
+          new mapboxgl.NavigationControl({ visualizePitch: true }),
+          "top-right"
+        );
+
+        map.on("load", async () => {
+          if (destroyed) return;
+          console.log("[LiveDriverMap] Map loaded, adding sources/layers");
+
+          // base source for drivers
+          map.addSource("drivers", {
+            type: "geojson",
+            data: toFeatureCollection([]),
+            cluster: true,
+            clusterRadius: 40,
+            clusterMaxZoom: 16,
+          });
+
+          // clustered bubbles
+          map.addLayer({
+            id: "driver-clusters",
+            type: "circle",
+            source: "drivers",
+            filter: ["has", "point_count"],
+            paint: {
+              "circle-radius": [
+                "step",
+                ["get", "point_count"],
+                14,
+                20,
+                18,
+                50,
+                24,
+              ],
+              "circle-color": [
+                "step",
+                ["get", "point_count"],
+                "#3B82F6",
+                20,
+                "#22C55E",
+                50,
+                "#EF4444",
+              ],
+              "circle-opacity": 0.9,
+            },
+          });
+
+          // cluster counts
+          map.addLayer({
+            id: "driver-cluster-count",
+            type: "symbol",
+            source: "drivers",
+            filter: ["has", "point_count"],
+            layout: {
+              "text-field": ["get", "point_count_abbreviated"],
+              "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+              "text-size": 12,
+            },
+            paint: {
+              "text-color": "#ffffff",
+            },
+          });
+
+          // individual drivers
+          map.addLayer({
+            id: "driver-points",
+            type: "circle",
+            source: "drivers",
+            filter: ["!", ["has", "point_count"]],
+            paint: {
+              "circle-radius": 6,
+              "circle-color": [
+                "match",
+                ["get", "status"],
+                "online",
+                "#22C55E",
+                "on-trip",
+                "#3B82F6",
+                "offline",
+                "#9CA3AF",
+                "#F97316",
+              ],
+              "circle-stroke-width": 1.5,
+              "circle-stroke-color": "#ffffff",
+            },
+          });
+
+          // click cluster to zoom
+          map.on("click", "driver-clusters", (e) => {
+            const features = map.queryRenderedFeatures(e.point, {
+              layers: ["driver-clusters"],
+            });
+            const clusterId = features[0]?.properties?.cluster_id;
+            const src = map.getSource("drivers") as GeoJSONSource;
+            if (!clusterId || !src) return;
+            src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+              if (err || zoom == null) return;
+              map.easeTo({
+                center: (features[0].geometry as any).coordinates,
+                zoom,
+              });
+            });
+          });
+
+          map.on("mouseenter", "driver-clusters", () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", "driver-clusters", () => {
+            map.getCanvas().style.cursor = "";
+          });
+
+          // Supabase: initial load + realtime
+          const supabase = createSupabase();
+          supabaseRef.current = supabase;
+
+          if (supabase) {
+            const source = map.getSource("drivers") as GeoJSONSource;
+
+            // initial query
+            const { data, error } = await supabase
+              .from<DriverRow>(DRIVER_TABLE)
+              .select("*")
+              .order("updated_at", { ascending: false })
+              .limit(1000);
+
+            if (error) {
+              console.error(
+                "[LiveDriverMap] Failed to load initial drivers",
+                error
+              );
+            } else if (!destroyed && source) {
+              const fc = toFeatureCollection(data ?? []);
+              source.setData(fc);
+              console.log(
+                `[LiveDriverMap] Initial drivers loaded: ${fc.features.length}`
+              );
+            }
+
+            // realtime updates
+            let cache: Record<string, DriverRow> = {};
+            (data ?? []).forEach((d) => {
+              cache[d.id] = d;
+            });
+
+            const update = () => {
+              const src = map.getSource(
+                "drivers"
+              ) as GeoJSONSource | undefined;
+              if (!src) return;
+              src.setData(toFeatureCollection(Object.values(cache)));
+            };
+
+            const channel = supabase
+              .channel("live-driver-map")
+              .on<DriverRow>(
+                "postgres_changes",
+                {
+                  event: "*",
+                  schema: "public",
+                  table: DRIVER_TABLE,
+                },
+                (payload) => {
+                  if (payload.eventType === "DELETE") {
+                    const id = (payload.old as any)?.id;
+                    if (id) delete cache[id];
+                  } else {
+                    const row = payload.new as DriverRow;
+                    if (
+                      row &&
+                      typeof row.lat === "number" &&
+                      typeof row.lng === "number"
+                    ) {
+                      cache[row.id] = row;
+                    }
+                  }
+                  if (!destroyed) update();
+                }
+              )
+              .subscribe((status) => {
+                console.log(
+                  "[LiveDriverMap] Realtime channel status:",
+                  status
+                );
+              });
+
+            unsubscribeRef.current = () => {
+              supabase.removeChannel(channel);
+            };
+          }
+
           setStatus("ok");
+          console.log("[LiveDriverMap] Map fully initialised");
         });
 
         map.on("error", (event: any) => {
+          if (destroyed) return;
           console.error("[LiveDriverMap] Map error:", event?.error || event);
           setStatus("error");
           setErrorMessage(
@@ -69,6 +319,7 @@ export default function LiveDriverMap() {
           );
         });
       } catch (err: any) {
+        if (destroyed) return;
         console.error("[LiveDriverMap] Init failed:", err);
         setStatus("error");
         setErrorMessage(
@@ -78,9 +329,14 @@ export default function LiveDriverMap() {
     })();
 
     return () => {
-      if (map) {
-        console.log("[LiveDriverMap] Cleaning up map");
-        map.remove();
+      destroyed = true;
+      console.log("[LiveDriverMap] Cleaning up map and realtime");
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
       }
     };
   }, []);
