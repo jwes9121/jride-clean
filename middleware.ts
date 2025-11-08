@@ -7,19 +7,15 @@ const MAP_ROUTES = ["/admin/livetest", "/admin/livedrivermap"];
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Only apply custom CSP on our map pages
-  const needsMapboxCSP = MAP_ROUTES.some((route) =>
-    pathname === route || pathname.startsWith(route + "/")
+  // Apply relaxed CSP only on map routes
+  const needsMapboxCSP = MAP_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + "/")
   );
 
-  if (!needsMapboxCSP) {
-    // Do nothing special for other routes
-    return NextResponse.next();
-  }
+  if (!needsMapboxCSP) return NextResponse.next();
 
   const res = NextResponse.next();
 
-  // CSP tailored for Mapbox + your APIs on those pages only
   const csp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com",
@@ -36,7 +32,6 @@ export function middleware(req: NextRequest) {
   return res;
 }
 
-// Only run middleware on /admin/* paths
 export const config = {
-  matcher: ["/admin/:path*"]
+  matcher: ["/admin/:path*"],
 };
