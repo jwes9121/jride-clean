@@ -9,7 +9,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 // TODO: change to your real table name if different
-const DRIVER_TABLE = "live_driver_locations";
+const DRIVER_TABLE = "driver_locations";
 
 type Status = "init" | "no_container" | "missing_token" | "ok" | "error";
 
