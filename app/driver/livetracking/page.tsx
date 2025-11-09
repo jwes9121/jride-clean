@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   startDriverTracking,
   stopDriverTracking,
-} from "@/lib/driverTracking";
+} from "../../../lib/driverTracking";
 
 export default function DriverLiveTrackingPage() {
   const [online, setOnline] = useState(false);
