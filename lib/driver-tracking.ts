@@ -3,97 +3,118 @@
 import { supabase } from "./supabaseDriverClient";
 
 export type DriverStatus = "online" | "offline" | "on_trip";
-
-type UpsertParams = {
-  lat: number;
-  lng: number;
-  status: DriverStatus;
-  town?: string;
-};
-
-export async function upsertDriverLocation({
-  lat,
-  lng,
-  status,
-  town,
-}: UpsertParams): Promise<"ok" | "no-user" | "error"> {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    console.error("upsertDriverLocation: no authenticated user", userError);
-    return "no-user";
-  }
-
-  const { error } = await supabase.from("driver_locations").upsert(
-    {
-      driver_id: user.id,
-      lat,
-      lng,
-      status,
-      town: town || null,
-      updated_at: new Date().toISOString(),
-    },
-    {
-      onConflict: "driver_id",
-    }
-  );
-
-  if (error) {
-    console.error("upsertDriverLocation: upsert error", error);
-    return "error";
-  }
-
-  return "ok";
-}
+export type UpsertResult = "ok" | "no-user" | "error";
 
 let locationInterval: ReturnType<typeof setInterval> | null = null;
 
-export function startDriverTracking(town?: string) {
-  if (locationInterval) return;
+async function sendLocation(
+  status: DriverStatus,
+  town?: string
+): Promise<UpsertResult> {
+  if (typeof window === "undefined") {
+    return "error";
+  }
 
-  const sendLocation = () => {
-    if (!navigator.geolocation) {
-      console.error("Geolocation not supported");
-      return;
-    }
+  if (!navigator.geolocation) {
+    console.error("Geolocation not supported in this browser.");
+    return "error";
+  }
 
+  return new Promise<UpsertResult>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        await upsertDriverLocation({
-          lat: latitude,
-          lng: longitude,
-          status: "online",
-          town,
-        });
+        try {
+          // Check authenticated driver
+          const { data, error: userError } = await supabase.auth.getUser();
+
+          if (userError || !data?.user) {
+            console.warn(
+              "upsertDriverLocation: no authenticated user (driver).",
+              userError
+            );
+            resolve("no-user");
+            return;
+          }
+
+          const driverId = data.user.id;
+
+          const lat =
+            status === "offline" ? 0 : pos.coords.latitude;
+          const lng =
+            status === "offline" ? 0 : pos.coords.longitude;
+
+          const { error: upsertError } = await supabase
+            .from("driver_locations")
+            .upsert(
+              {
+                driver_id: driverId,
+                lat,
+                lng,
+                status,
+                town: town || null,
+                updated_at: new Date().toISOString(),
+              },
+              {
+                onConflict: "driver_id",
+              }
+            );
+
+          if (upsertError) {
+            console.error(
+              "upsertDriverLocation: error during upsert",
+              upsertError
+            );
+            resolve("error");
+            return;
+          }
+
+          resolve("ok");
+        } catch (err) {
+          console.error("upsertDriverLocation: unexpected error", err);
+          resolve("error");
+        }
       },
-      (err) => {
-        console.error("Geolocation error", err);
+      (geoErr) => {
+        console.error("Geolocation error", geoErr);
+        resolve("error");
       },
       {
         enableHighAccuracy: true,
         maximumAge: 5000,
       }
     );
-  };
-
-  sendLocation();
-  locationInterval = setInterval(sendLocation, 10000);
+  });
 }
 
-export function stopDriverTracking(town?: string) {
+export async function startDriverTracking(
+  town?: string
+): Promise<UpsertResult> {
+  // First send; if that fails, do not start interval.
+  const first = await sendLocation("online", town);
+
+  if (first !== "ok") {
+    return first;
+  }
+
+  if (!locationInterval) {
+    locationInterval = setInterval(() => {
+      // fire and forget; errors are logged inside
+      void sendLocation("online", town);
+    }, 10000);
+  }
+
+  return "ok";
+}
+
+export async function stopDriverTracking(
+  town?: string
+): Promise<UpsertResult> {
   if (locationInterval) {
     clearInterval(locationInterval);
     locationInterval = null;
   }
 
-  upsertDriverLocation({
-    lat: 0,
-    lng: 0,
-    status: "offline",
-    town,
-  }).catch((e) => console.error(e));
+  // Mark offline in DB (best-effort)
+  const res = await sendLocation("offline", town);
+  return res === "ok" ? "ok" : res;
 }
