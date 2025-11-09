@@ -34,7 +34,9 @@ export default function LiveDriversAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "on_trip">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "on_trip">(
+    "all"
+  );
   const [townFilter, setTownFilter] = useState<string>("all");
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
@@ -72,7 +74,7 @@ export default function LiveDriversAdminPage() {
     }
   };
 
-  // Initialize map
+  // Init map
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapRef.current) return;
@@ -92,7 +94,6 @@ export default function LiveDriversAdminPage() {
     });
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
-
     mapRef.current = map;
 
     return () => {
@@ -131,7 +132,7 @@ export default function LiveDriversAdminPage() {
     setFilteredDrivers(list);
   }, [drivers, statusFilter, townFilter]);
 
-  // Update markers whenever filtered list changes
+  // Update markers on filtered list change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -145,6 +146,7 @@ export default function LiveDriversAdminPage() {
 
       const lngLat: [number, number] = [driver.lng, driver.lat];
       const markerColor = getMarkerColor(driver);
+      const ageText = formatRelativeTime(driver.updated_at);
 
       if (existingMarkers[id]) {
         existingMarkers[id]
@@ -165,25 +167,25 @@ export default function LiveDriversAdminPage() {
           map.flyTo({ center: lngLat, zoom: 14 });
         });
 
+        const popupHtml = `
+          <div style="font-size:11px">
+            <div><strong>Driver:</strong> ${shortId(id)}</div>
+            ${
+              driver.town
+                ? `<div><strong>Town:</strong> ${driver.town}</div>`
+                : ""
+            }
+            <div><strong>Status:</strong> ${formatStatus(driver.status)}</div>
+            <div><strong>Last update:</strong> ${formatTime(
+              driver.updated_at
+            )} (${ageText})</div>
+          </div>
+        `;
+
         const marker = new mapboxgl.Marker({ element: el })
           .setLngLat(lngLat)
           .setPopup(
-            new mapboxgl.Popup({ closeButton: false }).setHTML(
-              `
-              <div style="font-size:11px">
-                <div><strong>Driver:</strong> ${shortId(id)}</div>
-                ${
-                  driver.town
-                    ? `<div><strong>Town:</strong> ${driver.town}</div>`
-                    : ""
-                }
-                <div><strong>Status:</strong> ${driver.status}</div>
-                <div><strong>Updated:</strong> ${formatTime(
-                  driver.updated_at
-                )}</div>
-              </div>
-            `
-            )
+            new mapboxgl.Popup({ closeButton: false }).setHTML(popupHtml)
           )
           .addTo(map);
 
@@ -191,7 +193,7 @@ export default function LiveDriversAdminPage() {
       }
     }
 
-    // Remove markers for non-visible drivers
+    // Remove markers that are no longer in filtered list
     Object.keys(existingMarkers).forEach((id) => {
       if (!liveIds.has(id)) {
         existingMarkers[id].remove();
@@ -327,34 +329,46 @@ export default function LiveDriversAdminPage() {
                 No drivers match the current filters.
               </div>
             ) : (
-              filteredDrivers.map((d) => (
-                <button
-                  key={d.driver_id}
-                  onClick={() => handleFocusDriver(d)}
-                  className={`w-full text-left px-3 py-2 border-b border-slate-900 text-[10px] hover:bg-slate-900/70 ${
-                    selectedDriverId === d.driver_id
-                      ? "bg-slate-900"
-                      : ""
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-slate-100">
-                      {shortId(d.driver_id)}
-                    </span>
-                    <span className="text-[9px] text-slate-400">
-                      {d.town || "Unknown"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-[9px]">
-                      {formatStatus(d.status)}
-                    </span>
-                    <span className="text-[8px] text-slate-500">
-                      {formatTime(d.updated_at)}
-                    </span>
-                  </div>
-                </button>
-              ))
+              filteredDrivers.map((d) => {
+                const age = formatRelativeTime(d.updated_at);
+                const statusLabel = formatStatus(d.status);
+                const color = getMarkerColor(d);
+
+                return (
+                  <button
+                    key={d.driver_id}
+                    onClick={() => handleFocusDriver(d)}
+                    className={`w-full text-left px-3 py-2 border-b border-slate-900 text-[10px] hover:bg-slate-900/70 flex flex-col gap-[2px] ${
+                      selectedDriverId === d.driver_id
+                        ? "bg-slate-900"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="font-semibold text-slate-100">
+                          {shortId(d.driver_id)}
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-slate-400">
+                        {d.town || "Unknown"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9px]">
+                        {statusLabel}
+                      </span>
+                      <span className="text-[8px] text-slate-500">
+                        {age}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
 
@@ -366,7 +380,10 @@ export default function LiveDriversAdminPage() {
               <div>Id: {shortId(selectedDriver.driver_id)}</div>
               <div>Town: {selectedDriver.town || "Unknown"}</div>
               <div>Status: {formatStatus(selectedDriver.status)}</div>
-              <div>Last update: {formatTime(selectedDriver.updated_at)}</div>
+              <div>
+                Last update: {formatTime(selectedDriver.updated_at)} (
+                {formatRelativeTime(selectedDriver.updated_at)})
+              </div>
             </div>
           )}
         </aside>
@@ -375,8 +392,15 @@ export default function LiveDriversAdminPage() {
   );
 }
 
+/* Helpers */
+
 function getMarkerColor(driver: DriverLocation): string {
   const status = (driver.status || "").toLowerCase();
+  const ageMs = Date.now() - new Date(driver.updated_at).getTime();
+
+  // Stale > 2 minutes
+  if (ageMs > 2 * 60 * 1000) return "#6b7280"; // gray
+
   if (status === "on_trip" || status === "ontrip") return "#22c55e"; // green
   if (status === "online") return "#38bdf8"; // blue
   if (status === "offline") return "#6b7280"; // gray
@@ -409,4 +433,24 @@ function formatStatus(status: string): string {
   if (s === "online") return "Online";
   if (s === "offline") return "Offline";
   return status || "Unknown";
+}
+
+function formatRelativeTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso).getTime();
+  if (Number.isNaN(d)) return "";
+  const diff = Date.now() - d;
+
+  const sec = Math.round(diff / 1000);
+  if (sec < 10) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+
+  const day = Math.round(hr / 24);
+  return `${day}d ago`;
 }
