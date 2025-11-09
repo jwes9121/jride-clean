@@ -6,7 +6,7 @@ import {
   stopDriverTracking,
 } from "@/lib/driver-tracking";
 
-export default function DriverLiveTrackingPage() {
+export default function DriverLivePage() {
   const [online, setOnline] = useState(false);
   const [town, setTown] = useState("Lagawe");
   const [statusMsg, setStatusMsg] = useState("");
@@ -27,9 +27,9 @@ export default function DriverLiveTrackingPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100">
-      <h1 className="text-xl font-semibold mb-2">JRide Driver Live Tracking</h1>
+      <h1 className="text-xl font-semibold mb-2">JRide Driver Live</h1>
       <p className="text-xs text-slate-400 mb-4">
-        Toggle Online to send your location to the JRide admin live map.
+        This page sends your live location to the JRide admin map while Online.
       </p>
 
       <div className="flex items-center gap-2 mb-4">
