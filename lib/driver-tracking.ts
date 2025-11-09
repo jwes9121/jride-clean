@@ -24,7 +24,6 @@ async function sendLocation(
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          // Check authenticated driver
           const { data, error: userError } = await supabase.auth.getUser();
 
           if (userError || !data?.user) {
@@ -89,7 +88,6 @@ async function sendLocation(
 export async function startDriverTracking(
   town?: string
 ): Promise<UpsertResult> {
-  // First send; if that fails, do not start interval.
   const first = await sendLocation("online", town);
 
   if (first !== "ok") {
@@ -98,7 +96,6 @@ export async function startDriverTracking(
 
   if (!locationInterval) {
     locationInterval = setInterval(() => {
-      // fire and forget; errors are logged inside
       void sendLocation("online", town);
     }, 10000);
   }
@@ -114,7 +111,6 @@ export async function stopDriverTracking(
     locationInterval = null;
   }
 
-  // Mark offline in DB (best-effort)
   const res = await sendLocation("offline", town);
   return res === "ok" ? "ok" : res;
 }

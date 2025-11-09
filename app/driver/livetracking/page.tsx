@@ -1,59 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   startDriverTracking,
   stopDriverTracking,
   UpsertResult,
 } from "@/lib/driver-tracking";
+import { supabase } from "@/lib/supabaseDriverClient";
 
 export default function DriverLiveTrackingPage() {
   const [online, setOnline] = useState(false);
   const [town, setTown] = useState("Lagawe");
-  const [statusMsg, setStatusMsg] = useState("You are OFFLINE.");
+  const [statusMsg, setStatusMsg] = useState("Checking driver session…");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  const handleToggle = async () => {
-    if (!online) {
-      setStatusMsg("Starting tracking…");
-
-      const result: UpsertResult = await startDriverTracking(town);
-
-      if (result === "no-user") {
-        setOnline(false);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (error || !data?.user) {
+        setIsAuthenticated(false);
         setStatusMsg(
           "Please sign in as a JRide driver first. Live tracking requires an authenticated driver account."
         );
-        return;
+      } else {
+        setIsAuthenticated(true);
+        setStatusMsg("You are OFFLINE.");
       }
+    });
+  }, []);
 
-      if (result === "error") {
+  const handleToggle = async () => {
+    // If not logged in, send straight to login
+    if (!isAuthenticated) {
+      window.location.href = "/driver/login";
+      return;
+    }
+
+    if (!online) {
+      setStatusMsg("Starting tracking…");
+      const result: UpsertResult = await startDriverTracking(town);
+
+      if (result === "ok") {
+        setOnline(true);
+        setStatusMsg(
+          "You are ONLINE and sharing your live location with JRide admin."
+        );
+      } else {
         setOnline(false);
         setStatusMsg(
           "Unable to start tracking. Check location permission and try again."
         );
-        return;
       }
-
-      setOnline(true);
-      setStatusMsg(
-        "You are ONLINE and sharing your live location with JRide admin."
-      );
     } else {
       setStatusMsg("Stopping tracking…");
-
       const result: UpsertResult = await stopDriverTracking(town);
 
       setOnline(false);
-
-      if (result === "ok") {
-        setStatusMsg("You are OFFLINE.");
-      } else {
-        setStatusMsg(
-          "Tracking stopped locally. (If this persists, contact support.)"
-        );
-      }
+      setStatusMsg(
+        result === "ok"
+          ? "You are OFFLINE."
+          : "Tracking stopped locally. If your status looks wrong in admin, please contact support."
+      );
     }
   };
+
+  const buttonLabel =
+    isAuthenticated === false
+      ? "Sign in to Start"
+      : online
+      ? "Go Offline"
+      : "Go Online";
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100">
@@ -83,14 +98,20 @@ export default function DriverLiveTrackingPage() {
             : "bg-emerald-600 hover:bg-emerald-500"
         }`}
       >
-        {online ? "Go Offline" : "Go Online"}
+        {buttonLabel}
       </button>
 
-      {statusMsg && (
-        <p className="mt-3 text-xs text-slate-300 text-center max-w-md">
-          {statusMsg}
-        </p>
-      )}
+      <div className="mt-3 flex flex-col items-center gap-2 text-xs text-slate-300 max-w-md text-center">
+        <span>{statusMsg}</span>
+        {isAuthenticated === false && (
+          <a
+            href="/driver/login"
+            className="inline-block mt-1 px-3 py-1 rounded bg-sky-600 hover:bg-sky-500 text-[10px] font-medium"
+          >
+            Go to Driver Login
+          </a>
+        )}
+      </div>
     </div>
   );
 }

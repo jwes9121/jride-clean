@@ -29,9 +29,8 @@ export default function DriverLoginPage() {
 
     if (data.session) {
       setMessage(
-        "Login successful. You can now open /driver/livetracking to start sharing your live location."
+        "Login successful. Redirecting to live tracking…"
       );
-      // optional redirect:
       window.location.href = "/driver/livetracking";
     }
   };
