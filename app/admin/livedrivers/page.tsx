@@ -132,7 +132,7 @@ export default function LiveDriversAdminPage() {
     setFilteredDrivers(list);
   }, [drivers, statusFilter, townFilter]);
 
-  // Update markers on filtered list change
+  // Update markers when filtered list changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -193,7 +193,7 @@ export default function LiveDriversAdminPage() {
       }
     }
 
-    // Remove markers that are no longer in filtered list
+    // Remove markers for drivers no longer visible
     Object.keys(existingMarkers).forEach((id) => {
       if (!liveIds.has(id)) {
         existingMarkers[id].remove();
@@ -398,18 +398,12 @@ function getMarkerColor(driver: DriverLocation): string {
   const status = (driver.status || "").toLowerCase();
   const ageMs = Date.now() - new Date(driver.updated_at).getTime();
 
-  // Stale > 2 minutes
-  if (ageMs > 2 * 60 * 1000) return "#6b7280"; // gray
+  // Stale > 2 minutes -> gray
+  if (ageMs > 2 * 60 * 1000) return "#6b7280";
 
   if (status === "on_trip" || status === "ontrip") return "#22c55e"; // green
   if (status === "online") return "#38bdf8"; // blue
   if (status === "offline") return "#6b7280"; // gray
-
-  const town = (driver.town || "").toLowerCase();
-  if (town.includes("lagawe")) return "#f97316";
-  if (town.includes("kiangan")) return "#22c55e";
-  if (town.includes("banaue")) return "#3b82f6";
-  if (town.includes("lamut")) return "#a855f7";
 
   return "#facc15";
 }
