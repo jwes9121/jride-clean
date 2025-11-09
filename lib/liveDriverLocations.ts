@@ -1,40 +1,50 @@
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "./supabaseDriverClient";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export type DriverStatus = "online" | "offline" | "on_trip";
 
-export async function updateDriverLocation(
-  driverId: string,
-  lat: number,
-  lng: number,
-  status: string = "online"
-) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error(
-      "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set. " +
-        "Configure them in .env.local and in Vercel project settings."
-    );
+type UpsertParams = {
+  lat: number;
+  lng: number;
+  status: DriverStatus;
+  town?: string;
+};
+
+export async function upsertDriverLocation({
+  lat,
+  lng,
+  status,
+  town,
+}: UpsertParams): Promise<"ok" | "no-user" | "error"> {
+  // 1. Get current authenticated driver
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    console.error("upsertDriverLocation: no authenticated user", userError);
+    return "no-user";
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false }
-  });
-
-  const { error } = await supabase.rpc("log_live_driver_location", {
-    p_driver_id: driverId,
-    p_lat: lat,
-    p_lng: lng,
-    p_status: status
-  });
-
-  if (error) {
-    console.error("[JRide] Failed to log live driver location", {
-      driverId,
+  // 2. Upsert into driver_locations keyed by driver_id
+  const { error } = await supabase.from("driver_locations").upsert(
+    {
+      driver_id: user.id, // must match auth.uid() for RLS
       lat,
       lng,
       status,
-      error
-    });
-    throw error;
+      town: town || null,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      onConflict: "driver_id", // ensures 1 row per driver
+    }
+  );
+
+  if (error) {
+    console.error("upsertDriverLocation: upsert error", error);
+    return "error";
   }
+
+  return "ok";
 }
