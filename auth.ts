@@ -1,75 +1,68 @@
-// auth.ts
+// auth.ts (root of project)
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
- * Optional safety fallback so you never lock yourself out
- * (kept only if the DB doesn't have a row for you yet).
- * You can remove this later once user_roles is populated.
+ * Read admin / dispatcher emails from env so we can attach a role
  */
-const FALLBACK_ADMINS = new Set<string>(["jwes9121@gmail.com"]);
-const FALLBACK_DISPATCHERS = new Set<string>([]); // add if needed
+const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+const dispatcherEmails = (process.env.DISPATCHER_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Required on Vercel / custom domains
+  trustHost: true,
+
+  session: {
+    strategy: "jwt",
+  },
+
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+
+      /**
+       * IMPORTANT: disable PKCE for Google so Android WebView
+       * logins don’t hit "pkceCodeVerifier could not be parsed".
+       * This keeps only the "state" check.
+       */
+      checks: ["state"],
     }),
   ],
 
-  // Required for custom domains on Vercel / proxies
-  trustHost: true,
-
   callbacks: {
-    /**
-     * Attach `role` to the session so middleware and UI can use it.
-     * Order of precedence:
-     *   1) role from `user_roles` table (email primary key)
-     *   2) fallback allowlists above (so you can't get locked out)
-     *   3) default "user"
-     */
-    async session({ session }) {
-      let role: "admin" | "dispatcher" | "user" = "user";
-      const email = session.user?.email?.toLowerCase() ?? "";
+    async jwt({ token }) {
+      if (!token?.email) return token;
 
-      if (email) {
-        try {
-          const sb = supabaseAdmin();
-          const { data, error } = await sb
-            .from("user_roles")
-            .select("role")
-            .eq("email", email)
-            .maybeSingle();
+      const email = String(token.email).toLowerCase();
 
-          if (error) {
-            // If the DB read fails, we still allow fallbacks below
-            console.warn("[auth.session] user_roles read error:", error.message);
-          }
-
-          if (data?.role === "admin" || data?.role === "dispatcher" || data?.role === "user") {
-            role = data.role as typeof role;
-          } else {
-            // Fallback allowlists (safe default)
-            if (FALLBACK_ADMINS.has(email)) role = "admin";
-            else if (FALLBACK_DISPATCHERS.has(email)) role = "dispatcher";
-          }
-        } catch (e: any) {
-          console.warn("[auth.session] user_roles exception:", e?.message || e);
-          // Last-resort fallback
-          if (FALLBACK_ADMINS.has(email)) role = "admin";
-          else if (FALLBACK_DISPATCHERS.has(email)) role = "dispatcher";
-        }
+      if (adminEmails.includes(email)) {
+        // @ts-expect-error – custom field
+        token.role = "admin";
+      } else if (dispatcherEmails.includes(email)) {
+        // @ts-expect-error – custom field
+        token.role = "dispatcher";
+      } else {
+        // @ts-expect-error – custom field
+        token.role = "user";
       }
 
-      return {
-        ...session,
-        user: {
-          ...session.user,
-          role, // <-- visible at /api/auth/session and in middleware
-        },
-      };
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (session.user) {
+        // @ts-expect-error – custom field
+        session.user.role = token.role ?? "user";
+      }
+      return session;
     },
   },
 });
