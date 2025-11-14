@@ -21,75 +21,30 @@ type DispatchRow = {
   driver_status: string | null;
 };
 
-type ApiResponse =
-  | {
-      ok: true;
-      rows: DispatchRow[];
-    }
-  | {
-      ok: false;
-      error: string;
-      message?: string;
-      details?: unknown;
-    };
-
-type TripStatus = "new" | "assigned" | "on_trip";
-
-type TripItem = {
+type TripRow = {
   id: string;
-  code: string;
-  passenger: string;
-  from: string;
-  to: string;
-  note?: string;
-  town: string;
-  status: TripStatus;
-  minutesAgo: number;
+  booking_code: string | null;
+  passenger_name: string | null;
+  from_label: string | null;
+  to_label: string | null;
+  town: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  dropoff_lat: number | null;
+  dropoff_lng: number | null;
+  status: string | null; // 'new' | 'assigned' | 'on_trip' | ...
+  created_at: string | null;
 };
 
-const demoTrips: TripItem[] = [
-  {
-    id: "JR-2025-0001",
-    code: "JR-2025-0001",
-    passenger: "Maria - Lagawe",
-    from: "Ifugao State University, Lagawe",
-    to: "Poblacion West, Lagawe",
-    note: "With groceries",
-    town: "Lagawe",
-    status: "new",
-    minutesAgo: 2,
-  },
-  {
-    id: "JR-2025-0002",
-    code: "JR-2025-0002",
-    passenger: "Joshua - Kiangan",
-    from: "Public Market, Kiangan",
-    to: "Poblacion, Kiangan",
-    town: "Kiangan",
-    status: "new",
-    minutesAgo: 5,
-  },
-  {
-    id: "JR-2025-0003",
-    code: "JR-2025-0003",
-    passenger: "Lyn - Banaue",
-    from: "Tourist Center, Banaue",
-    to: "View Deck, Banaue",
-    town: "Banaue",
-    status: "assigned",
-    minutesAgo: 10,
-  },
-  {
-    id: "JR-2025-0004",
-    code: "JR-2025-0004",
-    passenger: "Carlo - Lamut",
-    from: "ISU Lamut Campus",
-    to: "Town Proper, Lamut",
-    town: "Lamut",
-    status: "on_trip",
-    minutesAgo: 15,
-  },
-];
+type ApiDriversResponse =
+  | { ok: true; rows: DispatchRow[] }
+  | { ok: false; error: string; message?: string; details?: unknown };
+
+type ApiTripsResponse =
+  | { ok: true; rows: TripRow[] }
+  | { ok: false; error: string; message?: string; details?: unknown };
+
+type TripStatus = "new" | "assigned" | "on_trip";
 
 type DriverStatusKey = "online" | "on_trip" | "idle" | "offline" | "unknown";
 
@@ -148,13 +103,38 @@ function statusChipColor(key: DriverStatusKey): string {
   }
 }
 
+function normalizeTripStatus(raw: string | null): TripStatus {
+  const s = (raw || "").toLowerCase();
+  if (s === "assigned") return "assigned";
+  if (s === "on_trip" || s === "on-trip" || s === "on trip") return "on_trip";
+  // default bucket for now is "new"
+  return "new";
+}
+
+function minutesAgo(created_at: string | null): number | null {
+  if (!created_at) return null;
+  const t = new Date(created_at).getTime();
+  if (Number.isNaN(t)) return null;
+  const diffMs = Date.now() - t;
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  return diffMin < 0 ? 0 : diffMin;
+}
+
 export default function DispatchPage() {
+  // Drivers
   const [drivers, setDrivers] = useState<DispatchRow[]>([]);
   const [loadingDrivers, setLoadingDrivers] = useState<boolean>(true);
   const [driverError, setDriverError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  const [selectedTrip, setSelectedTrip] = useState<TripItem | null>(null);
+  // Trips
+  const [trips, setTrips] = useState<TripRow[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState<boolean>(true);
+  const [tripError, setTripError] = useState<string | null>(null);
+
+  const [lastUpdatedDrivers, setLastUpdatedDrivers] = useState<string | null>(null);
+  const [lastUpdatedTrips, setLastUpdatedTrips] = useState<string | null>(null);
+
+  const [selectedTrip, setSelectedTrip] = useState<TripRow | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<DispatchRow | null>(null);
 
   async function fetchDrivers() {
@@ -164,7 +144,7 @@ export default function DispatchPage() {
         method: "GET",
         cache: "no-store",
       });
-      const data: ApiResponse = await res.json();
+      const data: ApiDriversResponse = await res.json();
 
       if (!res.ok || data.ok === false) {
         const msg =
@@ -177,7 +157,7 @@ export default function DispatchPage() {
 
       const rows = (data as any).rows ?? [];
       setDrivers(rows);
-      setLastUpdated(new Date().toLocaleTimeString());
+      setLastUpdatedDrivers(new Date().toLocaleTimeString());
     } catch (err) {
       console.error("Error fetching dispatch overview:", err);
       setDriverError("Unexpected error while loading JRidah list");
@@ -186,11 +166,44 @@ export default function DispatchPage() {
     }
   }
 
+  async function fetchTrips() {
+    try {
+      setTripError(null);
+      const res = await fetch("/api/dispatch/trips", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data: ApiTripsResponse = await res.json();
+
+      if (!res.ok || data.ok === false) {
+        const msg =
+          (data as any).message ||
+          (data as any).error ||
+          "Failed to load trip queue";
+        setTripError(msg);
+        return;
+      }
+
+      const rows = (data as any).rows ?? [];
+      setTrips(rows);
+      setLastUpdatedTrips(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error("Error fetching dispatch trips:", err);
+      setTripError("Unexpected error while loading trip queue");
+    } finally {
+      setLoadingTrips(false);
+    }
+  }
+
   useEffect(() => {
     fetchDrivers();
+    fetchTrips();
+
     const interval = setInterval(() => {
       fetchDrivers();
+      fetchTrips();
     }, 10000);
+
     return () => clearInterval(interval);
   }, []);
 
@@ -210,13 +223,28 @@ export default function DispatchPage() {
   }, [drivers]);
 
   const activeTripsCount = useMemo(() => {
-    return demoTrips.filter((t) => t.status !== "new").length;
-  }, []);
+    return trips.filter((t) => {
+      const st = normalizeTripStatus(t.status);
+      return st !== "new";
+    }).length;
+  }, [trips]);
+
+  const pendingCount = useMemo(
+    () =>
+      trips.filter((t) => normalizeTripStatus(t.status) === "new").length,
+    [trips]
+  );
+
+  const assignedCount = useMemo(
+    () =>
+      trips.filter((t) => normalizeTripStatus(t.status) === "assigned").length,
+    [trips]
+  );
 
   function handleAssignClick() {
     if (!selectedTrip || !selectedDriver) return;
     alert(
-      `Assigning ${selectedTrip.code} to driver ${
+      `Assigning ${selectedTrip.booking_code ?? "trip"} to driver ${
         selectedDriver.driver_name || selectedDriver.callsign || "JRidah"
       }. (Wire this to Supabase RPC later.)`
     );
@@ -239,9 +267,9 @@ export default function DispatchPage() {
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               Live connection (demo layout)
             </span>
-            {lastUpdated && (
+            {lastUpdatedDrivers && (
               <span className="hidden md:inline text-[11px]">
-                Last updated: {lastUpdated}
+                Last updated: {lastUpdatedDrivers}
               </span>
             )}
           </div>
@@ -282,11 +310,14 @@ export default function DispatchPage() {
                 <div>
                   <div className="font-semibold text-slate-800">Trip queue</div>
                   <div className="text-[11px] text-slate-500">
-                    Pending: {demoTrips.filter((t) => t.status === "new").length} ·
-                    Assigned:{" "}
-                    {demoTrips.filter((t) => t.status === "assigned").length}
+                    Pending: {pendingCount} · Assigned: {assignedCount}
                   </div>
                 </div>
+                {lastUpdatedTrips && (
+                  <div className="text-[10px] text-slate-400">
+                    Trips updated: {lastUpdatedTrips}
+                  </div>
+                )}
               </div>
               <div className="mt-3">
                 <input
@@ -297,123 +328,142 @@ export default function DispatchPage() {
               </div>
             </header>
 
+            {tripError && (
+              <div className="px-4 pt-2 text-[11px] text-red-600">
+                Error: {tripError}
+              </div>
+            )}
+
+            {loadingTrips && !tripError && (
+              <div className="px-4 pt-2 text-[11px] text-slate-500">
+                Loading trips…
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-3 text-xs">
+              {/* New requests */}
               <div>
                 <div className="px-2 pb-1 text-[11px] font-semibold text-slate-500">
                   New requests
                 </div>
                 <div className="space-y-2">
-                  {demoTrips
-                    .filter((t) => t.status === "new")
-                    .map((trip) => (
-                      <button
-                        key={trip.id}
-                        onClick={() => setSelectedTrip(trip)}
-                        className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                          selectedTrip?.id === trip.id
-                            ? "border-amber-400 bg-amber-50"
-                            : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-[11px] text-slate-700">
-                            {trip.code}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {trip.minutesAgo} min ago
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-700">
-                          {trip.passenger}
-                        </div>
-                        <div className="mt-1 text-[10px] text-slate-500">
-                          From: {trip.from}
-                          <br />
-                          To: {trip.to}
-                        </div>
-                        {trip.note && (
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            Note: {trip.note}
+                  {trips
+                    .filter((t) => normalizeTripStatus(t.status) === "new")
+                    .map((trip) => {
+                      const mins = minutesAgo(trip.created_at);
+                      return (
+                        <button
+                          key={trip.id}
+                          onClick={() => setSelectedTrip(trip)}
+                          className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
+                            selectedTrip?.id === trip.id
+                              ? "border-amber-400 bg-amber-50"
+                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-[11px] text-slate-700">
+                              {trip.booking_code}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {mins !== null ? `${mins} min ago` : "-"}
+                            </span>
                           </div>
-                        )}
-                      </button>
-                    ))}
+                          <div className="mt-0.5 text-[11px] text-slate-700">
+                            {trip.passenger_name}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            From: {trip.from_label}
+                            <br />
+                            To: {trip.to_label}
+                          </div>
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
 
+              {/* Assigned */}
               <div>
                 <div className="px-2 pb-1 text-[11px] font-semibold text-slate-500">
                   Assigned / on the way
                 </div>
                 <div className="space-y-2">
-                  {demoTrips
-                    .filter((t) => t.status === "assigned")
-                    .map((trip) => (
-                      <button
-                        key={trip.id}
-                        onClick={() => setSelectedTrip(trip)}
-                        className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                          selectedTrip?.id === trip.id
-                            ? "border-sky-400 bg-sky-50"
-                            : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-[11px] text-slate-700">
-                            {trip.code}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {trip.minutesAgo} min ago
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-700">
-                          {trip.passenger}
-                        </div>
-                        <div className="mt-1 text-[10px] text-slate-500">
-                          From: {trip.from}
-                          <br />
-                          To: {trip.to}
-                        </div>
-                      </button>
-                    ))}
+                  {trips
+                    .filter((t) => normalizeTripStatus(t.status) === "assigned")
+                    .map((trip) => {
+                      const mins = minutesAgo(trip.created_at);
+                      return (
+                        <button
+                          key={trip.id}
+                          onClick={() => setSelectedTrip(trip)}
+                          className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
+                            selectedTrip?.id === trip.id
+                              ? "border-sky-400 bg-sky-50"
+                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-[11px] text-slate-700">
+                              {trip.booking_code}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {mins !== null ? `${mins} min ago` : "-"}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-slate-700">
+                            {trip.passenger_name}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            From: {trip.from_label}
+                            <br />
+                            To: {trip.to_label}
+                          </div>
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
 
+              {/* On trip */}
               <div>
                 <div className="px-2 pb-1 text-[11px] font-semibold text-slate-500">
                   On trip
                 </div>
                 <div className="space-y-2">
-                  {demoTrips
-                    .filter((t) => t.status === "on_trip")
-                    .map((trip) => (
-                      <button
-                        key={trip.id}
-                        onClick={() => setSelectedTrip(trip)}
-                        className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                          selectedTrip?.id === trip.id
-                            ? "border-emerald-400 bg-emerald-50"
-                            : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-[11px] text-slate-700">
-                            {trip.code}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {trip.minutesAgo} min ago
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-700">
-                          {trip.passenger}
-                        </div>
-                        <div className="mt-1 text-[10px] text-slate-500">
-                          From: {trip.from}
-                          <br />
-                          To: {trip.to}
-                        </div>
-                      </button>
-                    ))}
+                  {trips
+                    .filter((t) => normalizeTripStatus(t.status) === "on_trip")
+                    .map((trip) => {
+                      const mins = minutesAgo(trip.created_at);
+                      return (
+                        <button
+                          key={trip.id}
+                          onClick={() => setSelectedTrip(trip)}
+                          className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
+                            selectedTrip?.id === trip.id
+                              ? "border-emerald-400 bg-emerald-50"
+                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-[11px] text-slate-700">
+                              {trip.booking_code}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {mins !== null ? `${mins} min ago` : "-"}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-slate-700">
+                            {trip.passenger_name}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            From: {trip.from_label}
+                            <br />
+                            To: {trip.to_label}
+                          </div>
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
             </div>
@@ -444,15 +494,17 @@ export default function DispatchPage() {
                 {selectedTrip ? (
                   <div className="space-y-1 text-[11px]">
                     <div className="font-semibold text-slate-800">
-                      {selectedTrip.code} · {selectedTrip.passenger}
+                      {selectedTrip.booking_code} · {selectedTrip.passenger_name}
                     </div>
                     <div className="text-slate-600">
-                      From: {selectedTrip.from}
+                      From: {selectedTrip.from_label}
                       <br />
-                      To: {selectedTrip.to}
+                      To: {selectedTrip.to_label}
                     </div>
-                    {selectedTrip.note && (
-                      <div className="text-slate-500">Note: {selectedTrip.note}</div>
+                    {selectedTrip.town && (
+                      <div className="text-slate-500">
+                        Town: {selectedTrip.town}
+                      </div>
                     )}
                   </div>
                 ) : (
