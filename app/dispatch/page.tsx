@@ -14,6 +14,8 @@ type DispatchRow = {
   driver_name: string | null;
   vehicle_type: string | null;
   plate_number: string | null;
+  callsign: string | null;
+  municipality: string | null;
   driver_lat: number | null;
   driver_lng: number | null;
   driver_status: string | null;
@@ -94,10 +96,10 @@ type DriverStatusKey = "online" | "on_trip" | "idle" | "offline" | "unknown";
 function normalizeDriverStatus(raw: string | null): DriverStatusKey {
   if (!raw) return "unknown";
   const s = raw.toLowerCase();
-  if (s.includes("online") || s === "ready") return "online";
   if (s.includes("trip") || s === "on_trip") return "on_trip";
   if (s.includes("idle")) return "idle";
-  if (s.includes("offline") || s.includes("last_seen")) return "offline";
+  if (s.includes("offline") || s.includes("last")) return "offline";
+  if (s.includes("online") || s === "ready") return "online";
   return "unknown";
 }
 
@@ -207,13 +209,6 @@ export default function DispatchPage() {
     return base;
   }, [drivers]);
 
-  const countsLabel = {
-    online: "Online",
-    on_trip: "On trip",
-    idle: "Idle",
-    offline: "Offline",
-  } as const;
-
   const activeTripsCount = useMemo(() => {
     return demoTrips.filter((t) => t.status !== "new").length;
   }, []);
@@ -221,8 +216,9 @@ export default function DispatchPage() {
   function handleAssignClick() {
     if (!selectedTrip || !selectedDriver) return;
     alert(
-      `Assigning ${selectedTrip.code} to driver (status=${selectedDriver.driver_status || "?"}).` +
-        "\n\nLater this will call your Supabase RPC for assignment."
+      `Assigning ${selectedTrip.code} to driver ${
+        selectedDriver.driver_name || selectedDriver.callsign || "JRidah"
+      }. (Wire this to Supabase RPC later.)`
     );
   }
 
@@ -474,7 +470,9 @@ export default function DispatchPage() {
                 {selectedDriver ? (
                   <div className="space-y-1 text-[11px]">
                     <div className="font-semibold text-slate-800">
-                      {selectedDriver.driver_name || "Unnamed JRidah"}
+                      {selectedDriver.driver_name ||
+                        selectedDriver.callsign ||
+                        "JRidah"}
                     </div>
                     <div className="text-slate-600 text-[11px]">
                       Status:{" "}
@@ -482,6 +480,11 @@ export default function DispatchPage() {
                         normalizeDriverStatus(selectedDriver.driver_status)
                       )}
                     </div>
+                    {selectedDriver.municipality && (
+                      <div className="text-slate-500 text-[11px]">
+                        Area: {selectedDriver.municipality}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-[11px] text-slate-500">
@@ -547,48 +550,15 @@ export default function DispatchPage() {
                 </div>
               )}
 
-            {drivers.map((d, index) => {
-  const key = normalizeDriverStatus(d.driver_status);
-  const isSelected =
-    selectedDriver?.driver_lat === d.driver_lat &&
-    selectedDriver?.driver_lng === d.driver_lng &&
-    selectedDriver?.driver_status === d.driver_status;
+              {drivers.map((d, index) => {
+                const key = normalizeDriverStatus(d.driver_status);
+                const isSelected =
+                  selectedDriver?.driver_lat === d.driver_lat &&
+                  selectedDriver?.driver_lng === d.driver_lng &&
+                  selectedDriver?.driver_status === d.driver_status;
 
-  return (
-    <button
-      key={index}
-      onClick={() => setSelectedDriver(d)}
-      className={`w-full text-left rounded-xl border px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
-        isSelected
-          ? "border-amber-400 bg-amber-50"
-          : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-      }`}
-    >
-      <div className="flex flex-col gap-0.5">
-        <span className="font-semibold text-[12px] text-slate-800">
-          {d.driver_name || d.callsign || "JRidah"}
-        </span>
-        {d.callsign && (
-          <span className="text-[10px] text-slate-500">
-            {d.callsign} • {d.municipality ?? ""}
-          </span>
-        )}
-        <span className="text-[10px] text-slate-400">
-          Lat: {d.driver_lat ?? "-"} · Lng: {d.driver_lng ?? "-"}
-        </span>
-      </div>
-
-      <div
-        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusChipColor(
-          key
-        )}`}
-      >
-        {statusLabel(key)}
-      </div>
-    </button>
-  );
-})}
-
+                return (
+                  <button
                     key={index}
                     onClick={() => setSelectedDriver(d)}
                     className={`w-full text-left rounded-xl border px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
@@ -605,15 +575,20 @@ export default function DispatchPage() {
                               key
                             )}`}
                           />
-                        <div className="flex flex-col">
-  <span className="font-semibold text-[12px] text-slate-800">
-    {d.driver_name || d.callsign || "JRidah"}
-  </span>
-
-  <span className="text-[10px] text-slate-500">
-    {d.callsign ? `${d.callsign} • ${d.municipality ?? ""}` : ""}
-  </span>
-</div>
+                        </span>
+                        <span className="font-semibold text-[12px] text-slate-800">
+                          {d.driver_name || d.callsign || "JRidah"}
+                        </span>
+                      </div>
+                      {d.callsign && (
+                        <span className="text-[10px] text-slate-500">
+                          {d.callsign} • {d.municipality ?? ""}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-400">
+                        Lat: {d.driver_lat ?? "-"} · Lng: {d.driver_lng ?? "-"}
+                      </span>
+                    </div>
 
                     <div
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusChipColor(
@@ -630,10 +605,11 @@ export default function DispatchPage() {
             <footer className="border-t border-slate-100 px-4 py-3 text-[10px] text-slate-500">
               <div>Dispatcher shortcuts (future idea)</div>
               <ul className="mt-1 space-y-0.5">
-                <li>• Click trip → centers map & shows best JRidahs.</li>
+                <li>• Click trip → centers map &amp; shows best JRidahs.</li>
                 <li>• Click driver → selects for assignment.</li>
                 <li>
-                  • Assign trip button → call your Supabase RPC (assign_nearest / etc.).
+                  • Assign trip button → call your Supabase RPC (assign_nearest /
+                  etc.).
                 </li>
               </ul>
             </footer>
