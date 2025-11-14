@@ -572,15 +572,16 @@ export default function DispatchPage() {
                               key
                             )}`}
                           />
-                        </span>
-                        <span className="font-semibold text-[11px] text-slate-800">
-                          {d.driver_name || "JRidah"}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        Lat: {d.driver_lat ?? "-"} · Lng: {d.driver_lng ?? "-"}
-                      </div>
-                    </div>
+                        <div className="flex flex-col">
+  <span className="font-semibold text-[12px] text-slate-800">
+    {d.driver_name || d.callsign || "JRidah"}
+  </span>
+
+  <span className="text-[10px] text-slate-500">
+    {d.callsign ? `${d.callsign} • ${d.municipality ?? ""}` : ""}
+  </span>
+</div>
+
                     <div
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusChipColor(
                         key
