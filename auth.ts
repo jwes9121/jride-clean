@@ -1,104 +1,81 @@
-<<<<<<< HEAD
-// auth.ts – reset + disable PKCE/state checks for Google
+﻿// auth.ts - clean NextAuth v5 root config for JRide
 
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
-const adminEmails =
-  process.env.ADMIN_EMAILS?.split(",").map((x) => x.trim()) ?? [];
-const dispatcherEmails =
-  process.env.DISPATCHER_EMAILS?.split(",").map((x) => x.trim()) ?? [];
+// Optional: comma-separated admin emails, e.g.
+// ADMIN_EMAILS="you@example.com,other@example.com"
+export const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
-export const authConfig: NextAuthConfig = {
+const authConfig: NextAuthConfig = {
   // Required on Vercel / custom domains
   trustHost: true,
 
-=======
-﻿import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
+  secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
 
-const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-  .split(",")
-  .map((x) => x.trim())
-  .filter(Boolean);
+  session: {
+    strategy: "jwt",
+  },
 
-const dispatcherEmails = (process.env.DISPATCHER_EMAILS ?? "")
-  .split(",")
-  .map((x) => x.trim())
-  .filter(Boolean);
-
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  trustHost: true,
-
->>>>>>> 0187e9c (Auth/middleware sync before rebase)
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-
-<<<<<<< HEAD
-      /**
-       * IMPORTANT: turn off PKCE + state checks for Google.
-       * This avoids the "InvalidCheck: state value could not be parsed"
-       * errors when the Android WebView / in-app browser loses cookies.
-       */
+      clientId:
+        process.env.GOOGLE_CLIENT_ID ??
+        process.env.AUTH_GOOGLE_ID ??
+        "",
+      clientSecret:
+        process.env.GOOGLE_CLIENT_SECRET ??
+        process.env.AUTH_GOOGLE_SECRET ??
+        "",
+      // Helps with some older Google app configs
       checks: ["none"],
-=======
-      // 👉 Android fix: disable PKCE + state checks
-      checks: [],
-
-      authorization: {
-        params: {
-          prompt: "select_account",
-          access_type: "offline",
-          response_type: "code",
-        },
-      },
->>>>>>> 0187e9c (Auth/middleware sync before rebase)
     }),
   ],
 
+  pages: {
+    signIn: "/auth/signin",
+  },
+
   callbacks: {
-<<<<<<< HEAD
-    async jwt({ token }) {
-      const email = token.email;
+    async jwt({ token, user, account }) {
+      if (account && user) {
+        const email = (user.email ?? "").toLowerCase().trim();
 
-      if (email) {
-=======
-    async jwt({ token, profile }) {
-      if (profile?.email) {
-        const email = profile.email;
+        token.user = {
+          id: (user as any).id ?? token.sub,
+          name: user.name,
+          email: user.email,
+        };
 
->>>>>>> 0187e9c (Auth/middleware sync before rebase)
-        if (adminEmails.includes(email)) {
-          (token as any).role = "admin";
-        } else if (dispatcherEmails.includes(email)) {
-          (token as any).role = "dispatcher";
-        } else {
-          (token as any).role = "user";
+        if (email && adminEmails.includes(email)) {
+          (token as any).isAdmin = true;
         }
       }
-      return token;
-    },
 
-<<<<<<< HEAD
       return token;
     },
 
     async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).role = (token as any).role ?? "user";
-=======
-    async session({ session, token }) {
-      const role = (token as any).role;
-      if (role && session.user) {
-        (session.user as any).role = role;
->>>>>>> 0187e9c (Auth/middleware sync before rebase)
+      if (token?.user) {
+        (session as any).user = token.user;
+      }
+      if ((token as any).isAdmin) {
+        (session as any).isAdmin = true;
       }
       return session;
     },
   },
 };
 
-// Export the helpers used by the app + route.ts
-export const { auth, handlers, signIn, signOut } = NextAuth(authConfig);
+// Create auth/handlers/signIn/signOut in one call
+const authHandler = NextAuth(authConfig);
+
+// Named exports for other files
+export const { auth, handlers, signIn, signOut } = authHandler;
+
+// Also export GET/POST for API routes that do:
+///   export const { GET, POST } = handlers;
+export const { GET, POST } = handlers;
