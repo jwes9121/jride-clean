@@ -1,65 +1,74 @@
+// app/api/admin/driver-locations/route.ts
+// Admin view of driver_locations table in Supabase
+
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "default-no-store";
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error(
-    "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for admin driver-locations API."
-  );
+function getSupabaseHeaders() {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return {
+    apikey: supabaseServiceKey,
+    Authorization: `Bearer ${supabaseServiceKey}`,
+    "Content-Type": "application/json",
+  };
 }
 
-/**
- * Admin Supabase client
- * - Uses service role key
- * - Bypasses RLS (intended for trusted server-side use only)
- */
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { persistSession: false },
-});
-
+// GET /api/admin/driver-locations?status=online (status optional)
 export async function GET(request: Request) {
   try {
+    const headers = getSupabaseHeaders();
     const { searchParams } = new URL(request.url);
-    const debug = searchParams.get("debug");
+    const status = searchParams.get("status");
 
-    const { data, error } = await supabaseAdmin
-      .from("driver_locations")
-      .select("driver_id, lat, lng, status, town, updated_at")
-      .order("updated_at", { ascending: false });
-
-    if (error) {
-      console.error("driver-locations select error:", error);
-      const body: any = {
-        ok: false,
-        error: error.message,
-        drivers: [],
-      };
-      return NextResponse.json(body, { status: 500 });
+    let url = `${supabaseUrl}/rest/v1/driver_locations?select=*`;
+    if (status) {
+      url += `&status=eq.${encodeURIComponent(status)}`;
     }
 
-    const drivers = data ?? [];
+    const res = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    });
 
-    // If debug=1, echo minimal env context to confirm which project we're hitting.
-    if (debug) {
-      return NextResponse.json({
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("Supabase driver_locations GET error:", data);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "UPSTREAM_ERROR",
+          message: "Failed to load driver_locations from Supabase",
+          details: data,
+        },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json(
+      {
         ok: true,
-        projectUrl: supabaseUrl,
-        drivers,
-      });
-    }
-
-    return NextResponse.json({ ok: true, drivers });
-  } catch (err: any) {
+        rows: data,
+      },
+      { status: 200 }
+    );
+  } catch (err) {
     console.error("driver-locations unexpected error:", err);
     return NextResponse.json(
       {
         ok: false,
-        error: err?.message || "Unexpected error",
-        drivers: [],
+        error: "DRIVER_LOCATIONS_ERROR",
+        message: "Unexpected error while fetching driver locations",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
