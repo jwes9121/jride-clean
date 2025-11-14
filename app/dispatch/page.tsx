@@ -547,15 +547,48 @@ export default function DispatchPage() {
                 </div>
               )}
 
-              {drivers.map((d, index) => {
-                const key = normalizeDriverStatus(d.driver_status);
-                const isSelected =
-                  selectedDriver?.driver_lat === d.driver_lat &&
-                  selectedDriver?.driver_lng === d.driver_lng &&
-                  selectedDriver?.driver_status === d.driver_status;
+            {drivers.map((d, index) => {
+  const key = normalizeDriverStatus(d.driver_status);
+  const isSelected =
+    selectedDriver?.driver_lat === d.driver_lat &&
+    selectedDriver?.driver_lng === d.driver_lng &&
+    selectedDriver?.driver_status === d.driver_status;
 
-                return (
-                  <button
+  return (
+    <button
+      key={index}
+      onClick={() => setSelectedDriver(d)}
+      className={`w-full text-left rounded-xl border px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
+        isSelected
+          ? "border-amber-400 bg-amber-50"
+          : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+      }`}
+    >
+      <div className="flex flex-col gap-0.5">
+        <span className="font-semibold text-[12px] text-slate-800">
+          {d.driver_name || d.callsign || "JRidah"}
+        </span>
+        {d.callsign && (
+          <span className="text-[10px] text-slate-500">
+            {d.callsign} • {d.municipality ?? ""}
+          </span>
+        )}
+        <span className="text-[10px] text-slate-400">
+          Lat: {d.driver_lat ?? "-"} · Lng: {d.driver_lng ?? "-"}
+        </span>
+      </div>
+
+      <div
+        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusChipColor(
+          key
+        )}`}
+      >
+        {statusLabel(key)}
+      </div>
+    </button>
+  );
+})}
+
                     key={index}
                     onClick={() => setSelectedDriver(d)}
                     className={`w-full text-left rounded-xl border px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
