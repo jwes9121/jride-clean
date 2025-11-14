@@ -1,4 +1,4 @@
-// app/api/dispatch/overview/route.ts
+// Dispatch overview API - uses dispatch_rides_view in Supabase (gxaullwnxbkbjqbjotsr)
 
 import { NextResponse } from "next/server";
 
