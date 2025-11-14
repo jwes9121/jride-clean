@@ -5,7 +5,6 @@ import Credentials from "next-auth/providers/credentials";
 
 const isDevLoginEnabled = process.env.ENABLE_GOOGLE === "0";
 
-// You can add more callbacks/config later as needed
 const authConfig = {
   trustHost: true,
   secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
@@ -23,7 +22,6 @@ const authConfig = {
         process.env.AUTH_GOOGLE_SECRET ??
         "",
     }),
-    // Optional dev login for testing without Google
     ...(isDevLoginEnabled
       ? [
           Credentials({
@@ -45,7 +43,6 @@ const authConfig = {
       : []),
   ],
   pages: {
-    // Use your custom sign-in page if you have one
     signIn: "/auth/signin",
   },
   callbacks: {
