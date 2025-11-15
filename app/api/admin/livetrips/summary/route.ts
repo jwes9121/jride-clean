@@ -23,11 +23,10 @@ export async function GET() {
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     };
 
-    // Common select columns for bookings
     const selectCols =
       "id,booking_code,status,assigned_driver_id,created_at,pickup_lat,pickup_lng";
 
-    // 1) Pending queue: pending/searching & no assigned driver
+    // Pending
     const pendingQuery = [
       `select=${selectCols}`,
       "status=in.(pending,searching)",
@@ -36,9 +35,9 @@ export async function GET() {
     ].join("&");
     const pendingUrl = `${SUPABASE_URL}/rest/v1/bookings?${pendingQuery}`;
 
-    // 2) Active trips: B-flow statuses
+    // Active (include dropoff)
     const activeStatuses =
-      "assigned,driver_accepted,driver_arrived,passenger_onboard,in_transit";
+      "assigned,driver_accepted,driver_arrived,passenger_onboard,in_transit,dropoff";
     const activeQuery = [
       `select=${selectCols}`,
       `status=in.(${activeStatuses})`,
@@ -46,9 +45,9 @@ export async function GET() {
     ].join("&");
     const activeUrl = `${SUPABASE_URL}/rest/v1/bookings?${activeQuery}`;
 
-    // 3) Completed today
+    // Completed today
     const today = new Date();
-    const ymd = today.toISOString().slice(0, 10); // YYYY-MM-DD
+    const ymd = today.toISOString().slice(0, 10);
     const completedQuery = [
       `select=${selectCols}`,
       "status=eq.completed",
@@ -57,14 +56,11 @@ export async function GET() {
     ].join("&");
     const completedUrl = `${SUPABASE_URL}/rest/v1/bookings?${completedQuery}`;
 
-    // 4) Driver locations for map
-    const driverSelect =
-      "driver_id,lat,lng,status,updated_at";
-    const driverQuery = [
-      `select=${driverSelect}`,
-      // keep all statuses for now; you can filter later if you want
-      "order=updated_at.desc",
-    ].join("&");
+    // Drivers for maps
+    const driverSelect = "driver_id,lat,lng,status,updated_at";
+    const driverQuery = [`select=${driverSelect}`, "order=updated_at.desc"].join(
+      "&"
+    );
     const driversUrl = `${SUPABASE_URL}/rest/v1/driver_locations?${driverQuery}`;
 
     const [pendingRes, activeRes, completedRes, driversRes] =

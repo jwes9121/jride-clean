@@ -45,6 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
   driver_arrived: "Driver Arrived",
   passenger_onboard: "Passenger Onboard",
   in_transit: "In Transit",
+  dropoff: "At Dropoff",
   completed: "Completed",
 };
 
@@ -52,6 +53,7 @@ function getStatusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+// NEW: lifecycle includes dropoff before completed
 function getNextStatusAndLabel(
   currentStatus: string
 ): { nextStatus: string; label: string } | null {
@@ -65,6 +67,8 @@ function getNextStatusAndLabel(
     case "passenger_onboard":
       return { nextStatus: "in_transit", label: "Start Trip" };
     case "in_transit":
+      return { nextStatus: "dropoff", label: "Arrived at Dropoff" };
+    case "dropoff":
       return { nextStatus: "completed", label: "Complete Trip" };
     default:
       return null;
@@ -207,9 +211,8 @@ export default function DispatchPage() {
               JRide Dispatch Console
             </h1>
             <p className="text-sm text-gray-600">
-              Live console for dispatchers to manage the ride queue, active
-              trips, and completions with a global driver map and per-trip map
-              modal.
+              Live console for dispatchers to manage the ride queue, lifecycle
+              statuses, and driver locations with global & per-trip maps.
             </p>
           </div>
 
@@ -337,7 +340,7 @@ export default function DispatchPage() {
             <section className="border rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
                 <h2 className="text-sm font-medium">
-                  Active Trips (assigned → in_transit)
+                  Active Trips (assigned → in_transit → dropoff)
                 </h2>
               </div>
 

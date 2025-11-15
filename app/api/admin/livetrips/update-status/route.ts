@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-// B-flow statuses you chose
+// Full lifecycle, including dropoff
 const ALLOWED_STATUSES = [
   "pending",
   "searching",
@@ -12,6 +12,7 @@ const ALLOWED_STATUSES = [
   "driver_arrived",
   "passenger_onboard",
   "in_transit",
+  "dropoff",
   "completed",
 ];
 
