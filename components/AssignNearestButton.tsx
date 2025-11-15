@@ -17,7 +17,12 @@ type AssignResult =
       booking_code?: string;
     };
 
-export function AssignNearestButton() {
+type AssignNearestButtonProps = {
+  // Optional callback for parent pages (e.g. to reload tables)
+  onAfterAction?: () => void;
+};
+
+export function AssignNearestButton({ onAfterAction }: AssignNearestButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
@@ -48,6 +53,7 @@ export function AssignNearestButton() {
           `Request failed with status ${res.status}`;
 
         setErrorText(`Assign failed: ${msg}`);
+        if (onAfterAction) onAfterAction();
         return;
       }
 
@@ -58,6 +64,7 @@ export function AssignNearestButton() {
           result?.reason ??
           "No pending booking or no available driver at the moment.";
         setStatusText(`No assignment: ${reason}`);
+        if (onAfterAction) onAfterAction();
         return;
       }
 
@@ -65,13 +72,17 @@ export function AssignNearestButton() {
       const driver = result.assigned_driver_id ?? "driver";
 
       setStatusText(`Assigned ${driver} to ${booking}.`);
+
+      // Refresh server components so your tables update
       router.refresh();
+      if (onAfterAction) onAfterAction();
     } catch (err: any) {
       setErrorText(
         `Server error while assigning driver: ${
           err?.message ?? "Unknown error"
         }`
       );
+      if (onAfterAction) onAfterAction();
     } finally {
       setLoading(false);
     }
