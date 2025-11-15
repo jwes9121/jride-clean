@@ -23,7 +23,7 @@ export async function GET() {
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     };
 
-    // Common select columns
+    // Common select columns for bookings
     const selectCols =
       "id,booking_code,status,assigned_driver_id,created_at,pickup_lat,pickup_lng";
 
@@ -34,10 +34,9 @@ export async function GET() {
       "assigned_driver_id=is.null",
       "order=created_at.asc",
     ].join("&");
-
     const pendingUrl = `${SUPABASE_URL}/rest/v1/bookings?${pendingQuery}`;
 
-    // 2) Active trips: in the B-flow statuses
+    // 2) Active trips: B-flow statuses
     const activeStatuses =
       "assigned,driver_accepted,driver_arrived,passenger_onboard,in_transit";
     const activeQuery = [
@@ -45,10 +44,9 @@ export async function GET() {
       `status=in.(${activeStatuses})`,
       "order=created_at.asc",
     ].join("&");
-
     const activeUrl = `${SUPABASE_URL}/rest/v1/bookings?${activeQuery}`;
 
-    // 3) Completed today: status=completed, created_at >= today 00:00 UTC
+    // 3) Completed today
     const today = new Date();
     const ymd = today.toISOString().slice(0, 10); // YYYY-MM-DD
     const completedQuery = [
@@ -57,20 +55,33 @@ export async function GET() {
       `created_at=gte.${ymd}T00:00:00Z`,
       "order=created_at.desc",
     ].join("&");
-
     const completedUrl = `${SUPABASE_URL}/rest/v1/bookings?${completedQuery}`;
 
-    const [pendingRes, activeRes, completedRes] = await Promise.all([
-      fetch(pendingUrl, { headers: baseHeaders, cache: "no-store" }),
-      fetch(activeUrl, { headers: baseHeaders, cache: "no-store" }),
-      fetch(completedUrl, { headers: baseHeaders, cache: "no-store" }),
-    ]);
+    // 4) Driver locations for map
+    const driverSelect =
+      "driver_id,lat,lng,status,updated_at";
+    const driverQuery = [
+      `select=${driverSelect}`,
+      // keep all statuses for now; you can filter later if you want
+      "order=updated_at.desc",
+    ].join("&");
+    const driversUrl = `${SUPABASE_URL}/rest/v1/driver_locations?${driverQuery}`;
 
-    const [pendingRaw, activeRaw, completedRaw] = await Promise.all([
-      pendingRes.text(),
-      activeRes.text(),
-      completedRes.text(),
-    ]);
+    const [pendingRes, activeRes, completedRes, driversRes] =
+      await Promise.all([
+        fetch(pendingUrl, { headers: baseHeaders, cache: "no-store" }),
+        fetch(activeUrl, { headers: baseHeaders, cache: "no-store" }),
+        fetch(completedUrl, { headers: baseHeaders, cache: "no-store" }),
+        fetch(driversUrl, { headers: baseHeaders, cache: "no-store" }),
+      ]);
+
+    const [pendingRaw, activeRaw, completedRaw, driversRaw] =
+      await Promise.all([
+        pendingRes.text(),
+        activeRes.text(),
+        completedRes.text(),
+        driversRes.text(),
+      ]);
 
     const parseJsonArray = (raw: string, label: string) => {
       try {
@@ -115,6 +126,13 @@ export async function GET() {
         completedRaw
       );
     }
+    if (!driversRes.ok) {
+      console.error(
+        "[admin/livetrips/summary] Drivers error:",
+        driversRes.status,
+        driversRaw
+      );
+    }
 
     const pending = pendingRes.ok
       ? parseJsonArray(pendingRaw, "pending")
@@ -123,6 +141,9 @@ export async function GET() {
     const completed = completedRes.ok
       ? parseJsonArray(completedRaw, "completed")
       : [];
+    const drivers = driversRes.ok
+      ? parseJsonArray(driversRaw, "drivers")
+      : [];
 
     return NextResponse.json(
       {
@@ -130,6 +151,7 @@ export async function GET() {
         pending,
         active,
         completed,
+        drivers,
       },
       { status: 200 }
     );
