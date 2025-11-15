@@ -46,7 +46,6 @@ type ApiTripsResponse =
   | { ok: false; error: string; message?: string; details?: unknown };
 
 type TripStatus = "new" | "assigned" | "on_trip";
-
 type DriverStatusKey = "online" | "on_trip" | "idle" | "offline" | "unknown";
 
 function normalizeDriverStatus(raw: string | null): DriverStatusKey {
@@ -121,21 +120,18 @@ function minutesAgo(created_at: string | null): number | null {
 }
 
 export default function DispatchPage() {
-  // DRIVERS
   const [drivers, setDrivers] = useState<DispatchRow[]>([]);
-  const [loadingDrivers, setLoadingDrivers] = useState<boolean>(true);
+  const [loadingDrivers, setLoadingDrivers] = useState(true);
   const [driverError, setDriverError] = useState<string | null>(null);
   const [lastUpdatedDrivers, setLastUpdatedDrivers] = useState<string | null>(
     null
   );
 
-  // TRIPS
   const [trips, setTrips] = useState<TripRow[]>([]);
-  const [loadingTrips, setLoadingTrips] = useState<boolean>(true);
+  const [loadingTrips, setLoadingTrips] = useState(true);
   const [tripError, setTripError] = useState<string | null>(null);
   const [lastUpdatedTrips, setLastUpdatedTrips] = useState<string | null>(null);
 
-  // SELECTION
   const [selectedTrip, setSelectedTrip] = useState<TripRow | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<DispatchRow | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -148,7 +144,6 @@ export default function DispatchPage() {
         cache: "no-store",
       });
       const data: ApiDriversResponse = await res.json();
-
       if (!res.ok || data.ok === false) {
         const msg =
           (data as any).message ||
@@ -157,12 +152,11 @@ export default function DispatchPage() {
         setDriverError(msg);
         return;
       }
-
       const rows = (data as any).rows ?? [];
       setDrivers(rows);
       setLastUpdatedDrivers(new Date().toLocaleTimeString());
     } catch (err) {
-      console.error("Error fetching dispatch overview:", err);
+      console.error("Error fetching drivers:", err);
       setDriverError("Unexpected error while loading JRidah list");
     } finally {
       setLoadingDrivers(false);
@@ -177,7 +171,6 @@ export default function DispatchPage() {
         cache: "no-store",
       });
       const data: ApiTripsResponse = await res.json();
-
       if (!res.ok || data.ok === false) {
         const msg =
           (data as any).message ||
@@ -186,12 +179,11 @@ export default function DispatchPage() {
         setTripError(msg);
         return;
       }
-
       const rows = (data as any).rows ?? [];
       setTrips(rows);
       setLastUpdatedTrips(new Date().toLocaleTimeString());
     } catch (err) {
-      console.error("Error fetching dispatch trips:", err);
+      console.error("Error fetching trips:", err);
       setTripError("Unexpected error while loading trip queue");
     } finally {
       setLoadingTrips(false);
@@ -225,19 +217,16 @@ export default function DispatchPage() {
     return base;
   }, [drivers]);
 
-  const activeTripsCount = useMemo(() => {
-    return trips.filter((t) => {
-      const st = normalizeTripStatus(t.status);
-      return st !== "new";
-    }).length;
-  }, [trips]);
-
+  const activeTripsCount = useMemo(
+    () =>
+      trips.filter((t) => normalizeTripStatus(t.status) !== "new").length,
+    [trips]
+  );
   const pendingCount = useMemo(
     () =>
       trips.filter((t) => normalizeTripStatus(t.status) === "new").length,
     [trips]
   );
-
   const assignedCount = useMemo(
     () =>
       trips.filter((t) => normalizeTripStatus(t.status) === "assigned").length,
@@ -246,27 +235,24 @@ export default function DispatchPage() {
 
   async function handleAssignClick() {
     if (!selectedTrip || !selectedDriver) {
-      alert("Select a trip and a JRidah first.");
+      alert("Pick a trip on the left and a JRidah on the right first.");
       return;
     }
 
     if (!selectedTrip.booking_code) {
-      alert("Selected trip has no booking_code.");
+      alert("Selected trip is missing booking_code.");
       return;
     }
     if (!selectedDriver.driver_id) {
-      alert("Selected JRidah has no driver_id in dispatch_rides_view.");
+      alert("Selected driver is missing driver_id in dispatch_rides_view.");
       return;
     }
 
     try {
       setAssigning(true);
-
       const res = await fetch("/api/dispatch/assign", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bookingCode: selectedTrip.booking_code,
           driverId: selectedDriver.driver_id,
@@ -274,7 +260,6 @@ export default function DispatchPage() {
       });
 
       const data = await res.json();
-
       if (!res.ok || data.ok === false) {
         alert(
           "Assign failed: " +
@@ -286,12 +271,12 @@ export default function DispatchPage() {
       await fetchTrips();
 
       alert(
-        `Assigned ${
-          selectedTrip.booking_code
-        } to ${selectedDriver.driver_name || selectedDriver.callsign || "JRidah"}`
+        `Assigned ${selectedTrip.booking_code} to ${
+          selectedDriver.driver_name || selectedDriver.callsign || "JRidah"
+        }`
       );
     } catch (err) {
-      console.error("Assign click error:", err);
+      console.error("Assign error:", err);
       alert("Unexpected error while assigning. Check console / logs.");
     } finally {
       setAssigning(false);
@@ -325,7 +310,7 @@ export default function DispatchPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-4 space-y-3">
-        {/* Top summary chips */}
+        {/* Summary chips */}
         <div className="flex flex-wrap gap-2 text-xs font-medium">
           <div className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -349,7 +334,7 @@ export default function DispatchPage() {
           </div>
         </div>
 
-        {/* Main 3-column layout */}
+        {/* Main layout: trips / assignment / drivers */}
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.8fr)_minmax(0,1.35fr)]">
           {/* Trip queue */}
           <section className="bg-white border border-slate-100 rounded-2xl shadow-sm flex flex-col">
@@ -381,7 +366,6 @@ export default function DispatchPage() {
                 Error: {tripError}
               </div>
             )}
-
             {loadingTrips && !tripError && (
               <div className="px-4 pt-2 text-[11px] text-slate-500">
                 Loading trips…
@@ -517,7 +501,7 @@ export default function DispatchPage() {
             </div>
           </section>
 
-          {/* Assignment panel + map placeholder */}
+          {/* Assignment panel */}
           <section className="bg-white border border-slate-100 rounded-2xl shadow-sm flex flex-col">
             <header className="px-4 pt-4 pb-2 border-b border-slate-100 flex items-center justify-between text-xs">
               <div className="font-semibold text-slate-800">Assignment panel</div>
@@ -594,6 +578,7 @@ export default function DispatchPage() {
               </div>
             </div>
 
+            {/* Map placeholder */}
             <div className="flex-1 px-4 pb-4 pt-3">
               <div className="h-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-[11px] text-slate-500">
                 <div className="uppercase tracking-wide text-[10px] text-slate-400 mb-1">
@@ -635,7 +620,6 @@ export default function DispatchPage() {
                 Error: {driverError}
               </div>
             )}
-
             {loadingDrivers && !driverError && (
               <div className="px-4 pt-3 text-[11px] text-slate-500">
                 Loading JRidah list…
@@ -653,10 +637,9 @@ export default function DispatchPage() {
               {drivers.map((d, index) => {
                 const key = normalizeDriverStatus(d.driver_status);
                 const isSelected =
+                  selectedDriver?.driver_id === d.driver_id &&
                   selectedDriver?.driver_lat === d.driver_lat &&
-                  selectedDriver?.driver_lng === d.driver_lng &&
-                  selectedDriver?.driver_status === d.driver_status &&
-                  selectedDriver?.driver_id === d.driver_id;
+                  selectedDriver?.driver_lng === d.driver_lng;
 
                 return (
                   <button
