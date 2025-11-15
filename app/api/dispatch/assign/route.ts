@@ -1,102 +1,45 @@
-﻿// app/api/dispatch/assign/route.ts
-// Assigns a trip to a driver by calling Supabase RPC assign_trip
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-import { NextResponse } from "next/server";
-
-export const dynamic = "force-dynamic";
-export const fetchCache = "default-no-store";
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-type AssignBody = {
-  bookingCode?: string;
-  driverId?: string;
-};
-
-export async function POST(request: Request) {
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "SERVER_MISCONFIGURED",
-        message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-      },
-      { status: 500 }
-    );
-  }
-
-  let body: AssignBody;
+export async function POST(req: Request) {
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: "BAD_REQUEST", message: "Invalid JSON body" },
-      { status: 400 }
-    );
-  }
+    const body = await req.json();
+    const { bookingCode, driverId } = body;
 
-  const bookingCode = body.bookingCode;
-  const driverId = body.driverId;
-
-  if (!bookingCode || !driverId) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "MISSING_FIELDS",
-        message: "bookingCode and driverId are required",
-      },
-      { status: 400 }
-    );
-  }
-
-  const url = `${supabaseUrl}/rest/v1/rpc/assign_trip`;
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        apikey: supabaseServiceKey,
-        Authorization: `Bearer ${supabaseServiceKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        p_booking_code: bookingCode,
-        p_driver_id: driverId,
-      }),
-      cache: "no-store",
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      console.error("assign_trip RPC error:", data);
+    if (!bookingCode || !driverId) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "UPSTREAM_ERROR",
-          message: "Failed to assign trip in Supabase",
-          details: data,
-        },
-        { status: res.status }
+        { ok: false, error: "Missing bookingCode or driverId" },
+        { status: 400 }
       );
     }
 
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .update({
+        status: "assigned",
+        assigned_driver_id: driverId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("booking_code", bookingCode)
+      .select();
+
+    if (error) {
+      console.error("assign error:", error);
+      return NextResponse.json(
+        { ok: false, error: error.message ?? "Failed update" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, data });
+  } catch (err: any) {
+    console.error("assign try/catch:", err);
     return NextResponse.json(
-      {
-        ok: true,
-        booking: data,
-      },
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error("Assign route unexpected error:", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "ASSIGN_ERROR",
-        message: "Unexpected error while assigning trip",
-      },
+      { ok: false, error: err?.message ?? "Unexpected error" },
       { status: 500 }
     );
   }
