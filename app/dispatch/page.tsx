@@ -246,17 +246,16 @@ export default function DispatchPage() {
 
   async function handleAssignClick() {
     if (!selectedTrip || !selectedDriver) {
-      alert("Pick a trip on the left and a JRidah on the right first.");
+      alert("Select a trip and a JRidah first.");
       return;
     }
 
     if (!selectedTrip.booking_code) {
-      alert("Selected trip is missing booking_code.");
+      alert("Selected trip has no booking_code.");
       return;
     }
-
     if (!selectedDriver.driver_id) {
-      alert("Selected driver is missing driver_id in dispatch_rides_view.");
+      alert("Selected JRidah has no driver_id in dispatch_rides_view.");
       return;
     }
 
@@ -287,9 +286,9 @@ export default function DispatchPage() {
       await fetchTrips();
 
       alert(
-        `Assigned ${selectedTrip.booking_code} to ${
-          selectedDriver.driver_name || selectedDriver.callsign || "JRidah"
-        }`
+        `Assigned ${
+          selectedTrip.booking_code
+        } to ${selectedDriver.driver_name || selectedDriver.callsign || "JRidah"}`
       );
     } catch (err) {
       console.error("Assign click error:", err);
