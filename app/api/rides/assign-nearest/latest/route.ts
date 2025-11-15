@@ -1,37 +1,88 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+﻿import { NextRequest, NextResponse } from "next/server";
 
-function admin() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error(
+    "[assign-nearest/latest] Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars"
   );
 }
 
+// GET = health check / hint only
 export async function GET() {
-  return NextResponse.json({ ok: true, hint: "POST to assign latest pending ride" });
+  return NextResponse.json(
+    { ok: true, hint: "POST to assign latest pending ride" },
+    { status: 200 }
+  );
 }
 
-export async function POST() {
+// POST = actually call Supabase RPC to assign the nearest driver
+export async function POST(req: NextRequest) {
   try {
-    const sb = admin();
-    const { data: ride, error: findErr } = await sb
-      .from("rides")
-      .select("id,status,created_at")
-      .eq("status","pending")
-      .order("created_at",{ ascending:false })
-      .limit(1)
-      .single();
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return NextResponse.json(
+        {
+          error: "ENV_MISSING",
+          message: "SUPABASE_URL or SUPABASE_ANON_KEY not set on server",
+        },
+        { status: 500 }
+      );
+    }
 
-    if (findErr || !ride) return NextResponse.json({ status:"no_pending_ride" });
+    const rpcUrl = `${SUPABASE_URL}/rest/v1/rpc/assign_nearest_driver_v2`;
 
-    const { data: result, error: rpcErr } = await sb
-      .rpc("assign_nearest_driver_v2", { p_ride_id: ride.id });
+    const supabaseResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      // If your function takes arguments, put them here.
+      // Right now we assume it takes no parameters.
+      body: JSON.stringify({}),
+      cache: "no-store",
+    });
 
-    if (rpcErr) return NextResponse.json({ error:"RPC failed", detail: rpcErr.message }, { status:500 });
-    return NextResponse.json({ ride_id: ride.id, ...(result ?? {}) });
-  } catch (e:any) {
-    return NextResponse.json({ error:"Unhandled", detail: e?.message ?? String(e) }, { status:500 });
+    const rawText = await supabaseResponse.text();
+    let json: any = null;
+
+    try {
+      json = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      // not JSON, keep raw text
+    }
+
+    if (!supabaseResponse.ok) {
+      console.error("[assign-nearest/latest] Supabase error:", rawText);
+
+      return NextResponse.json(
+        {
+          error: "DB_ERROR_ASSIGN",
+          status: supabaseResponse.status,
+          message: json?.message ?? rawText ?? "Unknown Supabase error",
+        },
+        { status: 500 }
+      );
+    }
+
+    // Success – forward Supabase result
+    return NextResponse.json(
+      {
+        ok: true,
+        result: json,
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("[assign-nearest/latest] SERVER ERROR:", error);
+    return NextResponse.json(
+      {
+        error: "SERVER_ERROR",
+        message: error?.message ?? "Unknown server error",
+      },
+      { status: 500 }
+    );
   }
 }
