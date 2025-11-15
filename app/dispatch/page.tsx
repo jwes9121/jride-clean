@@ -1,705 +1,256 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { AssignNearestButton } from "@/components/AssignNearestButton";
 
-type DispatchRow = {
-  driver_id: string | null;
-  booking_id: string | null;
-  pickup_lat: number | null;
-  pickup_lng: number | null;
-  dropoff_lat: number | null;
-  dropoff_lng: number | null;
-  status: string | null;
-  created_at: string | null;
-  passenger_name: string | null;
-  driver_name: string | null;
-  vehicle_type: string | null;
-  plate_number: string | null;
-  callsign: string | null;
-  municipality: string | null;
-  driver_lat: number | null;
-  driver_lng: number | null;
-  driver_status: string | null;
-};
-
-type TripRow = {
+type Booking = {
   id: string;
   booking_code: string | null;
-  passenger_name: string | null;
-  from_label: string | null;
-  to_label: string | null;
-  town: string | null;
+  status: string;
+  assigned_driver_id: string | null;
+  created_at: string;
   pickup_lat: number | null;
   pickup_lng: number | null;
-  dropoff_lat: number | null;
-  dropoff_lng: number | null;
-  status: string | null;
-  created_at: string | null;
 };
 
-type ApiDriversResponse =
-  | { ok: true; rows: DispatchRow[] }
-  | { ok: false; error: string; message?: string; details?: unknown };
-
-type ApiTripsResponse =
-  | { ok: true; rows: TripRow[] }
-  | { ok: false; error: string; message?: string; details?: unknown };
-
-type TripStatus = "new" | "assigned" | "on_trip";
-type DriverStatusKey = "online" | "on_trip" | "idle" | "offline" | "unknown";
-
-function normalizeDriverStatus(raw: string | null): DriverStatusKey {
-  if (!raw) return "unknown";
-  const s = raw.toLowerCase();
-  if (s.includes("trip") || s === "on_trip") return "on_trip";
-  if (s.includes("idle")) return "idle";
-  if (s.includes("offline") || s.includes("last")) return "offline";
-  if (s.includes("online") || s === "ready") return "online";
-  return "unknown";
-}
-
-function statusLabel(key: DriverStatusKey): string {
-  switch (key) {
-    case "online":
-      return "Online & ready";
-    case "on_trip":
-      return "On trip";
-    case "idle":
-      return "Idle";
-    case "offline":
-      return "Offline / last seen";
-    default:
-      return "Unknown";
-  }
-}
-
-function statusDotColor(key: DriverStatusKey): string {
-  switch (key) {
-    case "online":
-      return "bg-emerald-500";
-    case "on_trip":
-      return "bg-amber-500";
-    case "idle":
-      return "bg-sky-400";
-    case "offline":
-      return "bg-gray-400";
-    default:
-      return "bg-gray-300";
-  }
-}
-
-function statusChipColor(key: DriverStatusKey): string {
-  switch (key) {
-    case "online":
-      return "bg-emerald-50 text-emerald-700 border border-emerald-200";
-    case "on_trip":
-      return "bg-amber-50 text-amber-700 border border-amber-200";
-    case "idle":
-      return "bg-sky-50 text-sky-700 border border-sky-200";
-    case "offline":
-      return "bg-gray-50 text-gray-600 border border-gray-200";
-    default:
-      return "bg-gray-50 text-gray-600 border border-gray-200";
-  }
-}
-
-function normalizeTripStatus(raw: string | null): TripStatus {
-  const s = (raw || "").toLowerCase();
-  if (s === "assigned") return "assigned";
-  if (s === "on_trip" || s === "on-trip" || s === "on trip") return "on_trip";
-  return "new";
-}
-
-function minutesAgo(created_at: string | null): number | null {
-  if (!created_at) return null;
-  const t = new Date(created_at).getTime();
-  if (Number.isNaN(t)) return null;
-  const diffMs = Date.now() - t;
-  const diffMin = Math.floor(diffMs / (1000 * 60));
-  return diffMin < 0 ? 0 : diffMin;
-}
+type PendingResponse =
+  | {
+      ok: true;
+      bookings: Booking[];
+    }
+  | {
+      ok: false;
+      error: string;
+      message?: string;
+    };
 
 export default function DispatchPage() {
-  const [drivers, setDrivers] = useState<DispatchRow[]>([]);
-  const [loadingDrivers, setLoadingDrivers] = useState(true);
-  const [driverError, setDriverError] = useState<string | null>(null);
-  const [lastUpdatedDrivers, setLastUpdatedDrivers] = useState<string | null>(
-    null
-  );
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [lastReload, setLastReload] = useState<Date | null>(null);
 
-  const [trips, setTrips] = useState<TripRow[]>([]);
-  const [loadingTrips, setLoadingTrips] = useState(true);
-  const [tripError, setTripError] = useState<string | null>(null);
-  const [lastUpdatedTrips, setLastUpdatedTrips] = useState<string | null>(null);
+  const loadPending = useCallback(async () => {
+    setLoading(true);
+    setErrorText(null);
 
-  const [selectedTrip, setSelectedTrip] = useState<TripRow | null>(null);
-  const [selectedDriver, setSelectedDriver] = useState<DispatchRow | null>(null);
-  const [assigning, setAssigning] = useState(false);
-
-  async function fetchDrivers() {
     try {
-      setDriverError(null);
-      const res = await fetch("/api/dispatch/overview", {
+      const res = await fetch("/api/admin/livetrips/pending", {
         method: "GET",
         cache: "no-store",
       });
-      const data: ApiDriversResponse = await res.json();
-      if (!res.ok || data.ok === false) {
+
+      const data: PendingResponse = await res.json();
+
+      if (!res.ok || !("ok" in data) || data.ok === false) {
         const msg =
-          (data as any).message ||
-          (data as any).error ||
-          "Failed to load JRidah list";
-        setDriverError(msg);
-        return;
-      }
-      const rows = (data as any).rows ?? [];
-      setDrivers(rows);
-      setLastUpdatedDrivers(new Date().toLocaleTimeString());
-    } catch (err) {
-      console.error("Error fetching drivers:", err);
-      setDriverError("Unexpected error while loading JRidah list");
-    } finally {
-      setLoadingDrivers(false);
-    }
-  }
-
-  async function fetchTrips() {
-    try {
-      setTripError(null);
-      const res = await fetch("/api/dispatch/trips", {
-        method: "GET",
-        cache: "no-store",
-      });
-      const data: ApiTripsResponse = await res.json();
-      if (!res.ok || data.ok === false) {
-        const msg =
-          (data as any).message ||
-          (data as any).error ||
-          "Failed to load trip queue";
-        setTripError(msg);
-        return;
-      }
-      const rows = (data as any).rows ?? [];
-      setTrips(rows);
-      setLastUpdatedTrips(new Date().toLocaleTimeString());
-    } catch (err) {
-      console.error("Error fetching trips:", err);
-      setTripError("Unexpected error while loading trip queue");
-    } finally {
-      setLoadingTrips(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchDrivers();
-    fetchTrips();
-
-    const interval = setInterval(() => {
-      fetchDrivers();
-      fetchTrips();
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const driverSummary = useMemo(() => {
-    const base = {
-      online: 0,
-      on_trip: 0,
-      idle: 0,
-      offline: 0,
-      unknown: 0,
-    };
-    for (const d of drivers) {
-      const key = normalizeDriverStatus(d.driver_status);
-      (base as any)[key] = (base as any)[key] + 1;
-    }
-    return base;
-  }, [drivers]);
-
-  const activeTripsCount = useMemo(
-    () =>
-      trips.filter((t) => normalizeTripStatus(t.status) !== "new").length,
-    [trips]
-  );
-  const pendingCount = useMemo(
-    () =>
-      trips.filter((t) => normalizeTripStatus(t.status) === "new").length,
-    [trips]
-  );
-  const assignedCount = useMemo(
-    () =>
-      trips.filter((t) => normalizeTripStatus(t.status) === "assigned").length,
-    [trips]
-  );
-
-  async function handleAssignClick() {
-    if (!selectedTrip || !selectedDriver) {
-      alert("Pick a trip on the left and a JRidah on the right first.");
-      return;
-    }
-
-    if (!selectedTrip.booking_code) {
-      alert("Selected trip is missing booking_code.");
-      return;
-    }
-    if (!selectedDriver.driver_id) {
-      alert("Selected driver is missing driver_id in dispatch_rides_view.");
-      return;
-    }
-
-    try {
-      setAssigning(true);
-      const res = await fetch("/api/dispatch/assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingCode: selectedTrip.booking_code,
-          driverId: selectedDriver.driver_id,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.ok === false) {
-        alert(
-          "Assign failed: " +
-            (data.message || data.error || res.statusText || "Unknown error")
-        );
+          (data as any)?.message ??
+          (data as any)?.error ??
+          `Request failed with status ${res.status}`;
+        setErrorText(`Failed to load pending bookings: ${msg}`);
+        setBookings([]);
         return;
       }
 
-      await fetchTrips();
-
-      alert(
-        `Assigned ${selectedTrip.booking_code} to ${
-          selectedDriver.driver_name || selectedDriver.callsign || "JRidah"
+      setBookings(data.bookings ?? []);
+      setLastReload(new Date());
+    } catch (err: any) {
+      setErrorText(
+        `Server error while fetching pending bookings: ${
+          err?.message ?? "Unknown error"
         }`
       );
-    } catch (err) {
-      console.error("Assign error:", err);
-      alert("Unexpected error while assigning. Check console / logs.");
+      setBookings([]);
     } finally {
-      setAssigning(false);
+      setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
+
+  const handleAfterAssign = useCallback(() => {
+    // After assigning, refresh pending list
+    loadPending();
+  }, [loadPending]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+    <main className="p-4 md:p-6 lg:p-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* HEADER */}
+        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
+            <h1 className="text-xl md:text-2xl font-semibold">
               JRide Dispatch Console
             </h1>
-            <p className="text-xs md:text-sm text-slate-500">
-              Real-time control for trip assignment and JRidah coordination.
+            <p className="text-sm text-gray-600">
+              This is the main screen for dispatchers to manage pending rides
+              and assign the nearest online driver using{" "}
+              <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">
+                /api/rides/assign-nearest/latest
+              </code>
+              .
             </p>
           </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Live connection (demo layout)
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={loadPending}
+              disabled={loading}
+              className="px-3 py-2 rounded-md border text-sm font-medium
+                         disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? "Refreshing..." : "Refresh Pending"}
+            </button>
+
+            <AssignNearestButton onAfterAction={handleAfterAssign} />
+          </div>
+        </header>
+
+        {/* ERRORS */}
+        {errorText && (
+          <div className="border border-red-200 bg-red-50 text-red-700 text-sm rounded-md px-3 py-2">
+            {errorText}
+          </div>
+        )}
+
+        {/* PENDING TABLE */}
+        <section className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-medium">
+              Pending Bookings (status = &apos;pending&apos; or
+              &apos;searching&apos;, no assigned driver)
+            </h2>
+            <span className="text-xs text-gray-500">
+              {lastReload
+                ? `Last reload: ${lastReload.toLocaleTimeString()}`
+                : "Not loaded yet"}
             </span>
-            {lastUpdatedDrivers && (
-              <span className="hidden md:inline text-[11px]">
-                Last updated: {lastUpdatedDrivers}
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-4 space-y-3">
-        {/* Summary chips */}
-        <div className="flex flex-wrap gap-2 text-xs font-medium">
-          <div className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Online: {driverSummary.online}
-          </div>
-          <div className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1">
-            <span className="h-2 w-2 rounded-full bg-amber-500" />
-            On trip: {driverSummary.on_trip}
-          </div>
-          <div className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1">
-            <span className="h-2 w-2 rounded-full bg-sky-400" />
-            Idle: {driverSummary.idle}
-          </div>
-          <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1">
-            <span className="h-2 w-2 rounded-full bg-slate-400" />
-            Offline: {driverSummary.offline}
           </div>
 
-          <div className="ml-auto inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-slate-600">
-            Active trips: {activeTripsCount}
-          </div>
-        </div>
-
-        {/* Main layout: trips / assignment / drivers */}
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1.8fr)_minmax(0,1.35fr)]">
-          {/* Trip queue */}
-          <section className="bg-white border border-slate-100 rounded-2xl shadow-sm flex flex-col">
-            <header className="px-4 pt-4 pb-2 border-b border-slate-100">
-              <div className="flex items-center justify-between text-xs">
-                <div>
-                  <div className="font-semibold text-slate-800">Trip queue</div>
-                  <div className="text-[11px] text-slate-500">
-                    Pending: {pendingCount} · Assigned: {assignedCount}
-                  </div>
-                </div>
-                {lastUpdatedTrips && (
-                  <div className="text-[10px] text-slate-400">
-                    Trips updated: {lastUpdatedTrips}
-                  </div>
-                )}
-              </div>
-              <div className="mt-3">
-                <input
-                  type="text"
-                  placeholder="Search trips by ID, rider, pickup..."
-                  className="w-full rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
-                />
-              </div>
-            </header>
-
-            {tripError && (
-              <div className="px-4 pt-2 text-[11px] text-red-600">
-                Error: {tripError}
-              </div>
-            )}
-            {loadingTrips && !tripError && (
-              <div className="px-4 pt-2 text-[11px] text-slate-500">
-                Loading trips…
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-3 text-xs">
-              {/* New requests */}
-              <div>
-                <div className="px-2 pb-1 text-[11px] font-semibold text-slate-500">
-                  New requests
-                </div>
-                <div className="space-y-2">
-                  {trips
-                    .filter((t) => normalizeTripStatus(t.status) === "new")
-                    .map((trip) => {
-                      const mins = minutesAgo(trip.created_at);
-                      return (
-                        <button
-                          key={trip.id}
-                          onClick={() => setSelectedTrip(trip)}
-                          className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                            selectedTrip?.id === trip.id
-                              ? "border-amber-400 bg-amber-50"
-                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-[11px] text-slate-700">
-                              {trip.booking_code}
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {mins !== null ? `${mins} min ago` : "-"}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-slate-700">
-                            {trip.passenger_name}
-                          </div>
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            From: {trip.from_label}
-                            <br />
-                            To: {trip.to_label}
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-
-              {/* Assigned */}
-              <div>
-                <div className="px-2 pb-1 text-[11px] font-semibold text-slate-500">
-                  Assigned / on the way
-                </div>
-                <div className="space-y-2">
-                  {trips
-                    .filter((t) => normalizeTripStatus(t.status) === "assigned")
-                    .map((trip) => {
-                      const mins = minutesAgo(trip.created_at);
-                      return (
-                        <button
-                          key={trip.id}
-                          onClick={() => setSelectedTrip(trip)}
-                          className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                            selectedTrip?.id === trip.id
-                              ? "border-sky-400 bg-sky-50"
-                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-[11px] text-slate-700">
-                              {trip.booking_code}
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {mins !== null ? `${mins} min ago` : "-"}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-slate-700">
-                            {trip.passenger_name}
-                          </div>
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            From: {trip.from_label}
-                            <br />
-                            To: {trip.to_label}
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-
-              {/* On trip */}
-              <div>
-                <div className="px-2 pb-1 text-[11px] font-semibold text-slate-500">
-                  On trip
-                </div>
-                <div className="space-y-2">
-                  {trips
-                    .filter((t) => normalizeTripStatus(t.status) === "on_trip")
-                    .map((trip) => {
-                      const mins = minutesAgo(trip.created_at);
-                      return (
-                        <button
-                          key={trip.id}
-                          onClick={() => setSelectedTrip(trip)}
-                          className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                            selectedTrip?.id === trip.id
-                              ? "border-emerald-400 bg-emerald-50"
-                              : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-[11px] text-slate-700">
-                              {trip.booking_code}
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {mins !== null ? `${mins} min ago` : "-"}
-                            </span>
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-slate-700">
-                            {trip.passenger_name}
-                          </div>
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            From: {trip.from_label}
-                            <br />
-                            To: {trip.to_label}
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Assignment panel */}
-          <section className="bg-white border border-slate-100 rounded-2xl shadow-sm flex flex-col">
-            <header className="px-4 pt-4 pb-2 border-b border-slate-100 flex items-center justify-between text-xs">
-              <div className="font-semibold text-slate-800">Assignment panel</div>
-              <button
-                onClick={handleAssignClick}
-                disabled={!selectedTrip || !selectedDriver || assigning}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
-                  !selectedTrip || !selectedDriver || assigning
-                    ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                    : "bg-amber-500 text-white hover:bg-amber-600"
-                }`}
-              >
-                {assigning ? "Assigning..." : "Assign trip"}
-              </button>
-            </header>
-
-            <div className="px-4 py-3 grid gap-3 text-xs md:grid-cols-2 border-b border-slate-100">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-[11px] font-semibold text-slate-600 mb-1">
-                  Selected trip
-                </div>
-                {selectedTrip ? (
-                  <div className="space-y-1 text-[11px]">
-                    <div className="font-semibold text-slate-800">
-                      {selectedTrip.booking_code} · {selectedTrip.passenger_name}
-                    </div>
-                    <div className="text-slate-600">
-                      From: {selectedTrip.from_label}
-                      <br />
-                      To: {selectedTrip.to_label}
-                    </div>
-                    {selectedTrip.town && (
-                      <div className="text-slate-500">
-                        Town: {selectedTrip.town}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-slate-500">
-                    Click a trip on the left to view its details and prepare for
-                    assignment.
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-[11px] font-semibold text-slate-600 mb-1">
-                  Selected JRidah
-                </div>
-                {selectedDriver ? (
-                  <div className="space-y-1 text-[11px]">
-                    <div className="font-semibold text-slate-800">
-                      {selectedDriver.driver_name ||
-                        selectedDriver.callsign ||
-                        "JRidah"}
-                    </div>
-                    <div className="text-slate-600 text-[11px]">
-                      Status:{" "}
-                      {statusLabel(
-                        normalizeDriverStatus(selectedDriver.driver_status)
-                      )}
-                    </div>
-                    {selectedDriver.municipality && (
-                      <div className="text-slate-500 text-[11px]">
-                        Area: {selectedDriver.municipality}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-slate-500">
-                    Click a driver on the right to select them for this assignment.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Map placeholder */}
-            <div className="flex-1 px-4 pb-4 pt-3">
-              <div className="h-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-[11px] text-slate-500">
-                <div className="uppercase tracking-wide text-[10px] text-slate-400 mb-1">
-                  Operational map
-                </div>
-                <p className="max-w-xs text-center">
-                  This box is a placeholder for the live Mapbox view. Later, mount
-                  your LiveDriverMap component here and center on the selected trip
-                  pickup and nearby JRidahs.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* JRidah list */}
-          <section className="bg-white border border-slate-100 rounded-2xl shadow-sm flex flex-col">
-            <header className="px-4 pt-4 pb-2 border-b border-slate-100 flex items-center justify-between text-xs">
-              <div>
-                <div className="font-semibold text-slate-800">JRidah list</div>
-                <div className="text-[11px] text-slate-500">
-                  {drivers.length} drivers
-                </div>
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Focus area: <span className="font-semibold">All municipalities</span>
-              </div>
-            </header>
-
-            <div className="px-4 pt-3">
-              <input
-                type="text"
-                placeholder="Search by name, ID, callsign..."
-                className="w-full rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
-              />
-            </div>
-
-            {driverError && (
-              <div className="px-4 pt-2 text-[11px] text-red-600">
-                Error: {driverError}
-              </div>
-            )}
-            {loadingDrivers && !driverError && (
-              <div className="px-4 pt-3 text-[11px] text-slate-500">
-                Loading JRidah list…
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-2 text-xs">
-              {drivers.length === 0 && !loadingDrivers && !driverError && (
-                <div className="px-3 py-2 text-[11px] text-slate-500 border border-dashed border-slate-200 rounded-xl">
-                  No drivers in dispatch_rides_view yet. Once driver_locations has
-                  rows, they will appear here.
-                </div>
-              )}
-
-              {drivers.map((d, index) => {
-                const key = normalizeDriverStatus(d.driver_status);
-                const isSelected =
-                  selectedDriver?.driver_id === d.driver_id &&
-                  selectedDriver?.driver_lat === d.driver_lat &&
-                  selectedDriver?.driver_lng === d.driver_lng;
-
-                return (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedDriver(d)}
-                    className={`w-full text-left rounded-xl border px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
-                      isSelected
-                        ? "border-amber-400 bg-amber-50"
-                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full border border-white shadow-sm inline-block">
-                          <span
-                            className={`block h-2 w-2 rounded-full ${statusDotColor(
-                              key
-                            )}`}
-                          />
-                        </span>
-                        <span className="font-semibold text-[12px] text-slate-800">
-                          {d.driver_name || d.callsign || "JRidah"}
-                        </span>
-                      </div>
-                      {d.callsign && (
-                        <span className="text-[10px] text-slate-500">
-                          {d.callsign} • {d.municipality ?? ""}
-                        </span>
-                      )}
-                      <span className="text-[10px] text-slate-400">
-                        Lat: {d.driver_lat ?? "-"} · Lng: {d.driver_lng ?? "-"}
-                      </span>
-                    </div>
-
-                    <div
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusChipColor(
-                        key
-                      )}`}
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    #
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Booking Code
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Status
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Assigned Driver
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Created At
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Pickup (Lat, Lng)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings.length === 0 && !loading && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-6 text-center text-xs text-gray-500"
                     >
-                      {statusLabel(key)}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                      No pending bookings found.
+                    </td>
+                  </tr>
+                )}
 
-            <footer className="border-t border-slate-100 px-4 py-3 text-[10px] text-slate-500">
-              <div>Dispatcher shortcuts (future idea)</div>
-              <ul className="mt-1 space-y-0.5">
-                <li>• Click trip → centers map &amp; shows best JRidahs.</li>
-                <li>• Click driver → selects for assignment.</li>
-                <li>
-                  • Assign trip button → call your Supabase RPC (assign_nearest /
-                  etc.).
-                </li>
-              </ul>
-            </footer>
-          </section>
-        </div>
-      </main>
-    </div>
+                {loading && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-6 text-center text-xs text-gray-500"
+                    >
+                      Loading pending bookings...
+                    </td>
+                  </tr>
+                )}
+
+                {!loading &&
+                  bookings.map((b, index) => (
+                    <tr
+                      key={b.id}
+                      className="border-t last:border-b hover:bg-gray-50"
+                    >
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {index + 1}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-800">
+                        {b.booking_code ?? b.id}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {b.status}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {b.assigned_driver_id ?? (
+                          <span className="text-gray-400 italic">
+                            none
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {new Date(b.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {b.pickup_lat != null && b.pickup_lng != null ? (
+                          <>
+                            {b.pickup_lat.toFixed(5)},{" "}
+                            {b.pickup_lng.toFixed(5)}
+                          </>
+                        ) : (
+                          <span className="text-gray-400 italic">
+                            n/a
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* NOTES / FUTURE MAP PANEL */}
+        <section className="border rounded-lg p-4 space-y-2">
+          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+            Notes
+          </h3>
+          <ul className="text-xs text-gray-600 list-disc pl-4 space-y-1">
+            <li>
+              This console is focused on{" "}
+              <strong>pending rides and assignment</strong>. It uses the same
+              backend as your admin live trips assign page.
+            </li>
+            <li>
+              The Assign Nearest button calls the Supabase function{" "}
+              <code className="bg-gray-100 px-1 rounded">
+                assign_nearest_driver_v2()
+              </code>{" "}
+              through{" "}
+              <code className="bg-gray-100 px-1 rounded">
+                /api/rides/assign-nearest/latest
+              </code>
+              .
+            </li>
+            <li>
+              Next upgrade: integrate the map panel and full trip status flow
+              (Accepted → Arrived → Pickup → Dropoff → Completed) on this same
+              screen.
+            </li>
+          </ul>
+        </section>
+      </div>
+    </main>
   );
 }
