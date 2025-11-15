@@ -13,10 +13,12 @@ type Booking = {
   pickup_lng: number | null;
 };
 
-type PendingResponse =
+type SummaryResponse =
   | {
       ok: true;
-      bookings: Booking[];
+      pending: Booking[];
+      active: Booking[];
+      completed: Booking[];
     }
   | {
       ok: false;
@@ -24,56 +26,145 @@ type PendingResponse =
       message?: string;
     };
 
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  searching: "Searching",
+  assigned: "Assigned",
+  driver_accepted: "Driver Accepted",
+  driver_arrived: "Driver Arrived",
+  passenger_onboard: "Passenger Onboard",
+  in_transit: "In Transit",
+  completed: "Completed",
+};
+
+function getStatusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
+// Determine the next status in your B-flow and corresponding button label
+function getNextStatusAndLabel(
+  currentStatus: string
+): { nextStatus: string; label: string } | null {
+  switch (currentStatus) {
+    case "assigned":
+      return { nextStatus: "driver_accepted", label: "Mark Driver Accepted" };
+    case "driver_accepted":
+      return { nextStatus: "driver_arrived", label: "Mark Arrived" };
+    case "driver_arrived":
+      return { nextStatus: "passenger_onboard", label: "Passenger Onboard" };
+    case "passenger_onboard":
+      return { nextStatus: "in_transit", label: "Start Trip" };
+    case "in_transit":
+      return { nextStatus: "completed", label: "Complete Trip" };
+    default:
+      return null;
+  }
+}
+
 export default function DispatchPage() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [pending, setPending] = useState<Booking[]>([]);
+  const [active, setActive] = useState<Booking[]>([]);
+  const [completed, setCompleted] = useState<Booking[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastReload, setLastReload] = useState<Date | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const loadPending = useCallback(async () => {
+  const loadSummary = useCallback(async () => {
     setLoading(true);
     setErrorText(null);
 
     try {
-      const res = await fetch("/api/admin/livetrips/pending", {
+      const res = await fetch("/api/admin/livetrips/summary", {
         method: "GET",
         cache: "no-store",
       });
 
-      const data: PendingResponse = await res.json();
+      const data: SummaryResponse = await res.json();
 
       if (!res.ok || !("ok" in data) || data.ok === false) {
         const msg =
           (data as any)?.message ??
           (data as any)?.error ??
           `Request failed with status ${res.status}`;
-        setErrorText(`Failed to load pending bookings: ${msg}`);
-        setBookings([]);
+        setErrorText(`Failed to load trips: ${msg}`);
+        setPending([]);
+        setActive([]);
+        setCompleted([]);
         return;
       }
 
-      setBookings(data.bookings ?? []);
+      setPending(data.pending ?? []);
+      setActive(data.active ?? []);
+      setCompleted(data.completed ?? []);
       setLastReload(new Date());
     } catch (err: any) {
       setErrorText(
-        `Server error while fetching pending bookings: ${
+        `Server error while fetching trips: ${
           err?.message ?? "Unknown error"
         }`
       );
-      setBookings([]);
+      setPending([]);
+      setActive([]);
+      setCompleted([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadPending();
-  }, [loadPending]);
+    loadSummary();
+  }, [loadSummary]);
 
   const handleAfterAssign = useCallback(() => {
-    // After assigning, refresh pending list
-    loadPending();
-  }, [loadPending]);
+    // After assigning nearest driver, reload all lists
+    loadSummary();
+  }, [loadSummary]);
+
+  const handleAdvanceStatus = useCallback(
+    async (booking: Booking) => {
+      const nextInfo = getNextStatusAndLabel(booking.status);
+      if (!nextInfo) return;
+
+      setUpdatingId(booking.id);
+
+      try {
+        const res = await fetch("/api/admin/livetrips/update-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bookingId: booking.id,
+            nextStatus: nextInfo.nextStatus,
+          }),
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.ok) {
+          const msg =
+            data?.message ||
+            data?.error ||
+            `Status update failed with status ${res.status}`;
+          setErrorText(`Failed to update status: ${msg}`);
+          return;
+        }
+
+        // Reload lists after successful update
+        await loadSummary();
+      } catch (err: any) {
+        setErrorText(
+          `Server error while updating status: ${
+            err?.message ?? "Unknown error"
+          }`
+        );
+      } finally {
+        setUpdatingId(null);
+      }
+    },
+    [loadSummary]
+  );
 
   return (
     <main className="p-4 md:p-6 lg:p-8">
@@ -85,10 +176,12 @@ export default function DispatchPage() {
               JRide Dispatch Console
             </h1>
             <p className="text-sm text-gray-600">
-              This is the main screen for dispatchers to manage pending rides
-              and assign the nearest online driver using{" "}
+              Live console for dispatchers to manage the ride queue, active
+              trips, and completions. Uses the B-flow statuses:
+              {" "}
               <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">
-                /api/rides/assign-nearest/latest
+                assigned → driver_accepted → driver_arrived → passenger_onboard
+                → in_transit → completed
               </code>
               .
             </p>
@@ -97,31 +190,30 @@ export default function DispatchPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={loadPending}
+              onClick={loadSummary}
               disabled={loading}
               className="px-3 py-2 rounded-md border text-sm font-medium
                          disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? "Refreshing..." : "Refresh Pending"}
+              {loading ? "Refreshing..." : "Refresh All"}
             </button>
 
             <AssignNearestButton onAfterAction={handleAfterAssign} />
           </div>
         </header>
 
-        {/* ERRORS */}
+        {/* ERROR BANNER */}
         {errorText && (
           <div className="border border-red-200 bg-red-50 text-red-700 text-sm rounded-md px-3 py-2">
             {errorText}
           </div>
         )}
 
-        {/* PENDING TABLE */}
+        {/* PENDING QUEUE */}
         <section className="border rounded-lg overflow-hidden">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
             <h2 className="text-sm font-medium">
-              Pending Bookings (status = &apos;pending&apos; or
-              &apos;searching&apos;, no assigned driver)
+              Pending Queue (status = &apos;pending&apos; or &apos;searching&apos;, no driver yet)
             </h2>
             <span className="text-xs text-gray-500">
               {lastReload
@@ -144,9 +236,6 @@ export default function DispatchPage() {
                     Status
                   </th>
                   <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
-                    Assigned Driver
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
                     Created At
                   </th>
                   <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
@@ -155,13 +244,13 @@ export default function DispatchPage() {
                 </tr>
               </thead>
               <tbody>
-                {bookings.length === 0 && !loading && (
+                {pending.length === 0 && !loading && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="px-3 py-6 text-center text-xs text-gray-500"
                     >
-                      No pending bookings found.
+                      No pending bookings in queue.
                     </td>
                   </tr>
                 )}
@@ -169,16 +258,16 @@ export default function DispatchPage() {
                 {loading && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="px-3 py-6 text-center text-xs text-gray-500"
                     >
-                      Loading pending bookings...
+                      Loading trips...
                     </td>
                   </tr>
                 )}
 
                 {!loading &&
-                  bookings.map((b, index) => (
+                  pending.map((b, index) => (
                     <tr
                       key={b.id}
                       className="border-t last:border-b hover:bg-gray-50"
@@ -190,14 +279,7 @@ export default function DispatchPage() {
                         {b.booking_code ?? b.id}
                       </td>
                       <td className="px-3 py-2 align-top text-xs text-gray-700">
-                        {b.status}
-                      </td>
-                      <td className="px-3 py-2 align-top text-xs text-gray-700">
-                        {b.assigned_driver_id ?? (
-                          <span className="text-gray-400 italic">
-                            none
-                          </span>
-                        )}
+                        {getStatusLabel(b.status)}
                       </td>
                       <td className="px-3 py-2 align-top text-xs text-gray-700">
                         {new Date(b.created_at).toLocaleString()}
@@ -209,9 +291,7 @@ export default function DispatchPage() {
                             {b.pickup_lng.toFixed(5)}
                           </>
                         ) : (
-                          <span className="text-gray-400 italic">
-                            n/a
-                          </span>
+                          <span className="text-gray-400 italic">n/a</span>
                         )}
                       </td>
                     </tr>
@@ -221,34 +301,190 @@ export default function DispatchPage() {
           </div>
         </section>
 
-        {/* NOTES / FUTURE MAP PANEL */}
-        <section className="border rounded-lg p-4 space-y-2">
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-            Notes
-          </h3>
-          <ul className="text-xs text-gray-600 list-disc pl-4 space-y-1">
-            <li>
-              This console is focused on{" "}
-              <strong>pending rides and assignment</strong>. It uses the same
-              backend as your admin live trips assign page.
-            </li>
-            <li>
-              The Assign Nearest button calls the Supabase function{" "}
-              <code className="bg-gray-100 px-1 rounded">
-                assign_nearest_driver_v2()
-              </code>{" "}
-              through{" "}
-              <code className="bg-gray-100 px-1 rounded">
-                /api/rides/assign-nearest/latest
-              </code>
-              .
-            </li>
-            <li>
-              Next upgrade: integrate the map panel and full trip status flow
-              (Accepted → Arrived → Pickup → Dropoff → Completed) on this same
-              screen.
-            </li>
-          </ul>
+        {/* ACTIVE TRIPS */}
+        <section className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-medium">
+              Active Trips (assigned → in_transit)
+            </h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    #
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Booking Code
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Status
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Driver
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Created At
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {active.length === 0 && !loading && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-6 text-center text-xs text-gray-500"
+                    >
+                      No active trips at the moment.
+                    </td>
+                  </tr>
+                )}
+
+                {loading && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-6 text-center text-xs text-gray-500"
+                    >
+                      Loading trips...
+                    </td>
+                  </tr>
+                )}
+
+                {!loading &&
+                  active.map((b, index) => {
+                    const nextInfo = getNextStatusAndLabel(b.status);
+
+                    return (
+                      <tr
+                        key={b.id}
+                        className="border-t last:border-b hover:bg-gray-50"
+                      >
+                        <td className="px-3 py-2 align-top text-xs text-gray-700">
+                          {index + 1}
+                        </td>
+                        <td className="px-3 py-2 align-top text-xs text-gray-800">
+                          {b.booking_code ?? b.id}
+                        </td>
+                        <td className="px-3 py-2 align-top text-xs text-gray-700">
+                          {getStatusLabel(b.status)}
+                        </td>
+                        <td className="px-3 py-2 align-top text-xs text-gray-700">
+                          {b.assigned_driver_id ?? (
+                            <span className="text-gray-400 italic">
+                              unknown
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 align-top text-xs text-gray-700">
+                          {new Date(b.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 align-top text-xs text-gray-700">
+                          {nextInfo ? (
+                            <button
+                              type="button"
+                              onClick={() => handleAdvanceStatus(b)}
+                              disabled={updatingId === b.id}
+                              className="px-3 py-1 rounded-md border text-xs font-medium
+                                         disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                              {updatingId === b.id
+                                ? "Updating..."
+                                : nextInfo.label}
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 italic">
+                              No action
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* COMPLETED TODAY */}
+        <section className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+            <h2 className="text-sm font-medium">Completed Trips (today)</h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    #
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Booking Code
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Driver
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-xs text-gray-600">
+                    Completed At
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {completed.length === 0 && !loading && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-3 py-6 text-center text-xs text-gray-500"
+                    >
+                      No trips completed today yet.
+                    </td>
+                  </tr>
+                )}
+
+                {loading && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-3 py-6 text-center text-xs text-gray-500"
+                    >
+                      Loading trips...
+                    </td>
+                  </tr>
+                )}
+
+                {!loading &&
+                  completed.map((b, index) => (
+                    <tr
+                      key={b.id}
+                      className="border-t last:border-b hover:bg-gray-50"
+                    >
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {index + 1}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-800">
+                        {b.booking_code ?? b.id}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {b.assigned_driver_id ?? (
+                          <span className="text-gray-400 italic">
+                            unknown
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-gray-700">
+                        {new Date(b.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
     </main>
