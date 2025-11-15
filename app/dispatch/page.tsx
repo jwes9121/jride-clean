@@ -245,15 +245,18 @@ export default function DispatchPage() {
   );
 
   async function handleAssignClick() {
-    if (!selectedTrip || !selectedDriver) return;
+    if (!selectedTrip || !selectedDriver) {
+      alert("Pick a trip on the left and a JRidah on the right first.");
+      return;
+    }
 
     if (!selectedTrip.booking_code) {
-      alert("Selected trip has no booking_code.");
+      alert("Selected trip is missing booking_code.");
       return;
     }
 
     if (!selectedDriver.driver_id) {
-      alert("Selected driver has no driver_id in dispatch_rides_view.");
+      alert("Selected driver is missing driver_id in dispatch_rides_view.");
       return;
     }
 

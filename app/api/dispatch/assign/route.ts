@@ -1,45 +1,38 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+﻿// app/api/dispatch/assign/route.ts
+import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { bookingCode, driverId } = body;
+    const supabase = createRouteHandlerClient({ cookies });
+    const { booking_id, driver_id } = await req.json();
 
-    if (!bookingCode || !driverId) {
+    if (!booking_id || !driver_id) {
       return NextResponse.json(
-        { ok: false, error: "Missing bookingCode or driverId" },
+        { ok: false, error: "Missing booking_id or driver_id" },
         { status: 400 }
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const { data, error } = await supabase
+    // Update bookings table
+    const { error } = await supabase
       .from("bookings")
       .update({
+        assigned_driver_id: driver_id,
         status: "assigned",
-        assigned_driver_id: driverId,
         updated_at: new Date().toISOString(),
       })
-      .eq("booking_code", bookingCode)
-      .select();
+      .eq("booking_id", booking_id);
 
     if (error) {
-      console.error("assign error:", error);
-      return NextResponse.json(
-        { ok: false, error: error.message ?? "Failed update" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, data });
-  } catch (err: any) {
-    console.error("assign try/catch:", err);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err?.message ?? "Unexpected error" },
+      { ok: false, error: (err as any).message },
       { status: 500 }
     );
   }
