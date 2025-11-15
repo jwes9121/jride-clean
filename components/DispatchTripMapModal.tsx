@@ -44,29 +44,42 @@ export function DispatchTripMapModal({
   const markersRef = useRef<any[]>([]);
 
   useEffect(() => {
-    if (!open) return;
-    if (!mapContainerRef.current) return;
-
-    if (!mapRef.current) {
-      const center: [number, number] = [121.1100, 16.8219];
-
-      mapRef.current = new mapboxgl.Map({
-        container: mapContainerRef.current,
-        style: "mapbox://styles/mapbox/streets-v11",
-        center,
-        zoom: 13,
-      });
-
-      mapRef.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+    // If modal is closed or no booking, destroy map and exit
+    if (!open || !booking) {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+      return;
     }
 
-    const map = mapRef.current;
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    const container = mapContainerRef.current;
+    if (!container) return;
+
+    // Always create a NEW map instance each time we open the modal.
+    // This avoids the "blank map in modal" issue.
+    const center: [number, number] = [
+      booking.pickup_lng ?? 121.1100,
+      booking.pickup_lat ?? 16.8219,
+    ];
+
+    const map = new mapboxgl.Map({
+      container,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center,
+      zoom: 13,
+    });
+
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    mapRef.current = map;
 
     const bounds = new mapboxgl.LngLatBounds();
 
-    if (booking && booking.pickup_lat != null && booking.pickup_lng != null) {
+    // Pickup marker
+    if (booking.pickup_lat != null && booking.pickup_lng != null) {
       const el = document.createElement("div");
       el.className =
         "rounded-full w-4 h-4 border-2 border-white shadow bg-red-500";
@@ -89,6 +102,7 @@ export function DispatchTripMapModal({
       ]);
     }
 
+    // Driver markers
     drivers.forEach((d) => {
       if (d.lat == null || d.lng == null) return;
 
@@ -114,14 +128,21 @@ export function DispatchTripMapModal({
       bounds.extend([d.lng, d.lat]);
     });
 
+    // Fit bounds if we have at least one point
     if (!bounds.isEmpty()) {
       map.fitBounds(bounds, { padding: 40, maxZoom: 15 });
     }
 
+    // Extra safety: force resize after a short delay in case modal transition affects size
+    setTimeout(() => {
+      map.resize();
+    }, 200);
+
     return () => {
-      // keep map instance for next open, but clear markers
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
+      map.remove();
+      mapRef.current = null;
     };
   }, [open, booking, drivers]);
 
@@ -151,8 +172,17 @@ export function DispatchTripMapModal({
           </button>
         </header>
 
-        <div className="flex-1 min-h-[360px]">
-          <div ref={mapContainerRef} className="w-full h-full" />
+        <div className="flex-1">
+          {booking.pickup_lat == null || booking.pickup_lng == null ? (
+            <div className="h-[400px] flex items-center justify-center text-xs text-gray-500">
+              No pickup coordinates available for this booking.
+            </div>
+          ) : (
+            <div
+              ref={mapContainerRef}
+              className="w-full h-[400px]"
+            />
+          )}
         </div>
       </div>
     </div>
