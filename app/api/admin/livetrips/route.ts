@@ -3,7 +3,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
+    const supabase = supabaseAdmin();
+
+    const { data, error } = await supabase
       .from("bookings")
       .select(
         `

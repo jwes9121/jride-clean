@@ -15,7 +15,9 @@ type RequestBody = {
 };
 
 async function runAssignOrReassign(bookingId: string, action: DispatchActionName) {
-  const { data, error } = await supabaseAdmin.rpc(
+  const supabase = supabaseAdmin();
+
+  const { data, error } = await supabase.rpc(
     "assign_nearest_driver_v2",
     {
       booking_id: bookingId,
@@ -31,7 +33,9 @@ async function runAssignOrReassign(bookingId: string, action: DispatchActionName
 }
 
 async function runStatusUpdate(bookingId: string, status: string) {
-  const { data, error } = await supabaseAdmin
+  const supabase = supabaseAdmin();
+
+  const { data, error } = await supabase
     .from("bookings")
     .update({ status })
     .eq("id", bookingId)
