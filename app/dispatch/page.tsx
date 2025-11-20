@@ -20,8 +20,59 @@ type BookingRow = {
   updated_at: string | null;
 };
 
+type DriverNameMap = Record<string, string>;
+
 function normalizeStatus(status: string | null): string {
   return (status ?? "").toLowerCase();
+}
+
+async function fetchDriverNamesForBookings(
+  bookings: BookingRow[]
+): Promise<DriverNameMap> {
+  const ids = Array.from(
+    new Set(
+      bookings
+        .map((b) => b.assigned_driver_id)
+        .filter((id): id is string => !!id)
+    )
+  );
+
+  if (!ids.length) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from("drivers")
+      .select("*")
+      .in("id", ids);
+
+    if (error || !data) {
+      console.error("DRIVER_NAMES_ERROR", error);
+      return {};
+    }
+
+    const map: DriverNameMap = {};
+    (data as any[]).forEach((row) => {
+      const anyRow: any = row;
+      const label =
+        anyRow.full_name ??
+        anyRow.name ??
+        anyRow.driver_name ??
+        anyRow.display_name ??
+        anyRow.label ??
+        (typeof anyRow.id === "string"
+          ? anyRow.id.substring(0, 8)
+          : String(anyRow.id ?? ""));
+
+      if (anyRow.id && label) {
+        map[String(anyRow.id)] = String(label);
+      }
+    });
+
+    return map;
+  } catch (err) {
+    console.error("DRIVER_NAMES_UNEXPECTED", err);
+    return {};
+  }
 }
 
 export default function DispatchPage() {
@@ -29,6 +80,7 @@ export default function DispatchPage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionBookingId, setActionBookingId] = useState<string | null>(null);
+  const [driverNames, setDriverNames] = useState<DriverNameMap>({});
 
   const loadTrips = async () => {
     setLoading(true);
@@ -54,9 +106,16 @@ export default function DispatchPage() {
       console.error("DB_ERROR", error);
       setErrorMessage(error.message);
       setTrips([]);
-    } else {
-      setTrips((data as BookingRow[]) ?? []);
+      setDriverNames({});
+      setLoading(false);
+      return;
     }
+
+    const bookings = (data as BookingRow[]) ?? [];
+    setTrips(bookings);
+
+    const names = await fetchDriverNamesForBookings(bookings);
+    setDriverNames(names);
 
     setLoading(false);
   };
@@ -117,26 +176,11 @@ export default function DispatchPage() {
 
   useEffect(() => {
     loadTrips();
-
-    const channel = supabase
-      .channel("bookings_dispatch_ui")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookings" },
-        () => {
-          loadTrips();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify_between">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">
           JRide Dispatch – Active / Recent Trips
         </h1>
@@ -180,6 +224,7 @@ export default function DispatchPage() {
               const isCompleted = normStatus === "completed";
               const isCancelled = normStatus === "cancelled";
               const isInactive = isCompleted || isCancelled;
+              const isOnTrip = normStatus === "on_trip";
               const isBusy = actionBookingId === t.id;
 
               let statusClass = "";
@@ -191,6 +236,12 @@ export default function DispatchPage() {
               else if (normStatus === "completed")
                 statusClass = "text-gray-700";
 
+              const driverLabel = t.assigned_driver_id
+                ? driverNames[t.assigned_driver_id] ??
+                  t.assigned_driver_id ??
+                  "—"
+                : "—";
+
               return (
                 <tr key={t.id}>
                   <td className="p-2 border">{t.booking_code}</td>
@@ -201,9 +252,7 @@ export default function DispatchPage() {
                   <td className={`p-2 border font-bold uppercase ${statusClass}`}>
                     {t.status}
                   </td>
-                  <td className="p-2 border">
-                    {t.assigned_driver_id ?? "—"}
-                  </td>
+                  <td className="p-2 border">{driverLabel}</td>
                   <td className="p-2 border">{t.updated_at}</td>
                   <td className="p-2 border space-x-1">
                     {isInactive ? (
@@ -212,13 +261,16 @@ export default function DispatchPage() {
                       </span>
                     ) : (
                       <>
-                        <button
-                          onClick={() => handleAssignNearest(t.id)}
-                          disabled={isBusy}
-                          className="px-2 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-60"
-                        >
-                          Assign
-                        </button>
+                        {/* Hide Assign when already ON_TRIP */}
+                        {!isOnTrip && (
+                          <button
+                            onClick={() => handleAssignNearest(t.id)}
+                            disabled={isBusy}
+                            className="px-2 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-60"
+                          >
+                            Assign
+                          </button>
+                        )}
                         <button
                           onClick={() => handleCancelTrip(t.id)}
                           disabled={isBusy}

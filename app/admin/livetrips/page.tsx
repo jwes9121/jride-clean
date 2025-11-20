@@ -1,7 +1,20 @@
 ﻿"use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 type ActiveTrip = {
   id: string;
@@ -19,8 +32,151 @@ type ActiveTrip = {
   updated_at: string | null;
 };
 
+type DriverNameMap = Record<string, string>;
+
 function normalizeStatus(status: string | null): string {
   return (status ?? "").toLowerCase();
+}
+
+async function fetchDriverNamesForTrips(
+  trips: ActiveTrip[]
+): Promise<DriverNameMap> {
+  const ids = Array.from(
+    new Set(
+      trips
+        .map((t) => t.assigned_driver_id)
+        .filter((id): id is string => !!id)
+    )
+  );
+
+  if (!ids.length) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from("drivers")
+      .select("*")
+      .in("id", ids);
+
+    if (error || !data) {
+      console.error("LIVETRIPS_DRIVER_NAMES_ERROR", error);
+      return {};
+    }
+
+    const map: DriverNameMap = {};
+    (data as any[]).forEach((row) => {
+      const anyRow: any = row;
+      const label =
+        anyRow.full_name ??
+        anyRow.name ??
+        anyRow.driver_name ??
+        anyRow.display_name ??
+        anyRow.label ??
+        (typeof anyRow.id === "string"
+          ? anyRow.id.substring(0, 8)
+          : String(anyRow.id ?? ""));
+      if (anyRow.id && label) {
+        map[String(anyRow.id)] = String(label);
+      }
+    });
+
+    return map;
+  } catch (err) {
+    console.error("LIVETRIPS_DRIVER_NAMES_UNEXPECTED", err);
+    return {};
+  }
+}
+
+function LiveTripsMap({
+  trips,
+  focusedBookingId,
+}: {
+  trips: ActiveTrip[];
+  focusedBookingId?: string;
+}) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!mapContainerRef.current) return;
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    if (!token) {
+      return;
+    }
+
+    const tripsWithCoords = trips.filter(
+      (t) =>
+        typeof t.pickup_lat === "number" &&
+        typeof t.pickup_lng === "number"
+    );
+    if (tripsWithCoords.length === 0) return;
+
+    mapboxgl.accessToken = token;
+
+    const primaryTrip =
+      (focusedBookingId &&
+        tripsWithCoords.find((t) => t.id === focusedBookingId)) ||
+      tripsWithCoords[0];
+
+    const center: [number, number] = [
+      primaryTrip.pickup_lng as number,
+      primaryTrip.pickup_lat as number,
+    ];
+
+    if (!mapRef.current) {
+      mapRef.current = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: "mapbox://styles/mapbox/streets-v11",
+        center,
+        zoom: 13,
+      });
+    } else {
+      mapRef.current.setCenter(center);
+    }
+
+    // Clear old markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    if (!mapRef.current) return;
+
+    tripsWithCoords.forEach((trip) => {
+      const marker = new mapboxgl.Marker()
+        .setLngLat([
+          trip.pickup_lng as number,
+          trip.pickup_lat as number,
+        ])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 12 }).setText(
+            `${trip.booking_code ?? ""} – ${
+              trip.passenger_name ?? ""
+            }`
+          )
+        )
+        .addTo(mapRef.current as mapboxgl.Map);
+
+      markersRef.current.push(marker);
+    });
+  }, [trips, focusedBookingId]);
+
+  const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  if (!token) {
+    return (
+      <div className="mt-4 text-xs text-red-600">
+        Mapbox token missing (NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).
+      </div>
+    );
+  }
+
+  if (!trips.length) return null;
+
+  return (
+    <div className="mt-4 h-96 w-full border rounded">
+      <div ref={mapContainerRef} className="w-full h-full" />
+    </div>
+  );
 }
 
 function LiveTripsInner() {
@@ -30,6 +186,7 @@ function LiveTripsInner() {
   const [trips, setTrips] = useState<ActiveTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [driverNames, setDriverNames] = useState<DriverNameMap>({});
 
   const loadTrips = async () => {
     setLoading(true);
@@ -47,16 +204,22 @@ function LiveTripsInner() {
         console.error("ACTIVE_TRIPS_API_ERROR", text);
         setErrorMessage("Failed to load active trips.");
         setTrips([]);
+        setDriverNames({});
         setLoading(false);
         return;
       }
 
       const json = await res.json();
-      setTrips((json.trips as ActiveTrip[]) ?? []);
+      const tripsData = (json.trips as ActiveTrip[]) ?? [];
+      setTrips(tripsData);
+
+      const names = await fetchDriverNamesForTrips(tripsData);
+      setDriverNames(names);
     } catch (err) {
       console.error("ACTIVE_TRIPS_API_UNEXPECTED", err);
       setErrorMessage("Unexpected error while loading active trips.");
       setTrips([]);
+      setDriverNames({});
     } finally {
       setLoading(false);
     }
@@ -67,7 +230,7 @@ function LiveTripsInner() {
   }, [focusedBookingId]);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Live Trips (Dispatch)</h1>
         <button
@@ -97,7 +260,7 @@ function LiveTripsInner() {
       ) : trips.length === 0 ? (
         <p>No active trips.</p>
       ) : (
-        <div className="space-y-3">
+        <>
           <table className="min-w-full border text-sm">
             <thead>
               <tr className="bg-gray-200">
@@ -122,12 +285,20 @@ function LiveTripsInner() {
                 else if (normStatus === "cancelled")
                   statusClass = "text-red-700";
 
+                const driverLabel = t.assigned_driver_id
+                  ? driverNames[t.assigned_driver_id] ??
+                    t.assigned_driver_id ??
+                    "—"
+                  : "—";
+
                 return (
                   <tr
                     key={t.id}
                     className={isFocused ? "bg-yellow-50" : ""}
                   >
-                    <td className="p-2 border font-mono">{t.booking_code}</td>
+                    <td className="p-2 border font-mono">
+                      {t.booking_code}
+                    </td>
                     <td className="p-2 border">{t.passenger_name}</td>
                     <td className="p-2 border">{t.from_label}</td>
                     <td className="p-2 border">{t.to_label}</td>
@@ -137,9 +308,7 @@ function LiveTripsInner() {
                     >
                       {t.status}
                     </td>
-                    <td className="p-2 border">
-                      {t.assigned_driver_id ?? "—"}
-                    </td>
+                    <td className="p-2 border">{driverLabel}</td>
                     <td className="p-2 border">{t.updated_at}</td>
                   </tr>
                 );
@@ -158,7 +327,12 @@ function LiveTripsInner() {
               highlighted.
             </p>
           </div>
-        </div>
+
+          <LiveTripsMap
+            trips={trips}
+            focusedBookingId={focusedBookingId}
+          />
+        </>
       )}
     </div>
   );
@@ -166,8 +340,10 @@ function LiveTripsInner() {
 
 export default function LiveTripsPage() {
   return (
-    <Suspense fallback={<div className="p-6">Loading live trips...</div>}>
-      <LiveTripsInner />
-    </Suspense>
+    <div className="p-6 space-y-4">
+      <Suspense fallback={<p>Loading live trips...</p>}>
+        <LiveTripsInner />
+      </Suspense>
+    </div>
   );
 }
