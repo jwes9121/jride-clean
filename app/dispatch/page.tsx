@@ -20,10 +20,15 @@ type BookingRow = {
   updated_at: string | null;
 };
 
+function normalizeStatus(status: string | null): string {
+  return (status ?? "").toLowerCase();
+}
+
 export default function DispatchPage() {
   const [trips, setTrips] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionBookingId, setActionBookingId] = useState<string | null>(null);
 
   const loadTrips = async () => {
     setLoading(true);
@@ -56,14 +61,87 @@ export default function DispatchPage() {
     setLoading(false);
   };
 
+  const handleAssignNearest = async (bookingId: string) => {
+    if (!window.confirm("Assign nearest driver to this trip?")) return;
+    setActionBookingId(bookingId);
+
+    try {
+      const res = await fetch("/api/rides/assign-nearest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+
+      if (!res.ok) {
+        console.error("ASSIGN_NEAREST_ERROR", await res.text());
+        alert("Failed to assign nearest driver.");
+      } else {
+        await loadTrips();
+      }
+    } catch (err) {
+      console.error("ASSIGN_NEAREST_ERROR", err);
+      alert("Failed to assign nearest driver.");
+    } finally {
+      setActionBookingId(null);
+    }
+  };
+
+  const handleCancelTrip = async (bookingId: string) => {
+    if (!window.confirm("Mark this trip as CANCELLED?")) return;
+    setActionBookingId(bookingId);
+
+    try {
+      const res = await fetch("/api/rides", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, status: "cancelled" }),
+      });
+
+      if (!res.ok) {
+        console.error("CANCEL_TRIP_ERROR", await res.text());
+        alert("Failed to cancel trip.");
+      } else {
+        await loadTrips();
+      }
+    } catch (err) {
+      console.error("CANCEL_TRIP_ERROR", err);
+      alert("Failed to cancel trip.");
+    } finally {
+      setActionBookingId(null);
+    }
+  };
+
+  const handleViewMap = (bookingId: string) => {
+    // For now just go to livetrips filtered by bookingId.
+    window.location.href = `/admin/livetrips?bookingId=${bookingId}`;
+  };
+
   useEffect(() => {
     loadTrips();
+
+    const channel = supabase
+      .channel("bookings_dispatch_ui")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookings" },
+        () => {
+          // debounce-style reload
+          loadTrips();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">JRide Dispatch – Active / Recent Trips</h1>
+        <h1 className="text-2xl font-bold">
+          JRide Dispatch – Active / Recent Trips
+        </h1>
         <button
           onClick={loadTrips}
           disabled={loading}
@@ -95,21 +173,73 @@ export default function DispatchPage() {
               <th className="p-2 border">Status</th>
               <th className="p-2 border">Driver</th>
               <th className="p-2 border">Updated</th>
+              <th className="p-2 border">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {trips.map((t) => (
-              <tr key={t.id}>
-                <td className="p-2 border">{t.booking_code}</td>
-                <td className="p-2 border">{t.passenger_name}</td>
-                <td className="p-2 border">{t.from_label}</td>
-                <td className="p-2 border">{t.to_label}</td>
-                <td className="p-2 border">{t.town}</td>
-                <td className="p-2 border font-bold uppercase">{t.status}</td>
-                <td className="p-2 border">{t.assigned_driver_id ?? "—"}</td>
-                <td className="p-2 border">{t.updated_at}</td>
-              </tr>
-            ))}
+            {trips.map((t) => {
+              const normStatus = normalizeStatus(t.status);
+              const isCompleted = normStatus === "completed";
+              const isCancelled = normStatus === "cancelled";
+              const isInactive = isCompleted || isCancelled;
+              const isBusy = actionBookingId === t.id;
+
+              let statusClass = "";
+              if (normStatus === "on_trip") statusClass = "text-green-700";
+              else if (normStatus === "assigned" || normStatus === "accepted")
+                statusClass = "text-blue-700";
+              else if (normStatus === "cancelled")
+                statusClass = "text-red-700";
+              else if (normStatus === "completed")
+                statusClass = "text-gray-700";
+
+              return (
+                <tr key={t.id}>
+                  <td className="p-2 border">{t.booking_code}</td>
+                  <td className="p-2 border">{t.passenger_name}</td>
+                  <td className="p-2 border">{t.from_label}</td>
+                  <td className="p-2 border">{t.to_label}</td>
+                  <td className="p-2 border">{t.town}</td>
+                  <td className={`p-2 border font-bold uppercase ${statusClass}`}>
+                    {t.status}
+                  </td>
+                  <td className="p-2 border">
+                    {t.assigned_driver_id ?? "—"}
+                  </td>
+                  <td className="p-2 border">{t.updated_at}</td>
+                  <td className="p-2 border space-x-1">
+                    {isInactive ? (
+                      <span className="text-xs text-gray-500">
+                        {isCompleted ? "Completed" : "Cancelled"}
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleAssignNearest(t.id)}
+                          disabled={isBusy}
+                          className="px-2 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-60"
+                        >
+                          Assign
+                        </button>
+                        <button
+                          onClick={() => handleCancelTrip(t.id)}
+                          disabled={isBusy}
+                          className="px-2 py-1 text-xs rounded bg-red-600 text-white disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleViewMap(t.id)}
+                          className="px-2 py-1 text-xs rounded border"
+                        >
+                          View Map
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
