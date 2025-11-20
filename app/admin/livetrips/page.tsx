@@ -25,10 +25,10 @@ type ActiveTrip = {
   town: string | null;
   status: string | null;
   assigned_driver_id: string | null;
-  pickup_lat: number | null;
-  pickup_lng: number | null;
-  dropoff_lat: number | null;
-  dropoff_lng: number | null;
+  pickup_lat: number | string | null;
+  pickup_lng: number | string | null;
+  dropoff_lat: number | string | null;
+  dropoff_lng: number | string | null;
   updated_at: string | null;
 };
 
@@ -86,6 +86,13 @@ async function fetchDriverNamesForTrips(
   }
 }
 
+function toNumberOrNull(v: number | string | null): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return v;
+  const parsed = parseFloat(String(v));
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 function LiveTripsMap({
   trips,
   focusedBookingId,
@@ -104,11 +111,16 @@ function LiveTripsMap({
     if (!mapContainerRef.current) return;
     if (!token) return;
 
-    const tripsWithCoords = trips.filter(
-      (t) =>
-        typeof t.pickup_lat === "number" &&
-        typeof t.pickup_lng === "number"
-    );
+    const tripsWithCoords = trips
+      .map((t) => {
+        const lat = toNumberOrNull(t.pickup_lat);
+        const lng = toNumberOrNull(t.pickup_lng);
+        return lat !== null && lng !== null
+          ? { ...t, pickup_lat: lat, pickup_lng: lng }
+          : null;
+      })
+      .filter((t): t is ActiveTrip & { pickup_lat: number; pickup_lng: number } => t !== null);
+
     if (tripsWithCoords.length === 0) {
       return;
     }
@@ -172,10 +184,9 @@ function LiveTripsMap({
   }
 
   const tripsWithCoords = trips.filter(
-    (t) =>
-      typeof t.pickup_lat === "number" &&
-      typeof t.pickup_lng === "number"
+    (t) => toNumberOrNull(t.pickup_lat) !== null && toNumberOrNull(t.pickup_lng) !== null
   );
+
   if (tripsWithCoords.length === 0) {
     return (
       <div className="mt-4 text-xs text-gray-600">
