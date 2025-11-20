@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,12 +11,16 @@ const supabase = createClient(
 type BookingRow = {
   id: string;
   booking_code: string | null;
+  passenger_name: string | null;
+  from_label: string | null;
+  to_label: string | null;
+  town: string | null;
   status: string | null;
-  created_at: string | null;
+  assigned_driver_id: string | null;
+  updated_at: string | null;
 };
 
 export default function DispatchPage() {
-  const router = useRouter();
   const [trips, setTrips] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -28,8 +31,18 @@ export default function DispatchPage() {
 
     const { data, error } = await supabase
       .from("bookings")
-      .select("id, booking_code, status, created_at")
-      .order("id", { ascending: false })
+      .select(`
+        id,
+        booking_code,
+        passenger_name,
+        from_label,
+        to_label,
+        town,
+        status,
+        assigned_driver_id,
+        updated_at
+      `)
+      .order("updated_at", { ascending: false })
       .limit(50);
 
     if (error) {
@@ -50,7 +63,7 @@ export default function DispatchPage() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">JRide Dispatch – Active Trips</h1>
+        <h1 className="text-2xl font-bold">JRide Dispatch – Active / Recent Trips</h1>
         <button
           onClick={loadTrips}
           disabled={loading}
@@ -75,25 +88,31 @@ export default function DispatchPage() {
           <thead>
             <tr className="bg-gray-200">
               <th className="p-2 border">Code</th>
+              <th className="p-2 border">Passenger</th>
+              <th className="p-2 border">From</th>
+              <th className="p-2 border">To</th>
+              <th className="p-2 border">Town</th>
               <th className="p-2 border">Status</th>
-              <th className="p-2 border">Created</th>
+              <th className="p-2 border">Driver</th>
+              <th className="p-2 border">Updated</th>
             </tr>
           </thead>
           <tbody>
             {trips.map((t) => (
               <tr key={t.id}>
                 <td className="p-2 border">{t.booking_code}</td>
-                <td className="p-2 border font-bold">{t.status}</td>
-                <td className="p-2 border">{t.created_at}</td>
+                <td className="p-2 border">{t.passenger_name}</td>
+                <td className="p-2 border">{t.from_label}</td>
+                <td className="p-2 border">{t.to_label}</td>
+                <td className="p-2 border">{t.town}</td>
+                <td className="p-2 border font-bold uppercase">{t.status}</td>
+                <td className="p-2 border">{t.assigned_driver_id ?? "—"}</td>
+                <td className="p-2 border">{t.updated_at}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-
-      <div className="mt-6 text-xs text-gray-600 font-mono space-y-1">
-        <div><strong>DEBUG Supabase URL:</strong> {process.env.NEXT_PUBLIC_SUPABASE_URL}</div>
-      </div>
     </div>
   );
 }
