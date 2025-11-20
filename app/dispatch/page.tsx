@@ -1,4 +1,4 @@
-"use client";
+ï»¿"use client";
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -67,7 +67,7 @@ export default function DispatchPage() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">
-        JRide Dispatch – Active Trips
+        JRide Dispatch â€“ Active Trips
       </h1>
 
       {loading ? (
@@ -97,7 +97,7 @@ export default function DispatchPage() {
                   {t.status}
                 </td>
                 <td className="p-2 border">
-                  {t.assigned_driver_id ?? "—"}
+                  {t.assigned_driver_id ?? "â€”"}
                 </td>
               </tr>
             ))}
