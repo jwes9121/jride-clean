@@ -1,166 +1,165 @@
-﻿// app/admin/livetrips/page.tsx
-"use client";
+﻿"use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
-type Booking = {
+type ActiveTrip = {
   id: string;
-  booking_code: string;
+  booking_code: string | null;
+  passenger_name: string | null;
+  from_label: string | null;
+  to_label: string | null;
+  town: string | null;
   status: string | null;
+  assigned_driver_id: string | null;
   pickup_lat: number | null;
   pickup_lng: number | null;
   dropoff_lat: number | null;
   dropoff_lng: number | null;
-  assigned_driver_id: string | null;
-  created_at: string;
+  updated_at: string | null;
 };
 
-export default function LiveTripsPage() {
-  const [trips, setTrips] = useState<Booking[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [completingCode, setCompletingCode] = useState<string | null>(null);
+function normalizeStatus(status: string | null): string {
+  return (status ?? "").toLowerCase();
+}
 
-  const fetchTrips = async () => {
+export default function LiveTripsPage() {
+  const searchParams = useSearchParams();
+  const focusedBookingId = searchParams.get("bookingId") ?? undefined;
+
+  const [trips, setTrips] = useState<ActiveTrip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadTrips = async () => {
+    setLoading(true);
+    setErrorMessage(null);
+
     try {
-      setError(null);
-      const res = await fetch("/api/admin/active-trips", {
-        cache: "no-store",
+      const qs = focusedBookingId ? `?bookingId=${focusedBookingId}` : "";
+      const res = await fetch(`/api/admin/active-trips${qs}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
       });
+
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        console.error("ACTIVE_TRIPS_FETCH_ERROR", body);
-        throw new Error(
-          body?.message ?? body?.error ?? res.statusText ?? "Unknown error"
-        );
+        const text = await res.text();
+        console.error("ACTIVE_TRIPS_API_ERROR", text);
+        setErrorMessage("Failed to load active trips.");
+        setTrips([]);
+        setLoading(false);
+        return;
       }
-      const data = (await res.json()) as Booking[];
-      setTrips(data);
-    } catch (err: any) {
-      console.error("ACTIVE_TRIPS_UI_ERROR", err);
-      setError(err?.message ?? "Error loading active trips");
+
+      const json = await res.json();
+      setTrips((json.trips as ActiveTrip[]) ?? []);
+    } catch (err) {
+      console.error("ACTIVE_TRIPS_API_UNEXPECTED", err);
+      setErrorMessage("Unexpected error while loading active trips.");
+      setTrips([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTrips();
-    const interval = setInterval(fetchTrips, 5000); // refresh every 5s
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleComplete = async (booking: Booking) => {
-    if (completingCode) return;
-    const bookingCode = booking.booking_code;
-    setCompletingCode(bookingCode);
-
-    try {
-      const res = await fetch("/api/admin/complete-trip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingCode }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        console.error("COMPLETE_TRIP_ERROR", body);
-        alert(
-          "Failed to complete ride: " +
-            (body?.message ?? body?.error ?? res.statusText)
-        );
-      } else {
-        const body = await res.json().catch(() => ({}));
-        console.log("COMPLETE_TRIP_SUCCESS", body);
-        alert("Ride marked as completed.");
-        // Re-fetch list so UI stays in sync with DB
-        fetchTrips();
-      }
-    } catch (err: any) {
-      console.error("COMPLETE_TRIP_CATCH", err);
-      alert("Failed to complete ride: " + (err?.message ?? "Unknown error"));
-    } finally {
-      setCompletingCode(null);
-    }
-  };
-
-  if (loading && !trips) {
-    return <div className="p-4">Loading active trips…</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="p-4 text-red-600">
-        Error loading active trips. Check /api/admin/active-trips.
-        <br />
-        <span className="text-xs text-gray-700">{error}</span>
-      </div>
-    );
-  }
-
-  const activeTrips = trips ?? [];
+    loadTrips();
+  }, [focusedBookingId]);
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-semibold mb-2">Live Trips (Dispatch)</h1>
-      {activeTrips.length === 0 ? (
-        <div className="text-gray-600">No active trips.</div>
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Live Trips (Dispatch)</h1>
+        <button
+          onClick={loadTrips}
+          disabled={loading}
+          className="px-3 py-1 rounded text-sm border bg-blue-600 text-white disabled:opacity-60"
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      {focusedBookingId && (
+        <p className="text-sm text-gray-600">
+          Focused booking ID:{" "}
+          <span className="font-mono">{focusedBookingId}</span>
+        </p>
+      )}
+
+      {errorMessage && (
+        <div className="p-3 rounded bg-red-100 text-red-800 text-sm border border-red-300">
+          {errorMessage}
+        </div>
+      )}
+
+      {loading ? (
+        <p>Loading active trips...</p>
+      ) : trips.length === 0 ? (
+        <p>No active trips.</p>
       ) : (
-        <div className="overflow-x-auto border rounded-lg">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-3 py-2 text-left">Code</th>
-                <th className="px-3 py-2 text-left">Pickup (lat,lng)</th>
-                <th className="px-3 py-2 text-left">Dropoff (lat,lng)</th>
-                <th className="px-3 py-2 text-left">Driver</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Created</th>
-                <th className="px-3 py-2 text-left">Actions</th>
+        <div className="space-y-3">
+          <table className="min-w-full border text-sm">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="p-2 border">Code</th>
+                <th className="p-2 border">Passenger</th>
+                <th className="p-2 border">From</th>
+                <th className="p-2 border">To</th>
+                <th className="p-2 border">Town</th>
+                <th className="p-2 border">Status</th>
+                <th className="p-2 border">Driver</th>
+                <th className="p-2 border">Updated</th>
               </tr>
             </thead>
             <tbody>
-              {activeTrips.map((trip) => (
-                <tr key={trip.id} className="border-t">
-                  <td className="px-3 py-2 font-mono">{trip.booking_code}</td>
-                  <td className="px-3 py-2">
-                    {trip.pickup_lat != null && trip.pickup_lng != null
-                      ? `${trip.pickup_lat.toFixed(
-                          5
-                        )}, ${trip.pickup_lng.toFixed(5)}`
-                      : "-"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {trip.dropoff_lat != null && trip.dropoff_lng != null
-                      ? `${trip.dropoff_lat.toFixed(
-                          5
-                        )}, ${trip.dropoff_lng.toFixed(5)}`
-                      : "-"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {trip.assigned_driver_id ?? "-"}
-                  </td>
-                  <td className="px-3 py-2">{trip.status ?? "-"}</td>
-                  <td className="px-3 py-2">
-                    {trip.created_at
-                      ? new Date(trip.created_at).toLocaleString()
-                      : "-"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <button
-                      className="px-3 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-50"
-                      disabled={completingCode === trip.booking_code}
-                      onClick={() => handleComplete(trip)}
+              {trips.map((t) => {
+                const normStatus = normalizeStatus(t.status);
+                const isFocused = focusedBookingId === t.id;
+                let statusClass = "";
+                if (normStatus === "on_trip") statusClass = "text-green-700";
+                else if (normStatus === "assigned" || normStatus === "accepted")
+                  statusClass = "text-blue-700";
+                else if (normStatus === "cancelled")
+                  statusClass = "text-red-700";
+
+                return (
+                  <tr
+                    key={t.id}
+                    className={isFocused ? "bg-yellow-50" : ""}
+                  >
+                    <td className="p-2 border font-mono">
+                      {t.booking_code}
+                    </td>
+                    <td className="p-2 border">{t.passenger_name}</td>
+                    <td className="p-2 border">{t.from_label}</td>
+                    <td className="p-2 border">{t.to_label}</td>
+                    <td className="p-2 border">{t.town}</td>
+                    <td
+                      className={`p-2 border font-bold uppercase ${statusClass}`}
                     >
-                      {completingCode === trip.booking_code
-                        ? "Completing…"
-                        : "Complete ride"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      {t.status}
+                    </td>
+                    <td className="p-2 border">
+                      {t.assigned_driver_id ?? "—"}
+                    </td>
+                    <td className="p-2 border">{t.updated_at}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+
+          <div className="text-xs text-gray-500">
+            <p>
+              This view lists all trips with status{" "}
+              <span className="font-mono">
+                accepted / assigned / arrived / on_trip
+              </span>
+              . The row matching the{" "}
+              <span className="font-mono">bookingId</span> in the URL is
+              highlighted.
+            </p>
+          </div>
         </div>
       )}
     </div>
