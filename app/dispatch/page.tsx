@@ -24,21 +24,24 @@ export default function DispatchPage() {
   const [trips, setTrips] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionBookingId, setActionBookingId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadTrips = async () => {
     setLoading(true);
+    setErrorMessage(null);
 
     const { data, error } = await supabase
       .from("bookings")
       .select(
         "id, booking_code, passenger_name, pickup_address, dropoff_address, status, assigned_driver_id"
       )
-      // TEMP: show latest 50 bookings of ANY status so UI is visible
+      // TEMP: latest 50 of ANY status so we can see something
       .order("id", { ascending: false })
       .limit(50);
 
     if (error) {
       console.error("ACTIVE_TRIPS_DB_ERROR", error);
+      setErrorMessage(error.message ?? "Unknown Supabase error");
       setTrips([]);
     } else {
       setTrips((data as BookingRow[]) ?? []);
@@ -122,6 +125,10 @@ export default function DispatchPage() {
     };
   }, []);
 
+  // These are baked at build time; safe to show TEMPORARILY for debugging.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "undefined";
+  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "undefined";
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -136,6 +143,12 @@ export default function DispatchPage() {
           {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
+
+      {errorMessage && (
+        <div className="p-3 rounded bg-red-100 text-red-800 text-sm border border-red-300">
+          Supabase error: {errorMessage}
+        </div>
+      )}
 
       {loading ? (
         <p>Loading trips...</p>
@@ -194,6 +207,16 @@ export default function DispatchPage() {
           </tbody>
         </table>
       )}
+
+      <div className="mt-6 text-xs text-gray-600 font-mono space-y-1">
+        <div><strong>DEBUG Supabase URL:</strong> {supabaseUrl}</div>
+        <div>
+          <strong>DEBUG Anon key prefix:</strong>{" "}
+          {supabaseAnon === "undefined"
+            ? "undefined"
+            : supabaseAnon.slice(0, 8) + "..."}
+        </div>
+      </div>
     </div>
   );
 }
