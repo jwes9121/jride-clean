@@ -3,14 +3,15 @@
 import React, {
   Suspense,
   useEffect,
-  useRef,
   useState,
+  useRef,
 } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
+// FRONTEND SUPABASE CLIENT – same as Dispatch
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -25,10 +26,10 @@ type ActiveTrip = {
   town: string | null;
   status: string | null;
   assigned_driver_id: string | null;
-  pickup_lat: number | string | null;
-  pickup_lng: number | string | null;
-  dropoff_lat: number | string | null;
-  dropoff_lng: number | string | null;
+  pickup_lat: any;
+  pickup_lng: any;
+  dropoff_lat: any;
+  dropoff_lng: any;
   updated_at: string | null;
 };
 
@@ -86,13 +87,6 @@ async function fetchDriverNamesForTrips(
   }
 }
 
-function toNumberOrNull(v: number | string | null): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "number") return v;
-  const parsed = parseFloat(String(v));
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
 function LiveTripsMap({
   trips,
   focusedBookingId,
@@ -111,24 +105,10 @@ function LiveTripsMap({
     if (!mapContainerRef.current) return;
     if (!token) return;
 
-    const tripsWithCoords = trips
-      .map((t) => {
-        const lat = toNumberOrNull(t.pickup_lat);
-        const lng = toNumberOrNull(t.pickup_lng);
-        return lat !== null && lng !== null
-          ? { ...t, pickup_lat: lat, pickup_lng: lng }
-          : null;
-      })
-      .filter(
-        (
-          t
-        ): t is ActiveTrip & { pickup_lat: number; pickup_lng: number } =>
-          t !== null
-      );
-
-    if (tripsWithCoords.length === 0) {
-      return;
-    }
+    const tripsWithCoords = trips.filter(
+      (t) => t.pickup_lat != null && t.pickup_lng != null
+    );
+    if (tripsWithCoords.length === 0) return;
 
     mapboxgl.accessToken = token;
 
@@ -137,20 +117,22 @@ function LiveTripsMap({
         tripsWithCoords.find((t) => t.id === focusedBookingId)) ||
       tripsWithCoords[0];
 
-    const center: [number, number] = [
-      primaryTrip.pickup_lng as number,
-      primaryTrip.pickup_lat as number,
-    ];
+    const primaryLat = Number(primaryTrip.pickup_lat);
+    const primaryLng = Number(primaryTrip.pickup_lng);
+    if (Number.isNaN(primaryLat) || Number.isNaN(primaryLng)) {
+      console.warn("MAP DEBUG: primary coords NaN", primaryTrip);
+      return;
+    }
 
     if (!mapRef.current) {
       mapRef.current = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: "mapbox://styles/mapbox/streets-v11",
-        center,
+        center: [primaryLng, primaryLat],
         zoom: 13,
       });
     } else {
-      mapRef.current.setCenter(center);
+      mapRef.current.setCenter([primaryLng, primaryLat]);
     }
 
     // Clear old markers
@@ -160,16 +142,18 @@ function LiveTripsMap({
     if (!mapRef.current) return;
 
     tripsWithCoords.forEach((trip) => {
+      const lat = Number(trip.pickup_lat);
+      const lng = Number(trip.pickup_lng);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) {
+        console.warn("MAP DEBUG: skipping NaN coords", trip);
+        return;
+      }
+
       const marker = new mapboxgl.Marker()
-        .setLngLat([
-          trip.pickup_lng as number,
-          trip.pickup_lat as number,
-        ])
+        .setLngLat([lng, lat])
         .setPopup(
           new mapboxgl.Popup({ offset: 12 }).setText(
-            `${trip.booking_code ?? ""} – ${
-              trip.passenger_name ?? ""
-            }`
+            `${trip.booking_code ?? ""} – ${trip.passenger_name ?? ""}`
           )
         )
         .addTo(mapRef.current as mapboxgl.Map);
@@ -189,11 +173,8 @@ function LiveTripsMap({
   }
 
   const tripsWithCoords = trips.filter(
-    (t) =>
-      toNumberOrNull(t.pickup_lat) !== null &&
-      toNumberOrNull(t.pickup_lng) !== null
+    (t) => t.pickup_lat != null && t.pickup_lng != null
   );
-
   if (tripsWithCoords.length === 0) {
     return (
       <div className="mt-4 text-xs text-gray-600">
@@ -225,30 +206,52 @@ function LiveTripsInner() {
     setErrorMessage(null);
 
     try {
-      const qs = focusedBookingId ? `?bookingId=${focusedBookingId}` : "";
-      const res = await fetch(`/api/admin/active-trips${qs}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
+      const activeStatuses = ["accepted", "assigned", "arrived", "on_trip"];
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("ACTIVE_TRIPS_API_ERROR", text);
-        setErrorMessage("Failed to load active trips.");
+      let query = supabase
+        .from("bookings")
+        .select(
+          `
+          id,
+          booking_code,
+          passenger_name,
+          from_label,
+          to_label,
+          town,
+          status,
+          assigned_driver_id,
+          pickup_lat,
+          pickup_lng,
+          dropoff_lat,
+          dropoff_lng,
+          updated_at
+        `
+        )
+        .in("status", activeStatuses)
+        .order("updated_at", { ascending: false });
+
+      if (focusedBookingId) {
+        query = query.eq("id", focusedBookingId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("ACTIVE_TRIPS_DB_ERROR_CLIENT", error);
+        setErrorMessage(error.message);
         setTrips([]);
         setDriverNames({});
         setLoading(false);
         return;
       }
 
-      const json = await res.json();
-      const tripsData = (json.trips as ActiveTrip[]) ?? [];
+      const tripsData = (data as ActiveTrip[]) ?? [];
       setTrips(tripsData);
 
       const names = await fetchDriverNamesForTrips(tripsData);
       setDriverNames(names);
     } catch (err) {
-      console.error("ACTIVE_TRIPS_API_UNEXPECTED", err);
+      console.error("ACTIVE_TRIPS_CLIENT_UNEXPECTED", err);
       setErrorMessage("Unexpected error while loading active trips.");
       setTrips([]);
       setDriverNames({});
@@ -293,7 +296,7 @@ function LiveTripsInner() {
         <p>No active trips.</p>
       ) : (
         <>
-          <table className="min-w-full border text-xs">
+          <table className="min-w-full border text-sm">
             <thead>
               <tr className="bg-gray-200">
                 <th className="p-2 border">Code</th>
@@ -304,6 +307,7 @@ function LiveTripsInner() {
                 <th className="p-2 border">Status</th>
                 <th className="p-2 border">Driver</th>
                 <th className="p-2 border">Updated</th>
+                {/* raw debug so you see what Supabase returns */}
                 <th className="p-2 border">Pickup Lat (raw)</th>
                 <th className="p-2 border">Pickup Lng (raw)</th>
               </tr>
@@ -344,11 +348,11 @@ function LiveTripsInner() {
                     </td>
                     <td className="p-2 border">{driverLabel}</td>
                     <td className="p-2 border">{t.updated_at}</td>
-                    <td className="p-2 border font-mono">
-                      {t.pickup_lat ?? "null"}
+                    <td className="p-2 border">
+                      {t.pickup_lat !== null ? String(t.pickup_lat) : "null"}
                     </td>
-                    <td className="p-2 border font-mono">
-                      {t.pickup_lng ?? "null"}
+                    <td className="p-2 border">
+                      {t.pickup_lng !== null ? String(t.pickup_lng) : "null"}
                     </td>
                   </tr>
                 );
