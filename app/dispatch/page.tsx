@@ -112,7 +112,6 @@ export default function DispatchPage() {
   };
 
   const handleViewMap = (bookingId: string) => {
-    // For now just go to livetrips filtered by bookingId.
     window.location.href = `/admin/livetrips?bookingId=${bookingId}`;
   };
 
@@ -125,7 +124,6 @@ export default function DispatchPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
         () => {
-          // debounce-style reload
           loadTrips();
         }
       )
@@ -138,7 +136,7 @@ export default function DispatchPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify_between">
         <h1 className="text-2xl font-bold">
           JRide Dispatch – Active / Recent Trips
         </h1>
