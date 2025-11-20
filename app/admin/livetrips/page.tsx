@@ -97,21 +97,21 @@ function LiveTripsMap({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
 
+  const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!mapContainerRef.current) return;
-
-    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-    if (!token) {
-      return;
-    }
+    if (!token) return;
 
     const tripsWithCoords = trips.filter(
       (t) =>
         typeof t.pickup_lat === "number" &&
         typeof t.pickup_lng === "number"
     );
-    if (tripsWithCoords.length === 0) return;
+    if (tripsWithCoords.length === 0) {
+      return;
+    }
 
     mapboxgl.accessToken = token;
 
@@ -159,9 +159,10 @@ function LiveTripsMap({
 
       markersRef.current.push(marker);
     });
-  }, [trips, focusedBookingId]);
+  }, [trips, focusedBookingId, token]);
 
-  const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  if (!trips.length) return null;
+
   if (!token) {
     return (
       <div className="mt-4 text-xs text-red-600">
@@ -170,7 +171,20 @@ function LiveTripsMap({
     );
   }
 
-  if (!trips.length) return null;
+  const tripsWithCoords = trips.filter(
+    (t) =>
+      typeof t.pickup_lat === "number" &&
+      typeof t.pickup_lng === "number"
+  );
+  if (tripsWithCoords.length === 0) {
+    return (
+      <div className="mt-4 text-xs text-gray-600">
+        No pickup coordinates available yet for these trips. The map will show
+        markers once bookings have <span className="font-mono">pickup_lat</span>{" "}
+        and <span className="font-mono">pickup_lng</span> values.
+      </div>
+    );
+  }
 
   return (
     <div className="mt-4 h-96 w-full border rounded">
