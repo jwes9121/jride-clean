@@ -119,7 +119,12 @@ function LiveTripsMap({
           ? { ...t, pickup_lat: lat, pickup_lng: lng }
           : null;
       })
-      .filter((t): t is ActiveTrip & { pickup_lat: number; pickup_lng: number } => t !== null);
+      .filter(
+        (
+          t
+        ): t is ActiveTrip & { pickup_lat: number; pickup_lng: number } =>
+          t !== null
+      );
 
     if (tripsWithCoords.length === 0) {
       return;
@@ -184,7 +189,9 @@ function LiveTripsMap({
   }
 
   const tripsWithCoords = trips.filter(
-    (t) => toNumberOrNull(t.pickup_lat) !== null && toNumberOrNull(t.pickup_lng) !== null
+    (t) =>
+      toNumberOrNull(t.pickup_lat) !== null &&
+      toNumberOrNull(t.pickup_lng) !== null
   );
 
   if (tripsWithCoords.length === 0) {
@@ -286,7 +293,7 @@ function LiveTripsInner() {
         <p>No active trips.</p>
       ) : (
         <>
-          <table className="min-w-full border text-sm">
+          <table className="min-w-full border text-xs">
             <thead>
               <tr className="bg-gray-200">
                 <th className="p-2 border">Code</th>
@@ -297,6 +304,8 @@ function LiveTripsInner() {
                 <th className="p-2 border">Status</th>
                 <th className="p-2 border">Driver</th>
                 <th className="p-2 border">Updated</th>
+                <th className="p-2 border">Pickup Lat (raw)</th>
+                <th className="p-2 border">Pickup Lng (raw)</th>
               </tr>
             </thead>
             <tbody>
@@ -335,6 +344,12 @@ function LiveTripsInner() {
                     </td>
                     <td className="p-2 border">{driverLabel}</td>
                     <td className="p-2 border">{t.updated_at}</td>
+                    <td className="p-2 border font-mono">
+                      {t.pickup_lat ?? "null"}
+                    </td>
+                    <td className="p-2 border font-mono">
+                      {t.pickup_lng ?? "null"}
+                    </td>
                   </tr>
                 );
               })}
