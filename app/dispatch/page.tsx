@@ -112,7 +112,6 @@ export default function DispatchPage() {
   };
 
   const handleViewMap = (bookingId: string) => {
-    // For now just go to livetrips filtered by bookingId.
     window.location.href = `/admin/livetrips?bookingId=${bookingId}`;
   };
 
@@ -125,7 +124,6 @@ export default function DispatchPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
         () => {
-          // debounce-style reload
           loadTrips();
         }
       )
