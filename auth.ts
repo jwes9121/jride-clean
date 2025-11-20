@@ -1,42 +1,57 @@
-// auth.ts – reset + disable PKCE/state checks for Google
+﻿// auth.ts - clean NextAuth v5 root config for JRide
 
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
 
-const adminEmails =
-  process.env.ADMIN_EMAILS?.split(",").map((x) => x.trim()) ?? [];
-const dispatcherEmails =
-  process.env.DISPATCHER_EMAILS?.split(",").map((x) => x.trim()) ?? [];
+// Optional: comma-separated admin emails, e.g.
+// ADMIN_EMAILS="you@example.com,other@example.com"
+export const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
-export const authConfig: NextAuthConfig = {
+const authConfig: NextAuthConfig = {
   // Required on Vercel / custom domains
   trustHost: true,
 
+  secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
+
+  session: {
+    strategy: "jwt",
+  },
+
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-
-      /**
-       * IMPORTANT: turn off PKCE + state checks for Google.
-       * This avoids the "InvalidCheck: state value could not be parsed"
-       * errors when the Android WebView / in-app browser loses cookies.
-       */
+      clientId:
+        process.env.GOOGLE_CLIENT_ID ??
+        process.env.AUTH_GOOGLE_ID ??
+        "",
+      clientSecret:
+        process.env.GOOGLE_CLIENT_SECRET ??
+        process.env.AUTH_GOOGLE_SECRET ??
+        "",
+      // Helps with some older Google app configs
       checks: ["none"],
     }),
   ],
 
-  callbacks: {
-    async jwt({ token }) {
-      const email = token.email;
+  pages: {
+    signIn: "/auth/signin",
+  },
 
-      if (email) {
-        if (adminEmails.includes(email)) {
-          (token as any).role = "admin";
-        } else if (dispatcherEmails.includes(email)) {
-          (token as any).role = "dispatcher";
-        } else {
-          (token as any).role = "user";
+  callbacks: {
+    async jwt({ token, user, account }) {
+      if (account && user) {
+        const email = (user.email ?? "").toLowerCase().trim();
+
+        token.user = {
+          id: (user as any).id ?? token.sub,
+          name: user.name,
+          email: user.email,
+        };
+
+        if (email && adminEmails.includes(email)) {
+          (token as any).isAdmin = true;
         }
       }
 
@@ -44,13 +59,23 @@ export const authConfig: NextAuthConfig = {
     },
 
     async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).role = (token as any).role ?? "user";
+      if (token?.user) {
+        (session as any).user = token.user;
+      }
+      if ((token as any).isAdmin) {
+        (session as any).isAdmin = true;
       }
       return session;
     },
   },
 };
 
-// Export the helpers used by the app + route.ts
-export const { auth, handlers, signIn, signOut } = NextAuth(authConfig);
+// Create auth/handlers/signIn/signOut in one call
+const authHandler = NextAuth(authConfig);
+
+// Named exports for other files
+export const { auth, handlers, signIn, signOut } = authHandler;
+
+// Also export GET/POST for API routes that do:
+///   export const { GET, POST } = handlers;
+export const { GET, POST } = handlers;

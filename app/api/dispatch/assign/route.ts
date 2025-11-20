@@ -1,56 +1,99 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "../../../../auth";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+﻿// app/api/dispatch/assign/route.ts
+// Assign a booking to a driver using SUPABASE REST (service role)
 
-function err(msg: string, code = 400) { return NextResponse.json({ error: msg }, { status: code }); }
-function ok(payload: any) { return NextResponse.json(payload); }
-function allowed(r?: string) { return r === "admin" || r === "dispatcher"; }
+import { NextResponse } from "next/server";
 
-export async function POST(req: NextRequest) {
-  const session = await auth();
-  const role = (session?.user as any)?.role;
-  const email = session?.user?.email || "";
-  if (!allowed(role)) return err("Forbidden", 403);
+export const dynamic = "force-dynamic";
+export const fetchCache = "default-no-store";
 
-  let body: any = null;
-  try { body = await req.json(); } catch { return err("Invalid JSON"); }
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  const booking_id = String(body.booking_id || "").trim();
-  const driver_id = String(body.driver_id || "").trim();
-  if (!booking_id || !driver_id) return err("booking_id and driver_id required");
+type AssignBody = {
+  bookingCode?: string;
+  driverId?: string;
+};
 
-  const sb = supabaseAdmin();
+export async function POST(request: Request) {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "SERVER_MISCONFIGURED",
+        message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+      },
+      { status: 500 }
+    );
+  }
 
-  // fetch booking (to get pickup town)
-  const bk = await sb.from("bookings").select("id, town, status").eq("id", booking_id).single();
-  if (bk.error) return err(bk.error.message, 500);
-  const bookingTown = bk.data.town;
+  let body: AssignBody;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "BAD_REQUEST", message: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
 
-  // fetch driver latest town
-  const dr = await sb
-    .from("driver_locations_with_town")
-    .select("town")
-    .eq("driver_id", driver_id)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { bookingCode, driverId } = body;
 
-  if (dr.error) return err(dr.error.message, 500);
-  const driverTown = dr.data ? dr.data.town : null;
+  if (!bookingCode || !driverId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "MISSING_FIELDS",
+        message: "Missing bookingCode or driverId",
+      },
+      { status: 400 }
+    );
+  }
 
-  if (!driverTown) return err("Driver has no recent location", 400);
-  if (driverTown !== bookingTown) return err("Driver town does not match pickup town", 400);
+  const url = `${supabaseUrl}/rest/v1/bookings?booking_code=eq.${encodeURIComponent(
+    bookingCode
+  )}`;
 
-  const upd = await sb.from("bookings")
-    .update({ driver_id, status: "assigned", dispatcher_email: email })
-    .eq("id", booking_id)
-    .select("*").single();
+  try {
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        apikey: supabaseServiceKey,
+        Authorization: `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        assigned_driver_id: driverId,
+        status: "assigned",
+        updated_at: new Date().toISOString(),
+      }),
+      cache: "no-store",
+    });
 
-  if (upd.error) return err(upd.error.message, 500);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Supabase REST error:", res.status, text);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "UPSTREAM_ERROR",
+          message: "Failed to update booking in Supabase",
+          details: text,
+        },
+        { status: res.status }
+      );
+    }
 
-  await sb.from("dispatcher_action_logs").insert({
-    booking_id, action: "assigned", actor_email: email, details: { driver_id, driverTown, bookingTown }
-  });
-
-  return ok({ row: upd.data });
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("Assign route unexpected error:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ASSIGN_ERROR",
+        message: "Unexpected error while assigning trip",
+      },
+      { status: 500 }
+    );
+  }
 }
