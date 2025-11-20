@@ -33,8 +33,9 @@ export default function DispatchPage() {
       .select(
         "id, booking_code, passenger_name, pickup_address, dropoff_address, status, assigned_driver_id"
       )
-      .in("status", ["accepted", "assigned", "arrived", "on_trip"])
-      .order("id", { ascending: false });
+      // TEMP: show latest 50 bookings of ANY status so UI is visible
+      .order("id", { ascending: false })
+      .limit(50);
 
     if (error) {
       console.error("ACTIVE_TRIPS_DB_ERROR", error);
@@ -137,9 +138,9 @@ export default function DispatchPage() {
       </div>
 
       {loading ? (
-        <p>Loading active trips...</p>
+        <p>Loading trips...</p>
       ) : trips.length === 0 ? (
-        <p>No active trips right now.</p>
+        <p>No trips found.</p>
       ) : (
         <table className="min-w-full border text-sm">
           <thead>
