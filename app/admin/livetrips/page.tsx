@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type ActiveTrip = {
@@ -23,7 +23,7 @@ function normalizeStatus(status: string | null): string {
   return (status ?? "").toLowerCase();
 }
 
-export default function LiveTripsPage() {
+function LiveTripsInner() {
   const searchParams = useSearchParams();
   const focusedBookingId = searchParams.get("bookingId") ?? undefined;
 
@@ -127,9 +127,7 @@ export default function LiveTripsPage() {
                     key={t.id}
                     className={isFocused ? "bg-yellow-50" : ""}
                   >
-                    <td className="p-2 border font-mono">
-                      {t.booking_code}
-                    </td>
+                    <td className="p-2 border font-mono">{t.booking_code}</td>
                     <td className="p-2 border">{t.passenger_name}</td>
                     <td className="p-2 border">{t.from_label}</td>
                     <td className="p-2 border">{t.to_label}</td>
@@ -163,5 +161,13 @@ export default function LiveTripsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LiveTripsPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading live trips...</div>}>
+      <LiveTripsInner />
+    </Suspense>
   );
 }
