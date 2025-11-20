@@ -12,18 +12,14 @@ const supabase = createClient(
 type BookingRow = {
   id: string;
   booking_code: string | null;
-  passenger_name: string | null;
-  pickup_address: string | null;
-  dropoff_address: string | null;
   status: string | null;
-  assigned_driver_id: string | null;
+  created_at: string | null;
 };
 
 export default function DispatchPage() {
   const router = useRouter();
   const [trips, setTrips] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionBookingId, setActionBookingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadTrips = async () => {
@@ -32,16 +28,13 @@ export default function DispatchPage() {
 
     const { data, error } = await supabase
       .from("bookings")
-      .select(
-        "id, booking_code, passenger_name, pickup_address, dropoff_address, status, assigned_driver_id"
-      )
-      // TEMP: latest 50 of ANY status so we can see something
+      .select("id, booking_code, status, created_at")
       .order("id", { ascending: false })
       .limit(50);
 
     if (error) {
-      console.error("ACTIVE_TRIPS_DB_ERROR", error);
-      setErrorMessage(error.message ?? "Unknown Supabase error");
+      console.error("DB_ERROR", error);
+      setErrorMessage(error.message);
       setTrips([]);
     } else {
       setTrips((data as BookingRow[]) ?? []);
@@ -50,91 +43,14 @@ export default function DispatchPage() {
     setLoading(false);
   };
 
-  const handleAssignNearest = async (bookingId: string) => {
-    if (!window.confirm("Assign nearest driver to this trip?")) return;
-    setActionBookingId(bookingId);
-
-    try {
-      const res = await fetch("/api/rides/assign-nearest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId }),
-      });
-
-      if (!res.ok) {
-        console.error("ASSIGN_NEAREST_ERROR", await res.text());
-        alert("Failed to assign nearest driver.");
-      } else {
-        await loadTrips();
-      }
-    } catch (err) {
-      console.error("ASSIGN_NEAREST_ERROR", err);
-      alert("Failed to assign nearest driver.");
-    } finally {
-      setActionBookingId(null);
-    }
-  };
-
-  const handleCancelTrip = async (bookingId: string) => {
-    if (!window.confirm("Mark this trip as cancelled?")) return;
-    setActionBookingId(bookingId);
-
-    try {
-      const res = await fetch("/api/rides", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, status: "cancelled" }),
-      });
-
-      if (!res.ok) {
-        console.error("CANCEL_TRIP_ERROR", await res.text());
-        alert("Failed to cancel trip.");
-      } else {
-        await loadTrips();
-      }
-    } catch (err) {
-      console.error("CANCEL_TRIP_ERROR", err);
-      alert("Failed to cancel trip.");
-    } finally {
-      setActionBookingId(null);
-    }
-  };
-
-  const handleViewMap = (bookingId: string) => {
-    router.push(`/admin/livetrips?bookingId=${bookingId}`);
-  };
-
   useEffect(() => {
-    // initial load
     loadTrips();
-
-    // realtime updates
-    const channel = supabase
-      .channel("bookings_changes_dispatch_ui")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "bookings" },
-        () => {
-          loadTrips();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
-
-  // These are baked at build time; safe to show TEMPORARILY for debugging.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "undefined";
-  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "undefined";
 
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">
-          JRide Dispatch – Active Trips
-        </h1>
+        <h1 className="text-2xl font-bold">JRide Dispatch – Active Trips</h1>
         <button
           onClick={loadTrips}
           disabled={loading}
@@ -146,12 +62,12 @@ export default function DispatchPage() {
 
       {errorMessage && (
         <div className="p-3 rounded bg-red-100 text-red-800 text-sm border border-red-300">
-          Supabase error: {errorMessage}
+          Supabase Error: {errorMessage}
         </div>
       )}
 
       {loading ? (
-        <p>Loading trips...</p>
+        <p>Loading...</p>
       ) : trips.length === 0 ? (
         <p>No trips found.</p>
       ) : (
@@ -159,49 +75,16 @@ export default function DispatchPage() {
           <thead>
             <tr className="bg-gray-200">
               <th className="p-2 border">Code</th>
-              <th className="p-2 border">Passenger</th>
-              <th className="p-2 border">Pickup</th>
-              <th className="p-2 border">Drop Off</th>
               <th className="p-2 border">Status</th>
-              <th className="p-2 border">Driver</th>
-              <th className="p-2 border">Actions</th>
+              <th className="p-2 border">Created</th>
             </tr>
           </thead>
           <tbody>
             {trips.map((t) => (
               <tr key={t.id}>
                 <td className="p-2 border">{t.booking_code}</td>
-                <td className="p-2 border">{t.passenger_name}</td>
-                <td className="p-2 border">{t.pickup_address}</td>
-                <td className="p-2 border">{t.dropoff_address}</td>
-                <td className="p-2 border font-bold uppercase">
-                  {t.status}
-                </td>
-                <td className="p-2 border">
-                  {t.assigned_driver_id ?? "—"}
-                </td>
-                <td className="p-2 border space-x-1">
-                  <button
-                    onClick={() => handleAssignNearest(t.id)}
-                    disabled={loading || actionBookingId === t.id}
-                    className="px-2 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-60"
-                  >
-                    Assign
-                  </button>
-                  <button
-                    onClick={() => handleCancelTrip(t.id)}
-                    disabled={loading || actionBookingId === t.id}
-                    className="px-2 py-1 text-xs rounded bg-red-600 text-white disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleViewMap(t.id)}
-                    className="px-2 py-1 text-xs rounded border"
-                  >
-                    View Map
-                  </button>
-                </td>
+                <td className="p-2 border font-bold">{t.status}</td>
+                <td className="p-2 border">{t.created_at}</td>
               </tr>
             ))}
           </tbody>
@@ -209,13 +92,7 @@ export default function DispatchPage() {
       )}
 
       <div className="mt-6 text-xs text-gray-600 font-mono space-y-1">
-        <div><strong>DEBUG Supabase URL:</strong> {supabaseUrl}</div>
-        <div>
-          <strong>DEBUG Anon key prefix:</strong>{" "}
-          {supabaseAnon === "undefined"
-            ? "undefined"
-            : supabaseAnon.slice(0, 8) + "..."}
-        </div>
+        <div><strong>DEBUG Supabase URL:</strong> {process.env.NEXT_PUBLIC_SUPABASE_URL}</div>
       </div>
     </div>
   );
