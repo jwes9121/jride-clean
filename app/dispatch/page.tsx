@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,8 +20,10 @@ type BookingRow = {
 };
 
 export default function DispatchPage() {
+  const router = useRouter();
   const [trips, setTrips] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionBookingId, setActionBookingId] = useState<string | null>(null);
 
   const loadTrips = async () => {
     setLoading(true);
@@ -41,6 +44,60 @@ export default function DispatchPage() {
     }
 
     setLoading(false);
+  };
+
+  const handleAssignNearest = async (bookingId: string) => {
+    if (!window.confirm("Assign nearest driver to this trip?")) return;
+    setActionBookingId(bookingId);
+
+    try {
+      const res = await fetch("/api/rides/assign-nearest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+
+      if (!res.ok) {
+        console.error("ASSIGN_NEAREST_ERROR", await res.text());
+        alert("Failed to assign nearest driver.");
+      } else {
+        await loadTrips();
+      }
+    } catch (err) {
+      console.error("ASSIGN_NEAREST_ERROR", err);
+      alert("Failed to assign nearest driver.");
+    } finally {
+      setActionBookingId(null);
+    }
+  };
+
+  const handleCancelTrip = async (bookingId: string) => {
+    if (!window.confirm("Mark this trip as cancelled?")) return;
+    setActionBookingId(bookingId);
+
+    try {
+      const res = await fetch("/api/rides", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, status: "cancelled" }),
+      });
+
+      if (!res.ok) {
+        console.error("CANCEL_TRIP_ERROR", await res.text());
+        alert("Failed to cancel trip.");
+      } else {
+        await loadTrips();
+      }
+    } catch (err) {
+      console.error("CANCEL_TRIP_ERROR", err);
+      alert("Failed to cancel trip.");
+    } finally {
+      setActionBookingId(null);
+    }
+  };
+
+  const handleViewMap = (bookingId: string) => {
+    router.push(`/admin/livetrips?bookingId=${bookingId}`);
   };
 
   useEffect(() => {
@@ -65,10 +122,19 @@ export default function DispatchPage() {
   }, []);
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">
-        JRide Dispatch – Active Trips
-      </h1>
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">
+          JRide Dispatch – Active Trips
+        </h1>
+        <button
+          onClick={loadTrips}
+          disabled={loading}
+          className="px-3 py-1 rounded text-sm border bg-blue-600 text-white disabled:opacity-60"
+        >
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
 
       {loading ? (
         <p>Loading active trips...</p>
@@ -84,6 +150,7 @@ export default function DispatchPage() {
               <th className="p-2 border">Drop Off</th>
               <th className="p-2 border">Status</th>
               <th className="p-2 border">Driver</th>
+              <th className="p-2 border">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -98,6 +165,28 @@ export default function DispatchPage() {
                 </td>
                 <td className="p-2 border">
                   {t.assigned_driver_id ?? "—"}
+                </td>
+                <td className="p-2 border space-x-1">
+                  <button
+                    onClick={() => handleAssignNearest(t.id)}
+                    disabled={loading || actionBookingId === t.id}
+                    className="px-2 py-1 text-xs rounded bg-green-600 text-white disabled:opacity-60"
+                  >
+                    Assign
+                  </button>
+                  <button
+                    onClick={() => handleCancelTrip(t.id)}
+                    disabled={loading || actionBookingId === t.id}
+                    className="px-2 py-1 text-xs rounded bg-red-600 text-white disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleViewMap(t.id)}
+                    className="px-2 py-1 text-xs rounded border"
+                  >
+                    View Map
+                  </button>
                 </td>
               </tr>
             ))}
