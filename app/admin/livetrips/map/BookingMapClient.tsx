@@ -13,17 +13,17 @@ type Booking = {
   assigned_driver_id: string | null;
   from_label?: string | null;
   to_label?: string | null;
-  pickup_lat?: number | null;
-  pickup_lng?: number | null;
-  dropoff_lat?: number | null;
-  dropoff_lng?: number | null;
+  pickup_lat?: any;
+  pickup_lng?: any;
+  dropoff_lat?: any;
+  dropoff_lng?: any;
   created_at?: string;
 };
 
 type DriverLocation = {
   driver_id: string;
-  lat: number | null;
-  lng: number | null;
+  lat: any;
+  lng: any;
   status?: string | null;
   town?: string | null;
   updated_at?: string | null;
@@ -44,32 +44,39 @@ const DEFAULT_CENTER: Coords = {
 };
 const DEFAULT_ZOOM = 11;
 
-function hasValidCoords(lat: unknown, lng: unknown): lat is number {
-  return typeof lat === "number" && typeof lng === "number";
+// Coerce anything (number/string) to a finite number or return null
+function toNumber(value: any): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 function extractPickupCoords(booking: Booking | null): Coords | null {
   if (!booking) return null;
-  if (hasValidCoords(booking.pickup_lat, booking.pickup_lng)) {
-    return { lat: booking.pickup_lat as number, lng: booking.pickup_lng as number };
-  }
-  return null;
+  const lat = toNumber(booking.pickup_lat);
+  const lng = toNumber(booking.pickup_lng);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
 }
 
 function extractDropoffCoords(booking: Booking | null): Coords | null {
   if (!booking) return null;
-  if (hasValidCoords(booking.dropoff_lat, booking.dropoff_lng)) {
-    return { lat: booking.dropoff_lat as number, lng: booking.dropoff_lng as number };
-  }
-  return null;
+  const lat = toNumber(booking.dropoff_lat);
+  const lng = toNumber(booking.dropoff_lng);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
 }
 
 function extractDriverCoords(driverLocation: DriverLocation | null): Coords | null {
   if (!driverLocation) return null;
-  if (hasValidCoords(driverLocation.lat, driverLocation.lng)) {
-    return { lat: driverLocation.lat as number, lng: driverLocation.lng as number };
-  }
-  return null;
+  const lat = toNumber(driverLocation.lat);
+  const lng = toNumber(driverLocation.lng);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
 }
 
 export default function BookingMapClient({ bookingId }: Props) {
@@ -89,6 +96,9 @@ export default function BookingMapClient({ bookingId }: Props) {
   const [dropoffCoords, setDropoffCoords] = useState<Coords | null>(null);
   const [driverCoords, setDriverCoords] = useState<Coords | null>(null);
 
+  const [rawPickup, setRawPickup] = useState<{ lat: any; lng: any } | null>(null);
+  const [rawDropoff, setRawDropoff] = useState<{ lat: any; lng: any } | null>(null);
+
   const [loading, setLoading] = useState<boolean>(!!bookingId);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +109,7 @@ export default function BookingMapClient({ bookingId }: Props) {
       return;
     }
 
-    const id = bookingId; // narrowed
+    const id = bookingId;
     let cancelled = false;
 
     async function load() {
@@ -131,13 +141,21 @@ export default function BookingMapClient({ bookingId }: Props) {
         setDropoffCoords(dropoff);
         setDriverCoords(driver);
 
+        if (booking) {
+          setRawPickup({ lat: booking.pickup_lat, lng: booking.pickup_lng });
+          setRawDropoff({ lat: booking.dropoff_lat, lng: booking.dropoff_lng });
+        } else {
+          setRawPickup(null);
+          setRawDropoff(null);
+        }
+
         const status =
           booking && typeof booking.status === "string"
             ? booking.status
             : null;
         setBookingStatus(status);
 
-        // Decide initial center/zoom based on status
+        // Decide initial center/zoom based on status + available coords
         let newCenter: Coords = DEFAULT_CENTER;
         let newZoom = DEFAULT_ZOOM;
 
@@ -332,25 +350,38 @@ export default function BookingMapClient({ bookingId }: Props) {
     mapRef.current.fitBounds(bounds, { padding: 60 });
   }, [pickupCoords, dropoffCoords, driverCoords]);
 
-  const statusLabel =
-    bookingStatus ?? "unknown";
+  const statusLabel = bookingStatus ?? "unknown";
 
   const pickupLabel = pickupCoords ? "pickup" : "no pickup";
   const dropoffLabel = dropoffCoords ? "dropoff" : "no dropoff";
   const driverLabel = driverCoords ? "driver located" : "no driver position";
 
+  const rawPickupStr =
+    rawPickup && (rawPickup.lat !== null || rawPickup.lng !== null)
+      ? `raw pickup: (${String(rawPickup.lat)}, ${String(rawPickup.lng)})`
+      : "raw pickup: null";
+
+  const rawDropoffStr =
+    rawDropoff && (rawDropoff.lat !== null || rawDropoff.lng !== null)
+      ? `raw dropoff: (${String(rawDropoff.lat)}, ${String(rawDropoff.lng)})`
+      : "raw dropoff: null";
+
   return (
     <div className="relative h-[480px] rounded-xl overflow-hidden border border-gray-200">
-      <div className="absolute z-10 m-2 rounded bg-white/80 px-2 py-1 text-[10px] font-mono">
-        {bookingId ? `Booking: ${bookingId}` : "No booking selected"}
-        {loading ? " • loading…" : null}{" "}
-        • status: {statusLabel}
-        {" • "}
-        {pickupLabel}
-        {" • "}
-        {dropoffLabel}
-        {" • "}
-        {driverLabel}
+      <div className="absolute z-10 m-2 rounded bg-white/80 px-2 py-1 text-[10px] font-mono space-y-0.5">
+        <div>
+          {bookingId ? `Booking: ${bookingId}` : "No booking selected"}
+          {loading ? " • loading…" : null}{" "}
+          • status: {statusLabel}
+          {" • "}
+          {pickupLabel}
+          {" • "}
+          {dropoffLabel}
+          {" • "}
+          {driverLabel}
+        </div>
+        <div>{rawPickupStr}</div>
+        <div>{rawDropoffStr}</div>
       </div>
 
       {error && (
