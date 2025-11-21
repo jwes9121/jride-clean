@@ -1,10 +1,12 @@
-﻿import { NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-export async function GET(req: Request) {
+// This route is always dynamic (called from the map page per booking)
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
-    const url = new URL(req.url);
-    const bookingId = url.searchParams.get("bookingId");
+    const bookingId = req.nextUrl.searchParams.get("bookingId");
 
     if (!bookingId) {
       return NextResponse.json(
@@ -18,7 +20,7 @@ export async function GET(req: Request) {
 
     const supabase = supabaseAdmin();
 
-    // Select * so we do NOT depend on specific column names here.
+    // Select * so we don't break if schema changes slightly.
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
