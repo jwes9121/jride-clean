@@ -101,7 +101,7 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
 
       if (!data || !data[0]) return;
 
-      const row = data[0] as any;
+      const row: any = data[0];
       const lat = typeof row.lat === "number" ? row.lat : null;
       const lng = typeof row.lng === "number" ? row.lng : null;
 
@@ -122,7 +122,6 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
   }, [driverId, supabase]);
 
   // 3) Initialise Mapbox map + static pickup / dropoff markers
-  //    This runs once (based on static pickup/dropoff), no currentLocation dependency.
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapRef.current) return;
@@ -195,6 +194,107 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
       duration: 800,
     });
   }, [currentLocation]);
+
+  // 5) Draw route polyline between pickup and dropoff using Mapbox Directions
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (
+      !Number.isFinite(pickupLat) ||
+      !Number.isFinite(pickupLng) ||
+      dropoffLat === null ||
+      dropoffLng === null ||
+      !Number.isFinite(dropoffLat) ||
+      !Number.isFinite(dropoffLng)
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const from = `${pickupLng},${pickupLat}`;
+    const to = `${dropoffLng},${dropoffLat}`;
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from};${to}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+
+    const addOrUpdateRoute = (coords: any[]) => {
+      if (!coords || !coords.length) return;
+
+      const geojson: any = {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: coords,
+        },
+        properties: {},
+      };
+
+      const sourceId = "booking-route";
+
+      if (map.getSource(sourceId)) {
+        const src = map.getSource(sourceId) as any;
+        src.setData(geojson);
+      } else {
+        map.addSource(sourceId, {
+          type: "geojson",
+          data: geojson,
+        } as any);
+
+        map.addLayer({
+          id: "booking-route-line",
+          type: "line",
+          source: sourceId,
+          layout: {
+            "line-join": "round",
+            "line-cap": "round",
+          },
+          paint: {
+            "line-width": 4,
+            "line-color": "#0ea5e9", // cyan-ish
+          },
+        } as any);
+      }
+
+      // Fit bounds to route
+      const first = coords[0] as [number, number];
+      const bounds = coords.reduce((b, c) => {
+        return b.extend(c as [number, number]);
+      }, new mapboxgl.LngLatBounds(first, first));
+
+      map.fitBounds(bounds, {
+        padding: 60,
+        duration: 800,
+      });
+    };
+
+    const fetchRoute = async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.error("MAPBOX_DIRECTIONS_ERROR_STATUS", res.status);
+          return;
+        }
+        const json: any = await res.json();
+        const coords =
+          json?.routes?.[0]?.geometry?.coordinates ?? null;
+        if (!cancelled && coords) {
+          addOrUpdateRoute(coords);
+        }
+      } catch (err) {
+        console.error("MAPBOX_DIRECTIONS_ERROR", err);
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      fetchRoute();
+    } else {
+      map.once("load", fetchRoute);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)]">
