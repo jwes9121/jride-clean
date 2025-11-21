@@ -1,91 +1,127 @@
 ﻿"use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import DispatchRow, { BookingRow } from "./DispatchRow";
 import { DriverInfo } from "./dispatchRules";
 
-const BOOKINGS_ENDPOINT = "/api/admin/livetrips";
-const DRIVERS_ENDPOINT = "/api/admin/drivers";
-const ACTIONS_ENDPOINT = "/api/admin/livetrips/actions";
+type DispatchActionName =
+  | "assign"
+  | "reassign"
+  | "on_the_way"
+  | "start_trip"
+  | "drop_off"
+  | "cancel";
+
+type BookingsResponse = {
+  bookings: BookingRow[];
+};
+
+type DriversResponse = {
+  drivers: DriverInfo[];
+};
 
 export default function LiveTripsPage() {
+  const router = useRouter();
+
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [workingBookingId, setWorkingBookingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const hasData = useMemo(
-    () => bookings.length > 0 || drivers.length > 0,
-    [bookings, drivers]
-  );
+  async function fetchBookings(): Promise<BookingRow[]> {
+    const res = await fetch("/api/admin/livetrips", {
+      method: "GET",
+      cache: "no-store",
+    });
 
-  const fetchBookingsAndDrivers = useCallback(async () => {
-    try {
-      setIsLoading(true);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(
+        `Failed to load bookings: HTTP ${res.status} ${text || ""}`
+      );
+    }
+
+    const json = (await res.json()) as BookingsResponse;
+    return json.bookings ?? [];
+  }
+
+  async function fetchDrivers(): Promise<DriverInfo[]> {
+    const res = await fetch("/api/admin/drivers", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      // drivers are optional; do not hard fail live trips
+      console.warn("Failed to load drivers", res.status);
+      return [];
+    }
+
+    const json = (await res.json()) as DriversResponse;
+    return json.drivers ?? [];
+  }
+
+  // Initial load
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setInitialLoading(true);
       setError(null);
 
-      const [bookingsRes, driversRes] = await Promise.all([
-        fetch(BOOKINGS_ENDPOINT, { method: "GET" }),
-        fetch(DRIVERS_ENDPOINT, { method: "GET" }),
-      ]);
+      try {
+        const [bookingsData, driversData] = await Promise.all([
+          fetchBookings(),
+          fetchDrivers(),
+        ]);
 
-      if (!bookingsRes.ok) {
-        const text = await bookingsRes.text();
-        throw new Error(
-          `Failed to load bookings (${bookingsRes.status}): ${text}`
-        );
+        if (!cancelled) {
+          setBookings(bookingsData);
+          setDrivers(driversData);
+        }
+      } catch (err: any) {
+        console.error("LIVE_TRIPS_LOAD_ERROR", err);
+        if (!cancelled) {
+          setError(err?.message ?? "Failed to load live trips.");
+        }
+      } finally {
+        if (!cancelled) {
+          setInitialLoading(false);
+        }
       }
-
-      if (!driversRes.ok) {
-        const text = await driversRes.text();
-        throw new Error(
-          `Failed to load drivers (${driversRes.status}): ${text}`
-        );
-      }
-
-      const bookingsJson = await bookingsRes.json();
-      const driversJson = await driversRes.json();
-
-      const bookingsData: BookingRow[] = Array.isArray(bookingsJson)
-        ? (bookingsJson as BookingRow[])
-        : ((bookingsJson.bookings ?? []) as BookingRow[]);
-
-      const driversData: DriverInfo[] = Array.isArray(driversJson)
-        ? (driversJson as DriverInfo[])
-        : ((driversJson.drivers ?? []) as DriverInfo[]);
-
-      setBookings(bookingsData);
-      setDrivers(driversData);
-    } catch (err: any) {
-      console.error("Error loading livetrips:", err);
-      setError(err?.message || "Failed to load live trips.");
-    } finally {
-      setIsLoading(false);
     }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    fetchBookingsAndDrivers();
-  }, [fetchBookingsAndDrivers]);
+  async function refreshBookings() {
+    setIsRefreshing(true);
+    setError(null);
 
-  type DispatchActionName =
-    | "assign"
-    | "reassign"
-    | "on_the_way"
-    | "start_trip"
-    | "drop_off"
-    | "cancel";
+    try {
+      const bookingsData = await fetchBookings();
+      setBookings(bookingsData);
+    } catch (err: any) {
+      console.error("LIVE_TRIPS_REFRESH_ERROR", err);
+      setError(err?.message ?? "Failed to refresh bookings.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
-  async function callDispatchAction(
-    action: DispatchActionName,
-    booking: BookingRow
-  ) {
+  async function handleAction(booking: BookingRow, action: DispatchActionName) {
     setWorkingBookingId(booking.id);
     setError(null);
 
     try {
-      const res = await fetch(ACTIONS_ENDPOINT, {
+      const res = await fetch("/api/admin/livetrips/actions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -99,126 +135,108 @@ export default function LiveTripsPage() {
       if (!res.ok) {
         const text = await res.text();
         throw new Error(
-          `Failed to perform action "${action}" (${res.status}): ${text}`
+          `Action ${action} failed: HTTP ${res.status} ${text || ""}`
         );
       }
 
-      await fetchBookingsAndDrivers();
+      const json = (await res.json()) as {
+        ok: boolean;
+        booking?: BookingRow;
+        error?: string;
+        message?: string;
+      };
+
+      if (!json.ok) {
+        throw new Error(json.message || json.error || "Action failed.");
+      }
+
+      if (json.booking) {
+        const updated = json.booking;
+
+        setBookings((prev) =>
+          prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+        );
+      } else {
+        // Fallback: refresh all bookings if API did not return a row
+        await refreshBookings();
+      }
     } catch (err: any) {
-      console.error("Dispatch action error:", err);
-      setError(err?.message || "Action failed.");
+      console.error("LIVE_TRIPS_ACTION_ERROR", err);
+      setError(err?.message ?? "Unexpected error while performing action.");
     } finally {
       setWorkingBookingId(null);
     }
   }
 
-  function handleAssign(booking: BookingRow) {
-    return callDispatchAction("assign", booking);
-  }
-
-  function handleReassign(booking: BookingRow) {
-    return callDispatchAction("reassign", booking);
-  }
-
-  function handleMarkOnTheWay(booking: BookingRow) {
-    return callDispatchAction("on_the_way", booking);
-  }
-
-  function handleStartTrip(booking: BookingRow) {
-    return callDispatchAction("start_trip", booking);
-  }
-
-  function handleDropOff(booking: BookingRow) {
-    return callDispatchAction("drop_off", booking);
-  }
-
-  function handleCancel(booking: BookingRow) {
-    const ok = window.confirm(
-      `Cancel booking ${booking.booking_code}? This cannot be undone.`
-    );
-    if (!ok) return;
-    return callDispatchAction("cancel", booking);
-  }
-
   function handleViewMap(booking: BookingRow) {
-    const url = new URL(window.location.origin + "/admin/livetrips/map");
-    url.searchParams.set("bookingId", booking.id);
-    window.open(url.toString(), "_blank", "noopener,noreferrer");
+    router.push(`/admin/livetrips/map?bookingId=${booking.id}`);
   }
+
+  const isWorking = (bookingId: string) => workingBookingId === bookingId;
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">Live Trips (Dispatch)</h1>
           <p className="text-sm text-gray-500">
             Driver names + button rules are centralized in{" "}
-            <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">
+            <code className="px-1 py-0.5 rounded bg-gray-100 text-xs">
               dispatchRules.ts
             </code>
             .
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={fetchBookingsAndDrivers}
-            className="text-xs border rounded-full px-3 py-1 disabled:opacity-40"
-            disabled={isLoading}
-          >
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="text-xs border rounded-full px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+          onClick={refreshBookings}
+          disabled={initialLoading || isRefreshing}
+        >
+          {isRefreshing ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="border border-red-200 bg-red-50 text-red-700 text-xs px-3 py-2 rounded">
           {error}
         </div>
       )}
 
-      {isLoading && !hasData ? (
+      {initialLoading ? (
         <div className="text-sm text-gray-500">Loading live trips…</div>
       ) : bookings.length === 0 ? (
         <div className="text-sm text-gray-500">
           No active bookings found right now.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full text-left">
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-xs uppercase text-gray-500">
               <tr>
-                <th className="px-3 py-2 font-medium whitespace-nowrap">
-                  Booking
-                </th>
-                <th className="px-3 py-2 font-medium whitespace-nowrap">
-                  Driver / Status
-                </th>
-                <th className="px-3 py-2 font-medium whitespace-nowrap">
-                  Route
-                </th>
-                <th className="px-3 py-2 font-medium whitespace-nowrap">
+                <th className="px-3 py-2 text-left">Booking</th>
+                <th className="px-3 py-2 text-left">Driver / Status</th>
+                <th className="px-3 py-2 text-left">Route</th>
+                <th className="px-3 py-2 text-left whitespace-nowrap">
                   Created
                 </th>
-                <th className="px-3 py-2 font-medium whitespace-nowrap">
-                  Actions
-                </th>
+                <th className="px-3 py-2 text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {bookings.map((b) => (
+              {bookings.map((booking) => (
                 <DispatchRow
-                  key={b.id}
-                  booking={b}
+                  key={booking.id}
+                  booking={booking}
                   drivers={drivers}
-                  isWorking={workingBookingId === b.id}
-                  onAssign={handleAssign}
-                  onReassign={handleReassign}
-                  onCancel={handleCancel}
-                  onMarkOnTheWay={handleMarkOnTheWay}
-                  onStartTrip={handleStartTrip}
-                  onDropOff={handleDropOff}
+                  isWorking={isWorking(booking.id)}
+                  onAssign={(b) => handleAction(b, "assign")}
+                  onReassign={(b) => handleAction(b, "reassign")}
+                  onCancel={(b) => handleAction(b, "cancel")}
+                  onMarkOnTheWay={(b) => handleAction(b, "on_the_way")}
+                  onStartTrip={(b) => handleAction(b, "start_trip")}
+                  onDropOff={(b) => handleAction(b, "drop_off")}
                   onViewMap={handleViewMap}
                 />
               ))}
