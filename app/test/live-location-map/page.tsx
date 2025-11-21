@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import supabaseClient from "@/lib/supabaseClient"; // 👈 default export
+import supabaseClient from "@/lib/supabaseClient";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 
@@ -29,35 +29,42 @@ export default function LiveLocationMapPage() {
     }
 
     if (!mapRef.current) {
-      mapRef.current = new mapboxgl.Map({
+      const map = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: "mapbox://styles/mapbox/streets-v11",
         center: [121.1055, 16.825], // near your test coords
         zoom: 14,
       });
 
-      mapRef.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+      map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+      mapRef.current = map;
     }
 
     return () => {
-      mapRef.current?.remove();
-      mapRef.current = null;
+      const map = mapRef.current;
+      if (map) {
+        map.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
   // Helper to place / move marker
   const updateMarker = (lng: number, lat: number) => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
 
     if (!markerRef.current) {
-      markerRef.current = new mapboxgl.Marker({ color: "#FF0000" })
+      const marker = new mapboxgl.Marker({ color: "#FF0000" })
         .setLngLat([lng, lat])
-        .addTo(mapRef.current);
+        .addTo(map);
+      markerRef.current = marker;
     } else {
       markerRef.current.setLngLat([lng, lat]);
     }
 
-    mapRef.current.flyTo({
+    map.flyTo({
       center: [lng, lat],
       zoom: 14,
       essential: true,
