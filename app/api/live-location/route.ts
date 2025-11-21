@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { driverId, lat, lng, status } = body;
 
-    if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
+    if (typeof lat !== "number" || typeof lng !== "number") {
       console.error("LIVE_LOCATION_INVALID_PAYLOAD", body);
       return NextResponse.json(
         { error: "INVALID_PAYLOAD", body },
@@ -17,11 +17,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Simple insert; no updated_at, no onConflict (avoids column/index issues)
+    // IMPORTANT: do NOT send driver_id (it is uuid in DB and causing 22P02)
+    // We just log it for now so we can wire it properly later.
+    console.log("LIVE_LOCATION_UPDATE", {
+      driverId,
+      lat,
+      lng,
+      status,
+    });
+
     const { data, error } = await supabase
       .from("driver_locations")
       .insert({
-        driver_id: driverId,
+        // driver_id: driverId,  // <--- REMOVED on purpose
         lat,
         lng,
         status: status ?? "online",
