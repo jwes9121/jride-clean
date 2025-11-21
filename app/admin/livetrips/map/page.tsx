@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import BookingMapClient from "./BookingMapClient";
 
 type LiveTripMapPageProps = {
   searchParams?: {
@@ -15,7 +16,7 @@ export default function LiveTripMapPage({ searchParams }: LiveTripMapPageProps) 
         <div>
           <h1 className="text-xl font-semibold">Booking map</h1>
           <p className="text-sm text-gray-500">
-            Temporary map view for dispatch. Booking details will be wired here.
+            Live JRide map view for dispatch. Booking details can be wired here.
           </p>
         </div>
 
@@ -36,11 +37,7 @@ export default function LiveTripMapPage({ searchParams }: LiveTripMapPageProps) 
         </div>
       </div>
 
-      <div className="border border-dashed rounded-xl h-[480px] flex items-center justify-center bg-gray-50">
-        <span className="text-sm text-gray-500">
-          Map placeholder — this is where the JRide / Mapbox view will go.
-        </span>
-      </div>
+      <BookingMapClient bookingId={bookingId} />
     </div>
   );
 }
