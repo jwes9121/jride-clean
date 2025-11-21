@@ -38,7 +38,10 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
   const dropoffLat = dropoffLatRaw ? Number.parseFloat(dropoffLatRaw) : null;
   const dropoffLng = dropoffLngRaw ? Number.parseFloat(dropoffLngRaw) : null;
 
+  // Driver for this booking (from bookings.assigned_driver_id)
   const [driverId, setDriverId] = useState<string | null>(null);
+
+  // Current live driver location (from driver_locations)
   const [currentLocation, setCurrentLocation] = useState<LatLng | null>(
     Number.isFinite(pickupLat) && Number.isFinite(pickupLng)
       ? { lat: pickupLat, lng: pickupLng }
@@ -51,7 +54,7 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
   const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // 1) Fetch assigned_driver_id for this booking
+  // 1) Fetch assigned_driver_id for this booking once
   useEffect(() => {
     if (!bookingId) return;
 
@@ -77,43 +80,49 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
     fetchBooking();
   }, [bookingId, supabase]);
 
-  // 2) Subscribe to driver_locations realtime for this driver
+  // 2) Poll driver_locations every 3 seconds for this driver
   useEffect(() => {
     if (!driverId) return;
 
-    const channel = supabase
-      .channel(`booking-map-driver-${driverId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "driver_locations",
-          filter: `driver_id=eq.${driverId}`,
-        },
-        (payload) => {
-          const row: any = payload.new;
-          if (!row) return;
+    let isCancelled = false;
 
-          const lat = typeof row.lat === "number" ? row.lat : null;
-          const lng = typeof row.lng === "number" ? row.lng : null;
+    const fetchLatestLocation = async () => {
+      const { data, error } = await supabase
+        .from("driver_locations")
+        .select("lat, lng, updated_at")
+        .eq("driver_id", driverId)
+        .order("updated_at", { ascending: false })
+        .limit(1);
 
-          if (lat != null && lng != null) {
-            setCurrentLocation({ lat, lng });
-          }
-        },
-      )
-      .subscribe();
+      if (error) {
+        console.error("DRIVER_LOCATION_FETCH_ERROR", error);
+        return;
+      }
+
+      if (!data || !data[0]) return;
+
+      const row = data[0] as any;
+      const lat = typeof row.lat === "number" ? row.lat : null;
+      const lng = typeof row.lng === "number" ? row.lng : null;
+
+      if (!isCancelled && lat != null && lng != null) {
+        setCurrentLocation({ lat, lng });
+      }
+    };
+
+    // first immediate fetch
+    fetchLatestLocation();
+
+    const intervalId = setInterval(fetchLatestLocation, 3000);
 
     return () => {
-      supabase.removeChannel(channel);
+      isCancelled = true;
+      clearInterval(intervalId);
     };
   }, [driverId, supabase]);
 
   // 3) Initialise Mapbox map + static pickup / dropoff markers
-  // IMPORTANT: this runs only once (or if pickup/dropoff from URL changes),
-  // and is NOT dependent on currentLocation, so it won't destroy the map
-  // when driver position updates.
+  //    This runs once (based on static pickup/dropoff), no currentLocation dependency.
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapRef.current) return;
@@ -155,37 +164,28 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
       dropoffMarkerRef.current = dropoffMarker;
     }
 
-    // Initial driver marker at pickup (if we have a starting location)
-    if (currentLocation) {
-      const driverMarker = new mapboxgl.Marker({ color: "#16a34a" }) // green
-        .setLngLat([currentLocation.lng, currentLocation.lat])
-        .addTo(map);
-      driverMarkerRef.current = driverMarker;
-    }
-
     return () => {
       driverMarkerRef.current?.remove();
       pickupMarkerRef.current?.remove();
       dropoffMarkerRef.current?.remove();
       map.remove();
     };
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, currentLocation]);
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
-  // 4) Whenever currentLocation changes, update driver marker + center.
-  // This no longer recreates or destroys the map.
+  // 4) Whenever currentLocation changes, update driver marker + center
   useEffect(() => {
     if (!currentLocation) return;
 
     const map = mapRef.current;
-    const marker = driverMarkerRef.current;
-
     if (!map) return;
 
+    let marker = driverMarkerRef.current;
+
     if (!marker) {
-      const newMarker = new mapboxgl.Marker({ color: "#16a34a" })
+      marker = new mapboxgl.Marker({ color: "#16a34a" }) // green
         .setLngLat([currentLocation.lng, currentLocation.lat])
         .addTo(map);
-      driverMarkerRef.current = newMarker;
+      driverMarkerRef.current = marker;
     } else {
       marker.setLngLat([currentLocation.lng, currentLocation.lat]);
     }
