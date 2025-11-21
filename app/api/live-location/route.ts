@@ -6,41 +6,36 @@ export async function POST(req: NextRequest) {
   const supabase = supabaseAdmin();
 
   try {
-    const { driverId, lat, lng, status } = await req.json();
+    const body = await req.json();
+    const { driverId, lat, lng, status } = body;
 
     if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
+      console.error("LIVE_LOCATION_INVALID_PAYLOAD", body);
       return NextResponse.json(
-        { error: "INVALID_PAYLOAD" },
+        { error: "INVALID_PAYLOAD", body },
         { status: 400 }
       );
     }
 
-    const { error } = await supabase
+    // Simple insert; no updated_at, no onConflict (avoids column/index issues)
+    const { data, error } = await supabase
       .from("driver_locations")
-      .upsert(
-        {
-          driver_id: driverId,
-          lat,
-          lng,
-          status: status ?? "online",
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "driver_id" }
-      );
+      .insert({
+        driver_id: driverId,
+        lat,
+        lng,
+        status: status ?? "online",
+      });
 
     if (error) {
       console.error("LIVE_LOCATION_DB_ERROR", error);
       return NextResponse.json(
-        {
-          error: "DB_ERROR",
-          code: error.code,
-          message: error.message,
-        },
+        { error: "DB_ERROR", details: error },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, data });
   } catch (err) {
     console.error("LIVE_LOCATION_UNEXPECTED_ERROR", err);
     return NextResponse.json(
@@ -50,7 +45,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Optional simple GET just to see the route is alive
 export async function GET() {
   return NextResponse.json({ ok: true, route: "live-location" });
 }
