@@ -8,6 +8,14 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 type Booking = Record<string, any>;
 
+type DriverLocation = {
+  driver_id: string;
+  lat: number | null;
+  lng: number | null;
+  status?: string | null;
+  town?: string | null;
+};
+
 type Props = {
   bookingId: string | null;
 };
@@ -18,7 +26,6 @@ type Coords = {
 };
 
 const DEFAULT_CENTER: Coords = {
-  // JRide default center (adjust if you want)
   lat: 16.81,
   lng: 121.11,
 };
@@ -26,7 +33,7 @@ const DEFAULT_ZOOM = 11;
 
 /**
  * Try multiple possible field names for pickup coords so we don't break
- * even if prod and dev schemas are slightly different.
+ * even if schema changes slightly.
  */
 function extractPickupCoords(booking: Booking | null): Coords | null {
   if (!booking) return null;
@@ -78,16 +85,34 @@ function extractPickupCoords(booking: Booking | null): Coords | null {
   return null;
 }
 
+function extractDriverCoords(driverLocation: DriverLocation | null): Coords | null {
+  if (!driverLocation) return null;
+  const { lat, lng } = driverLocation;
+  if (typeof lat === "number" && typeof lng === "number") {
+    return { lat, lng };
+  }
+  return null;
+}
+
 export default function BookingMapClient({ bookingId }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
+
+  const pickupMarkerRef = useRef<any>(null);
+  const driverMarkerRef = useRef<any>(null);
+
   const [center, setCenter] = useState<Coords>(DEFAULT_CENTER);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
+
   const [hasBookingCoords, setHasBookingCoords] = useState<boolean>(false);
+  const [hasDriverCoords, setHasDriverCoords] = useState<boolean>(false);
+
+  const [driverCoords, setDriverCoords] = useState<Coords | null>(null);
+
   const [loading, setLoading] = useState<boolean>(!!bookingId);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch booking details from API
+  // Fetch booking + driverLocation from API
   useEffect(() => {
     if (!bookingId) {
       setLoading(false);
@@ -95,13 +120,14 @@ export default function BookingMapClient({ bookingId }: Props) {
     }
 
     const id = bookingId; // narrowed to string
-
     let cancelled = false;
 
     async function loadBooking() {
       setLoading(true);
       setError(null);
       setHasBookingCoords(false);
+      setHasDriverCoords(false);
+      setDriverCoords(null);
 
       try {
         const res = await fetch(
@@ -115,19 +141,28 @@ export default function BookingMapClient({ bookingId }: Props) {
 
         const json = await res.json();
         const booking: Booking | null = json.booking ?? null;
+        const driverLocation: DriverLocation | null = json.driverLocation ?? null;
 
-        const coords = extractPickupCoords(booking);
+        const pickup = extractPickupCoords(booking);
+        const driver = extractDriverCoords(driverLocation);
 
         if (!cancelled) {
-          if (coords) {
-            setCenter(coords);
+          if (pickup) {
+            setCenter(pickup);
             setZoom(14);
             setHasBookingCoords(true);
           } else {
-            // No coords found, fall back to default map
             setCenter(DEFAULT_CENTER);
             setZoom(DEFAULT_ZOOM);
             setHasBookingCoords(false);
+          }
+
+          if (driver) {
+            setDriverCoords(driver);
+            setHasDriverCoords(true);
+          } else {
+            setDriverCoords(null);
+            setHasDriverCoords(false);
           }
         }
       } catch (err: any) {
@@ -137,6 +172,8 @@ export default function BookingMapClient({ bookingId }: Props) {
           setCenter(DEFAULT_CENTER);
           setZoom(DEFAULT_ZOOM);
           setHasBookingCoords(false);
+          setDriverCoords(null);
+          setHasDriverCoords(false);
         }
       } finally {
         if (!cancelled) {
@@ -178,20 +215,81 @@ export default function BookingMapClient({ bookingId }: Props) {
     mapRef.current.setCenter([center.lng, center.lat]);
   }, [center.lat, center.lng]);
 
-  // Marker when we actually have booking coords
+  // Pickup marker
   useEffect(() => {
     if (!mapRef.current) return;
-    if (!hasBookingCoords) return;
+
+    if (!hasBookingCoords) {
+      if (pickupMarkerRef.current) {
+        pickupMarkerRef.current.remove();
+        pickupMarkerRef.current = null;
+      }
+      return;
+    }
+
+    // If marker exists, just move it
+    if (pickupMarkerRef.current) {
+      pickupMarkerRef.current.setLngLat([center.lng, center.lat]);
+      return;
+    }
 
     const marker = new (mapboxgl as any)
-      .Marker()
+      .Marker({ color: "#2563eb" }) // blue-ish for pickup
       .setLngLat([center.lng, center.lat])
       .addTo(mapRef.current);
 
+    pickupMarkerRef.current = marker;
+
     return () => {
       marker.remove();
+      pickupMarkerRef.current = null;
     };
   }, [center.lat, center.lng, hasBookingCoords]);
+
+  // Driver marker
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (!hasDriverCoords || !driverCoords) {
+      if (driverMarkerRef.current) {
+        driverMarkerRef.current.remove();
+        driverMarkerRef.current = null;
+      }
+      return;
+    }
+
+    const { lat, lng } = driverCoords;
+
+    // If marker exists, move it
+    if (driverMarkerRef.current) {
+      driverMarkerRef.current.setLngLat([lng, lat]);
+      return;
+    }
+
+    const marker = new (mapboxgl as any)
+      .Marker({ color: "#16a34a" }) // green-ish for driver
+      .setLngLat([lng, lat])
+      .addTo(mapRef.current);
+
+    driverMarkerRef.current = marker;
+
+    return () => {
+      marker.remove();
+      driverMarkerRef.current = null;
+    };
+  }, [driverCoords, hasDriverCoords]);
+
+  // Optional: if we have both pickup + driver, fit bounds to show both
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!hasBookingCoords || !hasDriverCoords || !driverCoords) return;
+
+    const bounds = new (mapboxgl as any).LngLatBounds();
+    bounds.extend([center.lng, center.lat]);
+    bounds.extend([driverCoords.lng, driverCoords.lat]);
+
+    mapRef.current.fitBounds(bounds, { padding: 60 });
+  }, [center.lat, center.lng, hasBookingCoords, hasDriverCoords, driverCoords]);
 
   return (
     <div className="relative h-[480px] rounded-xl overflow-hidden border border-gray-200">
@@ -199,6 +297,7 @@ export default function BookingMapClient({ bookingId }: Props) {
         {bookingId ? `Booking: ${bookingId}` : "No booking selected"}
         {loading ? " • loading…" : null}
         {hasBookingCoords ? " • pickup centered" : " • default view"}
+        {hasDriverCoords ? " • driver located" : " • no driver position"}
       </div>
 
       {error && (
