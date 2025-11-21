@@ -18,6 +18,7 @@ type LiveLocation = {
 export default function LiveLocationMapPage() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   // 1) Init map once
   useEffect(() => {
@@ -36,7 +37,6 @@ export default function LiveLocationMapPage() {
       });
 
       map.addControl(new mapboxgl.NavigationControl(), "top-right");
-
       mapRef.current = map;
     }
 
@@ -45,24 +45,26 @@ export default function LiveLocationMapPage() {
       if (map) {
         map.remove();
         mapRef.current = null;
+        markerRef.current = null;
       }
     };
   }, []);
 
-  // Helper to drop a marker and move camera
-  const dropMarker = (lng: number, lat: number) => {
+  // Helper: create or move ONE marker
+  const moveMarker = (lng: number, lat: number) => {
     const map = mapRef.current;
     if (!map) {
-      console.warn("dropMarker called but map not ready yet");
+      console.warn("moveMarker called but map not ready yet");
       return;
     }
 
-    console.log("dropMarker at:", { lng, lat });
-
-    // Always create a NEW marker so we can clearly see updates
-    new mapboxgl.Marker({ color: "#FF0000" })
-      .setLngLat([lng, lat])
-      .addTo(map);
+    if (!markerRef.current) {
+      markerRef.current = new mapboxgl.Marker({ color: "#FF0000" })
+        .setLngLat([lng, lat])
+        .addTo(map);
+    } else {
+      markerRef.current.setLngLat([lng, lat]);
+    }
 
     map.flyTo({
       center: [lng, lat],
@@ -88,7 +90,8 @@ export default function LiveLocationMapPage() {
 
       if (data && data.length > 0) {
         const loc = data[0];
-        dropMarker(loc.lng, loc.lat);
+        console.log("Initial location:", loc);
+        moveMarker(loc.lng, loc.lat);
       } else {
         console.log("No initial live location found.");
       }
@@ -97,14 +100,14 @@ export default function LiveLocationMapPage() {
     loadInitial();
   }, []);
 
-  // 3) Realtime subscription
+  // 3) Realtime subscription – move marker on every change
   useEffect(() => {
     const channel = supabaseBrowser
       .channel("realtime:live_locations")
       .on(
         "postgres_changes",
         {
-          event: "*", // INSERT / UPDATE / DELETE
+          event: "*",
           schema: "public",
           table: "live_locations",
         },
@@ -116,7 +119,7 @@ export default function LiveLocationMapPage() {
           }
 
           console.log("Realtime update:", row);
-          dropMarker(row.lng, row.lat);
+          moveMarker(row.lng, row.lat);
         }
       )
       .subscribe((status) => {
