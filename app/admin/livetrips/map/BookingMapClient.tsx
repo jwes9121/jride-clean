@@ -6,7 +6,19 @@ import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-type Booking = Record<string, any>;
+type Booking = {
+  id: string;
+  booking_code: string;
+  status: string;
+  assigned_driver_id: string | null;
+  from_label?: string | null;
+  to_label?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+  created_at?: string;
+};
 
 type DriverLocation = {
   driver_id: string;
@@ -14,6 +26,7 @@ type DriverLocation = {
   lng: number | null;
   status?: string | null;
   town?: string | null;
+  updated_at?: string | null;
 };
 
 type Props = {
@@ -31,65 +44,30 @@ const DEFAULT_CENTER: Coords = {
 };
 const DEFAULT_ZOOM = 11;
 
-/**
- * Try multiple possible field names for pickup coords so we don't break
- * even if schema changes slightly.
- */
+function hasValidCoords(lat: unknown, lng: unknown): lat is number {
+  return typeof lat === "number" && typeof lng === "number";
+}
+
 function extractPickupCoords(booking: Booking | null): Coords | null {
   if (!booking) return null;
-
-  const pairCandidates: [string, string][] = [
-    ["pickup_lat", "pickup_lng"],
-    ["pickup_latitude", "pickup_longitude"],
-    ["pickup_location_lat", "pickup_location_lng"],
-    ["pickup_point_lat", "pickup_point_lng"],
-  ];
-
-  for (const [latKey, lngKey] of pairCandidates) {
-    const lat = booking[latKey];
-    const lng = booking[lngKey];
-
-    if (typeof lat === "number" && typeof lng === "number") {
-      return { lat, lng };
-    }
-    if (typeof lat === "string" && typeof lng === "string") {
-      const latNum = parseFloat(lat);
-      const lngNum = parseFloat(lng);
-      if (!Number.isNaN(latNum) && !Number.isNaN(lngNum)) {
-        return { lat: latNum, lng: lngNum };
-      }
-    }
+  if (hasValidCoords(booking.pickup_lat, booking.pickup_lng)) {
+    return { lat: booking.pickup_lat as number, lng: booking.pickup_lng as number };
   }
+  return null;
+}
 
-  // Object style: pickup_location / pickup_point / pickup: { lat, lng } or { latitude, longitude }
-  const objectKeys = ["pickup_location", "pickup_point", "pickup"];
-  for (const key of objectKeys) {
-    const val = booking[key];
-    if (val && typeof val === "object") {
-      const maybeLat = (val as any).lat ?? (val as any).latitude;
-      const maybeLng = (val as any).lng ?? (val as any).longitude;
-
-      if (typeof maybeLat === "number" && typeof maybeLng === "number") {
-        return { lat: maybeLat, lng: maybeLng };
-      }
-      if (typeof maybeLat === "string" && typeof maybeLng === "string") {
-        const latNum = parseFloat(maybeLat);
-        const lngNum = parseFloat(maybeLng);
-        if (!Number.isNaN(latNum) && !Number.isNaN(lngNum)) {
-          return { lat: latNum, lng: lngNum };
-        }
-      }
-    }
+function extractDropoffCoords(booking: Booking | null): Coords | null {
+  if (!booking) return null;
+  if (hasValidCoords(booking.dropoff_lat, booking.dropoff_lng)) {
+    return { lat: booking.dropoff_lat as number, lng: booking.dropoff_lng as number };
   }
-
   return null;
 }
 
 function extractDriverCoords(driverLocation: DriverLocation | null): Coords | null {
   if (!driverLocation) return null;
-  const { lat, lng } = driverLocation;
-  if (typeof lat === "number" && typeof lng === "number") {
-    return { lat, lng };
+  if (hasValidCoords(driverLocation.lat, driverLocation.lng)) {
+    return { lat: driverLocation.lat as number, lng: driverLocation.lng as number };
   }
   return null;
 }
@@ -99,14 +77,16 @@ export default function BookingMapClient({ bookingId }: Props) {
   const mapRef = useRef<any>(null);
 
   const pickupMarkerRef = useRef<any>(null);
+  const dropoffMarkerRef = useRef<any>(null);
   const driverMarkerRef = useRef<any>(null);
 
   const [center, setCenter] = useState<Coords>(DEFAULT_CENTER);
   const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
 
-  const [hasBookingCoords, setHasBookingCoords] = useState<boolean>(false);
-  const [hasDriverCoords, setHasDriverCoords] = useState<boolean>(false);
+  const [bookingStatus, setBookingStatus] = useState<string | null>(null);
 
+  const [pickupCoords, setPickupCoords] = useState<Coords | null>(null);
+  const [dropoffCoords, setDropoffCoords] = useState<Coords | null>(null);
   const [driverCoords, setDriverCoords] = useState<Coords | null>(null);
 
   const [loading, setLoading] = useState<boolean>(!!bookingId);
@@ -119,19 +99,17 @@ export default function BookingMapClient({ bookingId }: Props) {
       return;
     }
 
-    const id = bookingId; // narrowed to string
+    const id = bookingId; // narrowed
     let cancelled = false;
 
-    async function loadBooking() {
+    async function load() {
       setLoading(true);
       setError(null);
-      setHasBookingCoords(false);
-      setHasDriverCoords(false);
-      setDriverCoords(null);
 
       try {
         const res = await fetch(
-          `/api/admin/livetrips/booking-map?bookingId=${encodeURIComponent(id)}`
+          `/api/admin/livetrips/booking-map?bookingId=${encodeURIComponent(id)}`,
+          { cache: "no-store" }
         );
 
         if (!res.ok) {
@@ -143,37 +121,59 @@ export default function BookingMapClient({ bookingId }: Props) {
         const booking: Booking | null = json.booking ?? null;
         const driverLocation: DriverLocation | null = json.driverLocation ?? null;
 
+        if (cancelled) return;
+
         const pickup = extractPickupCoords(booking);
+        const dropoff = extractDropoffCoords(booking);
         const driver = extractDriverCoords(driverLocation);
 
-        if (!cancelled) {
-          if (pickup) {
-            setCenter(pickup);
-            setZoom(14);
-            setHasBookingCoords(true);
-          } else {
-            setCenter(DEFAULT_CENTER);
-            setZoom(DEFAULT_ZOOM);
-            setHasBookingCoords(false);
-          }
+        setPickupCoords(pickup);
+        setDropoffCoords(dropoff);
+        setDriverCoords(driver);
 
-          if (driver) {
-            setDriverCoords(driver);
-            setHasDriverCoords(true);
-          } else {
-            setDriverCoords(null);
-            setHasDriverCoords(false);
-          }
+        const status =
+          booking && typeof booking.status === "string"
+            ? booking.status
+            : null;
+        setBookingStatus(status);
+
+        // Decide initial center/zoom based on status
+        let newCenter: Coords = DEFAULT_CENTER;
+        let newZoom = DEFAULT_ZOOM;
+
+        if (pickup) {
+          newCenter = pickup;
+          newZoom = 14;
+        } else if (driver) {
+          newCenter = driver;
+          newZoom = 14;
+        } else if (dropoff) {
+          newCenter = dropoff;
+          newZoom = 14;
         }
+
+        if (status === "in_progress" && driver) {
+          newCenter = driver;
+          newZoom = 14;
+        }
+
+        if ((status === "completed" || status === "cancelled") && dropoff) {
+          newCenter = dropoff;
+          newZoom = 14;
+        }
+
+        setCenter(newCenter);
+        setZoom(newZoom);
       } catch (err: any) {
         console.error("Booking map fetch error", err);
         if (!cancelled) {
           setError(err?.message ?? "Failed to load booking.");
+          setPickupCoords(null);
+          setDropoffCoords(null);
+          setDriverCoords(null);
+          setBookingStatus(null);
           setCenter(DEFAULT_CENTER);
           setZoom(DEFAULT_ZOOM);
-          setHasBookingCoords(false);
-          setDriverCoords(null);
-          setHasDriverCoords(false);
         }
       } finally {
         if (!cancelled) {
@@ -182,7 +182,7 @@ export default function BookingMapClient({ bookingId }: Props) {
       }
     }
 
-    loadBooking();
+    load();
 
     return () => {
       cancelled = true;
@@ -213,13 +213,14 @@ export default function BookingMapClient({ bookingId }: Props) {
   useEffect(() => {
     if (!mapRef.current) return;
     mapRef.current.setCenter([center.lng, center.lat]);
-  }, [center.lat, center.lng]);
+    mapRef.current.setZoom(zoom);
+  }, [center.lat, center.lng, zoom]);
 
-  // Pickup marker
+  // Pickup marker (blue)
   useEffect(() => {
     if (!mapRef.current) return;
 
-    if (!hasBookingCoords) {
+    if (!pickupCoords) {
       if (pickupMarkerRef.current) {
         pickupMarkerRef.current.remove();
         pickupMarkerRef.current = null;
@@ -227,15 +228,14 @@ export default function BookingMapClient({ bookingId }: Props) {
       return;
     }
 
-    // If marker exists, just move it
     if (pickupMarkerRef.current) {
-      pickupMarkerRef.current.setLngLat([center.lng, center.lat]);
+      pickupMarkerRef.current.setLngLat([pickupCoords.lng, pickupCoords.lat]);
       return;
     }
 
     const marker = new (mapboxgl as any)
-      .Marker({ color: "#2563eb" }) // blue-ish for pickup
-      .setLngLat([center.lng, center.lat])
+      .Marker({ color: "#2563eb" }) // blue
+      .setLngLat([pickupCoords.lng, pickupCoords.lat])
       .addTo(mapRef.current);
 
     pickupMarkerRef.current = marker;
@@ -244,13 +244,43 @@ export default function BookingMapClient({ bookingId }: Props) {
       marker.remove();
       pickupMarkerRef.current = null;
     };
-  }, [center.lat, center.lng, hasBookingCoords]);
+  }, [pickupCoords]);
 
-  // Driver marker
+  // Dropoff marker (red)
   useEffect(() => {
     if (!mapRef.current) return;
 
-    if (!hasDriverCoords || !driverCoords) {
+    if (!dropoffCoords) {
+      if (dropoffMarkerRef.current) {
+        dropoffMarkerRef.current.remove();
+        dropoffMarkerRef.current = null;
+      }
+      return;
+    }
+
+    if (dropoffMarkerRef.current) {
+      dropoffMarkerRef.current.setLngLat([dropoffCoords.lng, dropoffCoords.lat]);
+      return;
+    }
+
+    const marker = new (mapboxgl as any)
+      .Marker({ color: "#dc2626" }) // red
+      .setLngLat([dropoffCoords.lng, dropoffCoords.lat])
+      .addTo(mapRef.current);
+
+    dropoffMarkerRef.current = marker;
+
+    return () => {
+      marker.remove();
+      dropoffMarkerRef.current = null;
+    };
+  }, [dropoffCoords]);
+
+  // Driver marker (green)
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    if (!driverCoords) {
       if (driverMarkerRef.current) {
         driverMarkerRef.current.remove();
         driverMarkerRef.current = null;
@@ -258,17 +288,14 @@ export default function BookingMapClient({ bookingId }: Props) {
       return;
     }
 
-    const { lat, lng } = driverCoords;
-
-    // If marker exists, move it
     if (driverMarkerRef.current) {
-      driverMarkerRef.current.setLngLat([lng, lat]);
+      driverMarkerRef.current.setLngLat([driverCoords.lng, driverCoords.lat]);
       return;
     }
 
     const marker = new (mapboxgl as any)
-      .Marker({ color: "#16a34a" }) // green-ish for driver
-      .setLngLat([lng, lat])
+      .Marker({ color: "#16a34a" }) // green
+      .setLngLat([driverCoords.lng, driverCoords.lat])
       .addTo(mapRef.current);
 
     driverMarkerRef.current = marker;
@@ -277,27 +304,53 @@ export default function BookingMapClient({ bookingId }: Props) {
       marker.remove();
       driverMarkerRef.current = null;
     };
-  }, [driverCoords, hasDriverCoords]);
+  }, [driverCoords]);
 
-  // Optional: if we have both pickup + driver, fit bounds to show both
+  // Fit bounds when we have multiple points
   useEffect(() => {
     if (!mapRef.current) return;
-    if (!hasBookingCoords || !hasDriverCoords || !driverCoords) return;
+
+    const points: [number, number][] = [];
+
+    if (pickupCoords) {
+      points.push([pickupCoords.lng, pickupCoords.lat]);
+    }
+    if (dropoffCoords) {
+      points.push([dropoffCoords.lng, dropoffCoords.lat]);
+    }
+    if (driverCoords) {
+      points.push([driverCoords.lng, driverCoords.lat]);
+    }
+
+    if (points.length < 2) return;
 
     const bounds = new (mapboxgl as any).LngLatBounds();
-    bounds.extend([center.lng, center.lat]);
-    bounds.extend([driverCoords.lng, driverCoords.lat]);
+    for (const p of points) {
+      bounds.extend(p);
+    }
 
     mapRef.current.fitBounds(bounds, { padding: 60 });
-  }, [center.lat, center.lng, hasBookingCoords, hasDriverCoords, driverCoords]);
+  }, [pickupCoords, dropoffCoords, driverCoords]);
+
+  const statusLabel =
+    bookingStatus ?? "unknown";
+
+  const pickupLabel = pickupCoords ? "pickup" : "no pickup";
+  const dropoffLabel = dropoffCoords ? "dropoff" : "no dropoff";
+  const driverLabel = driverCoords ? "driver located" : "no driver position";
 
   return (
     <div className="relative h-[480px] rounded-xl overflow-hidden border border-gray-200">
       <div className="absolute z-10 m-2 rounded bg-white/80 px-2 py-1 text-[10px] font-mono">
         {bookingId ? `Booking: ${bookingId}` : "No booking selected"}
-        {loading ? " • loading…" : null}
-        {hasBookingCoords ? " • pickup centered" : " • default view"}
-        {hasDriverCoords ? " • driver located" : " • no driver position"}
+        {loading ? " • loading…" : null}{" "}
+        • status: {statusLabel}
+        {" • "}
+        {pickupLabel}
+        {" • "}
+        {dropoffLabel}
+        {" • "}
+        {driverLabel}
       </div>
 
       {error && (
