@@ -111,16 +111,19 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
   }, [driverId, supabase]);
 
   // 3) Initialise Mapbox map + static pickup / dropoff markers
+  // IMPORTANT: this runs only once (or if pickup/dropoff from URL changes),
+  // and is NOT dependent on currentLocation, so it won't destroy the map
+  // when driver position updates.
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapRef.current) return;
 
-    const center: [number, number] =
-      currentLocation && Number.isFinite(currentLocation.lat) && Number.isFinite(currentLocation.lng)
-        ? [currentLocation.lng, currentLocation.lat]
-        : Number.isFinite(pickupLat) && Number.isFinite(pickupLng)
-          ? [pickupLng, pickupLat]
-          : [121.11, 16.8219];
+    const hasPickup =
+      Number.isFinite(pickupLat) && Number.isFinite(pickupLng);
+
+    const center: [number, number] = hasPickup
+      ? [pickupLng, pickupLat]
+      : [121.11, 16.8219]; // default Lamut-ish center
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
@@ -132,7 +135,7 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
     mapRef.current = map;
 
     // Pickup marker
-    if (Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
+    if (hasPickup) {
       const pickupMarker = new mapboxgl.Marker({ color: "#2563eb" }) // blue
         .setLngLat([pickupLng, pickupLat])
         .addTo(map);
@@ -152,7 +155,7 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
       dropoffMarkerRef.current = dropoffMarker;
     }
 
-    // Driver marker initial position
+    // Initial driver marker at pickup (if we have a starting location)
     if (currentLocation) {
       const driverMarker = new mapboxgl.Marker({ color: "#16a34a" }) // green
         .setLngLat([currentLocation.lng, currentLocation.lat])
@@ -166,9 +169,10 @@ export default function BookingMapPage({ searchParams = {} }: PageProps) {
       dropoffMarkerRef.current?.remove();
       map.remove();
     };
-  }, [currentLocation, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, currentLocation]);
 
-  // 4) Whenever currentLocation changes, update driver marker + center
+  // 4) Whenever currentLocation changes, update driver marker + center.
+  // This no longer recreates or destroys the map.
   useEffect(() => {
     if (!currentLocation) return;
 
