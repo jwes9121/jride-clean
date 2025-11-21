@@ -10,7 +10,6 @@
 export type BookingRowForRules = {
   status: BookingStatus;
   assigned_driver_id: string | null;
-  // You can wire these from your booking data
   hasPickupCoords: boolean;
   hasDropoffCoords: boolean;
 };
@@ -26,20 +25,15 @@ export type ButtonRules = {
 };
 
 export type DriverInfo = {
-  // JRIDE-PROD-001, etc
   driver_id: string;
   full_name?: string | null;
   town?: string | null;
-  vehicle_type?: string | null; // e.g. "Tricycle", "Motorcycle"
+  vehicle_type?: string | null;
   plate_number?: string | null;
 };
 
 export type DriverMap = Map<string, DriverInfo>;
 
-/**
- * Build a map: driver_id -> driver info
- * Call this once after loading your drivers list.
- */
 export function buildDriverMap(drivers: DriverInfo[]): DriverMap {
   const map = new Map<string, DriverInfo>();
   for (const d of drivers) {
@@ -50,14 +44,6 @@ export function buildDriverMap(drivers: DriverInfo[]): DriverMap {
   return map;
 }
 
-/**
- * Pretty label shown in the table for the driver column.
- *
- * Examples:
- * - "Unassigned"
- * - "Mark Anthony D. (JRIDE-LAGA-001)"
- * - "Mark Anthony D. – Lagawe – Tricycle • ABC-123 (JRIDE-LAGA-001)"
- */
 export function buildDriverLabel(
   assigned_driver_id: string | null,
   driversById: DriverMap
@@ -66,7 +52,6 @@ export function buildDriverLabel(
 
   const info = driversById.get(assigned_driver_id);
   if (!info) {
-    // Fallback if we only know the code
     return assigned_driver_id;
   }
 
@@ -100,14 +85,10 @@ export function buildDriverLabel(
   return main || "Unknown driver";
 }
 
-/**
- * Centralized button rules for dispatch.
- */
 export function getButtonRules(row: BookingRowForRules): ButtonRules {
-  const { status, assigned_driver_id, hasPickupCoords, hasDropoffCoords } = row;
+  const { status, assigned_driver_id } = row;
 
   const isAssigned = !!assigned_driver_id;
-  const hasCoords = !!(hasPickupCoords || hasDropoffCoords);
 
   const rules: ButtonRules = {
     canAssign: false,
@@ -116,7 +97,8 @@ export function getButtonRules(row: BookingRowForRules): ButtonRules {
     canMarkOnTheWay: false,
     canStartTrip: false,
     canDropOff: false,
-    canViewMap: hasCoords,
+    // TEMP: always allow map for now so you can open the map page
+    canViewMap: true,
   };
 
   switch (status) {

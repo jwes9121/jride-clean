@@ -16,13 +16,6 @@ export async function GET() {
         created_at
       `
       )
-      .in("status", [
-        "pending",
-        "assigned",
-        "accepted",
-        "on_the_way",
-        "in_progress"
-      ])
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -34,14 +27,13 @@ export async function GET() {
       );
     }
 
-    // We keep the shape `{ bookings: [...] }` so the frontend still works.
     return NextResponse.json({ bookings: data ?? [] });
   } catch (err: any) {
     console.error("LIVE_TRIPS_UNEXPECTED_ERROR", err);
     return NextResponse.json(
       {
         error: "LIVE_TRIPS_UNEXPECTED_ERROR",
-        message: err?.message ?? "Unexpected error while loading live trips."
+        message: err?.message ?? "Unexpected error while loading live trips.",
       },
       { status: 500 }
     );
