@@ -44,13 +44,13 @@ export default function LiveLocationMapPage() {
       const map = mapRef.current;
       if (map) {
         map.remove();
-        mapRef.current = null;
-        markerRef.current = null;
       }
+      mapRef.current = null;
+      markerRef.current = null;
     };
   }, []);
 
-  // Helper: create or move ONE marker
+  // Helper: keep only ONE marker, recreate each time
   const moveMarker = (lng: number, lat: number) => {
     const map = mapRef.current;
     if (!map) {
@@ -58,13 +58,20 @@ export default function LiveLocationMapPage() {
       return;
     }
 
-    if (!markerRef.current) {
-      markerRef.current = new mapboxgl.Marker({ color: "#FF0000" })
-        .setLngLat([lng, lat])
-        .addTo(map);
-    } else {
-      markerRef.current.setLngLat([lng, lat]);
+    console.log("moveMarker to:", { lng, lat });
+
+    // Remove old marker if it exists
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
     }
+
+    // Create a fresh marker at the new position
+    const marker = new mapboxgl.Marker({ color: "#FF0000" })
+      .setLngLat([lng, lat])
+      .addTo(map);
+
+    markerRef.current = marker;
 
     map.flyTo({
       center: [lng, lat],
