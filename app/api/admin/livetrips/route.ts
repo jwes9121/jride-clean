@@ -13,10 +13,6 @@ export async function GET() {
         booking_code,
         status,
         assigned_driver_id,
-        pickup_address,
-        dropoff_address,
-        pickup_latlng,
-        dropoff_latlng,
         created_at
       `
       )
@@ -38,11 +34,15 @@ export async function GET() {
       );
     }
 
+    // We keep the shape `{ bookings: [...] }` so the frontend still works.
     return NextResponse.json({ bookings: data ?? [] });
   } catch (err: any) {
     console.error("LIVE_TRIPS_UNEXPECTED_ERROR", err);
     return NextResponse.json(
-      { error: "LIVE_TRIPS_UNEXPECTED_ERROR", message: err?.message },
+      {
+        error: "LIVE_TRIPS_UNEXPECTED_ERROR",
+        message: err?.message ?? "Unexpected error while loading live trips."
+      },
       { status: 500 }
     );
   }
