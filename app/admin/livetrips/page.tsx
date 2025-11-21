@@ -55,7 +55,6 @@ export default function LiveTripsPage() {
     });
 
     if (!res.ok) {
-      // drivers are optional; do not hard fail live trips
       console.warn("Failed to load drivers", res.status);
       return [];
     }
@@ -152,12 +151,10 @@ export default function LiveTripsPage() {
 
       if (json.booking) {
         const updated = json.booking;
-
         setBookings((prev) =>
           prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
         );
       } else {
-        // Fallback: refresh all bookings if API did not return a row
         await refreshBookings();
       }
     } catch (err: any) {
@@ -169,7 +166,24 @@ export default function LiveTripsPage() {
   }
 
   function handleViewMap(booking: BookingRow) {
-    router.push(`/admin/livetrips/map?bookingId=${booking.id}`);
+    const params = new URLSearchParams();
+    params.set("bookingId", booking.id);
+
+    // Pass pickup/dropoff coords directly so the map does NOT depend on API
+    if (booking.pickup_lat != null) {
+      params.set("pickupLat", String(booking.pickup_lat));
+    }
+    if (booking.pickup_lng != null) {
+      params.set("pickupLng", String(booking.pickup_lng));
+    }
+    if (booking.dropoff_lat != null) {
+      params.set("dropoffLat", String(booking.dropoff_lat));
+    }
+    if (booking.dropoff_lng != null) {
+      params.set("dropoffLng", String(booking.dropoff_lng));
+    }
+
+    router.push(`/admin/livetrips/map?${params.toString()}`);
   }
 
   const isWorking = (bookingId: string) => workingBookingId === bookingId;
