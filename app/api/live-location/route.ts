@@ -1,9 +1,8 @@
-// app/api/live-location/route.ts
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-// Use one real driver UUID from Supabase for testing movement
-const TEST_DRIVER_ID = "45e66af4-f7d1-4a34-a74e-52d274cecd0f"; // <- replace this
+// This is the driver assigned to JR-2025-0002
+const TEST_DRIVER_ID = "45e66af4-f7d1-4a34-a74e-52d274cecd0f";
 
 export async function POST(req: NextRequest) {
   const supabase = supabaseAdmin();
@@ -16,7 +15,7 @@ export async function POST(req: NextRequest) {
       console.error("LIVE_LOCATION_INVALID_PAYLOAD", body);
       return NextResponse.json(
         { error: "INVALID_PAYLOAD", body },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -29,18 +28,21 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase
       .from("driver_locations")
-      .upsert({
-        driver_id: TEST_DRIVER_ID,
-        lat,
-        lng,
-        status: status ?? "online",
-      });
+      .upsert(
+        {
+          driver_id: TEST_DRIVER_ID,
+          lat,
+          lng,
+          status: status ?? "online",
+        },
+        { onConflict: "driver_id" },
+      );
 
     if (error) {
       console.error("LIVE_LOCATION_DB_ERROR", error);
       return NextResponse.json(
         { error: "DB_ERROR", details: error },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
     console.error("LIVE_LOCATION_UNEXPECTED_ERROR", err);
     return NextResponse.json(
       { error: "UNEXPECTED_ERROR" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
