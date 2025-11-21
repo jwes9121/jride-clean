@@ -1,14 +1,15 @@
 ﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const supabase = supabaseAdmin();
 
     const { data, error } = await supabase
       .from("bookings")
-      .select(
-        `
+      .select(`
         id,
         booking_code,
         status,
@@ -20,10 +21,8 @@ export async function GET() {
         dropoff_lat,
         dropoff_lng,
         created_at
-      `
-      )
-      .order("created_at", { ascending: false })
-      .limit(200);
+      `)
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("LIVE_TRIPS_DB_ERROR", error);
@@ -37,10 +36,7 @@ export async function GET() {
   } catch (err: any) {
     console.error("LIVE_TRIPS_UNEXPECTED_ERROR", err);
     return NextResponse.json(
-      {
-        error: "LIVE_TRIPS_UNEXPECTED_ERROR",
-        message: err?.message ?? "Unexpected error while loading live trips.",
-      },
+      { error: "LIVE_TRIPS_UNEXPECTED_ERROR", message: err?.message },
       { status: 500 }
     );
   }
