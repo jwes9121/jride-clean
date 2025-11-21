@@ -18,7 +18,6 @@ type LiveLocation = {
 export default function LiveLocationMapPage() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   // 1) Init map once
   useEffect(() => {
@@ -50,19 +49,20 @@ export default function LiveLocationMapPage() {
     };
   }, []);
 
-  // Helper to place / move marker
-  const updateMarker = (lng: number, lat: number) => {
+  // Helper to drop a marker and move camera
+  const dropMarker = (lng: number, lat: number) => {
     const map = mapRef.current;
-    if (!map) return;
-
-    if (!markerRef.current) {
-      const marker = new mapboxgl.Marker({ color: "#FF0000" })
-        .setLngLat([lng, lat])
-        .addTo(map);
-      markerRef.current = marker;
-    } else {
-      markerRef.current.setLngLat([lng, lat]);
+    if (!map) {
+      console.warn("dropMarker called but map not ready yet");
+      return;
     }
+
+    console.log("dropMarker at:", { lng, lat });
+
+    // Always create a NEW marker so we can clearly see updates
+    new mapboxgl.Marker({ color: "#FF0000" })
+      .setLngLat([lng, lat])
+      .addTo(map);
 
     map.flyTo({
       center: [lng, lat],
@@ -88,7 +88,9 @@ export default function LiveLocationMapPage() {
 
       if (data && data.length > 0) {
         const loc = data[0];
-        updateMarker(loc.lng, loc.lat);
+        dropMarker(loc.lng, loc.lat);
+      } else {
+        console.log("No initial live location found.");
       }
     };
 
@@ -102,16 +104,19 @@ export default function LiveLocationMapPage() {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "*", // INSERT / UPDATE / DELETE
           schema: "public",
           table: "live_locations",
         },
         (payload) => {
           const row = (payload.new || payload.old) as Partial<LiveLocation>;
-          if (!row || row.lat == null || row.lng == null) return;
+          if (!row || row.lat == null || row.lng == null) {
+            console.warn("Realtime row missing lat/lng:", row);
+            return;
+          }
 
           console.log("Realtime update:", row);
-          updateMarker(row.lng, row.lat);
+          dropMarker(row.lng, row.lat);
         }
       )
       .subscribe((status) => {
