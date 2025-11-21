@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import supabaseClient from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 
@@ -74,7 +74,7 @@ export default function LiveLocationMapPage() {
   // 2) Load latest location initially
   useEffect(() => {
     const loadInitial = async () => {
-      const { data, error } = await supabaseClient
+      const { data, error } = await supabaseBrowser
         .from("live_locations")
         .select("*")
         .order("updated_at", { ascending: false })
@@ -97,7 +97,7 @@ export default function LiveLocationMapPage() {
 
   // 3) Realtime subscription
   useEffect(() => {
-    const channel = supabaseClient
+    const channel = supabaseBrowser
       .channel("realtime:live_locations")
       .on(
         "postgres_changes",
@@ -119,7 +119,7 @@ export default function LiveLocationMapPage() {
       });
 
     return () => {
-      supabaseClient.removeChannel(channel);
+      supabaseBrowser.removeChannel(channel);
     };
   }, []);
 
