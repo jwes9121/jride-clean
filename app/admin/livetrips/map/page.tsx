@@ -1,11 +1,13 @@
-﻿"use client";
+﻿import Link from "next/link";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+type LiveTripMapPageProps = {
+  searchParams?: {
+    bookingId?: string;
+  };
+};
 
-export default function LiveTripMapPage() {
-  const searchParams = useSearchParams();
-  const bookingId = searchParams.get("bookingId");
+export default function LiveTripMapPage({ searchParams }: LiveTripMapPageProps) {
+  const bookingId = searchParams?.bookingId ?? null;
 
   return (
     <div className="p-4 space-y-4">
