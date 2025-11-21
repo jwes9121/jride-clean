@@ -1,17 +1,14 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-// This is the driver assigned to JR-2025-0002
-const TEST_DRIVER_ID = "45e66af4-f7d1-4a34-a74e-52d274cecd0f";
-
 export async function POST(req: NextRequest) {
   const supabase = supabaseAdmin();
 
   try {
     const body = await req.json();
-    const { lat, lng, status } = body;
+    const { driverId, lat, lng, status } = body;
 
-    if (typeof lat !== "number" || typeof lng !== "number") {
+    if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
       console.error("LIVE_LOCATION_INVALID_PAYLOAD", body);
       return NextResponse.json(
         { error: "INVALID_PAYLOAD", body },
@@ -20,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("LIVE_LOCATION_UPDATE", {
-      driver_id: TEST_DRIVER_ID,
+      driver_id: driverId,
       lat,
       lng,
       status,
@@ -30,10 +27,11 @@ export async function POST(req: NextRequest) {
       .from("driver_locations")
       .upsert(
         {
-          driver_id: TEST_DRIVER_ID,
+          driver_id: driverId,
           lat,
           lng,
           status: status ?? "online",
+          updated_at: new Date().toISOString(),
         },
         { onConflict: "driver_id" },
       );
@@ -50,7 +48,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("LIVE_LOCATION_UNEXPECTED_ERROR", err);
     return NextResponse.json(
-      { error: "UNEXPECTED_ERROR" },
+      { error: "UNEXPECTED_ERROR", details: `${err}` },
       { status: 500 },
     );
   }
