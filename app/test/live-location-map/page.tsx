@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import { supabaseBrowser } from "@/lib/supabaseClient";
+import supabaseClient from "@/lib/supabaseClient"; // 👈 default export
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 
@@ -32,7 +32,7 @@ export default function LiveLocationMapPage() {
       mapRef.current = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: "mapbox://styles/mapbox/streets-v11",
-        center: [121.1055, 16.825], // default center (near your test coords)
+        center: [121.1055, 16.825], // near your test coords
         zoom: 14,
       });
 
@@ -57,14 +57,17 @@ export default function LiveLocationMapPage() {
       markerRef.current.setLngLat([lng, lat]);
     }
 
-    // Smooth fly to the new position
-    mapRef.current.flyTo({ center: [lng, lat], zoom: 14, essential: true });
+    mapRef.current.flyTo({
+      center: [lng, lat],
+      zoom: 14,
+      essential: true,
+    });
   };
 
-  // 2) Load latest location on first load
+  // 2) Load latest location initially
   useEffect(() => {
     const loadInitial = async () => {
-      const { data, error } = await supabaseBrowser
+      const { data, error } = await supabaseClient
         .from("live_locations")
         .select("*")
         .order("updated_at", { ascending: false })
@@ -83,12 +86,11 @@ export default function LiveLocationMapPage() {
     };
 
     loadInitial();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 3) Realtime subscription for live_locations
+  // 3) Realtime subscription
   useEffect(() => {
-    const channel = supabaseBrowser
+    const channel = supabaseClient
       .channel("realtime:live_locations")
       .on(
         "postgres_changes",
@@ -110,9 +112,8 @@ export default function LiveLocationMapPage() {
       });
 
     return () => {
-      supabaseBrowser.removeChannel(channel);
+      supabaseClient.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
