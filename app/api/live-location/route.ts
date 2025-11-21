@@ -2,12 +2,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// Use one real driver UUID from Supabase for testing movement
+const TEST_DRIVER_ID = "45e66af4-f7d1-4a34-a74e-52d274cecd0f"; // <- replace this
+
 export async function POST(req: NextRequest) {
   const supabase = supabaseAdmin();
 
   try {
     const body = await req.json();
-    const { driverId, lat, lng, status } = body;
+    const { lat, lng, status } = body;
 
     if (typeof lat !== "number" || typeof lng !== "number") {
       console.error("LIVE_LOCATION_INVALID_PAYLOAD", body);
@@ -17,10 +20,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // IMPORTANT: do NOT send driver_id (it is uuid in DB and causing 22P02)
-    // We just log it for now so we can wire it properly later.
     console.log("LIVE_LOCATION_UPDATE", {
-      driverId,
+      driver_id: TEST_DRIVER_ID,
       lat,
       lng,
       status,
@@ -28,8 +29,8 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase
       .from("driver_locations")
-      .insert({
-        // driver_id: driverId,  // <--- REMOVED on purpose
+      .upsert({
+        driver_id: TEST_DRIVER_ID,
         lat,
         lng,
         status: status ?? "online",
