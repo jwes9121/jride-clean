@@ -13,6 +13,12 @@ export async function GET() {
         booking_code,
         status,
         assigned_driver_id,
+        from_label,
+        to_label,
+        pickup_lat,
+        pickup_lng,
+        dropoff_lat,
+        dropoff_lng,
         created_at
       `
       )

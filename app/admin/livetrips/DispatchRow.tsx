@@ -16,8 +16,8 @@ export type BookingRow = {
   booking_code: string;
   status: BookingStatus;
   assigned_driver_id: string | null;
-  pickup_label: string;
-  dropoff_label: string;
+  from_label?: string | null;
+  to_label?: string | null;
   created_at: string;
 
   pickup_lat?: number | null;
@@ -69,6 +69,9 @@ export default function DispatchRow({
     hasDropoffCoords: !!(booking.dropoff_lat && booking.dropoff_lng),
   } as BookingRowForRules);
 
+  const fromLabel = booking.from_label || "(no pickup label)";
+  const toLabel = booking.to_label || "(no dropoff label)";
+
   return (
     <tr className="text-sm">
       <td className="px-3 py-2 font-mono whitespace-nowrap">
@@ -82,8 +85,8 @@ export default function DispatchRow({
       </td>
       <td className="px-3 py-2">
         <div className="text-xs">
-          <div>{booking.pickup_label}</div>
-          <div className="text-gray-500">→ {booking.dropoff_label}</div>
+          <div>{fromLabel}</div>
+          <div className="text-gray-500">→ {toLabel}</div>
         </div>
       </td>
       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
