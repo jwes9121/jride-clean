@@ -94,6 +94,8 @@ export default function BookingMapClient({ bookingId }: Props) {
       return;
     }
 
+    const id = bookingId; // narrowed to string
+
     let cancelled = false;
 
     async function loadBooking() {
@@ -103,9 +105,7 @@ export default function BookingMapClient({ bookingId }: Props) {
 
       try {
         const res = await fetch(
-          `/api/admin/livetrips/booking-map?bookingId=${encodeURIComponent(
-            bookingId
-          )}`
+          `/api/admin/livetrips/booking-map?bookingId=${encodeURIComponent(id)}`
         );
 
         if (!res.ok) {
