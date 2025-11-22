@@ -1,7 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Mark this route as always dynamic so Next doesn't try to statically analyze request.url
 export const dynamic = "force-dynamic";
 
 const supabaseAdmin = createClient(

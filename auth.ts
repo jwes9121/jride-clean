@@ -1,4 +1,4 @@
-// auth.ts � central NextAuth v5 config for JRide
+﻿// auth.ts – central NextAuth v5 config for JRide
 
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
