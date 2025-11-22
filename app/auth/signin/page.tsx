@@ -1,4 +1,7 @@
-﻿export const dynamic = "force-dynamic";
+﻿"use client";
+
+// app/auth/signin/page.tsx
+// Minimal sign-in page that just links to NextAuth's Google URL
 
 export default function SignInPage() {
   return (
