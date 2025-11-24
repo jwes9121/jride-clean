@@ -62,7 +62,7 @@ export default function BookingMapClient({
 
       mapRef.current = map;
 
-      map.on("error", (e) => {
+      map.on("error", (e: any) => {
         console.error("[BookingMapClient] map error:", e);
       });
 
