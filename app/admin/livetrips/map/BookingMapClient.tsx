@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import React, { useEffect, useRef } from "react";
-import mapboxgl, { Map, Marker } from "mapbox-gl";
+import { useEffect, useRef } from "react";
+import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
@@ -26,7 +26,7 @@ const DEFAULT_CENTER: Coords = {
 
 const DEFAULT_ZOOM = 11;
 
-function isValidCoord(lat: number | null, lng: number | null): lat is number {
+function hasCoords(lat: number | null, lng: number | null): boolean {
   return typeof lat === "number" && typeof lng === "number";
 }
 
@@ -38,9 +38,9 @@ export default function BookingMapClient({
   dropoffLng,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<Map | null>(null);
-  const pickupMarkerRef = useRef<Marker | null>(null);
-  const dropoffMarkerRef = useRef<Marker | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // --- 1) INITIALIZE MAP ONCE ---
   useEffect(() => {
@@ -78,8 +78,11 @@ export default function BookingMapClient({
 
     const update = () => {
       // PICKUP MARKER
-      if (isValidCoord(pickupLat, pickupLng)) {
-        const pickupLngLat: [number, number] = [pickupLng as number, pickupLat as number];
+      if (hasCoords(pickupLat, pickupLng)) {
+        const pickupLngLat: [number, number] = [
+          pickupLng as number,
+          pickupLat as number,
+        ];
 
         if (!pickupMarkerRef.current) {
           pickupMarkerRef.current = new mapboxgl.Marker({ color: "#1DB954" }) // green
@@ -91,8 +94,11 @@ export default function BookingMapClient({
       }
 
       // DROPOFF MARKER
-      if (isValidCoord(dropoffLat, dropoffLng)) {
-        const dropoffLngLat: [number, number] = [dropoffLng as number, dropoffLat as number];
+      if (hasCoords(dropoffLat, dropoffLng)) {
+        const dropoffLngLat: [number, number] = [
+          dropoffLng as number,
+          dropoffLat as number,
+        ];
 
         if (!dropoffMarkerRef.current) {
           dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#FF5733" }) // orange
@@ -104,8 +110,8 @@ export default function BookingMapClient({
       }
 
       // CAMERA / MOVEMENT
-      const hasPickup = isValidCoord(pickupLat, pickupLng);
-      const hasDropoff = isValidCoord(dropoffLat, dropoffLng);
+      const hasPickup = hasCoords(pickupLat, pickupLng);
+      const hasDropoff = hasCoords(dropoffLat, dropoffLng);
 
       if (hasPickup && hasDropoff) {
         // Fit map to BOTH markers – clear visible movement
@@ -154,7 +160,8 @@ export default function BookingMapClient({
       {/* Optional header */}
       {bookingId && (
         <div className="mb-2 text-xs text-gray-600">
-          Booking ID: <span className="font-mono font-semibold">{bookingId}</span>
+          Booking ID:{" "}
+          <span className="font-mono font-semibold">{bookingId}</span>
         </div>
       )}
 

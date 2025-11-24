@@ -1,52 +1,46 @@
-﻿import { BookingMap } from "@/components/maps/BookingMap";
+﻿// app/admin/livetrips/map/page.tsx
 
-type PageProps = {
-  searchParams: {
-    bookingId?: string;
-    pickupLat?: string;
-    pickupLng?: string;
-    dropoffLat?: string;
-    dropoffLng?: string;
-  };
+import dynamic from "next/dynamic";
+
+const BookingMapClient = dynamic(() => import("./BookingMapClient"), {
+  ssr: false,
+});
+
+type MapPageSearchParams = {
+  bookingId?: string;
+  pickupLat?: string;
+  pickupLng?: string;
+  dropoffLat?: string;
+  dropoffLng?: string;
 };
 
-export default function BookingMapPage({ searchParams }: PageProps) {
-  const { bookingId, pickupLat, pickupLng, dropoffLat, dropoffLng } =
-    searchParams;
+type MapPageProps = {
+  searchParams?: MapPageSearchParams;
+};
 
-  const pickupLatNum = pickupLat ? parseFloat(pickupLat) : NaN;
-  const pickupLngNum = pickupLng ? parseFloat(pickupLng) : NaN;
-  const dropoffLatNum = dropoffLat ? parseFloat(dropoffLat) : NaN;
-  const dropoffLngNum = dropoffLng ? parseFloat(dropoffLng) : NaN;
+function toNumberOrNull(value?: string): number | null {
+  if (value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
-  const hasPickup =
-    !Number.isNaN(pickupLatNum) && !Number.isNaN(pickupLngNum);
+export default function MapPage({ searchParams }: MapPageProps) {
+  const bookingId = searchParams?.bookingId ?? null;
+
+  const pickupLat = toNumberOrNull(searchParams?.pickupLat);
+  const pickupLng = toNumberOrNull(searchParams?.pickupLng);
+  const dropoffLat = toNumberOrNull(searchParams?.dropoffLat);
+  const dropoffLng = toNumberOrNull(searchParams?.dropoffLng);
 
   return (
-    <div className="p-4 space-y-2">
-      <h1 className="text-xl font-semibold">Booking map</h1>
-      <p className="text-sm text-gray-600">
-        Live JRide map view for dispatch. Booking details can be wired here.
-      </p>
-
-      <p className="text-xs text-gray-500">
-        Booking: <span className="font-mono">{bookingId ?? "unknown"}</span> ·
-        pickup {pickupLat ?? "?"}, {pickupLng ?? "?"} · dropoff{" "}
-        {dropoffLat ?? "?"}, {dropoffLng ?? "?"}
-      </p>
-
-      {!hasPickup ? (
-        <p className="mt-4 text-sm text-red-600">
-          Missing or invalid pickup coordinates – cannot render map.
-        </p>
-      ) : (
-        <BookingMap
-          pickupLat={pickupLatNum}
-          pickupLng={pickupLngNum}
-          dropoffLat={dropoffLatNum}
-          dropoffLng={dropoffLngNum}
-        />
-      )}
+    <div className="p-4 w-full h-[600px]">
+      <BookingMapClient
+        bookingId={bookingId}
+        pickupLat={pickupLat}
+        pickupLng={pickupLng}
+        dropoffLat={dropoffLat}
+        dropoffLng={dropoffLng}
+      />
     </div>
   );
 }

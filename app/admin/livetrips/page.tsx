@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import DispatchRow, { BookingRow } from "./DispatchRow";
 import { DriverInfo } from "./dispatchRules";
+import { supabase } from "@/lib/supabaseClient";
 
 type DispatchActionName =
   | "assign"
@@ -100,6 +101,43 @@ export default function LiveTripsPage() {
     };
   }, []);
 
+  // Realtime subscription: keep bookings in sync
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-bookings-dispatch")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+        },
+        (payload) => {
+          console.log("REALTIME_BOOKING_CHANGE", payload);
+
+          const updated = payload.new as BookingRow | null;
+          if (!updated) return;
+
+          setBookings((prev) => {
+            const idx = prev.findIndex((b) => b.id === updated.id);
+
+            if (idx === -1) {
+              return prev;
+            }
+
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], ...updated };
+            return copy;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   async function refreshBookings() {
     setIsRefreshing(true);
     setError(null);
@@ -169,7 +207,6 @@ export default function LiveTripsPage() {
     const params = new URLSearchParams();
     params.set("bookingId", booking.id);
 
-    // Pass pickup/dropoff coords directly so the map does NOT depend on API
     if (booking.pickup_lat != null) {
       params.set("pickupLat", String(booking.pickup_lat));
     }
