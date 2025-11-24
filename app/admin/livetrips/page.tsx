@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import DispatchRow, { BookingRow } from "./DispatchRow";
 import { DriverInfo } from "./dispatchRules";
 import { supabase } from "@/lib/supabaseClient";
+import BookingMapClient from "./map/BookingMapClient";
 
 type DispatchActionName =
   | "assign"
@@ -31,6 +32,10 @@ export default function LiveTripsPage() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [workingBookingId, setWorkingBookingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // NEW: currently selected booking for the right-hand map panel
+  const [selectedBookingForMap, setSelectedBookingForMap] =
+    useState<BookingRow | null>(null);
 
   async function fetchBookings(): Promise<BookingRow[]> {
     const res = await fetch("/api/admin/livetrips", {
@@ -81,6 +86,11 @@ export default function LiveTripsPage() {
         if (!cancelled) {
           setBookings(bookingsData);
           setDrivers(driversData);
+
+          // If nothing is selected yet but we have bookings, preselect the first one for the map
+          if (!selectedBookingForMap && bookingsData.length > 0) {
+            setSelectedBookingForMap(bookingsData[0]);
+          }
         }
       } catch (err: any) {
         console.error("LIVE_TRIPS_LOAD_ERROR", err);
@@ -99,6 +109,7 @@ export default function LiveTripsPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Realtime subscription: keep bookings in sync
@@ -127,6 +138,14 @@ export default function LiveTripsPage() {
 
             const copy = [...prev];
             copy[idx] = { ...copy[idx], ...updated };
+
+            // If the updated booking is the one currently on the map, update that too
+            setSelectedBookingForMap((current) =>
+              current && current.id === updated.id
+                ? { ...current, ...updated }
+                : current
+            );
+
             return copy;
           });
         }
@@ -145,6 +164,15 @@ export default function LiveTripsPage() {
     try {
       const bookingsData = await fetchBookings();
       setBookings(bookingsData);
+
+      // Keep selection sensible after refresh
+      setSelectedBookingForMap((current) => {
+        if (!current) {
+          return bookingsData[0] ?? null;
+        }
+        const found = bookingsData.find((b) => b.id === current.id);
+        return found ?? (bookingsData[0] ?? null);
+      });
     } catch (err: any) {
       console.error("LIVE_TRIPS_REFRESH_ERROR", err);
       setError(err?.message ?? "Failed to refresh bookings.");
@@ -189,8 +217,16 @@ export default function LiveTripsPage() {
 
       if (json.booking) {
         const updated = json.booking;
+
         setBookings((prev) =>
           prev.map((b) => (b.id === updated.id ? { ...b, ...updated } : b))
+        );
+
+        // Also update selected booking on the map if it matches
+        setSelectedBookingForMap((current) =>
+          current && current.id === updated.id
+            ? { ...current, ...updated }
+            : current
         );
       } else {
         await refreshBookings();
@@ -203,32 +239,33 @@ export default function LiveTripsPage() {
     }
   }
 
+  // NEW: when dispatcher clicks View map in a row, just select that booking for the map panel
   function handleViewMap(booking: BookingRow) {
-    const params = new URLSearchParams();
-    params.set("bookingId", booking.id);
-
-    if (booking.pickup_lat != null) {
-      params.set("pickupLat", String(booking.pickup_lat));
-    }
-    if (booking.pickup_lng != null) {
-      params.set("pickupLng", String(booking.pickup_lng));
-    }
-    if (booking.dropoff_lat != null) {
-      params.set("dropoffLat", String(booking.dropoff_lat));
-    }
-    if (booking.dropoff_lng != null) {
-      params.set("dropoffLng", String(booking.dropoff_lng));
-    }
-
-    // 🔹 NEW: pass assigned driver id for realtime driver marker
-    if (booking.assigned_driver_id) {
-      params.set("driverId", booking.assigned_driver_id);
-    }
-
-    router.push(`/admin/livetrips/map?${params.toString()}`);
+    setSelectedBookingForMap(booking);
   }
 
   const isWorking = (bookingId: string) => workingBookingId === bookingId;
+
+  // Map props based on selected booking
+  const mapBooking = selectedBookingForMap;
+  const mapProps =
+    mapBooking != null
+      ? {
+          bookingId: mapBooking.id,
+          pickupLat: mapBooking.pickup_lat ?? null,
+          pickupLng: mapBooking.pickup_lng ?? null,
+          dropoffLat: mapBooking.dropoff_lat ?? null,
+          dropoffLng: mapBooking.dropoff_lng ?? null,
+          driverId: mapBooking.assigned_driver_id ?? null,
+        }
+      : {
+          bookingId: null,
+          pickupLat: null,
+          pickupLng: null,
+          dropoffLat: null,
+          dropoffLng: null,
+          driverId: null,
+        };
 
   return (
     <div className="p-4 space-y-4">
@@ -267,37 +304,73 @@ export default function LiveTripsPage() {
           No active bookings found right now.
         </div>
       ) : (
-        <div className="overflow-x-auto border rounded-lg">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-3 py-2 text-left">Booking</th>
-                <th className="px-3 py-2 text-left">Driver / Status</th>
-                <th className="px-3 py-2 text-left">Route</th>
-                <th className="px-3 py-2 text-left whitespace-nowrap">
-                  Created
-                </th>
-                <th className="px-3 py-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((booking) => (
-                <DispatchRow
-                  key={booking.id}
-                  booking={booking}
-                  drivers={drivers}
-                  isWorking={isWorking(booking.id)}
-                  onAssign={(b) => handleAction(b, "assign")}
-                  onReassign={(b) => handleAction(b, "reassign")}
-                  onCancel={(b) => handleAction(b, "cancel")}
-                  onMarkOnTheWay={(b) => handleAction(b, "on_the_way")}
-                  onStartTrip={(b) => handleAction(b, "start_trip")}
-                  onDropOff={(b) => handleAction(b, "drop_off")}
-                  onViewMap={handleViewMap}
-                />
-              ))}
-            </tbody>
-          </table>
+        // NEW: two-column layout: table + map
+        <div className="grid grid-cols-1 xl:grid-cols-[3fr,4fr] gap-4">
+          {/* LEFT: table */}
+          <div className="overflow-x-auto border rounded-lg">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Booking</th>
+                  <th className="px-3 py-2 text-left">Driver / Status</th>
+                  <th className="px-3 py-2 text-left">Route</th>
+                  <th className="px-3 py-2 text-left whitespace-nowrap">
+                    Created
+                  </th>
+                  <th className="px-3 py-2 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings.map((booking) => (
+                  <DispatchRow
+                    key={booking.id}
+                    booking={booking}
+                    drivers={drivers}
+                    isWorking={isWorking(booking.id)}
+                    onAssign={(b) => handleAction(b, "assign")}
+                    onReassign={(b) => handleAction(b, "reassign")}
+                    onCancel={(b) => handleAction(b, "cancel")}
+                    onMarkOnTheWay={(b) => handleAction(b, "on_the_way")}
+                    onStartTrip={(b) => handleAction(b, "start_trip")}
+                    onDropOff={(b) => handleAction(b, "drop_off")}
+                    onViewMap={handleViewMap}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* RIGHT: live map for selected booking */}
+          <div className="border rounded-lg p-2 flex flex-col">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs text-gray-600">
+                {mapBooking ? (
+                  <>
+                    <div>
+                      <span className="font-semibold">Selected Booking:</span>{" "}
+                      <span className="font-mono">
+                        {mapBooking.booking_code ?? mapBooking.id}
+                      </span>
+                    </div>
+                    {mapBooking.assigned_driver_id && (
+                      <div>
+                        Driver ID:{" "}
+                        <span className="font-mono">
+                          {mapBooking.assigned_driver_id}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span>Select a booking to view on the map.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-[420px]">
+              <BookingMapClient {...mapProps} />
+            </div>
+          </div>
         </div>
       )}
     </div>
