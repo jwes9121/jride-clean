@@ -1,4 +1,3 @@
-// app/api/debug/supabase/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -8,12 +7,17 @@ export async function GET() {
     const hasKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     const client = supabaseAdmin();
-    const { data, error } = await client.from("driver_locations").select("id").limit(1);
+    const { data, error } = await client
+      .from("driver_locations")
+      .select("id")
+      .limit(1);
 
     return NextResponse.json({
       url,
       hasKey,
-      error: error ? { message: error.message, details: error.details } : null,
+      error: error
+        ? { message: error.message, details: (error as any).details }
+        : null,
       data,
     });
   } catch (err: any) {
@@ -27,3 +31,4 @@ export async function GET() {
     );
   }
 }
+
