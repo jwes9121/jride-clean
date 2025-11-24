@@ -1,10 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 type Props = {
   bookingId: string | null;
@@ -38,45 +35,74 @@ export default function BookingMapClient({
   dropoffLng,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const mapRef = useRef<any | null>(null);
+  const mapboxRef = useRef<any | null>(null);
+  const pickupMarkerRef = useRef<any | null>(null);
+  const dropoffMarkerRef = useRef<any | null>(null);
 
-  // --- 1) INITIALIZE MAP ONCE ---
+  // 1) INIT MAPBOX + MAP (client-only, lazy loaded)
   useEffect(() => {
-    if (!containerRef.current) return;
-    if (mapRef.current) return; // already initialized
+    let cancelled = false;
 
-    const initialCenter: [number, number] = [
-      typeof pickupLng === "number" ? pickupLng : DEFAULT_CENTER.lng,
-      typeof pickupLat === "number" ? pickupLat : DEFAULT_CENTER.lat,
-    ];
+    async function initMap() {
+      try {
+        if (mapRef.current || !containerRef.current) return;
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v11",
-      center: initialCenter,
-      zoom: DEFAULT_ZOOM,
-    });
+        const mapboxModule: any = await import("mapbox-gl");
+        const mapboxgl = mapboxModule.default ?? mapboxModule;
+        mapboxRef.current = mapboxgl;
 
-    mapRef.current = map;
+        mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-    // Clean up on unmount
+        if (!containerRef.current || cancelled) return;
+
+        const initialCenter: [number, number] = [
+          typeof pickupLng === "number" ? pickupLng : DEFAULT_CENTER.lng,
+          typeof pickupLat === "number" ? pickupLat : DEFAULT_CENTER.lat,
+        ];
+
+        const map = new mapboxgl.Map({
+          container: containerRef.current,
+          style: "mapbox://styles/mapbox/streets-v11",
+          center: initialCenter,
+          zoom: DEFAULT_ZOOM,
+        });
+
+        mapRef.current = map;
+
+        map.on("error", (e: any) => {
+          console.error("[BookingMapClient] Mapbox error:", e?.error || e);
+        });
+      } catch (err) {
+        console.error("[BookingMapClient] Failed to init map:", err);
+      }
+    }
+
+    initMap();
+
     return () => {
-      map.remove();
+      cancelled = true;
+      if (mapRef.current) {
+        try {
+          mapRef.current.remove();
+        } catch (e) {
+          console.error("[BookingMapClient] Error removing map:", e);
+        }
+      }
       mapRef.current = null;
       pickupMarkerRef.current = null;
       dropoffMarkerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  }, []); // run once
 
-  // --- 2) UPDATE MARKERS + CAMERA WHEN PROPS CHANGE ---
+  // 2) UPDATE MARKERS + CAMERA WHEN COORDS CHANGE
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const mapboxgl = mapboxRef.current;
+    if (!map || !mapboxgl) return;
 
-    const update = () => {
+    try {
       // PICKUP MARKER
       if (hasCoords(pickupLat, pickupLng)) {
         const pickupLngLat: [number, number] = [
@@ -85,7 +111,7 @@ export default function BookingMapClient({
         ];
 
         if (!pickupMarkerRef.current) {
-          pickupMarkerRef.current = new mapboxgl.Marker({ color: "#1DB954" }) // green
+          pickupMarkerRef.current = new mapboxgl.Marker({ color: "#1DB954" })
             .setLngLat(pickupLngLat)
             .addTo(map);
         } else {
@@ -101,7 +127,7 @@ export default function BookingMapClient({
         ];
 
         if (!dropoffMarkerRef.current) {
-          dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#FF5733" }) // orange
+          dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#FF5733" })
             .setLngLat(dropoffLngLat)
             .addTo(map);
         } else {
@@ -109,12 +135,11 @@ export default function BookingMapClient({
         }
       }
 
-      // CAMERA / MOVEMENT
       const hasPickup = hasCoords(pickupLat, pickupLng);
       const hasDropoff = hasCoords(dropoffLat, dropoffLng);
 
+      // CAMERA BEHAVIOR
       if (hasPickup && hasDropoff) {
-        // Fit map to BOTH markers – clear visible movement
         const bounds = new mapboxgl.LngLatBounds();
         bounds.extend([pickupLng as number, pickupLat as number]);
         bounds.extend([dropoffLng as number, dropoffLat as number]);
@@ -122,42 +147,34 @@ export default function BookingMapClient({
         map.fitBounds(bounds, {
           padding: 80,
           maxZoom: 15,
-          duration: 900, // animation
+          duration: 900,
         });
       } else if (hasPickup) {
-        // Center on pickup
         map.flyTo({
           center: [pickupLng as number, pickupLat as number],
           zoom: 15,
           speed: 1.4,
         });
       } else if (hasDropoff) {
-        // Center on dropoff
         map.flyTo({
           center: [dropoffLng as number, dropoffLat as number],
           zoom: 15,
           speed: 1.4,
         });
       } else {
-        // No coords – go back to default Lagawe view
         map.flyTo({
           center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
           zoom: DEFAULT_ZOOM,
           speed: 1.2,
         });
       }
-    };
-
-    if (map.isStyleLoaded()) {
-      update();
-    } else {
-      map.once("load", update);
+    } catch (err) {
+      console.error("[BookingMapClient] Update markers/camera error:", err);
     }
   }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   return (
     <div className="w-full h-full">
-      {/* Optional header */}
       {bookingId && (
         <div className="mb-2 text-xs text-gray-600">
           Booking ID:{" "}
@@ -165,7 +182,6 @@ export default function BookingMapClient({
         </div>
       )}
 
-      {/* Map container */}
       <div
         ref={containerRef}
         className="w-full h-[520px] rounded-lg overflow-hidden border border-gray-200"
