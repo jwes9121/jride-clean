@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
+import React, { useEffect, useRef } from "react";
+import mapboxgl, { Map, Marker } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
@@ -23,7 +23,12 @@ const DEFAULT_CENTER: Coords = {
   lat: 16.81,
   lng: 121.11,
 };
+
 const DEFAULT_ZOOM = 11;
+
+function isValidCoord(lat: number | null, lng: number | null): lat is number {
+  return typeof lat === "number" && typeof lng === "number";
+}
 
 export default function BookingMapClient({
   bookingId,
@@ -33,154 +38,131 @@ export default function BookingMapClient({
   dropoffLng,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<Map | null>(null);
+  const pickupMarkerRef = useRef<Marker | null>(null);
+  const dropoffMarkerRef = useRef<Marker | null>(null);
 
-  const pickupMarkerRef = useRef<any>(null);
-  const dropoffMarkerRef = useRef<any>(null);
-
-  const [center, setCenter] = useState<Coords>(DEFAULT_CENTER);
-  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
-
-  const [pickupCoords, setPickupCoords] = useState<Coords | null>(null);
-  const [dropoffCoords, setDropoffCoords] = useState<Coords | null>(null);
-
-  useEffect(() => {
-    const pickup =
-      typeof pickupLat === "number" &&
-      !Number.isNaN(pickupLat) &&
-      typeof pickupLng === "number" &&
-      !Number.isNaN(pickupLng)
-        ? { lat: pickupLat, lng: pickupLng }
-        : null;
-
-    const dropoff =
-      typeof dropoffLat === "number" &&
-      !Number.isNaN(dropoffLat) &&
-      typeof dropoffLng === "number" &&
-      !Number.isNaN(dropoffLng)
-        ? { lat: dropoffLat, lng: dropoffLng }
-        : null;
-
-    setPickupCoords(pickup);
-    setDropoffCoords(dropoff);
-
-    // Decide initial center / zoom
-    if (pickup && dropoff) {
-      // center between pickup & dropoff
-      setCenter({
-        lat: (pickup.lat + dropoff.lat) / 2,
-        lng: (pickup.lng + dropoff.lng) / 2,
-      });
-      setZoom(13);
-    } else if (pickup) {
-      setCenter(pickup);
-      setZoom(14);
-    } else if (dropoff) {
-      setCenter(dropoff);
-      setZoom(14);
-    } else {
-      setCenter(DEFAULT_CENTER);
-      setZoom(DEFAULT_ZOOM);
-    }
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
-
-  // Initialize map once
+  // --- 1) INITIALIZE MAP ONCE ---
   useEffect(() => {
     if (!containerRef.current) return;
-    if (mapRef.current) return;
+    if (mapRef.current) return; // already initialized
 
-    const map = new (mapboxgl as any).Map({
+    const initialCenter: [number, number] = [
+      typeof pickupLng === "number" ? pickupLng : DEFAULT_CENTER.lng,
+      typeof pickupLat === "number" ? pickupLat : DEFAULT_CENTER.lat,
+    ];
+
+    const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: [center.lng, center.lat],
-      zoom,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: initialCenter,
+      zoom: DEFAULT_ZOOM,
     });
 
     mapRef.current = map;
 
+    // Clean up on unmount
     return () => {
       map.remove();
       mapRef.current = null;
-    };
-  }, []);
-
-  // Re-center when center/zoom change
-  useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.setCenter([center.lng, center.lat]);
-    mapRef.current.setZoom(zoom);
-  }, [center.lat, center.lng, zoom]);
-
-  // Pickup marker (blue)
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    if (!pickupCoords) {
-      if (pickupMarkerRef.current) {
-        pickupMarkerRef.current.remove();
-        pickupMarkerRef.current = null;
-      }
-      return;
-    }
-
-    if (pickupMarkerRef.current) {
-      pickupMarkerRef.current.setLngLat([pickupCoords.lng, pickupCoords.lat]);
-      return;
-    }
-
-    const marker = new (mapboxgl as any)
-      .Marker({ color: "#2563eb" }) // blue
-      .setLngLat([pickupCoords.lng, pickupCoords.lat])
-      .addTo(mapRef.current);
-
-    pickupMarkerRef.current = marker;
-
-    return () => {
-      marker.remove();
       pickupMarkerRef.current = null;
-    };
-  }, [pickupCoords]);
-
-  // Dropoff marker (red)
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    if (!dropoffCoords) {
-      if (dropoffMarkerRef.current) {
-        dropoffMarkerRef.current.remove();
-        dropoffMarkerRef.current = null;
-      }
-      return;
-    }
-
-    if (dropoffMarkerRef.current) {
-      dropoffMarkerRef.current.setLngLat([dropoffCoords.lng, dropoffCoords.lat]);
-      return;
-    }
-
-    const marker = new (mapboxgl as any)
-      .Marker({ color: "#dc2626" }) // red
-      .setLngLat([dropoffCoords.lng, dropoffCoords.lat])
-      .addTo(mapRef.current);
-
-    dropoffMarkerRef.current = marker;
-
-    return () => {
-      marker.remove();
       dropoffMarkerRef.current = null;
     };
-  }, [dropoffCoords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
 
-  const pickupLabel = pickupCoords ? "pickup" : "no pickup";
-  const dropoffLabel = dropoffCoords ? "dropoff" : "no dropoff";
+  // --- 2) UPDATE MARKERS + CAMERA WHEN PROPS CHANGE ---
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const update = () => {
+      // PICKUP MARKER
+      if (isValidCoord(pickupLat, pickupLng)) {
+        const pickupLngLat: [number, number] = [pickupLng as number, pickupLat as number];
+
+        if (!pickupMarkerRef.current) {
+          pickupMarkerRef.current = new mapboxgl.Marker({ color: "#1DB954" }) // green
+            .setLngLat(pickupLngLat)
+            .addTo(map);
+        } else {
+          pickupMarkerRef.current.setLngLat(pickupLngLat);
+        }
+      }
+
+      // DROPOFF MARKER
+      if (isValidCoord(dropoffLat, dropoffLng)) {
+        const dropoffLngLat: [number, number] = [dropoffLng as number, dropoffLat as number];
+
+        if (!dropoffMarkerRef.current) {
+          dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#FF5733" }) // orange
+            .setLngLat(dropoffLngLat)
+            .addTo(map);
+        } else {
+          dropoffMarkerRef.current.setLngLat(dropoffLngLat);
+        }
+      }
+
+      // CAMERA / MOVEMENT
+      const hasPickup = isValidCoord(pickupLat, pickupLng);
+      const hasDropoff = isValidCoord(dropoffLat, dropoffLng);
+
+      if (hasPickup && hasDropoff) {
+        // Fit map to BOTH markers – clear visible movement
+        const bounds = new mapboxgl.LngLatBounds();
+        bounds.extend([pickupLng as number, pickupLat as number]);
+        bounds.extend([dropoffLng as number, dropoffLat as number]);
+
+        map.fitBounds(bounds, {
+          padding: 80,
+          maxZoom: 15,
+          duration: 900, // animation
+        });
+      } else if (hasPickup) {
+        // Center on pickup
+        map.flyTo({
+          center: [pickupLng as number, pickupLat as number],
+          zoom: 15,
+          speed: 1.4,
+        });
+      } else if (hasDropoff) {
+        // Center on dropoff
+        map.flyTo({
+          center: [dropoffLng as number, dropoffLat as number],
+          zoom: 15,
+          speed: 1.4,
+        });
+      } else {
+        // No coords – go back to default Lagawe view
+        map.flyTo({
+          center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
+          zoom: DEFAULT_ZOOM,
+          speed: 1.2,
+        });
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      update();
+    } else {
+      map.once("load", update);
+    }
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   return (
-    <div className="relative h-[480px] rounded-xl overflow-hidden border border-gray-200">
-      <div className="absolute z-10 m-2 rounded bg-white/80 px-2 py-1 text-[10px] font-mono">
-        {bookingId ? `Booking: ${bookingId}` : "No booking selected"} •{" "}
-        {pickupLabel} • {dropoffLabel}
-      </div>
-      <div ref={containerRef} className="h-full w-full" />
+    <div className="w-full h-full">
+      {/* Optional header */}
+      {bookingId && (
+        <div className="mb-2 text-xs text-gray-600">
+          Booking ID: <span className="font-mono font-semibold">{bookingId}</span>
+        </div>
+      )}
+
+      {/* Map container */}
+      <div
+        ref={containerRef}
+        className="w-full h-[520px] rounded-lg overflow-hidden border border-gray-200"
+      />
     </div>
   );
 }
