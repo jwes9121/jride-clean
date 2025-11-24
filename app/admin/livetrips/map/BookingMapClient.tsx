@@ -1,7 +1,10 @@
 ﻿"use client";
 
 import { useEffect, useRef } from "react";
+import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 type Props = {
   bookingId: string | null;
@@ -35,110 +38,88 @@ export default function BookingMapClient({
   dropoffLng,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<any | null>(null);
-  const mapboxRef = useRef<any | null>(null);
-  const pickupMarkerRef = useRef<any | null>(null);
-  const dropoffMarkerRef = useRef<any | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // 1) INIT MAPBOX + MAP (client-only, lazy loaded)
+  // 1) INIT MAP ONCE
   useEffect(() => {
-    let cancelled = false;
+    if (!containerRef.current) return;
+    if (mapRef.current) return;
 
-    async function initMap() {
-      try {
-        if (mapRef.current || !containerRef.current) return;
+    try {
+      const center: [number, number] = [
+        typeof pickupLng === "number" ? pickupLng : DEFAULT_CENTER.lng,
+        typeof pickupLat === "number" ? pickupLat : DEFAULT_CENTER.lat,
+      ];
 
-        const mapboxModule: any = await import("mapbox-gl");
-        const mapboxgl = mapboxModule.default ?? mapboxModule;
-        mapboxRef.current = mapboxgl;
+      const map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/streets-v11",
+        center,
+        zoom: DEFAULT_ZOOM,
+      });
 
-        mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+      mapRef.current = map;
 
-        if (!containerRef.current || cancelled) return;
+      map.on("error", (e) => {
+        console.error("[BookingMapClient] map error:", e);
+      });
 
-        const initialCenter: [number, number] = [
-          typeof pickupLng === "number" ? pickupLng : DEFAULT_CENTER.lng,
-          typeof pickupLat === "number" ? pickupLat : DEFAULT_CENTER.lat,
-        ];
-
-        const map = new mapboxgl.Map({
-          container: containerRef.current,
-          style: "mapbox://styles/mapbox/streets-v11",
-          center: initialCenter,
-          zoom: DEFAULT_ZOOM,
-        });
-
-        mapRef.current = map;
-
-        map.on("error", (e: any) => {
-          console.error("[BookingMapClient] Mapbox error:", e?.error || e);
-        });
-      } catch (err) {
-        console.error("[BookingMapClient] Failed to init map:", err);
-      }
-    }
-
-    initMap();
-
-    return () => {
-      cancelled = true;
-      if (mapRef.current) {
+      return () => {
         try {
-          mapRef.current.remove();
-        } catch (e) {
-          console.error("[BookingMapClient] Error removing map:", e);
+          map.remove();
+        } catch (err) {
+          console.error("[BookingMapClient] cleanup error:", err);
         }
-      }
-      mapRef.current = null;
-      pickupMarkerRef.current = null;
-      dropoffMarkerRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once
+        mapRef.current = null;
+        pickupMarkerRef.current = null;
+        dropoffMarkerRef.current = null;
+      };
+    } catch (err) {
+      console.error("[BookingMapClient] init error:", err);
+    }
+  }, [pickupLat, pickupLng]);
 
   // 2) UPDATE MARKERS + CAMERA WHEN COORDS CHANGE
   useEffect(() => {
     const map = mapRef.current;
-    const mapboxgl = mapboxRef.current;
-    if (!map || !mapboxgl) return;
+    if (!map) return;
 
     try {
-      // PICKUP MARKER
+      // PICKUP
       if (hasCoords(pickupLat, pickupLng)) {
-        const pickupLngLat: [number, number] = [
+        const pickupLL: [number, number] = [
           pickupLng as number,
           pickupLat as number,
         ];
-
         if (!pickupMarkerRef.current) {
           pickupMarkerRef.current = new mapboxgl.Marker({ color: "#1DB954" })
-            .setLngLat(pickupLngLat)
+            .setLngLat(pickupLL)
             .addTo(map);
         } else {
-          pickupMarkerRef.current.setLngLat(pickupLngLat);
+          pickupMarkerRef.current.setLngLat(pickupLL);
         }
       }
 
-      // DROPOFF MARKER
+      // DROPOFF
       if (hasCoords(dropoffLat, dropoffLng)) {
-        const dropoffLngLat: [number, number] = [
+        const dropoffLL: [number, number] = [
           dropoffLng as number,
           dropoffLat as number,
         ];
-
         if (!dropoffMarkerRef.current) {
           dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#FF5733" })
-            .setLngLat(dropoffLngLat)
+            .setLngLat(dropoffLL)
             .addTo(map);
         } else {
-          dropoffMarkerRef.current.setLngLat(dropoffLngLat);
+          dropoffMarkerRef.current.setLngLat(dropoffLL);
         }
       }
 
       const hasPickup = hasCoords(pickupLat, pickupLng);
       const hasDropoff = hasCoords(dropoffLat, dropoffLng);
 
-      // CAMERA BEHAVIOR
       if (hasPickup && hasDropoff) {
         const bounds = new mapboxgl.LngLatBounds();
         bounds.extend([pickupLng as number, pickupLat as number]);
@@ -169,7 +150,7 @@ export default function BookingMapClient({
         });
       }
     } catch (err) {
-      console.error("[BookingMapClient] Update markers/camera error:", err);
+      console.error("[BookingMapClient] update error:", err);
     }
   }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
