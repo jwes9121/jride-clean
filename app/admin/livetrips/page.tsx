@@ -220,6 +220,11 @@ export default function LiveTripsPage() {
       params.set("dropoffLng", String(booking.dropoff_lng));
     }
 
+    // 🔹 NEW: pass assigned driver id for realtime driver marker
+    if (booking.assigned_driver_id) {
+      params.set("driverId", booking.assigned_driver_id);
+    }
+
     router.push(`/admin/livetrips/map?${params.toString()}`);
   }
 
