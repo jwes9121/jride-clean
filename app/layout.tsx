@@ -1,9 +1,23 @@
-﻿import type { ReactNode } from "react";
+﻿import "./globals.css";
+import "mapbox-gl/dist/mapbox-gl.css";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 
-export const metadata = {
-  title: "Sign in • JRide",
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "JRide",
+  description: "JRide app",
 };
 
-export default function AuthLayout({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
+    </html>
+  );
 }

@@ -1,15 +1,13 @@
 ﻿"use client";
 
-export default function GoogleSignInButton() {
-  function handleClick() {
-    // tell the browser to start the OAuth flow
-    window.location.href = "/api/auth/signin?provider=google";
-  }
+import { signIn } from "next-auth/react";
 
+export function GoogleSignInButton() {
   return (
     <button
-      onClick={handleClick}
-      className="rounded bg-black text-white px-4 py-2"
+      type="button"
+      onClick={() => signIn("google", { callbackUrl: "/" })}
+      className="inline-flex items-center justify-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
     >
       Continue with Google
     </button>
