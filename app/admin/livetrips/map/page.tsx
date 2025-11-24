@@ -1,6 +1,4 @@
-﻿// app/admin/livetrips/map/page.tsx
-
-import dynamic from "next/dynamic";
+﻿import dynamic from "next/dynamic";
 
 const BookingMapClient = dynamic(() => import("./BookingMapClient"), {
   ssr: false,
@@ -12,6 +10,8 @@ type MapPageSearchParams = {
   pickupLng?: string;
   dropoffLat?: string;
   dropoffLng?: string;
+  // NEW: assigned driver id (uuid)
+  driverId?: string;
 };
 
 type MapPageProps = {
@@ -26,6 +26,7 @@ function toNumberOrNull(value?: string): number | null {
 
 export default function MapPage({ searchParams }: MapPageProps) {
   const bookingId = searchParams?.bookingId ?? null;
+  const driverId = searchParams?.driverId ?? null;
 
   const pickupLat = toNumberOrNull(searchParams?.pickupLat);
   const pickupLng = toNumberOrNull(searchParams?.pickupLng);
@@ -40,6 +41,7 @@ export default function MapPage({ searchParams }: MapPageProps) {
         pickupLng={pickupLng}
         dropoffLat={dropoffLat}
         dropoffLng={dropoffLng}
+        driverId={driverId}
       />
     </div>
   );

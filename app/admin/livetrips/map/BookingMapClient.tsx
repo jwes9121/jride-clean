@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
@@ -12,6 +13,8 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
+  // NEW: assigned driver for this booking (uuid from bookings.assigned_driver_id)
+  driverId: string | null;
 };
 
 type Coords = {
@@ -36,11 +39,48 @@ export default function BookingMapClient({
   pickupLng,
   dropoffLat,
   dropoffLng,
+  driverId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  // Supabase client (re-used across effects)
+  const supabaseRef = useRef<ReturnType<typeof createClientComponentClient> | null>(null);
+  if (!supabaseRef.current) {
+    supabaseRef.current = createClientComponentClient();
+  }
+  const supabase = supabaseRef.current;
+
+  // Helper: update or create the driver marker, and optionally fly camera
+  const updateDriverMarker = (
+    lat: number,
+    lng: number,
+    flyToDriver: boolean = true
+  ) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const lngLat: [number, number] = [lng, lat];
+
+    if (!driverMarkerRef.current) {
+      driverMarkerRef.current = new mapboxgl.Marker({ color: "#007aff" }) // blue driver marker
+        .setLngLat(lngLat)
+        .addTo(map);
+    } else {
+      driverMarkerRef.current.setLngLat(lngLat);
+    }
+
+    if (flyToDriver) {
+      map.flyTo({
+        center: lngLat,
+        zoom: 15,
+        speed: 1.4,
+      });
+    }
+  };
 
   // 1) INIT MAP ONCE
   useEffect(() => {
@@ -75,13 +115,15 @@ export default function BookingMapClient({
         mapRef.current = null;
         pickupMarkerRef.current = null;
         dropoffMarkerRef.current = null;
+        driverMarkerRef.current = null;
       };
     } catch (err) {
       console.error("[BookingMapClient] init error:", err);
     }
-  }, [pickupLat, pickupLng]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // 2) UPDATE MARKERS + CAMERA WHEN COORDS CHANGE
+  // 2) UPDATE PICKUP + DROPOFF MARKERS + CAMERA WHEN COORDS CHANGE
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -153,6 +195,71 @@ export default function BookingMapClient({
       console.error("[BookingMapClient] update error:", err);
     }
   }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  // 3) REALTIME DRIVER MARKER (driver_locations table)
+  useEffect(() => {
+    if (!driverId) return;
+    if (!supabase) return;
+
+    let cancelled = false;
+
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Initial position fetch
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("driver_locations")
+          .select("lat,lng")
+          .eq("driver_id", driverId)
+          .maybeSingle();
+
+        if (!cancelled && !error && data && typeof data.lat === "number" && typeof data.lng === "number") {
+          updateDriverMarker(data.lat, data.lng, false);
+        }
+      } catch (err) {
+        console.error("[BookingMapClient] initial driver fetch error:", err);
+      }
+    })();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel(`driver-location-${driverId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "driver_locations",
+          filter: `driver_id=eq.${driverId}`,
+        },
+        (payload: any) => {
+          const row = payload.new || payload.old;
+          if (!row) return;
+
+          const lat = row.lat as number | null;
+          const lng = row.lng as number | null;
+
+          if (typeof lat === "number" && typeof lng === "number") {
+            updateDriverMarker(lat, lng, true);
+          }
+        }
+      )
+      .subscribe((status: string) => {
+        console.log("[BookingMapClient] driver channel status:", status);
+      });
+
+    return () => {
+      cancelled = true;
+      try {
+        supabase.removeChannel(channel);
+      } catch (err) {
+        console.error("[BookingMapClient] remove channel error:", err);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverId]);
 
   return (
     <div className="w-full h-full">
