@@ -13,7 +13,7 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
-  // NEW: assigned driver for this booking (uuid from bookings.assigned_driver_id)
+  // assigned driver for this booking (uuid from bookings.assigned_driver_id)
   driverId: string | null;
 };
 
@@ -33,6 +33,11 @@ function hasCoords(lat: number | null, lng: number | null): boolean {
   return typeof lat === "number" && typeof lng === "number";
 }
 
+type DriverLocationRow = {
+  lat: number | null;
+  lng: number | null;
+};
+
 export default function BookingMapClient({
   bookingId,
   pickupLat,
@@ -48,7 +53,8 @@ export default function BookingMapClient({
   const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // Supabase client (re-used across effects)
-  const supabaseRef = useRef<ReturnType<typeof createClientComponentClient> | null>(null);
+  const supabaseRef =
+    useRef<ReturnType<typeof createClientComponentClient> | null>(null);
   if (!supabaseRef.current) {
     supabaseRef.current = createClientComponentClient();
   }
@@ -215,8 +221,16 @@ export default function BookingMapClient({
           .eq("driver_id", driverId)
           .maybeSingle();
 
-        if (!cancelled && !error && data && typeof data.lat === "number" && typeof data.lng === "number") {
-          updateDriverMarker(data.lat, data.lng, false);
+        const row = data as DriverLocationRow | null;
+
+        if (
+          !cancelled &&
+          !error &&
+          row &&
+          typeof row.lat === "number" &&
+          typeof row.lng === "number"
+        ) {
+          updateDriverMarker(row.lat, row.lng, false);
         }
       } catch (err) {
         console.error("[BookingMapClient] initial driver fetch error:", err);
@@ -235,11 +249,11 @@ export default function BookingMapClient({
           filter: `driver_id=eq.${driverId}`,
         },
         (payload: any) => {
-          const row = payload.new || payload.old;
+          const row = (payload.new || payload.old) as DriverLocationRow | null;
           if (!row) return;
 
-          const lat = row.lat as number | null;
-          const lng = row.lng as number | null;
+          const lat = row.lat;
+          const lng = row.lng;
 
           if (typeof lat === "number" && typeof lng === "number") {
             updateDriverMarker(lat, lng, true);
