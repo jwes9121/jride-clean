@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 import { useRouter } from "next/navigation";
 
-export function ViewMapButton({ booking }) {
+export function ViewMapButton({ booking }: { booking: any }) {
   const router = useRouter();
   return (
     <button
