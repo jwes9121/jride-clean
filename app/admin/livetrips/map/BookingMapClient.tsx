@@ -12,7 +12,7 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
-  // still passed in from page.component.tsx but unused
+  // still passed but unused for now
   driverId?: string | null;
 };
 
@@ -28,9 +28,6 @@ const DEFAULT_CENTER: Coords = {
 
 const DEFAULT_ZOOM = 12;
 
-// How long the "trip" animation should take in milliseconds
-const TRIP_DURATION_MS = 60_000; // 60 seconds
-
 export default function BookingMapClient({
   bookingId,
   pickupLat,
@@ -40,16 +37,18 @@ export default function BookingMapClient({
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    if (mapRef.current) return;
+
+    // Destroy previous map instance if re-rendered for another booking
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
 
     const hasPickup =
       typeof pickupLat === "number" && typeof pickupLng === "number";
-    const hasDropoff =
-      typeof dropoffLat === "number" && typeof dropoffLng === "number";
 
     const center: [number, number] = hasPickup
       ? [pickupLng as number, pickupLat as number]
@@ -64,58 +63,20 @@ export default function BookingMapClient({
 
     mapRef.current = map;
 
-    // Initial marker at pickup or default
-    const marker = new mapboxgl.Marker({ color: "#ff0000" })
-      .setLngLat(center)
-      .addTo(map);
-
-    markerRef.current = marker;
-
-    // If we don't have both points, just keep the marker static
-    if (!hasPickup || !hasDropoff) {
-      return () => {
-        map.remove();
-        mapRef.current = null;
-        markerRef.current = null;
-      };
+    // Put a marker at pickup if we have it
+    if (hasPickup) {
+      new mapboxgl.Marker({ color: "#ff0000" })
+        .setLngLat(center)
+        .addTo(map);
     }
 
-    // Animate from pickup -> dropoff in a straight line
-    const start: [number, number] = [pickupLng as number, pickupLat as number];
-    const end: [number, number] = [dropoffLng as number, dropoffLat as number];
-
-    const startTime = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = now - startTime;
-      const tRaw = elapsed / TRIP_DURATION_MS;
-      const t = Math.min(Math.max(tRaw, 0), 1); // clamp 0..1
-
-      const lng = start[0] + (end[0] - start[0]) * t;
-      const lat = start[1] + (end[1] - start[1]) * t;
-
-      marker.setLngLat([lng, lat]);
-
-      map.easeTo({
-        center: [lng, lat],
-        zoom: 14,
-        duration: 500,
-        essential: true,
-      });
-
-      if (t < 1 && mapRef.current) {
-        requestAnimationFrame(animate);
-      }
-    };
-
-    requestAnimationFrame(animate);
+    // (Optional) In the future we can draw route from pickup → dropoff here
 
     return () => {
       map.remove();
       mapRef.current = null;
-      markerRef.current = null;
     };
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, bookingId]);
+  }, [bookingId, pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }
