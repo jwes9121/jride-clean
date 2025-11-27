@@ -1,7 +1,4 @@
-Set-Location "C:\Users\jwes9\Desktop\jride-clean-fresh"
-
-@'
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+﻿import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -12,19 +9,15 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
  */
 export function supabaseAdmin(): SupabaseClient {
   if (!supabaseUrl) {
-    throw new Error("SUPABASE_URL is missing (check .env.local / Vercel env)");
+    throw new Error("SUPABASE_URL is missing (check env vars)");
   }
   if (!supabaseServiceRoleKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is missing (check .env.local / Vercel env)"
-    );
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing (check env vars)");
   }
 
-  // Singleton admin client
-  const client = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { persistSession: false },
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      persistSession: false,
+    },
   });
-
-  return client;
 }
-'@ | Set-Content -Encoding UTF8 "lib\supabaseAdmin.ts"
