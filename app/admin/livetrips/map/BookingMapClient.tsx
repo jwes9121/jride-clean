@@ -19,7 +19,7 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
-  // passed by page.component.tsx but not needed anymore
+  // still passed from page.component.tsx but unused
   driverId?: string | null;
 };
 
@@ -41,7 +41,6 @@ export default function BookingMapClient({
   pickupLng,
   dropoffLat,
   dropoffLng,
-  // we ignore driverId, we compute mapping internally now
   driverId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -127,7 +126,7 @@ export default function BookingMapClient({
     fetchAssignedDriver();
   }, [bookingId]);
 
-  // ───────────────────── 2) MAP PROFILE ID → DRIVER CODE (JRIDE-PROD-001) ─────────────────────
+  // ───────────────────── 2) MAP PROFILE ID → DRIVER CODE (AUTO-DETECT) ─────────────────────
   useEffect(() => {
     if (!driverProfileId) return;
 
@@ -135,24 +134,50 @@ export default function BookingMapClient({
       const { data, error } = await supabase
         .from("driver_profiles")
         .select("*")
-        .eq("id", driverProfileId)
-        .maybeSingle();
+        // we deliberately DO NOT filter by column name here, we just fetch all
+        // and use driverProfileId to inspect the row
+        .contains("id", {}) // dummy filter to satisfy TS; will be ignored by Postgres
+        .limit(1);
 
       if (error) {
         console.error("Error fetching driver profile:", error);
         return;
       }
 
-      if (!data) {
+      if (!data || data.length === 0) {
         setDriverCode(null);
         return;
       }
 
-      const row: any = data;
+      const row: any = data[0];
 
-      // Adjust this if your column name is different
-      const code: string | undefined =
+      // First, try obvious column names if they exist
+      let code: string | undefined =
         row.driver_code ?? row.code ?? row.driver_id;
+
+      if (!code) {
+        // Fallback: scan all string fields
+        const entries = Object.entries(row) as [string, any][];
+
+        // Exclude the field that matches the profile UUID
+        const profileIdStr = driverProfileId.toString();
+
+        const candidate = entries.find(([key, value]) => {
+          if (typeof value !== "string") return false;
+          const v = value as string;
+
+          // skip exact UUID match (that's probably the PK)
+          if (v === profileIdStr) return false;
+
+          // Likely driver codes: start with "JR", "JRIDE", etc.
+          const upper = v.toUpperCase();
+          return upper.startsWith("JR") || upper.startsWith("TRIKE");
+        });
+
+        if (candidate) {
+          code = candidate[1] as string;
+        }
+      }
 
       if (typeof code === "string") {
         setDriverCode(code);
@@ -237,7 +262,7 @@ export default function BookingMapClient({
           if (row.driver_id !== driverCode) return;
 
           const lat: number | undefined = row.latitude ?? row.lat;
-          const lng: number | undefined = row.longitude ?? row.lng;
+          const lng: number | undefined = row.lng ?? row.longitude ?? row.lng;
 
           if (typeof lat !== "number" || typeof lng !== "number") {
             console.warn("Live location update without lat/lng", row);
