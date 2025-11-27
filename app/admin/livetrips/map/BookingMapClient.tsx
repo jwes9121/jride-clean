@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import { createClient } from "@supabase/supabase-js";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -19,7 +19,7 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
-  // still passed from page.component.tsx but unused
+  // still passed in, but unused for now
   driverId?: string | null;
 };
 
@@ -27,6 +27,9 @@ type Coords = {
   lat: number;
   lng: number;
 };
+
+// TEMP: follow this driver from live_locations for realtime test
+const TEST_DRIVER_CODE = "JRIDE-PROD-001";
 
 const DEFAULT_CENTER: Coords = {
   lat: 16.81,
@@ -41,18 +44,12 @@ export default function BookingMapClient({
   pickupLng,
   dropoffLat,
   dropoffLng,
-  driverId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // UUID from bookings.assigned_driver_id
-  const [driverProfileId, setDriverProfileId] = useState<string | null>(null);
-  // Code like "JRIDE-PROD-001" from driver_profiles (used in live_locations.driver_id)
-  const [driverCode, setDriverCode] = useState<string | null>(null);
-
-  // ───────────────────── MAP INIT ─────────────────────
+  // ───────────────────── INIT MAP ─────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
     if (mapRef.current) return;
@@ -99,106 +96,13 @@ export default function BookingMapClient({
     });
   };
 
-  // ───────────────────── 1) GET DRIVER PROFILE ID FROM BOOKING ─────────────────────
+  // ───────────────────── INITIAL POSITION FROM live_locations ─────────────────────
   useEffect(() => {
-    if (!bookingId) return;
-
-    const fetchAssignedDriver = async () => {
-      const { data, error } = await supabase
-        .from("bookings")
-        .select("assigned_driver_id")
-        .eq("id", bookingId)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error fetching assigned driver:", error);
-        return;
-      }
-
-      if (data?.assigned_driver_id) {
-        setDriverProfileId(data.assigned_driver_id as string);
-      } else {
-        setDriverProfileId(null);
-        setDriverCode(null);
-      }
-    };
-
-    fetchAssignedDriver();
-  }, [bookingId]);
-
-  // ───────────────────── 2) MAP PROFILE ID → DRIVER CODE (AUTO-DETECT) ─────────────────────
-  useEffect(() => {
-    if (!driverProfileId) return;
-
-    const fetchDriverCode = async () => {
-      const { data, error } = await supabase
-        .from("driver_profiles")
-        .select("*")
-        // we deliberately DO NOT filter by column name here, we just fetch all
-        // and use driverProfileId to inspect the row
-        .contains("id", {}) // dummy filter to satisfy TS; will be ignored by Postgres
-        .limit(1);
-
-      if (error) {
-        console.error("Error fetching driver profile:", error);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        setDriverCode(null);
-        return;
-      }
-
-      const row: any = data[0];
-
-      // First, try obvious column names if they exist
-      let code: string | undefined =
-        row.driver_code ?? row.code ?? row.driver_id;
-
-      if (!code) {
-        // Fallback: scan all string fields
-        const entries = Object.entries(row) as [string, any][];
-
-        // Exclude the field that matches the profile UUID
-        const profileIdStr = driverProfileId.toString();
-
-        const candidate = entries.find(([key, value]) => {
-          if (typeof value !== "string") return false;
-          const v = value as string;
-
-          // skip exact UUID match (that's probably the PK)
-          if (v === profileIdStr) return false;
-
-          // Likely driver codes: start with "JR", "JRIDE", etc.
-          const upper = v.toUpperCase();
-          return upper.startsWith("JR") || upper.startsWith("TRIKE");
-        });
-
-        if (candidate) {
-          code = candidate[1] as string;
-        }
-      }
-
-      if (typeof code === "string") {
-        setDriverCode(code);
-      } else {
-        console.warn("Could not determine driver code from profile row:", row);
-        setDriverCode(null);
-      }
-    };
-
-    fetchDriverCode();
-  }, [driverProfileId]);
-
-  // ───────────────────── 3) INITIAL POSITION FROM live_locations ─────────────────────
-  useEffect(() => {
-    if (!driverCode) return;
-
     const fetchInitialLocation = async () => {
       const { data, error } = await supabase
         .from("live_locations")
         .select("*")
-        .eq("driver_id", driverCode)
+        .eq("driver_id", TEST_DRIVER_CODE)
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -220,12 +124,10 @@ export default function BookingMapClient({
     };
 
     fetchInitialLocation();
-  }, [driverCode]);
+  }, []);
 
-  // ───────────────────── 4) REALTIME SUBSCRIPTION TO live_locations ─────────────────────
+  // ───────────────────── REALTIME SUBSCRIPTION TO live_locations ─────────────────────
   useEffect(() => {
-    if (!driverCode) return;
-
     const channel = supabase
       .channel("live-driver-tracking")
       .on(
@@ -237,7 +139,7 @@ export default function BookingMapClient({
         },
         (payload) => {
           const row: any = payload.new;
-          if (row.driver_id !== driverCode) return;
+          if (row.driver_id !== TEST_DRIVER_CODE) return;
 
           const lat: number | undefined = row.latitude ?? row.lat;
           const lng: number | undefined = row.longitude ?? row.lng;
@@ -259,10 +161,10 @@ export default function BookingMapClient({
         },
         (payload) => {
           const row: any = payload.new;
-          if (row.driver_id !== driverCode) return;
+          if (row.driver_id !== TEST_DRIVER_CODE) return;
 
           const lat: number | undefined = row.latitude ?? row.lat;
-          const lng: number | undefined = row.lng ?? row.longitude ?? row.lng;
+          const lng: number | undefined = row.longitude ?? row.lng;
 
           if (typeof lat !== "number" || typeof lng !== "number") {
             console.warn("Live location update without lat/lng", row);
@@ -277,7 +179,7 @@ export default function BookingMapClient({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [driverCode]);
+  }, []);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }
