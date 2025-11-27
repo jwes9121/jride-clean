@@ -19,6 +19,8 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
+  // passed by page.component.tsx but not needed anymore
+  driverId?: string | null;
 };
 
 type Coords = {
@@ -39,6 +41,8 @@ export default function BookingMapClient({
   pickupLng,
   dropoffLat,
   dropoffLng,
+  // we ignore driverId, we compute mapping internally now
+  driverId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -146,8 +150,7 @@ export default function BookingMapClient({
 
       const row: any = data;
 
-      // ⚠️ If your column is named differently, adjust here:
-      // try driver_code, then code, then driver_id as fallbacks
+      // Adjust this if your column name is different
       const code: string | undefined =
         row.driver_code ?? row.code ?? row.driver_id;
 
