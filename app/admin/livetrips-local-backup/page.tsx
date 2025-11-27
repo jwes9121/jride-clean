@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import DispatchRow, { BookingRow } from "./DispatchRow";
 import { DriverInfo } from "./dispatchRules";
 import { supabase } from "@/lib/supabaseClient";
@@ -14,11 +15,17 @@ type DispatchActionName =
   | "drop_off"
   | "cancel";
 
+type BookingsResponse = {
+  bookings: BookingRow[];
+};
+
 type DriversResponse = {
   drivers: DriverInfo[];
 };
 
 export default function LiveTripsPage() {
+  const router = useRouter();
+
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -26,27 +33,25 @@ export default function LiveTripsPage() {
   const [workingBookingId, setWorkingBookingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // currently selected booking for the right-hand map panel
+  // NEW: currently selected booking for the right-hand map panel
   const [selectedBookingForMap, setSelectedBookingForMap] =
     useState<BookingRow | null>(null);
 
-  /**
-   * LOAD BOOKINGS DIRECTLY FROM SUPABASE (dispatch_rides_view)
-   * This bypasses /api/admin/livetrips and avoids LIVE_TRIPS_DB_ERROR.
-   */
   async function fetchBookings(): Promise<BookingRow[]> {
-    const { data, error } = await supabase
-      .from("dispatch_rides_view")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const res = await fetch("/api/admin/livetrips", {
+      method: "GET",
+      cache: "no-store",
+    });
 
-    if (error) {
-      console.error("LIVE_TRIPS_SUPABASE_ERROR", error);
-      throw new Error(error.message);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(
+        `Failed to load bookings: HTTP ${res.status} ${text || ""}`
+      );
     }
 
-    return (data ?? []) as BookingRow[];
+    const json = (await res.json()) as BookingsResponse;
+    return json.bookings ?? [];
   }
 
   async function fetchDrivers(): Promise<DriverInfo[]> {
@@ -234,7 +239,7 @@ export default function LiveTripsPage() {
     }
   }
 
-  // When dispatcher clicks View map in a row, just select that booking for the map panel
+  // NEW: when dispatcher clicks View map in a row, just select that booking for the map panel
   function handleViewMap(booking: BookingRow) {
     setSelectedBookingForMap(booking);
   }
@@ -299,7 +304,7 @@ export default function LiveTripsPage() {
           No active bookings found right now.
         </div>
       ) : (
-        // two-column layout: table + map
+        // NEW: two-column layout: table + map
         <div className="grid grid-cols-1 xl:grid-cols-[3fr,4fr] gap-4">
           {/* LEFT: table */}
           <div className="overflow-x-auto border rounded-lg">
