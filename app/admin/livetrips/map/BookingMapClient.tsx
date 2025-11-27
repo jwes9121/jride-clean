@@ -2,10 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import { createClient } from "@supabase/supabase-js";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+
+// Supabase browser client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 type Props = {
   bookingId: string | null;
@@ -13,8 +19,6 @@ type Props = {
   pickupLng: number | null;
   dropoffLat: number | null;
   dropoffLng: number | null;
-  // assigned driver for this booking (uuid from bookings.assigned_driver_id)
-  driverId: string | null;
 };
 
 type Coords = {
@@ -27,122 +31,7 @@ const DEFAULT_CENTER: Coords = {
   lng: 121.11,
 };
 
-const DEFAULT_ZOOM = 11;
-
-function hasCoords(lat: number | null, lng: number | null): boolean {
-  return typeof lat === "number" && typeof lng === "number";
-}
-
-type DriverLocationRow = {
-  lat: number | null;
-  lng: number | null;
-  town?: string | null;
-};
-
-// Town → color mapping for driver marker
-function getTownColor(town?: string | null): string {
-  if (!town) return "#007aff"; // default blue
-  const t = town.toLowerCase();
-
-  switch (t) {
-    case "lagawe":
-      return "#800000"; // maroon
-    case "kiangan":
-      return "#32cd32"; // light green
-    case "lamut":
-      return "#fffacd"; // light yellow
-    case "banaue":
-      return "#ffd700"; // dark yellow
-    case "hingyon":
-      return "#0000ff"; // blue
-    default:
-      return "#007aff"; // fallback
-  }
-}
-
-// Use Mapbox Directions API so the line follows the road
-async function updateRouteLayer(
-  map: mapboxgl.Map,
-  pickupLat: number,
-  pickupLng: number,
-  dropoffLat: number,
-  dropoffLng: number
-) {
-  try {
-    const token = mapboxgl.accessToken;
-    if (!token) {
-      console.warn("[BookingMapClient] No Mapbox token set for directions.");
-      return;
-    }
-
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${pickupLng},${pickupLat};${dropoffLng},${dropoffLat}?geometries=geojson&overview=full&access_token=${token}`;
-
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.error(
-        "[BookingMapClient] directions fetch failed:",
-        res.status,
-        await res.text()
-      );
-      return;
-    }
-
-    const json = await res.json();
-    const coords: [number, number][] | undefined =
-      json?.routes?.[0]?.geometry?.coordinates;
-
-    if (!coords || !coords.length) {
-      console.warn("[BookingMapClient] no route geometry returned");
-      return;
-    }
-
-    const routeGeoJson: any = {
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: coords,
-          },
-          properties: {},
-        },
-      ],
-    };
-
-    const existingSource = map.getSource("booking-route") as any | undefined;
-
-    if (existingSource && typeof existingSource.setData === "function") {
-      existingSource.setData(routeGeoJson);
-    } else {
-      if (!map.getSource("booking-route")) {
-        map.addSource("booking-route", {
-          type: "geojson",
-          data: routeGeoJson,
-        } as any);
-      }
-
-      if (!map.getLayer("booking-route-line")) {
-        map.addLayer({
-          id: "booking-route-line",
-          type: "line",
-          source: "booking-route",
-          layout: {
-            "line-join": "round",
-            "line-cap": "round",
-          },
-          paint: {
-            "line-color": "#1D4ED8", // blue line
-            "line-width": 4,
-            "line-opacity": 0.8,
-          },
-        } as any);
-      }
-    }
-  } catch (err) {
-    console.error("[BookingMapClient] updateRouteLayer error:", err);
-  }
-}
+const DEFAULT_ZOOM = 12;
 
 export default function BookingMapClient({
   bookingId,
@@ -150,314 +39,217 @@ export default function BookingMapClient({
   pickupLng,
   dropoffLat,
   dropoffLng,
-  driverId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // Follow-driver toggle
-  const [followDriver, setFollowDriver] = useState<boolean>(true);
-  const followDriverRef = useRef<boolean>(true);
-  useEffect(() => {
-    followDriverRef.current = followDriver;
-  }, [followDriver]);
+  // UUID from bookings.assigned_driver_id
+  const [driverProfileId, setDriverProfileId] = useState<string | null>(null);
+  // Code like "JRIDE-PROD-001" from driver_profiles (used in live_locations.driver_id)
+  const [driverCode, setDriverCode] = useState<string | null>(null);
 
-  // Supabase client (re-used across effects)
-  const supabaseRef =
-    useRef<ReturnType<typeof createClientComponentClient> | null>(null);
-  if (!supabaseRef.current) {
-    supabaseRef.current = createClientComponentClient();
-  }
-  const supabase = supabaseRef.current;
-
-  // Helper: update or create the driver marker, and optionally fly camera
-  const updateDriverMarker = (
-    lat: number,
-    lng: number,
-    flyToDriver: boolean = true,
-    town?: string | null
-  ) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const lngLat: [number, number] = [lng, lat];
-    const color = getTownColor(town);
-
-    if (!driverMarkerRef.current) {
-      driverMarkerRef.current = new mapboxgl.Marker({ color })
-        .setLngLat(lngLat)
-        .addTo(map);
-    } else {
-      driverMarkerRef.current.setLngLat(lngLat);
-    }
-
-    if (flyToDriver && followDriverRef.current) {
-      map.flyTo({
-        center: lngLat,
-        zoom: 15,
-        speed: 1.4,
-      });
-    }
-  };
-
-  // 1) INIT MAP ONCE
+  // ───────────────────── MAP INIT ─────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
     if (mapRef.current) return;
 
-    try {
-      const center: [number, number] = [
-        typeof pickupLng === "number" ? pickupLng : DEFAULT_CENTER.lng,
-        typeof pickupLat === "number" ? pickupLat : DEFAULT_CENTER.lat,
-      ];
+    const center: [number, number] =
+      pickupLat != null && pickupLng != null
+        ? [pickupLng, pickupLat]
+        : [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat];
 
-      const map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: "mapbox://styles/mapbox/streets-v11",
-        center,
-        zoom: DEFAULT_ZOOM,
-      });
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center,
+      zoom: DEFAULT_ZOOM,
+    });
 
-      mapRef.current = map;
+    mapRef.current = map;
 
-      map.on("error", (e: any) => {
-        console.error("[BookingMapClient] map error:", e);
-      });
+    driverMarkerRef.current = new mapboxgl.Marker({
+      color: "#ff0000",
+    })
+      .setLngLat(center)
+      .addTo(map);
 
-      return () => {
-        try {
-          map.remove();
-        } catch (err) {
-          console.error("[BookingMapClient] cleanup error:", err);
-        }
-        mapRef.current = null;
-        pickupMarkerRef.current = null;
-        dropoffMarkerRef.current = null;
-        driverMarkerRef.current = null;
-      };
-    } catch (err) {
-      console.error("[BookingMapClient] init error:", err);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      driverMarkerRef.current = null;
+    };
+  }, [pickupLat, pickupLng]);
 
-  // 2) UPDATE PICKUP + DROPOFF MARKERS + ROUTE + CAMERA WHEN COORDS CHANGE
+  // ───────────────────── HELPER ─────────────────────
+  const updateDriverMarker = (lat: number, lng: number) => {
+    if (!mapRef.current || !driverMarkerRef.current) return;
+
+    driverMarkerRef.current.setLngLat([lng, lat]);
+
+    mapRef.current.flyTo({
+      center: [lng, lat],
+      zoom: 14,
+      speed: 0.9,
+      curve: 1.2,
+      essential: true,
+    });
+  };
+
+  // ───────────────────── 1) GET DRIVER PROFILE ID FROM BOOKING ─────────────────────
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    if (!bookingId) return;
 
-    const applyUpdates = async () => {
-      try {
-        // PICKUP
-        if (hasCoords(pickupLat, pickupLng)) {
-          const pickupLL: [number, number] = [
-            pickupLng as number,
-            pickupLat as number,
-          ];
-          if (!pickupMarkerRef.current) {
-            pickupMarkerRef.current = new mapboxgl.Marker({ color: "#1DB954" })
-              .setLngLat(pickupLL)
-              .addTo(map);
-          } else {
-            pickupMarkerRef.current.setLngLat(pickupLL);
-          }
-        }
+    const fetchAssignedDriver = async () => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("assigned_driver_id")
+        .eq("id", bookingId)
+        .maybeSingle();
 
-        // DROPOFF
-        if (hasCoords(dropoffLat, dropoffLng)) {
-          const dropoffLL: [number, number] = [
-            dropoffLng as number,
-            dropoffLat as number,
-          ];
-          if (!dropoffMarkerRef.current) {
-            dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#FF5733" })
-              .setLngLat(dropoffLL)
-              .addTo(map);
-          } else {
-            dropoffMarkerRef.current.setLngLat(dropoffLL);
-          }
-        }
+      if (error) {
+        console.error("Error fetching assigned driver:", error);
+        return;
+      }
 
-        const hasPickup = hasCoords(pickupLat, pickupLng);
-        const hasDropoff = hasCoords(dropoffLat, dropoffLng);
-
-        // ROUTE: call Mapbox Directions so line follows the road
-        if (hasPickup && hasDropoff) {
-          await updateRouteLayer(
-            map,
-            pickupLat as number,
-            pickupLng as number,
-            dropoffLat as number,
-            dropoffLng as number
-          );
-        } else {
-          // No both points => optionally remove route line
-          if (map.getLayer("booking-route-line")) {
-            map.removeLayer("booking-route-line");
-          }
-          if (map.getSource("booking-route")) {
-            map.removeSource("booking-route");
-          }
-        }
-
-        // CAMERA / VIEWPORT
-        const hasPickup2 = hasPickup;
-        const hasDropoff2 = hasDropoff;
-
-        if (hasPickup2 && hasDropoff2) {
-          const bounds = new mapboxgl.LngLatBounds();
-          bounds.extend([pickupLng as number, pickupLat as number]);
-          bounds.extend([dropoffLng as number, dropoffLat as number]);
-
-          map.fitBounds(bounds, {
-            padding: 80,
-            maxZoom: 15,
-            duration: 900,
-          });
-        } else if (hasPickup2) {
-          map.flyTo({
-            center: [pickupLng as number, pickupLat as number],
-            zoom: 15,
-            speed: 1.4,
-          });
-        } else if (hasDropoff2) {
-          map.flyTo({
-            center: [dropoffLng as number, dropoffLat as number],
-            zoom: 15,
-            speed: 1.4,
-          });
-        } else {
-          map.flyTo({
-            center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
-            zoom: DEFAULT_ZOOM,
-            speed: 1.2,
-          });
-        }
-      } catch (err) {
-        console.error("[BookingMapClient] update error:", err);
+      if (data?.assigned_driver_id) {
+        setDriverProfileId(data.assigned_driver_id as string);
+      } else {
+        setDriverProfileId(null);
+        setDriverCode(null);
       }
     };
 
-    if (map.isStyleLoaded()) {
-      applyUpdates();
-    } else {
-      map.once("load", applyUpdates);
-    }
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
+    fetchAssignedDriver();
+  }, [bookingId]);
 
-  // 3) REALTIME DRIVER MARKER (driver_locations table)
+  // ───────────────────── 2) MAP PROFILE ID → DRIVER CODE (JRIDE-PROD-001) ─────────────────────
   useEffect(() => {
-    if (!driverId) return;
-    if (!supabase) return;
+    if (!driverProfileId) return;
 
-    let cancelled = false;
+    const fetchDriverCode = async () => {
+      const { data, error } = await supabase
+        .from("driver_profiles")
+        .select("*")
+        .eq("id", driverProfileId)
+        .maybeSingle();
 
-    const map = mapRef.current;
-    if (!map) return;
-
-    // Initial position fetch
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("driver_locations")
-          .select("lat,lng,town")
-          .eq("driver_id", driverId)
-          .maybeSingle();
-
-        const row = data as DriverLocationRow | null;
-
-        if (
-          !cancelled &&
-          !error &&
-          row &&
-          typeof row.lat === "number" &&
-          typeof row.lng === "number"
-        ) {
-          updateDriverMarker(row.lat, row.lng, false, row.town ?? null);
-        }
-      } catch (err) {
-        console.error("[BookingMapClient] initial driver fetch error:", err);
+      if (error) {
+        console.error("Error fetching driver profile:", error);
+        return;
       }
-    })();
 
-    // Realtime subscription
+      if (!data) {
+        setDriverCode(null);
+        return;
+      }
+
+      const row: any = data;
+
+      // ⚠️ If your column is named differently, adjust here:
+      // try driver_code, then code, then driver_id as fallbacks
+      const code: string | undefined =
+        row.driver_code ?? row.code ?? row.driver_id;
+
+      if (typeof code === "string") {
+        setDriverCode(code);
+      } else {
+        console.warn("Could not determine driver code from profile row:", row);
+        setDriverCode(null);
+      }
+    };
+
+    fetchDriverCode();
+  }, [driverProfileId]);
+
+  // ───────────────────── 3) INITIAL POSITION FROM live_locations ─────────────────────
+  useEffect(() => {
+    if (!driverCode) return;
+
+    const fetchInitialLocation = async () => {
+      const { data, error } = await supabase
+        .from("live_locations")
+        .select("*")
+        .eq("driver_id", driverCode)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching initial live location:", error);
+        return;
+      }
+
+      if (!data) return;
+
+      const row: any = data;
+      const lat: number | undefined = row.latitude ?? row.lat;
+      const lng: number | undefined = row.longitude ?? row.lng;
+
+      if (typeof lat === "number" && typeof lng === "number") {
+        updateDriverMarker(lat, lng);
+      }
+    };
+
+    fetchInitialLocation();
+  }, [driverCode]);
+
+  // ───────────────────── 4) REALTIME SUBSCRIPTION TO live_locations ─────────────────────
+  useEffect(() => {
+    if (!driverCode) return;
+
     const channel = supabase
-      .channel(`driver-location-${driverId}`)
+      .channel("live-driver-tracking")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
-          table: "driver_locations",
-          filter: `driver_id=eq.${driverId}`,
+          table: "live_locations",
         },
-        (payload: any) => {
-          const row = (payload.new || payload.old) as DriverLocationRow | null;
-          if (!row) return;
+        (payload) => {
+          const row: any = payload.new;
+          if (row.driver_id !== driverCode) return;
 
-          const lat = row.lat;
-          const lng = row.lng;
+          const lat: number | undefined = row.latitude ?? row.lat;
+          const lng: number | undefined = row.longitude ?? row.lng;
 
-          if (typeof lat === "number" && typeof lng === "number") {
-            updateDriverMarker(lat, lng, true, row.town ?? null);
+          if (typeof lat !== "number" || typeof lng !== "number") {
+            console.warn("Live location insert without lat/lng", row);
+            return;
           }
+
+          updateDriverMarker(lat, lng);
         }
       )
-      .subscribe((status: string) => {
-        console.log("[BookingMapClient] driver channel status:", status);
-      });
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "live_locations",
+        },
+        (payload) => {
+          const row: any = payload.new;
+          if (row.driver_id !== driverCode) return;
+
+          const lat: number | undefined = row.latitude ?? row.lat;
+          const lng: number | undefined = row.longitude ?? row.lng;
+
+          if (typeof lat !== "number" || typeof lng !== "number") {
+            console.warn("Live location update without lat/lng", row);
+            return;
+          }
+
+          updateDriverMarker(lat, lng);
+        }
+      )
+      .subscribe();
 
     return () => {
-      cancelled = true;
-      try {
-        supabase.removeChannel(channel);
-      } catch (err) {
-        console.error("[BookingMapClient] remove channel error:", err);
-      }
+      supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driverId]);
+  }, [driverCode]);
 
-  return (
-    <div className="w-full h-full">
-      {bookingId && (
-        <div className="mb-2 text-xs text-gray-600">
-          Booking ID:{" "}
-          <span className="font-mono font-semibold">{bookingId}</span>
-        </div>
-      )}
-
-      <div className="relative w-full h-[520px]">
-        <div
-          ref={containerRef}
-          className="w-full h-full rounded-lg overflow-hidden border border-gray-200"
-        />
-
-        <button
-          type="button"
-          className="absolute top-2 right-2 z-10 text-xs px-2 py-1 rounded bg-white/90 border border-gray-300 shadow-sm hover:bg-gray-50"
-          onClick={() =>
-            setFollowDriver((prev) => {
-              const next = !prev;
-              // When turning FOLLOW ON and driver marker exists, immediately center on driver
-              if (next && driverMarkerRef.current && mapRef.current) {
-                const lngLat = driverMarkerRef.current.getLngLat();
-                mapRef.current.flyTo({
-                  center: [lngLat.lng, lngLat.lat],
-                  zoom: 15,
-                  speed: 1.4,
-                });
-              }
-              return next;
-            })
-          }
-        >
-          {followDriver ? "Following driver" : "Free map view"}
-        </button>
-      </div>
-    </div>
-  );
+  return <div ref={containerRef} className="w-full h-full" />;
 }
