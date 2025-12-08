@@ -1,43 +1,44 @@
 ﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/server";
 
 export async function GET() {
-  try {
-    console.log("[API] /admin/livetrips/page-data called");
+  const supabase = createClient();
 
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Call the existing RPC for live trips page data
+  const [{ data: rpcData, error: rpcError }, { data: zoneData, error: zoneError }] =
+    await Promise.all([
+      supabase.rpc("admin_get_live_trips_page_data"),
+      supabase
+        .from("zone_capacity_view")
+        .select(
+          "zone_id, zone_name, color_hex, capacity_limit, active_drivers, available_slots, status"
+        )
+        .order("zone_name"),
+    ]);
 
-    if (!url || !key) {
-      console.error("[API] Missing Supabase env vars");
-      return NextResponse.json(
-        { error: "Missing Supabase env vars" },
-        { status: 500 }
-      );
-    }
-
-    const supabase = createClient(url, key);
-
-    const { data, error } = await supabase.rpc(
-      "admin_get_live_trips_page_data"
-    );
-
-    console.log("[API] RPC data:", data);
-    console.log("[API] RPC error:", error);
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(data ?? {});
-  } catch (err: any) {
-    console.error("[API] Unexpected error:", err);
+  if (rpcError) {
+    console.error("[page-data] live trips RPC error", rpcError);
     return NextResponse.json(
-      { error: err?.message ?? "Unexpected server error" },
+      { error: rpcError.message },
       { status: 500 }
     );
   }
+
+  if (zoneError) {
+    console.error("[zone-capacity] error", zoneError);
+    return NextResponse.json(
+      { error: zoneError.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json(
+    {
+      // whatever the RPC already returns (bookings, stats, etc.)
+      ...rpcData,
+      // attach zone capacity info from the materialized view
+      zones: zoneData ?? [],
+    },
+    { status: 200 }
+  );
 }
