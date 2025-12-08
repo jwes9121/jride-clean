@@ -1,47 +1,56 @@
-﻿import dynamic from "next/dynamic";
+﻿import { createClient } from "@supabase/supabase-js";
+import BookingMapClient from "./BookingMapClient";
 
-const BookingMapClient = dynamic(() => import("./BookingMapClient"), {
-  ssr: false,
-});
+const supabaseUrl = process.env.SUPABASE_URL!;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-type MapPageSearchParams = {
-  bookingId?: string;
-  pickupLat?: string;
-  pickupLng?: string;
-  dropoffLat?: string;
-  dropoffLng?: string;
-  // NEW: assigned driver id (uuid)
-  driverId?: string;
-};
+export const dynamic = "force-dynamic";
 
 type MapPageProps = {
-  searchParams?: MapPageSearchParams;
+  searchParams?: { [key: string]: string | string[] | undefined };
 };
 
-function toNumberOrNull(value?: string): number | null {
-  if (value === undefined) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
+export default async function MapPage({ searchParams }: MapPageProps) {
+  const bookingIdParam = searchParams?.bookingId;
+  const bookingId =
+    typeof bookingIdParam === "string" ? bookingIdParam : null;
 
-export default function MapPage({ searchParams }: MapPageProps) {
-  const bookingId = searchParams?.bookingId ?? null;
-  const driverId = searchParams?.driverId ?? null;
+  if (!bookingId) {
+    return (
+      <div className="w-full h-[600px] flex items-center justify-center text-sm text-gray-700">
+        Missing bookingId in URL. Open this page via the dispatcher "View Map" link.
+      </div>
+    );
+  }
 
-  const pickupLat = toNumberOrNull(searchParams?.pickupLat);
-  const pickupLng = toNumberOrNull(searchParams?.pickupLng);
-  const dropoffLat = toNumberOrNull(searchParams?.dropoffLat);
-  const dropoffLng = toNumberOrNull(searchParams?.dropoffLng);
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(
+      "id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng"
+    )
+    .eq("id", bookingId)
+    .single();
+
+  if (error || !data) {
+    console.error("BOOKING_MAP_DB_ERROR", error);
+    return (
+      <div className="w-full h-[600px] flex items-center justify-center text-sm text-red-700">
+        Failed to load booking data for this map.
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 w-full h-[600px]">
+    <div className="w-full h-[600px]">
       <BookingMapClient
-        bookingId={bookingId}
-        pickupLat={pickupLat}
-        pickupLng={pickupLng}
-        dropoffLat={dropoffLat}
-        dropoffLng={dropoffLng}
-        driverId={driverId}
+        bookingId={data.id}
+        bookingCode={data.booking_code ?? null}
+        pickupLat={data.pickup_lat}
+        pickupLng={data.pickup_lng}
+        dropoffLat={data.dropoff_lat}
+        dropoffLng={data.dropoff_lng}
       />
     </div>
   );

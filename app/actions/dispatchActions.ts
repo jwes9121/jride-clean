@@ -1,6 +1,6 @@
-// app/actions/dispatchActions.ts
+﻿// app/actions/dispatchActions.ts
 //
-// Simple client-safe helper used by /admin/livetrips/page.tsx
+// Simple client-safe helper used by /admin/livetripss/page.tsx
 // It fetches the latest active booking + driver locations from Supabase
 // and returns an object that page.tsx + DriverListPanel expect.
 
@@ -52,7 +52,7 @@ type LiveTripResult = {
  * Fetch the most recent active booking (assigned / on_trip) together
  * with aggregated driver stats & per-town lists.
  *
- * This shape matches what /admin/livetrips/page.tsx + DriverListPanel
+ * This shape matches what /admin/livetripss/page.tsx + DriverListPanel
  * are expecting: { booking, driverStats }.
  */
 export async function getActiveBookingWithDriverLocations(): Promise<LiveTripResult> {
@@ -159,3 +159,4 @@ async function safeText(res: Response): Promise<string> {
     return "";
   }
 }
+

@@ -171,7 +171,7 @@ export default function DispatchPage() {
   };
 
   const handleViewMap = (bookingId: string) => {
-    window.location.href = `/admin/livetrips?bookingId=${bookingId}`;
+    window.location.href = `/admin/livetripss?bookingId=${bookingId}`;
   };
 
   useEffect(() => {
@@ -296,3 +296,4 @@ export default function DispatchPage() {
     </div>
   );
 }
+

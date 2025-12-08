@@ -1,0 +1,211 @@
+﻿"use client";
+
+import { useEffect, useRef } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+
+type Props = {
+  bookingId: string;
+  bookingCode: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  dropoffLat: number | null;
+  dropoffLng: number | null;
+};
+
+const DEFAULT_CENTER: [number, number] = [121.11, 16.81]; // Lagawe-ish
+const DEFAULT_ZOOM = 12;
+
+export default function BookingMapClient({
+  bookingId,
+  bookingCode,
+  pickupLat,
+  pickupLng,
+  dropoffLat,
+  dropoffLng,
+}: Props) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    const center: [number, number] =
+      pickupLat != null && pickupLng != null
+        ? [pickupLng, pickupLat]
+        : DEFAULT_CENTER;
+
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center,
+      zoom: DEFAULT_ZOOM,
+    });
+
+    mapRef.current = map;
+
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [pickupLat, pickupLng]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clear previous markers / route
+    if (map.getLayer("route-line")) {
+      map.removeLayer("route-line");
+    }
+    if (map.getSource("route")) {
+      map.removeSource("route");
+    }
+
+    // We store markers on the map instance so they survive re-renders
+    const existingPickup = (map as any)._jridePickupMarker as
+      | mapboxgl.Marker
+      | undefined;
+    const existingDropoff = (map as any)._jrideDropoffMarker as
+      | mapboxgl.Marker
+      | undefined;
+
+    if (existingPickup) existingPickup.remove();
+    if (existingDropoff) existingDropoff.remove();
+
+    // Add pickup marker
+    if (pickupLat != null && pickupLng != null) {
+      const pickupMarker = new mapboxgl.Marker({ color: "#22c55e" }) // green
+        .setLngLat([pickupLng, pickupLat])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 12 }).setText(
+            bookingCode
+              ? `Pickup – ${bookingCode}`
+              : "Pickup location"
+          )
+        )
+        .addTo(map);
+
+      (map as any)._jridePickupMarker = pickupMarker;
+    }
+
+    // Add dropoff marker
+    if (dropoffLat != null && dropoffLng != null) {
+      const dropoffMarker = new mapboxgl.Marker({ color: "#ef4444" }) // red
+        .setLngLat([dropoffLng, dropoffLat])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 12 }).setText(
+            bookingCode
+              ? `Dropoff – ${bookingCode}`
+              : "Dropoff location"
+          )
+        )
+        .addTo(map);
+
+      (map as any)._jrideDropoffMarker = dropoffMarker;
+    }
+
+    // Fit bounds if we have both
+    if (
+      pickupLat != null &&
+      pickupLng != null &&
+      dropoffLat != null &&
+      dropoffLng != null
+    ) {
+      const bounds = new mapboxgl.LngLatBounds();
+      bounds.extend([pickupLng, pickupLat]);
+      bounds.extend([dropoffLng, dropoffLat]);
+      map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
+
+      // Fetch and draw route
+      const fetchRoute = async () => {
+        if (!mapboxgl.accessToken) {
+          console.warn("Mapbox token missing – no route line");
+          return;
+        }
+
+        try {
+          const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${pickupLng},${pickupLat};${dropoffLng},${dropoffLat}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+          const res = await fetch(url);
+          if (!res.ok) {
+            console.error("ROUTE_HTTP_ERROR", res.status);
+            return;
+          }
+          const json = (await res.json()) as {
+            routes?: { geometry: { coordinates: [number, number][] } }[];
+          };
+
+          const coords =
+            json.routes && json.routes[0]?.geometry?.coordinates;
+          if (!coords || coords.length === 0) {
+            console.warn("No route geometry returned from Mapbox");
+            return;
+          }
+
+          const routeGeoJson = {
+            type: "Feature" as const,
+            geometry: {
+              type: "LineString" as const,
+              coordinates: coords,
+            },
+            properties: {},
+          };
+
+          map.addSource("route", {
+            type: "geojson",
+            data: routeGeoJson,
+          });
+
+          map.addLayer({
+            id: "route-line",
+            type: "line",
+            source: "route",
+            layout: {
+              "line-cap": "round",
+              "line-join": "round",
+            },
+            paint: {
+              "line-color": "#2563eb", // blue
+              "line-width": 4,
+            },
+          });
+        } catch (err) {
+          console.error("ROUTE_FETCH_ERROR", err);
+        }
+      };
+
+      fetchRoute();
+    } else if (pickupLat != null && pickupLng != null) {
+      // Only pickup – center on it
+      map.setCenter([pickupLng, pickupLat]);
+      map.setZoom(14);
+    }
+
+    // If no coords at all, just center default
+    if (
+      pickupLat == null &&
+      pickupLng == null &&
+      dropoffLat == null &&
+      dropoffLng == null
+    ) {
+      map.setCenter(DEFAULT_CENTER);
+      map.setZoom(DEFAULT_ZOOM);
+    }
+  }, [bookingId, bookingCode, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  return (
+    <div className="w-full h-full relative">
+      <div className="absolute top-2 left-2 z-10 rounded bg-white/90 px-2 py-1 text-[11px] shadow">
+        <div className="font-medium">
+          {bookingCode || "JRide Booking"}
+        </div>
+        <div className="text-[10px] text-gray-600">ID: {bookingId}</div>
+      </div>
+      <div ref={mapContainerRef} className="w-full h-full" />
+    </div>
+  );
+}

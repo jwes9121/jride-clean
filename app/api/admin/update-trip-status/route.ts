@@ -21,20 +21,36 @@ export async function POST(req: Request) {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const { error } = await supabase.rpc("update_trip_status", {
-      p_booking_id: booking_id,
-      p_status: status,
-    });
+    const updates: any = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === "completed") {
+      updates.assigned_driver_id = null;
+    }
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .update(updates)
+      .eq("id", booking_id)
+      .select("id, booking_code, status, assigned_driver_id")
+      .single();
 
     if (error) {
-      console.error("UPDATE_TRIP_STATUS_ERROR", error);
+      console.error("UPDATE_TRIP_STATUS_DB_ERROR", error);
       return NextResponse.json(
         { success: false, error: error.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    console.log("UPDATE_TRIP_STATUS_OK", data);
+
+    return NextResponse.json(
+      { success: true, booking: data },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("UPDATE_TRIP_STATUS_UNEXPECTED_ERROR", err);
     return NextResponse.json(

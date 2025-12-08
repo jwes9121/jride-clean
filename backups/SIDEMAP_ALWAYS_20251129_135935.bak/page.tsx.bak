@@ -1,0 +1,412 @@
+﻿"use client";
+
+import { useEffect, useState } from "react";
+import BookingMapClient from "./map/BookingMapClient";
+
+type BookingStatus =
+  | "pending"
+  | "assigned"
+  | "on_the_way"
+  | "on_trip"
+  | "completed"
+  | "cancelled";
+
+type Booking = {
+  id: string;
+  booking_code: string;
+  passenger_name?: string | null;
+  pickup_address?: string | null;
+  dropoff_address?: string | null;
+  status: BookingStatus | string;
+  assigned_driver_name?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+};
+
+type ActiveTripsApiResponse =
+  | Booking[]
+  | {
+      data?: any[];
+    };
+
+function getStatusMeta(status: BookingStatus | string) {
+  switch (status) {
+    case "pending":
+      return {
+        label: "Pending",
+        bg: "bg-yellow-100",
+        text: "text-yellow-800",
+      };
+    case "assigned":
+      return {
+        label: "Assigned",
+        bg: "bg-blue-100",
+        text: "text-blue-800",
+      };
+    case "on_the_way":
+      return {
+        label: "On the way",
+        bg: "bg-blue-100",
+        text: "text-blue-800",
+      };
+    case "on_trip":
+      return {
+        label: "On trip",
+        bg: "bg-green-100",
+        text: "text-green-800",
+      };
+    case "completed":
+      return {
+        label: "Completed",
+        bg: "bg-gray-200",
+        text: "text-gray-700",
+      };
+    case "cancelled":
+      return {
+        label: "Cancelled",
+        bg: "bg-red-100",
+        text: "text-red-800",
+      };
+    default:
+      return {
+        label: String(status).replace(/_/g, " "),
+        bg: "bg-gray-100",
+        text: "text-gray-700",
+      };
+  }
+}
+
+// Map whatever the API returns (dispatch_rides_v1) into our Booking shape
+async function fetchActiveTrips(): Promise<Booking[]> {
+  try {
+    const res = await fetch("/api/admin/active-trips", {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      console.error("Failed to load active trips", res.status);
+      return [];
+    }
+
+    const json: ActiveTripsApiResponse = await res.json();
+
+    let raw: any[] = [];
+
+    if (Array.isArray(json)) {
+      raw = json;
+    } else if (json && Array.isArray(json.data)) {
+      raw = json.data;
+    }
+
+    const mapped: Booking[] = raw.map((row) => ({
+      id: row.booking_id ?? row.id,
+      booking_code: row.booking_code ?? "",
+      status: (row.status as BookingStatus) ?? "pending",
+      pickup_lat: row.pickup_lat ?? null,
+      pickup_lng: row.pickup_lng ?? null,
+      dropoff_lat: row.dropoff_lat ?? null,
+      dropoff_lng: row.dropoff_lng ?? null,
+      assigned_driver_name: row.driver_name ?? null,
+      passenger_name: row.passenger_name ?? null,
+      pickup_address: row.pickup_address ?? null,
+      dropoff_address: row.dropoff_address ?? null,
+    }));
+
+    return mapped;
+  } catch (err) {
+    console.error("Error fetching active trips", err);
+    return [];
+  }
+}
+
+export default function LiveTripsPage() {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (cancelled) return;
+      setLoading(true);
+      const data = await fetchActiveTrips();
+      if (!cancelled) {
+        setBookings(data);
+
+        if (selectedBooking) {
+          const fresh = data.find((b) => b.id === selectedBooking.id) || null;
+          setSelectedBooking(fresh);
+        }
+      }
+      setLoading(false);
+    };
+
+    load();
+    const interval = setInterval(load, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [selectedBooking?.id]);
+
+  const handleSelectBooking = (booking: Booking) => {
+    setSelectedBooking(booking);
+  };
+
+  const callAction = async (
+    booking: Booking,
+    action: string,
+    extraBody?: Record<string, any>
+  ) => {
+    try {
+      setActionLoadingId(booking.id);
+      setLoading(true);
+
+      const res = await fetch(`/api/admin/dispatch/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bookingId: booking.id,
+          ...extraBody,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("Action failed", action, res.status);
+        const text = await res.text();
+        console.error("Response:", text);
+        alert(`Action failed: ${action}`);
+        return;
+      }
+
+      const data = await fetchActiveTrips();
+      setBookings(data);
+
+      if (selectedBooking) {
+        const fresh = data.find((b) => b.id === selectedBooking.id) || null;
+        setSelectedBooking(fresh);
+      }
+    } catch (err) {
+      console.error("Error during action", action, err);
+      alert(`Error during action: ${action}`);
+    } finally {
+      setActionLoadingId(null);
+      setLoading(false);
+    }
+  };
+
+  const handleAssign = (booking: Booking) =>
+    callAction(booking, "assign", {
+      pickupLat: booking.pickup_lat ?? null,
+      pickupLng: booking.pickup_lng ?? null,
+    });
+
+  const handleOnTheWay = (booking: Booking) =>
+    callAction(booking, "on-the-way");
+
+  const handleStartTrip = (booking: Booking) =>
+    callAction(booking, "start-trip");
+
+  const handleDropOff = (booking: Booking) =>
+    callAction(booking, "drop-off");
+
+  const showUpdating = loading && !!actionLoadingId;
+
+  return (
+    <div className="flex flex-col gap-3 h-[calc(100vh-120px)] text-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">
+            Live Trips
+          </h1>
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            Monitor active bookings on the left and follow them on the map on the right.
+          </p>
+        </div>
+        {showUpdating && (
+          <span className="text-[11px] text-gray-500">
+            Updating list…
+          </span>
+        )}
+      </div>
+
+      <div className="flex gap-4 flex-1 min-h-[480px]">
+        <div className="w-[55%] min-w-[380px] border rounded-lg overflow-hidden flex flex-col bg-white">
+          <div className="border-b px-4 py-2 text-[12px] font-semibold bg-gray-50">
+            Active &amp; Recent Trips
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="min-w-full text-[12px]">
+              <thead className="bg-gray-100 sticky top-0 z-10">
+                <tr className="text-[11px] text-gray-600">
+                  <th className="px-3 py-2 text-left font-medium">Code</th>
+                  <th className="px-3 py-2 text-left font-medium">Passenger</th>
+                  <th className="px-3 py-2 text-left font-medium">Pickup</th>
+                  <th className="px-3 py-2 text-left font-medium">Dropoff</th>
+                  <th className="px-3 py-2 text-left font-medium">Status</th>
+                  <th className="px-3 py-2 text-left font-medium">Driver</th>
+                  <th className="px-3 py-2 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {bookings.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-3 py-6 text-center text-gray-500 text-[12px]"
+                    >
+                      No active trips at the moment.
+                    </td>
+                  </tr>
+                )}
+
+                {bookings.map((booking) => {
+                  const isSelected = selectedBooking?.id === booking.id;
+
+                  // STRICT STEP-BY-STEP BUTTON LOGIC
+                  const status = booking.status;
+
+                  const canAssign = status === "pending";
+                  const canOnTheWay = status === "assigned";
+                  const canStartTrip = status === "on_the_way";
+                  const canDropOff = status === "on_trip";
+
+                  const loadingThis = actionLoadingId === booking.id;
+                  const statusMeta = getStatusMeta(status);
+
+                  return (
+                    <tr
+                      key={booking.id}
+                      className={`hover:bg-indigo-50/40 cursor-pointer ${
+                        isSelected ? "bg-indigo-50" : "bg-white"
+                      }`}
+                      onClick={() => handleSelectBooking(booking)}
+                    >
+                      <td className="px-3 py-2 align-top">
+                        <div className="font-mono text-[11px]">
+                          {booking.booking_code}
+                        </div>
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-indigo-600 underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectBooking(booking);
+                          }}
+                        >
+                          View map
+                        </button>
+                      </td>
+
+                      <td className="px-3 py-2 align-top">
+                        <div className="text-[12px] font-medium">
+                          {booking.passenger_name || "-"}
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-2 align-top text-[11px]">
+                        {booking.pickup_address || "-"}
+                      </td>
+
+                      <td className="px-3 py-2 align-top text-[11px]">
+                        {booking.dropoff_address || "-"}
+                      </td>
+
+                      <td className="px-3 py-2 align-top">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${statusMeta.bg} ${statusMeta.text}`}
+                        >
+                          {statusMeta.label}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-2 align-top text-[11px]">
+                        {booking.assigned_driver_name || "Unassigned"}
+                      </td>
+
+                      <td className="px-3 py-2 align-top text-right">
+                        <div className="flex flex-col gap-1 items-end">
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-[11px] rounded border border-gray-300 text-gray-800 bg-white disabled:opacity-40"
+                            disabled={!canAssign || loadingThis}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAssign(booking);
+                            }}
+                          >
+                            Assign
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-[11px] rounded border border-gray-300 text-gray-800 bg-white disabled:opacity-40"
+                            disabled={!canOnTheWay || loadingThis}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOnTheWay(booking);
+                            }}
+                          >
+                            On the way
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-[11px] rounded border border-gray-300 text-gray-800 bg-white disabled:opacity-40"
+                            disabled={!canStartTrip || loadingThis}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartTrip(booking);
+                            }}
+                          >
+                            Start trip
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1 text-[11px] rounded border border-gray-300 text-gray-800 bg-white disabled:opacity-40"
+                            disabled={!canDropOff || loadingThis}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDropOff(booking);
+                            }}
+                          >
+                            Drop off
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* RIGHT: MAP */}
+        <div className="flex-1 border rounded-lg overflow-hidden bg-white">
+          {selectedBooking ? (
+            <BookingMapClient
+              bookingId={selectedBooking.id}
+              pickupLat={selectedBooking.pickup_lat ?? null}
+              pickupLng={selectedBooking.pickup_lng ?? null}
+              dropoffLat={selectedBooking.dropoff_lat ?? null}
+              dropoffLng={selectedBooking.dropoff_lng ?? null}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500 text-[12px]">
+              Select a booking row or click{" "}
+              <span className="mx-1 font-semibold">View map</span>
+              to see the route here.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

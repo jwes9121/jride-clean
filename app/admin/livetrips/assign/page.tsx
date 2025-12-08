@@ -38,7 +38,7 @@ export default function AdminLiveTripsAssignPage() {
     setErrorText(null);
 
     try {
-      const res = await fetch("/api/admin/livetrips/pending", {
+      const res = await fetch("/api/admin/livetripss/pending", {
         method: "GET",
         cache: "no-store",
       });
@@ -257,3 +257,4 @@ export default function AdminLiveTripsAssignPage() {
     </main>
   );
 }
+

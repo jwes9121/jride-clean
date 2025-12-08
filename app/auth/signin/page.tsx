@@ -1,20 +1,48 @@
-﻿// app/auth/signin/page.tsx
+﻿import { signIn } from "@/auth";
+import { Button } from "@/components/ui/button";
 
-export const dynamic = "force-dynamic";
+type SignInPageProps = {
+  searchParams?: {
+    callbackUrl?: string;
+  };
+};
 
-export default function SignInPage() {
+// SERVER COMPONENT (no "use client")
+export default function SignInPage({ searchParams }: SignInPageProps) {
+  const rawCallback = searchParams?.callbackUrl;
+
+  // Default to livetrips
+  let callbackUrl = "/admin/livetrips";
+
+  if (typeof rawCallback === "string" && rawCallback.length > 0) {
+    if (rawCallback.startsWith("/admin/livetrip")) {
+      callbackUrl = "/admin/livetrips";
+    } else {
+      callbackUrl = rawCallback;
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="rounded-xl border bg-white px-8 py-6 shadow-md">
-        <h1 className="mb-4 text-xl font-semibold text-gray-900">Sign in</h1>
-        <a
-          href="/api/auth/signin/google?callbackUrl=/"
-          className="block w-full text-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-900"
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-md p-8 space-y-6">
+        <h1 className="text-2xl font-semibold text-center">Sign in</h1>
+        <p className="text-sm text-center text-slate-500">
+          Use your Google account to access the JRide admin console.
+        </p>
+
+        <form
+          action={async () => {
+            "use server";
+            await signIn("google", {
+              redirectTo: callbackUrl,
+            });
+          }}
         >
-          Continue with Google
-        </a>
+          <Button type="submit" size="lg" className="w-full">
+            Continue with Google
+          </Button>
+        </form>
       </div>
     </div>
   );
 }
-

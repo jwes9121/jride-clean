@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/admin/livetrips
+ * GET /api/admin/livetripss
  *
  * Returns live trips for the dispatch UI from `dispatch_rides_view`.
  */
@@ -46,3 +46,4 @@ export async function GET() {
     );
   }
 }
+

@@ -1,0 +1,61 @@
+﻿<!-- JRide driver icon – closer match to provided hex tricycle artwork -->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- Hexagon background -->
+  <path
+    d="M60 6
+       L100 30
+       L100 78
+       L60 102
+       L20 78
+       L20 30
+       Z"
+    fill="#BDEFC0"
+  />
+
+  <!-- Tricycle silhouette -->
+  <g fill="#165C34">
+    <!-- Left vertical bar / rear strut -->
+    <rect x="30" y="40" width="7" height="34" rx="3.5" ry="3.5" />
+
+    <!-- Sidecar body -->
+    <rect x="40" y="32" width="30" height="40" rx="5" ry="5" />
+
+    <!-- Window inside sidecar -->
+    <rect x="46" y="38" width="18" height="16" rx="3" ry="3" fill="#BDEFC0" />
+
+    <!-- Lower stripe -->
+    <rect x="45" y="58" width="20" height="4" rx="2" ry="2" />
+
+    <!-- Small block / step -->
+    <rect x="64" y="64" width="6" height="6" />
+
+    <!-- Motorcycle body (right vertical) -->
+    <rect x="76" y="42" width="11" height="24" rx="4" ry="4" />
+
+    <!-- Small lower peg under motorcycle body -->
+    <rect x="80" y="69" width="4" height="11" rx="2" ry="2" />
+
+    <!-- Handlebar stem -->
+    <rect x="78" y="34" width="3" height="9" />
+
+    <!-- Handlebar grips -->
+    <rect x="71" y="38" width="7" height="3" rx="1.5" ry="1.5" />
+    <rect x="84" y="38" width="7" height="3" rx="1.5" ry="1.5" />
+
+    <!-- Awning bar -->
+    <rect x="65" y="26" width="27" height="6" rx="3" ry="3" />
+
+    <!-- Awning scallops (4 small hanging blocks) -->
+    <rect x="67" y="32" width="5" height="6" rx="1" ry="1" />
+    <rect x="73" y="32" width="5" height="6" rx="1" ry="1" />
+    <rect x="79" y="32" width="5" height="6" rx="1" ry="1" />
+    <rect x="85" y="32" width="5" height="6" rx="1" ry="1" />
+
+    <!-- Sidecar wheel -->
+    <circle cx="44" cy="80" r="7" />
+
+    <!-- Motorcycle rear wheel -->
+    <circle cx="79" cy="80" r="7" />
+  </g>
+</svg>

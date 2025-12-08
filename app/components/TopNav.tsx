@@ -22,7 +22,7 @@ export default function TopNav({ user }: TopNavProps) {
           <Link href="/dispatch" className="hover:text-black">
             Dispatch
           </Link>
-          <Link href="/admin/livetrips" className="hover:text-black">
+          <Link href="/admin/livetripss" className="hover:text-black">
             Live Trips
           </Link>
           <Link href="/admin" className="hover:text-black">
@@ -64,3 +64,4 @@ export default function TopNav({ user }: TopNavProps) {
     </header>
   );
 }
+
