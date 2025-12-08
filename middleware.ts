@@ -1,20 +1,23 @@
-﻿// middleware.ts – protect only app pages, never /api/auth
-
-import { auth } from "@/auth";
+﻿import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-export default auth((req) => {
-  // You can add extra protection later if needed.
-  return NextResponse.next();
-});
+/**
+ * DEV-ONLY MIDDLEWARE
+ *
+ * This middleware bypasses all auth checks so that
+ * routes like /admin/livetripss can be loaded without
+ * Google sign-in while you debug locally.
+ *
+ * DO NOT deploy this version to production.
+ */
 
+export function middleware(request: NextRequest) {
+  // Just let every request through
+  return NextResponse.next();
+}
+
+// Apply to everything except Next.js static assets & api auth callbacks if you want
 export const config = {
-  matcher: [
-    // Protect everything under /admin and /dispatch, etc. if you want:
-    // "/admin/:path*",
-    // "/dispatch/:path*",
-    // But NEVER block auth or static assets:
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|auth/error).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
 
