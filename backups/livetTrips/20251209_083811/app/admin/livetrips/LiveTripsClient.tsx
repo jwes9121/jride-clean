@@ -307,9 +307,6 @@ export default function LiveTripsClient() {
         "status",
         "trip_type",
         "created_at",
-        "pickup_label",
-        "dropoff_label",
-        "fare_amount",
         "assigned_driver_id",
         "override_used",
         "override_actor",
@@ -359,7 +356,7 @@ export default function LiveTripsClient() {
           className="rounded bg-slate-800 px-3 py-1 text-[11px] font-semibold text-white hover:bg-slate-900"
           onClick={handleExportCsv}
         >
-          Export (CSV)
+          Export today (CSV)
         </button>
       </div>
 

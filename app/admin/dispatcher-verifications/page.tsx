@@ -14,10 +14,9 @@ type VerificationRow = {
   selfie_photo_url: string | null;
   status: string;
   created_at: string;
-  reject_reason?: string | null;
 };
 
-export default function AdminVerificationPage() {
+export default function DispatcherVerificationPage() {
   const [rows, setRows] = useState<VerificationRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -27,12 +26,12 @@ export default function AdminVerificationPage() {
     const { data, error } = await supabase
       .from("passenger_verifications")
       .select("*")
-      .in("status", ["pending", "pre_approved_dispatcher"])
+      .eq("status", "pending")
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error("admin loadQueue error", error);
-      alert("Error loading admin verification queue.");
+      console.error("loadQueue error", error);
+      alert("Error loading dispatcher verification queue.");
       setRows([]);
     } else if (Array.isArray(data)) {
       setRows(data);
@@ -45,24 +44,24 @@ export default function AdminVerificationPage() {
     loadQueue();
   }, []);
 
-  const approve = async (id: number) => {
-    const adminId =
+  const preApprove = async (id: number) => {
+    const dispatcherId =
       typeof window !== "undefined"
-        ? window.prompt("Enter your admin ID (for log only):")
+        ? window.prompt("Enter your dispatcher ID (for log only):")
         : null;
-    if (adminId === null) return; // allow cancel
+    if (dispatcherId === null) return; // Cancel still allowed
 
     const { error } = await supabase
       .from("passenger_verifications")
       .update({
-        status: "approved_admin",
-        // only status to avoid unknown columns
+        status: "pre_approved_dispatcher",
+        // We ONLY change status to avoid column-mismatch errors.
       })
       .eq("id", id);
 
     if (error) {
-      console.error("admin approve error", error);
-      alert(`Error approving passenger: ${error.message}`);
+      console.error("dispatcher preApprove error", error);
+      alert(`Error pre-approving: ${error.message}`);
       return;
     }
 
@@ -70,12 +69,6 @@ export default function AdminVerificationPage() {
   };
 
   const reject = async (id: number) => {
-    const adminId =
-      typeof window !== "undefined"
-        ? window.prompt("Enter your admin ID (for log only):")
-        : null;
-    if (adminId === null) return;
-
     const reason =
       typeof window !== "undefined"
         ? window.prompt("Reason for rejection:")
@@ -91,8 +84,8 @@ export default function AdminVerificationPage() {
       .eq("id", id);
 
     if (error) {
-      console.error("admin reject error", error);
-      alert(`Error rejecting passenger: ${error.message}`);
+      console.error("dispatcher reject error", error);
+      alert(`Error rejecting: ${error.message}`);
       return;
     }
 
@@ -101,7 +94,9 @@ export default function AdminVerificationPage() {
 
   return (
     <div className="p-4 text-sm">
-      <h1 className="text-lg font-bold mb-2">Passenger Verification (Admin)</h1>
+      <h1 className="text-lg font-bold mb-2">
+        Passenger Verification (Dispatcher)
+      </h1>
 
       {loading && <div>Loading…</div>}
       {!loading && rows.length === 0 && <div>No pending verifications.</div>}
@@ -111,6 +106,7 @@ export default function AdminVerificationPage() {
           <div key={r.id} className="border rounded p-3 bg-white shadow">
             <div className="font-semibold">{r.full_name}</div>
             <div className="text-xs text-gray-500">{r.phone}</div>
+
             <div className="text-xs mt-1">
               {r.id_type} — {r.id_number}
             </div>
@@ -132,10 +128,10 @@ export default function AdminVerificationPage() {
 
             <div className="mt-3 flex gap-2">
               <button
-                className="px-3 py-1 bg-green-600 text-white rounded text-xs"
-                onClick={() => approve(r.id)}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-xs"
+                onClick={() => preApprove(r.id)}
               >
-                Approve
+                Pre-Approve (send to Admin)
               </button>
 
               <button
