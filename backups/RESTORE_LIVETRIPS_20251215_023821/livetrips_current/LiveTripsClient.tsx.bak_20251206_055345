@@ -1,0 +1,163 @@
+﻿"use client";
+
+import React from "react";
+import LiveTripMapClient from "./map/LiveTripMapClient";
+
+type LiveTrip = {
+  id: string;
+  booking_code?: string;
+  passenger_name?: string | null;
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+  zone?: string | null;
+  status?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+  driver_id?: string | null;
+  driver_status?: string | null;
+  driver_town?: string | null;
+  driver_lat?: number | null;
+  driver_lng?: number | null;
+};
+
+type LiveTripsClientProps = {
+  trips?: LiveTrip[] | null;
+};
+
+const LiveTripsClient: React.FC<LiveTripsClientProps> = ({ trips = [] }) => {
+  // ---- Active trip selection (SAFE against undefined trips) ----
+  const [activeId, setActiveId] = React.useState<string | null>(
+    trips.length > 0 ? trips[0]!.id : null
+  );
+
+  // If the trips array changes (eg. new data, or becomes empty),
+  // keep activeId valid and never crash.
+  React.useEffect(() => {
+    if (!trips || trips.length === 0) {
+      if (activeId !== null) {
+        setActiveId(null);
+      }
+      return;
+    }
+
+    // If there is no activeId, or the current activeId is no longer in the list,
+    // default back to the first trip.
+    const stillExists = activeId
+      ? trips.some((t) => t.id === activeId)
+      : false;
+
+    if (!activeId || !stillExists) {
+      setActiveId(trips[0]!.id);
+    }
+  }, [trips, activeId]);
+
+  const activeTrip = React.useMemo<LiveTrip | null>(() => {
+    if (!trips || trips.length === 0 || !activeId) return null;
+    return trips.find((t) => t.id === activeId) ?? null;
+  }, [trips, activeId]);
+
+  return (
+    <div className="flex h-full">
+      {/* LEFT: trips list */}
+      <div className="flex-1 border-r border-slate-200 overflow-y-auto">
+        <div className="text-[10px] uppercase tracking-wide text-slate-500 px-4 py-2 border-b border-slate-200">
+          Active &amp; recent trips
+        </div>
+
+        {trips && trips.length > 0 ? (
+          <table className="min-w-full text-[11px]">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium">Code</th>
+                <th className="px-4 py-2 text-left font-medium">Passenger</th>
+                <th className="px-4 py-2 text-left font-medium">Pickup</th>
+                <th className="px-4 py-2 text-left font-medium">Dropoff</th>
+                <th className="px-4 py-2 text-left font-medium">Zone</th>
+                <th className="px-4 py-2 text-left font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trips.map((trip) => {
+                const isActive = trip.id === activeId;
+                return (
+                  <tr
+                    key={trip.id}
+                    className={
+                      "cursor-pointer border-b border-slate-100 hover:bg-slate-50" +
+                      (isActive ? " bg-slate-100" : "")
+                    }
+                    onClick={() => setActiveId(trip.id)}
+                  >
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-800">
+                      {trip.booking_code ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-slate-700">
+                      {trip.passenger_name ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-slate-700 max-w-[180px] truncate">
+                      {trip.pickup_label ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-slate-700 max-w-[180px] truncate">
+                      {trip.dropoff_label ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-slate-700">
+                      {trip.zone ?? "—"}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="inline-flex items-center rounded-full border border-emerald-500 text-emerald-600 px-2 py-[1px] text-[10px] font-semibold uppercase tracking-wide">
+                        {trip.status ?? "ON_TRIP"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="px-4 py-6 text-[11px] text-slate-400">
+            No live trips found.
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT: map panel */}
+      <div className="w-[40%] min-w-[360px] h-full">
+        {activeTrip ? (
+          <LiveTripMapClient
+            hasBooking={true}
+            bookingId={activeTrip.id}
+            bookingCode={activeTrip.booking_code ?? null}
+            pickup={
+              activeTrip.pickup_lat != null && activeTrip.pickup_lng != null
+                ? {
+                    lat: activeTrip.pickup_lat,
+                    lng: activeTrip.pickup_lng,
+                  }
+                : null
+            }
+            dropoff={
+              activeTrip.dropoff_lat != null && activeTrip.dropoff_lng != null
+                ? {
+                    lat: activeTrip.dropoff_lat,
+                    lng: activeTrip.dropoff_lng,
+                  }
+                : null
+            }
+            driverLat={activeTrip.driver_lat ?? null}
+            driverLng={activeTrip.driver_lng ?? null}
+            driverTown={activeTrip.driver_town ?? null}
+            driverStatus={activeTrip.driver_status ?? null}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-[11px] text-slate-400">
+            No live trip selected
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default LiveTripsClient;
