@@ -1,0 +1,98 @@
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+function env(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
+
+type AutoApproveOk = {
+  ok: true;
+  run_id?: number;
+  rule_enabled: boolean;
+  checked_count: number;
+  approved_count: number;
+  skipped_insufficient: number;
+  skipped_other: number;
+  message: string;
+  raw?: any;
+};
+
+type AutoApproveErr = {
+  ok: false;
+  code: string;
+  message: string;
+  raw?: any;
+};
+
+function normalizeError(e: any): AutoApproveErr {
+  const raw = e?.cause ?? e;
+  const msg = raw?.message || raw?.error_description || "Auto-approve failed";
+
+  // common Postgres / PostgREST patterns you hit
+  const m = String(msg).toLowerCase();
+
+  if (m.includes("insufficient") && m.includes("wallet")) {
+    return { ok: false, code: "INSUFFICIENT_WALLET", message: "Insufficient wallet balance for auto-approve.", raw };
+  }
+  if (m.includes("does not exist") && m.includes("column")) {
+    return { ok: false, code: "SCHEMA_MISMATCH", message: "Server schema mismatch (missing column).", raw };
+  }
+  if (m.includes("permission") || m.includes("privilege")) {
+    return { ok: false, code: "FORBIDDEN", message: "Not authorized to run auto-approve.", raw };
+  }
+
+  return { ok: false, code: "AUTO_APPROVE_FAILED", message: "Auto-approve failed.", raw };
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const limit = typeof body?.p_limit === "number" ? body.p_limit : 50;
+
+    const supabase = createClient(
+      env("NEXT_PUBLIC_SUPABASE_URL"),
+      env("SUPABASE_SERVICE_ROLE_KEY"),
+      { auth: { persistSession: false } }
+    );
+
+    // Your RPC
+    const { data, error } = await supabase.rpc("admin_auto_approve_driver_payouts", { p_limit: limit });
+
+    if (error) {
+      const norm = normalizeError(error);
+      return NextResponse.json(norm, { status: 400 });
+    }
+
+    // Make the UI-friendly message here
+    const checked = Number(data?.checked_count ?? 0);
+    const approved = Number(data?.approved_count ?? 0);
+    const skippedIns = Number(data?.skipped_insufficient ?? 0);
+    const skippedOther = Number(data?.skipped_other ?? 0);
+    const ruleEnabled = !!data?.rule_enabled;
+
+    let message = "Auto-approve finished.";
+    if (checked === 0) message = "Nothing to auto-approve (no pending payouts).";
+    else if (!ruleEnabled) message = "Auto-approve is OFF (rule disabled).";
+    else if (approved === 0 && skippedIns > 0) message = "No payouts approved (all skipped: insufficient wallet).";
+    else if (approved > 0) message = `Approved ${approved} payout(s).`;
+
+    const res: AutoApproveOk = {
+      ok: true,
+      run_id: data?.run_id,
+      rule_enabled: ruleEnabled,
+      checked_count: checked,
+      approved_count: approved,
+      skipped_insufficient: skippedIns,
+      skipped_other: skippedOther,
+      message,
+      raw: data
+    };
+
+    return NextResponse.json(res);
+  } catch (e: any) {
+    const norm = normalizeError(e);
+    return NextResponse.json(norm, { status: 500 });
+  }
+}

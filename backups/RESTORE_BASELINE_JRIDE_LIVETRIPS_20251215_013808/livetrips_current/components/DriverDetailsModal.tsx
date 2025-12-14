@@ -1,0 +1,198 @@
+﻿"use client";
+
+import React from "react";
+import { DispatchActionPanel, DispatchActionTrip } from "./DispatchActionPanel";
+
+type RawTrip = {
+  id?: string;
+  booking_code?: string | null;
+  status?: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  passenger_name?: string | null;
+  town?: string | null;
+  is_emergency?: boolean | null;
+  [key: string]: any;
+};
+
+type DriverDetailsModalProps = {
+  isOpen?: boolean;
+  open?: boolean;
+  onClose: () => void;
+  trip?: RawTrip | null;
+  selectedTrip?: RawTrip | null;
+  dispatcherName?: string | null;
+};
+
+function mapToDispatchTrip(raw: RawTrip | null | undefined): DispatchActionTrip | null {
+  if (!raw || !raw.id) return null;
+
+  return {
+    id: raw.id,
+    booking_code: raw.booking_code ?? raw["bookingCode"] ?? null,
+    status: raw.status ?? raw["trip_status"] ?? null,
+    driver_id: raw.driver_id ?? raw["driverId"] ?? null,
+    driver_name: raw.driver_name ?? raw["driverName"] ?? null,
+    driver_phone: raw.driver_phone ?? raw["driverPhone"] ?? null,
+    passenger_name: raw.passenger_name ?? raw["passengerName"] ?? null,
+    town: raw.town ?? raw["zone"] ?? null,
+    is_emergency: raw.is_emergency ?? (raw["isEmergency"] as boolean | null) ?? null,
+  };
+}
+
+export function DriverDetailsModal(props: DriverDetailsModalProps) {
+  const {
+    onClose,
+    dispatcherName,
+  } = props;
+
+  const isOpen = props.isOpen ?? props.open ?? false;
+  const rawTrip = (props.trip ?? props.selectedTrip ?? null) as RawTrip | null;
+  const selectedTrip = mapToDispatchTrip(rawTrip);
+
+  if (!isOpen) return null;
+
+  const driverLabel =
+    selectedTrip?.driver_name ||
+    rawTrip?.driver_name ||
+    rawTrip?.["driverName"] ||
+    "Unknown driver";
+
+  const passengerLabel =
+    selectedTrip?.passenger_name ||
+    rawTrip?.passenger_name ||
+    rawTrip?.["passengerName"] ||
+    "—";
+
+  const townLabel =
+    selectedTrip?.town ||
+    rawTrip?.town ||
+    rawTrip?.["zone"] ||
+    "—";
+
+  const statusLabel =
+    selectedTrip?.status ||
+    rawTrip?.status ||
+    rawTrip?.["trip_status"] ||
+    "NO STATUS";
+
+  const bookingLabel =
+    selectedTrip?.booking_code ||
+    rawTrip?.booking_code ||
+    rawTrip?.["bookingCode"] ||
+    rawTrip?.id ||
+    "Trip";
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md md:max-w-2xl rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl mx-3 md:mx-0 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/70">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs uppercase tracking-wide text-slate-400">
+              Driver details
+            </span>
+            <span className="text-sm md:text-base font-semibold text-slate-100">
+              {driverLabel}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              Trip: {bookingLabel} • Town: {townLabel}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={
+                "inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold " +
+                (selectedTrip?.is_emergency
+                  ? "bg-red-600 text-white"
+                  : "bg-slate-800 text-slate-100")
+              }
+            >
+              {selectedTrip?.is_emergency ? "EMERGENCY" : statusLabel}
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-3 md:p-4 flex flex-col gap-3">
+          {/* Summary row */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                Passenger
+              </div>
+              <div className="text-sm font-semibold text-slate-100 truncate">
+                {passengerLabel}
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                Driver phone
+              </div>
+              <div className="text-sm font-mono text-slate-100 truncate">
+                {selectedTrip?.driver_phone || "no number"}
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                Zone / Town
+              </div>
+              <div className="text-sm text-slate-100 truncate">
+                {townLabel}
+              </div>
+            </div>
+          </div>
+
+          {/* Dispatch actions panel */}
+          <DispatchActionPanel
+            selectedTrip={selectedTrip}
+            dispatcherName={dispatcherName}
+            onActionCompleted={() => {
+              // hook slot: parent can refetch trips via props later if needed
+              console.log("Dispatch action completed.");
+            }}
+          />
+
+          {/* Placeholder for any extra info you already show elsewhere */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 text-[11px] text-slate-400">
+            <div className="font-semibold text-slate-200 mb-1">
+              Trip details (existing data)
+            </div>
+            <div className="space-y-0.5 max-h-40 overflow-y-auto">
+              {rawTrip ? (
+                Object.entries(rawTrip).map(([key, value]) => (
+                  <div key={key} className="flex justify-between gap-2">
+                    <span className="text-slate-500">{key}</span>
+                    <span className="text-slate-200 text-right truncate max-w-[55%]">
+                      {String(value)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <span>No trip payload.</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2.5 border-t border-slate-800 bg-slate-900/70 flex items-center justify-between text-[11px] text-slate-500">
+          <span>Dispatch action panel · JRide</span>
+          {dispatcherName && (
+            <span>Dispatcher: {dispatcherName}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default DriverDetailsModal;

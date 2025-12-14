@@ -38,12 +38,14 @@ export default function OrderStatusPage() {
     if (!bookingCode) return;
 
     let cancelled = false;
+
     async function load() {
       setState({ status: "loading" });
       try {
-        const res = await fetch(`/api/orders/${encodeURIComponent(bookingCode)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/orders/${encodeURIComponent(bookingCode)}`,
+          { cache: "no-store" }
+        );
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -56,14 +58,17 @@ export default function OrderStatusPage() {
         }
       } catch (err: any) {
         if (!cancelled) {
-          setState({ status: "error", message: err.message || "Unknown error" });
+          setState({
+            status: "error",
+            message: err.message || "Unknown error",
+          });
         }
       }
     }
 
     load();
-
     const timer = setInterval(load, 15000); // refresh every 15s
+
     return () => {
       cancelled = true;
       clearInterval(timer);
@@ -126,6 +131,7 @@ export default function OrderStatusPage() {
     );
   }
 
+  if (state.status !== "loaded") return null;
   const booking = state.booking;
 
   return (
@@ -194,8 +200,8 @@ export default function OrderStatusPage() {
             </div>
           </div>
           <p className="mt-3 text-[11px] text-slate-400">
-            Final amount you pay may include food cost and other charges
-            agreed with the rider.
+            Final amount you pay may include food cost and other charges agreed
+            with the rider.
           </p>
         </section>
       </main>

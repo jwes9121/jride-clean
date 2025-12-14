@@ -1,5 +1,10 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
+function isWalletLockError(msg: string) {
+  const m = (msg || "").toUpperCase();
+  return m.includes("WALLET_LOCK:");
+}
 
 export async function POST(req: Request) {
   try {
@@ -9,10 +14,7 @@ export async function POST(req: Request) {
     const pickupLng: number | null | undefined = body.pickupLng;
 
     if (!bookingId) {
-      return NextResponse.json(
-        { error: "Missing bookingId" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing bookingId" }, { status: 400 });
     }
 
     const supabaseUrl = process.env.SUPABASE_URL;
@@ -34,10 +36,7 @@ export async function POST(req: Request) {
     if (pickupLat != null && pickupLng != null) {
       const { data, error: rpcError } = await supabase.rpc(
         "select_next_available_driver",
-        {
-          pickup_lat: pickupLat,
-          pickup_lng: pickupLng,
-        }
+        { pickup_lat: pickupLat, pickup_lng: pickupLng }
       );
 
       if (rpcError) {
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Always at least set status = assigned
+    // Update booking (DB trigger enforces wallet lock)
     const { error: updateError } = await supabase
       .from("bookings")
       .update({
@@ -57,17 +56,21 @@ export async function POST(req: Request) {
       .eq("id", bookingId);
 
     if (updateError) {
+      const msg = updateError.message || "Update failed";
       console.error("ASSIGN_ROUTE UPDATE ERROR:", updateError);
-      return NextResponse.json(
-        { error: updateError.message },
-        { status: 500 }
-      );
+
+      // Wallet lock => return 409 so UI can show a clear message
+      if (isWalletLockError(msg)) {
+        return NextResponse.json(
+          { error: "wallet_locked", message: msg, driverId },
+          { status: 409 }
+        );
+      }
+
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      driverId,
-    });
+    return NextResponse.json({ success: true, driverId });
   } catch (err: any) {
     console.error("ASSIGN_ROUTE FATAL ERROR:", err);
     return NextResponse.json(

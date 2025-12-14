@@ -1,0 +1,257 @@
+"use client";
+
+import React, { useMemo, useState } from "react";
+
+type AutoApproveResult = {
+  ok?: boolean;
+  run_id?: number;
+  rule_enabled?: boolean;
+  checked_count?: number;
+  approved_count?: number;
+  skipped_other?: number;
+  skipped_insufficient?: number;
+  message?: string;
+  error?: string;
+};
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function toYMD(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatNiceDate(d: Date) {
+  return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
+}
+
+function safeJsonText(x: any) {
+  try {
+    return JSON.stringify(x, null, 2);
+  } catch {
+    return String(x);
+  }
+}
+
+function prettyBanner(res: AutoApproveResult | null) {
+  if (!res) return null;
+
+  // If API gives a friendly message, prefer it
+  if (res.message && res.message.trim().length > 0) return res.message;
+
+  const checked = res.checked_count ?? 0;
+  const approved = res.approved_count ?? 0;
+  const skipIns = res.skipped_insufficient ?? 0;
+  const skipOther = res.skipped_other ?? 0;
+
+  if (checked === 0) return "Nothing to auto-approve (no pending payouts).";
+  if (approved > 0) return `Auto-approve completed: approved ${approved} / checked ${checked}.`;
+  if (approved === 0 && skipIns > 0 && skipOther === 0) return "Skipped: insufficient wallet for all pending payouts.";
+  if (approved === 0 && (skipIns > 0 || skipOther > 0)) return `No approvals. Checked ${checked}. Skipped (insufficient): ${skipIns}. Skipped (other): ${skipOther}.`;
+
+  return `Run done. Checked ${checked}, approved ${approved}.`;
+}
+
+function bannerKind(res: AutoApproveResult | null): "ok" | "warn" | "err" | "info" {
+  if (!res) return "info";
+  if (res.error) return "err";
+  const checked = res.checked_count ?? 0;
+  const approved = res.approved_count ?? 0;
+  const skipIns = res.skipped_insufficient ?? 0;
+
+  if (checked === 0) return "ok";
+  if (approved > 0) return "ok";
+  if (approved === 0 && skipIns > 0) return "warn";
+  return "info";
+}
+
+function kindStyles(kind: "ok" | "warn" | "err" | "info") {
+  if (kind === "ok") return "border border-green-300 bg-green-50 text-green-900";
+  if (kind === "warn") return "border border-amber-300 bg-amber-50 text-amber-900";
+  if (kind === "err") return "border border-red-300 bg-red-50 text-red-900";
+  return "border border-slate-200 bg-slate-50 text-slate-900";
+}
+
+export default function DriverPayoutReportsPage() {
+  const now = useMemo(() => new Date(), []);
+  const [from, setFrom] = useState<string>(() => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 7);
+    return formatNiceDate(d);
+  });
+  const [to, setTo] = useState<string>(() => formatNiceDate(now));
+  const [status, setStatus] = useState<string>("all");
+
+  const [limit, setLimit] = useState<number>(50);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [last, setLast] = useState<AutoApproveResult | null>(null);
+
+  const banner = prettyBanner(last);
+  const kind = bannerKind(last);
+
+  async function runAutoApprove() {
+    setLoading(true);
+    try {
+      // Your API route (already in your repo from earlier work)
+      const resp = await fetch("/api/admin/driver-payouts/auto-approve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ limit }),
+      });
+
+      const json = (await resp.json()) as any;
+
+      // Normalize: if API returns the JSON you showed, it already matches
+      const res: AutoApproveResult = {
+        ok: json.ok ?? resp.ok,
+        run_id: json.run_id,
+        rule_enabled: json.rule_enabled,
+        checked_count: json.checked_count,
+        approved_count: json.approved_count,
+        skipped_other: json.skipped_other,
+        skipped_insufficient: json.skipped_insufficient,
+        message: json.message,
+        error: json.error,
+      };
+
+      // If API responds with 200 but includes "Last error: {..}" format:
+      // store it cleanly anyway.
+      setLast(res);
+    } catch (e: any) {
+      setLast({ ok: false, error: e?.message ? String(e.message) : "Request failed." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // CSV export stays as-is (you already said export works)
+  function exportCsv() {
+    const url = new URL(window.location.origin + "/api/admin/driver-payouts/export");
+    url.searchParams.set("from", from);
+    url.searchParams.set("to", to);
+    url.searchParams.set("status", status);
+    window.location.href = url.toString();
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 14 }}>Driver Payout Reports</h1>
+
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>From</div>
+          <input
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8, minWidth: 140 }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>To</div>
+          <input
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8, minWidth: 140 }}
+          />
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Status</div>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8, minWidth: 120 }}
+          >
+            <option value="all">All</option>
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+
+        <button
+          onClick={exportCsv}
+          style={{
+            marginLeft: "auto",
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #111",
+            background: "#111",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Export CSV
+        </button>
+      </div>
+
+      <div style={{ height: 18 }} />
+
+      <div style={{ border: "1px solid #eee", borderRadius: 14, padding: 16 }}>
+        <div style={{ fontWeight: 700, marginBottom: 10 }}>Auto-approve runner</div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="number"
+            value={limit}
+            onChange={(e) => setLimit(parseInt(e.target.value || "50", 10))}
+            style={{ width: 90, padding: "8px 10px", border: "1px solid #ddd", borderRadius: 10 }}
+          />
+
+          <button
+            onClick={runAutoApprove}
+            disabled={loading}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #0a7a2a",
+              background: loading ? "#bfe8c9" : "#1aa34a",
+              color: "#fff",
+              cursor: loading ? "not-allowed" : "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {loading ? "Running..." : "Run auto-approve"}
+          </button>
+
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Approves only when rule enabled + wallet stays above minimum.
+          </div>
+        </div>
+
+        <div style={{ height: 10 }} />
+
+        {banner && (
+          <div className={kindStyles(kind)} style={{ borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ fontWeight: 700 }}>{banner}</div>
+
+            {last && (last.error || (last.checked_count ?? 0) > 0 || (last.run_id ?? 0) > 0) && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12 }}>Details</summary>
+                <pre style={{ marginTop: 8, fontSize: 12, whiteSpace: "pre-wrap" }}>{safeJsonText(last)}</pre>
+              </details>
+            )}
+          </div>
+        )}
+
+        <div style={{ height: 12 }} />
+
+        <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+          <div><b>Notes (dispute-safe):</b></div>
+          <div>â€¢ Auto-approve runs server-side with service role (no anon access).</div>
+          <div>â€¢ Every payout change should be recorded in driver_payout_audit.</div>
+          <div>â€¢ If you want, next step: add a run-log table for batch proof.</div>
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.6 }}>
+          URL: /admin/payouts/drivers/reports
+        </div>
+      </div>
+    </div>
+  );
+}

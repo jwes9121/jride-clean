@@ -1,0 +1,274 @@
+﻿"use client";
+
+import React, { useEffect, useMemo, useRef } from "react";
+import mapboxgl from "mapbox-gl";
+
+mapboxgl.accessToken =
+  process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
+
+type AnyRecord = Record<string, any>;
+
+type BookingMapClientProps = {
+  booking: AnyRecord;
+};
+
+type LatLng = {
+  lat: number;
+  lng: number;
+};
+
+function toLatLng(lat: any, lng: any): LatLng | null {
+  if (lat === null || lat === undefined) return null;
+  if (lng === null || lng === undefined) return null;
+
+  const nLat = Number(lat);
+  const nLng = Number(lng);
+
+  if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
+
+  return { lat: nLat, lng: nLng };
+}
+
+export default function BookingMapClient({ booking }: BookingMapClientProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+
+  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  const routeIdRef = useRef<string>("jride-booking-route");
+  const mapLoadedRef = useRef<boolean>(false);
+
+  // Derive coordinates from booking, with fallbacks to different field names.
+  const pickup = useMemo<LatLng | null>(() => {
+    return (
+      toLatLng(booking?.pickup_lat, booking?.pickup_lng) ??
+      toLatLng(booking?.from_lat, booking?.from_lng) ??
+      null
+    );
+  }, [booking]);
+
+  const dropoff = useMemo<LatLng | null>(() => {
+    return (
+      toLatLng(booking?.dropoff_lat, booking?.dropoff_lng) ??
+      toLatLng(booking?.to_lat, booking?.to_lng) ??
+      null
+    );
+  }, [booking]);
+
+  const driver = useMemo<LatLng | null>(() => {
+    return (
+      toLatLng(booking?.driver_lat, booking?.driver_lng) ??
+      toLatLng(
+        booking?.driver?.lat ?? booking?.driver?.latitude,
+        booking?.driver?.lng ?? booking?.driver?.longitude
+      ) ??
+      null
+    );
+  }, [booking]);
+
+  // Initial map creation
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (mapRef.current) return;
+
+    const center: LatLng =
+      driver ?? pickup ?? dropoff ?? { lat: 16.8003, lng: 121.1153 }; // Kiangan-ish fallback
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [center.lng, center.lat],
+      zoom: 14,
+    });
+
+    map.addControl(
+      new mapboxgl.NavigationControl({ visualizePitch: true }),
+      "top-right"
+    );
+
+    map.on("load", () => {
+      mapLoadedRef.current = true;
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      mapLoadedRef.current = false;
+    };
+  }, [driver, pickup, dropoff]);
+
+  // Update markers + route whenever booking/coords change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const routeId = routeIdRef.current;
+
+    const applyStateToMap = () => {
+      // Remove old route if present
+      if (map.getLayer(routeId)) {
+        map.removeLayer(routeId);
+      }
+      if (map.getSource(routeId)) {
+        map.removeSource(routeId);
+      }
+
+      // Remove old markers
+      if (pickupMarkerRef.current) {
+        pickupMarkerRef.current.remove();
+        pickupMarkerRef.current = null;
+      }
+      if (dropoffMarkerRef.current) {
+        dropoffMarkerRef.current.remove();
+        dropoffMarkerRef.current = null;
+      }
+      if (driverMarkerRef.current) {
+        driverMarkerRef.current.remove();
+        driverMarkerRef.current = null;
+      }
+
+      const bounds = new mapboxgl.LngLatBounds();
+
+      // Pickup marker (green)
+      if (pickup) {
+        const el = document.createElement("div");
+        el.style.width = "14px";
+        el.style.height = "14px";
+        el.style.borderRadius = "999px";
+        el.style.backgroundColor = "#22c55e";
+        el.style.border = "2px solid white";
+        el.style.boxShadow = "0 0 4px rgba(0,0,0,0.35)";
+
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([pickup.lng, pickup.lat])
+          .addTo(map);
+
+        pickupMarkerRef.current = marker;
+        bounds.extend([pickup.lng, pickup.lat]);
+      }
+
+      // Dropoff marker (red)
+      if (dropoff) {
+        const el = document.createElement("div");
+        el.style.width = "14px";
+        el.style.height = "14px";
+        el.style.borderRadius = "999px";
+        el.style.backgroundColor = "#ef4444";
+        el.style.border = "2px solid white";
+        el.style.boxShadow = "0 0 4px rgba(0,0,0,0.35)";
+
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([dropoff.lng, dropoff.lat])
+          .addTo(map);
+
+        dropoffMarkerRef.current = marker;
+        bounds.extend([dropoff.lng, dropoff.lat]);
+      }
+
+      // Driver marker (blue trike)
+      if (driver) {
+        const el = document.createElement("div");
+        el.style.width = "18px";
+        el.style.height = "18px";
+        el.style.borderRadius = "4px";
+        el.style.backgroundColor = "#0ea5e9";
+        el.style.border = "2px solid white";
+        el.style.boxShadow = "0 0 4px rgba(0,0,0,0.35)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.fontSize = "9px";
+        el.style.color = "white";
+        el.style.fontWeight = "bold";
+        el.innerText = "🛺";
+
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([driver.lng, driver.lat])
+          .addTo(map);
+
+        driverMarkerRef.current = marker;
+        bounds.extend([driver.lng, driver.lat]);
+      }
+
+      // Simple straight-line route between pickup and dropoff
+      if (pickup && dropoff) {
+        const routeGeoJson = {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [pickup.lng, pickup.lat],
+              [dropoff.lng, dropoff.lat],
+            ],
+          },
+          properties: {},
+        };
+
+        map.addSource(routeId, {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: [routeGeoJson],
+          },
+        });
+
+        map.addLayer({
+          id: routeId,
+          type: "line",
+          source: routeId,
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#2563eb",
+            "line-width": 4,
+          },
+        });
+      }
+
+      // Fit bounds so everything is visible
+      const hasBounds =
+        (bounds as any).isEmpty && typeof (bounds as any).isEmpty === "function"
+          ? !(bounds as any).isEmpty()
+          : true;
+
+      if (hasBounds) {
+        map.fitBounds(bounds, {
+          padding: { top: 40, bottom: 40, left: 40, right: 40 },
+          duration: 500,
+        });
+      } else if (driver) {
+        map.easeTo({
+          center: [driver.lng, driver.lat],
+          zoom: 15,
+          duration: 500,
+        });
+      }
+    };
+
+    // If style is not yet loaded, wait for it once
+    if (!map.isStyleLoaded()) {
+      const onLoad = () => {
+        mapLoadedRef.current = true;
+        applyStateToMap();
+      };
+      map.once("load", onLoad);
+    } else {
+      applyStateToMap();
+    }
+  }, [pickup, dropoff, driver, booking]);
+
+  return (
+    <div className="w-full h-full">
+      <div
+        ref={containerRef}
+        className="w-full h-full rounded-b-lg md:rounded-b-none md:rounded-r-lg overflow-hidden"
+      />
+    </div>
+  );
+}

@@ -1,0 +1,7 @@
+﻿// If auto-insert failed, manually add these lines into your main JSX:
+
+import ZoneCapacity from "./components/ZoneCapacity";
+import ZoneLoadBalancing from "./components/ZoneLoadBalancing";
+
+<ZoneCapacity />
+<ZoneLoadBalancing />

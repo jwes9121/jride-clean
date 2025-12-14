@@ -1,0 +1,142 @@
+﻿"use client";
+
+import { useEffect, useRef } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+
+type LatLng = {
+  lat: number;
+  lng: number;
+};
+
+type Props = {
+  pickup?: LatLng;
+  dropoff?: LatLng;
+};
+
+mapboxgl.accessToken =
+  process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+  process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+  "";
+
+export default function LiveTripMapClient({ pickup, dropoff }: Props) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+    if (!mapboxgl.accessToken) {
+      console.error("Missing NEXT_PUBLIC_MAPBOX_TOKEN");
+      return;
+    }
+
+    if (!mapRef.current) {
+      mapRef.current = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: "mapbox://styles/mapbox/streets-v12",
+        center: [121.094, 16.815],
+        zoom: 13,
+      });
+    }
+
+    const map = mapRef.current;
+
+    if (!map.isStyleLoaded()) {
+      const onLoad = () => {
+        map.off("load", onLoad);
+        updateMap(map);
+      };
+      map.on("load", onLoad);
+    } else {
+      updateMap(map);
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng]);
+
+  const updateMap = (map: mapboxgl.Map) => {
+    // Clear old markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    // Remove any existing route
+    if (map.getSource("livetrip-route")) {
+      if (map.getLayer("livetrip-route")) {
+        map.removeLayer("livetrip-route");
+      }
+      map.removeSource("livetrip-route");
+    }
+
+    const points: [number, number][] = [];
+
+    if (pickup) {
+      const pickupMarker = new mapboxgl.Marker({ color: "#22c55e" }) // green
+        .setLngLat([pickup.lng, pickup.lat])
+        .addTo(map);
+      markersRef.current.push(pickupMarker);
+      points.push([pickup.lng, pickup.lat]);
+    }
+
+    if (dropoff) {
+      const dropoffMarker = new mapboxgl.Marker({ color: "#ef4444" }) // red
+        .setLngLat([dropoff.lng, dropoff.lat])
+        .addTo(map);
+      markersRef.current.push(dropoffMarker);
+      points.push([dropoff.lng, dropoff.lat]);
+    }
+
+    // Simple straight line route between pickup and dropoff if both exist
+    if (pickup && dropoff) {
+      const routeGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [pickup.lng, pickup.lat],
+            [dropoff.lng, dropoff.lat],
+          ],
+        },
+        properties: {},
+      };
+
+      map.addSource("livetrip-route", {
+        type: "geojson",
+        data: routeGeoJson,
+      });
+
+      map.addLayer({
+        id: "livetrip-route",
+        type: "line",
+        source: "livetrip-route",
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#2563eb",
+          "line-width": 4,
+        },
+      });
+    }
+
+    // Fit bounds to whatever points we have
+    if (points.length > 0) {
+      const bounds = points.reduce(
+        (b, coord) => b.extend(coord),
+        new mapboxgl.LngLatBounds(points[0], points[0])
+      );
+
+      map.fitBounds(bounds, { padding: 60, maxZoom: 17 });
+    }
+  };
+
+  return (
+    <div className="h-full w-full">
+      <div
+        ref={mapContainerRef}
+        className="h-full w-full rounded-xl overflow-hidden"
+      />
+    </div>
+  );
+}

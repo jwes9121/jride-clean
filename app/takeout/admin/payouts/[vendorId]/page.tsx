@@ -398,7 +398,7 @@ export default function AdminVendorPayoutPage() {
           )}
           {summary?.last_payout_amount !== null && (
             <div className="text-xs text-gray-500">
-              Last payout amount ₱{summary.last_payout_amount?.toFixed(2)}
+              Last payout amount ₱{summary?.last_payout_amount?.toFixed(2)}
             </div>
           )}
         </div>
@@ -573,3 +573,4 @@ export default function AdminVendorPayoutPage() {
     </div>
   );
 }
+
