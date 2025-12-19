@@ -1,96 +1,99 @@
-﻿import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+﻿// app/api/dispatch/assign/route.ts
+// Assign a booking to a driver using SUPABASE REST (service role)
 
-type GuardResult = { ok: true } | { ok: false; reason: string };
+import { NextResponse } from "next/server";
 
-/**
- * Minimal inline wallet guard (no external imports).
- * Behavior: if driver wallet is below minimum required, block assignment.
- * If wallet tables/columns don't exist, fail OPEN (do not block assignment).
- */
-async function assertDriverCanAcceptNewJobInline(
-  supabase: any,
-  driverId: string
-): Promise<GuardResult> {
-  try {
-    // Try common wallet table patterns. If your schema differs, this will safely fail-open.
-    // 1) driver_wallets (driver_id, balance, min_required)
-    const w1 = await supabase
-      .from("driver_wallets")
-      .select("balance,min_required,minimum_required,min_wallet_required,wallet_balance")
-      .eq("driver_id", driverId)
-      .maybeSingle();
+export const dynamic = "force-dynamic";
+export const fetchCache = "default-no-store";
 
-    if (!w1?.error && w1?.data) {
-      const d = w1.data as any;
-      const balance =
-        Number(d.wallet_balance ?? d.balance ?? d.wallet_balance ?? 0) || 0;
-      const minReq =
-        Number(d.min_wallet_required ?? d.minimum_required ?? d.min_required ?? 0) || 0;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-      if (minReq > 0 && balance < minReq) {
-        return { ok: false, reason: "Driver wallet below minimum required" };
-      }
-      return { ok: true };
-    }
+type AssignBody = {
+  bookingCode?: string;
+  driverId?: string;
+};
 
-    // 2) driver_wallet (driver_id, wallet_balance, min_wallet_required)
-    const w2 = await supabase
-      .from("driver_wallet")
-      .select("wallet_balance,min_wallet_required,minimum_required,balance,min_required")
-      .eq("driver_id", driverId)
-      .maybeSingle();
-
-    if (!w2?.error && w2?.data) {
-      const d = w2.data as any;
-      const balance = Number(d.wallet_balance ?? d.balance ?? 0) || 0;
-      const minReq = Number(d.min_wallet_required ?? d.minimum_required ?? d.min_required ?? 0) || 0;
-
-      if (minReq > 0 && balance < minReq) {
-        return { ok: false, reason: "Driver wallet below minimum required" };
-      }
-      return { ok: true };
-    }
-
-    // If wallet table not found or no row, do not block assignment
-    return { ok: true };
-  } catch {
-    // Fail open (do not block assignment) if anything unexpected happens
-    return { ok: true };
-  }
-}
-
-export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
-
-  const body = await req.json();
-  const { bookingId, driverId } = body;
-
-  if (!bookingId || !driverId) {
+export async function POST(request: Request) {
+  if (!supabaseUrl || !supabaseServiceKey) {
     return NextResponse.json(
-      { error: "Missing bookingId or driverId" },
+      {
+        ok: false,
+        error: "SERVER_MISCONFIGURED",
+        message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+      },
+      { status: 500 }
+    );
+  }
+
+  let body: AssignBody;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "BAD_REQUEST", message: "Invalid JSON body" },
       { status: 400 }
     );
   }
 
-  // Wallet guard (inline, no imports)
-  const guard = await assertDriverCanAcceptNewJobInline(supabase, driverId);
-  if (!guard.ok) {
-    return NextResponse.json({ error: guard.reason }, { status: 403 });
+  const { bookingCode, driverId } = body;
+
+  if (!bookingCode || !driverId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "MISSING_FIELDS",
+        message: "Missing bookingCode or driverId",
+      },
+      { status: 400 }
+    );
   }
 
-  const { error } = await supabase
-    .from("bookings")
-    .update({
-      assigned_driver_id: driverId,
-      status: "assigned",
-    })
-    .eq("id", bookingId);
+  const url = `${supabaseUrl}/rest/v1/bookings?booking_code=eq.${encodeURIComponent(
+    bookingCode
+  )}`;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        apikey: supabaseServiceKey,
+        Authorization: `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        assigned_driver_id: driverId,
+        status: "assigned",
+        updated_at: new Date().toISOString(),
+      }),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Supabase REST error:", res.status, text);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "UPSTREAM_ERROR",
+          message: "Failed to update booking in Supabase",
+          details: text,
+        },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("Assign route unexpected error:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ASSIGN_ERROR",
+        message: "Unexpected error while assigning trip",
+      },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ ok: true });
 }

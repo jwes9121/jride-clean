@@ -6,448 +6,280 @@ import { ProblemTripAlertSounds } from "./components/ProblemTripAlertSounds";
 import { LivetripsKpiBanner } from "./components/LivetripsKpiBanner";
 import { StuckTripWatcher } from "./components/StuckTripWatcher";
 import { LiveTripsMap } from "./components/LiveTripsMap";
-import AdminOpsPanel from "./components/AdminOpsPanel";
-import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
 import type { LiveTrip } from "./components/ProblemTripAlertSounds";
-
-// mirror capacity used in AdminOpsPanel
-const ZONE_CAPACITY: Record<string, number> = {
-  Kiangan: 20,
-  Lagawe: 30,
-  Banaue: 20,
-  Hingyon: 15,
-  Lamut: 20,
-};
-
-function getTripType(raw: any): string {
-  return (
-    raw?.trip_type ??
-    raw?.service_type ??
-    raw?.booking_type ??
-    raw?.type ??
-    "ride"
-  );
-}
-
-function isDeliveryType(type: string): boolean {
-  const t = (type || "").toLowerCase();
-  if (!t) return false;
-  return (
-    t.includes("food") ||
-    t.includes("delivery") ||
-    t.includes("takeout") ||
-    t.includes("errand")
-  );
-}
 
 export default function LiveTripsClient() {
   const [liveTrips, setLiveTrips] = useState<LiveTrip[]>([]);
-  const [drivers, setDrivers] = useState<any[]>([]);
+  const [zoneFilter, setZoneFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [stuckTripIds, setStuckTripIds] = useState<Set<string>>(new Set());
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [overrideDriverId, setOverrideDriverId] = useState<string>("");
 
   // ===============================
-  // LOAD TRIPS
+  // LOAD TRIPS FROM SUPABASE
   // ===============================
   const loadTrips = async () => {
     try {
-      const { data, error } = await supabase.rpc(
-        "admin_get_live_trips_page_data"
-      );
+      const { data, error } = await supabase.rpc("admin_get_live_trips_page_data");
       if (error) {
         console.error("admin_get_live_trips_page_data error:", error);
         return;
       }
       if (Array.isArray(data)) {
         setLiveTrips(data as LiveTrip[]);
+      } else {
+        console.warn("Unexpected live trips data shape:", data);
+        setLiveTrips([]);
       }
     } catch (err) {
       console.error("Failed to load live trips:", err);
     }
   };
 
-  // ===============================
-  // LOAD DRIVERS (driver_locations)
-  // ===============================
-  const loadDrivers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("driver_locations")
-        .select("driver_id, lat, lng, town, status, home_town, updated_at");
-
-      if (error) {
-        console.error("loadDrivers error:", error);
-        return;
-      }
-
-      if (Array.isArray(data)) {
-        setDrivers(
-          data.map((d: any) => ({
-            id: d.driver_id,
-            name: d.driver_id
-              ? `Driver ${String(d.driver_id).slice(0, 4)}`
-              : "Driver",
-            lat: d.lat,
-            lng: d.lng,
-            zone: d.home_town ?? d.town ?? "Unknown",
-            homeTown: d.home_town ?? d.town ?? "Unknown",
-            status: d.status ?? "available",
-            updatedAt: d.updated_at,
-          }))
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load drivers:", err);
-    }
-  };
-
   useEffect(() => {
     loadTrips();
-    loadDrivers();
-    const t = setInterval(() => {
-      loadTrips();
-      loadDrivers();
-    }, 7000);
-    return () => clearInterval(t);
+    const timer = setInterval(loadTrips, 7000);
+    return () => clearInterval(timer);
   }, []);
 
   // ===============================
-  // STUCK MERGE
+  // ENHANCE TRIPS WITH STUCK FLAG
   // ===============================
   const enhancedTrips = useMemo<LiveTrip[]>(() => {
+    if (!liveTrips) return [];
     return liveTrips.map((t) => {
       const id = String(t.id ?? t.bookingCode ?? "");
-      return { ...t, isProblem: stuckTripIds.has(id) || t.isProblem };
+      const isStuck = stuckTripIds.has(id);
+      return {
+        ...t,
+        isProblem: isStuck || t.isProblem,
+      };
     });
   }, [liveTrips, stuckTripIds]);
 
   // ===============================
-  // SELECTED TRIP
+  // ZONE + STATUS FILTER OPTIONS
   // ===============================
-  useEffect(() => {
-    if (!enhancedTrips.length) {
-      setSelectedTripId(null);
-      return;
+  const availableZones = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    for (const t of enhancedTrips) {
+      if (t.town) set.add(String(t.town));
     }
-    if (!selectedTripId) {
-      const first = enhancedTrips[0];
-      setSelectedTripId(String(first.id ?? first.bookingCode ?? ""));
+    return Array.from(set).sort();
+  }, [enhancedTrips]);
+
+  const availableStatuses = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    for (const t of enhancedTrips) {
+      if (t.status) set.add(String(t.status));
     }
-  }, [enhancedTrips, selectedTripId]);
-
-  const selectedTrip = useMemo(() => {
-    if (!selectedTripId) return null;
-    return (
-      enhancedTrips.find(
-        (t) => String(t.id ?? t.bookingCode ?? "") === selectedTripId
-      ) ?? null
-    );
-  }, [enhancedTrips, selectedTripId]);
-
-  const selectedTripType = useMemo(
-    () => (selectedTrip ? getTripType(selectedTrip) : "ride"),
-    [selectedTrip]
-  );
-
-  const selectedIsDelivery = useMemo(
-    () => isDeliveryType(selectedTripType),
-    [selectedTripType]
-  );
-
-  // ===============================
-  // ZONE UTILIZATION STATS (for auto-assign)
-  // ===============================
-  const zoneStats = useMemo(() => {
-    const counts: Record<string, number> = {};
-
-    enhancedTrips.forEach((t: any) => {
-      const zone = t.town ?? t.zone ?? "Unknown";
-      counts[zone] = (counts[zone] || 0) + 1;
-    });
-
-    const stats: Record<string, { util: number; status: string }> = {};
-    Object.entries(counts).forEach(([zone, count]) => {
-      const limit = ZONE_CAPACITY[zone] ?? 20;
-      const util = Math.round((count / limit) * 100);
-      let status: "OK" | "WARN" | "FULL" = "OK";
-      if (util >= 90 && util < 100) status = "WARN";
-      if (util >= 100) status = "FULL";
-      stats[zone] = { util, status };
-    });
-
-    return stats;
+    return Array.from(set).sort();
   }, [enhancedTrips]);
 
   // ===============================
-  // STUCK CALLBACK
+  // FILTERED TRIPS (ZONE + STATUS)
+  // ===============================
+  const filteredTrips = useMemo<LiveTrip[]>(() => {
+    return enhancedTrips.filter((t) => {
+      const zoneOk = zoneFilter === "all" || (t.town ?? "") === zoneFilter;
+      const statusOk = statusFilter === "all" || t.status === statusFilter;
+      return zoneOk && statusOk;
+    });
+  }, [enhancedTrips, zoneFilter, statusFilter]);
+
+  // ===============================
+  // HANDLE STUCK TRIP IDS FROM WATCHER
   // ===============================
   const handleStuckChange = (ids: string[]) => {
     setStuckTripIds(new Set(ids));
   };
 
   // ===============================
-  // SMART ASSIGN HANDLER (dispatcher-safe)
+  // AUTO-FOCUS ON PROBLEM TRIP
+  //  - If any problem trip exists, auto-select the first one
+  //  - Otherwise, keep current selection if still present
+  //  - If nothing selected, select first filtered trip
   // ===============================
-  const handleSmartAssign = async (driverId: string) => {
-    if (!selectedTrip) return;
-    const bookingId = (selectedTrip as any).id;
-
-    try {
-      const { error } = await supabase.rpc("dispatcher_assign_driver", {
-        p_booking_id: bookingId,
-        p_driver_id: driverId,
-        p_actor: "dispatcher", // ordinance enforced, no cross-town passenger
-        p_override_reason: null,
-      });
-
-      if (error) {
-        console.error("dispatcher_assign_driver error:", error);
-        return;
-      }
-
-      await loadTrips();
-    } catch (err) {
-      console.error("smart assign failed:", err);
-    }
-  };
-
-  // ===============================
-  // ADMIN EMERGENCY OVERRIDE
-  // ===============================
-  const overrideOptions = useMemo(() => {
-    if (!selectedTrip) return [];
-    // For override we allow ANY driver; panel itself is passenger-only
-    return drivers.map((d: any) => ({
-      value: d.id,
-      label: `${d.name} • ${d.homeTown}`,
-    }));
-  }, [drivers, selectedTrip]);
-
-  const handleAdminOverrideAssign = async () => {
-    if (!selectedTrip || !overrideDriverId) return;
-    if (selectedIsDelivery) return; // should be hidden anyway
-
-    const bookingId = (selectedTrip as any).id;
-
-    const reason =
-      typeof window !== "undefined"
-        ? window.prompt("Reason for ordinance override? (required)")
-        : null;
-
-    if (!reason || !reason.trim()) {
+  useEffect(() => {
+    if (enhancedTrips.length === 0) {
+      if (selectedTripId !== null) setSelectedTripId(null);
       return;
     }
 
-    try {
-      const { error } = await supabase.rpc("dispatcher_assign_driver", {
-        p_booking_id: bookingId,
-        p_driver_id: overrideDriverId,
-        p_actor: "admin", // emergency override
-        p_override_reason: reason.trim(),
-      });
+    const current = enhancedTrips.find(
+      (t) => String(t.id ?? t.bookingCode ?? "") === selectedTripId
+    );
 
-      if (error) {
-        console.error("dispatcher_assign_driver override error:", error);
-        return;
+    const problemTrip = enhancedTrips.find((t) => t.isProblem);
+    if (problemTrip) {
+      const newId = String(problemTrip.id ?? problemTrip.bookingCode ?? "");
+      if (newId !== selectedTripId) {
+        setSelectedTripId(newId);
       }
-
-      setOverrideDriverId("");
-      await loadTrips();
-    } catch (err) {
-      console.error("admin override assign failed:", err);
+      return;
     }
-  };
+
+    if (!current) {
+      const first = enhancedTrips[0];
+      const firstId = String(first.id ?? first.bookingCode ?? "");
+      if (firstId !== selectedTripId) {
+        setSelectedTripId(firstId);
+      }
+    }
+  }, [enhancedTrips, selectedTripId]);
 
   // ===============================
-  // EXPORT DAILY OPS REPORT (CSV) WITH DATE PROMPT
+  // RENDER
   // ===============================
-  const handleExportCsv = async () => {
-    try {
-      if (typeof window === "undefined") {
-        console.error("Cannot export CSV on server.");
-        return;
-      }
-
-      const today = new Date();
-      const defaultDate = today.toISOString().slice(0, 10); // YYYY-MM-DD
-
-      const input = window.prompt(
-        "Export trips for which date? (YYYY-MM-DD)\nLeave blank for today.",
-        defaultDate
-      );
-
-      if (input === null) {
-        // user cancelled
-        return;
-      }
-
-      const exportDate = (input && input.trim()) || defaultDate;
-
-      const { data, error } = await supabase.rpc(
-        "admin_export_daily_ops_report",
-        { p_date: exportDate }
-      );
-
-      if (error) {
-        console.error("admin_export_daily_ops_report error:", error);
-        return;
-      }
-
-      if (!Array.isArray(data) || data.length === 0) {
-        window.alert(`No trips found for ${exportDate}.`);
-        return;
-      }
-
-      const rows: any[] = data;
-      const headers = [
-        "booking_id",
-        "booking_code",
-        "town",
-        "status",
-        "trip_type",
-        "created_at",
-        "pickup_label",
-        "dropoff_label",
-        "fare_amount",
-        "assigned_driver_id",
-        "override_used",
-        "override_actor",
-        "override_reason",
-        "override_at",
-      ];
-
-      const escapeCell = (value: any) => {
-        if (value === null || value === undefined) return "";
-        const s = String(value);
-        if (s.includes('"') || s.includes(",") || s.includes("\n")) {
-          return `"${s.replace(/"/g, '""')}"`;
-        }
-        return s;
-      };
-
-      const lines: string[] = [];
-      lines.push(headers.join(","));
-      for (const row of rows) {
-        lines.push(headers.map((h) => escapeCell((row as any)[h])).join(","));
-      }
-
-      const csv = lines.join("\n");
-
-      const blob = new Blob([csv], {
-        type: "text/csv;charset=utf-8;",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `jride_ops_${exportDate}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("export CSV failed:", err);
-    }
-  };
-
   return (
     <div className="flex h-full flex-col bg-white">
-      {/* Top toolbar with export */}
-      <div className="flex items-center justify-between border-b bg-slate-50 px-3 py-2 text-xs">
-        <div className="font-semibold">Live Trips</div>
-        <button
-          className="rounded bg-slate-800 px-3 py-1 text-[11px] font-semibold text-white hover:bg-slate-900"
-          onClick={handleExportCsv}
-        >
-          Export (CSV)
-        </button>
-      </div>
-
+      {/* 🔔 Problem trip alert sounds (uses isProblem + heuristics) */}
       <ProblemTripAlertSounds trips={enhancedTrips} />
+
+      {/* 📊 KPI banner (active trips, avg ETA, etc.) */}
       <LivetripsKpiBanner trips={enhancedTrips} />
+
+      {/* 👀 Background watcher for stuck trips */}
       <StuckTripWatcher trips={liveTrips} onStuckChange={handleStuckChange} />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* LEFT — ADMIN OPS + SMART AUTO ASSIGN + OVERRIDE */}
-        <div className="w-[520px] border-r overflow-hidden flex flex-col">
-          <AdminOpsPanel
-            trips={enhancedTrips}
-            selectedTripId={selectedTripId}
-            onSelectTrip={setSelectedTripId}
-          />
-
-          {/* Smart auto-assign (ordinance-safe) */}
-          <div className="border-t bg-slate-50 p-2">
-            <div className="text-xs font-semibold mb-1">
-              Smart Auto-Assign Suggestions
+        {/* LEFT SIDE — TRIP LIST + COLUMN FILTERS */}
+        <div className="w-[420px] border-r flex flex-col overflow-hidden">
+          {/* Filters bar */}
+          <div className="border-b bg-slate-50 px-3 py-2 text-xs flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-700">
+                Trip filters
+              </span>
+              <button
+                type="button"
+                className="rounded-full border border-slate-300 px-2 py-1 text-[10px] text-slate-500 hover:bg-white"
+                onClick={() => {
+                  setZoneFilter("all");
+                  setStatusFilter("all");
+                }}
+              >
+                Reset
+              </button>
             </div>
-            <SmartAutoAssignSuggestions
-              drivers={drivers}
-              trip={
-                selectedTrip
-                  ? {
-                      id: String(selectedTrip.id ?? selectedTrip.bookingCode),
-                      pickupLat: (selectedTrip as any).pickupLat ?? 0,
-                      pickupLng: (selectedTrip as any).pickupLng ?? 0,
-                      zone:
-                        (selectedTrip as any).town ??
-                        (selectedTrip as any).zone ??
-                        "Unknown",
-                      tripType: selectedTripType,
-                    }
-                  : null
-              }
-              zoneStats={zoneStats}
-              onAssign={handleSmartAssign}
-            />
-          </div>
-
-          {/* Admin emergency override panel */}
-          <div className="border-t bg-rose-50 p-2">
-            <div className="text-xs font-semibold mb-1 text-rose-700">
-              Admin Emergency Override (cross-town passenger only)
-            </div>
-            <p className="text-[11px] text-rose-700 mb-1">
-              Use only in real emergencies. This bypasses the pickup-town
-              ordinance and logs the override.
-            </p>
-
-            {!selectedTrip || selectedIsDelivery ? (
-              <div className="text-[11px] text-rose-400">
-                Select a passenger trip to enable override.
-              </div>
-            ) : overrideOptions.length === 0 ? (
-              <div className="text-[11px] text-rose-400">
-                No drivers available to override with.
-              </div>
-            ) : (
-              <div className="space-y-1">
+            <div className="flex gap-2">
+              {/* Zone column filter */}
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase text-slate-400">
+                  Zone / Town
+                </span>
                 <select
-                  className="w-full rounded border border-rose-200 bg-white px-2 py-1 text-[11px]"
-                  value={overrideDriverId}
-                  onChange={(e) => setOverrideDriverId(e.target.value)}
+                  className="h-7 w-full rounded-md border border-slate-300 bg-white px-1 text-[11px]"
+                  value={zoneFilter}
+                  onChange={(e) => setZoneFilter(e.target.value)}
                 >
-                  <option value="">Select driver (any town)</option>
-                  {overrideOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                  <option value="all">All zones</option>
+                  {availableZones.map((z) => (
+                    <option key={z} value={z}>
+                      {z}
                     </option>
                   ))}
                 </select>
-
-                <button
-                  className="w-full rounded bg-rose-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
-                  disabled={!overrideDriverId}
-                  onClick={handleAdminOverrideAssign}
-                >
-                  Override ordinance & assign driver
-                </button>
               </div>
+
+              {/* Status column filter */}
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase text-slate-400">
+                  Status
+                </span>
+                <select
+                  className="h-7 w-full rounded-md border border-slate-300 bg-white px-1 text-[11px]"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {availableStatuses.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Trip list */}
+          <div className="flex-1 overflow-auto">
+            {filteredTrips.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-slate-500">
+                No trips matching current filters.
+              </div>
+            ) : (
+              filteredTrips.map((t, index) => {
+                const id = String(t.id ?? t.bookingCode ?? index);
+                const isStuck = stuckTripIds.has(id);
+                const isProblem = !!t.isProblem;
+                const isSelected = selectedTripId === id;
+
+                return (
+                  <div
+                    key={id}
+                    onClick={() => setSelectedTripId(id)}
+                    className={[
+                      "border-b px-3 py-2 text-xs cursor-pointer transition-colors",
+                      "hover:bg-slate-50",
+                      isSelected ? "bg-sky-50" : "",
+                      isStuck ? "bg-red-50" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-slate-900 text-sm truncate max-w-[220px]">
+                        {t.bookingCode ?? id}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {isStuck && (
+                          <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            STUCK
+                          </span>
+                        )}
+                        {isProblem && !isStuck && (
+                          <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold text-slate-900">
+                            PROBLEM
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="rounded-full border border-sky-500 px-2 py-0.5 text-[10px] text-sky-700">
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                      {t.town && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                          {t.town}
+                        </span>
+                      )}
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                        {t.status}
+                      </span>
+                      {typeof t.pickupEtaSeconds === "number" && (
+                        <span className="text-emerald-600">
+                          ETA pickup: {Math.round(t.pickupEtaSeconds / 60)} min
+                        </span>
+                      )}
+                      {typeof t.dropoffEtaSeconds === "number" && (
+                        <span className="text-slate-500">
+                          Trip ETA: {Math.round(t.dropoffEtaSeconds / 60)} min
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
 
-        {/* RIGHT — MAP */}
+        {/* RIGHT SIDE — LIVE MAP */}
         <div className="flex-1">
           <LiveTripsMap
             trips={enhancedTrips}
