@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -83,7 +83,7 @@ async function playJrideSound(): Promise<void> {
       // try next source
     }
   }
-  // If we reach here, both failed – nothing more we can do.
+  // If we reach here, both failed - nothing more we can do.
 }
 
 export const ProblemTripAlertSounds: React.FC<ProblemTripAlertSoundsProps> = ({

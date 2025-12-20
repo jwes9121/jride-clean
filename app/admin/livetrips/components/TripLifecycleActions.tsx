@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useMemo, useState } from "react";
 
@@ -71,10 +71,10 @@ export default function TripLifecycleActions({ trip, onAfterAction }: Props) {
         <div>
           <div className="font-semibold">Trip actions</div>
           <div className="text-xs text-gray-600">
-            Code: <span className="font-mono">{bookingCode || "—"}</span>
+            Code: <span className="font-mono">{bookingCode || "ÃƒÂ¢Ã‚â‚¬Ã‚â€"}</span>
           </div>
           <div className="text-xs text-gray-600">
-            Status: <span className="font-mono">{status || "—"}</span>
+            Status: <span className="font-mono">{status || "ÃƒÂ¢Ã‚â‚¬Ã‚â€"}</span>
           </div>
         </div>
         <div className="text-xs text-gray-600 text-right">

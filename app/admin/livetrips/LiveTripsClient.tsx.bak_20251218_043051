@@ -1,0 +1,155 @@
+﻿"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import AdminOpsPanel from "./components/AdminOpsPanel";
+import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
+import LiveTripsMap from "./components/LiveTripsMap";
+
+type Trip = any;
+
+type Driver = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  zone: string;
+  homeTown: string;
+  status: string;
+  updated_at?: string | null;
+};
+
+type ZoneStat = { util: number; status: string };
+
+type AssignLog = {
+  id: string;
+  created_at: string;
+  booking_id: string | null;
+  booking_code: string | null;
+  from_driver_id: string | null;
+  to_driver_id: string;
+  source: string | null;
+  actor: string | null;
+  note: string | null;
+};
+
+function normTown(z?: any) {
+  const s = String(z || "Unknown").trim();
+  return s || "Unknown";
+}
+
+function tripIdOf(t: any) {
+  return String(t?.id ?? t?.uuid ?? t?.bookingId ?? t?.booking_id ?? t?.bookingCode ?? t?.booking_code ?? "");
+}
+
+function tripCodeOf(t: any) {
+  return String(t?.bookingCode ?? t?.booking_code ?? t?.code ?? t?.id ?? "");
+}
+
+function assignedDriverIdOf(t: any) {
+  return String(t?.driver_id ?? t?.driverId ?? t?.driver_uuid ?? t?.driver?.id ?? "").trim();
+}
+
+function isLockedStatus(s: any) {
+  const x = String(s || "").toLowerCase().trim();
+  return x === "on_trip" || x === "completed" || x === "cancelled";
+}
+
+function labelDriverId(id: string) {
+  const s = String(id || "").trim();
+  if (!s) return "-";
+  return "Driver " + s.slice(0, 4);
+}
+
+function asNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function money(v: any): string {
+  const n = asNum(v);
+  if (n === null) return "--";
+  return n.toFixed(2);
+}
+
+/**
+ * Schema-aligned fare:
+ * Prefer verified_fare, else proposed_fare, else total_errand_fare,
+ * else sum of components we KNOW exist in bookings:
+ * base_fee + distance_fare + extra_stop_fee + waiting_fee
+ */
+function computeFareFromBooking(trip: any): number | null {
+  const verified = asNum(trip?.verified_fare);
+  if (verified !== null) return verified;
+
+  const proposed = asNum(trip?.proposed_fare);
+  if (proposed !== null) return proposed;
+
+  const errandTotal = asNum(trip?.total_errand_fare);
+  if (errandTotal !== null) return errandTotal;
+
+  const baseFee = asNum(trip?.base_fee) ?? 0;
+  const distFare = asNum(trip?.distance_fare) ?? 0;
+  const extraStop = asNum(trip?.extra_stop_fee) ?? 0;
+  const waitingFee = asNum(trip?.waiting_fee) ?? 0;
+
+  const sum = baseFee + distFare + extraStop + waitingFee;
+  return sum > 0 ? sum : null;
+}
+
+export default function LiveTripsClient() {
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
+
+  const [manualDriverId, setManualDriverId] = useState<string>("");
+  const [overrideDriverId, setOverrideDriverId] = useState<string>("");
+
+  const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<string>("");
+
+  // A) Toasts
+  const [toasts, setToasts] = useState<Array<{ id: string; msg: string }>>([]);
+  const toastTimer = useRef<number | null>(null);
+
+  // A) Row highlight on assignment
+  const [flashTripId, setFlashTripId] = useState<string | null>(null);
+
+  // B) Assignment history
+  const [assignLogs, setAssignLogs] = useState<AssignLog[]>([]);
+
+  function pushToast(msg: string) {
+    const id = String(Date.now()) + Math.random().toString(16).slice(2);
+    setToasts((t) => [...t, { id, msg }].slice(-3));
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => {
+      setToasts((t) => t.slice(1));
+    }, 2500);
+  }
+
+  async function loadTrips() {
+    try {
+      // ✅ Single source of truth: page-data (normalized trips + server-side filtering)
+      const r = await fetch("/api/admin/livetrips/page-data", { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      const arr = (j?.trips ?? []) as any[];
+      setTrips(arr);
+
+      if (!selectedTripId && arr.length) {
+        setSelectedTripId(tripIdOf(arr[0]));
+      }
+
+      // If selected trip disappeared (completed/cancelled), auto-select first
+      if (selectedTripId && arr.length) {
+        const stillThere = arr.some((t) => tripIdOf(t) === selectedTripId);
+        if (!stillThere) setSelectedTripId(tripIdOf(arr[0]));
+      }
+    } catch (e: any) {
+      console.error("loadTrips failed", e);
+      setLastAction("Trips load failed: " + (e?.message ?? "unknown error"));
+    }
+  }
+
+

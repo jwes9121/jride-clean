@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import useSWR from "swr";
 
@@ -62,7 +62,7 @@ export default function ZoneLoadBalancing() {
   if (isLoading) {
     return (
       <div className="p-2 text-xs text-gray-500">
-        Calculating zone load status…
+        Calculating zone load status...
       </div>
     );
   }

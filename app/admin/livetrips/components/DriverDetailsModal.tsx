@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import { DispatchActionPanel, DispatchActionTrip } from "./DispatchActionPanel";
@@ -63,13 +63,13 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
     selectedTrip?.passenger_name ||
     rawTrip?.passenger_name ||
     rawTrip?.["passengerName"] ||
-    "—";
+    "-";
 
   const townLabel =
     selectedTrip?.town ||
     rawTrip?.town ||
     rawTrip?.["zone"] ||
-    "—";
+    "-";
 
   const statusLabel =
     selectedTrip?.status ||
@@ -97,7 +97,7 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
               {driverLabel}
             </span>
             <span className="text-[11px] text-slate-400">
-              Trip: {bookingLabel} • Town: {townLabel}
+              Trip: {bookingLabel} - Town: {townLabel}
             </span>
           </div>
           <div className="flex items-center gap-2">

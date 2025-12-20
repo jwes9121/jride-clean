@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -144,7 +144,7 @@ export function LiveTripEtaCell({ bookingId, status }: LiveTripEtaCellProps) {
   // ---- Render --------------------------------------------------------
 
   if (!shouldShowEta) {
-    return <span className="text-xs text-gray-400">—</span>;
+    return <span className="text-xs text-gray-400">-</span>;
   }
 
   if (error) {

@@ -1,7 +1,7 @@
-﻿export type TownName = "Lagawe" | "Kiangan" | "Banaue" | "Lamut" | "Hingyon";
+export type TownName = "Lagawe" | "Kiangan" | "Banaue" | "Lamut" | "Hingyon";
 
 /**
- * Official town colors (hex) – synced with your getZoneMeta Tailwind classes:
+ * Official town colors (hex) - synced with your getZoneMeta Tailwind classes:
  *
  * Lagawe  -> emerald
  * Kiangan -> sky
@@ -35,12 +35,12 @@ export function getTownColorFromString(source?: string | null): string {
   if (s.includes("lamut")) return TOWN_COLORS_HEX.Lamut;
   if (s.includes("hingyon")) return TOWN_COLORS_HEX.Hingyon;
 
-  // unknown town – still give a sane default
+  // unknown town - still give a sane default
   return "#3B82F6";
 }
 
 /**
- * Small helper for driver pins – pass whatever you know about the driver:
+ * Small helper for driver pins - pass whatever you know about the driver:
  *  - driverTown (e.g. "Lagawe")
  *  - bookingZone (e.g. "JRide Banaue Zone 1")
  *  - pickupAddress / dropoffAddress

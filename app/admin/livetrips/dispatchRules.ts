@@ -1,4 +1,4 @@
-﻿export type BookingStatus =
+export type BookingStatus =
   | "pending"
   | "assigned"
   | "accepted"
@@ -71,11 +71,11 @@ export function buildDriverLabel(
       info.plate_number || undefined,
     ].filter(Boolean);
     if (vehicleBits.length > 0) {
-      titleParts.push(vehicleBits.join(" • "));
+      titleParts.push(vehicleBits.join(" - "));
     }
   }
 
-  const main = titleParts.join(" – ");
+  const main = titleParts.join(" - ");
 
   if (info.driver_id) {
     if (main) return `${main} (${info.driver_id})`;

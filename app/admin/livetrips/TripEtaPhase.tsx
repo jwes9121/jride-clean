@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -84,7 +84,7 @@ const TripEtaPhase: React.FC<TripEtaPhaseProps> = ({
   let mainText: string;
 
   if (isCalculating && etaSeconds === null) {
-    mainText = "Calculating ETA…";
+    mainText = "Calculating ETA...";
   } else {
     mainText = formatEtaText(etaSeconds);
   }

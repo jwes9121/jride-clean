@@ -1,195 +1,205 @@
-﻿"use client";
+"use client";
 
-import React, { useMemo } from "react";
-import type { LiveTrip } from "./ProblemTripAlertSounds";
+import React, { useMemo, useState } from "react";
 
-type Props = {
-  trips: LiveTrip[];
-  selectedTripId: string | null;
-  onSelectTrip: (id: string) => void;
+type LiveTripAny = any;
+
+type DriverLite = {
+  id: string;
+  name: string;
+  homeTown?: string;
+  zone?: string;
+  status?: string;
 };
 
-// ✅ OFFICIAL ZONE CAPACITY LIMITS
-const ZONE_CAPACITY: Record<string, number> = {
-  Kiangan: 20,
-  Lagawe: 30,
-  Banaue: 20,
-  Hingyon: 15,
-  Lamut: 20,
-};
+function s(v: any) {
+  return v === null || v === undefined ? "" : String(v);
+}
+
+function normZone(v: any) {
+  const z = s(v).trim();
+  if (!z || z === "-" || z.toLowerCase() === "null" || z.toLowerCase() === "undefined") return "Unknown";
+  const towns = ["Lagawe", "Kiangan", "Lamut", "Banaue", "Hingyon", "Unknown"];
+  const hit = towns.find((t) => t.toLowerCase() === z.toLowerCase());
+  return hit ?? z;
+}
+
+function tripId(t: any) {
+  return String(t?.uuid ?? t?.id ?? t?.booking_uuid ?? t?.booking_id ?? t?.bookingCode ?? t?.booking_code ?? "");
+}
 
 export default function AdminOpsPanel({
   trips,
   selectedTripId,
   onSelectTrip,
-}: Props) {
-  // ===============================
-  // NORMALIZE RPC FIELDS
-  // ===============================
-  const normalizedTrips = useMemo(() => {
-    return trips.map((t: any) => ({
-      id: String(t.id ?? t.bookingCode ?? ""),
-      code: t.bookingCode ?? t.code ?? t.id,
-      driver:
-        t.driverName ??
-        t.driver ??
-        t.driver_name ??
-        t.driver?.name ??
-        "-",
-      zone:
-        t.town ??
-        t.zone ??
-        t.municipality ??
-        t.driver?.town ??
-        "Unknown",
-      status: t.status ?? "-",
-      pickupEta:
-        typeof t.pickupEtaSeconds === "number"
-          ? Math.round(t.pickupEtaSeconds / 60)
-          : null,
-      tripEta:
-        typeof t.dropoffEtaSeconds === "number"
-          ? Math.round(t.dropoffEtaSeconds / 60)
-          : null,
-      isProblem: !!t.isProblem,
+  drivers,
+  onManualAssign,
+  lastAction,
+}: {
+  trips: LiveTripAny[];
+  selectedTripId: string | null;
+  onSelectTrip: (id: string) => void;
+  drivers: DriverLite[];
+  onManualAssign: (driverId: string) => void | Promise<void>;
+  lastAction?: string;
+}) {
+  const [manualDriverId, setManualDriverId] = useState("");
+
+  const selectedTrip = useMemo(() => {
+    if (!selectedTripId) return null;
+    return (trips || []).find((t) => tripId(t) === selectedTripId) ?? null;
+  }, [trips, selectedTripId]);
+
+  const zone = useMemo(() => normZone(selectedTrip?.town ?? selectedTrip?.zone), [selectedTrip]);
+
+  const driverOptions = useMemo(() => {
+    const list = (drivers || []).filter(Boolean).map((d: any) => ({
+      id: String(d.id),
+      name: String(d.name ?? `Driver ${String(d.id).slice(0, 4)}`),
+      town: normZone(d.homeTown ?? d.zone),
     }));
-  }, [trips]);
 
-  // ===============================
-  // ZONE LOAD + UTILIZATION
-  // ===============================
-  const zoneStats = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const t of normalizedTrips) {
-      map[t.zone] = (map[t.zone] || 0) + 1;
+    // Ordinance default: same-town only if zone known
+    if (zone && zone !== "Unknown") {
+      const sameTown = list.filter((d) => d.town.toLowerCase() === zone.toLowerCase());
+      return sameTown;
     }
+    return list;
+  }, [drivers, zone]);
 
-    return Object.entries(map).map(([zone, count]) => {
-      const limit = ZONE_CAPACITY[zone] ?? 20;
-      const util = Math.round((count / limit) * 100);
-      let status: "OK" | "WARN" | "FULL" = "OK";
+  const handleAssign = async () => {
+    if (!manualDriverId) return;
+    await onManualAssign(manualDriverId);
+  };
 
-      if (util >= 90 && util < 100) status = "WARN";
-      if (util >= 100) status = "FULL";
-
-      return { zone, count, limit, util, status };
-    });
-  }, [normalizedTrips]);
-
-  // ===============================
-  // OVERLOAD SUMMARY (FOR BANNER)
-  // ===============================
-  const overload = useMemo(() => {
-    let hasWarn = false;
-    let hasFull = false;
-
-    for (const z of zoneStats) {
-      if (z.status === "WARN") hasWarn = true;
-      if (z.status === "FULL") hasFull = true;
-    }
-
-    return { hasWarn, hasFull };
-  }, [zoneStats]);
+  const activeTripsCount = trips?.length ?? 0;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="p-3 space-y-3">
+      <div className="rounded border bg-white p-3">
+        <div className="text-xs text-slate-500">Active Trips</div>
+        <div className="text-2xl font-bold">{activeTripsCount}</div>
+      </div>
 
-      {/* ===============================
-          ZONE LOAD + CAPACITY
-      =============================== */}
-      <div className="border-b bg-slate-50 p-2">
-        <div className="font-semibold text-xs mb-2">
-          Zone Load Monitoring
+      <div className="rounded border bg-white">
+        <div className="border-b px-3 py-2 text-xs font-semibold">Zone Load Monitoring</div>
+        <div className="px-3 py-2 text-xs text-slate-600">
+          {zone} <span className="ml-2 inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[11px]">selected trip</span>
         </div>
 
-        {/* Overload banner */}
-        {(overload.hasWarn || overload.hasFull) && (
-          <div className="mb-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-            {overload.hasFull
-              ? "Some zones are at FULL capacity. Do not assign new trips into those zones."
-              : "Some zones are nearing capacity (90%+). Use caution when assigning new trips."}
-          </div>
-        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="px-2 py-2 text-left">Code</th>
+                <th className="px-2 py-2 text-left">Driver</th>
+                <th className="px-2 py-2 text-left">Zone</th>
+                <th className="px-2 py-2 text-left">Status</th>
+                <th className="px-2 py-2 text-left">Pickup ETA</th>
+                <th className="px-2 py-2 text-left">Trip ETA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(trips || []).slice(0, 30).map((t) => {
+                const id = tripId(t);
+                const isSel = id === selectedTripId;
 
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          {zoneStats.map((z) => (
-            <div
-              key={z.zone}
-              className="rounded border bg-white px-2 py-1"
-            >
-              <div className="flex justify-between font-semibold">
-                <span>{z.zone}</span>
-                <span>{z.count}/{z.limit}</span>
-              </div>
-
-              <div className="mt-1 flex justify-between items-center">
-                <span className="text-[11px] text-slate-500">
-                  {z.util}% utilized
-                </span>
-
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    z.status === "OK"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : z.status === "WARN"
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {z.status}
-                </span>
-              </div>
-            </div>
-          ))}
+                return (
+                  <tr
+                    key={id}
+                    className={isSel ? "bg-emerald-50 cursor-pointer" : "hover:bg-slate-50 cursor-pointer"}
+                    onClick={() => onSelectTrip(id)}
+                  >
+                    <td className="px-2 py-2">{s(t.booking_code ?? t.bookingCode ?? id).slice(0, 18)}</td>
+                    <td className="px-2 py-2">{s(t.driver_name ?? t.driverName ?? "-")}</td>
+                    <td className="px-2 py-2">{normZone(t.town ?? t.zone ?? "Unknown")}</td>
+                    <td className="px-2 py-2">{s(t.status ?? "-")}</td>
+                    <td className="px-2 py-2">{s(t.pickup_eta ?? t.pickupEta ?? "-")}</td>
+                    <td className="px-2 py-2">{s(t.trip_eta ?? t.tripEta ?? "-")}</td>
+                  </tr>
+                );
+              })}
+              {(!trips || trips.length === 0) ? (
+                <tr><td colSpan={6} className="px-2 py-6 text-center text-slate-500">No trips</td></tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* ===============================
-          OPS TRIP TABLE
-      =============================== */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-xs border-collapse">
-          <thead className="sticky top-0 bg-slate-100 z-10">
-            <tr>
-              <th className="border px-2 py-1">Code</th>
-              <th className="border px-2 py-1">Driver</th>
-              <th className="border px-2 py-1">Zone</th>
-              <th className="border px-2 py-1">Status</th>
-              <th className="border px-2 py-1">Pickup ETA</th>
-              <th className="border px-2 py-1">Trip ETA</th>
-            </tr>
-          </thead>
-          <tbody>
-            {normalizedTrips.map((t) => (
-              <tr
-                key={t.id}
-                onClick={() => onSelectTrip(t.id)}
-                className={`cursor-pointer hover:bg-slate-50 ${
-                  t.id === selectedTripId ? "bg-sky-50" : ""
-                } ${t.isProblem ? "bg-red-50" : ""}`}
-              >
-                <td className="border px-2 py-1 font-semibold">
-                  {t.code}
-                </td>
-                <td className="border px-2 py-1">
-                  {t.driver}
-                </td>
-                <td className="border px-2 py-1">
-                  {t.zone}
-                </td>
-                <td className="border px-2 py-1">
-                  {t.status}
-                </td>
-                <td className="border px-2 py-1 text-right text-emerald-600">
-                  {t.pickupEta !== null ? `${t.pickupEta} min` : "--"}
-                </td>
-                <td className="border px-2 py-1 text-right text-slate-600">
-                  {t.tripEta !== null ? `${t.tripEta} min` : "--"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="rounded border bg-white p-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold">Trip control & wallet</div>
+          <div className="text-[11px] text-slate-500">Status: {s(selectedTrip?.status ?? "-")}</div>
+        </div>
+
+        {!selectedTrip ? (
+          <div className="mt-2 text-[11px] text-slate-500">Select a trip first.</div>
+        ) : (
+          <>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded border p-2">
+                <div className="text-slate-500">Fare</div>
+                <div className="font-semibold">{s(selectedTrip.fare ?? selectedTrip.fare_amount ?? "-")}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-slate-500">Platform fee</div>
+                <div className="font-semibold">{s(selectedTrip.platform_fee ?? selectedTrip.service_fee ?? "-")}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-slate-500">Driver wallet</div>
+                <div className="font-semibold">{s(selectedTrip.driver_wallet ?? selectedTrip.driver_wallet_balance ?? "-")}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-slate-500">Vendor wallet</div>
+                <div className="font-semibold">{s(selectedTrip.vendor_wallet ?? selectedTrip.vendor_wallet_balance ?? "-")}</div>
+              </div>
+            </div>
+
+            <div className="mt-2">
+              <div className="flex items-center gap-2">
+                <select
+                  className="w-full rounded border px-2 py-1 text-[11px]"
+                  value={manualDriverId}
+                  onChange={(e) => setManualDriverId(e.target.value)}
+                >
+                  <option value="">
+                    {driverOptions.length === 0
+                      ? "No drivers in dropdown: driver_locations blocked by RLS or not available."
+                      : "Select driver"}
+                  </option>
+                  {driverOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} - {d.town}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="rounded bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+                  disabled={!manualDriverId}
+                  onClick={handleAssign}
+                >
+                  Assign
+                </button>
+              </div>
+
+              {lastAction ? (
+                <div className="mt-1 text-[11px] text-slate-600">Last action: {lastAction}</div>
+              ) : null}
+
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <button className="rounded border px-2 py-1 text-[11px] text-slate-400" disabled>On the way</button>
+                <button className="rounded border px-2 py-1 text-[11px] text-slate-400" disabled>Start trip</button>
+                <button className="rounded border px-2 py-1 text-[11px] text-slate-400" disabled>Drop off</button>
+              </div>
+
+              <div className="mt-1 text-[10px] text-slate-400">
+                Dropdown sources: props → suggestions → driver_locations fallback.
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

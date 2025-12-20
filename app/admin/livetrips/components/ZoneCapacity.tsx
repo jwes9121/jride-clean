@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import useSWR from "swr";
 
@@ -64,7 +64,7 @@ export default function ZoneCapacity() {
   if (isLoading) {
     return (
       <div className="p-2 text-xs text-gray-500">
-        Loading zone capacity overview…
+        Loading zone capacity overview...
       </div>
     );
   }
@@ -150,7 +150,7 @@ export default function ZoneCapacity() {
                       {z.zone_name}
                     </span>
                     <span className="text-[9px] text-gray-400">
-                      ID: {z.zone_id.slice(0, 4)}…
+                      ID: {z.zone_id.slice(0, 4)}...
                     </span>
                   </div>
                 </div>

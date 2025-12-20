@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Button } from "@/components/ui/button";
 
@@ -16,7 +16,7 @@ export function DispatchActions({ selectedBooking }: DispatchActionsProps) {
     );
   }
 
-  // Placeholder actions – we can wire these to real endpoints later.
+  // Placeholder actions - we can wire these to real endpoints later.
   return (
     <div className="flex flex-wrap gap-1">
       <Button size="sm" variant="outline">

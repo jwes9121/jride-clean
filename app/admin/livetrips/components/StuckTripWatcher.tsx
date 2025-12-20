@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect } from "react";
 import type { LiveTrip } from "./ProblemTripAlertSounds";
@@ -62,7 +62,7 @@ export const StuckTripWatcher: React.FC<StuckTripWatcherProps> = ({
     onStuckChange?.(stuckIds);
   }, [trips, onStuckChange]);
 
-  // No UI – purely background watcher
+  // No UI - purely background watcher
   return null;
 };
 

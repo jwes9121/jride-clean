@@ -1,312 +1,144 @@
-﻿"use client";
+"use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
-export type DispatchActionTrip = {
+type SelectedTrip = {
   id: string;
-  booking_code: string | null;
-  status: string | null;
-  driver_id: string | null;
-  driver_name: string | null;
-  driver_phone: string | null;
-  passenger_name: string | null;
-  town: string | null;
-  is_emergency: boolean | null;
+  booking_code?: string | null;
+  status?: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  passenger_name?: string | null;
+  town?: string | null;
+  is_emergency?: boolean;
 };
 
-type DispatchActionPanelProps = {
-  selectedTrip: DispatchActionTrip | null;
-  dispatcherName?: string | null;
-  onActionCompleted?: () => void;
+type Props = {
+  selectedTrip: SelectedTrip | null;
+  dispatcherName?: string;
 };
 
-type ApiResult = {
-  ok: boolean;
-  message: string;
-};
-
-async function postDispatchAction(body: any): Promise<ApiResult> {
-  try {
-    const res = await fetch("/api/admin/livetrips/dispatch-actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      return {
-        ok: false,
-        message: (json && (json.error as string)) || "Dispatch action failed.",
-      };
-    }
-
-    return {
-      ok: true,
-      message:
-        (json && (json.message as string)) ||
-        "Dispatch action completed successfully.",
-    };
-  } catch (err) {
-    console.error("Dispatch action fetch error:", err);
-    return { ok: false, message: "Network error calling dispatch API." };
+async function postJson(url: string, body: any) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = (j && (j.error || j.message)) || "REQUEST_FAILED";
+    throw new Error(msg);
   }
+  return j;
 }
 
-export function DispatchActionPanel(props: DispatchActionPanelProps) {
-  const { selectedTrip, dispatcherName, onActionCompleted } = props;
+export default function DispatchActionPanel({ selectedTrip }: Props) {
+  const [busy, setBusy] = useState<string>(""); // "", "call", "nudge", "reassign", "emergency"
+  const [msg, setMsg] = useState<string>("");
 
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [statusText, setStatusText] = useState<string | null>(null);
-  const [errorText, setErrorText] = useState<string | null>(null);
-  const [localEmergency, setLocalEmergency] = useState<boolean>(
-    !!selectedTrip?.is_emergency
-  );
+  const bookingCode = useMemo(() => {
+    const c = selectedTrip?.booking_code ? String(selectedTrip.booking_code) : "";
+    return c.trim();
+  }, [selectedTrip]);
 
-  if (!selectedTrip || !selectedTrip.id) {
-    return (
-      <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px] text-slate-500">
-        No active trip selected.
-      </div>
-    );
-  }
+  
 
-  const bookingCode = selectedTrip.booking_code ?? selectedTrip.id;
-  const passenger = selectedTrip.passenger_name ?? "Unknown passenger";
-  const town = selectedTrip.town ?? "Unknown zone";
-  const driverName = selectedTrip.driver_name ?? "Unknown driver";
-  const hasPhone = !!selectedTrip.driver_phone;
-  const isEmergency = localEmergency;
+  const bookingId = useMemo(() => {
+    const id = selectedTrip?.id ? String(selectedTrip.id) : "";
+    return id.trim();
+  }, [selectedTrip]);const phone = useMemo(() => {
+    const p = selectedTrip?.driver_phone ? String(selectedTrip.driver_phone) : "";
+    return p.trim();
+  }, [selectedTrip]);
 
-  function resetMessages() {
-    setStatusText(null);
-    setErrorText(null);
-  }
+  const disabledAll = !selectedTrip || (!(bookingId || bookingCode)) || !!busy;
 
-  const handleCall = () => {
-    if (!hasPhone || !selectedTrip.driver_phone) return;
-    resetMessages();
+  const btn =
+    "border border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-3 py-2 text-[12px]";
 
-    const tel = `tel:${selectedTrip.driver_phone}`;
+  async function doCall() {
+    setMsg("");
+    if (!phone) {
+      setMsg("No driver phone on this trip.");
+      return;
+    }
+    setBusy("call");
     try {
-      window.open(tel, "_self");
-    } catch {
-      window.location.href = tel;
+      window.open(`tel:${phone}`, "_self");
+      setMsg("Opening dialerâ€¦");
+    } finally {
+      setBusy("");
     }
-  };
+  }
 
-  const handleNudge = async () => {
-    if (!selectedTrip.driver_id || !selectedTrip.id) return;
-    resetMessages();
-    setLoadingAction("nudge");
-
-    const result = await postDispatchAction({
-      action: "nudge",
-      tripId: selectedTrip.id,
-      driverId: selectedTrip.driver_id,
-      note: `Nudge sent by ${
-        dispatcherName || "dispatcher"
-      } from LiveTrips map.`,
-    });
-
-    setLoadingAction(null);
-
-    if (!result.ok) {
-      setErrorText(result.message);
-      return;
+  async function doNudge() {
+    setMsg("");
+    if (!bookingCode) return;
+    setBusy("nudge");
+    try {
+      await postJson("/api/dispatch/nudge", { bookingId, bookingCode });
+      setMsg("Nudge sent (server acknowledged).");
+    } catch (e: any) {
+      setMsg(`Nudge failed: ${e?.message || "UNKNOWN_ERROR"}`);
+    } finally {
+      setBusy("");
     }
+  }
 
-    setStatusText("Nudge sent to driver.");
-    onActionCompleted?.();
-  };
-
-  const handleReassign = async () => {
-    if (!selectedTrip.driver_id || !selectedTrip.id) return;
-    resetMessages();
-
-    const toDriverId = window.prompt(
-      "Enter the NEW driver ID (UUID) for this trip:",
-      ""
-    );
-    if (!toDriverId) return;
-
-    setLoadingAction("reassign");
-
-    const result = await postDispatchAction({
-      action: "reassign",
-      tripId: selectedTrip.id,
-      fromDriverId: selectedTrip.driver_id,
-      toDriverId,
-      note: `Reassign requested by ${
-        dispatcherName || "dispatcher"
-      } from LiveTrips map.`,
-    });
-
-    setLoadingAction(null);
-
-    if (!result.ok) {
-      setErrorText(result.message);
-      return;
+  async function doEmergency() {
+    setMsg("");
+    if (!bookingCode) return;
+    setBusy("emergency");
+    try {
+      await postJson("/api/dispatch/emergency", { bookingId, bookingCode });
+      setMsg("Emergency sent (server acknowledged).");
+    } catch (e: any) {
+      setMsg(`Emergency failed: ${e?.message || "UNKNOWN_ERROR"}`);
+    } finally {
+      setBusy("");
     }
+  }
 
-    setStatusText("Reassign request stored. Trip driver will refresh on next data update.");
-    onActionCompleted?.();
-  };
-
-  const handleEmergency = async () => {
-    if (!selectedTrip.id) return;
-    resetMessages();
-
-    const target = !isEmergency;
-    setLoadingAction("emergency");
-
-    const result = await postDispatchAction({
-      action: "emergency",
-      tripId: selectedTrip.id,
-      isEmergency: target,
-    });
-
-    setLoadingAction(null);
-
-    if (!result.ok) {
-      setErrorText(result.message);
-      return;
+  function doReassign() {
+    setMsg("");
+    setBusy("reassign");
+    try {
+      // No DB assumptions here. Just help the dispatcher get to the manual assign block.
+      const el =
+        document.querySelector('[data-jride="assign-manual"]') ||
+        document.querySelector("select") ||
+        document.querySelector("button");
+      if (el && "scrollIntoView" in el) {
+        // @ts-ignore
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      setMsg("Scroll to Assign driver (manual) on the left to reassign.");
+    } finally {
+      setBusy("");
     }
-
-    setLocalEmergency(target);
-    setStatusText(
-      target
-        ? "Trip marked as EMERGENCY."
-        : "Emergency flag cleared for this trip."
-    );
-    onActionCompleted?.();
-  };
-
-  const baseBtn =
-    "flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[10px] font-medium border transition";
-  const disabledClasses =
-    "border-slate-700 bg-slate-900/60 text-slate-500 cursor-not-allowed";
-  const enabledClasses =
-    "border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400";
-
-  const isLoading = (k: string) => loadingAction === k;
-
-  const canNudge = !!selectedTrip.driver_id;
-  const canReassign = !!selectedTrip.driver_id;
-  const canEmergency = true;
+  }
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-100 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-col">
-          <span className="text-[10px] uppercase tracking-wide text-slate-400">
-            Dispatch actions
-          </span>
-          <span className="text-[11px] font-semibold text-slate-100">
-            Trip {bookingCode}
-          </span>
-          <span className="text-[10px] text-slate-400">
-            Passenger: {passenger} · {town}
-          </span>
-        </div>
-        <span
-          className={
-            "rounded-full px-2 py-1 text-[10px] font-semibold " +
-            (isEmergency
-              ? "bg-red-600 text-white"
-              : "bg-slate-800 text-slate-100")
-          }
-        >
-          {isEmergency ? "EMERGENCY" : selectedTrip.status ?? "status ?"}
-        </span>
-      </div>
+      <div className="text-[10px] tracking-wide text-slate-300">DISPATCH ACTIONS</div>
 
-      <div className="grid grid-cols-4 gap-1.5 mt-1">
-        {/* Call */}
-        <button
-          type="button"
-          onClick={handleCall}
-          disabled={!hasPhone || isLoading("call")}
-          className={[
-            baseBtn,
-            !hasPhone ? disabledClasses : enabledClasses,
-          ].join(" ")}
-        >
-          <span className="text-lg leading-none">📞</span>
-          <span>Call</span>
-          <span className="text-[9px] text-slate-400">
-            {hasPhone ? "mobile" : "no number"}
-          </span>
+      <div className="grid grid-cols-2 gap-2">
+        <button className={btn} onClick={doCall} disabled={disabledAll}>
+          {busy === "call" ? "Callingâ€¦" : "Call"}
         </button>
-
-        {/* Nudge */}
-        <button
-          type="button"
-          onClick={handleNudge}
-          disabled={!canNudge || isLoading("nudge")}
-          className={[
-            baseBtn,
-            !canNudge ? disabledClasses : enabledClasses,
-          ].join(" ")}
-        >
-          <span className="text-lg leading-none">👉</span>
-          <span>{isLoading("nudge") ? "Nudging..." : "Nudge"}</span>
-          <span className="text-[9px] text-slate-400">slow / stuck</span>
+        <button className={btn} onClick={doNudge} disabled={disabledAll}>
+          {busy === "nudge" ? "Sendingâ€¦" : "Nudge"}
         </button>
-
-        {/* Reassign */}
-        <button
-          type="button"
-          onClick={handleReassign}
-          disabled={!canReassign || isLoading("reassign")}
-          className={[
-            baseBtn,
-            !canReassign ? disabledClasses : enabledClasses,
-          ].join(" ")}
-        >
-          <span className="text-lg leading-none">🔁</span>
-          <span>{isLoading("reassign") ? "Saving..." : "Reassign"}</span>
-          <span className="text-[9px] text-slate-400">change driver</span>
+        <button className={btn} onClick={doReassign} disabled={disabledAll}>
+          Reassign
         </button>
-
-        {/* Emergency */}
-        <button
-          type="button"
-          onClick={handleEmergency}
-          disabled={!canEmergency || isLoading("emergency")}
-          className={[
-            baseBtn,
-            !canEmergency
-              ? disabledClasses
-              : isEmergency
-              ? "border-red-500 bg-red-700/90 text-white hover:bg-red-600"
-              : enabledClasses,
-          ].join(" ")}
-        >
-          <span className="text-lg leading-none">🚨</span>
-          <span>{isEmergency ? "Clear" : "Emergency"}</span>
-          <span className="text-[9px] text-slate-400">
-            priority alerts
-          </span>
+        <button className={btn} onClick={doEmergency} disabled={disabledAll}>
+          {busy === "emergency" ? "Sendingâ€¦" : "Emergency"}
         </button>
       </div>
 
-      {(statusText || errorText) && (
-        <div className="mt-1 text-[10px]">
-          {statusText && (
-            <div className="text-emerald-400">{statusText}</div>
-          )}
-          {errorText && <div className="text-red-400">{errorText}</div>}
-        </div>
-      )}
-
-      <div className="mt-1 flex justify-between text-[9px] text-slate-500">
-        <span>Driver: {driverName}</span>
-        {dispatcherName && <span>Dispatcher: {dispatcherName}</span>}
-      </div>
+      {msg ? <div className="text-[10px] text-slate-300">{msg}</div> : null}
     </div>
   );
 }
-
-export default DispatchActionPanel;

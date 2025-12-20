@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { cn } from "@/lib/utils";
 
@@ -75,7 +75,7 @@ function DriverBadge({ booking }: { booking: BookingWithExtras }) {
 }
 
 function EtaCell({ booking }: { booking: BookingWithExtras }) {
-  if (booking.eta_minutes == null) return <span className="text-[11px] text-slate-400">—</span>;
+  if (booking.eta_minutes == null) return <span className="text-[11px] text-slate-400">-</span>;
   const minutes = Math.max(0, Math.round(booking.eta_minutes));
   return (
     <span className="text-[11px] font-semibold text-slate-800">
@@ -110,7 +110,7 @@ export default function LiveTripsTable({
         </div>
         <div className="text-[11px] text-slate-500">
           <span className="font-semibold text-slate-800">{active.length}</span>{" "}
-          active •{" "}
+          active -{" "}
           <span className="font-semibold text-slate-800">{recent.length}</span>{" "}
           recent
         </div>
@@ -169,7 +169,7 @@ export default function LiveTripsTable({
                   <td className="px-3 py-2">
                     <div className="flex flex-col">
                       <span className="font-medium text-slate-900">
-                        {booking.passenger_name ?? "—"}
+                        {booking.passenger_name ?? "-"}
                       </span>
                       {booking.passenger_phone && (
                         <span className="text-[10px] text-slate-500">
@@ -180,17 +180,17 @@ export default function LiveTripsTable({
                   </td>
                   <td className="px-3 py-2">
                     <span className="line-clamp-2 text-[11px] text-slate-700">
-                      {booking.pickup ?? "—"}
+                      {booking.pickup ?? "-"}
                     </span>
                   </td>
                   <td className="px-3 py-2">
                     <span className="line-clamp-2 text-[11px] text-slate-700">
-                      {booking.dropoff ?? "—"}
+                      {booking.dropoff ?? "-"}
                     </span>
                   </td>
                   <td className="px-3 py-2">
                     <span className="text-[11px] text-slate-700">
-                      {booking.zone ?? booking.town ?? "—"}
+                      {booking.zone ?? booking.town ?? "-"}
                     </span>
                   </td>
                   <td className="px-3 py-2">
@@ -225,7 +225,7 @@ export default function LiveTripsTable({
                     selectedBooking?.id === booking.id && "border-emerald-400"
                   )}
                 >
-                  {booking.code} • {booking.passenger_name ?? "Passenger"}
+                  {booking.code} - {booking.passenger_name ?? "Passenger"}
                 </button>
               ))}
               {recent.length > 6 && (

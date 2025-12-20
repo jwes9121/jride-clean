@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -308,7 +308,7 @@ driverEl.style.boxShadow = "none";
       pickupMarkerRef.current = null;
       dropoffMarkerRef.current = null;
     };
-  }, [booking]); // <— booking can be undefined; effect just returns early
+  }, [booking]); // <- booking can be undefined; effect just returns early
 
   // ---------- ETA ----------
   useEffect(() => {
