@@ -120,9 +120,27 @@ function getAllCoords(trip: any): LngLatTuple[] {
  * - 3+       => second-to-last coord
  */
 function getDriverReal(trip: any): LngLatTuple | null {
+  // Prefer explicit driver GPS fields
   const explicit = getExplicitDriver(trip);
   if (explicit) return explicit;
 
+  // If booking only has pickup/dropoff (no driver GPS yet), do NOT infer driver from them.
+  const hasPickup = num(trip?.pickup_lat) != null && num(trip?.pickup_lng) != null;
+  const hasDrop   = num(trip?.dropoff_lat) != null && num(trip?.dropoff_lng) != null;
+
+  const hasAnyDriverGps =
+    num(trip?.driver_lat) != null ||
+    num(trip?.driver_lng) != null ||
+    num(trip?.driverLat) != null ||
+    num(trip?.driverLng) != null ||
+    num(trip?.driver_latitude) != null ||
+    num(trip?.driver_longitude) != null;
+
+  if (hasPickup && hasDrop && !hasAnyDriverGps) {
+    return null;
+  }
+
+  // Otherwise, best-effort fallback from all coords (legacy)
   const coords = getAllCoords(trip);
   if (!coords.length) return null;
   if (coords.length === 1) return coords[0];
@@ -743,7 +761,16 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     const pickup = getPickup(raw);
     const drop = getDropoff(raw);
 
-    const target: LngLatTuple | null = driverReal ?? drop ?? pickup ?? null;
+    const status = String(raw.status ?? "").toLowerCase().trim();
+
+// Pending/assigned: follow pickup (driver not moving yet)
+// Otherwise: follow driverReal when available
+// Pending/assigned: follow pickup (driver not moving yet)
+// Otherwise: follow driverReal when available
+const target: LngLatTuple | null =
+  (status === "pending" || status === "assigned")
+    ? (pickup ?? drop ?? null)
+    : (driverReal ?? pickup ?? drop ?? null);
     if (!target) return;
 
     if (lastFollowRef.current) {
@@ -1030,6 +1057,9 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 };
 
 export default LiveTripsMap;
+
+
+
 
 
 
