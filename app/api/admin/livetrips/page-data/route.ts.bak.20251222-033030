@@ -151,6 +151,9 @@ export async function GET() {
         if (Array.isArray((rpcData as any).data)) (rpcData as any).data = enrichedTrips;
       } else {
         // rpcData was an array
+        // eslint-disable-next-line no-param-reassign
+        // @ts-ignore
+        rpcData = enrichedTrips;
       }
     }
   } catch (e: any) {
