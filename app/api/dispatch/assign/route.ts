@@ -1,126 +1,101 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type AssignBody = {
-  bookingCode?: string;
-  driverId?: string;
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-function bad(message: string, extra: any = {}, status = 400) {
-  return NextResponse.json({ ok: false, message, ...extra }, { status, headers: { "Cache-Control": "no-store" } });
+function bad(message: string, code: string, status = 400, extra: any = {}) {
+  return NextResponse.json(
+    { ok: false, code, message, ...extra },
+    { status, headers: { "Cache-Control": "no-store" } }
+  );
 }
 
-function safeHost(u: string) {
-  try { return new URL(u).host; } catch { return ""; }
+function ok(data: any = {}) {
+  return NextResponse.json(
+    { ok: true, ...data },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
-function pickPresentKeys(sample: Record<string, any>, candidates: string[]) {
-  return candidates.filter((c) => Object.prototype.hasOwnProperty.call(sample, c));
-}
-
-export async function POST(request: Request) {
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
-
-  if (!supabaseUrl) return bad("Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL", {}, 500);
-  if (!serviceKey) return bad("Missing SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY)", {}, 500);
-
-  let body: AssignBody;
+export async function POST(req: Request) {
   try {
-    body = (await request.json()) as AssignBody;
-  } catch {
-    return bad("Invalid JSON body");
+    const body = await req.json();
+    const { bookingCode, driverId } = body || {};
+
+    if (!bookingCode) {
+      return bad("Missing bookingCode", "MISSING_BOOKING", 400);
+    }
+    if (!driverId) {
+      return bad("Missing driverId", "MISSING_DRIVER", 400);
+    }
+
+    // 1) Fetch booking
+    const { data: booking, error: bookingErr } = await supabase
+      .from("bookings")
+      .select("id,status,driver_id")
+      .eq("booking_code", bookingCode)
+      .single();
+
+    if (bookingErr || !booking) {
+      return bad("Booking not found", "BOOKING_NOT_FOUND", 404);
+    }
+
+    if (booking.driver_id) {
+      return bad("Booking already assigned", "ALREADY_ASSIGNED", 409);
+    }
+
+    if (["on_trip", "completed", "cancelled"].includes(booking.status)) {
+      return bad("Booking not assignable", "NOT_ASSIGNABLE", 409, {
+        status: booking.status,
+      });
+    }
+
+    // 2) Ensure driver is not busy
+    const { count: activeCount } = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("driver_id", driverId)
+      .in("status", ["assigned", "on_the_way", "on_trip"]);
+
+    if ((activeCount ?? 0) > 0) {
+      return bad("Driver already on active trip", "DRIVER_BUSY", 409);
+    }
+
+    // 3) Assign with optimistic lock
+    const { data: updated, error: updateErr } = await supabase
+      .from("bookings")
+      .update({
+        driver_id: driverId,
+        assigned_driver_id: driverId,
+        assigned_at: new Date().toISOString(),
+        status: "assigned",
+      })
+      .eq("booking_code", bookingCode)
+      .is("driver_id", null)
+      .select("id");
+
+    if (updateErr || !updated || updated.length === 0) {
+      return bad(
+        "Assignment failed (no rows updated)",
+        "NO_ROWS_UPDATED",
+        409,
+        { bookingCode, driverId }
+      );
+    }
+
+    return ok({ bookingCode, driverId });
+  } catch (e: any) {
+    return bad(
+      "Internal server error",
+      "INTERNAL_ERROR",
+      500,
+      { error: String(e?.message || e) }
+    );
   }
-
-  const bookingCode = body.bookingCode ? String(body.bookingCode).trim() : "";
-  const driverId = body.driverId ? String(body.driverId).trim() : "";
-
-  if (!bookingCode) return bad("Missing bookingCode");
-  if (!driverId) return bad("Missing driverId");
-
-  const where = `booking_code=eq.${encodeURIComponent(bookingCode)}`;
-  const baseUrl = `${supabaseUrl}/rest/v1/bookings?${where}`;
-
-  // 1) Read row first (so we don't assume column names)
-  const readRes = await fetch(`${baseUrl}&select=*`, {
-    method: "GET",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-    },
-    cache: "no-store",
-  });
-
-  const readText = await readRes.text();
-  if (!readRes.ok) {
-    return bad("READ_FAILED", { httpStatus: readRes.status, detail: readText }, readRes.status);
-  }
-
-  let rows: any[] = [];
-  try { rows = JSON.parse(readText); } catch {}
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return bad("BOOKING_NOT_FOUND", { bookingCode }, 404);
-  }
-
-  const sample = rows[0] as Record<string, any>;
-
-  // Driver id columns we support
-  const driverCols = pickPresentKeys(sample, ["driver_id", "assigned_driver_id"]);
-
-  // Status columns we support (same family as status route)
-  const statusCols = pickPresentKeys(sample, ["status", "trip_status", "booking_status", "dispatch_status", "ride_status"]);
-
-  if (driverCols.length === 0) {
-    return bad("NO_DRIVER_COLUMNS_FOUND", {
-      hint: "Bookings row has no driver_id/assigned_driver_id. Update the schema or adjust candidates.",
-      keys: Object.keys(sample).slice(0, 80),
-    }, 409);
-  }
-
-  // 2) Build patch body using ONLY present columns
-  const patchBody: any = {};
-  for (const c of driverCols) patchBody[c] = driverId;
-
-  // If there is a status-like column, set it to 'assigned'
-  for (const s of statusCols) patchBody[s] = "assigned";
-
-  // 3) Patch
-  const patchRes = await fetch(baseUrl, {
-    method: "PATCH",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(patchBody),
-    cache: "no-store",
-  });
-
-  const patchText = await patchRes.text();
-  if (!patchRes.ok) {
-    return bad("PATCH_FAILED", {
-      httpStatus: patchRes.status,
-      detail: patchText,
-      attempted: patchBody,
-      supabaseHost: safeHost(supabaseUrl),
-    }, patchRes.status);
-  }
-
-  let patched: any[] = [];
-  try { patched = JSON.parse(patchText); } catch {}
-
-  return NextResponse.json({
-    ok: true,
-    bookingCode: patched?.[0]?.booking_code ?? bookingCode,
-    id: patched?.[0]?.id ?? rows?.[0]?.id ?? null,
-    assignedDriverId: driverId,
-    columnsUpdated: [...driverCols, ...statusCols],
-    supabaseHost: safeHost(supabaseUrl),
-  }, { headers: { "Cache-Control": "no-store" } });
 }
