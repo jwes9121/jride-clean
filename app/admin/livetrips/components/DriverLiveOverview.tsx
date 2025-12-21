@@ -1,8 +1,11 @@
 ﻿"use client";
 
 import React from "react";
-import { DispatchActionPanel, DispatchActionTrip } from "./DispatchActionPanel";
 
+// Local fallback: DispatchActionTrip is not exported by DispatchActionPanel
+type DispatchActionTrip = any;
+
+import DispatchActionPanel from "./DispatchActionPanel";
 type RawTrip = {
   id?: string;
   booking_code?: string | null;
@@ -51,8 +54,10 @@ export default function DriverLiveOverview(props: Props) {
 
       <DispatchActionPanel
         selectedTrip={trip}
-        dispatcherName={props.dispatcherName}
+        dispatcherName={props.dispatcherName ?? undefined}
       />
     </div>
   );
 }
+
+

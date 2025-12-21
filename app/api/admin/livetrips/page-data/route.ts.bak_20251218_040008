@@ -1,0 +1,117 @@
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
+
+function asArray<T = any>(v: any): T[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function uniqStrings(arr: string[]) {
+  return Array.from(new Set(arr.filter(Boolean)));
+}
+
+function pickTrips(rpcData: any): any[] {
+  // We don't assume the shape; try common keys safely.
+  if (!rpcData || typeof rpcData !== "object") return [];
+  if (Array.isArray((rpcData as any).trips)) return (rpcData as any).trips;
+  if (Array.isArray((rpcData as any).bookings)) return (rpcData as any).bookings;
+  if (Array.isArray((rpcData as any).data)) return (rpcData as any).data;
+  return [];
+}
+
+function attachBalancesToTrips(trips: any[], driverMap: Record<string, any>, vendorMap: Record<string, any>) {
+  if (!trips.length) return trips;
+
+  return trips.map((t) => {
+    const driverId = String(t?.driver_id ?? t?.assigned_driver_id ?? "").trim();
+    const vendorId = String(t?.vendor_id ?? "").trim();
+
+    const driverBal = driverId && Object.prototype.hasOwnProperty.call(driverMap, driverId) ? driverMap[driverId] : null;
+    const vendorBal = vendorId && Object.prototype.hasOwnProperty.call(vendorMap, vendorId) ? vendorMap[vendorId] : null;
+
+    return {
+      ...t,
+      driver_wallet_balance: driverBal,
+      vendor_wallet_balance: vendorBal,
+    };
+  });
+}
+
+export async function GET() {
+  const supabase = createClient();
+
+  // Call existing RPC for live trips page data + zone capacity view (unchanged)
+  const [{ data: rpcData, error: rpcError }, { data: zoneData, error: zoneError }] =
+    await Promise.all([
+      supabase.rpc("admin_get_live_trips_page_data"),
+      supabase
+        .from("zone_capacity_view")
+        .select(
+          "zone_id, zone_name, color_hex, capacity_limit, active_drivers, available_slots, status"
+        )
+        .order("zone_name"),
+    ]);
+
+  if (rpcError) {
+    console.error("[page-data] live trips RPC error", rpcError);
+    return NextResponse.json({ error: rpcError.message }, { status: 500 });
+  }
+
+  if (zoneError) {
+    console.error("[zone-capacity] error", zoneError);
+    return NextResponse.json({ error: zoneError.message }, { status: 500 });
+  }
+
+  // Extract trips safely (no assumptions about the key name)
+  const trips = pickTrips(rpcData);
+
+  // Collect driver/vendor ids from trips (schema-aligned)
+  const driverIds = uniqStrings(
+    trips.map((t) => String(t?.driver_id ?? t?.assigned_driver_id ?? "").trim())
+  );
+  const vendorIds = uniqStrings(
+    trips.map((t) => String(t?.vendor_id ?? "").trim())
+  );
+
+  // Wallet snapshots (safe: if function missing, we return baseline data)
+  let driverWalletBalances: Record<string, any> = {};
+  let vendorWalletBalances: Record<string, any> = {};
+
+  if (driverIds.length || vendorIds.length) {
+    const { data: walletData, error: walletError } = await supabase.rpc(
+      "admin_get_wallet_snapshots_v1",
+      {
+        p_driver_ids: driverIds.length ? driverIds : null,
+        p_vendor_ids: vendorIds.length ? vendorIds : null,
+      }
+    );
+
+    if (walletError) {
+      console.error("[wallet-snapshots] RPC error", walletError);
+      // Do NOT fail the endpoint; preserve LiveTrips baseline
+    } else if (walletData && typeof walletData === "object") {
+      driverWalletBalances = (walletData as any).driver_balances ?? {};
+      vendorWalletBalances = (walletData as any).vendor_balances ?? {};
+    }
+  }
+
+  // Attach balances into trips array if present
+  const enrichedTrips = attachBalancesToTrips(trips, driverWalletBalances, vendorWalletBalances);
+
+  // Return:
+  // - everything original from admin_get_live_trips_page_data
+  // - zones
+  // - wallet maps
+  // - and also overwrite the trips/bookings key ONLY if it existed (to avoid breaking unknown shapes)
+  const out: any = {
+    ...(rpcData ?? {}),
+    zones: zoneData ?? [],
+    driverWalletBalances,
+    vendorWalletBalances,
+  };
+
+  if (Array.isArray((rpcData as any)?.trips)) out.trips = enrichedTrips;
+  if (Array.isArray((rpcData as any)?.bookings)) out.bookings = enrichedTrips;
+  if (Array.isArray((rpcData as any)?.data)) out.data = enrichedTrips;
+
+  return NextResponse.json(out, { status: 200 });
+}

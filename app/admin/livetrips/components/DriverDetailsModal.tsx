@@ -1,8 +1,11 @@
-"use client";
+﻿"use client";
 
 import React from "react";
-import { DispatchActionPanel, DispatchActionTrip } from "./DispatchActionPanel";
 
+// Local fallback type: DispatchActionTrip is not exported by ./DispatchActionPanel in this repo state.
+type DispatchActionTrip = any;
+
+import DispatchActionPanel from "./DispatchActionPanel";
 type RawTrip = {
   id?: string;
   booking_code?: string | null;
@@ -154,12 +157,7 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
           {/* Dispatch actions panel */}
           <DispatchActionPanel
             selectedTrip={selectedTrip}
-            dispatcherName={dispatcherName}
-            onActionCompleted={() => {
-              // hook slot: parent can refetch trips via props later if needed
-              console.log("Dispatch action completed.");
-            }}
-          />
+            dispatcherName={dispatcherName ?? undefined}/>
 
           {/* Placeholder for any extra info you already show elsewhere */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3 text-[11px] text-slate-400">
@@ -196,3 +194,7 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
 }
 
 export default DriverDetailsModal;
+
+
+
+

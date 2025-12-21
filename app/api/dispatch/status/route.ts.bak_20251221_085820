@@ -1,7 +1,4 @@
 ﻿import { NextResponse } from "next/server";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 
 type Body = {
   bookingId?: string;
@@ -13,13 +10,19 @@ function bad(message: string, extra: any = {}, status = 400) {
   return NextResponse.json({ ok: false, message, ...extra }, { status });
 }
 
-function statusColumnsPresent(sample: Record<string, any>) {
-  const candidates = ["status", "trip_status", "booking_status", "dispatch_status", "ride_status"];
-  return candidates.filter((c) => Object.prototype.hasOwnProperty.call(sample, c));
-}
-
-function safeHost(u: string) {
-  try { return new URL(u).host; } catch { return ""; }
+function pickStatusColumn(sample: Record<string, any>) {
+  // Prefer explicit status-like columns if present
+  const candidates = [
+    "status",
+    "trip_status",
+    "booking_status",
+    "dispatch_status",
+    "ride_status",
+  ];
+  for (const c of candidates) {
+    if (Object.prototype.hasOwnProperty.call(sample, c)) return c;
+  }
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -52,7 +55,7 @@ export async function POST(req: Request) {
 
   const baseUrl = `${supabaseUrl}/rest/v1/bookings?${where}`;
 
-  // 1) Read the row first
+  // 1) Read the row first so we only update columns that actually exist
   const readRes = await fetch(`${baseUrl}&select=*`, {
     method: "GET",
     headers: {
@@ -68,24 +71,29 @@ export async function POST(req: Request) {
   }
 
   let rows: any[] = [];
-  try { rows = JSON.parse(readText); } catch {}
+  try {
+    rows = JSON.parse(readText);
+  } catch {
+    return bad("READ_PARSE_FAILED", { detail: readText }, 500);
+  }
+
   if (!Array.isArray(rows) || rows.length === 0) {
     return bad("BOOKING_NOT_FOUND", { bookingCode, bookingId }, 404);
   }
 
   const sample = rows[0] as Record<string, any>;
-  const cols = statusColumnsPresent(sample);
+  const statusCol = pickStatusColumn(sample);
 
-  if (cols.length === 0) {
-    return bad("NO_STATUS_COLUMNS_FOUND", {
-      hint: "Bookings row has no known status-like columns. page-data might be deriving status via SQL/RPC.",
-      keys: Object.keys(sample).slice(0, 60),
+  if (!statusCol) {
+    return bad("NO_STATUS_COLUMN_DETECTED", {
+      hint: "Bookings row has no known status-like column. Check schema / page-data derivation.",
+      keys: Object.keys(sample).slice(0, 50),
     }, 409);
   }
 
-  // 2) Patch ALL present status-like columns
+  // 2) Patch ONLY the detected column
   const patchBody: any = {};
-  for (const c of cols) patchBody[c] = nextStatus;
+  patchBody[statusCol] = nextStatus;
 
   const patchRes = await fetch(baseUrl, {
     method: "PATCH",
@@ -104,7 +112,7 @@ export async function POST(req: Request) {
       httpStatus: patchRes.status,
       detail: patchText,
       attempted: patchBody,
-      supabaseHost: safeHost(supabaseUrl),
+      detectedStatusColumn: statusCol,
     }, patchRes.status);
   }
 
@@ -117,9 +125,6 @@ export async function POST(req: Request) {
     bookingCode: patched?.[0]?.booking_code ?? bookingCode,
     id: patched?.[0]?.id ?? bookingId,
     status: nextStatus,
-    columnsUpdated: cols,
-    supabaseHost: safeHost(supabaseUrl),
+    statusColumnUpdated: statusCol,
   });
 }
-
-

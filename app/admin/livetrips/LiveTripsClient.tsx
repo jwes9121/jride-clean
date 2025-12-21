@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 function safeText(v: any) {
   if (v == null) return "-";
@@ -355,7 +355,22 @@ export default function LiveTripsClient() {
     return allTrips.find((t) => normTripId(t) === selectedTripId) || null;
   }, [allTrips, selectedTripId]);
 
-  function pillClass(active: boolean) {
+  
+
+  const zoneStats = useMemo(() => {
+    const m: Record<string, { util: number; status: string }> = {};
+    (zones || []).forEach((z: any) => {
+      const key = String(z?.zone_name || z?.town || z?.zone || "").trim();
+      if (!key) return;
+      const lim = Number(z?.capacity_limit ?? 0);
+      const active = Number(z?.active_drivers ?? 0);
+      const util = lim > 0 ? active / lim : 0;
+      const status = String(z?.status || "OK");
+      m[key] = { util, status };
+    });
+    return m;
+  }, [zones]);
+function pillClass(active: boolean) {
     return [
       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
       active ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
@@ -387,7 +402,6 @@ export default function LiveTripsClient() {
     setLastAction("Status updated");
     await loadPage();
   }
-
   const showThresholds = `Stuck watcher thresholds: on_the_way ---- ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ---- ${STUCK_THRESHOLDS_MIN.on_trip} min`;
   return (
     <div className="p-4">
@@ -542,78 +556,90 @@ export default function LiveTripsClient() {
           </div>
 
           <div className="p-3 border-t">
-            <div className="text-xs text-gray-600 mb-2">Drivers: {driversDebug}</div>
+  <div className="text-xs text-gray-600 mb-2">Drivers: {driversDebug}</div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <TripWalletPanel trip={selectedTrip as any} />
-              
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <TripWalletPanel trip={selectedTrip as any} />
+    <TripLifecycleActions trip={selectedTrip as any} onAfterAction={() => { loadPage().catch(() => {}); }} />
+  </div>
 
-              <TripLifecycleActions trip={selectedTrip as any} onAfterAction={() => { loadPage().catch(() => {}); }} />
-            </div>
+  <div className="mt-3 rounded border p-3">
+    <div className="font-semibold mb-2">Assign driver (manual)</div>
 
-            <div className="mt-3 rounded border p-3">
-              <div className="font-semibold mb-2">Assign driver (manual)</div>
-              <div className="flex flex-wrap gap-2 items-center">
-                <select
-                  className="border rounded px-2 py-1 text-sm min-w-[320px]"
-                  value={manualDriverId}
-                  onChange={(e) => setManualDriverId(e.target.value)}
-                >
-                  <option value="">Select driver</option>
-                  {drivers.map((d, idx) => {
-                    const did = String(d.driver_id || "");
-                    const id = (d.driver_id || (d as any).id || (d as any).uuid || "") as string;
-const full = id ? String(id) : "";
-const short = full ? full.slice(0, 8) : String(idx + 1);
-const displayName = d.name ? String(d.name) : `Driver ${short}`;
-// Show FULL UUID (requested), keep town/status suffixes
-const label = formatDriverOptionLabel(d, idx);
-return <option key={did || idx} value={did}>{label}</option>;
-                  })}
-                </select>
+    <div className="flex flex-wrap gap-2 items-center">
+      <select
+        className="border rounded px-2 py-1 text-sm min-w-[320px]"
+        value={manualDriverId}
+        onChange={(e) => setManualDriverId(e.target.value)}
+      >
+        <option value="">Select driver</option>
+        {drivers.map((d, idx) => {
+          const value = String(d.driver_id || (d as any).id || (d as any).uuid || "");
+          const label = formatDriverOptionLabel(d, idx);
+          return (
+            <option key={value || idx} value={value}>
+              {label}
+            </option>
+          );
+        })}
+      </select>
 
-                <button
-                  className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
-                  disabled={!selectedTrip?.booking_code || !manualDriverId}
-                  onClick={() => {
-                    if (!selectedTrip?.booking_code) return;
-                    assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) => setLastAction(String(err?.message || err)));
-                  }}
-                >
-                  Assign
-                </button>
+      <button
+        className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
+        disabled={!selectedTrip?.booking_code || !manualDriverId}
+        onClick={() => {
+          if (!selectedTrip?.booking_code) return;
+          assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) =>
+            setLastAction(String(err?.message || err))
+          );
+        }}
+      >
+        Assign
+      </button>
 
-                <button
-                  className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
-                  onClick={() => { loadPage().catch(() => {}); loadDrivers().catch(() => {}); setLastAction("Refreshed"); }}
-                >
-                  Refresh now
-                </button>
-              </div>
+      <button
+        className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+        onClick={() => {
+          loadPage().catch(() => {});
+          loadDrivers().catch(() => {});
+          setLastAction("Refreshed");
+        }}
+      >
+        Refresh now
+      </button>
+    </div>
 
-              <div className="mt-2">
-                <SmartAutoAssignSuggestions trip={selectedTrip as any} drivers={drivers as any} />
-              </div>
-            </div>
-          </div>
+    <div className="mt-2">
+      <SmartAutoAssignSuggestions
+        trip={selectedTrip as any}
+        drivers={drivers as any}
+        zoneStats={zoneStats as any}
+        onAssign={(driverId: string) => {
+          const bc =
+            (selectedTrip as any)?.booking_code ||
+            (selectedTrip as any)?.bookingCode;
+          if (!bc) return;
+          return assignDriver(String(bc), String(driverId));
+        }}
+      />
+    </div>
+  </div>
+</div>
+
         </div>
 
-        <div className="rounded-lg border overflow-hidden h-[520px] min-h-[520px]">
-          <LiveTripsMap trips={visibleTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
+        <div className="rounded-lg border">
+          <div className="p-3 border-b flex items-center justify-between">
+            <div className="font-semibold">Map</div>
+            <div className="text-xs text-gray-600">
+              {selectedTrip?.booking_code ? `Selected: ${selectedTrip.booking_code}` : "No trip selected"}
+            </div>
+          </div>
+          <div className="p-2" style={{ minHeight: 520 }}>
+            <LiveTripsMap trips={allTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
