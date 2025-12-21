@@ -53,18 +53,6 @@ type TripRow = {
   created_at?: string | null;
 };
 
-
-
-function formatDriverOptionLabel(d: any, idx: number) {
-  const id = String(d?.driver_id || d?.id || d?.uuid || "");
-  const full = id || "";
-  const short = full ? full.slice(0, 8) : String(idx + 1);
-  const displayName = d?.name ? String(d.name) : `Driver ${short}`;
-  const town = d?.town ? String(d.town) : "";
-  const status = d?.status ? String(d.status) : "";
-  // ASCII-only separators (prevents mojibake)
-  return `${displayName} - ${full || short}${town ? ` - ${town}` : ""}${status ? ` - ${status}` : ""}`.trim();
-}
 type DriverRow = {
   driver_id?: string | null;
   name?: string | null;
@@ -115,23 +103,22 @@ function firstNonEmptyArray<T>(...arrs: T[][]): T[] {
 function parseTripsFromPageData(j: any): TripRow[] {
   if (!j) return [];
 
-  // Case 1: common wrapper arrays
-  const candidates = [j.trips, j.bookings, j.data];
+  // Preferred modern shapes
+  const candidates = [j.trips, j.bookings, j.data, Array.isArray(j) ? j : null];
   for (const c of candidates) {
     const arr = safeArray<TripRow>(c);
     if (arr.length) return arr;
   }
 
-  // Case 2: raw array
-  if (Array.isArray(j)) return j as TripRow[];
-
-  // Case 3: numeric-key object: { "0": {...}, "1": {...}, ..., zones: {...} }
+  // Legacy shape: bookings keyed by numeric strings: "0","1","2"... plus "zones"
   try {
-    const keys = Object.keys(j).filter((k) => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
-    if (keys.length) {
-      const out: TripRow[] = [];
-      for (const k of keys) out.push(j[k]);
-      return out;
+    const numericKeys = Object.keys(j).filter((k) => /^\d+$/.test(k));
+    if (numericKeys.length) {
+      const rows = numericKeys
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => (j as any)[k])
+        .filter(Boolean);
+      if (rows.length) return rows as TripRow[];
     }
   } catch {}
 
@@ -164,7 +151,15 @@ function computeIsProblem(t: TripRow): boolean {
   return isStuck || missingCoords;
 }
 
-type FilterKey = | "dispatch" | "pending" | "assigned" | "on_the_way" | "on_trip" | "completed" | "cancelled" | "problem";
+type FilterKey =
+  | "dispatch"
+  | "pending"
+  | "assigned"
+  | "on_the_way"
+  | "on_trip"
+  | "completed"
+  | "cancelled"
+  | "problem";
 
 export default function LiveTripsClient() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
@@ -384,11 +379,15 @@ export default function LiveTripsClient() {
 
   async function updateTripStatus(bookingCode: string, status: string) {
     if (!bookingCode || !status) return;
+    setLastAction("Updating status...");
+    optimisticStatus(bookingCode, status);
+    await postJson("/api/dispatch/status", { bookingCode, status });
     setLastAction("Status updated");
     await loadPage();
   }
 
   const showThresholds = `Stuck watcher thresholds: on_the_way ---- ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ---- ${STUCK_THRESHOLDS_MIN.on_trip} min`;
+
   return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-4">
@@ -484,7 +483,8 @@ export default function LiveTripsClient() {
                     const isSel = selectedTripId === id;
                     const isProblem = stuckTripIds.has(id);
                     const s = normStatus(t.status);
-  return (
+
+                    return (
                       <tr
                         key={id || Math.random()}
                         className={["border-b cursor-pointer", isSel ? "bg-blue-50" : "hover:bg-gray-50"].join(" ")}
@@ -546,9 +546,7 @@ export default function LiveTripsClient() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <TripWalletPanel trip={selectedTrip as any} />
-              
-
-              <TripLifecycleActions trip={selectedTrip as any} onAfterAction={() => { loadPage().catch(() => {}); }} />
+              <TripLifecycleActions trip={selectedTrip as any} />
             </div>
 
             <div className="mt-3 rounded border p-3">
@@ -562,13 +560,8 @@ export default function LiveTripsClient() {
                   <option value="">Select driver</option>
                   {drivers.map((d, idx) => {
                     const did = String(d.driver_id || "");
-                    const id = (d.driver_id || (d as any).id || (d as any).uuid || "") as string;
-const full = id ? String(id) : "";
-const short = full ? full.slice(0, 8) : String(idx + 1);
-const displayName = d.name ? String(d.name) : `Driver ${short}`;
-// Show FULL UUID (requested), keep town/status suffixes
-const label = formatDriverOptionLabel(d, idx);
-return <option key={did || idx} value={did}>{label}</option>;
+                    const label = `${d.name || "Driver"} ${d.town ? `----- ${d.town}` : ""} ${d.status ? `-- ${d.status}` : ""}`.trim();
+                    return <option key={did || idx} value={did}>{label}</option>;
                   })}
                 </select>
 
@@ -605,15 +598,6 @@ return <option key={did || idx} value={did}>{label}</option>;
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
 
 
 

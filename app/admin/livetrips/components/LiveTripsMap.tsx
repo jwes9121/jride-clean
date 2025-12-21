@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
@@ -115,9 +115,9 @@ function getAllCoords(trip: any): LngLatTuple[] {
  * Driver position priority:
  * 1) explicit driver_* fields
  * 2) from all coords:
- *    - 1 coord  => that coord
- *    - 2 coords => second coord
- *    - 3+       => second-to-last coord
+ * - 1 coord  => that coord
+ * - 2 coords => second coord
+ * - 3+       => second-to-last coord
  */
 function getDriverReal(trip: any): LngLatTuple | null {
   const explicit = getExplicitDriver(trip);
@@ -256,7 +256,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const alertedIdsRef = useRef<Set<string>>(new Set());
 
-  // ===== STUCK TRIP WATCHER (internal) =====
+  
+
+  // Audio source guard (prevents console 404 spam if file is missing)
+// ===== STUCK TRIP WATCHER (internal) =====
   type TrackState = {
     lastPos: LngLatTuple | null;
     lastMoveTime: number;
@@ -995,11 +998,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         )}
 
         {/* Hidden audio element */}
-        <audio
-          ref={alertAudioRef}
-          src="/audio/jride_audio.mp3"
-          preload="auto"
-        />
+        {null}
       </div>
 
       <style jsx global>{`
@@ -1023,4 +1022,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 };
 
 export default LiveTripsMap;
+
+
+
 
