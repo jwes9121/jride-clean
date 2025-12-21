@@ -788,7 +788,52 @@ const target: LngLatTuple | null =
     });
   }, [selectedTripId, trips]);
 
-  // ===== RENDER =====
+    // Fit map to all currently visible trips (no selection changes)
+  const fitAllTrips = () => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const coords: LngLatTuple[] = [];
+    for (let i = 0; i < visibleTrips.length; i++) {
+      const raw = visibleTrips[i] as any;
+
+      const driverReal = getDriverReal(raw);
+      const pickup = getPickup(raw);
+      const drop = getDropoff(raw);
+
+      if (pickup) coords.push(pickup);
+      if (drop) coords.push(drop);
+      if (driverReal) coords.push(driverReal);
+    }
+
+    if (coords.length === 0) return;
+
+    // De-duplicate roughly to reduce bounds noise
+    const seen = new Set<string>();
+    const uniq: LngLatTuple[] = [];
+    for (const c of coords) {
+      const key = `${c[0].toFixed(5)},${c[1].toFixed(5)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uniq.push(c);
+    }
+
+    if (uniq.length === 1) {
+      map.flyTo({ center: uniq[0], zoom: 14, speed: 1.2, essential: true });
+      return;
+    }
+
+    const b = new mapboxgl.LngLatBounds(uniq[0], uniq[0]);
+    for (const c of uniq) b.extend(c);
+
+    // Padding accounts for overlays (top KPIs, left zones, bottom panels, right dispatch)
+    map.fitBounds(b, {
+      padding: { top: 90, right: 360, bottom: 240, left: 90 },
+      maxZoom: 15,
+      duration: 800,
+    });
+  };
+// ===== RENDER =====
   return (
     <>
       <div className="relative h-full w-full">
@@ -842,13 +887,23 @@ const target: LngLatTuple | null =
             <span className="font-semibold text-slate-800">
               Zones workload
             </span>
-            <button
-              type="button"
-              onClick={() => setZoneFilter("all")}
-              className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
-            >
-              Reset
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={fitAllTrips}
+                className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
+                title="Fit map to all visible trips"
+              >
+                Show all
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoneFilter("all")}
+                className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </button>
+            </div>
           </div>
           {zoneStats.length === 0 ? (
             <div className="text-[11px] text-slate-500">
@@ -1057,6 +1112,7 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
 
 
 
