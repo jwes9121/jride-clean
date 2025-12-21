@@ -1,167 +1,153 @@
-﻿"use client";
+"use client";
 
-import React, { useMemo, useState } from "react";
-
-type SelectedTrip = {
-  id: string;
-  booking_code?: string | null;
-  status?: string | null;
-  driver_id?: string | null;
-  driver_name?: string | null;
-  driver_phone?: string | null;
-  passenger_name?: string | null;
-  town?: string | null;
-  is_emergency?: boolean;
-};
+import React, { useEffect, useState } from "react";
 
 type Props = {
-  selectedTrip: SelectedTrip | null;
+  bookingCode?: string | null;
+  selectedTrip?: any | null;
+
+  // Passed by DriverDetailsModal (optional)
   dispatcherName?: string;
+
+  assignedDriverId?: string | null;
+  canAssign?: boolean;
+
+  // Optional to avoid breaking callers that don't wire manual assign here
+  onAssign?: (driverId: string) => Promise<void>;
+
+  onNudge?: () => Promise<void>;
+  onEmergency?: () => Promise<void>;
 };
 
-async function postJson(url: string, body: any) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const code = j?.code || "REQUEST_FAILED";
-    const msg = j?.message || code;
-    const err: any = new Error(msg);
-    err.code = code;
-    throw err;
-  }
-  return j;
-}
-
-export default function DispatchActionPanel({ selectedTrip }: Props) {
-  const [busy, setBusy] = useState<string>(""); // "", "call", "nudge", "reassign", "emergency"
+export default function DispatchActionPanel({
+  bookingCode,
+  selectedTrip,
+  dispatcherName,
+  assignedDriverId,
+  canAssign = true,
+  onAssign,
+  onNudge,
+  onEmergency,
+}: Props) {
   const [msg, setMsg] = useState<string>("");
-  function explain(code?: string) {
-    switch (code) {
-      case "DRIVER_BUSY":
-        return "Driver is already on an active trip.";
-      case "ALREADY_ASSIGNED":
-        return "This trip already has a driver.";
-      case "NOT_ASSIGNABLE":
-        return "Trip status does not allow assignment.";
-      case "MISSING_BOOKING":
-        return "Trip is missing booking reference.";
-      case "MISSING_DRIVER":
-        return "No driver selected.";
-      case "NO_ROWS_UPDATED":
-        return "Assignment was blocked by another update.";
-      default:
-        return null;
-    }
-  }
+  const [audit, setAudit] = useState<any[]>([]);
 
-
-  const bookingCode = useMemo(() => {
-    const c = selectedTrip?.booking_code ? String(selectedTrip.booking_code) : "";
-    return c.trim();
-  }, [selectedTrip]);
-
-  
-
-  const bookingId = useMemo(() => {
-    const id = selectedTrip?.id ? String(selectedTrip.id) : "";
-    return id.trim();
-  }, [selectedTrip]);const phone = useMemo(() => {
-    const p = selectedTrip?.driver_phone ? String(selectedTrip.driver_phone) : "";
-    return p.trim();
-  }, [selectedTrip]);
-
-  const disabledAll = !selectedTrip || (!(bookingId || bookingCode)) || !!busy;
-
-  const btn =
-    "border border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-3 py-2 text-[12px]";
-
-  async function doCall() {
-    setMsg("");
-    if (!phone) {
-      setMsg("No driver phone on this trip.");
+  // ===== Fetch dispatch audit history =====
+  useEffect(() => {
+    if (!bookingCode) {
+      setAudit([]);
       return;
     }
-    setBusy("call");
-    try {
-      window.open(`tel:${phone}`, "_self");
-      setMsg("Opening dialerâ€¦");
-    } finally {
-      setBusy("");
-    }
+
+    // Using your actual route path that is compiling: /api/admin/audit
+    fetch(`/api/admin/audit?bookingCode=${bookingCode}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.ok) setAudit(j.data || []);
+        else setAudit([]);
+      })
+      .catch(() => setAudit([]));
+  }, [bookingCode]);
+
+  if (!selectedTrip) {
+    return (
+      <div className="p-3 text-xs text-slate-500">
+        Select a trip to see dispatch actions.
+      </div>
+    );
   }
 
-  async function doNudge() {
-    setMsg("");
-    if (!bookingCode) return;
-    setBusy("nudge");
-    try {
-      await postJson("/api/dispatch/nudge", { bookingId, bookingCode });
-      setMsg("Nudge sent (server acknowledged).");
-    } catch (e: any) {
-      setMsg(explain(e?.code) || `Nudge failed: ${e?.message || "UNKNOWN_ERROR"}`);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function doEmergency() {
-    setMsg("");
-    if (!bookingCode) return;
-    setBusy("emergency");
-    try {
-      await postJson("/api/dispatch/emergency", { bookingId, bookingCode });
-      setMsg("Emergency sent (server acknowledged).");
-    } catch (e: any) {
-      setMsg(explain(e?.code) || `Emergency failed: ${e?.message || "UNKNOWN_ERROR"}`);
-    } finally {
-      setBusy("");
-    }
-  }
-
-  function doReassign() {
-    setMsg("");
-    setBusy("reassign");
-    try {
-      // No DB assumptions here. Just help the dispatcher get to the manual assign block.
-      const el =
-        document.querySelector('[data-jride="assign-manual"]') ||
-        document.querySelector("select") ||
-        document.querySelector("button");
-      if (el && "scrollIntoView" in el) {
-        // @ts-ignore
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      setMsg("Scroll to Assign driver (manual) on the left to reassign.");
-    } finally {
-      setBusy("");
-    }
-  }
+  const assignDisabled = !canAssign || !!assignedDriverId || !onAssign;
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-100 space-y-2">
-      <div className="text-[10px] tracking-wide text-slate-300">DISPATCH ACTIONS</div>
+    <div className="space-y-2 p-3 text-xs">
+      {/* ===== Status ===== */}
+      {msg && (
+        <div className="rounded border border-slate-200 bg-slate-50 p-2 text-slate-700">
+          {msg}
+        </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <button className={btn} onClick={doCall} disabled={disabledAll}>
-          {busy === "call" ? "Callingâ€¦" : "Call"}
-        </button>
-        <button className={btn} onClick={doNudge} disabled={disabledAll}>
-          {busy === "nudge" ? "Sendingâ€¦" : "Nudge"}
-        </button>
-        <button className={btn} onClick={doReassign} disabled={disabledAll}>
-          Reassign
-        </button>
-        <button className={btn} onClick={doEmergency} disabled={disabledAll}>
-          {busy === "emergency" ? "Sendingâ€¦" : "Emergency"}
-        </button>
+      {/* ===== Dispatch actions ===== */}
+      <div className="rounded border p-2">
+        <div className="mb-1 font-semibold text-slate-600">Dispatch actions</div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            disabled={assignDisabled}
+            onClick={() => {
+              setMsg("");
+              // This panel doesn't pick drivers; suggestions/parent handle actual assignment.
+              // We keep it for compatibility + future wiring.
+              if (!onAssign) {
+                setMsg("Assign is not wired in this panel (use suggestions).");
+              }
+            }}
+            className="rounded bg-slate-200 px-2 py-1 text-slate-700 disabled:opacity-40"
+            title={
+              dispatcherName
+                ? `Dispatcher: ${dispatcherName}`
+                : !onAssign
+                ? "Assign not wired here"
+                : undefined
+            }
+          >
+            Assign via suggestions
+          </button>
+
+          {onNudge && (
+            <button
+              onClick={async () => {
+                try {
+                  setMsg("");
+                  await onNudge();
+                } catch (e: any) {
+                  setMsg(e?.message || "Nudge failed");
+                }
+              }}
+              className="rounded bg-slate-200 px-2 py-1 text-slate-700"
+            >
+              Nudge
+            </button>
+          )}
+
+          {onEmergency && (
+            <button
+              onClick={async () => {
+                try {
+                  setMsg("");
+                  await onEmergency();
+                } catch (e: any) {
+                  setMsg(e?.message || "Emergency failed");
+                }
+              }}
+              className="rounded bg-rose-600 px-2 py-1 text-white"
+            >
+              Emergency
+            </button>
+          )}
+        </div>
       </div>
 
-      {msg ? <div className="text-[10px] text-slate-300">{msg}</div> : null}
+      {/* ===== Dispatch audit history ===== */}
+      {audit.length > 0 && (
+        <div className="rounded border bg-slate-50 p-2">
+          <div className="mb-1 font-semibold text-slate-600">
+            Recent dispatch activity
+          </div>
+
+          <div className="space-y-1">
+            {audit.map((a, i) => (
+              <div key={i} className="flex justify-between">
+                <span className={a.ok ? "text-emerald-600" : "text-rose-600"}>
+                  {a.ok ? "OK" : a.code}
+                </span>
+                <span className="opacity-70">{a.actor || "unknown"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
