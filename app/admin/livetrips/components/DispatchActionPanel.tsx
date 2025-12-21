@@ -27,8 +27,11 @@ async function postJson(url: string, body: any) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const msg = (j && (j.error || j.message)) || "REQUEST_FAILED";
-    throw new Error(msg);
+    const code = j?.code || "REQUEST_FAILED";
+    const msg = j?.message || code;
+    const err: any = new Error(msg);
+    err.code = code;
+    throw err;
   }
   return j;
 }
@@ -36,6 +39,25 @@ async function postJson(url: string, body: any) {
 export default function DispatchActionPanel({ selectedTrip }: Props) {
   const [busy, setBusy] = useState<string>(""); // "", "call", "nudge", "reassign", "emergency"
   const [msg, setMsg] = useState<string>("");
+  function explain(code?: string) {
+    switch (code) {
+      case "DRIVER_BUSY":
+        return "Driver is already on an active trip.";
+      case "ALREADY_ASSIGNED":
+        return "This trip already has a driver.";
+      case "NOT_ASSIGNABLE":
+        return "Trip status does not allow assignment.";
+      case "MISSING_BOOKING":
+        return "Trip is missing booking reference.";
+      case "MISSING_DRIVER":
+        return "No driver selected.";
+      case "NO_ROWS_UPDATED":
+        return "Assignment was blocked by another update.";
+      default:
+        return null;
+    }
+  }
+
 
   const bookingCode = useMemo(() => {
     const c = selectedTrip?.booking_code ? String(selectedTrip.booking_code) : "";
@@ -80,7 +102,7 @@ export default function DispatchActionPanel({ selectedTrip }: Props) {
       await postJson("/api/dispatch/nudge", { bookingId, bookingCode });
       setMsg("Nudge sent (server acknowledged).");
     } catch (e: any) {
-      setMsg(`Nudge failed: ${e?.message || "UNKNOWN_ERROR"}`);
+      setMsg(explain(e?.code) || `Nudge failed: ${e?.message || "UNKNOWN_ERROR"}`);
     } finally {
       setBusy("");
     }
@@ -94,7 +116,7 @@ export default function DispatchActionPanel({ selectedTrip }: Props) {
       await postJson("/api/dispatch/emergency", { bookingId, bookingCode });
       setMsg("Emergency sent (server acknowledged).");
     } catch (e: any) {
-      setMsg(`Emergency failed: ${e?.message || "UNKNOWN_ERROR"}`);
+      setMsg(explain(e?.code) || `Emergency failed: ${e?.message || "UNKNOWN_ERROR"}`);
     } finally {
       setBusy("");
     }
@@ -142,3 +164,4 @@ export default function DispatchActionPanel({ selectedTrip }: Props) {
     </div>
   );
 }
+
