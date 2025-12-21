@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 
@@ -156,6 +156,7 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
 
           {/* Dispatch actions panel */}
           <DispatchActionPanel
+            bookingCode={selectedTrip?.booking_code ?? undefined}
             selectedTrip={selectedTrip}
             dispatcherName={dispatcherName ?? undefined}/>
 

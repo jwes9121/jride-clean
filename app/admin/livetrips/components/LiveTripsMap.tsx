@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1045,6 +1045,7 @@ const target: LngLatTuple | null =
             </div>
 
             <DispatchActionPanel
+              bookingCode={selectedOverview?.bookingCode ?? selectedOverview?.id ?? undefined}
               selectedTrip={
                 selectedTrip && selectedTrip.id
                   ? {
