@@ -637,7 +637,7 @@ function pillClass(active: boolean) {
               {selectedTrip?.booking_code ? `Selected: ${selectedTrip.booking_code}` : "No trip selected"}
             </div>
           </div>
-          <div className="p-2" style={{ minHeight: 520 }}>
+          <div className="p-2 min-h-[520px] h-[520px]" style={{ minHeight: 520 }}>
             <LiveTripsMap trips={allTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
           </div>
         </div>
