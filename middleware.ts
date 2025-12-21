@@ -1,23 +1,41 @@
-﻿import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 /**
- * DEV-ONLY MIDDLEWARE
+ * JRIDE_MW_SAFE_V1
+ * Goal: NEVER block API routes that LiveTrips depends on.
+ * - allow /api/dispatch/* (status/assign/emergency)
+ * - allow /api/admin/* (page-data, driver_locations, drivers, etc.)
+ * - allow next static assets + favicon
  *
- * This middleware bypasses all auth checks so that
- * routes like /admin/livetripss can be loaded without
- * Google sign-in while you debug locally.
- *
- * DO NOT deploy this version to production.
+ * If you want to re-enable strict auth later, do it AFTER dispatch hardening is stable.
  */
+export function middleware(req: NextRequest) {
+  const p = req.nextUrl.pathname;
 
-export function middleware(request: NextRequest) {
-  // Just let every request through
+  // Always allow these (prevent 403 loops / broken buttons)
+  if (
+    p.startsWith("/api/dispatch/") ||
+    p.startsWith("/api/admin/") ||
+    p.startsWith("/api/auth/")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Allow Next.js internals & files
+  if (
+    p.startsWith("/_next/") ||
+    p === "/favicon.ico" ||
+    /\.[a-zA-Z0-9]+$/.test(p)
+  ) {
+    return NextResponse.next();
+  }
+
+  // For now, do not enforce anything here.
+  // (Keeps dev stable while we harden dispatch routes.)
   return NextResponse.next();
 }
 
-// Apply to everything except Next.js static assets & api auth callbacks if you want
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
-

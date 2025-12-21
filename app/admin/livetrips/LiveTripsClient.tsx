@@ -1,11 +1,4 @@
-"use client";
-
-function safeText(v: any) {
-  if (v == null) return "-";
-  const s = String(v);
-  return s.replace(/[^\x00-\x7F]/g, "-");
-}
-
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -399,8 +392,17 @@ function pillClass(active: boolean) {
 
   async function updateTripStatus(bookingCode: string, status: string) {
     if (!bookingCode || !status) return;
-    setLastAction("Status updated");
-    await loadPage();
+    try {
+      setLastAction("Updating status...");
+      await postJson("/api/dispatch/status", { bookingCode, status });
+      setLastAction("Status updated");
+    } catch (e: any) {
+      setLastAction("Status update FAILED: " + String(e?.message || e));
+      throw e;
+    } finally {
+      await loadPage().catch(() => {});
+      await loadDrivers().catch(() => {});
+    }
   }
   const showThresholds = `Stuck watcher thresholds: on_the_way ---- ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ---- ${STUCK_THRESHOLDS_MIN.on_trip} min`;
   return (

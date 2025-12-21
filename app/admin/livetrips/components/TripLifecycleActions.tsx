@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useMemo, useState } from "react";
 
@@ -113,3 +113,4 @@ export default function TripLifecycleActions({ trip, onAfterAction }: Props) {
     </div>
   );
 }
+

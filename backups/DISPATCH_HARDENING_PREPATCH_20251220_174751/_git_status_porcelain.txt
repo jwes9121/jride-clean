@@ -1,0 +1,321 @@
+﻿ M app/admin/audit/page.tsx
+ M app/admin/drivers/page.tsx
+ M app/admin/towns/page.tsx
+ M app/api/admin/driver-locations/route.ts
+ M app/api/admin/livetrips/page-data/route.ts
+ M app/api/admin/livetrips/route.ts
+ M app/api/bookings/route.ts
+ M app/api/dispatch/assign/route.ts
+ M app/api/dispatch/status/route.ts
+ M app/api/driver_locations/route.ts
+ M app/callback-info/page.tsx
+ M app/components/LocationInput.tsx
+ M app/dispatch/BookingDashboard.tsx
+ M app/dispatch/BookingForm.tsx
+ M app/dispatch/DispatcherAuth.tsx
+ M app/dispatcher/page.tsx
+ M app/driver/post-trip/DriverPostTripClient.tsx
+ M app/driver/post-trip/page.tsx
+ M app/landing/page.tsx
+ M app/offline/page.tsx
+ M app/plain/page.tsx
+ M app/profile/page.tsx
+ M app/request/confirm-fare/ConfirmFareClient.tsx
+ M app/request/passenger-count/page.tsx
+ M app/tricycle-rideshare/page.tsx
+ M app/wallet/page.tsx
+ M app/wallet/topup/page.tsx
+ M app/website/WebsiteAuth.tsx
+ M backups/FIX_DUP_STOPFOLLOW_20251214_190050/LiveTripsMap.tsx
+ M backups/FIX_MAPREADY_FOLLOW_20251214_190841/LiveTripsMap.tsx
+ M backups/FIX_MAPREADY_NOT_DEFINED_20251214_191732/LiveTripsMap.tsx
+ M backups/FIX_SELECTEDTRIPID_20251214_190508/LiveTripsMap.tsx
+ M backups/FIX_STOPFOLLOW_DUP_20251214_190211/LiveTripsMap.tsx
+ M backups/FOLLOW_BTN_ONLY_20251214_185800/LiveTripsMap.tsx
+ M backups/FOLLOW_DRIVER_ONLY_ROBUST_20251214_185545/LiveTripsMap.tsx
+ M backups/RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551/livetrips_current/assign/page.tsx
+ M backups/RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808/livetrips_current/assign/page.tsx
+ M backups/RESTORE_LIVETRIPS_20251215_023821/livetrips_current/assign/page.tsx
+ M components/AddressTaggingModal.tsx
+ M components/AuthModal.tsx
+ M components/BottomNavigation.tsx
+ M components/DeliveryStatusModal.tsx
+ M components/DeliveryTracker.tsx
+ M components/DispatcherControlPanel.tsx
+ M components/DispatcherPerformanceOverview.tsx
+ M components/DistanceSurchargeModal.tsx
+ M components/DriverFareModal.tsx
+ M components/DriverFilterModal.tsx
+ M components/DriverPerformanceCard.tsx
+ M components/DriverWalletLedger.tsx
+ M components/ErrandStatusModal.tsx
+ M components/FareApprovalModal.tsx
+ M components/FareDispatcherReview.tsx
+ M components/FreeRideNotification.tsx
+ M components/Header.tsx
+ M components/IncentiveTracker.tsx
+ M components/LandmarkApprovalModal.tsx
+ M components/LandmarkSelector.tsx
+ M components/LeafletMap.tsx
+ M components/ManualTripModal.tsx
+ M components/MapPicker.tsx
+ M components/MapboxMap.tsx
+ M components/PassengerCountVerificationModal.tsx
+ M components/PaymentMethodModal.tsx
+ M components/PenaltyNotificationModal.tsx
+ M components/ReferralSection.tsx
+ M components/RideShareConfirmationModal.tsx
+ M components/RideShareModal.tsx
+ M components/StarRating.tsx
+ M components/VendorConfirmationModal.tsx
+ M components/WalletSection.tsx
+ M components/components/AddressTaggingModal.tsx
+ M components/components/AuthModal.tsx
+ M components/components/BottomNavigation.tsx
+ M components/components/DeliveryStatusModal.tsx
+ M components/components/DeliveryTracker.tsx
+ M components/components/DispatcherControlPanel.tsx
+ M components/components/DispatcherPerformanceOverview.tsx
+ M components/components/DistanceSurchargeModal.tsx
+ M components/components/DriverFareModal.tsx
+ M components/components/DriverFilterModal.tsx
+ M components/components/DriverPerformanceCard.tsx
+ M components/components/DriverWalletLedger.tsx
+ M components/components/ErrandStatusModal.tsx
+ M components/components/FareApprovalModal.tsx
+ M components/components/FareDispatcherReview.tsx
+ M components/components/FreeRideNotification.tsx
+ M components/components/Header.tsx
+ M components/components/IncentiveTracker.tsx
+ M components/components/LandmarkApprovalModal.tsx
+ M components/components/LandmarkSelector.tsx
+ M components/components/LeafletMap.tsx
+ M components/components/ManualTripModal.tsx
+ M components/components/MapPicker.tsx
+ M components/components/PassengerCountVerificationModal.tsx
+ M components/components/PaymentMethodModal.tsx
+ M components/components/PenaltyNotificationModal.tsx
+ M components/components/ReferralSection.tsx
+ M components/components/RideShareConfirmationModal.tsx
+ M components/components/RideShareModal.tsx
+ M components/components/StarRating.tsx
+ M components/components/VendorConfirmationModal.tsx
+ M components/components/WalletSection.tsx
+ M lib/fare.ts
+ M request/confirm-fare/page.tsx
+ M request/passenger-count/page.tsx
+?? (
+?? ({
+?? ({}
+?? ({}))
+?? FIX-DISPATCH-STATUS-CLEARPROBLEM-NOREGEX.ps1
+?? FIX-DISPATCH-STATUS-ROUTE.ps1
+?? FIX-LIVETRIPS-CLIENT-REFRESH.ps1
+?? FIX-LIVETRIPS-FUNCTIONALITY.ps1
+?? FIX-LIVETRIPS-LEFTSYNC.ps1
+?? FIX-LIVETRIPS-RECOVER.ps1
+?? FIX-LIVETRIPS-SYNC-AND-PANEL.ps1
+?? FIX-LIVETRIPS-SYNC.ps1
+?? FIX-LIVETRIPS-UI-SYNC.ps1
+?? FIX-STATUS-ROUTE-MISSING-IF.ps1
+?? JRIDE-Fix-LiveTrips-Actions.ps1
+?? JRIDE-ScanAllFeeds-NonAscii.ps1
+?? JRIDE-ScanMojibake-AutoPort.ps1
+?? JRIDE-ScanMojibake-SAFE.ps1
+?? JRIDE-ScanMojibake.ps1
+?? JRide-Fix-Dispatch-Actions.ps1
+?? JRide-Step-OnTheWay-StartTrip-Test.ps1
+?? JRide-Step5-Earnings-Detect.ps1
+?? JRide-Test-StatusRPC-TESTERRAND.ps1
+?? JRide-Test-StatusRPC.ps1
+?? PATCH-FindAndFix-StuckThresholdText-ASCII.ps1
+?? PATCH-FindAndFix-StuckThresholdText.ps1
+?? PATCH-LiveTrips-RenderSafe-FIX.ps1
+?? PATCH-LiveTrips-RenderSafe.ps1
+?? PATCH-LiveTripsClient-MojibakeClean.ps1
+?? PATCH-LiveTripsMap-StuckText.ps1
+?? PATCH-StuckThresholdText-FIXED.ps1
+?? RESTORE-LIVETRIPS-FROM-GOOD.ps1
+?? RESTORE-LIVETRIPS-WORKING.ps1
+?? _debug_route_dumps/
+?? app/admin/audit/page.tsx.bak_20251220_025230
+?? app/admin/drivers/page.tsx.bak_20251220_025230
+?? app/admin/towns/page.tsx.bak_20251220_025230
+?? app/api/admin/assignment-log/
+?? app/api/admin/driver-locations/route.ts.bak-20251219-133518
+?? app/api/admin/driver_locations/
+?? app/api/admin/livetrips/page-data/route.ts.bak-20251219-133518
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251217_230446
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251218_040008
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251218_042708
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251218_050708
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251218_095351
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251218_140335
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251218_142738
+?? app/api/admin/livetrips/page-data/route.ts.bak_20251220_001842
+?? app/api/bookings/route.ts.bak_20251220_025230
+?? app/api/dispatch/assign/route.ts.bak_20251217_230637
+?? app/api/dispatch/assign/route.ts.bak_20251218_033509
+?? app/api/dispatch/assign/route.ts.bak_20251218_041354
+?? app/api/dispatch/assign/route.ts.bak_20251219_232924
+?? app/api/dispatch/assign/route.ts.bak_20251220_085309
+?? app/api/dispatch/assign/route.ts.bak_20251220_085653
+?? app/api/dispatch/emergency/
+?? app/api/dispatch/nudge/
+?? app/api/dispatch/status/route.ts.bak-20251219-082754
+?? app/api/dispatch/status/route.ts.bak-20251219-083009
+?? app/api/dispatch/status/route.ts.bak-20251219-115004
+?? app/api/dispatch/status/route.ts.bak-20251219-133518
+?? app/api/dispatch/status/route.ts.bak-20251219-152108
+?? app/api/dispatch/status/route.ts.bak-fixif-20251219-083407
+?? app/api/dispatch/status/route.ts.bak-fixif-20251219-083511
+?? app/api/dispatch/status/route.ts.bak-fixif-20251219-091604
+?? app/api/dispatch/status/route.ts.bak-linefix-20251219-092257
+?? app/api/dispatch/status/route.ts.bak-reset-20251219-092613
+?? app/api/dispatch/status/route.ts.bak_20251217_230805
+?? app/api/dispatch/status/route.ts.bak_20251218_033459
+?? app/api/dispatch/status/route.ts.bak_20251218_041406
+?? app/api/dispatch/status/route.ts.bak_20251218_150358
+?? app/api/dispatch/status/route.ts.bak_20251218_151525
+?? app/api/dispatch/status/route.ts.bak_20251219_232924
+?? app/api/driver_locations/route.ts.bak_20251220_074822
+?? app/callback-info/page.tsx.bak_20251220_025230
+?? app/components/LocationInput.tsx.bak_20251220_025230
+?? app/dispatch/BookingDashboard.tsx.bak_20251220_025230
+?? app/dispatch/BookingForm.tsx.bak_20251220_025230
+?? app/dispatch/DispatcherAuth.tsx.bak_20251220_025230
+?? app/dispatcher/page.tsx.bak_20251220_025230
+?? app/driver/post-trip/DriverPostTripClient.tsx.bak_20251220_025230
+?? app/driver/post-trip/page.tsx.bak_20251220_025230
+?? app/landing/page.tsx.bak_20251220_025230
+?? app/offline/page.tsx.bak_20251220_025230
+?? app/plain/page.tsx.bak_20251220_025230
+?? app/profile/page.tsx.bak_20251220_025230
+?? app/request/confirm-fare/ConfirmFareClient.tsx.bak_20251220_025230
+?? app/request/passenger-count/page.tsx.bak_20251220_025230
+?? app/tricycle-rideshare/page.tsx.bak_20251220_025230
+?? app/wallet/page.tsx.bak_20251220_025230
+?? app/wallet/topup/page.tsx.bak_20251220_025230
+?? app/website/WebsiteAuth.tsx.bak_20251220_025230
+?? backups/DISPATCH_HARDENING_PREPATCH_20251220_174751/
+?? backups/DISPATCH_PANEL_RESET_20251220_092226/
+?? backups/FIX_DUP_STOPFOLLOW_20251214_190050/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/FIX_MAPREADY_FOLLOW_20251214_190841/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/FIX_MAPREADY_NOT_DEFINED_20251214_191732/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/FIX_SELECTEDTRIPID_20251214_190508/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/FIX_STOPFOLLOW_DUP_20251214_190211/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/FOLLOW_BTN_ONLY_20251214_185800/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/FOLLOW_DRIVER_ONLY_ROBUST_20251214_185545/LiveTripsMap.tsx.bak_20251220_025230
+?? backups/LIVETRIPS_ABC_20251216_100804/
+?? backups/LIVETRIPS_BOOKINGID_MOJIBAKE_FIX_20251220_093751/
+?? backups/LIVETRIPS_BUTTONS_FIX_20251220_093059/
+?? backups/LIVETRIPS_CLIENT_RENDER_SANITIZE_20251220_163006.tsx
+?? backups/LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307/
+?? backups/LIVETRIPS_IMPORT_FIX_20251220_091143/
+?? backups/LIVETRIPS_MOJIBAKE_FIX_20251220_091717/
+?? backups/LIVETRIPS_PAGEDATA_LATIN1FIX_20251220_095232/
+?? backups/LIVETRIPS_PAGEDATA_LATIN1FIX_20251220_095251/
+?? backups/LIVETRIPS_PAGEDATA_SANITIZE_20251220_094420/
+?? backups/LIVETRIPS_PATCH_20251220_090840/
+?? backups/LIVETRIPS_RESTORE_20251219-140303/
+?? backups/LIVETRIPS_STUCKTEXT_PATCH_20251220_172337/
+?? backups/LIVETRIPS_STUCKTEXT_PATCH_FIXED_20251220_173047/
+?? backups/LiveTripsClient_MOJIBAKE_CLEAN_20251220_165041.tsx
+?? backups/LiveTripsClient_RENDER_SAFE_20251220_163531.tsx
+?? backups/LiveTripsClient_RENDER_SAFE_FIX_20251220_163705.tsx
+?? backups/LiveTripsMap_STUCK_TEXT_FIX_20251220_170947.tsx
+?? backups/PATCH_AdminOpsPanel_20251215_125146/
+?? backups/RECOVER_LIVETRIPS_20251219-125448/
+?? backups/RESTORE_ADV_LIVETRIPS_20251219-125936/
+?? backups/RESTORE_ADV_LIVETRIPS_20251219-130226/
+?? backups/RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551/livetrips_current/assign/page.tsx.bak_20251220_025230
+?? backups/RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808/livetrips_current/assign/page.tsx.bak_20251220_025230
+?? backups/RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739/
+?? backups/RESTORE_BASELINE_LIVETRIPS_20251216_074339/
+?? backups/RESTORE_DISPATCH_FLOW_UI_20251215_095748/
+?? backups/RESTORE_LIVETRIPSCLIENT_20251215_105824/
+?? backups/RESTORE_LIVETRIPS_20251215_023821/livetrips_current/assign/page.tsx.bak_20251220_025230
+?? backups/RESTORE_LIVETRIPS_e22abbe_20251219-130415/
+?? backups/_tsx_quarantine/
+?? clearInterval(t)
+?? components/AddressTaggingModal.tsx.bak_20251220_025230
+?? components/AuthModal.tsx.bak_20251220_025230
+?? components/BottomNavigation.tsx.bak_20251220_025230
+?? components/DeliveryStatusModal.tsx.bak_20251220_025230
+?? components/DeliveryTracker.tsx.bak_20251220_025230
+?? components/DispatcherControlPanel.tsx.bak_20251220_025230
+?? components/DispatcherPerformanceOverview.tsx.bak_20251220_025230
+?? components/DistanceSurchargeModal.tsx.bak_20251220_025230
+?? components/DriverFareModal.tsx.bak_20251220_025230
+?? components/DriverFilterModal.tsx.bak_20251220_025230
+?? components/DriverPerformanceCard.tsx.bak_20251220_025230
+?? components/DriverWalletLedger.tsx.bak_20251220_025230
+?? components/ErrandStatusModal.tsx.bak_20251220_025230
+?? components/FareApprovalModal.tsx.bak_20251220_025230
+?? components/FareDispatcherReview.tsx.bak_20251220_025230
+?? components/FreeRideNotification.tsx.bak_20251220_025230
+?? components/Header.tsx.bak_20251220_025230
+?? components/IncentiveTracker.tsx.bak_20251220_025230
+?? components/LandmarkApprovalModal.tsx.bak_20251220_025230
+?? components/LandmarkSelector.tsx.bak_20251220_025230
+?? components/LeafletMap.tsx.bak_20251220_025230
+?? components/ManualTripModal.tsx.bak_20251220_025230
+?? components/MapPicker.tsx.bak_20251220_025230
+?? components/MapboxMap.tsx.bak_20251220_025230
+?? components/PassengerCountVerificationModal.tsx.bak_20251220_025230
+?? components/PaymentMethodModal.tsx.bak_20251220_025230
+?? components/PenaltyNotificationModal.tsx.bak_20251220_025230
+?? components/ReferralSection.tsx.bak_20251220_025230
+?? components/RideShareConfirmationModal.tsx.bak_20251220_025230
+?? components/RideShareModal.tsx.bak_20251220_025230
+?? components/StarRating.tsx.bak_20251220_025230
+?? components/VendorConfirmationModal.tsx.bak_20251220_025230
+?? components/WalletSection.tsx.bak_20251220_025230
+?? components/components/AddressTaggingModal.tsx.bak_20251220_025230
+?? components/components/AuthModal.tsx.bak_20251220_025230
+?? components/components/BottomNavigation.tsx.bak_20251220_025230
+?? components/components/DeliveryStatusModal.tsx.bak_20251220_025230
+?? components/components/DeliveryTracker.tsx.bak_20251220_025230
+?? components/components/DispatcherControlPanel.tsx.bak_20251220_025230
+?? components/components/DispatcherPerformanceOverview.tsx.bak_20251220_025230
+?? components/components/DistanceSurchargeModal.tsx.bak_20251220_025230
+?? components/components/DriverFareModal.tsx.bak_20251220_025230
+?? components/components/DriverFilterModal.tsx.bak_20251220_025230
+?? components/components/DriverPerformanceCard.tsx.bak_20251220_025230
+?? components/components/DriverWalletLedger.tsx.bak_20251220_025230
+?? components/components/ErrandStatusModal.tsx.bak_20251220_025230
+?? components/components/FareApprovalModal.tsx.bak_20251220_025230
+?? components/components/FareDispatcherReview.tsx.bak_20251220_025230
+?? components/components/FreeRideNotification.tsx.bak_20251220_025230
+?? components/components/Header.tsx.bak_20251220_025230
+?? components/components/IncentiveTracker.tsx.bak_20251220_025230
+?? components/components/LandmarkApprovalModal.tsx.bak_20251220_025230
+?? components/components/LandmarkSelector.tsx.bak_20251220_025230
+?? components/components/LeafletMap.tsx.bak_20251220_025230
+?? components/components/ManualTripModal.tsx.bak_20251220_025230
+?? components/components/MapPicker.tsx.bak_20251220_025230
+?? components/components/PassengerCountVerificationModal.tsx.bak_20251220_025230
+?? components/components/PaymentMethodModal.tsx.bak_20251220_025230
+?? components/components/PenaltyNotificationModal.tsx.bak_20251220_025230
+?? components/components/ReferralSection.tsx.bak_20251220_025230
+?? components/components/RideShareConfirmationModal.tsx.bak_20251220_025230
+?? components/components/RideShareModal.tsx.bak_20251220_025230
+?? components/components/StarRating.tsx.bak_20251220_025230
+?? components/components/VendorConfirmationModal.tsx.bak_20251220_025230
+?? components/components/WalletSection.tsx.bak_20251220_025230
+?? fix-livetrips-selectedOverview.ps1
+?? fix-mojibake.ps1
+?? lib/fare.ts.bak_20251220_025230
+?? normStatus(t.status)
+?? normTripId(t)
+?? request/confirm-fare/page.tsx.bak_20251220_025230
+?? request/passenger-count/page.tsx.bak_20251220_025230
+?? setFilterAndFocus(problem)}
+?? setManualDriverId(e.target.value)}
+?? setSelectedTripId(id)}
+?? stuckTripIds.has(normTripId(t)))
+?? tmp_page_data_debug.json
+?? tools/
+?? window.removeEventListener(JRIDE_LIVETRIPS_EVT
+?? {
+?? {})

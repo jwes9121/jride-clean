@@ -569,7 +569,15 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
     mapRef.current = map;
 
+    // Fix: map can render blank if initialized before container has final size (common in prod)
+    const ro = new ResizeObserver(() => {
+      try { map.resize(); } catch {}
+    });
+    if (containerRef.current) ro.observe(containerRef.current);
+    setTimeout(() => { try { map.resize(); } catch {} }, 0);
+
     return () => {
+      try { ro.disconnect(); } catch { }
       map.remove();
       mapRef.current = null;
     };
@@ -1022,6 +1030,8 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 };
 
 export default LiveTripsMap;
+
+
 
 
 
