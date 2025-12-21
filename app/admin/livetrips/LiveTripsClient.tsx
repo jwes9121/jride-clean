@@ -249,6 +249,88 @@ export default function LiveTripsClient() {
     loadDrivers().catch((e) => setDriversDebug("Drivers load failed: " + (e?.message ?? "unknown")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // ===== Auto-refresh polling (no flicker) =====
+  useEffect(() => {
+    let alive = true;
+    let timer: any = null;
+    let inflight: AbortController | null = null;
+
+    async function tick() {
+      if (!alive) return;
+
+      // Pause polling when tab is hidden
+      if (typeof document !== "undefined" && document.hidden) {
+        timer = setTimeout(tick, 12000);
+        return;
+      }
+
+      // Avoid overlapping requests
+      if (inflight) {
+        timer = setTimeout(tick, 12000);
+        return;
+      }
+
+      inflight = new AbortController();
+      try {
+        const r = await fetch("/api/admin/livetrips/page-data", {
+          cache: "no-store",
+          signal: inflight.signal,
+        });
+        const j = await r.json();
+
+        if (!alive) return;
+
+        if (j?.ok && j?.data) {
+          const nextTrips = j.data.trips || [];
+          const nextDrivers = j.data.drivers || [];
+          const nextZones = j.data.zones || [];
+
+          setAllTrips((prev: any) => {
+            try {
+              return JSON.stringify(prev) === JSON.stringify(nextTrips)
+                ? prev
+                : nextTrips;
+            } catch {
+              return nextTrips;
+            }
+          });
+
+          setDrivers((prev: any) => {
+            try {
+              return JSON.stringify(prev) === JSON.stringify(nextDrivers)
+                ? prev
+                : nextDrivers;
+            } catch {
+              return nextDrivers;
+            }
+          });
+
+          setZones((prev: any) => {
+            try {
+              return JSON.stringify(prev) === JSON.stringify(nextZones)
+                ? prev
+                : nextZones;
+            } catch {
+              return nextZones;
+            }
+          });
+        }
+      } catch {
+        // ignore polling errors
+      } finally {
+        inflight = null;
+        if (alive) timer = setTimeout(tick, 12000);
+      }
+    }
+
+    timer = setTimeout(tick, 6000);
+    return () => {
+      alive = false;
+      try { if (timer) clearTimeout(timer); } catch {}
+      try { inflight?.abort(); } catch {}
+      inflight = null;
+    };
+  }, []);
 
   // auto-refresh
   useEffect(() => {
@@ -673,4 +755,5 @@ function pillClass(active: boolean) {
     </div>
   );
 }
+
 
