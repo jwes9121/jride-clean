@@ -38,11 +38,8 @@ export async function GET() {
   return NextResponse.json(
     {
       // whatever the RPC already returns (bookings, stats, etc.)
-      ...rpcData,
+      ...(rpcData ?? {}),
       // attach zone capacity info from the materialized view
       zones: zoneData ?? [],
     },
     { status: 200 }
-  );
-}
-
