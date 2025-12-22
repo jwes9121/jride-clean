@@ -143,8 +143,31 @@ function isActiveTripStatus(s: string) {
 }
 
 function computeIsProblem(t: TripRow): boolean {
-  const s = normStatus(t.status);
-  const mins = minutesSince(t.updated_at || t.created_at || null);
+const s = normStatus(t.status);
+
+// TAKEOUT row detection + display helpers (table only; no backend changes)
+const rowTripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
+const rowCodeUpper = String((t as any).booking_code || "").trim().toUpperCase();
+const rowIsTakeout =
+  rowTripType === "takeout" ||
+  rowCodeUpper.startsWith("TAKEOUT-") ||
+  rowCodeUpper.startsWith("TAKEOUT_") ||
+  rowCodeUpper.startsWith("TAKEOUT");
+
+const passengerDisplay =
+  (t as any).passenger_name ||
+  (rowIsTakeout ? ((t as any).vendor_name || "Takeout") : "-----");
+
+const pickupDisplay =
+  (t as any).pickup_label ||
+  (t as any).from_label ||
+  (rowIsTakeout ? "Vendor pickup" : "-----");
+
+const dropoffDisplay =
+  (t as any).dropoff_label ||
+  (t as any).to_label ||
+  (rowIsTakeout ? "Customer dropoff" : "-----");
+const mins = minutesSince(t.updated_at || t.created_at || null);
 
   const isStuck =
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
@@ -406,7 +429,30 @@ export default function LiveTripsClient() {
       problem: 0,
     };
     for (const t of allTrips) {
-      const s = normStatus(t.status);
+const s = normStatus(t.status);
+
+// TAKEOUT row detection + display helpers (table only; no backend changes)
+const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
+const codeUpper = String((t as any).booking_code || "").trim().toUpperCase();
+const isTakeoutRow =
+  tripType === "takeout" ||
+  codeUpper.startsWith("TAKEOUT-") ||
+  codeUpper.startsWith("TAKEOUT_") ||
+  codeUpper.startsWith("TAKEOUT");
+
+const passengerDisplay =
+  (t as any).passenger_name ||
+  (isTakeoutRow ? ((t as any).vendor_name || "Takeout") : "-----");
+
+const pickupDisplay =
+  (t as any).pickup_label ||
+  (t as any).from_label ||
+  (isTakeoutRow ? "Vendor pickup" : "-----");
+
+const dropoffDisplay =
+  (t as any).dropoff_label ||
+  (t as any).to_label ||
+  (isTakeoutRow ? "Customer dropoff" : "-----");
       if (s === "pending") c.pending++;
       if (s === "assigned") c.assigned++;
       if (s === "on_the_way") c.on_the_way++;
@@ -605,7 +651,30 @@ function pillClass(active: boolean) {
                     const id = normTripId(t);
                     const isSel = selectedTripId === id;
                     const isProblem = stuckTripIds.has(id);
-                    const s = normStatus(t.status);
+const s = normStatus(t.status);
+
+// TAKEOUT row detection + display helpers (table only; no backend changes)
+const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
+const codeUpper = String((t as any).booking_code || "").trim().toUpperCase();
+const isTakeoutRow =
+  tripType === "takeout" ||
+  codeUpper.startsWith("TAKEOUT-") ||
+  codeUpper.startsWith("TAKEOUT_") ||
+  codeUpper.startsWith("TAKEOUT");
+
+const passengerDisplay =
+  (t as any).passenger_name ||
+  (isTakeoutRow ? ((t as any).vendor_name || "Takeout") : "-----");
+
+const pickupDisplay =
+  (t as any).pickup_label ||
+  (t as any).from_label ||
+  (isTakeoutRow ? "Vendor pickup" : "-----");
+
+const dropoffDisplay =
+  (t as any).dropoff_label ||
+  (t as any).to_label ||
+  (isTakeoutRow ? "Customer dropoff" : "-----");
   return (
                       <tr
                         key={id || Math.random()}
@@ -618,9 +687,9 @@ function pillClass(active: boolean) {
                             <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">PROBLEM</span>
                           ) : null}
                         </td>
-                        <td className="p-2">{t.passenger_name || "-----"}</td>
-                        <td className="p-2">{t.pickup_label || "-----"}</td>
-                        <td className="p-2">{t.dropoff_label || "-----"}</td>
+                        <td className="p-2">{passengerDisplay}</td>
+                        <td className="p-2">{pickupDisplay}</td>
+                        <td className="p-2">{dropoffDisplay}</td>
                         <td className="p-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{s || "-----"}</span>
                         </td>
@@ -779,6 +848,9 @@ function pillClass(active: boolean) {
     </div>
   );
 }
+
+
+
 
 
 
