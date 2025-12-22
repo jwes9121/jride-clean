@@ -1,190 +1,217 @@
 import { NextResponse } from "next/server";
-import { createClient as createSbClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type AnyObj = Record<string, any>;
-
-function isArray(v: any): v is any[] {
-  return Array.isArray(v);
+function bad(message: string, code: string, status = 400, extra: any = {}) {
+  return NextResponse.json(
+    { ok: false, code, message, ...extra },
+    { status, headers: { "Cache-Control": "no-store" } }
+  );
 }
 
-function extractTripsAnyShape(src: any): any[] {
-  if (!src) return [];
-  if (Array.isArray(src)) return src;
+function ok(payload: any, status = 200) {
+  return NextResponse.json(payload, { status, headers: { "Cache-Control": "no-store" } });
+}
 
-  // Common container shapes
-  if (typeof src === "object") {
-    const cands = [(src as AnyObj).trips, (src as AnyObj).bookings, (src as AnyObj).data];
-    for (const c of cands) {
-      if (Array.isArray(c)) return c;
+function pick(obj: any, keys: string[]) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+      const v = (obj as any)[k];
+      if (v !== null && v !== undefined && String(v).trim() !== "") return v;
     }
+  }
+  return undefined;
+}
 
-    // Numeric-key object: { "0": {...}, "1": {...} }
-    const keys = Object.keys(src).filter((k) => /^\d+$/.test(k));
-    if (keys.length) {
-      return keys.sort((a, b) => Number(a) - Number(b)).map((k) => (src as AnyObj)[k]);
-    }
+/**
+ * Accept trips in any shape:
+ * - array
+ * - { trips: [...] }
+ * - { bookings: [...] }
+ * - numeric keys: { "0": {...}, "1": {...}, ... }
+ */
+function extractTripsAnyShape(payload: any): any[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+
+  if (typeof payload === "object") {
+    const t1 = (payload as any).trips;
+    if (Array.isArray(t1)) return t1;
+
+    const t2 = (payload as any).bookings;
+    if (Array.isArray(t2)) return t2;
+
+    const t3 = (payload as any).data;
+    if (Array.isArray(t3)) return t3;
+
+    // numeric keys
+    const keys = Object.keys(payload).filter((k) => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
   }
 
   return [];
 }
 
-export async function GET() {
-  // Admin API must not depend on browser session cookies (RLS-safe)
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    "";
+function uniq(arr: string[]) {
+  return Array.from(new Set(arr.filter(Boolean)));
+}
 
-  if (!supabaseUrl) {
-    return NextResponse.json({ error: "Missing NEXT_PUBLIC_SUPABASE_URL" }, { status: 500 });
-  }
-  if (!serviceKey) {
-    return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
-  }
-
-  const supabase = createSbClient(supabaseUrl, serviceKey);
-
-  // 1) Base data
-  const [{ data: rpcData, error: rpcError }, { data: zoneData, error: zoneError }] =
-    await Promise.all([
-      supabase.rpc("admin_get_live_trips_page_data"),
-      supabase
-        .from("zone_capacity_view")
-        .select(
-          "zone_id, zone_name, color_hex, capacity_limit, active_drivers, available_slots, status"
-        )
-        .order("zone_name"),
-    ]);
-
-  if (rpcError) {
-    console.error("[page-data] live trips RPC error", rpcError);
-    return NextResponse.json({ error: rpcError.message }, { status: 500 });
-  }
-  if (zoneError) {
-    console.error("[zone-capacity] error", zoneError);
-    return NextResponse.json({ error: zoneError.message }, { status: 500 });
-  }
-
-  // 2) Extract trips (handles numeric-key shapes)
-  const baseTrips = extractTripsAnyShape(rpcData);
-
-  // 3) Wallet enrichment (best-effort, never blocks response)
-  const driverWalletBalances: Record<string, number> = {};
-  const vendorWalletBalances: Record<string, number> = {};
-  const bookingToVendor: Record<string, string> = {};
-
+export async function GET(req: Request) {
   try {
-    const driverIds = Array.from(
-      new Set(
-        baseTrips
-          .map((t: any) => t?.driver_id ?? t?.driverId ?? null)
-          .filter((x: any) => typeof x === "string" && x.length > 0)
-      )
+    const supabase = supabaseAdmin();
+
+    // 1) RPC page data
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("admin_get_live_trips_page_data");
+    if (rpcErr) {
+      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, { details: rpcErr.message });
+    }
+
+    // 2) Extract trips safely
+    const trips = extractTripsAnyShape(rpcData);
+
+    // 3) Gather booking codes + ids from trips
+    const bookingCodes = uniq(
+      trips
+        .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+        .map((v: any) => (v ? String(v) : ""))
     );
 
-    const bookingCodes = Array.from(
-      new Set(
-        baseTrips
-          .map((t: any) => t?.booking_code ?? t?.bookingCode ?? null)
-          .filter((x: any) => typeof x === "string" && x.length > 0)
-      )
+    const bookingIds = uniq(
+      trips
+        .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+        .map((v: any) => (v ? String(v) : ""))
     );
 
-    // Driver balances
+    // 4) Pull vendor_id / driver_id / trip_type from bookings table to inject into trip objects
+    const byCode: Record<string, any> = {};
+    const byId: Record<string, any> = {};
+
+    if (bookingCodes.length) {
+      const { data: rows, error } = await supabase
+        .from("bookings")
+        .select("id, booking_code, vendor_id, driver_id, trip_type, town, status")
+        .in("booking_code", bookingCodes);
+
+      if (error) {
+        console.error("LIVETRIPS_BOOKINGS_BY_CODE_ERROR", error);
+        // don't fail the whole endpoint; just continue without enrichment
+      } else {
+        for (const r of rows ?? []) {
+          if (r?.booking_code) byCode[String(r.booking_code)] = r;
+          if (r?.id) byId[String(r.id)] = r;
+        }
+      }
+    }
+
+    if (bookingIds.length) {
+      const { data: rows, error } = await supabase
+        .from("bookings")
+        .select("id, booking_code, vendor_id, driver_id, trip_type, town, status")
+        .in("id", bookingIds);
+
+      if (error) {
+        console.error("LIVETRIPS_BOOKINGS_BY_ID_ERROR", error);
+      } else {
+        for (const r of rows ?? []) {
+          if (r?.id) byId[String(r.id)] = r;
+          if (r?.booking_code) byCode[String(r.booking_code)] = r;
+        }
+      }
+    }
+
+    // 5) Inject fields into trips if missing (this fixes the Vendor ledger "No vendor_id" issue)
+    for (const t of trips as any[]) {
+      const bc = pick(t, ["booking_code", "bookingCode", "code"]);
+      const id = pick(t, ["id", "uuid", "booking_id", "bookingId"]);
+      const b = (bc && byCode[String(bc)]) || (id && byId[String(id)]) || null;
+
+      if (!b) continue;
+
+      // vendor_id
+      const hasVendor = pick(t, ["vendor_id", "vendorId"]);
+      if (!hasVendor && b.vendor_id) (t as any).vendor_id = b.vendor_id;
+
+      // driver_id
+      const hasDriver = pick(t, ["driver_id", "driverId"]);
+      if (!hasDriver && b.driver_id) (t as any).driver_id = b.driver_id;
+
+      // trip_type
+      const hasType = pick(t, ["trip_type", "tripType"]);
+      if (!hasType && b.trip_type) (t as any).trip_type = b.trip_type;
+
+      // town/zone (optional small assist)
+      const hasTown = pick(t, ["town", "zone"]);
+      if (!hasTown && b.town) (t as any).zone = b.town;
+    }
+
+    // 6) Wallet balances (views you already confirmed exist)
+    const driverIds = uniq(
+      trips
+        .map((t: any) => pick(t, ["driver_id", "driverId"]))
+        .map((v: any) => (v ? String(v) : ""))
+    );
+
+    const vendorIds = uniq(
+      trips
+        .map((t: any) => pick(t, ["vendor_id", "vendorId"]))
+        .map((v: any) => (v ? String(v) : ""))
+    );
+
+    const driverWalletBalances: Record<string, number> = {};
     if (driverIds.length) {
-      const { data: drows, error: derr } = await supabase
+      const { data, error } = await supabase
         .from("driver_wallet_balances_v1")
         .select("driver_id, balance")
         .in("driver_id", driverIds);
 
-      if (derr) {
-        console.error("[wallet] driver_wallet_balances_v1 error", derr);
+      if (error) {
+        console.error("DRIVER_WALLET_BALANCES_ERROR", error);
       } else {
-        for (const r of drows ?? []) {
-          if (r?.driver_id) driverWalletBalances[String(r.driver_id)] = Number(r.balance ?? 0);
+        for (const r of data ?? []) {
+          if (r?.driver_id != null) driverWalletBalances[String(r.driver_id)] = Number(r.balance ?? 0);
         }
       }
     }
 
-    // booking_code -> vendor_id mapping from vendor_wallet_transactions
-    if (bookingCodes.length) {
-      const { data: vtx, error: vtxErr } = await supabase
-        .from("vendor_wallet_transactions")
-        .select("booking_code, vendor_id, created_at")
-        .in("booking_code", bookingCodes)
-        .order("created_at", { ascending: false });
+    const vendorWalletBalances: Record<string, number> = {};
+    if (vendorIds.length) {
+      const { data, error } = await supabase
+        .from("vendor_wallet_balances_v1")
+        .select("vendor_id, balance")
+        .in("vendor_id", vendorIds);
 
-      if (vtxErr) {
-        console.error("[wallet] vendor_wallet_transactions lookup error", vtxErr);
+      if (error) {
+        console.error("VENDOR_WALLET_BALANCES_ERROR", error);
       } else {
-        for (const row of vtx ?? []) {
-          const bc = String(row?.booking_code ?? "");
-          const vid = String(row?.vendor_id ?? "");
-          if (!bc || !vid) continue;
-          if (!bookingToVendor[bc]) bookingToVendor[bc] = vid; // first seen = latest (ordered desc)
-        }
-
-        const vendorIds = Array.from(new Set(Object.values(bookingToVendor)));
-        if (vendorIds.length) {
-          const { data: vbals, error: vbErr } = await supabase
-            .from("vendor_wallet_balances_v1")
-            .select("vendor_id, balance")
-            .in("vendor_id", vendorIds);
-
-          if (vbErr) {
-            console.error("[wallet] vendor_wallet_balances_v1 error", vbErr);
-          } else {
-            for (const r of vbals ?? []) {
-              if (r?.vendor_id) vendorWalletBalances[String(r.vendor_id)] = Number(r.balance ?? 0);
-            }
-          }
+        for (const r of data ?? []) {
+          if (r?.vendor_id != null) vendorWalletBalances[String(r.vendor_id)] = Number(r.balance ?? 0);
         }
       }
     }
+
+    // 7) Zones workload (non-fatal if missing)
+    let zones: any[] = [];
+    try {
+      const { data, error } = await supabase.from("zone_capacity_view").select("*");
+      if (!error && Array.isArray(data)) zones = data;
+    } catch (e) {
+      // ignore
+    }
+
+    // 8) Response shape: keep numeric keys + trips + balances + zones
+    const out: any = {};
+    for (let i = 0; i < trips.length; i++) out[String(i)] = trips[i];
+    out.trips = trips;
+    out.zones = zones;
+    out.driverWalletBalances = driverWalletBalances;
+    out.vendorWalletBalances = vendorWalletBalances;
+
+    return ok(out);
   } catch (e: any) {
-    console.error("[wallet] enrichment failed (non-blocking)", e?.message || e);
+    console.error("LIVETRIPS_PAGE_DATA_UNHANDLED", e);
+    return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
   }
-
-  const enrichedTrips = baseTrips.map((t: any) => {
-    const driverId = t?.driver_id ?? t?.driverId ?? null;
-    const bookingCode = t?.booking_code ?? t?.bookingCode ?? null;
-
-    const driverWallet =
-      driverId && driverWalletBalances[String(driverId)] !== undefined
-        ? driverWalletBalances[String(driverId)]
-        : null;
-
-    let vendorWallet: number | null = null;
-    if (bookingCode && bookingToVendor[String(bookingCode)]) {
-      const vid = bookingToVendor[String(bookingCode)];
-      if (vendorWalletBalances[vid] !== undefined) vendorWallet = vendorWalletBalances[vid];
-    }
-
-    return {
-      ...t,
-      driver_wallet_balance: driverWallet,
-      vendor_wallet_balance: vendorWallet,
-    };
-  });
-
-  // Backward-compatible numeric-key payload
-  const numericPayload: AnyObj = {};
-  enrichedTrips.forEach((t, i) => {
-    numericPayload[String(i)] = t;
-  });
-
-  return NextResponse.json(
-    {
-      ...numericPayload,
-      trips: enrichedTrips,
-      zones: zoneData ?? [],
-      driverWalletBalances,
-      vendorWalletBalances,
-    },
-    { status: 200 }
-  );
 }
