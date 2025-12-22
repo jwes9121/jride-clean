@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +30,7 @@ function pick(obj: any, keys: string[]) {
  * - array
  * - { trips: [...] }
  * - { bookings: [...] }
+ * - { data: [...] }
  * - numeric keys: { "0": {...}, "1": {...}, ... }
  */
 function extractTripsAnyShape(payload: any): any[] {
@@ -47,7 +48,9 @@ function extractTripsAnyShape(payload: any): any[] {
     if (Array.isArray(t3)) return t3;
 
     // numeric keys
-    const keys = Object.keys(payload).filter((k) => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    const keys = Object.keys(payload)
+      .filter((k) => /^\d+$/.test(k))
+      .sort((a, b) => Number(a) - Number(b));
     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
   }
 
@@ -69,20 +72,20 @@ export async function GET(req: Request) {
       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, { details: rpcErr.message });
     }
 
-    // 2) Extract trips safely
-    const trips = extractTripsAnyShape(rpcData);
+    // 2) Extract trips safely (do NOT mutate rpcData output)
+    const tripsRaw = extractTripsAnyShape(rpcData);
 
     // 3) Gather booking codes + ids from trips
     const bookingCodes = uniq(
-      trips
+      tripsRaw
         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
-        .map((v: any) => (v ? String(v) : ""))
+        .map((v: any) => (v ? String(v).trim() : ""))
     );
 
     const bookingIds = uniq(
-      trips
+      tripsRaw
         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
-        .map((v: any) => (v ? String(v) : ""))
+        .map((v: any) => (v ? String(v).trim() : ""))
     );
 
     // 4) Pull vendor_id / driver_id / trip_type from bookings table to inject into trip objects
@@ -97,7 +100,6 @@ export async function GET(req: Request) {
 
       if (error) {
         console.error("LIVETRIPS_BOOKINGS_BY_CODE_ERROR", error);
-        // don't fail the whole endpoint; just continue without enrichment
       } else {
         for (const r of rows ?? []) {
           if (r?.booking_code) byCode[String(r.booking_code)] = r;
@@ -122,42 +124,46 @@ export async function GET(req: Request) {
       }
     }
 
-    // 5) Inject fields into trips if missing (this fixes the Vendor ledger "No vendor_id" issue)
-    for (const t of trips as any[]) {
+    // 5) Build enriched trip objects (VENDOR_ID_AUTOFILL + DRIVER_ID + TRIP_TYPE + optional zone assist)
+    const tripsEnriched = (tripsRaw as any[]).map((t: any) => {
       const bc = pick(t, ["booking_code", "bookingCode", "code"]);
       const id = pick(t, ["id", "uuid", "booking_id", "bookingId"]);
       const b = (bc && byCode[String(bc)]) || (id && byId[String(id)]) || null;
 
-      if (!b) continue;
+      if (!b) return { ...t };
 
-      // vendor_id
-      const hasVendor = pick(t, ["vendor_id", "vendorId"]);
-      if (!hasVendor && b.vendor_id) (t as any).vendor_id = b.vendor_id;
+      const out: any = { ...t };
+
+      // vendor_id (critical for vendor ledger)
+      const hasVendor = pick(out, ["vendor_id", "vendorId"]);
+      if (!hasVendor && b.vendor_id) out.vendor_id = b.vendor_id;
 
       // driver_id
-      const hasDriver = pick(t, ["driver_id", "driverId"]);
-      if (!hasDriver && b.driver_id) (t as any).driver_id = b.driver_id;
+      const hasDriver = pick(out, ["driver_id", "driverId"]);
+      if (!hasDriver && b.driver_id) out.driver_id = b.driver_id;
 
       // trip_type
-      const hasType = pick(t, ["trip_type", "tripType"]);
-      if (!hasType && b.trip_type) (t as any).trip_type = b.trip_type;
+      const hasType = pick(out, ["trip_type", "tripType"]);
+      if (!hasType && b.trip_type) out.trip_type = b.trip_type;
 
-      // town/zone (optional small assist)
-      const hasTown = pick(t, ["town", "zone"]);
-      if (!hasTown && b.town) (t as any).zone = b.town;
-    }
+      // town/zone (minor assist)
+      const hasTown = pick(out, ["town", "zone"]);
+      if (!hasTown && b.town) out.zone = b.town;
+
+      return out;
+    });
 
     // 6) Wallet balances (views you already confirmed exist)
     const driverIds = uniq(
-      trips
+      tripsEnriched
         .map((t: any) => pick(t, ["driver_id", "driverId"]))
-        .map((v: any) => (v ? String(v) : ""))
+        .map((v: any) => (v ? String(v).trim() : ""))
     );
 
     const vendorIds = uniq(
-      trips
+      tripsEnriched
         .map((t: any) => pick(t, ["vendor_id", "vendorId"]))
-        .map((v: any) => (v ? String(v) : ""))
+        .map((v: any) => (v ? String(v).trim() : ""))
     );
 
     const driverWalletBalances: Record<string, number> = {};
@@ -192,19 +198,41 @@ export async function GET(req: Request) {
       }
     }
 
+    // 6.5) OPTIONAL ADD-ON: attach balances onto each trip so TripWalletPanel can show them on-card
+    // (TripWalletPanel reads: trip.driver_wallet_balance / trip.vendor_wallet_balance)
+    const tripsWithBalances = tripsEnriched.map((t: any) => {
+      const out: any = { ...t };
+
+      const dId = pick(out, ["driver_id", "driverId"]);
+      const vId = pick(out, ["vendor_id", "vendorId"]);
+
+      const hasDriverBal = pick(out, ["driver_wallet_balance", "driver_wallet", "driverWallet"]);
+      const hasVendorBal = pick(out, ["vendor_wallet_balance", "vendor_wallet", "vendorWallet"]);
+
+      if (!hasDriverBal && dId && Object.prototype.hasOwnProperty.call(driverWalletBalances, String(dId))) {
+        out.driver_wallet_balance = driverWalletBalances[String(dId)];
+      }
+
+      if (!hasVendorBal && vId && Object.prototype.hasOwnProperty.call(vendorWalletBalances, String(vId))) {
+        out.vendor_wallet_balance = vendorWalletBalances[String(vId)];
+      }
+
+      return out;
+    });
+
     // 7) Zones workload (non-fatal if missing)
     let zones: any[] = [];
     try {
       const { data, error } = await supabase.from("zone_capacity_view").select("*");
       if (!error && Array.isArray(data)) zones = data;
-    } catch (e) {
+    } catch {
       // ignore
     }
 
     // 8) Response shape: keep numeric keys + trips + balances + zones
     const out: any = {};
-    for (let i = 0; i < trips.length; i++) out[String(i)] = trips[i];
-    out.trips = trips;
+    for (let i = 0; i < tripsWithBalances.length; i++) out[String(i)] = tripsWithBalances[i];
+    out.trips = tripsWithBalances;
     out.zones = zones;
     out.driverWalletBalances = driverWalletBalances;
     out.vendorWalletBalances = vendorWalletBalances;
