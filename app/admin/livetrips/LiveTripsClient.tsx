@@ -150,9 +150,19 @@ function computeIsProblem(t: TripRow): boolean {
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
 
+  // TAKEOUT detection (prefer trip_type, fallback to booking_code prefix)
+  const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
+  const code = String(t.booking_code || "").trim().toUpperCase();
+  const isTakeout =
+    tripType === "takeout" ||
+    code.startsWith("TAKEOUT-") ||
+    code.startsWith("TAKEOUT_") ||
+    code.startsWith("TAKEOUT");
+
+  // Missing coords can be a problem for LOCAL rides, but for TAKEOUT it can be legitimate
   const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
   const hasDropoff = Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
-  const missingCoords = isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
+  const missingCoords = !isTakeout && isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
 
   return isStuck || missingCoords;
 }
@@ -360,15 +370,29 @@ export default function LiveTripsClient() {
   }, []);
 
   const stuckTripIds = useMemo(() => {
-    const s = new Set<string>();
-    for (const t of allTrips) {
-      if (computeIsProblem(t)) {
-        const id = normTripId(t);
-        if (id) s.add(id);
-      }
+  const s = new Set<string>();
+
+  for (const t of allTrips) {
+    const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
+    const code = String((t as any).booking_code || "").trim().toUpperCase();
+
+    const isTakeout =
+      tripType === "takeout" ||
+      code.startsWith("TAKEOUT-") ||
+      code.startsWith("TAKEOUT_") ||
+      code.startsWith("TAKEOUT");
+
+    // TAKEOUT trips are never considered "problem"
+    if (isTakeout) continue;
+
+    if (computeIsProblem(t)) {
+      const id = normTripId(t);
+      if (id) s.add(id);
     }
-    return s;
-  }, [allTrips]);
+  }
+
+  return s;
+}, [allTrips]);
 
   const counts = useMemo(() => {
     const c = {
@@ -755,5 +779,12 @@ function pillClass(active: boolean) {
     </div>
   );
 }
+
+
+
+
+
+
+
 
 
