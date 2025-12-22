@@ -1,4 +1,15 @@
-﻿"use client";
+# PATCH-TripWalletPanel-LedgerModal.ps1
+$ErrorActionPreference="Stop"
+function Fail($m){ throw $m }
+
+$root = (Get-Location).Path
+$rel  = "app\admin\livetrips\components\TripWalletPanel.tsx"
+$path = Join-Path $root $rel
+
+if (!(Test-Path (Split-Path $path))) { Fail "Folder not found: $(Split-Path $rel). Run from repo root." }
+
+$code = @'
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -131,8 +142,7 @@ export default function TripWalletPanel({ trip }: Props) {
       setRows([]);
 
       try {
-        const idStr = String(id);
-        const qs = new URLSearchParams({ kind, id: idStr, limit: "20" });
+        const qs = new URLSearchParams({ kind, id, limit: "20" });
         const res = await fetch(`/api/admin/wallet/transactions?${qs.toString()}`, {
           cache: "no-store",
         });
@@ -272,7 +282,7 @@ export default function TripWalletPanel({ trip }: Props) {
               </div>
 
               {loading && (
-                <div className="text-sm text-slate-600">Loadingâ€¦</div>
+                <div className="text-sm text-slate-600">Loading…</div>
               )}
 
               {!loading && err && (
@@ -324,4 +334,8 @@ export default function TripWalletPanel({ trip }: Props) {
     </>
   );
 }
+'@
 
+Set-Content -Path $path -Value $code -Encoding UTF8
+Write-Host "[OK] Patched: $rel" -ForegroundColor Green
+Write-Host "[NEXT] Run: npm run build" -ForegroundColor Cyan
