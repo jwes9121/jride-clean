@@ -23,7 +23,8 @@ function ok(data: any = {}) {
 }
 
 function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  // Accept ANY UUID version/variant (we use 1111... test vendor ids in dev)
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
 export async function GET(req: Request) {
@@ -59,3 +60,4 @@ export async function GET(req: Request) {
     return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
   }
 }
+
