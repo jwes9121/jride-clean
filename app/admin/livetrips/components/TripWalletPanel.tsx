@@ -34,7 +34,31 @@ function fmtDate(v: any) {
  * bookings has verified_fare, proposed_fare, total_errand_fare, and components:
  * base_fee, distance_fare, extra_stop_fee, waiting_fee
  */
+
+function isTakeoutTrip(trip: any): boolean {
+  if (!trip) return false;
+  const tt = String(trip?.trip_type ?? trip?.tripType ?? "").trim().toLowerCase();
+  if (tt === "takeout") return true;
+  const code = String(trip?.booking_code ?? trip?.bookingCode ?? "").trim().toUpperCase();
+  return code.startsWith("TAKEOUT-") || code.startsWith("TAKEOUT_") || code.startsWith("TAKEOUT");
+}
 function computeFareFromBooking(trip: any): number | null {
+  // TAKEOUT fare fields (read-only display; do NOT assume schema)
+  const direct = asNum(trip?.fare);
+  if (direct !== null) return direct;
+  const totalFare = asNum(trip?.total_fare);
+  if (totalFare !== null) return totalFare;
+  const totalAmt = asNum(trip?.total_amount);
+  if (totalAmt !== null) return totalAmt;
+  const amount = asNum(trip?.amount);
+  if (amount !== null) return amount;
+  const orderTotal = asNum(trip?.order_total);
+  if (orderTotal !== null) return orderTotal;
+  const subtotal = asNum(trip?.subtotal);
+  if (subtotal !== null) return subtotal;
+  const deliveryFee = asNum(trip?.delivery_fee);
+  if (deliveryFee !== null) return deliveryFee;
+
   const verified = asNum(trip?.verified_fare);
   if (verified !== null) return verified;
 
@@ -90,8 +114,48 @@ function pickBalanceAfter(row: any): any {
 
 export default function TripWalletPanel({ trip }: Props) {
   const fare = useMemo(() => computeFareFromBooking(trip), [trip]);
-  const companyCut = useMemo(() => trip?.company_cut ?? null, [trip]);
-  const driverPayout = useMemo(() => trip?.driver_payout ?? null, [trip]);
+  const isTakeout = useMemo(() => isTakeoutTrip(trip), [trip]);
+  // TAKEOUT display-only estimate (based on your business rule: vendor earns 90%)
+  const derivedFare = useMemo(() => {
+    if (!isTakeout) return null;
+    const vb = asNum(trip?.vendor_wallet_balance);
+    if (vb === null) return null;
+    if (vb <= 0) return null;
+    // fare â‰ˆ vendorEarnings / 0.90
+    return Math.round((vb / 0.90) * 100) / 100;
+  }, [trip, isTakeout]);
+
+  const derivedCompanyCut = useMemo(() => {
+    if (!isTakeout) return null;
+    if (derivedFare === null) return null;
+    const vb = asNum(trip?.vendor_wallet_balance);
+    if (vb === null) return null;
+    const cut = derivedFare - vb; // â‰ˆ 10%
+    return Math.round(cut * 100) / 100;
+  }, [trip, isTakeout, derivedFare]);
+
+  
+  const fareDisplay = useMemo(() => {
+    // If we have a real fare, use it. Else for TAKEOUT, use derivedFare.
+    if (fare !== null) return fare;
+    if (isTakeout && derivedFare !== null) return derivedFare;
+    return null;
+  }, [fare, isTakeout, derivedFare]);
+
+  
+
+const companyCut = useMemo(() => {
+    const explicit = asNum(trip?.company_cut ?? trip?.platform_fee ?? trip?.commission ?? trip?.company_fee);
+    if (explicit !== null) return explicit;
+    // If no explicit field, for TAKEOUT show derived cut from vendor_wallet_balance (10% rule)
+    if (isTakeout && derivedCompanyCut !== null) return derivedCompanyCut;
+    return null;
+  }, [trip, isTakeout, derivedCompanyCut]);
+const driverPayout = useMemo(() => {
+    const explicit = asNum(trip?.driver_payout ?? trip?.driver_fee ?? trip?.driver_earnings ?? trip?.driver_cut);
+    if (explicit !== null) return explicit;
+    return null;
+  }, [trip]);
 
   // Wallet balances: show if API provides computed fields
   const driverWallet = useMemo(
@@ -179,7 +243,7 @@ export default function TripWalletPanel({ trip }: Props) {
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded border bg-white p-2">
           <div className="text-slate-500">Fare</div>
-          <div className="font-semibold">{fmtMoney(fare)}</div>
+          <div className="font-semibold">{fmtMoney(fareDisplay)}</div>
         </div>
 
         <div className="rounded border bg-white p-2">
@@ -324,4 +388,7 @@ export default function TripWalletPanel({ trip }: Props) {
     </>
   );
 }
+
+
+
 
