@@ -127,7 +127,7 @@ function buildDriverStats(rows: DriverRow[]): DriverStats {
   const grouped: Record<string, DriverRow[]> = {};
 
   for (const row of rows) {
-    const town = rows.town || "Other";
+    const town = row.town || "Other";
     if (!grouped[town]) grouped[town] = [];
     grouped[town].push(row);
   }
@@ -159,5 +159,4 @@ async function safeText(res: Response): Promise<string> {
     return "";
   }
 }
-
 

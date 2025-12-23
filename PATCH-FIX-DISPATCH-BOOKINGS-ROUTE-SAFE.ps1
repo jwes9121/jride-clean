@@ -1,4 +1,18 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+# PATCH-FIX-DISPATCH-BOOKINGS-ROUTE-SAFE.ps1
+$ErrorActionPreference = "Stop"
+function Fail($m){ throw $m }
+
+$root = (Get-Location).Path
+$target = Join-Path $root "app\api\dispatch\bookings\route.ts"
+if (!(Test-Path $target)) { Fail "Missing file: $target" }
+
+$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+Copy-Item $target "$target.bak.$ts" -Force
+Write-Host "[OK] Backup: $target.bak.$ts" -ForegroundColor Green
+
+# Write a known-good, minimal route that won't assume columns exist
+@'
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 // NOTE: In this dev workflow we keep auth simple.
@@ -137,7 +151,7 @@ export async function POST(req: NextRequest) {
 
     const sb = supabaseAdmin();
 
-    const { data, error } = await sb.from("bookings").insert(insert).select("id,booking_code,status,town,driver_id,trip_type,vendor_id,takeout_service_level,created_at,updated_at").single();
+    const { data, error } = await sb.from("bookings").insert(insert).select("*").single();
     if (error) return jsonError(error.message, 500);
 
     // Best-effort log (DON'T fail create if table/cols differ)
@@ -155,4 +169,7 @@ export async function POST(req: NextRequest) {
     return jsonError(String(e?.message || e), 500);
   }
 }
+'@ | Set-Content -Path $target -Encoding UTF8
 
+Write-Host "[OK] Replaced dispatch bookings route with safe minimal version." -ForegroundColor Green
+Write-Host "Next: restart dev server (CTRL+C then npm run dev) if it doesn't auto-reload." -ForegroundColor Yellow
