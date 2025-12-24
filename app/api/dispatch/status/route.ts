@@ -13,32 +13,30 @@ function bad(message: string, extra: any = {}, status = 400) {
   return NextResponse.json({ ok: false, message, ...extra }, { status });
 }
 
+function safeHost(u: string) {
+  try { return new URL(u).host; } catch { return ""; }
+}
+
 function statusColumnsPresent(sample: Record<string, any>) {
   const candidates = ["status", "trip_status", "booking_status", "dispatch_status", "ride_status"];
   return candidates.filter((c) => Object.prototype.hasOwnProperty.call(sample, c));
 }
 
-function safeHost(u: string) {
-  try {
-    return new URL(u).host;
-  } catch {
-    return "";
-  }
-}
-
 // ===== Observability (in-memory, no DB migration) =====
-// Note: Vercel/serverless instances may reset between invocations; still useful for debugging/training.
-type DispatchActionLog = {
+export type DispatchActionLog = {
   id: string;
-  at: string; // ISO
-  type: "status";
+  at: string;
+  type: "status" | "assign";
   actor: string;
   ip?: string | null;
   bookingId?: string | null;
   bookingCode?: string | null;
   nextStatus?: string | null;
+  driverId?: string | null;
+  force?: boolean;
   ok: boolean;
   httpStatus: number;
+  code?: string;
   message?: string;
   columnsUpdated?: string[];
 };
@@ -60,14 +58,8 @@ function randId() {
 }
 
 function getActor(req: Request) {
-  // allow the UI to pass a dispatcher name if you want later
   const h = req.headers;
-  return (
-    h.get("x-dispatcher") ||
-    h.get("x-dispatcher-name") ||
-    h.get("x-user") ||
-    "unknown"
-  );
+  return h.get("x-dispatcher") || h.get("x-dispatcher-name") || h.get("x-user") || "unknown";
 }
 
 function getIp(req: Request) {
@@ -77,16 +69,12 @@ function getIp(req: Request) {
   return h.get("x-real-ip") || null;
 }
 
-// GET /api/dispatch/status?log=1  -> returns last 10 actions
+// GET /api/dispatch/status?log=1 -> last 10 actions (status + assign)
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const wantLog = url.searchParams.get("log");
   if (!wantLog) return bad("Missing log=1", {}, 400);
-
-  return NextResponse.json({
-    ok: true,
-    actions: getLogStore(),
-  });
+  return NextResponse.json({ ok: true, actions: getLogStore() });
 }
 
 export async function POST(req: Request) {
@@ -94,57 +82,25 @@ export async function POST(req: Request) {
   const actor = getActor(req);
   const ip = getIp(req);
 
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
   if (!supabaseUrl) {
     const msg = "Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL";
-    pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      ok: false,
-      httpStatus: 500,
-      message: msg,
-    });
+    pushLog({ id: actionId, at: new Date().toISOString(), type: "status", actor, ip, ok: false, httpStatus: 500, message: msg });
     return bad(msg, {}, 500);
   }
-
   if (!serviceKey) {
     const msg = "Missing SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY)";
-    pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      ok: false,
-      httpStatus: 500,
-      message: msg,
-    });
+    pushLog({ id: actionId, at: new Date().toISOString(), type: "status", actor, ip, ok: false, httpStatus: 500, message: msg });
     return bad(msg, {}, 500);
   }
 
   let body: Body;
-  try {
-    body = (await req.json()) as Body;
-  } catch {
+  try { body = (await req.json()) as Body; }
+  catch {
     const msg = "Invalid JSON body";
-    pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      ok: false,
-      httpStatus: 400,
-      message: msg,
-    });
+    pushLog({ id: actionId, at: new Date().toISOString(), type: "status", actor, ip, ok: false, httpStatus: 400, message: msg });
     return bad(msg);
   }
 
@@ -155,52 +111,32 @@ export async function POST(req: Request) {
   if (!nextStatus || (!bookingCode && !bookingId)) {
     const msg = !nextStatus ? "Missing status" : "Missing bookingId or bookingCode";
     pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      bookingId: bookingId ?? null,
-      bookingCode: bookingCode ?? null,
-      nextStatus: nextStatus ?? null,
-      ok: false,
-      httpStatus: 400,
-      message: msg,
+      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
+      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus: nextStatus ?? null,
+      ok: false, httpStatus: 400, message: msg
     });
     return bad(msg);
   }
 
-  // Build filter (supports either booking_code or id)
   const where = bookingCode
     ? `booking_code=eq.${encodeURIComponent(bookingCode)}`
     : `id=eq.${encodeURIComponent(String(bookingId))}`;
 
   const baseUrl = `${supabaseUrl}/rest/v1/bookings?${where}`;
 
-  // 1) Read row first (detect what status-like columns exist)
+  // 1) Read row to detect status-like columns
   const readRes = await fetch(`${baseUrl}&select=*`, {
     method: "GET",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-    },
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
     cache: "no-store",
   });
 
   const readText = await readRes.text();
   if (!readRes.ok) {
     pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      bookingId: bookingId ?? null,
-      bookingCode: bookingCode ?? null,
-      nextStatus,
-      ok: false,
-      httpStatus: readRes.status,
-      message: "READ_FAILED",
+      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
+      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
+      ok: false, httpStatus: readRes.status, code: "READ_FAILED", message: "READ_FAILED"
     });
     return bad("READ_FAILED", { httpStatus: readRes.status, detail: readText }, readRes.status);
   }
@@ -209,17 +145,9 @@ export async function POST(req: Request) {
   try { rows = JSON.parse(readText); } catch {}
   if (!Array.isArray(rows) || rows.length === 0) {
     pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      bookingId: bookingId ?? null,
-      bookingCode: bookingCode ?? null,
-      nextStatus,
-      ok: false,
-      httpStatus: 404,
-      message: "BOOKING_NOT_FOUND",
+      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
+      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
+      ok: false, httpStatus: 404, code: "BOOKING_NOT_FOUND", message: "Booking not found"
     });
     return bad("BOOKING_NOT_FOUND", { bookingCode, bookingId }, 404);
   }
@@ -229,22 +157,14 @@ export async function POST(req: Request) {
 
   if (cols.length === 0) {
     pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      bookingId: bookingId ?? null,
-      bookingCode: bookingCode ?? null,
-      nextStatus,
-      ok: false,
-      httpStatus: 409,
-      message: "NO_STATUS_COLUMNS_FOUND",
+      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
+      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
+      ok: false, httpStatus: 409, code: "NO_STATUS_COLUMNS_FOUND", message: "No status columns found"
     });
     return bad(
       "NO_STATUS_COLUMNS_FOUND",
       {
-        hint: "Bookings row has no known status-like columns. page-data might be deriving status via SQL/RPC.",
+        hint: "Bookings row has no known status-like columns.",
         keys: Object.keys(sample).slice(0, 60),
       },
       409
@@ -269,26 +189,13 @@ export async function POST(req: Request) {
   const patchText = await patchRes.text();
   if (!patchRes.ok) {
     pushLog({
-      id: actionId,
-      at: new Date().toISOString(),
-      type: "status",
-      actor,
-      ip,
-      bookingId: bookingId ?? null,
-      bookingCode: bookingCode ?? null,
-      nextStatus,
-      ok: false,
-      httpStatus: patchRes.status,
-      message: "PATCH_FAILED",
+      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
+      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
+      ok: false, httpStatus: patchRes.status, code: "PATCH_FAILED", message: "PATCH_FAILED"
     });
     return bad(
       "PATCH_FAILED",
-      {
-        httpStatus: patchRes.status,
-        detail: patchText,
-        attempted: patchBody,
-        supabaseHost: safeHost(supabaseUrl),
-      },
+      { httpStatus: patchRes.status, detail: patchText, attempted: patchBody, supabaseHost: safeHost(supabaseUrl) },
       patchRes.status
     );
   }
@@ -307,6 +214,7 @@ export async function POST(req: Request) {
     nextStatus,
     ok: true,
     httpStatus: 200,
+    code: "OK",
     message: "OK",
     columnsUpdated: cols,
   });
@@ -314,7 +222,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     actionId,
-    updated: Array.isArray(patched) ? patched.length : 1,
     bookingCode: patched?.[0]?.booking_code ?? bookingCode,
     id: patched?.[0]?.id ?? bookingId,
     status: nextStatus,

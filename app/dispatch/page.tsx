@@ -15,26 +15,33 @@ type AckState =
   | { state: "err"; at: number; msg: string; httpStatus?: number };
 
 function normStatus(s?: string | null) {
-  return String(s || "").trim().toLowerCase();
+  const v = String(s || "").trim().toLowerCase();
+  if (!v) return "";
+  // Back-compat normalization
+  if (v === "new") return "pending";
+  if (v === "enroute") return "on_the_way";
+  if (v === "ongoing") return "on_trip";
+  // Keep "arrived" as-is (some data still uses it)
+  return v;
 }
 
-// ===== Parity: same vocabulary as LiveTrips =====
-// pending -> assigned -> on_the_way -> on_trip -> completed (+cancelled)
 function allowedActions(status?: string | null) {
   const s = normStatus(status);
+
+  // Terminal
   if (s === "completed" || s === "cancelled") return [] as string[];
 
-  const actions: string[] = [];
+  // LiveTrips parity path
+  if (s === "pending") return ["assigned", "cancelled"];
+  if (s === "assigned") return ["on_the_way", "cancelled"];
+  if (s === "on_the_way") return ["on_trip", "cancelled"];
+  if (s === "on_trip") return ["completed", "cancelled"];
 
-  if (s === "pending") actions.push("assigned");
-  if (s === "assigned") actions.push("on_the_way");
-  if (s === "on_the_way") actions.push("on_trip");
-  if (s === "on_trip") actions.push("completed");
+  // Back-compat: arrived can complete
+  if (s === "arrived") return ["completed", "cancelled"];
 
-  // allow cancel anytime before final
-  actions.push("cancelled");
-
-  return actions;
+  // Unknown status: allow cancel only (safe)
+  return ["cancelled"];
 }
 
 async function postJson(url: string, body: any) {
@@ -46,7 +53,7 @@ async function postJson(url: string, body: any) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const msg = String(j?.message || j?.error || "REQUEST_FAILED");
+    const msg = String(j?.message || j?.error || j?.code || "REQUEST_FAILED");
     const err: any = new Error(msg);
     err.httpStatus = r.status;
     err.payload = j;
@@ -69,6 +76,7 @@ export default function DispatchPage() {
   }
 
   async function loadObs() {
+    // status route is the canonical shared log endpoint
     const r = await fetch("/api/dispatch/status?log=1", { cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (j?.ok && Array.isArray(j.actions)) setObs(j.actions);
@@ -85,7 +93,6 @@ export default function DispatchPage() {
   }, []);
 
   function keyOf(b: Booking) {
-    // Use booking_code if present, else id
     return String(b.booking_code || b.id);
   }
 
@@ -98,22 +105,18 @@ export default function DispatchPage() {
     setAck(key, { state: "pending", at: Date.now() });
 
     try {
-      // status route supports bookingId OR bookingCode --- we prefer bookingId since we always have it
-      const payload: any = { status: nextStatus, bookingId: String(b.id) };
-      const j = await postJson("/api/dispatch/status", payload);
+      const j = await postJson("/api/dispatch/status", { bookingId: String(b.id), status: nextStatus });
 
       setAck(key, {
         state: "ok",
         at: Date.now(),
         actionId: j?.actionId,
-        msg: `--- Acknowledged (${nextStatus})`,
+        msg: "ACK: " + nextStatus,
       });
 
-      // refresh data + obs
       await load();
       await loadObs();
 
-      // auto-clear ok state after a moment (keeps UI clean)
       setTimeout(() => {
         setAckMap((m) => {
           const cur = m[key];
@@ -123,14 +126,8 @@ export default function DispatchPage() {
       }, 1500);
     } catch (e: any) {
       const msg = String(e?.message || "REJECTED");
-      setAck(key, {
-        state: "err",
-        at: Date.now(),
-        msg: `Rejected: ${msg}`,
-        httpStatus: e?.httpStatus,
-      });
+      setAck(key, { state: "err", at: Date.now(), msg: "REJECT: " + msg, httpStatus: e?.httpStatus });
 
-      // keep errors visible a bit longer
       setTimeout(() => {
         setAckMap((m) => {
           const cur = m[key];
@@ -139,7 +136,6 @@ export default function DispatchPage() {
         });
       }, 4000);
 
-      // still refresh obs (might have a log entry)
       loadObs().catch(() => {});
     }
   }
@@ -156,19 +152,16 @@ export default function DispatchPage() {
         <div>
           <h1 className="text-xl font-semibold">Dispatch</h1>
           <div className="text-xs text-slate-600">
-            Status vocabulary parity with LiveTrips:{" "}
-            <span className="font-mono">pending --- assigned --- on_the_way --- on_trip --- completed</span> (+ cancelled)
+            Parity vocab: pending - assigned - on_the_way - on_trip - completed (+ cancelled)
           </div>
         </div>
 
         <div className="text-xs text-slate-600">
-          Auto-refresh: 5s  -  Last load:{" "}
-          {lastLoadAt ? new Date(lastLoadAt).toLocaleTimeString() : "---"}
+          Auto-refresh: 5s - Last load: {lastLoadAt ? new Date(lastLoadAt).toLocaleTimeString() : "-"}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Main table */}
         <div className="lg:col-span-2 rounded border">
           <div className="p-3 border-b font-semibold">Bookings</div>
 
@@ -186,7 +179,7 @@ export default function DispatchPage() {
                 {rowsSorted.length === 0 ? (
                   <tr>
                     <td className="p-3 text-slate-600" colSpan={4}>
-                      No rows returned from <span className="font-mono">/api/dispatch/bookings</span>.
+                      No rows from /api/dispatch/bookings
                     </td>
                   </tr>
                 ) : (
@@ -209,7 +202,7 @@ export default function DispatchPage() {
                             "mr-2 rounded border px-2 py-1 text-xs",
                             disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50",
                           ].join(" ")}
-                          title={disabled ? "Not allowed for this status (or pending)" : `Set status: ${action}`}
+                          title={disabled ? "Not allowed for this status (or pending)" : "Set status: " + action}
                         >
                           {isPending ? "Pending..." : label}
                         </button>
@@ -218,26 +211,24 @@ export default function DispatchPage() {
 
                     return (
                       <tr key={b.id} className="border-b">
-                        <td className="p-2 font-mono">
-                          {b.booking_code ? b.booking_code : b.id}
-                        </td>
+                        <td className="p-2 font-mono">{b.booking_code ? b.booking_code : b.id}</td>
 
                         <td className="p-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
-                            {s || "---"}
+                            {s || "-"}
                           </span>
                         </td>
 
                         <td className="p-2">
                           {ack.state === "idle" ? (
-                            <span className="text-slate-400 text-xs">---</span>
+                            <span className="text-slate-400 text-xs">-</span>
                           ) : ack.state === "pending" ? (
                             <span className="text-xs text-amber-700">Pending...</span>
                           ) : ack.state === "ok" ? (
                             <span className="text-xs text-emerald-700">
-                              {ack.msg || "--- Acknowledged"}
+                              {ack.msg || "ACK"}
                               {ack.actionId ? (
-                                <span className="ml-2 text-[10px] text-slate-500">(id: {ack.actionId.slice(0, 8)})</span>
+                                <span className="ml-2 text-[10px] text-slate-500">(id: {String(ack.actionId).slice(0, 8)})</span>
                               ) : null}
                             </span>
                           ) : (
@@ -266,22 +257,15 @@ export default function DispatchPage() {
           </div>
         </div>
 
-        {/* Observability panel */}
         <div className="rounded border">
           <div className="p-3 border-b flex items-center justify-between">
             <div className="font-semibold">Observability</div>
-            <button
-              className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
-              onClick={() => loadObs().catch(() => {})}
-              type="button"
-            >
+            <button className="text-xs rounded border px-2 py-1 hover:bg-slate-50" onClick={() => loadObs().catch(() => {})} type="button">
               Refresh
             </button>
           </div>
 
-          <div className="p-3 text-xs text-slate-600">
-            Last 10 dispatch actions (API-derived, no DB).
-          </div>
+          <div className="p-3 text-xs text-slate-600">Last 10 actions (status + assign). No DB.</div>
 
           <div className="px-3 pb-3 space-y-2">
             {obs.length === 0 ? (
@@ -290,39 +274,24 @@ export default function DispatchPage() {
               obs.map((a: any) => (
                 <div key={a.id} className="rounded border bg-white p-2">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-mono text-[11px]">
-                      {String(a.bookingCode || a.bookingId || "---")}
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      {a.at ? new Date(a.at).toLocaleTimeString() : ""}
-                    </div>
+                    <div className="font-mono text-[11px]">{String(a.bookingCode || a.bookingId || "-")}</div>
+                    <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
 
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="rounded-full border px-2 py-0.5">
-                      {a.type || "status"}
+                    <span className="rounded-full border px-2 py-0.5">{String(a.type || "status")}</span>
+                    {a.type === "assign" ? (
+                      <span className="rounded-full border px-2 py-0.5">{String(a.driverId || "-")}</span>
+                    ) : (
+                      <span className="rounded-full border px-2 py-0.5">{String(a.nextStatus || "-")}</span>
+                    )}
+                    <span className={["rounded-full border px-2 py-0.5", a.ok ? "text-emerald-700 border-emerald-200 bg-emerald-50" : "text-red-700 border-red-200 bg-red-50"].join(" ")}>
+                      {a.ok ? (a.code === "FORCE_OK" ? "FORCE" : "OK") : "BLOCKED"}
                     </span>
-                    <span className="rounded-full border px-2 py-0.5">
-                      {a.nextStatus || "---"}
-                    </span>
-                    <span
-                      className={[
-                        "rounded-full border px-2 py-0.5",
-                        a.ok ? "text-emerald-700 border-emerald-200 bg-emerald-50" : "text-red-700 border-red-200 bg-red-50",
-                      ].join(" ")}
-                    >
-                      {a.ok ? "OK" : "BLOCKED"}
-                    </span>
-                    <span className="text-slate-500">
-                      by {a.actor || "unknown"}
-                    </span>
+                    <span className="text-slate-500">by {String(a.actor || "unknown")}</span>
                   </div>
 
-                  {!a.ok && a.message ? (
-                    <div className="mt-1 text-[11px] text-red-700">
-                      {a.message}
-                    </div>
-                  ) : null}
+                  {!a.ok && a.message ? <div className="mt-1 text-[11px] text-red-700">{String(a.message)}</div> : null}
                 </div>
               ))
             )}
