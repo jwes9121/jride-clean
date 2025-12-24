@@ -1,259 +1,85 @@
-import { NextResponse } from "next/server";
+export const runtime = "nodejs";
+
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function json(status: number, payload: any) {
-  return NextResponse.json(payload, { status, headers: { "Cache-Control": "no-store" } });
+const ACTIVE_STATUSES = ["assigned", "enroute", "on_the_way", "arrived"];
+
+async function isDriverBusy(driverId: string) {
+  const { count, error } = await supabase
+    .from("bookings")
+    .select("id", { count: "exact", head: true })
+    .eq("driver_id", driverId)
+    .in("status", ACTIVE_STATUSES);
+
+  if (error) return true; // fail-safe
+
+  return (count ?? 0) > 0;
 }
 
-function bad(message: string, code: string, status = 400, extra: any = {}) {
-  return json(status, { ok: false, code, message, ...extra });
-}
-
-function ok(extra: any = {}) {
-  return json(200, { ok: true, ...extra });
-}
-
-function isUuid(v: string) {
-  // strict UUID v1-v5 format
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
-}
-
-async function auditAssign(params: {
-  bookingCode?: string;
-  driverId?: string;
-  actor?: string;
-  ok: boolean;
-  code?: string;
-  message?: string;
-  meta?: any;
-}) {
+export async function POST(req: NextRequest) {
   try {
-    await supabase.from("dispatch_assign_audit").insert({
-      booking_code: params.bookingCode ?? null,
-      driver_id: params.driverId ?? null,
-      actor: params.actor ?? "unknown",
-      ok: !!params.ok,
-      code: params.code ?? null,
-      message: params.message ?? null,
-      meta: params.meta ?? {},
-    });
-  } catch {
-    // never block dispatch on audit failures
-  }
-}
+    const body = await req.json();
 
-export async function POST(req: Request) {
-  let bookingCode = "";
-  let driverId = "";
-  let actor = "unknown";
-  let meta: any = {};
+    const bookingId =
+      body.bookingId ||
+      body.booking_id ||
+      body.bookingUUID ||
+      body.booking_uuid;
 
-  try {
-    const body = await req.json().catch(() => ({} as any));
+    const driverId =
+      body.driverId ||
+      body.driver_id;
 
-    // IMPORTANT: Trim inputs (prevents hidden newline/space issues)
-    bookingCode = String(body?.bookingCode ?? "").trim();
-    driverId = String(body?.driverId ?? "").trim();
+    const forceAssign = Boolean(body.forceAssign);
 
-    actor =
-      (req.headers.get("x-user-email") ||
-        req.headers.get("x-forwarded-email") ||
-        req.headers.get("x-vercel-user-email") ||
-        "unknown") as string;
-
-    meta = {
-      ip: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || null,
-      userAgent: req.headers.get("user-agent") || null,
-      host: req.headers.get("host") || null,
-      bookingCodeRaw: body?.bookingCode ?? null,
-      driverIdRaw: body?.driverId ?? null,
-    };
-
-    if (!bookingCode) {
-      await auditAssign({ bookingCode, driverId, actor, ok: false, code: "MISSING_BOOKING", message: "Missing bookingCode", meta });
-      return bad("Missing bookingCode", "MISSING_BOOKING", 400);
+    if (!bookingId || !driverId) {
+      return NextResponse.json(
+        { ok: false, code: "BAD_REQUEST", message: "Missing bookingId or driverId" },
+        { status: 400 }
+      );
     }
 
-    if (!driverId) {
-      await auditAssign({ bookingCode, driverId, actor, ok: false, code: "MISSING_DRIVER", message: "Missing driverId", meta });
-      return bad("Missing driverId", "MISSING_DRIVER", 400);
-    }
-
-    if (!isUuid(driverId)) {
-      await auditAssign({ bookingCode, driverId, actor, ok: false, code: "INVALID_DRIVER_ID", message: "driverId must be a UUID", meta });
-      return bad("driverId must be a UUID", "INVALID_DRIVER_ID", 400, { driverId });
-    }
-
-    // 1) Fetch booking by code
-    const { data: booking, error: bookingErr } = await supabase
-      .from("bookings")
-      .select("id,status,driver_id,assigned_driver_id")
-      .eq("booking_code", bookingCode)
-      .maybeSingle();
-
-    if (bookingErr || !booking) {
-      await auditAssign({
-        bookingCode,
-        driverId,
-        actor,
-        ok: false,
-        code: "BOOKING_NOT_FOUND",
-        message: "Booking not found",
-        meta: { ...meta, bookingErr: bookingErr?.message ?? null },
-      });
-      return bad("Booking not found", "BOOKING_NOT_FOUND", 404, { bookingCode });
-    }
-
-    if (booking.driver_id || booking.assigned_driver_id) {
-      await auditAssign({ bookingCode, driverId, actor, ok: false, code: "ALREADY_ASSIGNED", message: "Booking already assigned", meta });
-      return bad("Booking already assigned", "ALREADY_ASSIGNED", 409);
-    }
-
-    const st = String(booking.status ?? "");
-    if (["on_trip", "completed", "cancelled"].includes(st)) {
-      await auditAssign({ bookingCode, driverId, actor, ok: false, code: "NOT_ASSIGNABLE", message: "Booking not assignable", meta: { ...meta, status: st } });
-      return bad("Booking not assignable", "NOT_ASSIGNABLE", 409, { status: st });
-    }
-
-    // 2) Ensure driver is not busy (tolerant to your status values)
-    const busyStatuses = ["assigned","on_the_way","on_trip","ongoing","accepted","enroute","arrived","started"];
-
-    let activeCount = 0;
-
-    const busyQ = await supabase
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("driver_id", driverId)
-      .in("status", busyStatuses);
-
-    if (busyQ.error) {
-      // fallback: count non-terminal statuses
-      const fb = await supabase
-        .from("bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("driver_id", driverId)
-        .not("status", "in", '("completed","cancelled")');
-
-      if (fb.error) {
-        await auditAssign({
-          bookingCode,
-          driverId,
-          actor,
-          ok: false,
-          code: "BUSY_CHECK_FAILED",
-          message: "Driver busy check failed",
-          meta: { ...meta, busyErr: busyQ.error.message, fallbackErr: fb.error.message, busyStatuses },
-        });
-        return bad("Driver busy check failed", "BUSY_CHECK_FAILED", 500);
-      }
-
-      activeCount = fb.count ?? 0;
-    } else {
-      activeCount = busyQ.count ?? 0;
-    }
-
-    if (activeCount > 0) {
-      await auditAssign({ bookingCode, driverId, actor, ok: false, code: "DRIVER_BUSY", message: "Driver already on active trip", meta: { ...meta, activeCount } });
-      return bad("Driver already on active trip", "DRIVER_BUSY", 409, { activeCount });
-    }
-
-    // 2.5) Wallet minimum balance precheck (MIN_DRIVER_WALLET_REQUIRED = 250)
-    const minRequired = Number(process.env.MIN_DRIVER_WALLET_REQUIRED || "0");
-    if (Number.isFinite(minRequired) && minRequired > 0) {
-      const { data: balRow, error: balErr } = await supabase
-        .from("driver_wallet_balances_v1")
-        .select("balance")
-        .eq("driver_id", driverId)
-        .maybeSingle();
-
-      if (balErr) {
-        await auditAssign({
-          bookingCode,
-          driverId,
-          actor,
-          ok: false,
-          code: "WALLET_CHECK_FAILED",
-          message: "Wallet balance check failed",
-          meta: { ...meta, walletError: balErr.message },
-        });
-        return bad("Wallet balance check failed", "WALLET_CHECK_FAILED", 500);
-      }
-
-      const balance = Number(balRow?.balance ?? 0);
-      if (!Number.isFinite(balance)) {
-        await auditAssign({
-          bookingCode,
-          driverId,
-          actor,
-          ok: false,
-          code: "WALLET_BALANCE_INVALID",
-          message: "Wallet balance invalid",
-          meta: { ...meta, balance: balRow?.balance },
-        });
-        return bad("Wallet balance invalid", "WALLET_BALANCE_INVALID", 409);
-      }
-
-      if (balance < minRequired) {
-        await auditAssign({
-          bookingCode,
-          driverId,
-          actor,
-          ok: false,
-          code: "INSUFFICIENT_BALANCE",
-          message: "Driver wallet below minimum",
-          meta: { ...meta, balance, minRequired },
-        });
-        return bad("Driver wallet below minimum", "INSUFFICIENT_BALANCE", 409, { balance, minRequired });
+    // 🔒 Busy enforcement
+    if (!forceAssign) {
+      const busy = await isDriverBusy(driverId);
+      if (busy) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "DRIVER_BUSY",
+            message: "Driver has an active trip",
+          },
+          { status: 409 }
+        );
       }
     }
 
-    // 3) Assign with optimistic lock (only if still unassigned)
-    const { data: updated, error: updateErr } = await supabase
+    const { error } = await supabase
       .from("bookings")
       .update({
         driver_id: driverId,
-        assigned_driver_id: driverId,
-        assigned_at: new Date().toISOString(),
         status: "assigned",
-        updated_at: new Date().toISOString(),
       })
-      .eq("booking_code", bookingCode)
-      .is("driver_id", null)
-      .select("id");
+      .eq("id", bookingId);
 
-    if (updateErr || !updated || updated.length === 0) {
-      await auditAssign({
-        bookingCode,
-        driverId,
-        actor,
-        ok: false,
-        code: "NO_ROWS_UPDATED",
-        message: "Assignment failed (no rows updated)",
-        meta: { ...meta, updateErr: updateErr?.message ?? null },
-      });
-      return bad("Assignment failed (no rows updated)", "NO_ROWS_UPDATED", 409, { bookingCode, driverId });
+    if (error) {
+      return NextResponse.json(
+        { ok: false, code: "ASSIGN_FAILED", message: error.message },
+        { status: 500 }
+      );
     }
 
-    await auditAssign({ bookingCode, driverId, actor, ok: true, code: "OK", message: "assigned", meta });
-    return ok({ bookingCode, driverId });
-  } catch (e: any) {
-    await auditAssign({
-      bookingCode,
-      driverId,
-      actor,
-      ok: false,
-      code: "INTERNAL_ERROR",
-      message: "Internal server error",
-      meta: { ...meta, error: String(e?.message || e) },
-    });
-    return bad("Internal server error", "INTERNAL_ERROR", 500, { error: String(e?.message || e) });
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, code: "SERVER_ERROR", message: err?.message || "Unknown error" },
+      { status: 500 }
+    );
   }
 }

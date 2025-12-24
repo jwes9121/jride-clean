@@ -1,4 +1,11 @@
-﻿"use client";
+"use client";
+
+function safeText(v: any) {
+  if (v == null) return "-";
+  const s = String(v);
+  return s.replace(/[^\x00-\x7F]/g, "-");
+}
+
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -46,18 +53,6 @@ type TripRow = {
   created_at?: string | null;
 };
 
-
-
-function formatDriverOptionLabel(d: any, idx: number) {
-  const id = String(d?.driver_id || d?.id || d?.uuid || "");
-  const full = id || "";
-  const short = full ? full.slice(0, 8) : String(idx + 1);
-  const displayName = d?.name ? String(d.name) : `Driver ${short}`;
-  const town = d?.town ? String(d.town) : "";
-  const status = d?.status ? String(d.status) : "";
-  // ASCII-only separators (prevents mojibake)
-  return `${displayName} - ${full || short}${town ? ` - ${town}` : ""}${status ? ` - ${status}` : ""}`.trim();
-}
 type DriverRow = {
   driver_id?: string | null;
   name?: string | null;
@@ -107,27 +102,11 @@ function firstNonEmptyArray<T>(...arrs: T[][]): T[] {
 
 function parseTripsFromPageData(j: any): TripRow[] {
   if (!j) return [];
-
-  // Case 1: common wrapper arrays
-  const candidates = [j.trips, j.bookings, j.data];
+  const candidates = [j.trips, j.bookings, j.data, j["0"], Array.isArray(j) ? j : null];
   for (const c of candidates) {
     const arr = safeArray<TripRow>(c);
     if (arr.length) return arr;
   }
-
-  // Case 2: raw array
-  if (Array.isArray(j)) return j as TripRow[];
-
-  // Case 3: numeric-key object: { "0": {...}, "1": {...}, ..., zones: {...} }
-  try {
-    const keys = Object.keys(j).filter((k) => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
-    if (keys.length) {
-      const out: TripRow[] = [];
-      for (const k of keys) out.push(j[k]);
-      return out;
-    }
-  } catch {}
-
   return [];
 }
 
@@ -143,54 +122,29 @@ function isActiveTripStatus(s: string) {
 }
 
 function computeIsProblem(t: TripRow): boolean {
-const s = normStatus(t.status);
-
-// TAKEOUT row detection + display helpers (table only; no backend changes)
-const rowTripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
-const rowCodeUpper = String((t as any).booking_code || "").trim().toUpperCase();
-const rowIsTakeout =
-  rowTripType === "takeout" ||
-  rowCodeUpper.startsWith("TAKEOUT-") ||
-  rowCodeUpper.startsWith("TAKEOUT_") ||
-  rowCodeUpper.startsWith("TAKEOUT");
-
-const passengerDisplay =
-  (t as any).passenger_name ||
-  (rowIsTakeout ? ((t as any).vendor_name || "Takeout") : "-----");
-
-const pickupDisplay =
-  (t as any).pickup_label ||
-  (t as any).from_label ||
-  (rowIsTakeout ? "Vendor pickup" : "-----");
-
-const dropoffDisplay =
-  (t as any).dropoff_label ||
-  (t as any).to_label ||
-  (rowIsTakeout ? "Customer dropoff" : "-----");
-const mins = minutesSince(t.updated_at || t.created_at || null);
+  const s = normStatus(t.status);
+  const mins = minutesSince(t.updated_at || t.created_at || null);
 
   const isStuck =
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
 
-  // TAKEOUT detection (prefer trip_type, fallback to booking_code prefix)
-  const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
-  const code = String(t.booking_code || "").trim().toUpperCase();
-  const isTakeout =
-    tripType === "takeout" ||
-    code.startsWith("TAKEOUT-") ||
-    code.startsWith("TAKEOUT_") ||
-    code.startsWith("TAKEOUT");
-
-  // Missing coords can be a problem for LOCAL rides, but for TAKEOUT it can be legitimate
   const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
   const hasDropoff = Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
-  const missingCoords = !isTakeout && isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
+  const missingCoords = isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
 
   return isStuck || missingCoords;
 }
 
-type FilterKey = | "dispatch" | "pending" | "assigned" | "on_the_way" | "on_trip" | "completed" | "cancelled" | "problem";
+type FilterKey =
+  | "dispatch"
+  | "pending"
+  | "assigned"
+  | "on_the_way"
+  | "on_trip"
+  | "completed"
+  | "cancelled"
+  | "problem";
 
 export default function LiveTripsClient() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
@@ -235,7 +189,14 @@ export default function LiveTripsClient() {
     }));
 
     setZones(z);
-    setAllTrips(normalized);
+        // Hide ghost/malformed rows (no booking_code and no usable id/uuid).
+    // These cannot be progressed and only create "PROBLEM" noise in the UI.
+    const cleaned = normalized.filter((t) => {
+      const hasCode = !!String(t.booking_code || "").trim();
+      const hasId = !!String(t.uuid || t.id || "").trim();
+      return hasCode || hasId;
+    });
+    setAllTrips(cleaned);
 
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
@@ -282,88 +243,6 @@ export default function LiveTripsClient() {
     loadDrivers().catch((e) => setDriversDebug("Drivers load failed: " + (e?.message ?? "unknown")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // ===== Auto-refresh polling (no flicker) =====
-  useEffect(() => {
-    let alive = true;
-    let timer: any = null;
-    let inflight: AbortController | null = null;
-
-    async function tick() {
-      if (!alive) return;
-
-      // Pause polling when tab is hidden
-      if (typeof document !== "undefined" && document.hidden) {
-        timer = setTimeout(tick, 12000);
-        return;
-      }
-
-      // Avoid overlapping requests
-      if (inflight) {
-        timer = setTimeout(tick, 12000);
-        return;
-      }
-
-      inflight = new AbortController();
-      try {
-        const r = await fetch("/api/admin/livetrips/page-data", {
-          cache: "no-store",
-          signal: inflight.signal,
-        });
-        const j = await r.json();
-
-        if (!alive) return;
-
-        if (j?.ok && j?.data) {
-          const nextTrips = j.data.trips || [];
-          const nextDrivers = j.data.drivers || [];
-          const nextZones = j.data.zones || [];
-
-          setAllTrips((prev: any) => {
-            try {
-              return JSON.stringify(prev) === JSON.stringify(nextTrips)
-                ? prev
-                : nextTrips;
-            } catch {
-              return nextTrips;
-            }
-          });
-
-          setDrivers((prev: any) => {
-            try {
-              return JSON.stringify(prev) === JSON.stringify(nextDrivers)
-                ? prev
-                : nextDrivers;
-            } catch {
-              return nextDrivers;
-            }
-          });
-
-          setZones((prev: any) => {
-            try {
-              return JSON.stringify(prev) === JSON.stringify(nextZones)
-                ? prev
-                : nextZones;
-            } catch {
-              return nextZones;
-            }
-          });
-        }
-      } catch {
-        // ignore polling errors
-      } finally {
-        inflight = null;
-        if (alive) timer = setTimeout(tick, 12000);
-      }
-    }
-
-    timer = setTimeout(tick, 6000);
-    return () => {
-      alive = false;
-      try { if (timer) clearTimeout(timer); } catch {}
-      try { inflight?.abort(); } catch {}
-      inflight = null;
-    };
-  }, []);
 
   // auto-refresh
   useEffect(() => {
@@ -371,7 +250,7 @@ export default function LiveTripsClient() {
       loadPage().catch(() => {});
       loadDrivers().catch(() => {});
     }, 5000);
-    return () => clearInterval(t);
+                    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -388,34 +267,20 @@ export default function LiveTripsClient() {
 
     if (typeof window !== "undefined") {
       window.addEventListener(JRIDE_LIVETRIPS_EVT, onEvt as any);
-      return () => window.removeEventListener(JRIDE_LIVETRIPS_EVT, onEvt as any);
+                    return () => window.removeEventListener(JRIDE_LIVETRIPS_EVT, onEvt as any);
     }
   }, []);
 
   const stuckTripIds = useMemo(() => {
-  const s = new Set<string>();
-
-  for (const t of allTrips) {
-    const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
-    const code = String((t as any).booking_code || "").trim().toUpperCase();
-
-    const isTakeout =
-      tripType === "takeout" ||
-      code.startsWith("TAKEOUT-") ||
-      code.startsWith("TAKEOUT_") ||
-      code.startsWith("TAKEOUT");
-
-    // TAKEOUT trips are never considered "problem"
-    if (isTakeout) continue;
-
-    if (computeIsProblem(t)) {
-      const id = normTripId(t);
-      if (id) s.add(id);
+    const s = new Set<string>();
+    for (const t of allTrips) {
+      if (computeIsProblem(t)) {
+        const id = normTripId(t);
+        if (id) s.add(id);
+      }
     }
-  }
-
-  return s;
-}, [allTrips]);
+    return s;
+  }, [allTrips]);
 
   const counts = useMemo(() => {
     const c = {
@@ -429,30 +294,7 @@ export default function LiveTripsClient() {
       problem: 0,
     };
     for (const t of allTrips) {
-const s = normStatus(t.status);
-
-// TAKEOUT row detection + display helpers (table only; no backend changes)
-const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
-const codeUpper = String((t as any).booking_code || "").trim().toUpperCase();
-const isTakeoutRow =
-  tripType === "takeout" ||
-  codeUpper.startsWith("TAKEOUT-") ||
-  codeUpper.startsWith("TAKEOUT_") ||
-  codeUpper.startsWith("TAKEOUT");
-
-const passengerDisplay =
-  (t as any).passenger_name ||
-  (isTakeoutRow ? ((t as any).vendor_name || "Takeout") : "-----");
-
-const pickupDisplay =
-  (t as any).pickup_label ||
-  (t as any).from_label ||
-  (isTakeoutRow ? "Vendor pickup" : "-----");
-
-const dropoffDisplay =
-  (t as any).dropoff_label ||
-  (t as any).to_label ||
-  (isTakeoutRow ? "Customer dropoff" : "-----");
+      const s = normStatus(t.status);
       if (s === "pending") c.pending++;
       if (s === "assigned") c.assigned++;
       if (s === "on_the_way") c.on_the_way++;
@@ -500,22 +342,7 @@ const dropoffDisplay =
     return allTrips.find((t) => normTripId(t) === selectedTripId) || null;
   }, [allTrips, selectedTripId]);
 
-  
-
-  const zoneStats = useMemo(() => {
-    const m: Record<string, { util: number; status: string }> = {};
-    (zones || []).forEach((z: any) => {
-      const key = String(z?.zone_name || z?.town || z?.zone || "").trim();
-      if (!key) return;
-      const lim = Number(z?.capacity_limit ?? 0);
-      const active = Number(z?.active_drivers ?? 0);
-      const util = lim > 0 ? active / lim : 0;
-      const status = String(z?.status || "OK");
-      m[key] = { util, status };
-    });
-    return m;
-  }, [zones]);
-function pillClass(active: boolean) {
+  function pillClass(active: boolean) {
     return [
       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
       active ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
@@ -544,20 +371,16 @@ function pillClass(active: boolean) {
 
   async function updateTripStatus(bookingCode: string, status: string) {
     if (!bookingCode || !status) return;
-    try {
-      setLastAction("Updating status...");
-      await postJson("/api/dispatch/status", { bookingCode, status });
-      setLastAction("Status updated");
-    } catch (e: any) {
-      setLastAction("Status update FAILED: " + String(e?.message || e));
-      throw e;
-    } finally {
-      await loadPage().catch(() => {});
-      await loadDrivers().catch(() => {});
-    }
+    setLastAction("Updating status...");
+    optimisticStatus(bookingCode, status);
+    await postJson("/api/dispatch/status", { bookingCode, status });
+    setLastAction("Status updated");
+    await loadPage();
   }
+
   const showThresholds = `Stuck watcher thresholds: on_the_way ---- ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ---- ${STUCK_THRESHOLDS_MIN.on_trip} min`;
-  return (
+
+                    return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -648,34 +471,28 @@ function pillClass(active: boolean) {
                   </tr>
                 ) : (
                   visibleTrips.map((t) => {
-                    const id = normTripId(t);
+                  // RENDER_GUARD_REAL_BOOKINGS_ONLY
+                  // Hide synthetic/shell rows like booking_code="-----" with no meaningful fields.
+                  const code = String(t?.booking_code ?? "").trim();
+                  const codeLooksFake = !code || /^-+$/.test(code) || code.toLowerCase() === "null" || code.toLowerCase() === "undefined";
+
+                  const hasPassenger = !!String(t?.passenger_name ?? "").trim();
+                  const hasPickupLbl = !!String(t?.pickup_label ?? "").trim();
+                  const hasDropLbl = !!String(t?.dropoff_label ?? "").trim();
+
+                  const hasPickupCoords = Number.isFinite((t as any)?.pickup_lat) && Number.isFinite((t as any)?.pickup_lng);
+                  const hasDropCoords = Number.isFinite((t as any)?.dropoff_lat) && Number.isFinite((t as any)?.dropoff_lng);
+
+                  const meaningful = hasPassenger || hasPickupLbl || hasDropLbl || hasPickupCoords || hasDropCoords;
+
+                  if (codeLooksFake && !meaningful) {
+                    return null;
+                  }const id = normTripId(t);
                     const isSel = selectedTripId === id;
                     const isProblem = stuckTripIds.has(id);
-const s = normStatus(t.status);
+                    const s = normStatus(t.status);
 
-// TAKEOUT row detection + display helpers (table only; no backend changes)
-const tripType = String((t as any).trip_type || (t as any).tripType || "").trim().toLowerCase();
-const codeUpper = String((t as any).booking_code || "").trim().toUpperCase();
-const isTakeoutRow =
-  tripType === "takeout" ||
-  codeUpper.startsWith("TAKEOUT-") ||
-  codeUpper.startsWith("TAKEOUT_") ||
-  codeUpper.startsWith("TAKEOUT");
-
-const passengerDisplay =
-  (t as any).passenger_name ||
-  (isTakeoutRow ? ((t as any).vendor_name || "Takeout") : "-----");
-
-const pickupDisplay =
-  (t as any).pickup_label ||
-  (t as any).from_label ||
-  (isTakeoutRow ? "Vendor pickup" : "-----");
-
-const dropoffDisplay =
-  (t as any).dropoff_label ||
-  (t as any).to_label ||
-  (isTakeoutRow ? "Customer dropoff" : "-----");
-  return (
+                    return (
                       <tr
                         key={id || Math.random()}
                         className={["border-b cursor-pointer", isSel ? "bg-blue-50" : "hover:bg-gray-50"].join(" ")}
@@ -687,9 +504,9 @@ const dropoffDisplay =
                             <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">PROBLEM</span>
                           ) : null}
                         </td>
-                        <td className="p-2">{passengerDisplay}</td>
-                        <td className="p-2">{pickupDisplay}</td>
-                        <td className="p-2">{dropoffDisplay}</td>
+                        <td className="p-2">{t.passenger_name || "-----"}</td>
+                        <td className="p-2">{t.pickup_label || "-----"}</td>
+                        <td className="p-2">{t.dropoff_label || "-----"}</td>
                         <td className="p-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{s || "-----"}</span>
                         </td>
@@ -733,130 +550,59 @@ const dropoffDisplay =
           </div>
 
           <div className="p-3 border-t">
-  <div className="text-xs text-gray-600 mb-2">Drivers: {driversDebug}</div>
+            <div className="text-xs text-gray-600 mb-2">Drivers: {driversDebug}</div>
 
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-    <TripWalletPanel trip={selectedTrip as any} />
-    <TripLifecycleActions trip={selectedTrip as any} onAfterAction={() => { loadPage().catch(() => {}); }} />
-  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <TripWalletPanel trip={selectedTrip as any} />
+              <TripLifecycleActions trip={selectedTrip as any} />
+            </div>
 
-  <div className="mt-3 rounded border p-3">
-    <div className="font-semibold mb-2">Assign driver (manual)</div>
+            <div className="mt-3 rounded border p-3">
+              <div className="font-semibold mb-2">Assign driver (manual)</div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <select
+                  className="border rounded px-2 py-1 text-sm min-w-[320px]"
+                  value={manualDriverId}
+                  onChange={(e) => setManualDriverId(e.target.value)}
+                >
+                  <option value="">Select driver</option>
+                  {drivers.map((d, idx) => {
+                    const did = String(d.driver_id || "");
+                    const label = `${d.name || "Driver"} ${d.town ? `----- ${d.town}` : ""} ${d.status ? `-- ${d.status}` : ""}`.trim();
+                    return <option key={did || idx} value={did}>{label}</option>;
+                  })}
+                </select>
 
-    <div className="flex flex-wrap gap-2 items-center">
-      <select
-        className="border rounded px-2 py-1 text-sm min-w-[320px]"
-        value={manualDriverId}
-        onChange={(e) => setManualDriverId(e.target.value)}
-      >
-        <option value="">Select driver</option>
-        {drivers.map((d, idx) => {
-          const value = String(d.driver_id || (d as any).id || (d as any).uuid || "");
-          const label = formatDriverOptionLabel(d, idx);
-          return (
-            <option key={value || idx} value={value}>
-              {label}
-            </option>
-          );
-        })}
-      </select>
+                <button
+                  className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
+                  disabled={!selectedTrip?.booking_code || !manualDriverId}
+                  onClick={() => {
+                    if (!selectedTrip?.booking_code) return;
+                    assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) => setLastAction(String(err?.message || err)));
+                  }}
+                >
+                  Assign
+                </button>
 
-      <button
-        className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
-        disabled={!selectedTrip?.booking_code || !manualDriverId}
-        onClick={() => {
-          if (!selectedTrip?.booking_code) return;
-          assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) =>
-            setLastAction(String(err?.message || err))
-          );
-        }}
-      >
-        Assign
-      </button>
+                <button
+                  className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                  onClick={() => { loadPage().catch(() => {}); loadDrivers().catch(() => {}); setLastAction("Refreshed"); }}
+                >
+                  Refresh now
+                </button>
+              </div>
 
-      <button
-        className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
-        onClick={() => {
-          loadPage().catch(() => {});
-          loadDrivers().catch(() => {});
-          setLastAction("Refreshed");
-        }}
-      >
-        Refresh now
-      </button>
-    </div>
-
-    <div className="mt-2">
-      <SmartAutoAssignSuggestions
-  trip={
-    selectedTrip
-      ? ({
-          id: String((selectedTrip as any).id ?? (selectedTrip as any).uuid ?? (selectedTrip as any).booking_code ?? ""),
-          pickupLat: Number((selectedTrip as any).pickup_lat),
-          pickupLng: Number((selectedTrip as any).pickup_lng),
-          zone: String((selectedTrip as any).town ?? (selectedTrip as any).zone ?? "Unknown"),
-          tripType: String((selectedTrip as any).trip_type ?? (selectedTrip as any).service_type ?? "ride"),
-        } as any)
-      : null
-  }
-  drivers={
-    (drivers || []).map((d: any) => ({
-      id: String(d.driver_id ?? d.id ?? ""),
-      name: String(d.name ?? "Driver"),
-      lat: Number(d.lat),
-      lng: Number(d.lng),
-      zone: String(d.town ?? d.zone ?? "Unknown"),
-      homeTown: String(d.town ?? d.homeTown ?? "Unknown"),
-      status: String(d.status ?? "available"),
-    })) as any
-  }
-  zoneStats={
-    (zones || []).reduce((acc: any, z: any) => {
-      const key = String(z.zone_name ?? z.key ?? "Unknown");
-      acc[key] = { util: 0, status: String(z.status ?? "OK") };
-      return acc;
-    }, {} as any)
-  }
-  assignedDriverId={String((selectedTrip as any)?.driver_id ?? (selectedTrip as any)?.assigned_driver_id ?? "") || null}
-  onAssign={async (driverId: string) => {
-    if (!selectedTrip?.booking_code) return;
-    await assignDriver(String(selectedTrip.booking_code), String(driverId));
-  }}
-  canAssign={(() => {
-    const s = String((selectedTrip as any)?.status ?? "").toLowerCase().trim();
-    return !(s === "on_trip" || s === "completed" || s === "cancelled");
-  })()}
-/>
-    </div>
-  </div>
-</div>
-
-        </div>
-
-        <div className="rounded-lg border">
-          <div className="p-3 border-b flex items-center justify-between">
-            <div className="font-semibold">Map</div>
-            <div className="text-xs text-gray-600">
-              {selectedTrip?.booking_code ? `Selected: ${selectedTrip.booking_code}` : "No trip selected"}
+              <div className="mt-2">
+                <SmartAutoAssignSuggestions trip={selectedTrip as any} drivers={drivers as any} />
+              </div>
             </div>
           </div>
-          <div className="p-2 min-h-[520px] h-[520px]" style={{ minHeight: 520 }}>
-            <LiveTripsMap trips={allTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
-          </div>
+        </div>
+
+        <div className="rounded-lg border overflow-hidden h-[520px] min-h-[520px]">
+          <LiveTripsMap trips={visibleTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
         </div>
       </div>
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-

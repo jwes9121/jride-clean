@@ -1,7 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
 
 type Body = {
   bookingId?: string;
@@ -19,43 +19,165 @@ function statusColumnsPresent(sample: Record<string, any>) {
 }
 
 function safeHost(u: string) {
-  try { return new URL(u).host; } catch { return ""; }
+  try {
+    return new URL(u).host;
+  } catch {
+    return "";
+  }
+}
+
+// ===== Observability (in-memory, no DB migration) =====
+// Note: Vercel/serverless instances may reset between invocations; still useful for debugging/training.
+type DispatchActionLog = {
+  id: string;
+  at: string; // ISO
+  type: "status";
+  actor: string;
+  ip?: string | null;
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  nextStatus?: string | null;
+  ok: boolean;
+  httpStatus: number;
+  message?: string;
+  columnsUpdated?: string[];
+};
+
+function getLogStore(): DispatchActionLog[] {
+  const g = globalThis as any;
+  if (!g.__JRIDE_DISPATCH_LOGS) g.__JRIDE_DISPATCH_LOGS = [];
+  return g.__JRIDE_DISPATCH_LOGS as DispatchActionLog[];
+}
+
+function pushLog(entry: DispatchActionLog) {
+  const store = getLogStore();
+  store.unshift(entry);
+  if (store.length > 10) store.length = 10;
+}
+
+function randId() {
+  return Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
+}
+
+function getActor(req: Request) {
+  // allow the UI to pass a dispatcher name if you want later
+  const h = req.headers;
+  return (
+    h.get("x-dispatcher") ||
+    h.get("x-dispatcher-name") ||
+    h.get("x-user") ||
+    "unknown"
+  );
+}
+
+function getIp(req: Request) {
+  const h = req.headers;
+  const xf = h.get("x-forwarded-for");
+  if (xf) return xf.split(",")[0].trim();
+  return h.get("x-real-ip") || null;
+}
+
+// GET /api/dispatch/status?log=1  -> returns last 10 actions
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const wantLog = url.searchParams.get("log");
+  if (!wantLog) return bad("Missing log=1", {}, 400);
+
+  return NextResponse.json({
+    ok: true,
+    actions: getLogStore(),
+  });
 }
 
 export async function POST(req: Request) {
-  
-  // JRIDE_PATCH_ROW_DECL: prevent "row is not defined"
-  let row: any = {};
-const supabaseUrl =
+  const actionId = randId();
+  const actor = getActor(req);
+  const ip = getIp(req);
+
+  const supabaseUrl =
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const serviceKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
-  if (!supabaseUrl) return bad("Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL", {}, 500);
-  if (!serviceKey) return bad("Missing SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY)", {}, 500);
+  if (!supabaseUrl) {
+    const msg = "Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL";
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      ok: false,
+      httpStatus: 500,
+      message: msg,
+    });
+    return bad(msg, {}, 500);
+  }
+
+  if (!serviceKey) {
+    const msg = "Missing SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY)";
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      ok: false,
+      httpStatus: 500,
+      message: msg,
+    });
+    return bad(msg, {}, 500);
+  }
 
   let body: Body;
   try {
     body = (await req.json()) as Body;
   } catch {
-    return bad("Invalid JSON body");
+    const msg = "Invalid JSON body";
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      ok: false,
+      httpStatus: 400,
+      message: msg,
+    });
+    return bad(msg);
   }
 
   const bookingCode = body.bookingCode ? String(body.bookingCode).trim() : undefined;
   const bookingId = body.bookingId ? String(body.bookingId).trim() : undefined;
   const nextStatus = body.status ? String(body.status).trim() : "";
 
-  if (!nextStatus) return bad("Missing status");
-  if (!bookingCode && !bookingId) return bad("Missing bookingId or bookingCode");
+  if (!nextStatus || (!bookingCode && !bookingId)) {
+    const msg = !nextStatus ? "Missing status" : "Missing bookingId or bookingCode";
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      bookingId: bookingId ?? null,
+      bookingCode: bookingCode ?? null,
+      nextStatus: nextStatus ?? null,
+      ok: false,
+      httpStatus: 400,
+      message: msg,
+    });
+    return bad(msg);
+  }
 
+  // Build filter (supports either booking_code or id)
   const where = bookingCode
     ? `booking_code=eq.${encodeURIComponent(bookingCode)}`
     : `id=eq.${encodeURIComponent(String(bookingId))}`;
 
   const baseUrl = `${supabaseUrl}/rest/v1/bookings?${where}`;
 
-  // 1) Read the row first
+  // 1) Read row first (detect what status-like columns exist)
   const readRes = await fetch(`${baseUrl}&select=*`, {
     method: "GET",
     headers: {
@@ -67,12 +189,38 @@ const supabaseUrl =
 
   const readText = await readRes.text();
   if (!readRes.ok) {
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      bookingId: bookingId ?? null,
+      bookingCode: bookingCode ?? null,
+      nextStatus,
+      ok: false,
+      httpStatus: readRes.status,
+      message: "READ_FAILED",
+    });
     return bad("READ_FAILED", { httpStatus: readRes.status, detail: readText }, readRes.status);
   }
 
   let rows: any[] = [];
   try { rows = JSON.parse(readText); } catch {}
   if (!Array.isArray(rows) || rows.length === 0) {
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      bookingId: bookingId ?? null,
+      bookingCode: bookingCode ?? null,
+      nextStatus,
+      ok: false,
+      httpStatus: 404,
+      message: "BOOKING_NOT_FOUND",
+    });
     return bad("BOOKING_NOT_FOUND", { bookingCode, bookingId }, 404);
   }
 
@@ -80,10 +228,27 @@ const supabaseUrl =
   const cols = statusColumnsPresent(sample);
 
   if (cols.length === 0) {
-    return bad("NO_STATUS_COLUMNS_FOUND", {
-      hint: "Bookings row has no known status-like columns. page-data might be deriving status via SQL/RPC.",
-      keys: Object.keys(sample).slice(0, 60),
-    }, 409);
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      bookingId: bookingId ?? null,
+      bookingCode: bookingCode ?? null,
+      nextStatus,
+      ok: false,
+      httpStatus: 409,
+      message: "NO_STATUS_COLUMNS_FOUND",
+    });
+    return bad(
+      "NO_STATUS_COLUMNS_FOUND",
+      {
+        hint: "Bookings row has no known status-like columns. page-data might be deriving status via SQL/RPC.",
+        keys: Object.keys(sample).slice(0, 60),
+      },
+      409
+    );
   }
 
   // 2) Patch ALL present status-like columns
@@ -103,19 +268,52 @@ const supabaseUrl =
 
   const patchText = await patchRes.text();
   if (!patchRes.ok) {
-    return bad("PATCH_FAILED", {
+    pushLog({
+      id: actionId,
+      at: new Date().toISOString(),
+      type: "status",
+      actor,
+      ip,
+      bookingId: bookingId ?? null,
+      bookingCode: bookingCode ?? null,
+      nextStatus,
+      ok: false,
       httpStatus: patchRes.status,
-      detail: patchText,
-      attempted: patchBody,
-      supabaseHost: safeHost(supabaseUrl),
-    }, patchRes.status);
+      message: "PATCH_FAILED",
+    });
+    return bad(
+      "PATCH_FAILED",
+      {
+        httpStatus: patchRes.status,
+        detail: patchText,
+        attempted: patchBody,
+        supabaseHost: safeHost(supabaseUrl),
+      },
+      patchRes.status
+    );
   }
 
   let patched: any[] = [];
   try { patched = JSON.parse(patchText); } catch {}
 
+  pushLog({
+    id: actionId,
+    at: new Date().toISOString(),
+    type: "status",
+    actor,
+    ip,
+    bookingId: (patched?.[0]?.id ?? bookingId ?? null) as any,
+    bookingCode: (patched?.[0]?.booking_code ?? bookingCode ?? null) as any,
+    nextStatus,
+    ok: true,
+    httpStatus: 200,
+    message: "OK",
+    columnsUpdated: cols,
+  });
+
   return NextResponse.json({
     ok: true,
+    actionId,
     updated: Array.isArray(patched) ? patched.length : 1,
     bookingCode: patched?.[0]?.booking_code ?? bookingCode,
     id: patched?.[0]?.id ?? bookingId,
@@ -124,6 +322,3 @@ const supabaseUrl =
     supabaseHost: safeHost(supabaseUrl),
   });
 }
-
-
-
