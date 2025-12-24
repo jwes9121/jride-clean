@@ -1,544 +1,101 @@
 ﻿"use client";
 
-import * as React from "react";
+import React, { useEffect, useState } from "react";
 
 type Booking = {
   id: string;
-
-  rider_name?: string | null;
-  rider_phone?: string | null;
-
-  pickup_label?: string | null;
-  dropoff_label?: string | null;
-
-  pickup_lat?: number | null;
-  pickup_lng?: number | null;
-
-  town?: string | null;
   status?: string | null;
-  driver_id?: string | null;
-
-  trip_type?: string | null;
-  vendor_id?: string | null;
-  takeout_service_level?: "regular" | "express" | null;
-
-  booking_code?: string | null;
-  created_at?: string | null;
 };
 
-type DriverRow = {
-  id: string;
-  town?: string | null;
-  status?: string | null; // online/busy/etc
-  lat?: number | null;
-  lng?: number | null;
-  last_seen?: string | null;
-};
-
-function normTown(v: any) {
-  return String(v ?? "").trim().toLowerCase();
+function allowedActions(status?: string | null) {
+  const s = String(status || "").toLowerCase();
+  if (s === "completed" || s === "cancelled") return [];
+  if (s === "arrived") return ["complete"];
+  if (s === "enroute" || s === "on_the_way") return ["arrived"];
+  if (s === "assigned") return ["enroute"];
+  return ["assign"];
 }
 
-function isOnlineLike(status: any) {
-  const s = String(status ?? "").trim().toLowerCase();
-  return s === "online" || s === "available" || s === "idle";
-}
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function pickNearestEligibleDriverId(b: Booking, drivers: DriverRow[], forceAssign: boolean): string {
-  if (!drivers.length) return "";
-
-  const townKey = normTown(b.town);
-  const sameTown = drivers.filter((d) => normTown(d.town) === townKey);
-  const pool = sameTown.length ? sameTown : drivers;
-
-  const online = pool.filter((d) => isOnlineLike(d.status));
-  const eligible = forceAssign ? pool : online;
-  if (!eligible.length) return "";
-
-  const plat = typeof b.pickup_lat === "number" ? b.pickup_lat : null;
-  const plng = typeof b.pickup_lng === "number" ? b.pickup_lng : null;
-
-  // If pickup coords missing -> safe fallback to first eligible
-  if (plat === null || plng === null) return eligible[0].id;
-
-  const withCoords = eligible.filter((d) => typeof d.lat === "number" && typeof d.lng === "number");
-  if (!withCoords.length) return eligible[0].id;
-
-  let bestId = withCoords[0].id;
-  let bestDist = haversineMeters(plat, plng, withCoords[0].lat as number, withCoords[0].lng as number);
-
-  for (let i = 1; i < withCoords.length; i++) {
-    const d = withCoords[i];
-    const dist = haversineMeters(plat, plng, d.lat as number, d.lng as number);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestId = d.id;
-    }
-  }
-  return bestId;
-}
-
-export default function DispatchPage(): JSX.Element {
-  const [rows, setRows] = React.useState<Booking[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const [drivers, setDrivers] = React.useState<DriverRow[]>([]);
-  const [driversError, setDriversError] = React.useState<string | null>(null);
-
-  const [selectedDriverByBookingId, setSelectedDriverByBookingId] = React.useState<Record<string, string>>({});
-  const [pendingByBookingId, setPendingByBookingId] = React.useState<Record<string, boolean>>({});
-
-  const [forceAssign, setForceAssign] = React.useState(false);
-  const [autoAssignOnCreate, setAutoAssignOnCreate] = React.useState(true);
-
-  // Create form
-  const [serviceType, setServiceType] = React.useState<"dispatch" | "takeout">("dispatch");
-  const [riderName, setRiderName] = React.useState("");
-  const [riderPhone, setRiderPhone] = React.useState("");
-  const [town, setTown] = React.useState("");
-  const [pickupLat, setPickupLat] = React.useState("");
-  const [pickupLng, setPickupLng] = React.useState("");
-
-  const [vendorId, setVendorId] = React.useState("");
-  const [takeoutLevel, setTakeoutLevel] = React.useState<"regular" | "express">("regular");
-  const [pickupLabel, setPickupLabel] = React.useState("");
-  const [dropoffLabel, setDropoffLabel] = React.useState("");
-
-  function setPending(bookingId: string, v: boolean) {
-    setPendingByBookingId((prev) => ({ ...prev, [bookingId]: v }));
-  }
+export default function DispatchPage() {
+  const [rows, setRows] = useState<Booking[]>([]);
+  const [pendingMap, setPendingMap] = useState<Record<string, boolean>>({});
 
   async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to load bookings");
-      const list = Array.isArray(data?.rows) ? data.rows.filter(Boolean) : [];
-      setRows(list);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load bookings");
-    } finally {
-      setLoading(false);
-    }
+    const r = await fetch("/api/dispatch/bookings", { cache: "no-store" });
+    const j = await r.json();
+    setRows(j.rows || []);
   }
 
-  async function refreshDrivers() {
-    setDriversError(null);
-    try {
-      const res = await fetch("/api/dispatch/drivers", { cache: "no-store" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
-      setDrivers(Array.isArray(data?.drivers) ? data.drivers : []);
-    } catch (e: any) {
-      setDrivers([]);
-      setDriversError(e?.message || "Failed to load drivers");
-    }
-  }
-
-  function getBookingCodeById(bookingId: string): string {
-    const row = rows.find((x) => String(x.id) === String(bookingId));
-    return String(row?.booking_code || "").trim();
-  }
-
-  // Preselect suggested driver once per booking (no hooks in map)
-  React.useEffect(() => {
-    setSelectedDriverByBookingId((prev) => {
-      let changed = false;
-      const next: Record<string, string> = { ...prev };
-
-      for (const b of rows) {
-        if (!b || b.driver_id) continue;
-        const bookingId = String(b.id);
-        if (next[bookingId]) continue;
-
-        const suggested = pickNearestEligibleDriverId(b, drivers, forceAssign);
-        if (suggested) {
-          next[bookingId] = suggested;
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [rows, drivers, forceAssign]);
-
-  async function assignDirect(bookingId: string, driverId: string) {
-    if (!driverId) return;
-
-    const bookingCode = getBookingCodeById(bookingId);
-    if (!bookingCode) {
-      setError("Assign failed: booking_code missing. Reload and try again.");
-      return;
-    }
-
-    setError(null);
-    setPending(bookingId, true);
-    try {
-      const res = await fetch("/api/dispatch/assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingCode, driverId }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Assign failed");
-
-      // optimistic
-      setRows((prev) =>
-        prev.filter(Boolean).map((x) => (String(x.id) === String(bookingId) ? { ...x, driver_id: driverId } : x))
-      );
-
-      setSelectedDriverByBookingId((prev) => {
-        const next = { ...prev };
-        delete next[bookingId];
-        return next;
-      });
-
-      await load();
-    } catch (e: any) {
-      setError(e?.message || "Assign failed");
-    } finally {
-      setPending(bookingId, false);
-    }
-  }
-
-  async function assign(bookingId: string) {
-    const driverId = selectedDriverByBookingId[bookingId] || "";
-    if (!driverId) return;
-    await assignDirect(bookingId, driverId);
-  }
-
-  async function setStatus(b: Booking, status: string) {
-    const bookingId = String(b.id);
-    setError(null);
-    setPending(bookingId, true);
-
-    try {
-      // optimistic UI update so you see it immediately
-      setRows((prev) =>
-        prev.filter(Boolean).map((x) => (String(x.id) === bookingId ? { ...x, status } : x))
-      );
-
-      const res = await fetch("/api/dispatch/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, booking_id: bookingId, status }),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        await load(); // revert to server truth
-        throw new Error((data && (data.error || data.message)) || "Update failed");
-      }
-
-      // If backend returns updated row, use it; else reload once
-      if (data?.row && data.row.id) {
-        setRows((prev) =>
-          prev.filter(Boolean).map((x) => (String(x.id) === bookingId ? data.row : x))
-        );
-      } else {
-        await load();
-      }
-    } catch (e: any) {
-      setError(e?.message || "Update failed");
-    } finally {
-      setPending(bookingId, false);
-    }
-  }
-
-  async function createBooking() {
-    setError(null);
-    try {
-      const payload: any = {};
-
-      if (serviceType === "takeout") {
-        payload.service_type = "takeout";
-        payload.takeout_service_level = takeoutLevel;
-        payload.vendor_id = vendorId || null;
-        payload.pickup_label = pickupLabel || null;
-        payload.dropoff_label = dropoffLabel || null;
-        payload.town = town || "";
-      } else {
-        payload.service_type = "dispatch";
-        payload.rider_name = riderName;
-        payload.rider_phone = riderPhone;
-        payload.town = town;
-        payload.pickup_lat = pickupLat ? Number(pickupLat) : null;
-        payload.pickup_lng = pickupLng ? Number(pickupLng) : null;
-      }
-
-      const res = await fetch("/api/dispatch/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to create booking");
-
-      const newRow: Booking = data?.row;
-      if (!newRow?.id) throw new Error("Create returned no row/id");
-
-      setRows((prev) => [newRow, ...prev]);
-
-      // reset fields
-      setRiderName("");
-      setRiderPhone("");
-      setTown("");
-      setPickupLat("");
-      setPickupLng("");
-      setVendorId("");
-      setTakeoutLevel("regular");
-      setPickupLabel("");
-      setDropoffLabel("");
-
-      // auto-assign if enabled
-      if (autoAssignOnCreate && !newRow.driver_id) {
-        if (!drivers.length) await refreshDrivers();
-        const suggested = pickNearestEligibleDriverId(newRow, drivers, forceAssign);
-        if (suggested) await assignDirect(String(newRow.id), suggested);
-      }
-    } catch (e: any) {
-      setError(e?.message || "Failed to create booking");
-    }
-  }
-
-  React.useEffect(() => {
+  useEffect(() => {
     load();
-    refreshDrivers();
   }, []);
 
-  React.useEffect(() => {
-    const t = window.setInterval(() => refreshDrivers(), 15000);
-    return () => window.clearInterval(t);
-  }, []);
+  function setStatus(b: Booking, status: string) {
+    const id = String(b.id);
+    setPendingMap((m) => ({ ...m, [id]: true }));
+
+    fetch("/api/dispatch/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingId: id, status }),
+      cache: "no-store",
+    })
+      .then(() => load())
+      .finally(() =>
+        setPendingMap((m) => {
+          const c = { ...m };
+          delete c[id];
+          return c;
+        })
+      );
+  }
 
   return (
-    <div className="p-6 space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Dispatch Panel</h1>
+    <div className="p-4">
+      <h1 className="text-xl font-semibold mb-4">Dispatch</h1>
 
-        <div className="flex items-center gap-6">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={forceAssign} onChange={(e) => setForceAssign(e.target.checked)} />
-            <span>Force assign</span>
-          </label>
+      <table className="w-full text-sm border">
+        <thead>
+          <tr className="border-b">
+            <th className="p-2 text-left">Booking</th>
+            <th className="p-2 text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.filter(Boolean).map((b) => {
+            const acts = allowedActions(b.status);
+            const pending = pendingMap[String(b.id)];
 
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={autoAssignOnCreate} onChange={(e) => setAutoAssignOnCreate(e.target.checked)} />
-            <span>Auto-assign on create</span>
-          </label>
-        </div>
-      </div>
+            function ActionBtn(label: string, action: string, onClick: () => void) {
+              const disabled = pending || !acts.includes(action);
+              return (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={onClick}
+                  className={`mr-2 rounded border px-2 py-1 text-xs ${
+                    disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-100"
+                  }`}
+                >
+                  {pending ? "Updatingâ€¦" : label}
+                </button>
+              );
+            }
 
-      <div className="rounded-2xl border p-4 shadow space-y-3">
-        <h2 className="font-medium">New Booking</h2>
-
-        <div className="flex gap-3 items-center">
-          <label className="text-sm">Type</label>
-          <select className="border rounded px-3 py-2" value={serviceType} onChange={(e) => setServiceType(e.target.value as any)}>
-            <option value="dispatch">Dispatch (local)</option>
-            <option value="takeout">Takeout</option>
-          </select>
-
-          {serviceType === "takeout" ? (
-            <>
-              <label className="text-sm">Takeout</label>
-              <select className="border rounded px-3 py-2" value={takeoutLevel} onChange={(e) => setTakeoutLevel(e.target.value as any)}>
-                <option value="regular">Regular</option>
-                <option value="express">Express</option>
-              </select>
-            </>
-          ) : null}
-        </div>
-
-        {serviceType === "takeout" ? (
-          <div className="grid md:grid-cols-5 gap-3">
-            <input className="border rounded px-3 py-2" placeholder="Town (optional)" value={town} onChange={(e) => setTown(e.target.value)} />
-            <input className="border rounded px-3 py-2" placeholder="vendor_id (UUID)" value={vendorId} onChange={(e) => setVendorId(e.target.value)} />
-            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Pickup label" value={pickupLabel} onChange={(e) => setPickupLabel(e.target.value)} />
-            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Dropoff label" value={dropoffLabel} onChange={(e) => setDropoffLabel(e.target.value)} />
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-5 gap-3">
-            <input className="border rounded px-3 py-2" placeholder="Rider name" value={riderName} onChange={(e) => setRiderName(e.target.value)} />
-            <input className="border rounded px-3 py-2" placeholder="Rider phone" value={riderPhone} onChange={(e) => setRiderPhone(e.target.value)} />
-            <input className="border rounded px-3 py-2" placeholder="Town" value={town} onChange={(e) => setTown(e.target.value)} />
-            <input className="border rounded px-3 py-2" placeholder="Pickup lat" value={pickupLat} onChange={(e) => setPickupLat(e.target.value)} />
-            <input className="border rounded px-3 py-2" placeholder="Pickup lng" value={pickupLng} onChange={(e) => setPickupLng(e.target.value)} />
-          </div>
-        )}
-
-        <button type="button" onClick={createBooking} className="px-4 py-2 rounded-xl border shadow">
-          Create
-        </button>
-
-        {error ? <p className="text-red-600">{error}</p> : null}
-      </div>
-
-      <div className="rounded-2xl border p-4 shadow">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-medium mb-3">Queue</h2>
-
-          <div className="text-xs text-gray-600 flex items-center gap-3">
-            <button type="button" className="px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed" onClick={refreshDrivers}>
-              Refresh drivers
-            </button>
-            {driversError ? <span className="text-red-600">{driversError}</span> : null}
-          </div>
-        </div>
-
-        {loading ? (
-          <p>Loading...</p>
-        ) : rows.length === 0 ? (
-          <p>No active rides.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b">
-                <th className="py-2">ID</th>
-                <th className="py-2">Town</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Driver</th>
-                <th className="py-2">Actions</th>
+            return (
+              <tr key={b.id} className="border-b">
+                <td className="p-2">{b.id}</td>
+                <td className="p-2">
+                  {ActionBtn("En-route", "enroute", () => setStatus(b, "enroute"))}
+                  {ActionBtn("Arrived", "arrived", () => setStatus(b, "arrived"))}
+                  {ActionBtn("Complete", "complete", () => setStatus(b, "completed"))}
+                  {ActionBtn("Cancel", "cancel", () => setStatus(b, "cancelled"))}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.filter(Boolean).map((b) => {
-                const bookingId = String(b.id);
-                const pending = !!pendingByBookingId[bookingId];
-                const alreadyAssigned = !!b.driver_id;
-
-                const status = String(b.status || "").toLowerCase();
-                const isTerminal = status === "completed" || status === "cancelled" || status === "canceled";
-
-                const townKey = normTown(b.town);
-                const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
-
-                const onlineDrivers = townDrivers.filter((d) => isOnlineLike(d.status));
-                const busyDrivers = townDrivers.filter((d) => !isOnlineLike(d.status));
-                const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
-
-                const suggestedDriverId = pickNearestEligibleDriverId(b, drivers, forceAssign);
-                const selected = selectedDriverByBookingId[bookingId] || "";
-
-                // Action gating (simple)
-                const canEnroute = !isTerminal && status !== "enroute" && status !== "arrived" && status !== "completed";
-                const canArrive = !isTerminal && status !== "arrived" && status !== "completed";
-                const canComplete = !isTerminal;
-                const canCancel = !isTerminal;
-
-                return (
-                  <tr key={bookingId} className="border-b">
-                    <td className="py-2">{bookingId.slice(0, 8)}</td>
-                    <td className="py-2">{b.town || ""}</td>
-                    <td className="py-2">{b.status || ""}</td>
-                    <td className="py-2">{b.driver_id ? b.driver_id : "-"}</td>
-                    <td className="py-2 space-x-2">
-                      {!alreadyAssigned ? (
-                        <>
-                          <select
-                            className="border rounded px-2 py-1 w-56"
-                            value={selected}
-                            onChange={(e) => setSelectedDriverByBookingId((prev) => ({ ...prev, [bookingId]: e.target.value }))}
-                            disabled={pending}
-                            title="Same-town drivers only. Force assign uses all same-town; otherwise online-only."
-                          >
-                            {eligibleDrivers.length === 0 ? (
-                              <option value="">No eligible drivers</option>
-                            ) : (
-                              eligibleDrivers.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.id.slice(0, 8)} ({isOnlineLike(d.status) ? "online" : "busy"})
-                                </option>
-                              ))
-                            )}
-                          </select>
-
-                          <span className="text-xs text-gray-600 ml-2">
-                            Online {onlineDrivers.length} / Busy {busyDrivers.length}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() => assign(bookingId)}
-                            className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={pending || !selected || eligibleDrivers.length === 0}
-                          >
-                            Assign
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => suggestedDriverId && assignDirect(bookingId, suggestedDriverId)}
-                            className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={pending || !suggestedDriverId}
-                            title={!suggestedDriverId ? "No suggested driver available" : "Assign nearest eligible driver"}
-                          >
-                            Assign suggested
-                          </button>
-                        </>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => setStatus(b, "enroute")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canEnroute}
-                      >
-                        En-route
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setStatus(b, "arrived")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canArrive}
-                      >
-                        Arrived
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setStatus(b, "completed")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canComplete}
-                      >
-                        Complete
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setStatus(b, "canceled")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canCancel}
-                      >
-                        Cancel
-                      </button>
-
-                      {pending ? <span className="text-xs text-gray-500 ml-2">Updating...</span> : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
