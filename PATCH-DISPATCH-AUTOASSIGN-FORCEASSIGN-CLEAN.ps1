@@ -1,4 +1,27 @@
-﻿"use client";
+# PATCH-DISPATCH-AUTOASSIGN-FORCEASSIGN-CLEAN.ps1
+# هدف: dispatch page stable + force assign toggle + assign suggested + auto-assign on create
+# Safety:
+# - creates timestamp backup
+# - overwrites app\dispatch\page.tsx with a known-good implementation (no hooks inside map)
+# - uses only existing endpoints: /api/dispatch/bookings, /api/dispatch/drivers, /api/dispatch/assign, /api/dispatch/status
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ throw $m }
+
+$root = "C:\Users\jwes9\Desktop\jride-clean-fresh"
+$file = Join-Path $root "app\dispatch\page.tsx"
+
+if (!(Test-Path $file)) { Fail "Missing file: $file" }
+
+$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+$bak = "$file.bak.$ts"
+Copy-Item $file $bak -Force
+Write-Host "[OK] Backup: $bak" -ForegroundColor Green
+
+# Write the full file content (known-good)
+$code = @'
+"use client";
 
 import * as React from "react";
 
@@ -514,3 +537,26 @@ export default function DispatchPage(): JSX.Element {
     </div>
   );
 }
+'@
+
+Set-Content -Path $file -Value $code -Encoding UTF8
+Write-Host "[OK] Wrote clean dispatch page: $file" -ForegroundColor Green
+
+# Quick sanity: ensure no React.useEffect inside rows.map (we must not have that)
+$txt = Get-Content $file -Raw
+if ($txt -match "rows\.map\([\s\S]*React\.useEffect") {
+  Fail "Sanity failed: found React.useEffect inside rows.map(). This must never happen."
+}
+
+Write-Host "[OK] Sanity: no hooks inside rows.map()." -ForegroundColor Green
+
+Write-Host ""
+Write-Host "Next:" -ForegroundColor Cyan
+Write-Host "1) npm run dev" -ForegroundColor Cyan
+Write-Host "2) Open http://localhost:3000/dispatch" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "You should now see:" -ForegroundColor Cyan
+Write-Host "- Force assign (override busy) checkbox (top right)" -ForegroundColor Cyan
+Write-Host "- Auto-assign on create checkbox (top right)" -ForegroundColor Cyan
+Write-Host "- Assign suggested button per row" -ForegroundColor Cyan
+Write-Host "- Create no longer fails due to missing bookingCode" -ForegroundColor Cyan

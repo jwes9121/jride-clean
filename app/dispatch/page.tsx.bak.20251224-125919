@@ -1,0 +1,541 @@
+﻿"use client";
+
+import * as React from "react";
+
+/* =========================
+   Types
+========================= */
+
+type Booking = {
+  id: string;
+  rider_name?: string | null;
+  rider_phone?: string | null;
+
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+
+  town?: string | null;
+  status?: string | null;
+  driver_id?: string | null;
+};
+
+type DriverRow = {
+  id: string;
+  town?: string | null;
+  status?: string | null; // online | busy | etc
+  lat?: number | null;
+  lng?: number | null;
+  last_seen?: string | null;
+};
+
+/* =========================
+   Helpers
+========================= */
+
+const normTown = (v: any) => String(v ?? "").trim().toLowerCase();
+
+function isFiniteNum(v: any) {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+// Haversine distance (km)
+function distKm(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const q =
+    s1 * s1 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * s2 * s2;
+  return 2 * R * Math.asin(Math.sqrt(q));
+}
+
+function isTerminalStatus(s: any) {
+  const v = String(s ?? "").toLowerCase();
+  return v === "completed" || v === "canceled" || v === "cancelled";
+}
+
+/* =========================
+   Page
+========================= */
+
+export default function DispatchPage(): JSX.Element {
+  const [rows, setRows] = React.useState<Booking[]>([]);
+  const [drivers, setDrivers] = React.useState<DriverRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // create booking inputs
+  const [riderName, setRiderName] = React.useState("");
+  const [riderPhone, setRiderPhone] = React.useState("");
+  const [town, setTown] = React.useState("");
+  const [pickupLat, setPickupLat] = React.useState("");
+  const [pickupLng, setPickupLng] = React.useState("");
+
+  // assign controls
+  const [forceAssign, setForceAssign] = React.useState(false);
+  const [autoAssignOnCreate, setAutoAssignOnCreate] = React.useState(false);
+
+  // per-row selection + pending
+  const [selectedDriver, setSelectedDriver] = React.useState<Record<string, string>>({});
+  const [pending, setPending] = React.useState<Record<string, boolean>>({});
+
+  /* =========================
+     Loaders
+  ========================= */
+
+  async function loadBookings() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dispatch/bookings", { cache: "no-store" as any });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.message || data.error)) || "Failed to load bookings");
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load bookings");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDrivers() {
+    try {
+      const res = await fetch("/api/dispatch/drivers", { cache: "no-store" as any });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.message || data.error)) || "Failed to load drivers");
+      setDrivers(Array.isArray(data?.drivers) ? data.drivers : []);
+    } catch {
+      setDrivers([]);
+    }
+  }
+
+  React.useEffect(() => {
+    loadBookings();
+    loadDrivers();
+  }, []);
+
+  React.useEffect(() => {
+    const t = window.setInterval(() => {
+      loadDrivers();
+    }, 15000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  /* =========================
+     Compute suggestions
+     (NO hooks inside map)
+  ========================= */
+
+  const suggestionByBookingId = React.useMemo(() => {
+    const out: Record<
+      string,
+      {
+        suggestedDriverId: string | "";
+        onlineCount: number;
+        busyCount: number;
+        eligibleCount: number;
+        nearestKm?: number;
+      }
+    > = {};
+
+    for (const b of rows) {
+      const bookingId = String(b.id);
+      const tKey = normTown(b.town);
+      const townDrivers = drivers.filter((d) => normTown(d.town) === tKey);
+
+      const online = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+      const busy = townDrivers.filter((d) => String(d.status || "").toLowerCase() !== "online");
+
+      const eligible = forceAssign ? townDrivers : online;
+
+      let suggestedDriverId = "";
+      let nearestKm: number | undefined = undefined;
+
+      const bLat = b.pickup_lat;
+      const bLng = b.pickup_lng;
+
+      if (eligible.length > 0) {
+        // If booking has coords AND drivers have coords => pick nearest
+        if (isFiniteNum(bLat) && isFiniteNum(bLng)) {
+          let best: { id: string; km: number } | null = null;
+
+          for (const d of eligible) {
+            if (!isFiniteNum(d.lat) || !isFiniteNum(d.lng)) continue;
+            const km = distKm(bLat as number, bLng as number, d.lat as number, d.lng as number);
+            if (!best || km < best.km) best = { id: d.id, km };
+          }
+
+          if (best) {
+            suggestedDriverId = best.id;
+            nearestKm = best.km;
+          } else {
+            // no driver coords -> fallback
+            suggestedDriverId = eligible[0].id;
+          }
+        } else {
+          // no booking coords -> fallback
+          suggestedDriverId = eligible[0].id;
+        }
+      }
+
+      out[bookingId] = {
+        suggestedDriverId,
+        onlineCount: online.length,
+        busyCount: busy.length,
+        eligibleCount: eligible.length,
+        nearestKm,
+      };
+    }
+
+    return out;
+  }, [rows, drivers, forceAssign]);
+
+  // Keep dropdown prefilled: if user hasn't chosen, set to suggested (safe)
+  React.useEffect(() => {
+    setSelectedDriver((prev) => {
+      const next = { ...prev };
+      for (const b of rows) {
+        const id = String(b.id);
+        if (b.driver_id) continue;
+        if (next[id]) continue;
+
+        const sug = suggestionByBookingId[id]?.suggestedDriverId || "";
+        if (sug) next[id] = sug;
+      }
+      return next;
+    });
+  }, [rows, suggestionByBookingId]);
+
+  /* =========================
+     Actions
+  ========================= */
+
+  async function assign(bookingId: string, driverIdOverride?: string) {
+    const driver_id = driverIdOverride || selectedDriver[bookingId] || "";
+    if (!driver_id) return;
+
+    setError(null);
+    setPending((p) => ({ ...p, [bookingId]: true }));
+
+    try {
+      const res = await fetch("/api/dispatch/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: bookingId, driver_id, force: !!forceAssign }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.message || data.error)) || "Assign failed");
+
+      setRows((prev) => prev.map((r) => (String(r.id) === bookingId ? data.row : r)));
+
+      // clear selection for assigned row (optional)
+      setSelectedDriver((prev) => {
+        const n = { ...prev };
+        delete n[bookingId];
+        return n;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Assign failed");
+    } finally {
+      setPending((p) => ({ ...p, [bookingId]: false }));
+    }
+  }
+
+  async function setStatus(b: Booking, status: string) {
+    const bookingId = String(b.id);
+    setError(null);
+    setPending((p) => ({ ...p, [bookingId]: true }));
+
+    try {
+      const res = await fetch("/api/dispatch/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: bookingId, status }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.message || data.error)) || "Update failed");
+
+      setRows((prev) => prev.map((r) => (String(r.id) === bookingId ? data.row : r)));
+    } catch (e: any) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setPending((p) => ({ ...p, [bookingId]: false }));
+    }
+  }
+
+  async function createBooking() {
+    setError(null);
+    try {
+      const payload = {
+        rider_name: riderName,
+        rider_phone: riderPhone,
+        town,
+        pickup_lat: Number(pickupLat),
+        pickup_lng: Number(pickupLng),
+      };
+
+            // Ensure booking_code exists (some backends require it)
+      if (!payload.booking_code) {
+        const prefix = serviceType === "takeout" ? "TAKE" : "DISP";
+        payload.booking_code = prefix + "-" + Date.now() + "-" + Math.random().toString(16).slice(2, 6);
+      }
+const res = await fetch("/api/dispatch/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.message || data.error)) || "Failed to create");
+
+      const newRow: Booking = data.row;
+      setRows((prev) => [newRow, ...prev]);
+
+      // reset inputs
+      setRiderName("");
+      setRiderPhone("");
+      setTown("");
+      setPickupLat("");
+      setPickupLng("");
+
+      // Optional: auto-assign newly created booking (safe, single-shot)
+      if (autoAssignOnCreate && newRow?.id && !newRow?.driver_id) {
+        // get fresh drivers first so suggestion is accurate
+        await loadDrivers();
+
+        // compute suggestion immediately using current memo map might be stale;
+        // so compute directly here:
+        const tKey = normTown(newRow.town);
+        const townDrivers = drivers.filter((d) => normTown(d.town) === tKey);
+        const online = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+        const eligible = forceAssign ? townDrivers : online;
+
+        let suggested = eligible[0]?.id || "";
+
+        if (isFiniteNum(newRow.pickup_lat) && isFiniteNum(newRow.pickup_lng)) {
+          let best: { id: string; km: number } | null = null;
+          for (const d of eligible) {
+            if (!isFiniteNum(d.lat) || !isFiniteNum(d.lng)) continue;
+            const km = distKm(newRow.pickup_lat as number, newRow.pickup_lng as number, d.lat as number, d.lng as number);
+            if (!best || km < best.km) best = { id: d.id, km };
+          }
+          if (best) suggested = best.id;
+        }
+
+        if (suggested) {
+          await assign(String(newRow.id), suggested);
+        }
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to create");
+    }
+  }
+
+  /* =========================
+     Render
+  ========================= */
+
+  // Auto-select suggested drivers (safe: top-level hook, not inside rows.map)
+  React.useEffect(() => {
+    if (!rows || rows.length === 0) return;
+    if (!drivers) return;
+
+    setSelectedDriverByBookingId((prev) => {
+      const next: Record<string, string> = { ...prev };
+
+      for (const b of rows) {
+        const bookingId = String(b.id);
+        const alreadyAssigned = !!b.driver_id;
+        if (alreadyAssigned) continue;
+
+        // keep existing manual selection if user already picked
+        if (next[bookingId]) continue;
+
+        const townKey = normTown(b.town);
+        const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
+
+        const onlineDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+        const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
+
+        if (eligibleDrivers.length > 0) {
+          next[bookingId] = eligibleDrivers[0].id;
+        }
+      }
+
+      return next;
+    });
+  }, [rows, drivers, forceAssign]);
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Dispatch Panel</h1>
+
+        <div className="flex items-center gap-6 text-sm">
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={forceAssign} onChange={(e) => setForceAssign(e.target.checked)} />
+            <span>Force assign (include busy)</span>
+          </label>
+
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={autoAssignOnCreate} onChange={(e) => setAutoAssignOnCreate(e.target.checked)} />
+            <span>Auto-assign on create</span>
+          </label>
+
+          <button className="px-3 py-1 rounded border" onClick={loadDrivers}>
+            Refresh drivers
+          </button>
+        </div>
+      </div>
+
+      {/* Create */}
+      <div className="rounded-2xl border p-4 shadow space-y-3">
+        <h2 className="font-medium">New Booking</h2>
+
+        <div className="grid md:grid-cols-5 gap-3">
+          <input className="border rounded px-3 py-2" placeholder="Rider name" value={riderName} onChange={(e) => setRiderName(e.target.value)} />
+          <input className="border rounded px-3 py-2" placeholder="Rider phone" value={riderPhone} onChange={(e) => setRiderPhone(e.target.value)} />
+          <input className="border rounded px-3 py-2" placeholder="Town" value={town} onChange={(e) => setTown(e.target.value)} />
+          <input className="border rounded px-3 py-2" placeholder="Pickup lat" value={pickupLat} onChange={(e) => setPickupLat(e.target.value)} />
+          <input className="border rounded px-3 py-2" placeholder="Pickup lng" value={pickupLng} onChange={(e) => setPickupLng(e.target.value)} />
+        </div>
+
+        <button onClick={createBooking} className="px-4 py-2 rounded-xl border shadow">
+          Create
+        </button>
+
+        {error ? <p className="text-red-600">{error}</p> : null}
+      </div>
+
+      {/* Queue */}
+      <div className="rounded-2xl border p-4 shadow">
+        <h2 className="font-medium mb-3">Queue</h2>
+
+        {loading ? (
+          <p>Loading...</p>
+        ) : rows.length === 0 ? (
+          <p>No rides.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b">
+                <th className="py-2">ID</th>
+                <th className="py-2">Town</th>
+                <th className="py-2">Status</th>
+                <th className="py-2">Driver</th>
+                <th className="py-2">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {rows.map((b) => {
+                const bookingId = String(b.id);
+                const alreadyAssigned = !!b.driver_id;
+                const terminal = isTerminalStatus(b.status);
+                const p = !!pending[bookingId];
+
+                const sug = suggestionByBookingId[bookingId];
+                const suggestedId = sug?.suggestedDriverId || "";
+                const selected = selectedDriver[bookingId] || "";
+
+                // Eligible drivers for dropdown (town + status filter)
+                const tKey = normTown(b.town);
+                const townDrivers = drivers.filter((d) => normTown(d.town) === tKey);
+                const online = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+                const eligible = forceAssign ? townDrivers : online;
+
+                const nearestLabel =
+                  typeof sug?.nearestKm === "number" ? ` • nearest ${sug.nearestKm.toFixed(2)} km` : "";
+
+                return (
+                  <tr key={bookingId} className="border-b">
+                    <td className="py-2">{bookingId.slice(0, 8)}</td>
+                    <td className="py-2">{b.town || ""}</td>
+                    <td className="py-2">{b.status || ""}</td>
+                    <td className="py-2">{b.driver_id ? b.driver_id : "-"}</td>
+
+                    <td className="py-2 space-x-2">
+                      {!alreadyAssigned ? (
+                        <>
+                          <select
+                            className="border rounded px-2 py-1 w-56"
+                            value={selected}
+                            onChange={(e) => setSelectedDriver((prev) => ({ ...prev, [bookingId]: e.target.value }))}
+                            disabled={p}
+                            title="Eligible drivers are filtered by town. Toggle Force assign to include busy drivers."
+                          >
+                            {eligible.length === 0 ? (
+                              <option value="">No eligible drivers</option>
+                            ) : (
+                              eligible.map((d) => {
+                                const tag = String(d.status || "").toLowerCase() === "online" ? "online" : "busy";
+                                return (
+                                  <option key={d.id} value={d.id}>
+                                    {d.id.slice(0, 8)} ({tag})
+                                  </option>
+                                );
+                              })
+                            )}
+                          </select>
+
+                          <span className="text-xs text-gray-600 ml-2">
+                            Online {sug?.onlineCount ?? 0} / Busy {sug?.busyCount ?? 0}
+                            {nearestLabel}
+                          </span>
+
+                          <button
+                            onClick={() => assign(bookingId)}
+                            className="px-2 py-1 rounded border"
+                            disabled={p || !selected || eligible.length === 0}
+                          >
+                            Assign
+                          </button>
+
+                          <button
+                            onClick={() => suggestedId && assign(bookingId, suggestedId)}
+                            className="px-2 py-1 rounded border"
+                            disabled={p || !suggestedId || eligible.length === 0}
+                            title={!suggestedId ? "No suggestion available (no eligible drivers / no location)" : "Assign nearest eligible driver"}
+                          >
+                            Assign suggested
+                          </button>
+                        </>
+                      ) : null}
+
+                      <button className="px-2 py-1 rounded border" disabled={p || terminal} onClick={() => setStatus(b, "enroute")}>
+                        En-route
+                      </button>
+
+                      <button className="px-2 py-1 rounded border" disabled={p || terminal} onClick={() => setStatus(b, "arrived")}>
+                        Arrived
+                      </button>
+
+                      <button className="px-2 py-1 rounded border" disabled={p || terminal} onClick={() => setStatus(b, "completed")}>
+                        Complete
+                      </button>
+
+                      <button className="px-2 py-1 rounded border" disabled={p || terminal} onClick={() => setStatus(b, "canceled")}>
+                        Cancel
+                      </button>
+
+                      {p ? <span className="text-xs text-gray-500 ml-2">Updating...</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+

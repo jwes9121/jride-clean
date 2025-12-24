@@ -1,4 +1,27 @@
-﻿"use client";
+# PATCH-DISPATCH-PAGE-RESET-DROPDOWN-FORCEASSIGN.ps1
+# Purpose: Replace app\dispatch\page.tsx with a clean build-safe version:
+# - Driver dropdown per booking
+# - Online/Busy counts
+# - Force assign toggle (include busy)
+# - Auto-select first eligible driver (SAFE hook outside rows.map)
+# - No hooks inside loops, no leaked JSX fragments
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Fail($m) { throw $m }
+
+$root = (Get-Location).Path
+$file = Join-Path $root "app\dispatch\page.tsx"
+if (!(Test-Path $file)) { Fail "File not found: $file (run from repo root)" }
+
+$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+$bak = "$file.bak.$ts"
+Copy-Item $file $bak -Force
+Write-Host "[OK] Backup: $bak" -ForegroundColor Green
+
+$code = @'
+"use client";
 
 import * as React from "react";
 
@@ -30,8 +53,6 @@ type Booking = {
   trip_type?: string | null;
   vendor_id?: string | null;
   takeout_service_level?: "regular" | "express" | null;
-
-  booking_code?: string | null;
 };
 
 type DriverRow = {
@@ -50,20 +71,6 @@ function normTown(v: any) {
 function isShortId(v: any) {
   const s = String(v ?? "");
   return s.length > 0 && s.length < 20;
-}
-
-function makeBookingCode(prefix: "DISP" | "TAKE") {
-  // simple, unique, readable code: DISP-YYYYMMDD-HHMMSS-### (milliseconds tail)
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const y = d.getFullYear();
-  const m = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mm = pad(d.getMinutes());
-  const ss = pad(d.getSeconds());
-  const tail = String(d.getMilliseconds()).padStart(3, "0");
-  return `${prefix}-${y}${m}${day}-${hh}${mm}${ss}-${tail}`;
 }
 
 export default function DispatchPage(): JSX.Element {
@@ -93,21 +100,14 @@ export default function DispatchPage(): JSX.Element {
   const [selectedDriverByBookingId, setSelectedDriverByBookingId] = React.useState<Record<string, string>>({});
   const [forceAssign, setForceAssign] = React.useState<boolean>(false);
 
-  // auto-assign when creating a booking
-  const [autoAssignOnCreate, setAutoAssignOnCreate] = React.useState<boolean>(true);
-
-  // per-row pending flags
+  // per-row pending flags (visual confirmation + disable spam clicking)
   const [pendingByBookingId, setPendingByBookingId] = React.useState<Record<string, boolean>>({});
-
-  function setPending(bookingId: string, v: boolean) {
-    setPendingByBookingId((prev) => ({ ...prev, [bookingId]: v }));
-  }
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
+      const res = await fetch("/api/dispatch/bookings", { cache: "no-store" as any });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to load");
       setRows(Array.isArray(data?.rows) ? data.rows : []);
@@ -121,7 +121,7 @@ export default function DispatchPage(): JSX.Element {
   async function refreshDrivers() {
     setDriversError(null);
     try {
-      const res = await fetch("/api/dispatch/drivers", { cache: "no-store" });
+      const res = await fetch("/api/dispatch/drivers", { cache: "no-store" as any });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
       const list = Array.isArray(data?.drivers) ? data.drivers : [];
@@ -130,72 +130,6 @@ export default function DispatchPage(): JSX.Element {
       setDrivers([]);
       setDriversError(e?.message || "Failed to load drivers");
     }
-  }
-
-  function pickSuggestedDriverId(b: Booking): string {
-    const townKey = normTown(b.town);
-    const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
-    const online = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
-    const eligible = forceAssign ? townDrivers : online;
-    return eligible.length ? eligible[0].id : "";
-  }
-
-  // Keep dropdown pre-selected safely (single hook, no hooks inside map)
-  React.useEffect(() => {
-    setSelectedDriverByBookingId((prev) => {
-      let changed = false;
-      const next: Record<string, string> = { ...prev };
-
-      for (const b of rows) {
-        const bookingId = String(b.id);
-        const alreadyAssigned = !!b.driver_id;
-        if (alreadyAssigned) continue;
-        if (next[bookingId]) continue;
-
-        const suggested = pickSuggestedDriverId(b);
-        if (suggested) {
-          next[bookingId] = suggested;
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, drivers, forceAssign]);
-
-  async function assignDirect(booking_id: string, driver_id: string) {
-    if (!driver_id) return;
-
-    setError(null);
-    setPending(booking_id, true);
-    try {
-      const res = await fetch("/api/dispatch/assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id, driver_id, force: !!forceAssign }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Assign failed");
-
-      setRows((prev) => prev.map((x) => (String(x.id) === String(booking_id) ? data.row : x)));
-
-      setSelectedDriverByBookingId((prev) => {
-        const next = { ...prev };
-        delete next[booking_id];
-        return next;
-      });
-    } catch (e: any) {
-      setError(e?.message || "Assign failed");
-    } finally {
-      setPending(booking_id, false);
-    }
-  }
-
-  async function assign(booking_id: string) {
-    const driver_id = selectedDriverByBookingId[booking_id] || "";
-    if (!driver_id) return;
-    return assignDirect(booking_id, driver_id);
   }
 
   async function createBooking() {
@@ -210,17 +144,12 @@ export default function DispatchPage(): JSX.Element {
         payload.pickup_label = pickupLabel || null;
         payload.dropoff_label = dropoffLabel || null;
         payload.town = town || "";
-        // some backends require booking_code
-        payload.booking_code = makeBookingCode("TAKE");
       } else {
-        payload.service_type = "dispatch";
         payload.rider_name = riderName;
         payload.rider_phone = riderPhone;
         payload.town = town;
-        payload.pickup_lat = pickupLat ? Number(pickupLat) : null;
-        payload.pickup_lng = pickupLng ? Number(pickupLng) : null;
-        // some backends require booking_code
-        payload.booking_code = makeBookingCode("DISP");
+        payload.pickup_lat = Number(pickupLat);
+        payload.pickup_lng = Number(pickupLng);
       }
 
       const res = await fetch("/api/dispatch/bookings", {
@@ -231,12 +160,9 @@ export default function DispatchPage(): JSX.Element {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to create");
 
-      const newRow: Booking = data?.row;
-      if (!newRow?.id) throw new Error("Create returned no row/id");
+      setRows((prev) => [data.row, ...prev]);
 
-      setRows((prev) => [newRow, ...prev]);
-
-      // reset fields
+      // reset fields (keep serviceType selection)
       setRiderName("");
       setRiderPhone("");
       setTown("");
@@ -246,20 +172,42 @@ export default function DispatchPage(): JSX.Element {
       setTakeoutLevel("regular");
       setPickupLabel("");
       setDropoffLabel("");
-
-      // auto-assign immediately (only if enabled and unassigned)
-      if (autoAssignOnCreate && !newRow.driver_id) {
-        // ensure we have fresh drivers list
-        if (!drivers.length) await refreshDrivers();
-        const suggested = pickSuggestedDriverId(newRow);
-        if (suggested) {
-          await assignDirect(String(newRow.id), suggested);
-        } else {
-          setError("Created booking, but no eligible drivers for its town.");
-        }
-      }
     } catch (e: any) {
       setError(e?.message || "Failed to create");
+    }
+  }
+
+  function setPending(bookingId: string, v: boolean) {
+    setPendingByBookingId((prev) => ({ ...prev, [bookingId]: v }));
+  }
+
+  async function assign(booking_id: string) {
+    const driver_id = selectedDriverByBookingId[booking_id] || "";
+    if (!driver_id) return;
+
+    setError(null);
+    setPending(booking_id, true);
+    try {
+      const res = await fetch("/api/dispatch/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id, driver_id, force: !!forceAssign }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Assign failed");
+
+      setRows((prev) => prev.map((b) => (String(b.id) === booking_id ? data.row : b)));
+
+      // clear selection for that row only
+      setSelectedDriverByBookingId((prev) => {
+        const next = { ...prev };
+        delete next[booking_id];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Assign failed");
+    } finally {
+      setPending(booking_id, false);
     }
   }
 
@@ -268,6 +216,8 @@ export default function DispatchPage(): JSX.Element {
     setError(null);
     setPending(booking_id, true);
 
+    // Some of your routes want bookingId (uuid) + booking_id.
+    // If b.id looks "short", do NOT send bookingId to avoid UUID parse errors.
     const bookingId = isShortId(b.id) ? undefined : b.id;
 
     try {
@@ -279,7 +229,7 @@ export default function DispatchPage(): JSX.Element {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && (data.error || data.message)) || "Update failed");
 
-      setRows((prev) => prev.map((x) => (String(x.id) === String(booking_id) ? data.row : x)));
+      setRows((prev) => prev.map((x) => (String(x.id) === booking_id ? data.row : x)));
     } catch (e: any) {
       setError(e?.message || "Update failed");
     } finally {
@@ -292,6 +242,7 @@ export default function DispatchPage(): JSX.Element {
     refreshDrivers();
   }, []);
 
+  // Optional: refresh drivers periodically (keeps dropdown fresh)
   React.useEffect(() => {
     const t = window.setInterval(() => {
       refreshDrivers();
@@ -299,30 +250,46 @@ export default function DispatchPage(): JSX.Element {
     return () => window.clearInterval(t);
   }, []);
 
+  // Auto-select first eligible driver per row (SAFE: one hook outside rows.map)
+  React.useEffect(() => {
+    setSelectedDriverByBookingId((prev) => {
+      let changed = false;
+      const next: Record<string, string> = { ...prev };
+
+      for (const b of rows) {
+        const bookingId = String(b.id);
+        const alreadyAssigned = !!b.driver_id;
+        if (alreadyAssigned) continue;
+        if (next[bookingId]) continue;
+
+        const townKey = normTown(b.town);
+        const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
+        const onlineDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+        const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
+
+        if (eligibleDrivers.length > 0) {
+          next[bookingId] = eligibleDrivers[0].id;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [rows, drivers, forceAssign]);
+
   return (
     <div className="p-6 space-y-8">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Dispatch Panel</h1>
 
-        <div className="flex items-center gap-6">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={forceAssign}
-              onChange={(e) => setForceAssign(e.target.checked)}
-            />
-            <span>Force assign (override busy)</span>
-          </label>
-
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={autoAssignOnCreate}
-              onChange={(e) => setAutoAssignOnCreate(e.target.checked)}
-            />
-            <span>Auto-assign on create</span>
-          </label>
-        </div>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={forceAssign}
+            onChange={(e) => setForceAssign(e.target.checked)}
+          />
+          <span>Force assign (override busy)</span>
+        </label>
       </div>
 
       <div className="rounded-2xl border p-4 shadow space-y-3">
@@ -410,8 +377,6 @@ export default function DispatchPage(): JSX.Element {
                 const busyDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() !== "online");
 
                 const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
-                const suggestedDriverId = eligibleDrivers.length ? eligibleDrivers[0].id : "";
-
                 const selected = selectedDriverByBookingId[bookingId] || "";
                 const pending = !!pendingByBookingId[bookingId];
 
@@ -457,15 +422,6 @@ export default function DispatchPage(): JSX.Element {
                             title={!selected ? "Select a driver first" : ""}
                           >
                             Assign
-                          </button>
-
-                          <button
-                            onClick={() => suggestedDriverId && assignDirect(bookingId, suggestedDriverId)}
-                            className="px-2 py-1 rounded border"
-                            disabled={pending || !suggestedDriverId}
-                            title={!suggestedDriverId ? "No suggested driver available" : "Assign the best available driver"}
-                          >
-                            Assign suggested
                           </button>
                         </>
                       ) : null}
@@ -514,3 +470,25 @@ export default function DispatchPage(): JSX.Element {
     </div>
   );
 }
+'@
+
+# Write UTF-8 (no BOM) to avoid mojibake surprises
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($file, $code, $utf8NoBom)
+Write-Host "[OK] Wrote clean file: $file" -ForegroundColor Green
+
+# Quick sanity checks
+$txt = Get-Content $file -Raw
+if ($txt -match "React\.useEffect\(\)\s*=>\s*\{[^}]*rows\.map" ) {
+  Write-Host "[WARN] Found a suspicious pattern near rows.map. (Should be fine, but verify.)" -ForegroundColor Yellow
+}
+if ($txt -match "setAssignDriverId\(") {
+  Fail "Sanity check failed: found old setAssignDriverId() remnants."
+}
+Write-Host "[OK] Sanity checks passed." -ForegroundColor Green
+
+Write-Host ""
+Write-Host "NEXT:" -ForegroundColor Cyan
+Write-Host "  1) npm run dev" -ForegroundColor Cyan
+Write-Host "  2) Open http://localhost:3000/dispatch" -ForegroundColor Cyan
+Write-Host "  3) If you want to include busy drivers, toggle 'Force assign' ON." -ForegroundColor Cyan
