@@ -13,23 +13,31 @@ type Booking = {
 
   pickup_lat?: number | null;
   pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
 
   town?: string | null;
+  distance_km?: number | null;
+  fare?: number | null;
+
   status?: string | null;
   driver_id?: string | null;
 
+  created_at?: string | null;
+  updated_at?: string | null;
+
+  service_type?: string | null;
   trip_type?: string | null;
   vendor_id?: string | null;
   takeout_service_level?: "regular" | "express" | null;
 
   booking_code?: string | null;
-  created_at?: string | null;
 };
 
 type DriverRow = {
   id: string;
   town?: string | null;
-  status?: string | null; // online/busy/etc
+  status?: string | null; // "online" | "busy" | etc
   lat?: number | null;
   lng?: number | null;
   last_seen?: string | null;
@@ -37,6 +45,11 @@ type DriverRow = {
 
 function normTown(v: any) {
   return String(v ?? "").trim().toLowerCase();
+}
+
+function isShortId(v: any) {
+  const s = String(v ?? "");
+  return s.length > 0 && s.length < 20;
 }
 
 function isOnlineLike(status: any) {
@@ -58,9 +71,8 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
 }
 
 function pickNearestEligibleDriverId(b: Booking, drivers: DriverRow[], forceAssign: boolean): string {
-  if (!drivers.length) return "";
-
   const townKey = normTown(b.town);
+
   const sameTown = drivers.filter((d) => normTown(d.town) === townKey);
   const pool = sameTown.length ? sameTown : drivers;
 
@@ -71,9 +83,10 @@ function pickNearestEligibleDriverId(b: Booking, drivers: DriverRow[], forceAssi
   const plat = typeof b.pickup_lat === "number" ? b.pickup_lat : null;
   const plng = typeof b.pickup_lng === "number" ? b.pickup_lng : null;
 
-  // If pickup coords missing -> safe fallback to first eligible
+  // If pickup coords missing -> safe fallback (first eligible)
   if (plat === null || plng === null) return eligible[0].id;
 
+  // Only consider drivers with coords for distance sort; if none -> fallback first eligible
   const withCoords = eligible.filter((d) => typeof d.lat === "number" && typeof d.lng === "number");
   if (!withCoords.length) return eligible[0].id;
 
@@ -93,30 +106,36 @@ function pickNearestEligibleDriverId(b: Booking, drivers: DriverRow[], forceAssi
 
 export default function DispatchPage(): JSX.Element {
   const [rows, setRows] = React.useState<Booking[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // create form
+  const [serviceType, setServiceType] = React.useState<"dispatch" | "takeout">("dispatch");
+
+  // dispatch/local fields
+  const [riderName, setRiderName] = React.useState<string>("");
+  const [riderPhone, setRiderPhone] = React.useState<string>("");
+  const [town, setTown] = React.useState<string>("");
+  const [pickupLat, setPickupLat] = React.useState<string>("");
+  const [pickupLng, setPickupLng] = React.useState<string>("");
+
+  // takeout fields
+  const [vendorId, setVendorId] = React.useState<string>("");
+  const [takeoutLevel, setTakeoutLevel] = React.useState<"regular" | "express">("regular");
+  const [pickupLabel, setPickupLabel] = React.useState<string>("");
+  const [dropoffLabel, setDropoffLabel] = React.useState<string>("");
+
+  // drivers + per-row selection
   const [drivers, setDrivers] = React.useState<DriverRow[]>([]);
   const [driversError, setDriversError] = React.useState<string | null>(null);
-
   const [selectedDriverByBookingId, setSelectedDriverByBookingId] = React.useState<Record<string, string>>({});
+  const [forceAssign, setForceAssign] = React.useState<boolean>(false);
+
+  // auto-assign when creating a booking
+  const [autoAssignOnCreate, setAutoAssignOnCreate] = React.useState<boolean>(true);
+
+  // per-row pending flags
   const [pendingByBookingId, setPendingByBookingId] = React.useState<Record<string, boolean>>({});
-
-  const [forceAssign, setForceAssign] = React.useState(false);
-  const [autoAssignOnCreate, setAutoAssignOnCreate] = React.useState(true);
-
-  // Create form
-  const [serviceType, setServiceType] = React.useState<"dispatch" | "takeout">("dispatch");
-  const [riderName, setRiderName] = React.useState("");
-  const [riderPhone, setRiderPhone] = React.useState("");
-  const [town, setTown] = React.useState("");
-  const [pickupLat, setPickupLat] = React.useState("");
-  const [pickupLng, setPickupLng] = React.useState("");
-
-  const [vendorId, setVendorId] = React.useState("");
-  const [takeoutLevel, setTakeoutLevel] = React.useState<"regular" | "express">("regular");
-  const [pickupLabel, setPickupLabel] = React.useState("");
-  const [dropoffLabel, setDropoffLabel] = React.useState("");
 
   function setPending(bookingId: string, v: boolean) {
     setPendingByBookingId((prev) => ({ ...prev, [bookingId]: v }));
@@ -128,11 +147,10 @@ export default function DispatchPage(): JSX.Element {
     try {
       const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to load bookings");
-      const list = Array.isArray(data?.rows) ? data.rows.filter(Boolean) : [];
-      setRows(list);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to load");
+      setRows(Array.isArray(data?.rows) ? (data.rows.filter(Boolean)) : []);
     } catch (e: any) {
-      setError(e?.message || "Failed to load bookings");
+      setError(e?.message || "Failed to load");
     } finally {
       setLoading(false);
     }
@@ -144,30 +162,31 @@ export default function DispatchPage(): JSX.Element {
       const res = await fetch("/api/dispatch/drivers", { cache: "no-store" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
-      setDrivers(Array.isArray(data?.drivers) ? data.drivers : []);
+      const list = Array.isArray(data?.drivers) ? data.drivers : [];
+      setDrivers(list);
     } catch (e: any) {
       setDrivers([]);
       setDriversError(e?.message || "Failed to load drivers");
     }
   }
 
-  function getBookingCodeById(bookingId: string): string {
-    const row = rows.find((x) => String(x.id) === String(bookingId));
-    return String(row?.booking_code || "").trim();
+  function pickSuggestedDriverId(b: Booking): string {
+    return pickNearestEligibleDriverId(b, drivers, forceAssign);
   }
 
-  // Preselect suggested driver once per booking (no hooks in map)
+  // Keep dropdown pre-selected safely (single hook, no hooks inside map)
   React.useEffect(() => {
     setSelectedDriverByBookingId((prev) => {
       let changed = false;
       const next: Record<string, string> = { ...prev };
 
       for (const b of rows) {
-        if (!b || b.driver_id) continue;
         const bookingId = String(b.id);
+        const alreadyAssigned = !!b.driver_id;
+        if (alreadyAssigned) continue;
         if (next[bookingId]) continue;
 
-        const suggested = pickNearestEligibleDriverId(b, drivers, forceAssign);
+        const suggested = pickSuggestedDriverId(b);
         if (suggested) {
           next[bookingId] = suggested;
           changed = true;
@@ -176,14 +195,21 @@ export default function DispatchPage(): JSX.Element {
 
       return changed ? next : prev;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, drivers, forceAssign]);
+
+  function getBookingCodeById(bookingId: string): string {
+    const row = rows.find((x) => String(x.id) === String(bookingId));
+    const code = String(row?.booking_code || "").trim();
+    return code;
+  }
 
   async function assignDirect(bookingId: string, driverId: string) {
     if (!driverId) return;
 
     const bookingCode = getBookingCodeById(bookingId);
     if (!bookingCode) {
-      setError("Assign failed: booking_code missing. Reload and try again.");
+      setError("Assign failed: booking_code missing for this row. Reload and try again.");
       return;
     }
 
@@ -198,10 +224,8 @@ export default function DispatchPage(): JSX.Element {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error((data && (data.error || data.message)) || "Assign failed");
 
-      // optimistic
-      setRows((prev) =>
-        prev.filter(Boolean).map((x) => (String(x.id) === String(bookingId) ? { ...x, driver_id: driverId } : x))
-      );
+      // Optimistic UI update, then refresh from server to stay consistent
+      setRows((prev) => prev.map((x) => (String(x.id) === String(bookingId) ? { ...x, driver_id: driverId } : x)));
 
       setSelectedDriverByBookingId((prev) => {
         const next = { ...prev };
@@ -220,45 +244,7 @@ export default function DispatchPage(): JSX.Element {
   async function assign(bookingId: string) {
     const driverId = selectedDriverByBookingId[bookingId] || "";
     if (!driverId) return;
-    await assignDirect(bookingId, driverId);
-  }
-
-  async function setStatus(b: Booking, status: string) {
-    const bookingId = String(b.id);
-    setError(null);
-    setPending(bookingId, true);
-
-    try {
-      // optimistic UI update so you see it immediately
-      setRows((prev) =>
-        prev.filter(Boolean).map((x) => (String(x.id) === bookingId ? { ...x, status } : x))
-      );
-
-      const res = await fetch("/api/dispatch/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId, booking_id: bookingId, status }),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        await load(); // revert to server truth
-        throw new Error((data && (data.error || data.message)) || "Update failed");
-      }
-
-      // If backend returns updated row, use it; else reload once
-      if (data?.row && data.row.id) {
-        setRows((prev) =>
-          prev.filter(Boolean).map((x) => (String(x.id) === bookingId ? data.row : x))
-        );
-      } else {
-        await load();
-      }
-    } catch (e: any) {
-      setError(e?.message || "Update failed");
-    } finally {
-      setPending(bookingId, false);
-    }
+    return assignDirect(bookingId, driverId);
   }
 
   async function createBooking() {
@@ -288,7 +274,7 @@ export default function DispatchPage(): JSX.Element {
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to create booking");
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to create");
 
       const newRow: Booking = data?.row;
       if (!newRow?.id) throw new Error("Create returned no row/id");
@@ -306,14 +292,49 @@ export default function DispatchPage(): JSX.Element {
       setPickupLabel("");
       setDropoffLabel("");
 
-      // auto-assign if enabled
+      // auto-assign immediately (only if enabled and unassigned)
       if (autoAssignOnCreate && !newRow.driver_id) {
         if (!drivers.length) await refreshDrivers();
-        const suggested = pickNearestEligibleDriverId(newRow, drivers, forceAssign);
-        if (suggested) await assignDirect(String(newRow.id), suggested);
+
+        const suggested = pickNearestEligibleDriverId(newRow, drivers.length ? drivers : [], forceAssign);
+        if (suggested) {
+          await assignDirect(String(newRow.id), suggested);
+        } else {
+          setError("Created booking, but no eligible drivers for its town.");
+        }
       }
     } catch (e: any) {
-      setError(e?.message || "Failed to create booking");
+      setError(e?.message || "Failed to create");
+    }
+  }
+
+  async function setStatus(b: Booking, status: string) {
+    const booking_id = String(b.id);
+    setError(null);
+    setPending(booking_id, true);
+
+    const bookingId = isShortId(b.id) ? undefined : b.id;
+
+    try {
+      const res = await fetch("/api/dispatch/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, booking_id, status }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Update failed");
+
+            // If backend doesn't return the updated row, don't poison state with undefined.
+      if (!data?.row || !data.row.id) {
+        await load();
+        return;
+      }
+
+      setRows((prev) => prev.map((x) => (String(x.id) === String(booking_id) ? data.row : x)));
+    } catch (e: any) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setPending(booking_id, false);
     }
   }
 
@@ -323,7 +344,9 @@ export default function DispatchPage(): JSX.Element {
   }, []);
 
   React.useEffect(() => {
-    const t = window.setInterval(() => refreshDrivers(), 15000);
+    const t = window.setInterval(() => {
+      refreshDrivers();
+    }, 15000);
     return () => window.clearInterval(t);
   }, []);
 
@@ -334,12 +357,20 @@ export default function DispatchPage(): JSX.Element {
 
         <div className="flex items-center gap-6">
           <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={forceAssign} onChange={(e) => setForceAssign(e.target.checked)} />
-            <span>Force assign</span>
+            <input
+              type="checkbox"
+              checked={forceAssign}
+              onChange={(e) => setForceAssign(e.target.checked)}
+            />
+            <span>Force assign (ignore online preference)</span>
           </label>
 
           <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={autoAssignOnCreate} onChange={(e) => setAutoAssignOnCreate(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={autoAssignOnCreate}
+              onChange={(e) => setAutoAssignOnCreate(e.target.checked)}
+            />
             <span>Auto-assign on create</span>
           </label>
         </div>
@@ -350,7 +381,11 @@ export default function DispatchPage(): JSX.Element {
 
         <div className="flex gap-3 items-center">
           <label className="text-sm">Type</label>
-          <select className="border rounded px-3 py-2" value={serviceType} onChange={(e) => setServiceType(e.target.value as any)}>
+          <select
+            className="border rounded px-3 py-2"
+            value={serviceType}
+            onChange={(e) => setServiceType(e.target.value as any)}
+          >
             <option value="dispatch">Dispatch (local)</option>
             <option value="takeout">Takeout</option>
           </select>
@@ -358,9 +393,14 @@ export default function DispatchPage(): JSX.Element {
           {serviceType === "takeout" ? (
             <>
               <label className="text-sm">Takeout</label>
-              <select className="border rounded px-3 py-2" value={takeoutLevel} onChange={(e) => setTakeoutLevel(e.target.value as any)}>
-                <option value="regular">Regular</option>
-                <option value="express">Express</option>
+              <select
+                className="border rounded px-3 py-2"
+                value={takeoutLevel}
+                onChange={(e) => setTakeoutLevel(e.target.value as any)}
+                title="Regular = with waiting, Express = OTC/no waiting"
+              >
+                <option value="regular">Regular (PHP 70 min)</option>
+                <option value="express">Express / OTC (PHP 55 min)</option>
               </select>
             </>
           ) : null}
@@ -370,8 +410,8 @@ export default function DispatchPage(): JSX.Element {
           <div className="grid md:grid-cols-5 gap-3">
             <input className="border rounded px-3 py-2" placeholder="Town (optional)" value={town} onChange={(e) => setTown(e.target.value)} />
             <input className="border rounded px-3 py-2" placeholder="vendor_id (UUID)" value={vendorId} onChange={(e) => setVendorId(e.target.value)} />
-            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Pickup label" value={pickupLabel} onChange={(e) => setPickupLabel(e.target.value)} />
-            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Dropoff label" value={dropoffLabel} onChange={(e) => setDropoffLabel(e.target.value)} />
+            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Pickup label (Vendor pickup)" value={pickupLabel} onChange={(e) => setPickupLabel(e.target.value)} />
+            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Dropoff label (Customer dropoff)" value={dropoffLabel} onChange={(e) => setDropoffLabel(e.target.value)} />
           </div>
         ) : (
           <div className="grid md:grid-cols-5 gap-3">
@@ -383,10 +423,7 @@ export default function DispatchPage(): JSX.Element {
           </div>
         )}
 
-        <button type="button" onClick={createBooking} className="px-4 py-2 rounded-xl border shadow">
-          Create
-        </button>
-
+        <button onClick={createBooking} className="px-4 py-2 rounded-xl border shadow">Create</button>
         {error ? <p className="text-red-600">{error}</p> : null}
       </div>
 
@@ -395,18 +432,12 @@ export default function DispatchPage(): JSX.Element {
           <h2 className="font-medium mb-3">Queue</h2>
 
           <div className="text-xs text-gray-600 flex items-center gap-3">
-            <button type="button" className="px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed" onClick={refreshDrivers}>
-              Refresh drivers
-            </button>
+            <button className="px-3 py-1 rounded border" onClick={refreshDrivers}>Refresh drivers</button>
             {driversError ? <span className="text-red-600">{driversError}</span> : null}
           </div>
         </div>
 
-        {loading ? (
-          <p>Loading...</p>
-        ) : rows.length === 0 ? (
-          <p>No active rides.</p>
-        ) : (
+        {loading ? <p>Loading...</p> : rows.length === 0 ? <p>No active rides.</p> : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left border-b">
@@ -420,27 +451,20 @@ export default function DispatchPage(): JSX.Element {
             <tbody>
               {rows.filter(Boolean).map((b) => {
                 const bookingId = String(b.id);
-                const pending = !!pendingByBookingId[bookingId];
                 const alreadyAssigned = !!b.driver_id;
-
-                const status = String(b.status || "").toLowerCase();
-                const isTerminal = status === "completed" || status === "cancelled" || status === "canceled";
+                const isTerminal = ["completed", "canceled", "cancelled"].includes(String(b.status || "").toLowerCase());
 
                 const townKey = normTown(b.town);
                 const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
 
                 const onlineDrivers = townDrivers.filter((d) => isOnlineLike(d.status));
                 const busyDrivers = townDrivers.filter((d) => !isOnlineLike(d.status));
+
                 const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
+                const suggestedDriverId = pickSuggestedDriverId(b);
 
-                const suggestedDriverId = pickNearestEligibleDriverId(b, drivers, forceAssign);
                 const selected = selectedDriverByBookingId[bookingId] || "";
-
-                // Action gating (simple)
-                const canEnroute = !isTerminal && status !== "enroute" && status !== "arrived" && status !== "completed";
-                const canArrive = !isTerminal && status !== "arrived" && status !== "completed";
-                const canComplete = !isTerminal;
-                const canCancel = !isTerminal;
+                const pending = !!pendingByBookingId[bookingId];
 
                 return (
                   <tr key={bookingId} className="border-b">
@@ -456,16 +480,19 @@ export default function DispatchPage(): JSX.Element {
                             value={selected}
                             onChange={(e) => setSelectedDriverByBookingId((prev) => ({ ...prev, [bookingId]: e.target.value }))}
                             disabled={pending}
-                            title="Same-town drivers only. Force assign uses all same-town; otherwise online-only."
+                            title="Same-town drivers only. Force assign uses all same-town; otherwise online-only. Suggested uses nearest by pickup coords."
                           >
                             {eligibleDrivers.length === 0 ? (
                               <option value="">No eligible drivers</option>
                             ) : (
-                              eligibleDrivers.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.id.slice(0, 8)} ({isOnlineLike(d.status) ? "online" : "busy"})
-                                </option>
-                              ))
+                              eligibleDrivers.map((d) => {
+                                const tag = isOnlineLike(d.status) ? "online" : "busy";
+                                return (
+                                  <option key={d.id} value={d.id}>
+                                    {d.id.slice(0, 8)} ({tag})
+                                  </option>
+                                );
+                              })
                             )}
                           </select>
 
@@ -474,18 +501,17 @@ export default function DispatchPage(): JSX.Element {
                           </span>
 
                           <button
-                            type="button"
                             onClick={() => assign(bookingId)}
-                            className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-2 py-1 rounded border"
                             disabled={pending || !selected || eligibleDrivers.length === 0}
+                            title={!selected ? "Select a driver first" : ""}
                           >
                             Assign
                           </button>
 
                           <button
-                            type="button"
                             onClick={() => suggestedDriverId && assignDirect(bookingId, suggestedDriverId)}
-                            className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-2 py-1 rounded border"
                             disabled={pending || !suggestedDriverId}
                             title={!suggestedDriverId ? "No suggested driver available" : "Assign nearest eligible driver"}
                           >
@@ -495,37 +521,33 @@ export default function DispatchPage(): JSX.Element {
                       ) : null}
 
                       <button
-                        type="button"
                         onClick={() => setStatus(b, "enroute")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canEnroute}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
                       >
                         En-route
                       </button>
 
                       <button
-                        type="button"
                         onClick={() => setStatus(b, "arrived")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canArrive}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
                       >
                         Arrived
                       </button>
 
                       <button
-                        type="button"
                         onClick={() => setStatus(b, "completed")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canComplete}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
                       >
                         Complete
                       </button>
 
                       <button
-                        type="button"
                         onClick={() => setStatus(b, "canceled")}
-                        className="px-2 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={pending || !canCancel}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
                       >
                         Cancel
                       </button>
@@ -542,3 +564,4 @@ export default function DispatchPage(): JSX.Element {
     </div>
   );
 }
+

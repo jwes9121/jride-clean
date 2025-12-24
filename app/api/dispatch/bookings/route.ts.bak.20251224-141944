@@ -58,13 +58,6 @@ function genCode(prefix: string) {
   return `${prefix}${code}`;
 }
 
-function asNum(v: any): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  return n;
-}
-
 export async function GET(req: NextRequest) {
   try {
     const bypass = jrideDevBypass(req);
@@ -77,10 +70,10 @@ export async function GET(req: NextRequest) {
 
     const sb = supabaseAdmin();
 
-    // Include pickup coords so Dispatch can do nearest-driver selection
+    // Select only fields we *know* we use in UI and are safe.
     const { data, error } = await sb
       .from("bookings")
-      .select("id, booking_code, town, status, driver_id, trip_type, vendor_id, takeout_service_level, pickup_lat, pickup_lng, created_at")
+      .select("id, booking_code, town, status, driver_id, trip_type, vendor_id, takeout_service_level, created_at")
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -107,15 +100,16 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (!body) return jsonError("Invalid JSON", 400);
 
+    // Inputs from your Dispatch UI:
+    // body.service_type: "takeout" (for this feature)
+    // body.takeout_service_level: "regular" | "express"
+    // body.vendor_id: UUID string
+    // body.town: optional string
     const tripType = String(body.service_type || body.trip_type || "dispatch").trim().toLowerCase();
     const town = body.town != null && String(body.town).trim() !== "" ? String(body.town).trim() : null;
 
     const vendorIdRaw = body.vendor_id != null ? String(body.vendor_id).trim() : "";
     const vendor_id = vendorIdRaw !== "" ? vendorIdRaw : null;
-
-    // Pickup coords (for dispatch nearest-driver)
-    const pickup_lat = asNum(body.pickup_lat);
-    const pickup_lng = asNum(body.pickup_lng);
 
     // For takeout, set service level (default regular)
     const takeout_service_level =
@@ -123,6 +117,7 @@ export async function POST(req: NextRequest) {
         ? String(body.takeout_service_level || "regular").trim().toLowerCase()
         : null;
 
+    // Generate a booking code that lets LiveTrips detect it
     const booking_code =
       tripType === "takeout"
         ? genCode("TAKEOUT-UI-")
@@ -138,20 +133,11 @@ export async function POST(req: NextRequest) {
 
     if (tripType === "takeout") {
       insert.takeout_service_level = (takeout_service_level === "express") ? "express" : "regular";
-    } else {
-      // Dispatch: store pickup coords if provided
-      insert.pickup_lat = pickup_lat;
-      insert.pickup_lng = pickup_lng;
     }
 
     const sb = supabaseAdmin();
 
-    const { data, error } = await sb
-      .from("bookings")
-      .insert(insert)
-      .select("id,booking_code,status,town,driver_id,trip_type,vendor_id,takeout_service_level,pickup_lat,pickup_lng,created_at,updated_at")
-      .single();
-
+    const { data, error } = await sb.from("bookings").insert(insert).select("id,booking_code,status,town,driver_id,trip_type,vendor_id,takeout_service_level,created_at,updated_at").single();
     if (error) return jsonError(error.message, 500);
 
     // Best-effort log (DON'T fail create if table/cols differ)
@@ -169,3 +155,4 @@ export async function POST(req: NextRequest) {
     return jsonError(String(e?.message || e), 500);
   }
 }
+
