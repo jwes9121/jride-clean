@@ -9,14 +9,17 @@ type Booking = {
   status?: string | null;
   trip_type?: string | null;
 
-  // Optional fields (may or may not be in /api/dispatch/bookings)
   created_at?: string | null;
+
+  // Stored columns (may exist depending on API select)
+  from_label?: string | null;
+  to_label?: string | null;
+  verified_fare?: number | null;
+  passenger_fare_response?: any;
+
+  // Derived report fields (from enriched API)
   pickup_label?: string | null;
   dropoff_label?: string | null;
-  pickup_lat?: number | null;
-  pickup_lng?: number | null;
-  dropoff_lat?: number | null;
-  dropoff_lng?: number | null;
   distance_km?: number | null;
   fare?: number | null;
 };
@@ -38,7 +41,6 @@ function normStatus(s?: string | null) {
 
 function allowedActions(status?: string | null) {
   const s = normStatus(status);
-
   if (s === "completed" || s === "cancelled") return [] as string[];
   if (s === "pending") return ["assigned", "cancelled"];
   if (s === "assigned") return ["on_the_way", "cancelled"];
@@ -48,13 +50,14 @@ function allowedActions(status?: string | null) {
   return ["cancelled"];
 }
 
-async function postJson(url: string, body: any, dispatcherName?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (dispatcherName && dispatcherName.trim()) headers["x-dispatcher-name"] = dispatcherName.trim();
-
-  const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
+async function postJson(url: string, body: any, headers?: Record<string, string>) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
   const j = await r.json().catch(() => ({}));
-
   if (!r.ok) {
     const msg = String(j?.message || j?.error || j?.code || "REQUEST_FAILED");
     const err: any = new Error(msg);
@@ -63,28 +66,6 @@ async function postJson(url: string, body: any, dispatcherName?: string) {
     throw err;
   }
   return j;
-}
-
-function badgeBase(ok: boolean, code?: string) {
-  if (!ok) return "text-red-700 border-red-200 bg-red-50";
-  if (code === "FORCE_OK") return "text-amber-800 border-amber-200 bg-amber-50";
-  return "text-emerald-700 border-emerald-200 bg-emerald-50";
-}
-
-function clipCopy(text: string) {
-  if (typeof navigator === "undefined") return;
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    return;
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-  } catch {}
 }
 
 function csvEscape(v: any) {
@@ -120,17 +101,9 @@ function fmtDateTime(iso?: string | null) {
   return { date, time };
 }
 
-function fmtCoord(lat?: number | null, lng?: number | null) {
-  const a = Number(lat);
-  const b = Number(lng);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return "";
-  return `${a.toFixed(6)},${b.toFixed(6)}`;
-}
-
 function pickTown(t?: string | null) {
   const v = String(t || "").trim();
   if (!v) return "Unknown";
-  // normalize casing for LGU printing
   const u = v.toLowerCase();
   if (u === "lagawe") return "Lagawe";
   if (u === "kiangan") return "Kiangan";
@@ -140,24 +113,113 @@ function pickTown(t?: string | null) {
   return v;
 }
 
+function to2(n: any) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "N/A";
+  return x.toFixed(2);
+}
+
+function isLguComplete(b: Booking) {
+  const hasFrom = Boolean(String(b.pickup_label ?? b.from_label ?? "").trim());
+  const hasTo = Boolean(String(b.dropoff_label ?? b.to_label ?? "").trim());
+  const hasFare = Number.isFinite(Number(b.fare ?? b.verified_fare));
+  const hasDist = Number.isFinite(Number(b.distance_km));
+  return hasFrom && hasTo && hasFare && hasDist;
+}
+
+/**
+ * SpreadsheetML (Excel XML) multi-sheet generator.
+ * No dependencies. Excel opens it directly.
+ */
+function xmlEscape(s: any) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function makeSpreadsheetML(sheets: { name: string; rows: Record<string, any>[]; cols: string[] }[]) {
+  const header =
+    `<?xml version="1.0"?>` +
+    `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"` +
+    ` xmlns:o="urn:schemas-microsoft-com:office:office"` +
+    ` xmlns:x="urn:schemas-microsoft-com:office:excel"` +
+    ` xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">`;
+
+  const styles =
+    `<Styles>` +
+    `<Style ss:ID="h"><Font ss:Bold="1"/></Style>` +
+    `</Styles>`;
+
+  const ws = sheets
+    .map((sh) => {
+      const tableRows: string[] = [];
+
+      // header row
+      tableRows.push(
+        `<Row>` +
+          sh.cols.map((c) => `<Cell ss:StyleID="h"><Data ss:Type="String">${xmlEscape(c)}</Data></Cell>`).join("") +
+        `</Row>`
+      );
+
+      // data rows
+      for (const r of sh.rows) {
+        tableRows.push(
+          `<Row>` +
+            sh.cols
+              .map((c) => {
+                const v = r[c];
+                // keep as String for safety (LGU printing); Excel still formats numeric-looking cells
+                return `<Cell><Data ss:Type="String">${xmlEscape(v)}</Data></Cell>`;
+              })
+              .join("") +
+          `</Row>`
+        );
+      }
+
+      return (
+        `<Worksheet ss:Name="${xmlEscape(sh.name)}">` +
+          `<Table>` +
+            tableRows.join("") +
+          `</Table>` +
+        `</Worksheet>`
+      );
+    })
+    .join("");
+
+  return header + styles + ws + `</Workbook>`;
+}
+
 export default function DispatchPage() {
   const [rows, setRows] = useState<Booking[]>([]);
   const [ackMap, setAckMap] = useState<Record<string, AckState>>({});
   const [obs, setObs] = useState<any[]>([]);
   const [lastLoadAt, setLastLoadAt] = useState<number>(0);
 
-  // Dispatcher identity (local only)
   const [dispatcherName, setDispatcherName] = useState<string>("");
 
   // LGU export controls
   const MUNICIPALITIES = ["All", "Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"] as const;
   const [muniFilter, setMuniFilter] = useState<(typeof MUNICIPALITIES)[number]>("All");
-  const [completedOnly, setCompletedOnly] = useState<boolean>(true); // per your YES
+  const [completedOnly, setCompletedOnly] = useState<boolean>(true);
+
+  // LGU Fixer modal
+  const [fixOpen, setFixOpen] = useState(false);
+  const [fixTarget, setFixTarget] = useState<Booking | null>(null);
+  const [fixFrom, setFixFrom] = useState("");
+  const [fixTo, setFixTo] = useState("");
+  const [fixDist, setFixDist] = useState("");
+  const [fixFare, setFixFare] = useState("");
+  const [fixToken, setFixToken] = useState("");
+  const [fixMsg, setFixMsg] = useState<string>("");
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem("JRIDE_DISPATCHER_NAME");
       if (saved) setDispatcherName(saved);
+      const tok = localStorage.getItem("JRIDE_DISPATCH_ADMIN_TOKEN");
+      if (tok) setFixToken(tok);
     } catch {}
   }, []);
 
@@ -166,6 +228,12 @@ export default function DispatchPage() {
       localStorage.setItem("JRIDE_DISPATCHER_NAME", dispatcherName);
     } catch {}
   }, [dispatcherName]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("JRIDE_DISPATCH_ADMIN_TOKEN", fixToken);
+    } catch {}
+  }, [fixToken]);
 
   async function load() {
     const r = await fetch("/api/dispatch/bookings", { cache: "no-store" });
@@ -203,7 +271,10 @@ export default function DispatchPage() {
     setAck(key, { state: "pending", at: Date.now() });
 
     try {
-      const j = await postJson("/api/dispatch/status", { bookingId: String(b.id), status: nextStatus }, dispatcherName);
+      const headers: Record<string, string> = {};
+      if (dispatcherName && dispatcherName.trim()) headers["x-dispatcher-name"] = dispatcherName.trim();
+
+      const j = await postJson("/api/dispatch/status", { bookingId: String(b.id), status: nextStatus }, headers);
 
       setAck(key, { state: "ok", at: Date.now(), actionId: j?.actionId, msg: "ACK: " + nextStatus });
 
@@ -250,28 +321,16 @@ export default function DispatchPage() {
     });
   }, [rowsSorted, muniFilter, completedOnly]);
 
-  function exportLguCsv() {
-    const now = new Date();
-    const ymd = now.toISOString().slice(0, 10);
-    const muni = muniFilter === "All" ? "ALL" : muniFilter.toUpperCase();
-    const filename = `JRIDE_LGU_TRIP_LEDGER_${ymd}_${muni}.csv`;
-
-    const normalized = rowsForExport.map((b) => {
+  function buildLguRows(input: Booking[]) {
+    return input.map((b) => {
       const { date, time } = fmtDateTime(b.created_at || null);
       const town = pickTown(b.town);
 
-      const pickup =
-        String(b.pickup_label || "").trim() ||
-        fmtCoord(b.pickup_lat ?? null, b.pickup_lng ?? null) ||
-        "N/A";
+      const pickup = String(b.pickup_label ?? b.from_label ?? "").trim() || "N/A";
+      const dropoff = String(b.dropoff_label ?? b.to_label ?? "").trim() || "N/A";
 
-      const dropoff =
-        String(b.dropoff_label || "").trim() ||
-        fmtCoord(b.dropoff_lat ?? null, b.dropoff_lng ?? null) ||
-        "N/A";
-
-      const dist = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km).toFixed(2) : "N/A";
-      const fare = Number.isFinite(Number(b.fare)) ? Number(b.fare).toFixed(2) : "N/A";
+      const dist = Number.isFinite(Number(b.distance_km)) ? to2(b.distance_km) : "N/A";
+      const fare = Number.isFinite(Number(b.fare ?? b.verified_fare)) ? to2(b.fare ?? b.verified_fare) : "N/A";
 
       return {
         Date: date || "N/A",
@@ -287,23 +346,57 @@ export default function DispatchPage() {
         Dispatcher: dispatcherName?.trim() ? dispatcherName.trim() : "N/A",
       };
     });
+  }
 
-    const cols = [
-      "Date",
-      "Time",
-      "Municipality",
-      "Origin_Pickup",
-      "Destination_Dropoff",
-      "Distance_km",
-      "Fare_php",
-      "Booking_code",
-      "Trip_type",
-      "Status",
-      "Dispatcher",
+  const LGU_COLS = [
+    "Date",
+    "Time",
+    "Municipality",
+    "Origin_Pickup",
+    "Destination_Dropoff",
+    "Distance_km",
+    "Fare_php",
+    "Booking_code",
+    "Trip_type",
+    "Status",
+    "Dispatcher",
+  ];
+
+  function exportLguCsv() {
+    const now = new Date();
+    const ymd = now.toISOString().slice(0, 10);
+    const muni = muniFilter === "All" ? "ALL" : muniFilter.toUpperCase();
+    const filename = `JRIDE_LGU_TRIP_LEDGER_${ymd}_${muni}.csv`;
+
+    const normalized = buildLguRows(rowsForExport);
+    const csv = toCsv(normalized, LGU_COLS);
+    downloadText(filename, csv);
+  }
+
+  function exportLguExcel() {
+    const now = new Date();
+    const ymd = now.toISOString().slice(0, 10);
+
+    const towns = ["Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"];
+
+    const makeSheet = (name: string, filterTown?: string) => {
+      const base = rowsSorted.filter((b) => {
+        const s = normStatus(b.status);
+        if (completedOnly && s !== "completed") return false;
+        if (!filterTown) return true;
+        return pickTown(b.town) === filterTown;
+      });
+      return { name, rows: buildLguRows(base), cols: LGU_COLS };
+    };
+
+    const sheets = [
+      makeSheet("ALL", undefined),
+      ...towns.map((t) => makeSheet(t, t)),
     ];
 
-    const csv = toCsv(normalized, cols);
-    downloadText(filename, csv);
+    const xml = makeSpreadsheetML(sheets);
+    const filename = `JRIDE_LGU_TRIP_LEDGER_${ymd}_MULTI-SHEET.xls`;
+    downloadText(filename, xml, "application/vnd.ms-excel");
   }
 
   function exportActionsCsv() {
@@ -328,6 +421,50 @@ export default function DispatchPage() {
     const cols = ["at","type","booking","nextStatus","driverId","result","code","message","actor","ip","httpStatus","id"];
     downloadText(filename, toCsv(normalized, cols));
   }
+
+  function openFixer(b: Booking) {
+    setFixTarget(b);
+    setFixFrom(String(b.pickup_label ?? b.from_label ?? "").trim());
+    setFixTo(String(b.dropoff_label ?? b.to_label ?? "").trim());
+    setFixDist(Number.isFinite(Number(b.distance_km)) ? String(b.distance_km) : "");
+    setFixFare(Number.isFinite(Number(b.fare ?? b.verified_fare)) ? String(b.fare ?? b.verified_fare) : "");
+    setFixMsg("");
+    setFixOpen(true);
+  }
+
+  async function saveFixer() {
+    if (!fixTarget) return;
+    if (!fixToken.trim()) {
+      setFixMsg("Missing token. Set DISPATCH_ADMIN_TOKEN on Vercel and paste it here.");
+      return;
+    }
+
+    const payload: any = {
+      bookingId: fixTarget.id,
+      from_label: fixFrom,
+      to_label: fixTo,
+    };
+
+    const d = Number(fixDist);
+    if (Number.isFinite(d)) payload.distance_km = d;
+
+    const f = Number(fixFare);
+    if (Number.isFinite(f)) payload.verified_fare = f;
+
+    try {
+      setFixMsg("Saving...");
+      await postJson("/api/dispatch/lgu", payload, { "x-dispatch-admin-token": fixToken.trim() });
+      setFixMsg("Saved âœ“");
+      await load();
+      setTimeout(() => setFixOpen(false), 700);
+    } catch (e: any) {
+      setFixMsg("Failed: " + String(e?.message || "ERROR"));
+    }
+  }
+
+  const incompleteCount = useMemo(() => {
+    return rowsForExport.filter((b) => !isLguComplete(b)).length;
+  }, [rowsForExport]);
 
   return (
     <div className="p-4 space-y-4">
@@ -382,6 +519,15 @@ export default function DispatchPage() {
           <span className="text-xs text-slate-600">Completed only (default)</span>
         </label>
 
+        <div className="text-xs text-slate-500">
+          Rows: {rowsForExport.length}
+          {incompleteCount > 0 ? (
+            <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
+              Incomplete LGU rows: {incompleteCount}
+            </span>
+          ) : null}
+        </div>
+
         <button
           type="button"
           className="ml-auto text-xs rounded border px-3 py-2 hover:bg-slate-50"
@@ -391,9 +537,14 @@ export default function DispatchPage() {
           Download LGU CSV
         </button>
 
-        <div className="text-xs text-slate-500">
-          Rows: {rowsForExport.length}
-        </div>
+        <button
+          type="button"
+          className="text-xs rounded border px-3 py-2 hover:bg-slate-50"
+          onClick={exportLguExcel}
+          title="Downloads Excel multi-sheet file (ALL + per municipality)"
+        >
+          Download LGU Excel
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -425,6 +576,8 @@ export default function DispatchPage() {
                     const ack = ackMap[key] || { state: "idle" };
                     const isPending = ack.state === "pending";
 
+                    const lguOk = isLguComplete(b);
+
                     function Btn(label: string, action: string, onClick: () => void) {
                       const disabled = isPending || !acts.includes(action);
                       return (
@@ -444,7 +597,14 @@ export default function DispatchPage() {
 
                     return (
                       <tr key={b.id} className="border-b">
-                        <td className="p-2 font-mono">{b.booking_code ? b.booking_code : b.id}</td>
+                        <td className="p-2 font-mono">
+                          {b.booking_code ? b.booking_code : b.id}
+                          {!lguOk ? (
+                            <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
+                              LGU missing
+                            </span>
+                          ) : null}
+                        </td>
 
                         <td className="p-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
@@ -458,12 +618,7 @@ export default function DispatchPage() {
                           ) : ack.state === "pending" ? (
                             <span className="text-xs text-amber-700">Pending...</span>
                           ) : ack.state === "ok" ? (
-                            <span className="text-xs text-emerald-700">
-                              {ack.msg || "ACK"}
-                              {ack.actionId ? (
-                                <span className="ml-2 text-[10px] text-slate-500">(id: {String(ack.actionId).slice(0, 8)})</span>
-                              ) : null}
-                            </span>
+                            <span className="text-xs text-emerald-700">{ack.msg || "ACK"}</span>
                           ) : (
                             <span className="text-xs text-red-700">
                               {ack.msg}
@@ -480,6 +635,15 @@ export default function DispatchPage() {
                           {Btn("On trip", "on_trip", () => setStatus(b, "on_trip"))}
                           {Btn("Complete", "completed", () => setStatus(b, "completed"))}
                           {Btn("Cancel", "cancelled", () => setStatus(b, "cancelled"))}
+
+                          <button
+                            type="button"
+                            className="ml-2 rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                            onClick={() => openFixer(b)}
+                            title="Fix missing LGU fields (origin/destination/distance/fare)"
+                          >
+                            LGU Fix
+                          </button>
                         </td>
                       </tr>
                     );
@@ -518,50 +682,74 @@ export default function DispatchPage() {
             {obs.length === 0 ? (
               <div className="text-xs text-slate-400">No actions yet.</div>
             ) : (
-              obs.map((a: any) => {
-                const ok = Boolean(a.ok);
-                const code = String(a.code || "");
-                const time = a.at ? new Date(a.at).toLocaleTimeString() : "";
-                const who = String(a.actor || "unknown");
-                const idLabel = String(a.bookingCode || a.bookingId || "-");
-                const type = String(a.type || "status").toUpperCase();
-                const detail = type === "ASSIGN" ? String(a.driverId || "-") : String(a.nextStatus || "-");
-
-                return (
-                  <div key={a.id} className="rounded border bg-white p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-mono text-[11px]">{idLabel}</div>
-                      <div className="text-[11px] text-slate-500">{time}</div>
-                    </div>
-
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                      <span className="rounded-full border px-2 py-0.5">{type}</span>
-                      <span className="rounded-full border px-2 py-0.5">{detail}</span>
-
-                      <span className={["rounded-full border px-2 py-0.5", badgeBase(ok, code)].join(" ")}>
-                        {ok ? (code === "FORCE_OK" ? "FORCE" : "OK") : "BLOCKED"}
-                      </span>
-
-                      <span className="text-slate-500">by {who}</span>
-
-                      <button
-                        type="button"
-                        className="ml-auto text-[11px] rounded border px-2 py-0.5 hover:bg-slate-50"
-                        onClick={() => clipCopy(JSON.stringify(a, null, 2))}
-                        title="Copy this action as JSON"
-                      >
-                        Copy JSON
-                      </button>
-                    </div>
-
-                    {!ok && a.message ? <div className="mt-1 text-[11px] text-red-700">{String(a.message)}</div> : null}
+              obs.map((a: any) => (
+                <div key={a.id} className="rounded border bg-white p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-mono text-[11px]">{String(a.bookingCode || a.bookingId || "-")}</div>
+                    <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
-                );
-              })
+                  <div className="mt-1 text-[11px] text-slate-600">
+                    {String(a.type || "status")} â†’ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
       </div>
+
+      {/* LGU Fixer Modal */}
+      {fixOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-lg rounded bg-white p-4 shadow">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">LGU Fix</div>
+              <button className="text-sm rounded border px-2 py-1 hover:bg-slate-50" onClick={() => setFixOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="mt-2 text-xs text-slate-600">
+              Booking: <span className="font-mono">{fixTarget?.booking_code || fixTarget?.id}</span>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              <div className="text-xs text-slate-600">Admin token (Vercel env: DISPATCH_ADMIN_TOKEN)</div>
+              <input className="w-full rounded border px-2 py-2 text-sm" value={fixToken} onChange={(e) => setFixToken(e.target.value)} placeholder="paste token" />
+
+              <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <div className="text-xs text-slate-600">Origin (from_label)</div>
+                  <input className="w-full rounded border px-2 py-2 text-sm" value={fixFrom} onChange={(e) => setFixFrom(e.target.value)} placeholder="e.g., Lagawe Public Market" />
+                </div>
+                <div>
+                  <div className="text-xs text-slate-600">Destination (to_label)</div>
+                  <input className="w-full rounded border px-2 py-2 text-sm" value={fixTo} onChange={(e) => setFixTo(e.target.value)} placeholder="e.g., Kiangan Municipal Hall" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-xs text-slate-600">Distance (km)</div>
+                  <input className="w-full rounded border px-2 py-2 text-sm" value={fixDist} onChange={(e) => setFixDist(e.target.value)} placeholder="e.g., 6.2" />
+                </div>
+                <div>
+                  <div className="text-xs text-slate-600">Verified fare (PHP)</div>
+                  <input className="w-full rounded border px-2 py-2 text-sm" value={fixFare} onChange={(e) => setFixFare(e.target.value)} placeholder="e.g., 120" />
+                </div>
+              </div>
+
+              {fixMsg ? <div className="text-xs text-slate-700">{fixMsg}</div> : null}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button className="rounded border px-3 py-2 text-sm hover:bg-slate-50" onClick={saveFixer}>
+                  Save LGU Fields
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
