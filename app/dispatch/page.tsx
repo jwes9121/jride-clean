@@ -285,6 +285,9 @@ export default function DispatchPage() {
     setQTown("");
   }
   /* JRIDE_UI_SEARCH_END */
+  /* JRIDE_UI_MONEY_PHASE1_START */
+  const [lowWalletOnly, setLowWalletOnly] = useState<boolean>(false);
+  /* JRIDE_UI_MONEY_PHASE1_END */
   /* JRIDE_UI_SEARCH_PERSIST_START */
   // Persist Search V2 + quick filters (localStorage only; hooks-safe)
   const LS_KEY_SEARCH_V2 = "JRIDE_DISPATCH_SEARCH_V2";
@@ -727,7 +730,21 @@ return true;
     return String(b?.status ?? "").trim();
   }
 
-  const rowsFilteredUi = useMemo(() => {
+    // Money Phase 1: wallet helpers (read-only)
+  function toMoney(v: any) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  }
+  function isLowWalletByDriver(d: any) {
+    if (!d) return false;
+    if (d.wallet_locked === true) return true;
+    const bal = toMoney(d.wallet_balance);
+    const min = toMoney(d.min_wallet_required);
+    if (bal === null || min === null) return false;
+    return bal < min;
+  }
+const rowsFilteredUi = useMemo(() => {
     const base = Array.isArray(rowsUi) ? rowsUi : [];
     const bookingNeedle = normTxt(qBooking);
     const phoneNeedle = normTxt(qPhone);
@@ -745,7 +762,13 @@ return true;
       const town = getTown(b);
       const status = normStatus(getStatus(b));
 
-      // Quick filters
+            // Money Phase 1: optional low-wallet filter (driver locked / below minimum)
+      if (lowWalletOnly) {
+        const driverId = String(b?.driver_id ?? b?.assigned_driver_id ?? "");
+        const d = driverId ? (driverLiveMap as any)?.[driverId] : null;
+        if (!isLowWalletByDriver(d)) return false;
+      }
+// Quick filters
       if (bookingNeedle && !includesCI(code, bookingNeedle)) return false;
       if (phoneNeedle && !includesCI(phone, phoneNeedle)) return false;
       if (statusNeedle && !includesCI(status, statusNeedle)) return false;
@@ -916,7 +939,15 @@ return (
                   Clear
                 </button>
 
-                              {/* JRIDE_UI_STATUS_FILTER_CHIPS_START */}
+                                              <label className="flex items-center gap-2 text-[11px] text-slate-600 ml-2">
+                  <input
+                    type="checkbox"
+                    checked={lowWalletOnly}
+                    onChange={(e) => setLowWalletOnly(e.target.checked)}
+                  />
+                  <span>Low-wallet only</span>
+                </label>
+{/* JRIDE_UI_STATUS_FILTER_CHIPS_START */}
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-[11px] text-slate-500 mr-1">Status:</span>
 
@@ -1169,7 +1200,18 @@ return (
                                 <span className="text-[11px] text-slate-500">
                                   last: {lastLabel}
                                 </span>
-                                {d?.wallet_locked ? (
+                                                                {(() => {
+                                  const bal = toMoney(d?.wallet_balance);
+                                  const min = toMoney(d?.min_wallet_required);
+                                  if (bal === null && min === null) return null;
+
+                                  const low = isLowWalletByDriver(d);
+                                  return (
+                                    <span className={"text-[11px] " + (low ? "text-red-700" : "text-slate-600")}>
+                                      â‚±{bal === null ? "?" : bal.toFixed(2)} / min â‚±{min === null ? "?" : min.toFixed(2)}
+                                    </span>
+                                  );
+                                })()}{d?.wallet_locked ? (
                                   <span
                                     className="inline-flex w-fit items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-800"
                                     title="Wallet locked (below minimum required)"
@@ -1346,6 +1388,7 @@ return (
     </div>
   );
 }
+
 
 
 
