@@ -267,6 +267,10 @@ export default function DispatchPage() {
   /* JRIDE_UI_DRIVER_HEALTH_STATE_START */
   const [driverLiveMap, setDriverLiveMap] = useState<Record<string, any>>({});
   /* JRIDE_UI_DRIVER_HEALTH_STATE_END */
+  /* JRIDE_UI_MONEY_PHASE2_START */
+  const [lowWalletDrivers, setLowWalletDrivers] = useState<any[]>([]);
+  const [showLowWalletPanel, setShowLowWalletPanel] = useState<boolean>(true);
+  /* JRIDE_UI_MONEY_PHASE2_END */
     /* JRIDE_UI_SEARCH_START */
   // Search V2 (hooks-safe): top-level state only
   const [searchQ, setSearchQ] = useState<string>("");
@@ -988,7 +992,72 @@ return (
               {/* JRIDE_UI_STATUS_FILTER_CHIPS_END */}<span className="text-xs text-slate-500 ml-2">
                   Showing: {rowsFilteredUi.length} / {rowsForExport.length}
                 </span>
-              </div></div>
+              
+              {/* JRIDE_UI_MONEY_PHASE2_PANEL_START */}
+              <div className="mt-3 rounded border bg-white p-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Low-wallet drivers</div>
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                    onClick={() => setShowLowWalletPanel((v) => !v)}
+                  >
+                    {showLowWalletPanel ? "Hide" : "Show"}
+                  </button>
+                </div>
+
+                {showLowWalletPanel ? (
+                  <div className="mt-2 max-h-48 overflow-auto">
+                    {lowWalletDrivers?.length ? (
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-slate-600">
+                            <th className="py-1 pr-2">Driver</th>
+                            <th className="py-1 pr-2">Balance</th>
+                            <th className="py-1 pr-2">Min</th>
+                            <th className="py-1 pr-2">Last seen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lowWalletDrivers.slice(0, 50).map((d: any) => {
+                            const live = (driverLiveMap as any)?.[String(d?.id)] || null;
+                            const seen = String(live?.location_updated_at || live?.updated_at || "");
+                            const m = minsAgo(seen || null);
+                            const last = m === null ? "unknown" : (m === 0 ? "now" : `${m}m`);
+
+                            const bal = toMoney(d?.wallet_balance);
+                            const min = toMoney(d?.min_wallet_required);
+
+                            return (
+                              <tr key={String(d?.id)} className="border-t">
+                                <td className="py-1 pr-2">
+                                  <button
+                                    type="button"
+                                    className="text-left underline decoration-dotted hover:text-slate-900"
+                                    onClick={() => {
+                                      setLowWalletOnly(true);
+                                    }}
+                                    title="Enable Low-wallet only filter"
+                                  >
+                                    {String(d?.driver_name || ("Driver " + String(d?.id || "").slice(0, 6)))}
+                                  </button>
+                                </td>
+                                <td className="py-1 pr-2 text-red-700">{bal === null ? "?" : `â‚±${bal.toFixed(2)}`}</td>
+                                <td className="py-1 pr-2">{min === null ? "?" : `â‚±${min.toFixed(2)}`}</td>
+                                <td className="py-1 pr-2 text-slate-500">{last}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="text-slate-500">No low-wallet drivers.</div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+              {/* JRIDE_UI_MONEY_PHASE2_PANEL_END */}
+</div></div>
           </div>
         </div>
       </div>
@@ -1388,6 +1457,7 @@ return (
     </div>
   );
 }
+
 
 
 

@@ -23,7 +23,15 @@ export async function GET(_req: NextRequest) {
       return NextResponse.json({ ok: false, code: "DRIVERS_LIVE_QUERY_FAILED", message: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, drivers: data || [] }, { status: 200 });
+        /* JRIDE_API_MONEY_PHASE2_START */
+    const lowQ = await supabase
+      .from("low_wallet_drivers_view")
+      .select("*")
+      .limit(2000);
+
+    const lowWalletDrivers = Array.isArray(lowQ?.data) ? lowQ.data : [];
+    /* JRIDE_API_MONEY_PHASE2_END */
+return NextResponse.json({ ok: true, drivers: data || [], lowWalletDrivers }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, code: "SERVER_ERROR", message: String(e?.message || "Unknown error") },
@@ -31,3 +39,4 @@ export async function GET(_req: NextRequest) {
     );
   }
 }
+
