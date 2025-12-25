@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /* JRIDE_UI_COPY_HELPERS_START */
 function copyToClipboard(text: string) {
@@ -209,23 +209,8 @@ export default function DispatchPage() {
 
   const [dispatcherName, setDispatcherName] = useState<string>("");
 
-    /* JRIDE_UI_SEARCH_START */
-  // Search V2 (hooks-safe): top-level state only
+  /* JRIDE_UI_SEARCH_START */
   const [searchQ, setSearchQ] = useState<string>("");
-
-  // Optional quick filters
-  const [qBooking, setQBooking] = useState<string>("");
-  const [qPhone, setQPhone] = useState<string>("");
-  const [qStatus, setQStatus] = useState<string>("");
-  const [qTown, setQTown] = useState<string>("");
-
-  function clearSearchAll() {
-    setSearchQ("");
-    setQBooking("");
-    setQPhone("");
-    setQStatus("");
-    setQTown("");
-  }
   /* JRIDE_UI_SEARCH_END */
 
   // LGU export controls
@@ -607,84 +592,7 @@ return true;
     [showMissingOnly, computedMissing, rowsForExport]
   );
 
-  
-  /* JRIDE_UI_SEARCH_V2_START */
-  // === Search V2 (hooks-safe): filter ONLY the bookings table (LGU exports stay based on rowsForExport) ===
-  function normTxt(v: any) {
-    return String(v ?? "").trim().toLowerCase();
-  }
-
-  function includesCI(hay: any, needle: string) {
-    const h = normTxt(hay);
-    const n = normTxt(needle);
-    if (!n) return true;
-    return h.includes(n);
-  }
-
-  // Pull common fields safely (API shape may vary)
-  function getBookingCode(b: any) {
-    return String(b?.booking_code ?? b?.bookingCode ?? b?.id ?? "");
-  }
-  function getPhone(b: any) {
-    return String(b?.rider_phone ?? b?.passenger_phone ?? b?.passenger_contact ?? b?.phone ?? "").trim();
-  }
-  function getTown(b: any) {
-    return String(b?.town ?? b?.zone ?? "").trim();
-  }
-  function getStatus(b: any) {
-    return String(b?.status ?? "").trim();
-  }
-
-  const rowsFilteredUi = useMemo(() => {
-    const base = Array.isArray(rowsUi) ? rowsUi : [];
-    const bookingNeedle = normTxt(qBooking);
-    const phoneNeedle = normTxt(qPhone);
-    const statusNeedle = normTxt(qStatus);
-    const townNeedle = normTxt(qTown);
-
-    const free = normTxt(searchQ);
-
-    // If no filters at all, return base quickly
-    if (!bookingNeedle && !phoneNeedle && !statusNeedle && !townNeedle && !free) return base;
-
-    return base.filter((b: any) => {
-      const code = getBookingCode(b);
-      const phone = getPhone(b);
-      const town = getTown(b);
-      const status = normStatus(getStatus(b));
-
-      // Quick filters
-      if (bookingNeedle && !includesCI(code, bookingNeedle)) return false;
-      if (phoneNeedle && !includesCI(phone, phoneNeedle)) return false;
-      if (statusNeedle && !includesCI(status, statusNeedle)) return false;
-      if (townNeedle && !includesCI(town, townNeedle) && !includesCI(pickTown(town), townNeedle)) return false;
-
-      // Free search across key fields
-      if (free) {
-        const pickup = String(b?.pickup_label ?? b?.from_label ?? "").trim();
-        const dropoff = String(b?.dropoff_label ?? b?.to_label ?? "").trim();
-        const tripType = String(b?.trip_type ?? b?.tripType ?? "").trim();
-
-        const blob = [
-          code,
-          phone,
-          town,
-          pickTown(town),
-          status,
-          pickup,
-          dropoff,
-          tripType,
-        ]
-          .map((x) => normTxt(x))
-          .join(" | ");
-
-        if (!blob.includes(free)) return false;
-      }
-
-      return true;
-    });
-  }, [rowsUi, qBooking, qPhone, qStatus, qTown, searchQ]);
-  /* JRIDE_UI_SEARCH_V2_END */const missingCountUi = computedMissing.length;
+  const missingCountUi = computedMissing.length;
 
   useEffect(() => {
     if (!focusBookingId) return;
@@ -784,50 +692,7 @@ return (
                 placeholder="booking / phone / status / town"
                 className="h-8 w-60 rounded border px-2 text-sm"
               />
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className="text-xs text-slate-600">Quick filters:</span>
-
-                <input
-                  value={qBooking}
-                  onChange={(e) => setQBooking(e.target.value)}
-                  placeholder="booking code"
-                  className="h-8 w-40 rounded border px-2 text-sm"
-                />
-
-                <input
-                  value={qPhone}
-                  onChange={(e) => setQPhone(e.target.value)}
-                  placeholder="phone"
-                  className="h-8 w-36 rounded border px-2 text-sm"
-                />
-
-                <input
-                  value={qStatus}
-                  onChange={(e) => setQStatus(e.target.value)}
-                  placeholder="status"
-                  className="h-8 w-28 rounded border px-2 text-sm"
-                />
-
-                <input
-                  value={qTown}
-                  onChange={(e) => setQTown(e.target.value)}
-                  placeholder="town"
-                  className="h-8 w-28 rounded border px-2 text-sm"
-                />
-
-                <button
-                  type="button"
-                  className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
-                  onClick={clearSearchAll}
-                  title="Clear search + quick filters"
-                >
-                  Clear
-                </button>
-
-                <span className="text-xs text-slate-500 ml-2">
-                  Showing: {rowsFilteredUi.length} / {rowsForExport.length}
-                </span>
-              </div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -932,14 +797,14 @@ return (
                 </tr>
               </thead>
               <tbody>
-                {rowsFilteredUi.length === 0 ? (
+                {rowsSorted.length === 0 ? (
                   <tr>
                     <td className="p-3 text-slate-600" colSpan={4}>
                       No rows from /api/dispatch/bookings
                     </td>
                   </tr>
                 ) : (
-                  rowsFilteredUi.map((b) => {
+                  rowsForExport.map((b) => {
                     const key = keyOf(b);
                     const s = normStatus(b.status);
                     const acts = allowedActions(s);
@@ -1112,7 +977,7 @@ return (
                     <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
                   <div className="mt-1 text-[11px] text-slate-600">
-                    {String(a.type || "status")} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
+                    {String(a.type || "status")} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
                   </div>
                 </div>
               ))
