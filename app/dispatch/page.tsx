@@ -40,6 +40,27 @@ type AckState =
   | { state: "ok"; at: number; actionId?: string; msg?: string }
   | { state: "err"; at: number; msg: string; httpStatus?: number };
 
+
+  /* JRIDE_UI_SEARCH_HIGHLIGHT_START */
+  function highlightText(text: any, needle: string) {
+    const t = String(text ?? "");
+    const n = String(needle ?? "").trim();
+    if (!n) return t;
+
+    const idx = t.toLowerCase().indexOf(n.toLowerCase());
+    if (idx < 0) return t;
+
+    return (
+      <>
+        {t.slice(0, idx)}
+        <mark className="rounded bg-yellow-200 px-0.5">
+          {t.slice(idx, idx + n.length)}
+        </mark>
+        {t.slice(idx + n.length)}
+      </>
+    );
+  }
+  /* JRIDE_UI_SEARCH_HIGHLIGHT_END */
 function normStatus(s?: string | null) {
   const v = String(s || "").trim().toLowerCase();
   if (!v) return "";
@@ -227,6 +248,40 @@ export default function DispatchPage() {
     setQTown("");
   }
   /* JRIDE_UI_SEARCH_END */
+  /* JRIDE_UI_SEARCH_PERSIST_START */
+  // Persist Search V2 + quick filters (localStorage only; hooks-safe)
+  const LS_KEY_SEARCH_V2 = "JRIDE_DISPATCH_SEARCH_V2";
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY_SEARCH_V2);
+      if (!raw) return;
+      const j = JSON.parse(raw || "{}");
+
+      if (typeof j.searchQ === "string") setSearchQ(j.searchQ);
+      if (typeof j.qBooking === "string") setQBooking(j.qBooking);
+      if (typeof j.qPhone === "string") setQPhone(j.qPhone);
+      if (typeof j.qStatus === "string") setQStatus(j.qStatus);
+      if (typeof j.qTown === "string") setQTown(j.qTown);
+    } catch {}
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = {
+        v: 1,
+        searchQ,
+        qBooking,
+        qPhone,
+        qStatus,
+        qTown,
+      };
+      localStorage.setItem(LS_KEY_SEARCH_V2, JSON.stringify(payload));
+    } catch {}
+  }, [searchQ, qBooking, qPhone, qStatus, qTown]);
+  /* JRIDE_UI_SEARCH_PERSIST_END */
 
   // LGU export controls
   const MUNICIPALITIES = ["All", "Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"] as const;
@@ -824,7 +879,45 @@ return (
                   Clear
                 </button>
 
-                <span className="text-xs text-slate-500 ml-2">
+                              {/* JRIDE_UI_STATUS_FILTER_CHIPS_START */}
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-[11px] text-slate-500 mr-1">Status:</span>
+
+                {[
+                  { k: "pending", label: "Pending" },
+                  { k: "assigned", label: "Assigned" },
+                  { k: "on_the_way", label: "On the way" },
+                  { k: "on_trip", label: "On trip" },
+                  { k: "completed", label: "Completed" },
+                  { k: "cancelled", label: "Cancelled" },
+                ].map((it) => {
+                  const active = normStatus(qStatus) === it.k;
+                  return (
+                    <button
+                      key={it.k}
+                      type="button"
+                      onClick={() => setQStatus(it.k)}
+                      className={[
+                        "rounded-full border px-2 py-0.5 text-[11px]",
+                        active ? "bg-slate-200 border-slate-300" : "hover:bg-slate-50",
+                      ].join(" ")}
+                      title={"Filter status: " + it.k}
+                    >
+                      {it.label}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => setQStatus("")}
+                  className="rounded-full border px-2 py-0.5 text-[11px] hover:bg-slate-50"
+                  title="Clear status filter"
+                >
+                  Clear status
+                </button>
+              </div>
+              {/* JRIDE_UI_STATUS_FILTER_CHIPS_END */}<span className="text-xs text-slate-500 ml-2">
                   Showing: {rowsFilteredUi.length} / {rowsForExport.length}
                 </span>
               </div></div>
@@ -973,7 +1066,7 @@ return (
   const phone = String((b as any).rider_phone || (b as any).passenger_phone || (b as any).passenger_contact || "").trim();
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="font-mono">{code}</span>
+      <span className="font-mono">{highlightText(code, qBooking || searchQ)}</span>
 
       <button
         type="button"
@@ -1006,7 +1099,7 @@ return (
 
                         <td className="p-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
-                            {s || "-"}
+                            {highlightText(s || "-", qStatus || searchQ)}
                           </span>
                         </td>
 
@@ -1176,3 +1269,7 @@ return (
     </div>
   );
 }
+
+
+
+
