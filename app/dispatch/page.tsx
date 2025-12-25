@@ -376,6 +376,53 @@ export default function DispatchPage() {
   function exportLguExcel() {
     const now = new Date();
     const ymd = now.toISOString().slice(0, 10);
+    const SUMMARY_COLS = ["Municipality","Trips","Total_km","Total_fare_php","Avg_km","Avg_fare_php"];
+
+    const sum2 = (n: number) => (Number.isFinite(n) ? n.toFixed(2) : "0.00");
+
+    const buildSummary = () => {
+      const townsList = ["Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"];
+      const base = rowsSorted.filter((b) => {
+        const s = normStatus(b.status);
+        if (completedOnly && s !== "completed") return false;
+        return true;
+      });
+
+      const calcFor = (townName: string | null) => {
+        const items = townName ? base.filter((b) => pickTown(b.town) === townName) : base;
+
+        let trips = 0;
+        let totalKm = 0;
+        let totalFare = 0;
+
+        for (const b of items) {
+          trips += 1;
+
+          const km = Number(b.distance_km);
+          if (Number.isFinite(km)) totalKm += km;
+
+          const fare = Number(b.fare ?? b.verified_fare);
+          if (Number.isFinite(fare)) totalFare += fare;
+        }
+
+        const avgKm = trips > 0 ? totalKm / trips : 0;
+        const avgFare = trips > 0 ? totalFare / trips : 0;
+
+        return {
+          Municipality: townName || "ALL",
+          Trips: String(trips),
+          Total_km: sum2(totalKm),
+          Total_fare_php: sum2(totalFare),
+          Avg_km: sum2(avgKm),
+          Avg_fare_php: sum2(avgFare),
+        };
+      };
+
+      const rows = [ calcFor(null), ...townsList.map((t) => calcFor(t)) ];
+      return { name: "SUMMARY", rows, cols: SUMMARY_COLS };
+    };
+
+
 
     const towns = ["Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"];
 
@@ -390,6 +437,7 @@ export default function DispatchPage() {
     };
 
     const sheets = [
+      buildSummary(),
       makeSheet("ALL", undefined),
       ...towns.map((t) => makeSheet(t, t)),
     ];
@@ -689,7 +737,7 @@ export default function DispatchPage() {
                     <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
                   <div className="mt-1 text-[11px] text-slate-600">
-                    {String(a.type || "status")} Ã¢â€ â€™ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
+                    {String(a.type || "status")} ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
                   </div>
                 </div>
               ))
