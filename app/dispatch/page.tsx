@@ -454,7 +454,7 @@ export default function DispatchPage() {
     try {
       setFixMsg("Saving...");
       await postJson("/api/dispatch/lgu", payload, { "x-dispatch-admin-token": fixToken.trim() });
-      setFixMsg("Saved âœ“");
+      setFixMsg("Saved OK");
       await load();
       setTimeout(() => setFixOpen(false), 700);
     } catch (e: any) {
@@ -689,7 +689,7 @@ export default function DispatchPage() {
                     <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
                   <div className="mt-1 text-[11px] text-slate-600">
-                    {String(a.type || "status")} â†’ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
+                    {String(a.type || "status")} Ã¢â€ â€™ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
                   </div>
                 </div>
               ))
