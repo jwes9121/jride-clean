@@ -5,7 +5,20 @@ import React, { useEffect, useMemo, useState } from "react";
 type Booking = {
   id: string;
   booking_code?: string | null;
+  town?: string | null;
   status?: string | null;
+  trip_type?: string | null;
+
+  // Optional fields (may or may not be in /api/dispatch/bookings)
+  created_at?: string | null;
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+  distance_km?: number | null;
+  fare?: number | null;
 };
 
 type AckState =
@@ -37,18 +50,11 @@ function allowedActions(status?: string | null) {
 
 async function postJson(url: string, body: any, dispatcherName?: string) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (dispatcherName && dispatcherName.trim()) {
-    headers["x-dispatcher-name"] = dispatcherName.trim();
-  }
+  if (dispatcherName && dispatcherName.trim()) headers["x-dispatcher-name"] = dispatcherName.trim();
 
-  const r = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-
+  const r = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), cache: "no-store" });
   const j = await r.json().catch(() => ({}));
+
   if (!r.ok) {
     const msg = String(j?.message || j?.error || j?.code || "REQUEST_FAILED");
     const err: any = new Error(msg);
@@ -63,12 +69,6 @@ function badgeBase(ok: boolean, code?: string) {
   if (!ok) return "text-red-700 border-red-200 bg-red-50";
   if (code === "FORCE_OK") return "text-amber-800 border-amber-200 bg-amber-50";
   return "text-emerald-700 border-emerald-200 bg-emerald-50";
-}
-
-function badgeLabel(ok: boolean, code?: string) {
-  if (!ok) return "BLOCKED";
-  if (code === "FORCE_OK") return "FORCE";
-  return "OK";
 }
 
 function clipCopy(text: string) {
@@ -111,13 +111,48 @@ function downloadText(filename: string, text: string, mime = "text/csv;charset=u
   URL.revokeObjectURL(url);
 }
 
+function fmtDateTime(iso?: string | null) {
+  if (!iso) return { date: "", time: "" };
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { date: "", time: "" };
+  const date = d.toISOString().slice(0, 10);
+  const time = d.toISOString().slice(11, 19);
+  return { date, time };
+}
+
+function fmtCoord(lat?: number | null, lng?: number | null) {
+  const a = Number(lat);
+  const b = Number(lng);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return "";
+  return `${a.toFixed(6)},${b.toFixed(6)}`;
+}
+
+function pickTown(t?: string | null) {
+  const v = String(t || "").trim();
+  if (!v) return "Unknown";
+  // normalize casing for LGU printing
+  const u = v.toLowerCase();
+  if (u === "lagawe") return "Lagawe";
+  if (u === "kiangan") return "Kiangan";
+  if (u === "hingyon") return "Hingyon";
+  if (u === "lamut") return "Lamut";
+  if (u === "banaue") return "Banaue";
+  return v;
+}
+
 export default function DispatchPage() {
   const [rows, setRows] = useState<Booking[]>([]);
   const [ackMap, setAckMap] = useState<Record<string, AckState>>({});
   const [obs, setObs] = useState<any[]>([]);
   const [lastLoadAt, setLastLoadAt] = useState<number>(0);
 
+  // Dispatcher identity (local only)
   const [dispatcherName, setDispatcherName] = useState<string>("");
+
+  // LGU export controls
+  const MUNICIPALITIES = ["All", "Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"] as const;
+  const [muniFilter, setMuniFilter] = useState<(typeof MUNICIPALITIES)[number]>("All");
+  const [completedOnly, setCompletedOnly] = useState<boolean>(true); // per your YES
 
   useEffect(() => {
     try {
@@ -168,18 +203,9 @@ export default function DispatchPage() {
     setAck(key, { state: "pending", at: Date.now() });
 
     try {
-      const j = await postJson(
-        "/api/dispatch/status",
-        { bookingId: String(b.id), status: nextStatus },
-        dispatcherName
-      );
+      const j = await postJson("/api/dispatch/status", { bookingId: String(b.id), status: nextStatus }, dispatcherName);
 
-      setAck(key, {
-        state: "ok",
-        at: Date.now(),
-        actionId: j?.actionId,
-        msg: "ACK: " + nextStatus,
-      });
+      setAck(key, { state: "ok", at: Date.now(), actionId: j?.actionId, msg: "ACK: " + nextStatus });
 
       await load();
       await loadObs();
@@ -213,9 +239,75 @@ export default function DispatchPage() {
     return copy;
   }, [rows]);
 
-  function exportActionsCsv() {
+  const rowsForExport = useMemo(() => {
+    const wantedStatus = completedOnly ? "completed" : null;
+    return rowsSorted.filter((b) => {
+      const town = pickTown(b.town);
+      const s = normStatus(b.status);
+      if (wantedStatus && s !== wantedStatus) return false;
+      if (muniFilter !== "All" && town !== muniFilter) return false;
+      return true;
+    });
+  }, [rowsSorted, muniFilter, completedOnly]);
+
+  function exportLguCsv() {
     const now = new Date();
-    const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const ymd = now.toISOString().slice(0, 10);
+    const muni = muniFilter === "All" ? "ALL" : muniFilter.toUpperCase();
+    const filename = `JRIDE_LGU_TRIP_LEDGER_${ymd}_${muni}.csv`;
+
+    const normalized = rowsForExport.map((b) => {
+      const { date, time } = fmtDateTime(b.created_at || null);
+      const town = pickTown(b.town);
+
+      const pickup =
+        String(b.pickup_label || "").trim() ||
+        fmtCoord(b.pickup_lat ?? null, b.pickup_lng ?? null) ||
+        "N/A";
+
+      const dropoff =
+        String(b.dropoff_label || "").trim() ||
+        fmtCoord(b.dropoff_lat ?? null, b.dropoff_lng ?? null) ||
+        "N/A";
+
+      const dist = Number.isFinite(Number(b.distance_km)) ? Number(b.distance_km).toFixed(2) : "N/A";
+      const fare = Number.isFinite(Number(b.fare)) ? Number(b.fare).toFixed(2) : "N/A";
+
+      return {
+        Date: date || "N/A",
+        Time: time || "N/A",
+        Municipality: town,
+        Origin_Pickup: pickup,
+        Destination_Dropoff: dropoff,
+        Distance_km: dist,
+        Fare_php: fare,
+        Booking_code: b.booking_code || "N/A",
+        Trip_type: b.trip_type || "N/A",
+        Status: normStatus(b.status) || "N/A",
+        Dispatcher: dispatcherName?.trim() ? dispatcherName.trim() : "N/A",
+      };
+    });
+
+    const cols = [
+      "Date",
+      "Time",
+      "Municipality",
+      "Origin_Pickup",
+      "Destination_Dropoff",
+      "Distance_km",
+      "Fare_php",
+      "Booking_code",
+      "Trip_type",
+      "Status",
+      "Dispatcher",
+    ];
+
+    const csv = toCsv(normalized, cols);
+    downloadText(filename, csv);
+  }
+
+  function exportActionsCsv() {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const filename = `dispatch-actions-${stamp}.csv`;
 
     const normalized = (obs || []).map((a: any) => ({
@@ -234,24 +326,7 @@ export default function DispatchPage() {
     }));
 
     const cols = ["at","type","booking","nextStatus","driverId","result","code","message","actor","ip","httpStatus","id"];
-    const csv = toCsv(normalized, cols);
-    downloadText(filename, csv);
-  }
-
-  function exportBookingsCsv() {
-    const now = new Date();
-    const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    const filename = `dispatch-bookings-${stamp}.csv`;
-
-    const normalized = rowsSorted.map((b) => ({
-      booking_code: b.booking_code || "",
-      id: b.id || "",
-      status: normStatus(b.status) || "",
-    }));
-
-    const cols = ["booking_code","id","status"];
-    const csv = toCsv(normalized, cols);
-    downloadText(filename, csv);
+    downloadText(filename, toCsv(normalized, cols));
   }
 
   return (
@@ -281,19 +356,49 @@ export default function DispatchPage() {
         </div>
       </div>
 
+      {/* LGU Export Bar */}
+      <div className="rounded border p-3 flex flex-wrap items-center gap-3">
+        <div className="font-semibold text-sm">LGU Trip Ledger</div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-600">Municipality</span>
+          <select
+            className="h-8 rounded border px-2 text-sm"
+            value={muniFilter}
+            onChange={(e) => setMuniFilter(e.target.value as any)}
+          >
+            {MUNICIPALITIES.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={completedOnly}
+            onChange={(e) => setCompletedOnly(e.target.checked)}
+          />
+          <span className="text-xs text-slate-600">Completed only (default)</span>
+        </label>
+
+        <button
+          type="button"
+          className="ml-auto text-xs rounded border px-3 py-2 hover:bg-slate-50"
+          onClick={exportLguCsv}
+          title="Downloads CSV that opens in Excel (LGU monitoring fields)"
+        >
+          Download LGU CSV
+        </button>
+
+        <div className="text-xs text-slate-500">
+          Rows: {rowsForExport.length}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 rounded border">
-          <div className="p-3 border-b font-semibold flex items-center justify-between">
-            <span>Bookings</span>
-            <button
-              type="button"
-              className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
-              onClick={exportBookingsCsv}
-              title="Download the current Dispatch table (CSV opens in Excel)"
-            >
-              Download CSV
-            </button>
-          </div>
+          <div className="p-3 border-b font-semibold">Bookings</div>
 
           <div className="overflow-auto">
             <table className="w-full text-sm">
@@ -318,7 +423,6 @@ export default function DispatchPage() {
                     const s = normStatus(b.status);
                     const acts = allowedActions(s);
                     const ack = ackMap[key] || { state: "idle" };
-
                     const isPending = ack.state === "pending";
 
                     function Btn(label: string, action: string, onClick: () => void) {
@@ -332,7 +436,6 @@ export default function DispatchPage() {
                             "mr-2 rounded border px-2 py-1 text-xs",
                             disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50",
                           ].join(" ")}
-                          title={disabled ? "Not allowed for this status (or pending)" : "Set status: " + action}
                         >
                           {isPending ? "Pending..." : label}
                         </button>
@@ -395,7 +498,7 @@ export default function DispatchPage() {
                 className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
                 onClick={exportActionsCsv}
                 type="button"
-                title="Download the last 10 actions (CSV opens in Excel)"
+                title="Download last 10 actions (CSV opens in Excel)"
               >
                 Download CSV
               </button>
