@@ -70,6 +70,40 @@ function normStatus(s?: string | null) {
   return v;
 }
 
+
+  /* JRIDE_UI_DRIVER_HEALTH_HELPERS_START */
+  function minsAgo(iso?: string | null) {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) return null;
+    const diffMs = Date.now() - t;
+    if (diffMs < 0) return 0;
+    return Math.floor(diffMs / 60000);
+  }
+
+  function isStale(iso?: string | null, staleMins = 5) {
+    const m = minsAgo(iso);
+    if (m === null) return true; // unknown -> treat stale for safety
+    return m >= staleMins;
+  }
+
+  // Canonical derived state for dispatch display.
+  // Booking status wins (busy), otherwise use last-seen + live status.
+  function deriveDriverState(bookingStatusRaw: any, liveStatusRaw: any, lastSeenIso?: string | null) {
+    const bs = normStatus(String(bookingStatusRaw ?? ""));
+    const ls = String(liveStatusRaw ?? "").trim().toLowerCase();
+
+    if (bs === "on_trip") return "on_trip";
+    if (bs === "on_the_way") return "on_the_way";
+    if (bs === "assigned") return "assigned";
+
+    if (isStale(lastSeenIso, 5)) return "offline";
+    if (ls === "offline") return "offline";
+    if (ls === "online") return "online";
+
+    return "online";
+  }
+  /* JRIDE_UI_DRIVER_HEALTH_HELPERS_END */
 function allowedActions(status?: string | null) {
   const s = normStatus(status);
   if (s === "completed" || s === "cancelled") return [] as string[];
@@ -230,6 +264,9 @@ export default function DispatchPage() {
 
   const [dispatcherName, setDispatcherName] = useState<string>("");
 
+  /* JRIDE_UI_DRIVER_HEALTH_STATE_START */
+  const [driverLiveMap, setDriverLiveMap] = useState<Record<string, any>>({});
+  /* JRIDE_UI_DRIVER_HEALTH_STATE_END */
     /* JRIDE_UI_SEARCH_START */
   // Search V2 (hooks-safe): top-level state only
   const [searchQ, setSearchQ] = useState<string>("");
@@ -1020,6 +1057,7 @@ return (
                 <tr className="text-left">
                   <th className="p-2">Booking</th>
                   <th className="p-2">Status</th>
+                  <th className="p-2">Driver</th>
                   <th className="p-2">Acknowledgement</th>
                   <th className="p-2">Actions</th>
                 </tr>
@@ -1027,7 +1065,7 @@ return (
               <tbody>
                 {rowsFilteredUi.length === 0 ? (
                   <tr>
-                    <td className="p-3 text-slate-600" colSpan={4}>
+                    <td className="p-3 text-slate-600" colSpan={5}>
                       No rows from /api/dispatch/bookings
                     </td>
                   </tr>
@@ -1103,7 +1141,46 @@ return (
                           </span>
                         </td>
 
-                        <td className="p-2">
+                                                <td className="p-2">
+                          {(() => {
+                            const driverId = String((b as any).driver_id || (b as any).assigned_driver_id || "");
+                            if (!driverId) return <span className="text-slate-400 text-xs">-</span>;
+
+                            const d: any = (driverLiveMap as any)?.[driverId] || null;
+                            const lastSeen = String(d?.location_updated_at || d?.updated_at || "");
+                            const state = deriveDriverState((b as any).status, d?.driver_status, lastSeen || null);
+                            const stale = isStale(lastSeen || null, 5);
+
+                            const m = minsAgo(lastSeen || null);
+                            const lastLabel = m === null ? "unknown" : (m === 0 ? "now" : (m + "m"));
+
+                            const cls =
+                              state === "on_trip" ? "border-amber-200 bg-amber-50 text-amber-800" :
+                              state === "on_the_way" ? "border-sky-200 bg-sky-50 text-sky-800" :
+                              state === "assigned" ? "border-violet-200 bg-violet-50 text-violet-800" :
+                              state === "offline" ? "border-red-200 bg-red-50 text-red-800" :
+                              "border-emerald-200 bg-emerald-50 text-emerald-800";
+
+                            return (
+                              <div className="flex flex-col gap-1">
+                                <span className={"inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] " + cls}>
+                                  {state}{stale ? " (stale)" : ""}
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  last: {lastLabel}
+                                </span>
+                                {d?.wallet_locked ? (
+                                  <span
+                                    className="inline-flex w-fit items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-800"
+                                    title="Wallet locked (below minimum required)"
+                                  >
+                                    wallet locked
+                                  </span>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
+                        </td><td className="p-2">
                           {ack.state === "idle" ? (
                             <span className="text-slate-400 text-xs">-</span>
                           ) : ack.state === "pending" ? (
@@ -1269,6 +1346,9 @@ return (
     </div>
   );
 }
+
+
+
 
 
 
