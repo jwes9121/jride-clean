@@ -1,5 +1,15 @@
 ﻿"use client";
 
+/* JRIDE_UI_COPY_HELPERS_START */
+function copyToClipboard(text: string) {
+  try {
+    const t = String(text || "").trim();
+    if (!t) return;
+    navigator.clipboard.writeText(t);
+  } catch {}
+}
+/* JRIDE_UI_COPY_HELPERS_END */
+
 import React, { useEffect, useMemo, useState } from "react";
 
 type Booking = {
@@ -199,6 +209,10 @@ export default function DispatchPage() {
 
   const [dispatcherName, setDispatcherName] = useState<string>("");
 
+  /* JRIDE_UI_SEARCH_START */
+  const [searchQ, setSearchQ] = useState<string>("");
+  /* JRIDE_UI_SEARCH_END */
+
   // LGU export controls
   const MUNICIPALITIES = ["All", "Kiangan", "Lagawe", "Hingyon", "Lamut", "Banaue"] as const;
   const [muniFilter, setMuniFilter] = useState<(typeof MUNICIPALITIES)[number]>("All");
@@ -347,7 +361,33 @@ export default function DispatchPage() {
   const rowsSorted = useMemo(() => {
     const copy = [...rows];
     copy.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-    return copy;
+    
+  /* JRIDE_UI_SEARCH_ROWS */
+  const rowsShown = useMemo(() => {
+    const q = String(searchQ || "").trim().toLowerCase();
+    // Prefer rowsUi if your file already has missing-only workflow; else fallback to rowsSorted.
+    // @ts-ignore
+    const base: any[] = (typeof rowsUi !== "undefined" ? rowsUi : rowsSorted) || [];
+    if (!q) return base;
+
+    return base.filter((b: any) => {
+      const code = String(b.booking_code || b.id || "").toLowerCase();
+      const town = String(b.town || "").toLowerCase();
+      const status = String(b.status || "").toLowerCase();
+      const phone = String(b.rider_phone || b.passenger_phone || b.passenger_contact || "").toLowerCase();
+      return (
+        code.includes(q) ||
+        town.includes(q) ||
+        status.includes(q) ||
+        phone.includes(q)
+      );
+    });
+  }, [searchQ, rowsSorted
+    // @ts-ignore
+    , (typeof rowsUi !== "undefined" ? rowsUi : null)
+  ]);
+  /* JRIDE_UI_SEARCH_ROWS_END */
+return copy;
   }, [rows]);
 
   const rowsForExport = useMemo(() => {
@@ -675,7 +715,15 @@ return (
               onChange={(e) => setDispatcherName(e.target.value)}
               placeholder="name"
               className="h-8 w-44 rounded border px-2 text-sm"
-            />
+            />            <div className="flex items-center gap-2 ml-3">
+              <span className="text-xs text-slate-600">Search</span>
+              <input
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                placeholder="booking / phone / status / town"
+                className="h-8 w-60 rounded border px-2 text-sm"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -787,7 +835,7 @@ return (
                     </td>
                   </tr>
                 ) : (
-                  rowsSorted.map((b) => {
+                  rowsShown.map((b) => {
                     const key = keyOf(b);
                     const s = normStatus(b.status);
                     const acts = allowedActions(s);
@@ -816,7 +864,35 @@ return (
                     return (
                       <tr key={b.id} className="border-b">
                         <td className="p-2 font-mono">
-                          {b.booking_code ? b.booking_code : b.id}
+                          {(() => {
+  const code = String((b as any).booking_code || (b as any).id || "");
+  const phone = String((b as any).rider_phone || (b as any).passenger_phone || (b as any).passenger_contact || "").trim();
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="font-mono">{code}</span>
+
+      <button
+        type="button"
+        className="rounded border px-2 py-0.5 text-[11px] hover:bg-slate-50"
+        title="Copy booking code"
+        onClick={() => copyToClipboard(code)}
+      >
+        Copy
+      </button>
+
+      {phone ? (
+        <button
+          type="button"
+          className="rounded border px-2 py-0.5 text-[11px] hover:bg-slate-50"
+          title="Copy phone"
+          onClick={() => copyToClipboard(phone)}
+        >
+          Phone
+        </button>
+      ) : null}
+    </span>
+  );
+})()}
                           {!lguOk ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
                               LGU missing
@@ -848,7 +924,33 @@ return (
                         </td>
 
                         <td className="p-2">
-                          {Btn("Assign", "assigned", () => setStatus(b, "assigned"))}
+                          {/* JRIDE_UI_ACK_CHIPS_START */}
+<div className="mb-1 flex flex-wrap items-center gap-2">
+  {ack.state === "pending" ? (
+    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
+      Pending
+    </span>
+  ) : ack.state === "ok" ? (
+    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-800">
+      OK
+    </span>
+  ) : ack.state === "err" ? (
+    <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] text-red-800">
+      Error
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+      Idle
+    </span>
+  )}
+
+  {ack.state !== "idle" && (ack as any).msg ? (
+    <span className="text-[11px] text-slate-600 truncate max-w-[420px]" title={String((ack as any).msg)}>
+      {String((ack as any).msg)}
+    </span>
+  ) : null}
+</div>
+{/* JRIDE_UI_ACK_CHIPS_END */}{Btn("Assign", "assigned", () => setStatus(b, "assigned"))}
                           {Btn("On the way", "on_the_way", () => setStatus(b, "on_the_way"))}
                           {Btn("On trip", "on_trip", () => setStatus(b, "on_trip"))}
                           {Btn("Complete", "completed", () => setStatus(b, "completed"))}
