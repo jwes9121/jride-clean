@@ -17,40 +17,37 @@ type AckState =
 function normStatus(s?: string | null) {
   const v = String(s || "").trim().toLowerCase();
   if (!v) return "";
-  // Back-compat normalization
   if (v === "new") return "pending";
   if (v === "enroute") return "on_the_way";
   if (v === "ongoing") return "on_trip";
-  // Keep "arrived" as-is (some data still uses it)
   return v;
 }
 
 function allowedActions(status?: string | null) {
   const s = normStatus(status);
 
-  // Terminal
   if (s === "completed" || s === "cancelled") return [] as string[];
-
-  // LiveTrips parity path
   if (s === "pending") return ["assigned", "cancelled"];
   if (s === "assigned") return ["on_the_way", "cancelled"];
   if (s === "on_the_way") return ["on_trip", "cancelled"];
   if (s === "on_trip") return ["completed", "cancelled"];
-
-  // Back-compat: arrived can complete
   if (s === "arrived") return ["completed", "cancelled"];
-
-  // Unknown status: allow cancel only (safe)
   return ["cancelled"];
 }
 
-async function postJson(url: string, body: any) {
+async function postJson(url: string, body: any, dispatcherName?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (dispatcherName && dispatcherName.trim()) {
+    headers["x-dispatcher-name"] = dispatcherName.trim();
+  }
+
   const r = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     cache: "no-store",
   });
+
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     const msg = String(j?.message || j?.error || j?.code || "REQUEST_FAILED");
@@ -62,11 +59,56 @@ async function postJson(url: string, body: any) {
   return j;
 }
 
+function badgeBase(ok: boolean, code?: string) {
+  if (!ok) return "text-red-700 border-red-200 bg-red-50";
+  if (code === "FORCE_OK") return "text-amber-800 border-amber-200 bg-amber-50";
+  return "text-emerald-700 border-emerald-200 bg-emerald-50";
+}
+
+function badgeLabel(ok: boolean, code?: string) {
+  if (!ok) return "BLOCKED";
+  if (code === "FORCE_OK") return "FORCE";
+  return "OK";
+}
+
+function clipCopy(text: string) {
+  if (typeof navigator === "undefined") return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return;
+  }
+  // fallback
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  } catch {}
+}
+
 export default function DispatchPage() {
   const [rows, setRows] = useState<Booking[]>([]);
   const [ackMap, setAckMap] = useState<Record<string, AckState>>({});
   const [obs, setObs] = useState<any[]>([]);
   const [lastLoadAt, setLastLoadAt] = useState<number>(0);
+
+  // Dispatcher identity (local only, no auth required)
+  const [dispatcherName, setDispatcherName] = useState<string>("");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("JRIDE_DISPATCHER_NAME");
+      if (saved) setDispatcherName(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("JRIDE_DISPATCHER_NAME", dispatcherName);
+    } catch {}
+  }, [dispatcherName]);
 
   async function load() {
     const r = await fetch("/api/dispatch/bookings", { cache: "no-store" });
@@ -76,7 +118,6 @@ export default function DispatchPage() {
   }
 
   async function loadObs() {
-    // status route is the canonical shared log endpoint
     const r = await fetch("/api/dispatch/status?log=1", { cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (j?.ok && Array.isArray(j.actions)) setObs(j.actions);
@@ -105,7 +146,11 @@ export default function DispatchPage() {
     setAck(key, { state: "pending", at: Date.now() });
 
     try {
-      const j = await postJson("/api/dispatch/status", { bookingId: String(b.id), status: nextStatus });
+      const j = await postJson(
+        "/api/dispatch/status",
+        { bookingId: String(b.id), status: nextStatus },
+        dispatcherName
+      );
 
       setAck(key, {
         state: "ok",
@@ -156,8 +201,20 @@ export default function DispatchPage() {
           </div>
         </div>
 
-        <div className="text-xs text-slate-600">
-          Auto-refresh: 5s - Last load: {lastLoadAt ? new Date(lastLoadAt).toLocaleTimeString() : "-"}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-xs text-slate-600">
+            Auto-refresh: 5s - Last load: {lastLoadAt ? new Date(lastLoadAt).toLocaleTimeString() : "-"}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-600">Dispatcher</span>
+            <input
+              value={dispatcherName}
+              onChange={(e) => setDispatcherName(e.target.value)}
+              placeholder="name"
+              className="h-8 w-44 rounded border px-2 text-sm"
+            />
+          </div>
         </div>
       </div>
 
@@ -260,7 +317,11 @@ export default function DispatchPage() {
         <div className="rounded border">
           <div className="p-3 border-b flex items-center justify-between">
             <div className="font-semibold">Observability</div>
-            <button className="text-xs rounded border px-2 py-1 hover:bg-slate-50" onClick={() => loadObs().catch(() => {})} type="button">
+            <button
+              className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
+              onClick={() => loadObs().catch(() => {})}
+              type="button"
+            >
               Refresh
             </button>
           </div>
@@ -271,29 +332,51 @@ export default function DispatchPage() {
             {obs.length === 0 ? (
               <div className="text-xs text-slate-400">No actions yet.</div>
             ) : (
-              obs.map((a: any) => (
-                <div key={a.id} className="rounded border bg-white p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-mono text-[11px]">{String(a.bookingCode || a.bookingId || "-")}</div>
-                    <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
-                  </div>
+              obs.map((a: any) => {
+                const ok = Boolean(a.ok);
+                const code = String(a.code || "");
+                const time = a.at ? new Date(a.at).toLocaleTimeString() : "";
+                const who = String(a.actor || "unknown");
+                const idLabel = String(a.bookingCode || a.bookingId || "-");
+                const type = String(a.type || "status").toUpperCase();
 
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="rounded-full border px-2 py-0.5">{String(a.type || "status")}</span>
-                    {a.type === "assign" ? (
-                      <span className="rounded-full border px-2 py-0.5">{String(a.driverId || "-")}</span>
-                    ) : (
-                      <span className="rounded-full border px-2 py-0.5">{String(a.nextStatus || "-")}</span>
-                    )}
-                    <span className={["rounded-full border px-2 py-0.5", a.ok ? "text-emerald-700 border-emerald-200 bg-emerald-50" : "text-red-700 border-red-200 bg-red-50"].join(" ")}>
-                      {a.ok ? (a.code === "FORCE_OK" ? "FORCE" : "OK") : "BLOCKED"}
-                    </span>
-                    <span className="text-slate-500">by {String(a.actor || "unknown")}</span>
-                  </div>
+                const detail =
+                  type === "ASSIGN"
+                    ? String(a.driverId || "-")
+                    : String(a.nextStatus || "-");
 
-                  {!a.ok && a.message ? <div className="mt-1 text-[11px] text-red-700">{String(a.message)}</div> : null}
-                </div>
-              ))
+                return (
+                  <div key={a.id} className="rounded border bg-white p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-mono text-[11px]">{idLabel}</div>
+                      <div className="text-[11px] text-slate-500">{time}</div>
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                      <span className="rounded-full border px-2 py-0.5">{type}</span>
+
+                      <span className="rounded-full border px-2 py-0.5">{detail}</span>
+
+                      <span className={["rounded-full border px-2 py-0.5", badgeBase(ok, code)].join(" ")}>
+                        {badgeLabel(ok, code)}
+                      </span>
+
+                      <span className="text-slate-500">by {who}</span>
+
+                      <button
+                        type="button"
+                        className="ml-auto text-[11px] rounded border px-2 py-0.5 hover:bg-slate-50"
+                        onClick={() => clipCopy(JSON.stringify(a, null, 2))}
+                        title="Copy this action as JSON"
+                      >
+                        Copy JSON
+                      </button>
+                    </div>
+
+                    {!ok && a.message ? <div className="mt-1 text-[11px] text-red-700">{String(a.message)}</div> : null}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
