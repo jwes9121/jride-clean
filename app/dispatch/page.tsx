@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /* JRIDE_UI_COPY_HELPERS_START */
 function copyToClipboard(text: string) {
@@ -357,40 +357,9 @@ export default function DispatchPage() {
       loadObs().catch(() => {});
     }
   }
-
-  const rowsSorted = useMemo(() => {
-    const copy = [...rows];
-    copy.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-    
-  /* JRIDE_UI_SEARCH_ROWS */
-  const rowsShown = useMemo(() => {
-    const q = String(searchQ || "").trim().toLowerCase();
-    // Prefer rowsUi if your file already has missing-only workflow; else fallback to rowsSorted.
-    // @ts-ignore
-    const base: any[] = (typeof rowsUi !== "undefined" ? rowsUi : rowsSorted) || [];
-    if (!q) return base;
-
-    return base.filter((b: any) => {
-      const code = String(b.booking_code || b.id || "").toLowerCase();
-      const town = String(b.town || "").toLowerCase();
-      const status = String(b.status || "").toLowerCase();
-      const phone = String(b.rider_phone || b.passenger_phone || b.passenger_contact || "").toLowerCase();
-      return (
-        code.includes(q) ||
-        town.includes(q) ||
-        status.includes(q) ||
-        phone.includes(q)
-      );
-    });
-  }, [searchQ, rowsSorted
-    // @ts-ignore
-    , (typeof rowsUi !== "undefined" ? rowsUi : null)
-  ]);
-  /* JRIDE_UI_SEARCH_ROWS_END */
-return copy;
-  }, [rows]);
-
-  const rowsForExport = useMemo(() => {
+  // rowsSorted derived safely (no hook)
+  const rowsSorted = [...((rows as any) || [])];
+const rowsForExport = useMemo(() => {
     const wantedStatus = completedOnly ? "completed" : null;
     
     const range = getRangeOrNull();
@@ -835,7 +804,7 @@ return (
                     </td>
                   </tr>
                 ) : (
-                  rowsShown.map((b) => {
+                  rowsForExport.map((b) => {
                     const key = keyOf(b);
                     const s = normStatus(b.status);
                     const acts = allowedActions(s);
