@@ -562,8 +562,99 @@ return true;
     return rowsForExport.filter((b) => !isLguComplete(b)).length;
   }, [rowsForExport]);
 
-  return (
+    // UI_POLISH_BLOCK_START
+  // --- UI: Operator bar + Missing LGU workflow ---
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [missingJumpIdx, setMissingJumpIdx] = useState(0);
+  const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
+  // Use existing missingForExport if present; else compute from rowsForExport + isLguComplete
+  const computedMissing = useMemo(() => {
+    try {
+      // @ts-ignore
+      if (typeof missingForExport !== "undefined" && Array.isArray(missingForExport)) return missingForExport;
+    } catch {}
+    return (rowsForExport || []).filter((b) => {
+      try { return !isLguComplete(b); } catch { return false; }
+    });
+  }, [rowsForExport]);
+
+  const rowsUi = useMemo(
+    () => (showMissingOnly ? computedMissing : rowsForExport),
+    [showMissingOnly, computedMissing, rowsForExport]
+  );
+
+  const missingCountUi = computedMissing.length;
+
+  useEffect(() => {
+    if (!focusBookingId) return;
+    try {
+      const el = document.querySelector(`[data-booking-id="${focusBookingId}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch {}
+  }, [focusBookingId]);
+
+  function jumpToNextMissing() {
+    if (!computedMissing.length) return;
+    const i = missingJumpIdx % computedMissing.length;
+    const b = computedMissing[i];
+    setMissingJumpIdx(i + 1);
+    setFocusBookingId(String((b).id || (b).uuid || (b).booking_code || ""));
+  }
+  // UI_POLISH_BLOCK_END
+return (
     <div className="p-4 space-y-4">
+      {/* UI: Operator Bar */}
+      <div className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-semibold">Dispatcher:</span>
+            <span className="font-mono">{dispatcherName?.trim() ? dispatcherName.trim() : "N/A"}</span>
+
+            <span className="opacity-50">|</span>
+
+            <span className="font-semibold">Municipality:</span>
+            <span>{muniFilter}</span>
+
+            <span className="opacity-50">|</span>
+
+            <span className="font-semibold">Range:</span>
+            <span>{String(rangeMode || "")}</span>
+
+            <span className="opacity-50">|</span>
+
+            <span className="font-semibold">Completed:</span>
+            <span>{completedOnly ? "YES" : "NO"}</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm">
+              <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-800">
+                Missing LGU: {missingCountUi}
+              </span>
+            </div><button
+              type="button"
+              className="rounded-md border px-2 py-1 text-sm hover:bg-slate-50"
+              onClick={() => setShowMissingOnly((v) => !v)}
+              title="Toggle missing-only rows"
+            >
+              {showMissingOnly ? "Showing: Missing only" : "Showing: All"}
+              {missingCountUi > 0 ? (
+                <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs">{missingCountUi}</span>
+              ) : null}
+            </button>
+
+            <button
+              type="button"
+              className="rounded-md border px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+              onClick={jumpToNextMissing}
+              disabled={!missingCountUi}
+              title={missingCountUi ? "Jump to next missing LGU row" : "No missing LGU rows"}
+            >
+              Next missing
+            </button>
+          </div>
+        </div>
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Dispatch</h1>
