@@ -77,7 +77,6 @@ function clipCopy(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
     return;
   }
-  // fallback
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -88,13 +87,36 @@ function clipCopy(text: string) {
   } catch {}
 }
 
+function csvEscape(v: any) {
+  const s = String(v ?? "");
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function toCsv(rows: Record<string, any>[], columns: string[]) {
+  const head = columns.map(csvEscape).join(",");
+  const lines = rows.map((r) => columns.map((c) => csvEscape(r[c])).join(","));
+  return [head, ...lines].join("\r\n");
+}
+
+function downloadText(filename: string, text: string, mime = "text/csv;charset=utf-8") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function DispatchPage() {
   const [rows, setRows] = useState<Booking[]>([]);
   const [ackMap, setAckMap] = useState<Record<string, AckState>>({});
   const [obs, setObs] = useState<any[]>([]);
   const [lastLoadAt, setLastLoadAt] = useState<number>(0);
 
-  // Dispatcher identity (local only, no auth required)
   const [dispatcherName, setDispatcherName] = useState<string>("");
 
   useEffect(() => {
@@ -191,6 +213,47 @@ export default function DispatchPage() {
     return copy;
   }, [rows]);
 
+  function exportActionsCsv() {
+    const now = new Date();
+    const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const filename = `dispatch-actions-${stamp}.csv`;
+
+    const normalized = (obs || []).map((a: any) => ({
+      at: a.at || "",
+      type: a.type || "",
+      booking: a.bookingCode || a.bookingId || "",
+      nextStatus: a.nextStatus || "",
+      driverId: a.driverId || "",
+      result: a.ok ? (a.code === "FORCE_OK" ? "FORCE" : "OK") : "BLOCKED",
+      code: a.code || "",
+      message: a.message || "",
+      actor: a.actor || "",
+      ip: a.ip || "",
+      httpStatus: a.httpStatus || "",
+      id: a.id || "",
+    }));
+
+    const cols = ["at","type","booking","nextStatus","driverId","result","code","message","actor","ip","httpStatus","id"];
+    const csv = toCsv(normalized, cols);
+    downloadText(filename, csv);
+  }
+
+  function exportBookingsCsv() {
+    const now = new Date();
+    const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const filename = `dispatch-bookings-${stamp}.csv`;
+
+    const normalized = rowsSorted.map((b) => ({
+      booking_code: b.booking_code || "",
+      id: b.id || "",
+      status: normStatus(b.status) || "",
+    }));
+
+    const cols = ["booking_code","id","status"];
+    const csv = toCsv(normalized, cols);
+    downloadText(filename, csv);
+  }
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -220,7 +283,17 @@ export default function DispatchPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 rounded border">
-          <div className="p-3 border-b font-semibold">Bookings</div>
+          <div className="p-3 border-b font-semibold flex items-center justify-between">
+            <span>Bookings</span>
+            <button
+              type="button"
+              className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
+              onClick={exportBookingsCsv}
+              title="Download the current Dispatch table (CSV opens in Excel)"
+            >
+              Download CSV
+            </button>
+          </div>
 
           <div className="overflow-auto">
             <table className="w-full text-sm">
@@ -315,15 +388,25 @@ export default function DispatchPage() {
         </div>
 
         <div className="rounded border">
-          <div className="p-3 border-b flex items-center justify-between">
+          <div className="p-3 border-b flex items-center justify-between gap-2">
             <div className="font-semibold">Observability</div>
-            <button
-              className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
-              onClick={() => loadObs().catch(() => {})}
-              type="button"
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
+                onClick={exportActionsCsv}
+                type="button"
+                title="Download the last 10 actions (CSV opens in Excel)"
+              >
+                Download CSV
+              </button>
+              <button
+                className="text-xs rounded border px-2 py-1 hover:bg-slate-50"
+                onClick={() => loadObs().catch(() => {})}
+                type="button"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           <div className="p-3 text-xs text-slate-600">Last 10 actions (status + assign). No DB.</div>
@@ -339,11 +422,7 @@ export default function DispatchPage() {
                 const who = String(a.actor || "unknown");
                 const idLabel = String(a.bookingCode || a.bookingId || "-");
                 const type = String(a.type || "status").toUpperCase();
-
-                const detail =
-                  type === "ASSIGN"
-                    ? String(a.driverId || "-")
-                    : String(a.nextStatus || "-");
+                const detail = type === "ASSIGN" ? String(a.driverId || "-") : String(a.nextStatus || "-");
 
                 return (
                   <div key={a.id} className="rounded border bg-white p-2">
@@ -354,11 +433,10 @@ export default function DispatchPage() {
 
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
                       <span className="rounded-full border px-2 py-0.5">{type}</span>
-
                       <span className="rounded-full border px-2 py-0.5">{detail}</span>
 
                       <span className={["rounded-full border px-2 py-0.5", badgeBase(ok, code)].join(" ")}>
-                        {badgeLabel(ok, code)}
+                        {ok ? (code === "FORCE_OK" ? "FORCE" : "OK") : "BLOCKED"}
                       </span>
 
                       <span className="text-slate-500">by {who}</span>
