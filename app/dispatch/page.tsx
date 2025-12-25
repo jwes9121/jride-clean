@@ -799,12 +799,13 @@ const rowsFilteredUi = useMemo(() => {
       return true;
     });
   }, [rowsUi, qBooking, qPhone, qStatus, qTown, searchQ]);
-  /* JRIDE_UI_SEARCH_V2_END */const missingCountUi = computedMissing.length;
+  /* JRIDE_UI_SEARCH_V2_END */
+const missingCountUi = computedMissing.length;
 
   useEffect(() => {
     if (!focusBookingId) return;
     try {
-      const el = document.querySelector(`[data-booking-id="${focusBookingId}"]`);
+      const el = document.querySelector('[data-booking-id="' + focusBookingId + '"]');
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     } catch {}
   }, [focusBookingId]);
