@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -204,7 +204,47 @@ export default function DispatchPage() {
   const [muniFilter, setMuniFilter] = useState<(typeof MUNICIPALITIES)[number]>("All");
   const [completedOnly, setCompletedOnly] = useState<boolean>(true);
 
-  // LGU Fixer modal
+  
+  // Date range filter (LGU exports only; no DB changes)
+  type DateRangeMode = "today" | "week" | "custom";
+  const [rangeMode, setRangeMode] = useState<DateRangeMode>("week");
+  const [rangeFrom, setRangeFrom] = useState<string>("");
+  const [rangeTo, setRangeTo] = useState<string>("");
+
+  function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function endOfToday() {
+    const d = new Date();
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }
+
+  function startOfWeekMonday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay(); // 0=Sun
+    const diff = (day === 0 ? -6 : 1) - day; // Monday start
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+
+  function getRangeOrNull() {
+    if (rangeMode === "today") return { from: startOfToday(), to: endOfToday() };
+    if (rangeMode === "week") return { from: startOfWeekMonday(), to: endOfToday() };
+    if (rangeMode === "custom") {
+      if (!rangeFrom || !rangeTo) return null;
+      return {
+        from: new Date(rangeFrom + "T00:00:00"),
+        to: new Date(rangeTo + "T23:59:59"),
+      };
+    }
+    return null;
+  }
+// LGU Fixer modal
   const [fixOpen, setFixOpen] = useState(false);
   const [fixTarget, setFixTarget] = useState<Booking | null>(null);
   const [fixFrom, setFixFrom] = useState("");
@@ -312,12 +352,20 @@ export default function DispatchPage() {
 
   const rowsForExport = useMemo(() => {
     const wantedStatus = completedOnly ? "completed" : null;
-    return rowsSorted.filter((b) => {
+    
+    const range = getRangeOrNull();
+return rowsSorted.filter((b) => {
       const town = pickTown(b.town);
       const s = normStatus(b.status);
       if (wantedStatus && s !== wantedStatus) return false;
       if (muniFilter !== "All" && town !== muniFilter) return false;
-      return true;
+      if (range) {
+        if (!b.created_at) return false;
+        const d = new Date(b.created_at);
+        if (Number.isNaN(d.getTime())) return false;
+        if (d < range.from || d > range.to) return false;
+      }
+return true;
     });
   }, [rowsSorted, muniFilter, completedOnly]);
 
@@ -557,6 +605,37 @@ export default function DispatchPage() {
             ))}
           </select>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-600">Date range</span>
+          <select
+            className="h-8 rounded border px-2 text-sm"
+            value={rangeMode}
+            onChange={(e) => setRangeMode(e.target.value as any)}
+          >
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        {rangeMode === "custom" ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="h-8 rounded border px-2 text-sm"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+            />
+            <span className="text-xs text-slate-500">to</span>
+            <input
+              type="date"
+              className="h-8 rounded border px-2 text-sm"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+            />
+          </div>
+        ) : null}
+
 
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -687,8 +766,7 @@ export default function DispatchPage() {
                           <button
                             type="button"
                             className="ml-2 rounded border px-2 py-1 text-xs hover:bg-slate-50"
-                            onClick={() => openFixer(b)}
-                            title="Fix missing LGU fields (origin/destination/distance/fare)"
+                            title={normStatus(b.status) !== "completed" ? "LGU Fix is allowed for completed trips only." : "Fix missing LGU fields"} disabled={normStatus(b.status) !== "completed"} onClick={() => openFixer(b)}
                           >
                             LGU Fix
                           </button>
@@ -737,7 +815,7 @@ export default function DispatchPage() {
                     <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
                   <div className="mt-1 text-[11px] text-slate-600">
-                    {String(a.type || "status")} ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
+                    {String(a.type || "status")} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
                   </div>
                 </div>
               ))
