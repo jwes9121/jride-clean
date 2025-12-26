@@ -38,24 +38,7 @@ function toIsoOrNull(v: any): string | null {
 
 function bestUpdatedAt(row: any): string | null {
   if (!row) return null;
-
-  const candidates = [
-    row.location_updated_at,
-    row.locationUpdatedAt,
-    row.last_location_at,
-    row.lastLocationAt,
-    row.last_seen_at,
-    row.lastSeenAt,
-    row.updated_at,
-    row.updatedAt,
-    row.ping_at,
-    row.pingAt,
-    row.ts,
-    row.timestamp,
-    row.created_at,
-    row.createdAt,
-  ];
-
+  const candidates = [row.status, row.state, row.availability, row.driver_status, row.driverStatus, row.live_status, row.online_status];
   for (const c of candidates) {
     const iso = toIsoOrNull(c);
     if (iso) return iso;
@@ -75,7 +58,7 @@ function newest(aIso: string | null, bIso: string | null): string | null {
 
 function bestStatus(row: any): string | null {
   if (!row) return null;
-  const candidates = [row.driver_status, row.driverStatus, row.status, row.state, row.availability];
+  const candidates = [row.status, row.state, row.availability, row.driver_status, row.driverStatus, row.live_status, row.online_status];
   for (const c of candidates) {
     const s = str(c).trim();
     if (s) return s;
@@ -85,7 +68,7 @@ function bestStatus(row: any): string | null {
 
 function bestDriverId(row: any): string | null {
   if (!row) return null;
-  const candidates = [row.driver_id, row.driverId, row.driver_uuid, row.driverUuid, row.uuid, row.id];
+  const candidates = [row.status, row.state, row.availability, row.driver_status, row.driverStatus, row.live_status, row.online_status];
   for (const c of candidates) {
     const s = str(c).trim();
     if (s) return s;
@@ -209,8 +192,7 @@ export async function GET() {
       const wal = walletById[id];
 
       const location_updated_at = bestUpdatedAt(loc) ?? bestUpdatedAt(wal) ?? null;
-      const driver_status = bestStatus(wal) ?? bestStatus(loc) ?? null;
-
+      const driver_status = bestStatus(loc) ?? bestStatus(wal) ?? null;
       const wallet_balance = wal?.wallet_balance ?? wal?.balance ?? wal?.wallet ?? null;
       const min_wallet_required = wal?.min_wallet_required ?? wal?.minWalletRequired ?? wal?.min_required ?? null;
       const wallet_locked = wal?.wallet_locked ?? wal?.walletLocked ?? wal?.locked ?? null;
@@ -238,4 +220,5 @@ export async function GET() {
     );
   }
 }
+
 
