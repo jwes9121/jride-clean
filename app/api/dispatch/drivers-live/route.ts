@@ -4,6 +4,24 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+
+function fmtPH(iso: string | null): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+
+  // Format in Asia/Manila (UTC+8). This is for display only.
+  return new Date(t).toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+}
 // ---------- schema-flex helpers ----------
 function str(v: any): string {
   return v == null ? "" : String(v);
@@ -207,7 +225,8 @@ export async function GET() {
         min_wallet_required,
         wallet_locked,
         location_updated_at,
-        _src: srcParts.join("+") || null,
+      location_updated_at_ph: fmtPH(location_updated_at),
+              _src: srcParts.join("+") || null,
       };
     }
 
@@ -219,3 +238,4 @@ export async function GET() {
     );
   }
 }
+
