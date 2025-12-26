@@ -38,7 +38,6 @@ function checkSecret(req: Request) {
 }
 
 export async function GET() {
-  // quick health check
   return json(200, { ok: true, route: "driver/location/ping" });
 }
 
@@ -67,17 +66,12 @@ export async function POST(req: Request) {
       return json(400, { ok: false, code: "BAD_REQUEST", message: "driver_id is required" });
     }
 
-    // lat/lng can be optional if the app pings status only, but usually required
-    // we won't hard-fail if missing; we'll just not overwrite lat/lng.
-    const patch: any = {
-      updated_at: new Date().toISOString(),
-    };
+    const patch: any = { updated_at: new Date().toISOString() };
     if (lat != null) patch.lat = lat;
     if (lng != null) patch.lng = lng;
     if (status) patch.status = status;
     if (town) patch.town = town;
 
-    // pass-through optional fields if provided (schema-flex; harmless if columns exist)
     const vehicle_type = str(body.vehicle_type ?? body.vehicleType);
     const capacity = body.capacity != null ? Number(body.capacity) : null;
     const home_town = str(body.home_town ?? body.homeTown);
@@ -87,8 +81,7 @@ export async function POST(req: Request) {
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    // 1) Try UPSERT by driver_id (requires unique constraint on driver_id)
-    // If that fails due to missing unique constraint, fallback to update-or-insert.
+    // 1) Try UPSERT by driver_id (best when driver_id has unique constraint)
     const upsertPayload = { driver_id, ...patch };
 
     let upsertErr: any = null;
@@ -105,8 +98,7 @@ export async function POST(req: Request) {
       return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "upsert(driver_id)" });
     }
 
-    // 2) Fallback path (schema-flex): update existing row (if any), else insert
-    // We do NOT assume constraints; we probe.
+    // 2) Fallback: update existing row by driver_id, else insert with generated id
     const { data: existing, error: selErr } = await supabase
       .from("driver_locations")
       .select("id, driver_id")
@@ -132,10 +124,16 @@ export async function POST(req: Request) {
       return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "update(id)" });
     }
 
-    // insert new row (assumes id has default; if not, Supabase will error and we surface it)
+    // Insert new row (INSERT-SAFE): generate UUID for id in case DB has no default
+    const id = (globalThis.crypto && "randomUUID" in globalThis.crypto)
+      ? (globalThis.crypto as any).randomUUID()
+      : `${Date.now()}-${Math.random()}`; // should never happen on Node 18+, but safe
+
+    const insertPayload = { id, driver_id, ...patch };
+
     const { error: insErr } = await supabase
       .from("driver_locations")
-      .insert(upsertPayload);
+      .insert(insertPayload);
 
     if (insErr) {
       return json(500, {
@@ -143,13 +141,14 @@ export async function POST(req: Request) {
         code: "INSERT_FAILED",
         message: insErr.message || "Insert failed",
         detail: {
+          generated_id: id,
           upsert_error: (upsertErr as any)?.message || String(upsertErr),
           select_error: selErr?.message || null,
         },
       });
     }
 
-    return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "insert(driver_id)" });
+    return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "insert(id+driver_id)" });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message || "ping failed" });
   }
