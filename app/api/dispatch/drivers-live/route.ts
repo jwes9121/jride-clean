@@ -38,7 +38,27 @@ function toIsoOrNull(v: any): string | null {
 
 function bestUpdatedAt(row: any): string | null {
   if (!row) return null;
-  const candidates = [row.status, row.state, row.availability, row.driver_status, row.driverStatus, row.live_status, row.online_status];
+
+  // Prefer real timestamp fields (schema-flex)
+  const candidates = [
+    row.location_updated_at,
+    row.locationUpdatedAt,
+    row.updated_at,
+    row.updatedAt,
+    row.last_location_at,
+    row.lastLocationAt,
+    row.last_seen_at,
+    row.lastSeenAt,
+    row.seen_at,
+    row.seenAt,
+    row.pinged_at,
+    row.pingedAt,
+    row.ts,
+    row.timestamp,
+    row.created_at,
+    row.createdAt,
+  ];
+
   for (const c of candidates) {
     const iso = toIsoOrNull(c);
     if (iso) return iso;
@@ -242,6 +262,7 @@ export async function GET() {
     );
   }
 }
+
 
 
 
