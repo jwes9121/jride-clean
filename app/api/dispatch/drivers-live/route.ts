@@ -68,14 +68,36 @@ function bestStatus(row: any): string | null {
 
 function bestDriverId(row: any): string | null {
   if (!row) return null;
-  const candidates = [row.status, row.state, row.availability, row.driver_status, row.driverStatus, row.live_status, row.online_status];
+
+  // Prefer explicit driver id fields (schema-flex)
+  const candidates = [
+    row.driver_id,
+    row.driverId,
+    row.driver_uuid,
+    row.driverUuid,
+    row.uuid,
+    row.id,
+    row.user_id,
+    row.userId,
+  ];
+
+  // First pass: return first UUID-looking value
+  for (const c of candidates) {
+    const s = str(c).trim();
+    if (!s) continue;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)) {
+      return s;
+    }
+  }
+
+  // Fallback: any non-empty string
   for (const c of candidates) {
     const s = str(c).trim();
     if (s) return s;
   }
+
   return null;
 }
-
 async function trySources(
   supabase: any,
   sources: string[],
@@ -220,5 +242,6 @@ export async function GET() {
     );
   }
 }
+
 
 
