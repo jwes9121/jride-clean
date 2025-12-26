@@ -1,4 +1,19 @@
-﻿import { NextResponse } from "next/server";
+# FIX-DRIVERS-LIVE-ROUTE-NO-TOPLEVEL-RETURN.ps1
+# Fix build: remove illegal top-level return in Next route file.
+# Then build, commit, tag.
+
+$ErrorActionPreference = "Stop"
+function Fail($m){ throw $m }
+
+$target = "app\api\dispatch\drivers-live\route.ts"
+if (!(Test-Path $target)) { Fail "Missing $target (run from repo root)" }
+
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+Copy-Item $target "$target.bak.$stamp" -Force
+Write-Host "[OK] Backup: $target.bak.$stamp"
+
+$code = @'
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -219,3 +234,31 @@ export async function GET() {
     );
   }
 }
+'@
+
+Set-Content -LiteralPath $target -Value $code -Encoding UTF8
+Write-Host "[OK] Wrote fixed route: $target"
+
+Write-Host ""
+Write-Host "[STEP] npm.cmd run build"
+& npm.cmd run build
+if ($LASTEXITCODE -ne 0) { Fail "Build failed. Not committing." }
+
+Write-Host ""
+Write-Host "[STEP] git add -A"
+& git add -A
+
+Write-Host "[STEP] git commit"
+& git commit -m "JRIDE_DISPATCH_PHASE3_2C fix drivers-live route build (no top-level return)"
+
+$tag = "JRIDE_DISPATCH_PHASE3_2C_BUILD_FIX_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+Write-Host "[STEP] git tag $tag"
+& git tag $tag
+
+Write-Host ""
+Write-Host "[DONE] Commit + tag created:"
+Write-Host "  $tag"
+Write-Host ""
+Write-Host "Next push:"
+Write-Host "  git push"
+Write-Host "  git push --tags"
