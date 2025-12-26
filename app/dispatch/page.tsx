@@ -291,6 +291,63 @@ export default function DispatchPage() {
   /* JRIDE_UI_SEARCH_PERSIST_START */
   // Persist Search V2 + quick filters (localStorage only; hooks-safe)
   const LS_KEY_SEARCH_V2 = "JRIDE_DISPATCH_SEARCH_V2";
+  
+/* JRIDE_UI_MONEY_PHASE2_LOWWALLET_PANEL_START */
+  const lowWalletDrivers = useMemo(() => {
+    try {
+      const m: any = (driverLiveMap as any) || {};
+      const list: any[] = Object.values(m || {}).filter(Boolean) as any[];
+
+      const toNum = (v: any) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const out = list
+        .map((d) => {
+          const bal = toNum((d as any).wallet_balance);
+          const min = toNum((d as any).min_wallet_required);
+          const locked = Boolean((d as any).wallet_locked);
+
+          const isLow =
+            locked ||
+            (bal !== null && min !== null && bal < min);
+
+          if (!isLow) return null;
+
+          const deficit =
+            (bal !== null && min !== null) ? (min - bal) : null;
+
+          return {
+            id: String((d as any).id || (d as any).driver_id || ""),
+            driver_name: String((d as any).driver_name || "Driver"),
+            town: String((d as any).town || (d as any).home_town || ""),
+            driver_status: String((d as any).driver_status || (d as any).status || ""),
+            wallet_balance: bal,
+            min_wallet_required: min,
+            wallet_locked: locked,
+            location_updated_at: String((d as any).location_updated_at || (d as any).updated_at || ""),
+            deficit,
+          };
+        })
+        .filter(Boolean) as any[];
+
+      out.sort((a, b) => {
+        const ad = (a.deficit ?? 0);
+        const bd = (b.deficit ?? 0);
+        return bd - ad;
+      });
+
+      return out;
+    } catch {
+      return [] as any[];
+    }
+  }, [driverLiveMap]);
+
+  const lowWalletCount = lowWalletDrivers.length;
+  /* JRIDE_UI_MONEY_PHASE2_LOWWALLET_PANEL_END */
+
+
 
   useEffect(() => {
     try {
@@ -307,6 +364,8 @@ export default function DispatchPage() {
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  
+
 
   useEffect(() => {
     try {
@@ -377,6 +436,8 @@ export default function DispatchPage() {
   const [fixFare, setFixFare] = useState("");
   const [fixToken, setFixToken] = useState("");
   const [fixMsg, setFixMsg] = useState<string>("");
+  
+
 
   useEffect(() => {
     try {
@@ -386,12 +447,16 @@ export default function DispatchPage() {
       if (tok) setFixToken(tok);
     } catch {}
   }, []);
+  
+
 
   useEffect(() => {
     try {
       localStorage.setItem("JRIDE_DISPATCHER_NAME", dispatcherName);
     } catch {}
   }, [dispatcherName]);
+  
+
 
   useEffect(() => {
     try {
@@ -815,6 +880,8 @@ const rowsFilteredUi = useMemo(() => {
   }, [rowsUi, qBooking, qPhone, qStatus, qTown, searchQ]);
   /* JRIDE_UI_SEARCH_V2_END */
 const missingCountUi = computedMissing.length;
+  
+
 
   useEffect(() => {
     if (!focusBookingId) return;
@@ -1003,7 +1070,75 @@ const missingCountUi = computedMissing.length;
               {/* JRIDE_UI_STATUS_FILTER_CHIPS_END */}<span className="text-xs text-slate-500 ml-2">
                   Showing: {rowsFilteredUi.length} / {rowsForExport.length}
                 </span>
-              </div></div>
+              
+              {/* JRIDE_UI_MONEY_PHASE2_LOWWALLET_PANEL_UI_START */}
+              {lowWalletCount > 0 ? (
+                <div className="mt-3 rounded border bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-semibold">
+                      Low-wallet drivers <span className="text-xs text-slate-500">({lowWalletCount})</span>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Based on live driver telemetry (wallet_balance &lt; min_wallet_required or wallet_locked)
+                    </div>
+                  </div>
+
+                  <div className="mt-2 max-h-56 overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-slate-600">
+                          <th className="py-1 pr-2">Driver</th>
+                          <th className="py-1 pr-2">Town</th>
+                          <th className="py-1 pr-2">Status</th>
+                          <th className="py-1 pr-2">Balance</th>
+                          <th className="py-1 pr-2">Min</th>
+                          <th className="py-1 pr-2">Deficit</th>
+                          <th className="py-1 pr-2">Locked</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lowWalletDrivers.slice(0, 20).map((d: any) => {
+                          const bal = d.wallet_balance;
+                          const min = d.min_wallet_required;
+                          const deficit = d.deficit;
+
+                          const fmt = (n: any) =>
+                            typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "-";
+
+                          return (
+                            <tr key={d.id} className="border-t">
+                              <td className="py-1 pr-2">
+                                <span className="font-medium">{d.driver_name}</span>
+                                <span className="ml-2 text-[11px] text-slate-500">{d.id ? d.id.slice(0, 6) : ""}</span>
+                              </td>
+                              <td className="py-1 pr-2">{d.town || "-"}</td>
+                              <td className="py-1 pr-2">{d.driver_status || "-"}</td>
+                              <td className="py-1 pr-2 font-mono">{fmt(bal)}</td>
+                              <td className="py-1 pr-2 font-mono">{fmt(min)}</td>
+                              <td className="py-1 pr-2 font-mono">
+                                {typeof deficit === "number" && Number.isFinite(deficit) ? (
+                                  <span className="text-red-700">{deficit.toFixed(2)}</span>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className="py-1 pr-2">
+                                {d.wallet_locked ? (
+                                  <span className="rounded bg-red-50 px-2 py-0.5 text-[11px] text-red-800 border border-red-200">locked</span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+              {/* JRIDE_UI_MONEY_PHASE2_LOWWALLET_PANEL_UI_END */}
+</div></div>
           </div>
         </div>
       </div>
@@ -1404,6 +1539,8 @@ const missingCountUi = computedMissing.length;
     </div>
   );
 }
+
+
 
 
 
