@@ -407,17 +407,30 @@ export default function DispatchPage() {
   }
 
   async function loadObs() {
-    const r = await fetch("/api/dispatch/status?log=1", { cache: "no-store" });
-    const j = await r.json().catch(() => ({}));
-    if (j?.ok && Array.isArray(j.actions)) setObs(j.actions);
-  }
+  const r = await fetch("/api/dispatch/status?log=1", { cache: "no-store" });
+  const j = await r.json().catch(() => ({}));
+  if (j?.ok && Array.isArray(j.actions)) setObs(j.actions);
+}
 
-  useEffect(() => {
+// Driver live telemetry (read-only; optional)
+async function loadDriversLive() {
+  try {
+    const r = await fetch("/api/dispatch/drivers-live", { cache: "no-store" });
+    const j = await r.json().catch(() => ({} as any));
+    if (j?.ok && j?.drivers && typeof j.drivers === "object") {
+      setDriverLiveMap(j.drivers);
+    }
+  } catch {
+    // silent: telemetry optional
+  }
+}useEffect(() => {
     load().catch(() => {});
     loadObs().catch(() => {});
+      loadDriversLive().catch(() => {});
     const t = setInterval(() => {
       load().catch(() => {});
       loadObs().catch(() => {});
+      loadDriversLive().catch(() => {});
     }, 5000);
     return () => clearInterval(t);
   }, []);
@@ -465,6 +478,7 @@ export default function DispatchPage() {
       }, 4000);
 
       loadObs().catch(() => {});
+      loadDriversLive().catch(() => {});
     }
   }
   // rowsSorted derived safely (no hook)
@@ -818,7 +832,7 @@ const missingCountUi = computedMissing.length;
     setFocusBookingId(String((b).id || (b).uuid || (b).booking_code || ""));
   }
   // UI_POLISH_BLOCK_END
-return (
+  return (
     <div className="p-4 space-y-4">
       {/* UI: Operator Bar */}
       <div className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur px-3 py-2">
@@ -1159,7 +1173,8 @@ return (
       ) : null}
     </span>
   );
-})()}
+}
+)()}
                           {!lguOk ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
                               LGU missing
@@ -1389,6 +1404,11 @@ return (
     </div>
   );
 }
+
+
+
+
+
 
 
 
