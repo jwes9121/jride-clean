@@ -23,12 +23,28 @@ type CanBookInfo = {
   message?: string;
 };
 
+type AssignInfo = {
+  ok?: boolean;
+  driver_id?: string | null;
+  note?: string | null;
+  update_ok?: boolean;
+  update_error?: string | null;
+};
+
+type BookingRow = {
+  id?: string | null;
+  booking_code?: string | null;
+  driver_id?: string | null;
+  status?: string | null;
+};
+
 type BookResp = {
   ok?: boolean;
   booking_code?: string;
   code?: string;
   message?: string;
-  booking?: any;
+  booking?: BookingRow | null;
+  assign?: AssignInfo | null;
 };
 
 function numOrNull(s: string): number | null {
@@ -76,7 +92,7 @@ export default function RidePage() {
   }
 
   async function refreshCanBook() {
-    seenClear();
+    setCanInfoErr("");
     try {
       const r = await getJson("/api/public/passenger/can-book");
       if (!r.ok) {
@@ -89,10 +105,6 @@ export default function RidePage() {
       setCanInfoErr("CAN_BOOK_INFO_ERROR: " + String(e?.message || e));
       setCanInfo(null);
     }
-  }
-
-  function seenClear() {
-    setCanInfoErr("");
   }
 
   React.useEffect(() => {
@@ -135,7 +147,25 @@ export default function RidePage() {
       }
 
       const bj = book.json as BookResp;
-      setResult("BOOKED_OK: " + (bj.booking_code || "(no code returned)"));
+      const lines: string[] = [];
+
+      lines.push("BOOKED_OK");
+      if (bj.booking_code) lines.push("booking_code: " + bj.booking_code);
+      if (bj.booking?.id) lines.push("booking_id: " + bj.booking.id);
+      if (bj.booking?.status) lines.push("status: " + bj.booking.status);
+      if (bj.booking?.driver_id) lines.push("driver_id: " + bj.booking.driver_id);
+
+      if (bj.assign) {
+        lines.push("assign.ok: " + String(!!bj.assign.ok));
+        if (bj.assign.driver_id) lines.push("assign.driver_id: " + String(bj.assign.driver_id));
+        if (bj.assign.note) lines.push("assign.note: " + String(bj.assign.note));
+        if (bj.assign.update_ok !== undefined) lines.push("assign.update_ok: " + String(!!bj.assign.update_ok));
+        if (bj.assign.update_error) lines.push("assign.update_error: " + String(bj.assign.update_error));
+      } else {
+        lines.push("assign: (none)");
+      }
+
+      setResult(lines.join("\n"));
       await refreshCanBook();
     } catch (e: any) {
       setResult("ERROR: " + String(e?.message || e));
@@ -146,6 +176,7 @@ export default function RidePage() {
 
   const verified = !!canInfo?.verified;
   const nightGate = !!canInfo?.nightGate;
+
   const walletOk = canInfo?.wallet_ok;
   const walletLocked = !!canInfo?.wallet_locked;
 
@@ -158,13 +189,7 @@ export default function RidePage() {
   }
 
   const walletPillText =
-    walletOk === undefined
-      ? "Wallet: (no data)"
-      : walletOk
-      ? "Wallet: OK"
-      : walletLocked
-      ? "Wallet: LOCKED"
-      : "Wallet: LOW";
+    walletOk === undefined ? "Wallet: (no data)" : walletOk ? "Wallet: OK" : walletLocked ? "Wallet: LOCKED" : "Wallet: LOW";
 
   const walletPillGood = walletOk === true;
 
@@ -173,36 +198,24 @@ export default function RidePage() {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Book a Ride</h1>
-          <button
-            type="button"
-            onClick={() => router.push("/passenger")}
-            className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
-          >
+          <button type="button" onClick={() => router.push("/passenger")} className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold">
             Back
           </button>
         </div>
 
-        <p className="mt-2 text-sm opacity-70">
-          Phase 6D: wallet precheck is enforced server-side (along with verification + night gate).
-        </p>
+        <p className="mt-2 text-sm opacity-70">Phase 6E: booking returns booking_id and assignment result.</p>
 
         <div className="mt-3 flex flex-wrap gap-2 items-center">
           {pill("Verified: " + (verified ? "YES" : "NO"), verified)}
           {pill("Night gate now: " + (nightGate ? "ON" : "OFF"), !nightGate)}
           {pill(walletPillText, walletPillGood)}
-          <button
-            type="button"
-            onClick={refreshCanBook}
-            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
-          >
+          <button type="button" onClick={refreshCanBook} className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold">
             Refresh status
           </button>
         </div>
 
         {canInfoErr ? (
-          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
-            {canInfoErr}
-          </div>
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">{canInfoErr}</div>
         ) : null}
 
         <div className="mt-3 grid grid-cols-1 gap-3">
@@ -237,18 +250,10 @@ export default function RidePage() {
             <div className="font-semibold mb-3">Passenger</div>
 
             <label className="block text-xs font-semibold opacity-70 mb-1">Passenger name</label>
-            <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
-              value={passengerName}
-              onChange={(e) => setPassengerName(e.target.value)}
-            />
+            <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={passengerName} onChange={(e) => setPassengerName(e.target.value)} />
 
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Town</label>
-            <select
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
-              value={town}
-              onChange={(e) => setTown(e.target.value)}
-            >
+            <select className="w-full rounded-xl border border-black/10 px-3 py-2" value={town} onChange={(e) => setTown(e.target.value)}>
               <option value="Lagawe">Lagawe</option>
               <option value="Kiangan">Kiangan</option>
               <option value="Lamut">Lamut</option>
@@ -291,12 +296,7 @@ export default function RidePage() {
         </div>
 
         <div className="mt-5 flex gap-3 items-center">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={submit}
-            className={"rounded-xl px-5 py-2 font-semibold text-white " + (busy ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")}
-          >
+          <button type="button" disabled={busy} onClick={submit} className={"rounded-xl px-5 py-2 font-semibold text-white " + (busy ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")}>
             {busy ? "Booking..." : "Submit booking"}
           </button>
 
@@ -312,9 +312,7 @@ export default function RidePage() {
           </div>
         ) : null}
 
-        <div className="mt-6 text-xs opacity-70">
-          Next: driver assignment hook, then status lifecycle.
-        </div>
+        <div className="mt-6 text-xs opacity-70">Next: status lifecycle polish.</div>
       </div>
     </main>
   );
