@@ -24,6 +24,7 @@ const [phone, setPhone] = React.useState("");
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) return setMsg(j?.error || "Login failed.");
       setMsg("Login OK. Redirecting...");
+      setTimeout(() => { window.location.href = "/passenger"; }, 600);
       setTimeout(() => router.push("/passenger"), 600);
 } catch (err: any) {
       setMsg(err?.message || "Login failed.");
