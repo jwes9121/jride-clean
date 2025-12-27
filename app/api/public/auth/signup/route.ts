@@ -25,6 +25,13 @@ function phoneToInternalEmail(phoneE164: string): string {
   return `p_${digits}@phone.jride.local`;
 }
 
+function isEmail(s: string): boolean {
+  const v = String(s || "").trim();
+  if (!v) return false;
+  // simple safe check (pilot)
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
 function bad(msg: string, status = 400) {
   return NextResponse.json({ ok: false, error: msg }, { status });
 }
@@ -39,6 +46,9 @@ export async function POST(req: NextRequest) {
     const role = String(body?.role ?? "passenger").trim() || "passenger";
     const address = String(body?.address ?? "").trim();
     const town = String(body?.town ?? "").trim();
+
+    const contact_email_raw = String(body?.contact_email ?? "").trim();
+    const contact_email = isEmail(contact_email_raw) ? contact_email_raw : "";
 
     if (!full_name) return bad("Full name is required.");
     if (!phone_raw) return bad("Phone number is required.");
@@ -67,6 +77,9 @@ export async function POST(req: NextRequest) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // IMPORTANT:
+    // We keep a stable internal email for password-auth using phone.
+    // contact_email is stored as metadata only (pilot).
     const email = phoneToInternalEmail(phone);
 
     const { data, error } = await supabase.auth.admin.createUser({
@@ -79,6 +92,7 @@ export async function POST(req: NextRequest) {
         phone,
         address,
         town,
+        contact_email: contact_email || null,
         signup_source: "web",
       },
     });
@@ -96,6 +110,7 @@ export async function POST(req: NextRequest) {
       user_id: data?.user?.id ?? null,
       phone,
       role,
+      contact_email: contact_email || null,
     });
   } catch (e: any) {
     return NextResponse.json(
