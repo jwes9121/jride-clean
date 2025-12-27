@@ -3,15 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-export default function ErrandPage() {
+export default function TakeoutPage() {
   const router = useRouter();
 
   return (
     <main className="min-h-screen p-6 bg-white">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-semibold">Errand Dashboard</h1>
+        <h1 className="text-2xl font-semibold">Takeout (Pilot)</h1>
         <p className="mt-2 text-sm opacity-70">
-          This is a pilot stub page. Next step: create errand request + pricing + assignment.
+          This is a pilot stub page. Next step: vendor list + cart + checkout.
         </p>
 
         <div className="mt-6 flex gap-3">

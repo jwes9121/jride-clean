@@ -1,41 +1,29 @@
-﻿'use client';
-export const dynamic = 'force-dynamic';
+﻿"use client";
 
-import { useEffect, useState } from "react";
-import supabase from "@/lib/supabaseClient";
-
-type Ride = {
-  id: string;
-  origin: string;
-  destination: string;
-};
+import * as React from "react";
+import { useRouter } from "next/navigation";
 
 export default function RidePage() {
-  const [rides, setRides] = useState<Ride[]>([]);
-
-  useEffect(() => {
-    async function loadMyRides() {
-      const { data, error } = await supabase.from("rides").select("*");
-      if (!error && data) {
-        setRides(data);
-      }
-    }
-    loadMyRides();
-  }, []);
+  const router = useRouter();
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-bold mb-4">My Rides</h1>
-      <ul>
-        {rides.map((ride) => (
-          <li key={ride.id}>
-            {ride.origin} ? {ride.destination}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <main className="min-h-screen p-6 bg-white">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-2xl font-semibold">My Rides</h1>
+        <p className="mt-2 text-sm opacity-70">
+          This is a pilot stub page. Next step: booking form + live trip tracking.
+        </p>
+
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={() => router.push("/passenger")}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
+          >
+            Back to Passenger Dashboard
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }
-
-
-
