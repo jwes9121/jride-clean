@@ -3,12 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-type CanBookResp = {
+type CanBookInfo = {
   ok?: boolean;
-  code?: string;
-  message?: string;
   nightGate?: boolean;
   window?: string;
+  verified?: boolean;
+  verification_source?: string;
+  verification_note?: string;
+  code?: string;
+  message?: string;
 };
 
 type BookResp = {
@@ -31,7 +34,6 @@ export default function RidePage() {
 
   const [town, setTown] = React.useState("Lagawe");
   const [passengerName, setPassengerName] = React.useState("Test Passenger A");
-  const [verified, setVerified] = React.useState(false);
 
   const [fromLabel, setFromLabel] = React.useState("Lagawe Public Market");
   const [toLabel, setToLabel] = React.useState("Lagawe Town Plaza");
@@ -44,6 +46,15 @@ export default function RidePage() {
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<string>("");
 
+  const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
+  const [canInfoErr, setCanInfoErr] = React.useState<string>("");
+
+  async function getJson(url: string) {
+    const r = await fetch(url, { method: "GET" });
+    const j = (await r.json().catch(() => ({}))) as any;
+    return { ok: r.ok, status: r.status, json: j };
+  }
+
   async function postJson(url: string, body: any) {
     const r = await fetch(url, {
       method: "POST",
@@ -54,22 +65,44 @@ export default function RidePage() {
     return { ok: r.ok, status: r.status, json: j };
   }
 
+  async function refreshCanBook() {
+    setCanInfoErr("");
+    try {
+      const r = await getJson("/api/public/passenger/can-book");
+      if (!r.ok) {
+        setCanInfoErr("CAN_BOOK_INFO_FAILED: HTTP " + r.status);
+        setCanInfo(null);
+        return;
+      }
+      setCanInfo(r.json as CanBookInfo);
+    } catch (e: any) {
+      setCanInfoErr("CAN_BOOK_INFO_ERROR: " + String(e?.message || e));
+      setCanInfo(null);
+    }
+  }
+
+  React.useEffect(() => {
+    refreshCanBook();
+  }, []);
+
   async function submit() {
     setResult("");
     setBusy(true);
     try {
+      // 1) Can-book check (verification is server-side in Phase 6B)
       const can = await postJson("/api/public/passenger/can-book", {
         town,
         service: "ride",
-        verified,
       });
 
       if (!can.ok) {
-        const cj = can.json as CanBookResp;
+        const cj = can.json as CanBookInfo;
         setResult("CAN_BOOK_BLOCKED: " + (cj.code || "BLOCKED") + " - " + (cj.message || "Not allowed"));
+        await refreshCanBook();
         return;
       }
 
+      // 2) Create booking (unchanged)
       const book = await postJson("/api/public/passenger/book", {
         passenger_name: passengerName,
         town,
@@ -90,11 +123,23 @@ export default function RidePage() {
 
       const bj = book.json as BookResp;
       setResult("BOOKED_OK: " + (bj.booking_code || "(no code returned)"));
+      await refreshCanBook();
     } catch (e: any) {
       setResult("ERROR: " + String(e?.message || e));
     } finally {
       setBusy(false);
     }
+  }
+
+  const verified = !!canInfo?.verified;
+  const nightGate = !!canInfo?.nightGate;
+
+  function pill(text: string, good: boolean) {
+    return (
+      <span className={"inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold " + (good ? "bg-green-600 text-white" : "bg-slate-200 text-slate-800")}>
+        {text}
+      </span>
+    );
   }
 
   return (
@@ -112,8 +157,36 @@ export default function RidePage() {
         </div>
 
         <p className="mt-2 text-sm opacity-70">
-          Phase 6A: booking form + night gate (20:00-05:00 Asia/Manila) at API level.
+          Phase 6B: verification tier is now enforced server-side. Night gate: {canInfo?.window || "20:00-05:00 Asia/Manila"}.
         </p>
+
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          {pill("Verified: " + (verified ? "YES" : "NO"), verified)}
+          {pill("Night gate now: " + (nightGate ? "ON" : "OFF"), !nightGate)}
+          <button
+            type="button"
+            onClick={refreshCanBook}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+          >
+            Refresh status
+          </button>
+        </div>
+
+        {canInfoErr ? (
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
+            {canInfoErr}
+          </div>
+        ) : null}
+
+        {canInfo?.verification_note ? (
+          <div className="mt-3 text-xs opacity-70 rounded-xl border border-black/10 p-3">
+            <div className="font-semibold">Verification lookup</div>
+            <div className="mt-1">
+              Source: <span className="font-mono">{String(canInfo.verification_source || "")}</span>
+            </div>
+            <div className="mt-1">{String(canInfo.verification_note || "")}</div>
+          </div>
+        ) : null}
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-2xl border border-black/10 p-4">
@@ -139,10 +212,9 @@ export default function RidePage() {
               <option value="Banaue">Banaue</option>
             </select>
 
-            <label className="mt-3 inline-flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} />
-              Verified (temporary toggle)
-            </label>
+            <div className="mt-3 text-xs opacity-70">
+              Verified is determined from your passengers table + auth user (no manual toggle).
+            </div>
           </div>
 
           <div className="rounded-2xl border border-black/10 p-4">
@@ -214,7 +286,7 @@ export default function RidePage() {
         ) : null}
 
         <div className="mt-6 text-xs opacity-70">
-          Next: verification tier wiring from passengers, then wallet precheck, then dispatch assign hook.
+          Next Phase 6: wallet precheck, then driver assignment hook, then status lifecycle.
         </div>
       </div>
     </main>
