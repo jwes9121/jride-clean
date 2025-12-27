@@ -60,7 +60,7 @@ export default function PassengerDashboardPage() {
         </div>
 
         <div className="mt-6 text-xs opacity-70">
-          Note: This is the passenger landing page. Next step is to connect verification + night rules (8PMâ€“5AM).
+          Note: This is the passenger landing page. Next step is to connect verification + night rules (8PMâ€"5AM).
         </div>
       </div>
     </main>
