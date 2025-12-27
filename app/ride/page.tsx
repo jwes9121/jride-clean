@@ -7,9 +7,18 @@ type CanBookInfo = {
   ok?: boolean;
   nightGate?: boolean;
   window?: string;
+
   verified?: boolean;
   verification_source?: string;
   verification_note?: string;
+
+  wallet_ok?: boolean;
+  wallet_locked?: boolean;
+  wallet_balance?: number | null;
+  min_wallet_required?: number | null;
+  wallet_source?: string;
+  wallet_note?: string;
+
   code?: string;
   message?: string;
 };
@@ -50,7 +59,7 @@ export default function RidePage() {
   const [canInfoErr, setCanInfoErr] = React.useState<string>("");
 
   async function getJson(url: string) {
-    const r = await fetch(url, { method: "GET" });
+    const r = await fetch(url, { method: "GET", cache: "no-store" });
     const j = (await r.json().catch(() => ({}))) as any;
     return { ok: r.ok, status: r.status, json: j };
   }
@@ -60,13 +69,14 @@ export default function RidePage() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      cache: "no-store",
     });
     const j = (await r.json().catch(() => ({}))) as any;
     return { ok: r.ok, status: r.status, json: j };
   }
 
   async function refreshCanBook() {
-    setCanInfoErr("");
+    seenClear();
     try {
       const r = await getJson("/api/public/passenger/can-book");
       if (!r.ok) {
@@ -81,15 +91,19 @@ export default function RidePage() {
     }
   }
 
+  function seenClear() {
+    setCanInfoErr("");
+  }
+
   React.useEffect(() => {
     refreshCanBook();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function submit() {
     setResult("");
     setBusy(true);
     try {
-      // 1) Can-book check (verification is server-side in Phase 6B)
       const can = await postJson("/api/public/passenger/can-book", {
         town,
         service: "ride",
@@ -102,7 +116,6 @@ export default function RidePage() {
         return;
       }
 
-      // 2) Create booking (unchanged)
       const book = await postJson("/api/public/passenger/book", {
         passenger_name: passengerName,
         town,
@@ -133,6 +146,8 @@ export default function RidePage() {
 
   const verified = !!canInfo?.verified;
   const nightGate = !!canInfo?.nightGate;
+  const walletOk = canInfo?.wallet_ok;
+  const walletLocked = !!canInfo?.wallet_locked;
 
   function pill(text: string, good: boolean) {
     return (
@@ -141,6 +156,17 @@ export default function RidePage() {
       </span>
     );
   }
+
+  const walletPillText =
+    walletOk === undefined
+      ? "Wallet: (no data)"
+      : walletOk
+      ? "Wallet: OK"
+      : walletLocked
+      ? "Wallet: LOCKED"
+      : "Wallet: LOW";
+
+  const walletPillGood = walletOk === true;
 
   return (
     <main className="min-h-screen p-6 bg-white">
@@ -157,12 +183,13 @@ export default function RidePage() {
         </div>
 
         <p className="mt-2 text-sm opacity-70">
-          Phase 6B: verification tier is now enforced server-side. Night gate: {canInfo?.window || "20:00-05:00 Asia/Manila"}.
+          Phase 6D: wallet precheck is enforced server-side (along with verification + night gate).
         </p>
 
         <div className="mt-3 flex flex-wrap gap-2 items-center">
           {pill("Verified: " + (verified ? "YES" : "NO"), verified)}
           {pill("Night gate now: " + (nightGate ? "ON" : "OFF"), !nightGate)}
+          {pill(walletPillText, walletPillGood)}
           <button
             type="button"
             onClick={refreshCanBook}
@@ -178,15 +205,32 @@ export default function RidePage() {
           </div>
         ) : null}
 
-        {canInfo?.verification_note ? (
-          <div className="mt-3 text-xs opacity-70 rounded-xl border border-black/10 p-3">
-            <div className="font-semibold">Verification lookup</div>
-            <div className="mt-1">
-              Source: <span className="font-mono">{String(canInfo.verification_source || "")}</span>
+        <div className="mt-3 grid grid-cols-1 gap-3">
+          {canInfo?.verification_note ? (
+            <div className="text-xs opacity-70 rounded-xl border border-black/10 p-3">
+              <div className="font-semibold">Verification lookup</div>
+              <div className="mt-1">
+                Source: <span className="font-mono">{String(canInfo.verification_source || "")}</span>
+              </div>
+              <div className="mt-1">{String(canInfo.verification_note || "")}</div>
             </div>
-            <div className="mt-1">{String(canInfo.verification_note || "")}</div>
-          </div>
-        ) : null}
+          ) : null}
+
+          {canInfo?.wallet_note !== undefined ? (
+            <div className="text-xs opacity-70 rounded-xl border border-black/10 p-3">
+              <div className="font-semibold">Wallet precheck</div>
+              <div className="mt-1">
+                Source: <span className="font-mono">{String(canInfo.wallet_source || "")}</span>
+              </div>
+              <div className="mt-1">
+                Balance: <span className="font-mono">{String(canInfo.wallet_balance ?? "null")}</span> / Min required:{" "}
+                <span className="font-mono">{String(canInfo.min_wallet_required ?? "null")}</span> / Locked:{" "}
+                <span className="font-mono">{String(!!canInfo.wallet_locked)}</span>
+              </div>
+              <div className="mt-1">{String(canInfo.wallet_note || "")}</div>
+            </div>
+          ) : null}
+        </div>
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-2xl border border-black/10 p-4">
@@ -211,21 +255,13 @@ export default function RidePage() {
               <option value="Hingyon">Hingyon</option>
               <option value="Banaue">Banaue</option>
             </select>
-
-            <div className="mt-3 text-xs opacity-70">
-              Verified is determined from your passengers table + auth user (no manual toggle).
-            </div>
           </div>
 
           <div className="rounded-2xl border border-black/10 p-4">
             <div className="font-semibold mb-3">Route</div>
 
             <label className="block text-xs font-semibold opacity-70 mb-1">Pickup label</label>
-            <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
-              value={fromLabel}
-              onChange={(e) => setFromLabel(e.target.value)}
-            />
+            <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={fromLabel} onChange={(e) => setFromLabel(e.target.value)} />
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
@@ -239,11 +275,7 @@ export default function RidePage() {
             </div>
 
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Dropoff label</label>
-            <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
-              value={toLabel}
-              onChange={(e) => setToLabel(e.target.value)}
-            />
+            <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={toLabel} onChange={(e) => setToLabel(e.target.value)} />
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
@@ -268,12 +300,7 @@ export default function RidePage() {
             {busy ? "Booking..." : "Submit booking"}
           </button>
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setResult("")}
-            className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
-          >
+          <button type="button" disabled={busy} onClick={() => setResult("")} className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold">
             Clear
           </button>
         </div>
@@ -286,7 +313,7 @@ export default function RidePage() {
         ) : null}
 
         <div className="mt-6 text-xs opacity-70">
-          Next Phase 6: wallet precheck, then driver assignment hook, then status lifecycle.
+          Next: driver assignment hook, then status lifecycle.
         </div>
       </div>
     </main>
