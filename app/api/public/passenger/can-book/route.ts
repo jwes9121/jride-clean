@@ -4,7 +4,6 @@ import { createClient } from "@/utils/supabase/server";
 type CanBookReq = {
   town?: string | null;
   service?: string | null;
-  // legacy: verified?: boolean | null; (ignored in Phase 6B)
 };
 
 function manilaNowParts() {
@@ -22,7 +21,6 @@ function manilaNowParts() {
 
 function isNightGateNow() {
   const { hour } = manilaNowParts();
-  // Night gate window: 20:00 - 05:00 (Asia/Manila)
   return hour >= 20 || hour < 5;
 }
 
@@ -37,13 +35,7 @@ function truthy(v: any) {
 }
 
 async function resolvePassengerVerification(supabase: ReturnType<typeof createClient>) {
-  // Default: not verified (fail-safe)
-  const out = {
-    verified: false,
-    source: "none" as "none" | "passengers",
-    note: "" as string,
-  };
-
+  const out = { verified: false, source: "none" as "none" | "passengers", note: "" as string };
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes?.user;
 
@@ -55,19 +47,12 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
   const email = user.email ?? null;
   const userId = user.id;
 
-  // We DO NOT assume your passengers schema. We try common patterns and fail safe if not found.
-  // Pattern A: passengers.auth_user_id = user.id
-  // Pattern B: passengers.user_id = user.id
-  // Pattern C: passengers.email = user.email
-  // Columns we try to read if present: is_verified, verified, verification_tier
   const selectors = "is_verified,verified,verification_tier";
 
   async function tryQuery(filterCol: "auth_user_id" | "user_id" | "email", filterVal: string) {
-    const q = supabase.from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
-    return await q;
+    return await supabase.from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
   }
 
-  // Try auth_user_id
   {
     const r = await tryQuery("auth_user_id", userId);
     if (!r.error && r.data) {
@@ -79,7 +64,6 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
     }
   }
 
-  // Try user_id
   {
     const r = await tryQuery("user_id", userId);
     if (!r.error && r.data) {
@@ -91,7 +75,6 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
     }
   }
 
-  // Try email
   if (email) {
     const r = await tryQuery("email", email);
     if (!r.error && r.data) {
@@ -103,8 +86,89 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
     }
   }
 
-  // If we reached here, either no matching passenger row or schema differs or RLS blocks.
   out.note = "Could not resolve verification from passengers (no match, schema differs, or RLS blocked). Defaulting to unverified.";
+  return out;
+}
+
+async function resolvePassengerWallet(supabase: ReturnType<typeof createClient>) {
+  // Safe probing. We do NOT assume columns exist. If query fails (missing columns/RLS), we return a note.
+  const out = {
+    ok: true,
+    wallet_locked: false,
+    wallet_balance: null as number | null,
+    min_wallet_required: null as number | null,
+    source: "none" as "none" | "passengers",
+    note: "" as string,
+  };
+
+  const { data: userRes } = await supabase.auth.getUser();
+  const user = userRes?.user;
+
+  if (!user) {
+    out.source = "none";
+    out.note = "No auth user (not signed in). Wallet precheck not enforced.";
+    return out;
+  }
+
+  const email = user.email ?? null;
+  const userId = user.id;
+
+  const selectors = "wallet_balance,min_wallet_required,wallet_locked";
+
+  async function tryQuery(filterCol: "auth_user_id" | "user_id" | "email", filterVal: string) {
+    return await supabase.from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
+  }
+
+  // Try auth_user_id, then user_id, then email
+  const tries: Array<["auth_user_id" | "user_id" | "email", string | null, string]> = [
+    ["auth_user_id", userId, "Matched passengers.auth_user_id"],
+    ["user_id", userId, "Matched passengers.user_id"],
+    ["email", email, "Matched passengers.email"],
+  ];
+
+  for (const [col, val, label] of tries) {
+    if (!val) continue;
+
+    const r = await tryQuery(col, val);
+
+    if (r.error) {
+      // Missing columns or RLS or no passengers table: fail-open, but tell the UI.
+      out.source = "none";
+      out.note = "Wallet probe failed: " + r.error.message;
+      return out;
+    }
+
+    if (r.data) {
+      const row: any = r.data;
+      const bal = typeof row.wallet_balance === "number" ? row.wallet_balance : null;
+      const min = typeof row.min_wallet_required === "number" ? row.min_wallet_required : null;
+      const locked = row.wallet_locked === true;
+
+      out.source = "passengers";
+      out.wallet_balance = bal;
+      out.min_wallet_required = min;
+      out.wallet_locked = locked;
+      out.note = label;
+
+      // Enforce only if we have enough info to enforce:
+      // - If wallet_locked true => block
+      // - If min and balance are numbers and balance < min => block
+      if (locked) {
+        out.ok = false;
+        return out;
+      }
+      if (typeof bal === "number" && typeof min === "number" && bal < min) {
+        out.ok = false;
+        return out;
+      }
+
+      out.ok = true;
+      return out;
+    }
+  }
+
+  out.source = "none";
+  out.note = "No matching passenger row for wallet precheck (or schema differs). Wallet precheck not enforced.";
   return out;
 }
 
@@ -113,6 +177,7 @@ export async function GET() {
 
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
+  const w = await resolvePassengerWallet(supabase);
 
   return NextResponse.json(
     {
@@ -122,6 +187,13 @@ export async function GET() {
       verified: v.verified,
       verification_source: v.source,
       verification_note: v.note,
+
+      wallet_ok: w.ok,
+      wallet_locked: w.wallet_locked,
+      wallet_balance: w.wallet_balance,
+      min_wallet_required: w.min_wallet_required,
+      wallet_source: w.source,
+      wallet_note: w.note,
     },
     { status: 200 }
   );
@@ -133,6 +205,7 @@ export async function POST(req: Request) {
 
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
+  const w = await resolvePassengerWallet(supabase);
 
   if (nightGate && !v.verified) {
     return NextResponse.json(
@@ -150,6 +223,23 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!w.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "WALLET_PRECHECK_FAILED",
+        message: "Wallet precheck failed (locked or insufficient balance).",
+        wallet_ok: false,
+        wallet_locked: w.wallet_locked,
+        wallet_balance: w.wallet_balance,
+        min_wallet_required: w.min_wallet_required,
+        wallet_source: w.source,
+        wallet_note: w.note,
+      },
+      { status: 402 }
+    );
+  }
+
   return NextResponse.json(
     {
       ok: true,
@@ -157,9 +247,17 @@ export async function POST(req: Request) {
       allowed: true,
       town: body.town ?? null,
       service: body.service ?? null,
+
       verified: v.verified,
       verification_source: v.source,
       verification_note: v.note,
+
+      wallet_ok: true,
+      wallet_locked: w.wallet_locked,
+      wallet_balance: w.wallet_balance,
+      min_wallet_required: w.min_wallet_required,
+      wallet_source: w.source,
+      wallet_note: w.note,
     },
     { status: 200 }
   );
