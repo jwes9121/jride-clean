@@ -32,7 +32,7 @@ export default function PassengerSignupPage() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) return setMsg(j?.error || "Signup failed.");
-      setMsg("âœ… Signup successful! Redirecting to login...");
+      setMsg("Signup successful! Redirecting to login...");
       setTimeout(() => (window.location.href = "/passenger-login"), 800);
     } catch (err: any) {
       setMsg(err?.message || "Signup failed.");

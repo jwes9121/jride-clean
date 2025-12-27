@@ -1,9 +1,12 @@
 ﻿"use client";
 import * as React from "react";
+import { useRouter } from "next/navigation";
 export const dynamic = "force-static";
 
 export default function PassengerLoginPage() {
-  const [phone, setPhone] = React.useState("");
+  
+  const router = useRouter();
+const [phone, setPhone] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
@@ -20,8 +23,9 @@ export default function PassengerLoginPage() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j?.ok) return setMsg(j?.error || "Login failed.");
-      setMsg("âœ… Login OK. (Pilot) Next: redirect to your booking page/dashboard.");
-    } catch (err: any) {
+      setMsg("Login OK. Redirecting...");
+      setTimeout(() => router.push("/"), 600);
+} catch (err: any) {
       setMsg(err?.message || "Login failed.");
     } finally {
       setLoading(false);
