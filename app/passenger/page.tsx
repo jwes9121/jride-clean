@@ -50,17 +50,10 @@ export default function PassengerDashboardPage() {
           >
             Continue
           </a>
-
-          <a
-            className="inline-flex items-center justify-center rounded-xl border px-4 py-2 font-semibold"
-            href="/passenger-login"
-          >
-            Back to Login
-          </a>
-        </div>
+</div>
 
         <div className="mt-6 text-xs opacity-70">
-          Note: This is the passenger landing page. Next step is to connect verification + night rules (8PMâ€"5AM).
+          Note: This is the passenger landing page. Next step is to connect verification + night rules (8PM-5AM).
         </div>
       </div>
     </main>
