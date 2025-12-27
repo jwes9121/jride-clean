@@ -44,7 +44,6 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 
 async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
-  // Keep the same rules: night gate + wallet precheck (fail-open on schema/RLS)
   const out: any = { ok: true };
 
   const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12: false, hour: "2-digit" });
@@ -54,7 +53,6 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes?.user;
 
-  // Verification (fail-safe)
   let verified = false;
   if (user) {
     const email = user.email ?? null;
@@ -90,7 +88,6 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
     throw out;
   }
 
-  // Wallet precheck (fail-open)
   if (user) {
     const email = user.email ?? null;
     const userId = user.id;
@@ -143,30 +140,61 @@ async function bestEffortUpdateBooking(
   return { ok: true, error: null as any, data: r.data };
 }
 
-async function findNearestOnlineDriver(
+async function fetchOnlineDriversNormalized(
   supabase: ReturnType<typeof createClient>,
-  town: string,
-  pickup_lat: number,
-  pickup_lng: number
+  town: string
 ) {
-  const r = await supabase
+  const a = await supabase
     .from("driver_locations_latest")
     .select("driver_id,lat,lng,status,town,updated_at")
     .eq("town", town)
     .eq("status", "online")
     .limit(200);
 
-  if (r.error) {
-    return { driver_id: null as string | null, note: "driver_locations_latest query failed: " + r.error.message };
+  if (!a.error) {
+    const rows = Array.isArray(a.data) ? a.data : [];
+    return {
+      ok: true,
+      note: "Using driver_locations_latest.lat/lng",
+      rows: rows.map((r: any) => ({ driver_id: r.driver_id, lat: r.lat, lng: r.lng })),
+    };
   }
 
-  const rows = Array.isArray(r.data) ? r.data : [];
+  const msg = a.error.message || "";
+  const b = await supabase
+    .from("driver_locations_latest")
+    .select("driver_id,latitude,longitude,status,town,updated_at")
+    .eq("town", town)
+    .eq("status", "online")
+    .limit(200);
+
+  if (!b.error) {
+    const rows = Array.isArray(b.data) ? b.data : [];
+    return {
+      ok: true,
+      note: "Using driver_locations_latest.latitude/longitude (fallback from lat/lng error: " + msg + ")",
+      rows: rows.map((r: any) => ({ driver_id: r.driver_id, lat: r.latitude, lng: r.longitude })),
+    };
+  }
+
+  return { ok: false, note: "driver_locations_latest query failed: " + (b.error.message || msg), rows: [] as any[] };
+}
+
+async function findNearestOnlineDriver(
+  supabase: ReturnType<typeof createClient>,
+  town: string,
+  pickup_lat: number,
+  pickup_lng: number
+) {
+  const res = await fetchOnlineDriversNormalized(supabase, town);
+  if (!res.ok) return { driver_id: null as string | null, note: res.note };
+
   let best: { driver_id: string; km: number } | null = null;
 
-  for (const row of rows) {
-    const dId = String((row as any).driver_id || "");
-    const lat = (row as any).lat;
-    const lng = (row as any).lng;
+  for (const row of res.rows) {
+    const dId = String(row.driver_id || "");
+    const lat = row.lat;
+    const lng = row.lng;
     if (!dId) continue;
     if (typeof lat !== "number" || typeof lng !== "number") continue;
 
@@ -174,8 +202,8 @@ async function findNearestOnlineDriver(
     if (!best || km < best.km) best = { driver_id: dId, km };
   }
 
-  if (!best) return { driver_id: null as string | null, note: "No eligible online drivers in town (or missing lat/lng)." };
-  return { driver_id: best.driver_id, note: "Nearest driver selected (km=" + best.km.toFixed(3) + ")." };
+  if (!best) return { driver_id: null as string | null, note: res.note + " | No eligible online drivers (or missing coords)." };
+  return { driver_id: best.driver_id, note: res.note + " | Nearest driver selected (km=" + best.km.toFixed(3) + ")." };
 }
 
 export async function POST(req: Request) {
@@ -193,8 +221,6 @@ export async function POST(req: Request) {
 
   const booking_code = `JR-UI-${codeNow()}-${rand4()}`;
 
-  // Insert payload: includes status=requested (best-effort; if column missing, it may error depending on PostgREST)
-  // To keep build stable, we do NOT do multi-insert retries here. If your bookings table lacks status, remove later.
   const payload: any = {
     booking_code,
     passenger_name: body.passenger_name ?? null,
@@ -210,28 +236,20 @@ export async function POST(req: Request) {
 
   const ins = await supabase.from("bookings").insert(payload).select("*").maybeSingle();
 
-  // If insert fails due to missing status column (or any other), retry without status to avoid blocking.
   if (ins.error) {
-    const msg = ins.error.message || "";
     const payload2: any = { ...payload };
     delete payload2.status;
 
     const ins2 = await supabase.from("bookings").insert(payload2).select("*").maybeSingle();
     if (ins2.error) {
       console.error("[passenger/book] insert error", ins2.error);
-      return NextResponse.json(
-        { ok: false, code: "BOOKING_INSERT_FAILED", message: ins2.error.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, code: "BOOKING_INSERT_FAILED", message: ins2.error.message }, { status: 500 });
     }
 
-    // Continue with booking from ins2
     const booking: any = ins2.data;
 
-    // Best-effort set requested if status exists (might fail; ignore)
     await bestEffortUpdateBooking(supabase, String(booking.id), { status: "requested" });
 
-    // Auto-assign hook (best-effort)
     const town = String(booking.town || body.town || "");
     const pLat = booking.pickup_lat;
     const pLng = booking.pickup_lng;
@@ -241,27 +259,17 @@ export async function POST(req: Request) {
       const pick = await findNearestOnlineDriver(supabase, town, pLat, pLng);
       if (pick.driver_id) {
         const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: pick.driver_id, status: "assigned" });
-        assign = {
-          ok: true,
-          driver_id: pick.driver_id,
-          note: pick.note,
-          update_ok: upd.ok,
-          update_error: upd.error,
-        };
+        assign = { ok: true, driver_id: pick.driver_id, note: pick.note, update_ok: upd.ok, update_error: upd.error };
       } else {
         assign = { ok: false, note: pick.note };
       }
     }
 
-    return NextResponse.json(
-      { ok: true, booking_code, booking: booking ?? null, assign },
-      { status: 200 }
-    );
+    return NextResponse.json({ ok: true, booking_code, booking: booking ?? null, assign }, { status: 200 });
   }
 
   const booking: any = ins.data;
 
-  // Auto-assign hook (best-effort)
   const town = String(booking.town || body.town || "");
   const pLat = booking.pickup_lat;
   const pLng = booking.pickup_lng;
@@ -271,20 +279,11 @@ export async function POST(req: Request) {
     const pick = await findNearestOnlineDriver(supabase, town, pLat, pLng);
     if (pick.driver_id) {
       const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: pick.driver_id, status: "assigned" });
-      assign = {
-        ok: true,
-        driver_id: pick.driver_id,
-        note: pick.note,
-        update_ok: upd.ok,
-        update_error: upd.error,
-      };
+      assign = { ok: true, driver_id: pick.driver_id, note: pick.note, update_ok: upd.ok, update_error: upd.error };
     } else {
       assign = { ok: false, note: pick.note };
     }
   }
 
-  return NextResponse.json(
-    { ok: true, booking_code, booking: booking ?? null, assign },
-    { status: 200 }
-  );
+  return NextResponse.json({ ok: true, booking_code, booking: booking ?? null, assign }, { status: 200 });
 }
