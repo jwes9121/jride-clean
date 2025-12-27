@@ -73,6 +73,30 @@ export async function POST(req: NextRequest) {
       ok: true,
       user_id: data?.user?.id ?? null,
       phone,
+      verified: (data?.user?.user_metadata as any)?.verified ?? null,
+      night_allowed: (data?.user?.user_metadata as any)?.night_allowed ?? null,
+      isNightPH: (() => {
+        try {
+          const dtf = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12:false, hour:"2-digit" });
+          const hh = parseInt(dtf.format(new Date()) || "0", 10);
+          return (hh >= 20) || (hh < 5);
+        } catch {
+          return null;
+        }
+      })(),
+      nightRestrictedNow: (() => {
+        try {
+          const md: any = (data?.user?.user_metadata as any) || {};
+          const v = md?.verified === true || ["1","true","yes","y","on"].includes(String(md?.verified ?? "").trim().toLowerCase());
+          const na = md?.night_allowed === true || ["1","true","yes","y","on"].includes(String(md?.night_allowed ?? "").trim().toLowerCase()) || v;
+          const dtf = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12:false, hour:"2-digit" });
+          const hh = parseInt(dtf.format(new Date()) || "0", 10);
+          const night = (hh >= 20) || (hh < 5);
+          return night && !na;
+        } catch {
+          return null;
+        }
+      })(),
     });
   } catch (e: any) {
     return NextResponse.json(
@@ -81,3 +105,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
