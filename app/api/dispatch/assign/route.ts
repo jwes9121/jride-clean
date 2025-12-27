@@ -20,6 +20,37 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(q)));
 }
 
+function pickCoord(row: any) {
+  const lat =
+    typeof row.lat === "number" ? row.lat :
+    typeof row.latitude === "number" ? row.latitude :
+    typeof row.pickup_lat === "number" ? row.pickup_lat :
+    null;
+
+  const lng =
+    typeof row.lng === "number" ? row.lng :
+    typeof row.longitude === "number" ? row.longitude :
+    typeof row.pickup_lng === "number" ? row.pickup_lng :
+    null;
+
+  return { lat, lng };
+}
+
+function pickTown(row: any) {
+  const t =
+    (row.town ?? row.zone ?? row.home_town ?? row.municipality ?? row.city ?? null);
+  return t ? String(t) : null;
+}
+
+function pickOnline(row: any) {
+  const v = row.status ?? row.driver_status ?? row.state ?? row.availability ?? null;
+  if (v === null || v === undefined) return { hasField: false, isOnline: true, raw: null };
+  const s = String(v).trim().toLowerCase();
+  const online = s === "online" || s === "available" || s === "idle" || s === "active";
+  const notOnline = s === "offline" || s === "on_trip" || s === "busy" || s === "assigned";
+  return { hasField: true, isOnline: online && !notOnline, raw: s };
+}
+
 async function bestEffortUpdateBooking(
   supabase: ReturnType<typeof createClient>,
   bookingId: string,
@@ -46,80 +77,51 @@ async function fetchBookingByIdOrCode(
   return { data: null, error: "Missing booking_id or booking_code" };
 }
 
-async function fetchOnlineDriversNormalized(
-  supabase: ReturnType<typeof createClient>,
-  town: string
-) {
-  // Try schema A: lat/lng
-  const a = await supabase
-    .from("driver_locations_latest")
-    .select("driver_id,lat,lng,status,town,updated_at")
-    .eq("town", town)
-    .eq("status", "online")
-    .limit(200);
-
-  if (!a.error) {
-    const rows = Array.isArray(a.data) ? a.data : [];
-    return {
-      ok: true,
-      note: "Using driver_locations_latest.lat/lng",
-      rows: rows.map((r: any) => ({
-        driver_id: r.driver_id,
-        lat: r.lat,
-        lng: r.lng,
-      })),
-    };
-  }
-
-  const msg = a.error.message || "";
-  // If lat/lng missing, try schema B: latitude/longitude
-  const b = await supabase
-    .from("driver_locations_latest")
-    .select("driver_id,latitude,longitude,status,town,updated_at")
-    .eq("town", town)
-    .eq("status", "online")
-    .limit(200);
-
-  if (!b.error) {
-    const rows = Array.isArray(b.data) ? b.data : [];
-    return {
-      ok: true,
-      note: "Using driver_locations_latest.latitude/longitude (fallback from lat/lng error: " + msg + ")",
-      rows: rows.map((r: any) => ({
-        driver_id: r.driver_id,
-        lat: r.latitude,
-        lng: r.longitude,
-      })),
-    };
-  }
-
-  return { ok: false, note: "driver_locations_latest query failed: " + (b.error.message || msg), rows: [] as any[] };
-}
-
-async function findNearestOnlineDriver(
+async function findNearestDriverSmart(
   supabase: ReturnType<typeof createClient>,
   town: string,
   pickup_lat: number,
   pickup_lng: number
 ) {
-  const res = await fetchOnlineDriversNormalized(supabase, town);
-  if (!res.ok) return { driver_id: null as string | null, note: res.note };
+  const r = await supabase.from("driver_locations_latest").select("*").limit(500);
+  if (r.error) return { driver_id: null as string | null, note: "driver_locations_latest query failed: " + r.error.message };
 
+  const rows = Array.isArray(r.data) ? r.data : [];
   let best: { driver_id: string; km: number } | null = null;
 
-  for (const row of res.rows) {
-    const dId = String(row.driver_id || "");
-    const lat = row.lat;
-    const lng = row.lng;
-    if (!dId) continue;
-    if (typeof lat !== "number" || typeof lng !== "number") continue;
+  let usedTownField = false;
+  let statusFieldSeen = false;
 
-    const km = haversineKm(pickup_lat, pickup_lng, lat, lng);
+  for (const row of rows) {
+    const dId = row.driver_id ? String(row.driver_id) : "";
+    if (!dId) continue;
+
+    const t = pickTown(row);
+    if (t !== null) usedTownField = true;
+    if (t !== null && t !== town) continue;
+
+    const st = pickOnline(row);
+    if (st.hasField) statusFieldSeen = true;
+    if (st.hasField && !st.isOnline) continue;
+
+    const c = pickCoord(row);
+    if (typeof c.lat !== "number" || typeof c.lng !== "number") continue;
+
+    const km = haversineKm(pickup_lat, pickup_lng, c.lat, c.lng);
     if (!best || km < best.km) best = { driver_id: dId, km };
   }
 
-  if (!best) return { driver_id: null as string | null, note: res.note + " | No eligible online drivers (or missing coords)." };
-  return { driver_id: best.driver_id, note: res.note + " | Nearest driver selected (km=" + best.km.toFixed(3) + ")." };
+  if (!best) {
+    let note = "No eligible drivers found.";
+    if (!usedTownField) note += " (No town/zone field detected; could not filter by town.)";
+    if (!statusFieldSeen) note += " (No status field detected; could not filter online only.)";
+    return { driver_id: null as string | null, note };
+  }
+
+  let note = "Nearest driver selected (km=" + best.km.toFixed(3) + ").";
+  if (!statusFieldSeen) note += " Note: no status field detected; selection may include offline drivers.";
+  if (!usedTownField) note += " Note: no town field detected; selection not town-filtered.";
+  return { driver_id: best.driver_id, note };
 }
 
 export async function POST(req: Request) {
@@ -145,7 +147,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, code: "MISSING_PICKUP_COORDS", message: "Missing pickup_lat/pickup_lng for assignment" }, { status: 400 });
   }
 
-  const pick = await findNearestOnlineDriver(supabase, town, pickup_lat, pickup_lng);
+  const pick = await findNearestDriverSmart(supabase, town, pickup_lat, pickup_lng);
   if (!pick.driver_id) {
     return NextResponse.json({ ok: false, code: "NO_DRIVER_AVAILABLE", message: "No available driver", note: pick.note }, { status: 409 });
   }
