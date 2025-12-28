@@ -136,7 +136,7 @@ export async function POST(req: Request) {
           booking_id: (booking as any)?.id ?? null,
           booking_code: (booking as any)?.booking_code ?? null,
           from_status: (booking as any)?.status ?? null,
-          to_status: status ?? null,
+          to_status: target ?? null,
           meta: { source: "dispatch/status" }
         } as any);
       } catch {}
@@ -200,7 +200,23 @@ return NextResponse.json(
     );
   }
 
-  return NextResponse.json(
+  
+  // Audit: forced status transitions (post-update; best effort)
+  if (force) {
+    try {
+      await supabase.from("admin_audit_log").insert({
+        actor_id: null,
+        actor_email: null,
+        action: "FORCE_STATUS",
+        booking_id: String(booking.id),
+        booking_code: booking.booking_code ?? null,
+        from_status: cur ?? null,
+        to_status: target ?? null,
+        meta: { source: "dispatch/status", phase: "post-update", changed: true, note: body.note ?? null }
+      } as any);
+    } catch {}
+  }
+return NextResponse.json(
     {
       ok: upd.ok,
       changed: true,
@@ -213,4 +229,5 @@ return NextResponse.json(
     { status: upd.ok ? 200 : 500 }
   );
 }
+
 
