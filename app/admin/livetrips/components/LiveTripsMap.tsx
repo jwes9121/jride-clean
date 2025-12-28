@@ -320,11 +320,22 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     for (let i = 0; i < trips.length; i++) {
       const raw = trips[i] as any;
       const id = String(raw.id ?? raw.bookingCode ?? i);
+      // JRIDE_PHASE7A_STUCK_EXCLUDE_NON_DRIVER
+      // Only track real driver trips. Takeout/vendor-like bookings (no driver) must NOT be flagged stuck/problem.
+      const hasDriver =
+        raw.driver_id != null ||
+        raw.driverId != null ||
+        (Number.isFinite(Number(raw.driver_lat)) && Number.isFinite(Number(raw.driver_lng))) ||
+        (Number.isFinite(Number(raw.driverLat)) && Number.isFinite(Number(raw.driverLng)));
 
-      const driverReal =
-        getDriverReal(raw) ?? getDropoff(raw) ?? getPickup(raw);
+      if (!hasDriver) {
+        // ensure any previous tracker entry is cleared so it can't stay "stuck" forever
+        if (tracker[id]) { delete tracker[id]; }
+        continue;
+      }
+
+      const driverReal = getDriverReal(raw);
       if (!driverReal) continue;
-
       const prev = tracker[id] ?? {
         lastPos: driverReal,
         lastMoveTime: now,
@@ -651,8 +662,13 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       if (driverDisplay) {
         let marker = driverMarkersRef.current[id];
         if (!marker) {
-          const el = document.createElement("img");
-          el.src = "/icons/jride-trike.png";
+          // JRIDE_PHASE7A_INLINE_DRIVER_ICON
+          const el = document.createElement("div");
+          el.style.display = "flex";
+          el.style.alignItems = "center";
+          el.style.justifyContent = "center";
+          el.style.color = "#111827"; // slate-900-ish, no mojibake
+          el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true">  <circle cx="14" cy="46" r="8" fill="none" stroke="currentColor" stroke-width="4"/>  <circle cx="50" cy="46" r="8" fill="none" stroke="currentColor" stroke-width="4"/>  <circle cx="32" cy="46" r="8" fill="none" stroke="currentColor" stroke-width="4"/>  <path d="M14 46h18l8-20h10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>  <path d="M26 26h14l6 20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>  <path d="M22 26l10 20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>';
           // JRIDE_PHASE7A_MARKER_RING
           const statusNorm = String((raw as any).status ?? "").trim().toLowerCase();
           const ring = statusRingColor(statusNorm);
@@ -1014,7 +1030,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away Ã‚Â·{" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Â· {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1046,7 +1062,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? " Ã‚Â· STUCK" : ""}
+                  {selectedOverview.isStuck ? "  Â·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
