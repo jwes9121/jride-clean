@@ -210,12 +210,6 @@ export default function LiveTripsClient() {
     )
   );
 }
-
-
-      )
-    );
-  }
-
   async function loadPage() {
     const r = await fetch("/api/admin/livetrips/page-data?debug=1", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
