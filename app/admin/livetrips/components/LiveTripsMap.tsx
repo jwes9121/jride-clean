@@ -16,6 +16,30 @@ export interface LiveTripsMapProps {
 
 type LngLatTuple = [number, number];
 
+function statusRingColor(s: string): string {
+  const x = String(s || "").trim().toLowerCase();
+  switch (x) {
+    case "requested":
+    case "pending": return "#94a3b8";   // slate
+    case "assigned": return "#6366f1";  // indigo
+    case "on_the_way": return "#3b82f6";// blue
+    case "arrived": return "#06b6d4";   // cyan
+    case "enroute": return "#0ea5e9";   // sky
+    case "on_trip": return "#22c55e";   // green
+    case "completed": return "#10b981"; // emerald
+    case "cancelled": return "#f43f5e"; // rose
+    default: return "#9ca3af";          // gray
+  }
+}
+
+function minutesSinceIso(iso: any): number {
+  if (!iso) return 999999;
+  const t = new Date(String(iso)).getTime();
+  if (!Number.isFinite(t)) return 999999;
+  return Math.floor((Date.now() - t) / 60000);
+}
+
+
 function num(v: any): number | null {
   if (typeof v === "number" && !Number.isNaN(v)) return v;
   const n = parseFloat(String(v));
@@ -629,6 +653,19 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         if (!marker) {
           const el = document.createElement("img");
           el.src = "/icons/jride-trike.png";
+          // JRIDE_PHASE7A_MARKER_RING
+          const statusNorm = String((raw as any).status ?? "").trim().toLowerCase();
+          const ring = statusRingColor(statusNorm);
+          const lastSeenIso = (raw as any).driver_last_seen_at ?? (raw as any).updated_at ?? (raw as any).inserted_at ?? null;
+          const ageMin = minutesSinceIso(lastSeenIso);
+          const stale = (["assigned","on_the_way","on_trip"].includes(statusNorm) && ageMin >= 3);
+
+          // Visual confidence ring + stale glow (UI-only)
+          el.style.boxSizing = "content-box";
+          el.style.border = "3px solid " + ring;
+          el.style.borderRadius = "9999px";
+          el.style.padding = "3px";
+          if (stale) el.style.boxShadow = "0 0 0 6px rgba(245,158,11,0.35)";
           el.style.width = "42px";
           el.style.height = "42px";
           el.style.transform = "translate(-50%, -50%)";
@@ -977,7 +1014,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away Â·{" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away Ã‚Â·{" "}
                       {s.reason}
                     </div>
                   )}
@@ -1009,7 +1046,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? " Â· STUCK" : ""}
+                  {selectedOverview.isStuck ? " Ã‚Â· STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">

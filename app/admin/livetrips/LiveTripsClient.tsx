@@ -121,6 +121,41 @@ function isActiveTripStatus(s: string) {
   return ["pending", "assigned", "on_the_way", "on_trip"].includes(s);
 }
 
+function statusBadgeClass(s: string, isProblem: boolean, stale: boolean) {
+  const base = "inline-flex items-center rounded-full border px-2 py-0.5 text-xs";
+  if (isProblem) return base + " border-red-300 bg-red-50 text-red-700";
+  if (stale) return base + " border-amber-300 bg-amber-50 text-amber-800";
+
+  switch (s) {
+    case "requested":
+    case "pending":
+      return base + " border-slate-200 bg-slate-50 text-slate-700";
+    case "assigned":
+      return base + " border-indigo-200 bg-indigo-50 text-indigo-700";
+    case "on_the_way":
+      return base + " border-blue-200 bg-blue-50 text-blue-700";
+    case "arrived":
+      return base + " border-cyan-200 bg-cyan-50 text-cyan-700";
+    case "enroute":
+      return base + " border-sky-200 bg-sky-50 text-sky-700";
+    case "on_trip":
+      return base + " border-green-200 bg-green-50 text-green-700";
+    case "completed":
+      return base + " border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "cancelled":
+      return base + " border-rose-200 bg-rose-50 text-rose-700";
+    default:
+      return base + " border-gray-200 bg-gray-50 text-gray-700";
+  }
+}
+
+function freshnessText(mins: number) {
+  if (!Number.isFinite(mins)) return "-";
+  if (mins <= 0) return "just now";
+  if (mins === 1) return "1 min ago";
+  return `${mins} min ago`;
+}
+
 function computeIsProblem(t: TripRow): boolean {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
