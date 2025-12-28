@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 function safeText(v: any) {
   if (v == null) return "-";
@@ -182,6 +182,7 @@ type FilterKey =
   | "problem";
 
 export default function LiveTripsClient() {
+  const pendingOverrideRef = React.useRef<Record<string, number>>({});
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [allTrips, setAllTrips] = useState<TripRow[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
@@ -197,12 +198,20 @@ export default function LiveTripsClient() {
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   function optimisticStatus(bookingCode: string, status: string) {
-    const nextStatus = normStatus(status);
-    setAllTrips((prev) =>
-      prev.map((t) =>
-        String(t.booking_code || "") === String(bookingCode)
-          ? { ...t, status: nextStatus, updated_at: new Date().toISOString() }
-          : t
+  const code = String(bookingCode || "");
+  pendingOverrideRef.current[code] = Date.now() + 5000;
+
+  const nextStatus = normStatus(status);
+  setAllTrips((prev) =>
+    prev.map((row: any) =>
+      String(row?.booking_code || "") === code
+        ? { ...row, status: nextStatus, updated_at: new Date().toISOString() }
+        : row
+    )
+  );
+}
+
+
       )
     );
   }
@@ -226,13 +235,36 @@ export default function LiveTripsClient() {
     setZones(z);
         // Hide ghost/malformed rows (no booking_code and no usable id/uuid).
     // These cannot be progressed and only create "PROBLEM" noise in the UI.
-    const cleaned = normalized.filter((t) => {
+    const cleaned = normalized.map((row) => {
+  const code = String((row as any).booking_code || "");
+  const lock = pendingOverrideRef.current[code];
+  if (lock && lock > Date.now()) {
+    return row; // keep optimistic status during lock window
+  }
+  return row;
+}).filter((t) => {
       const hasCode = !!String(t.booking_code || "").trim();
       const hasId = !!String(t.uuid || t.id || "").trim();
       return hasCode || hasId;
     });
-    setAllTrips(cleaned);
+    setAllTrips((prev) => {
+      const prevByCode: Record<string, any> = {};
+      for (const r of prev as any[]) {
+        const c = String(r?.booking_code || "");
+        if (c) prevByCode[c] = r;
+      }
 
+      const now = Date.now();
+      return cleaned.map((row: any) => {
+        const code = String(row?.booking_code || "");
+        const lock = pendingOverrideRef.current[code];
+        if (lock && lock > now) {
+          const old = prevByCode[code];
+          if (old && old.status != null) return { ...row, status: old.status };
+        }
+        return row;
+      });
+    });
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
   }
@@ -550,7 +582,9 @@ export default function LiveTripsClient() {
 
                   if (codeLooksFake && !meaningful) {
                     return null;
-                  }const id = normTripId(t);
+                  }
+
+const id = normTripId(t);
                     const isSel = selectedTripId === id;
                     const isProblem = stuckTripIds.has(id);
                     const s = normStatus(t.status);
@@ -669,3 +703,5 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+
+

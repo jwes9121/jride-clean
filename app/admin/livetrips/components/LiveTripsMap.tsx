@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
@@ -662,25 +662,20 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       if (driverDisplay) {
         let marker = driverMarkersRef.current[id];
         if (!marker) {
-          const el = document.createElement("img");
-          el.src = "/icons/jride-trike.png";
-          // JRIDE_PHASE7A_MARKER_RING
-          const statusNorm = String((raw as any).status ?? "").trim().toLowerCase();
-          const ring = statusRingColor(statusNorm);
-          const lastSeenIso = (raw as any).driver_last_seen_at ?? (raw as any).updated_at ?? (raw as any).inserted_at ?? null;
-          const ageMin = minutesSinceIso(lastSeenIso);
-          const stale = (["assigned","on_the_way","on_trip"].includes(statusNorm) && ageMin >= 3);
-
-          // Visual confidence ring + stale glow (UI-only)
-          el.style.boxSizing = "content-box";
-          el.style.border = "3px solid " + ring;
-          el.style.borderRadius = "9999px";
-          el.style.padding = "3px";
-          if (stale) el.style.boxShadow = "0 0 0 6px rgba(245,158,11,0.35)";
-          el.style.width = "42px";
-          el.style.height = "42px";
-          el.style.transform = "translate(-50%, -50%)";
-          if (isStuck || isProblem) el.classList.add("jride-marker-blink");
+          const el = document.createElement("div");
+el.style.width = "42px";
+el.style.height = "42px";
+el.style.borderRadius = "9999px";
+el.style.background = "#111";
+el.style.color = "#fff";
+el.style.display = "flex";
+el.style.alignItems = "center";
+el.style.justifyContent = "center";
+el.style.fontSize = "14px";
+el.style.fontWeight = "700";
+el.textContent = "D";
+el.style.transform = "translate(-50%, -50%)";
+if (isStuck || isProblem) el.classList.add("jride-marker-blink");
           marker = new mapboxgl.Marker(el).setLngLat(driverDisplay).addTo(map);
         } else {
           marker.setLngLat(driverDisplay);
@@ -1025,7 +1020,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Â· {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  · {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1057,7 +1052,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  Â·  STUCK" : ""}
+                  {selectedOverview.isStuck ? "  ·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1161,6 +1156,7 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
 
 
 
