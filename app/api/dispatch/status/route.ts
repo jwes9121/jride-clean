@@ -1,231 +1,138 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-type Body = {
-  bookingId?: string;
-  bookingCode?: string;
-  status?: string;
+type StatusReq = {
+  booking_id?: string | null;
+  booking_code?: string | null;
+  status?: string | null;
+  note?: string | null;
 };
 
-function bad(message: string, extra: any = {}, status = 400) {
-  return NextResponse.json({ ok: false, message, ...extra }, { status });
-}
+const ALLOWED = ["requested", "assigned", "on_the_way", "arrived", "enroute", "on_trip", "completed", "cancelled"] as const;
 
-function safeHost(u: string) {
-  try { return new URL(u).host; } catch { return ""; }
-}
-
-function statusColumnsPresent(sample: Record<string, any>) {
-  const candidates = ["status", "trip_status", "booking_status", "dispatch_status", "ride_status"];
-  return candidates.filter((c) => Object.prototype.hasOwnProperty.call(sample, c));
-}
-
-// ===== Observability (in-memory, no DB migration) =====
-export type DispatchActionLog = {
-  id: string;
-  at: string;
-  type: "status" | "assign";
-  actor: string;
-  ip?: string | null;
-  bookingId?: string | null;
-  bookingCode?: string | null;
-  nextStatus?: string | null;
-  driverId?: string | null;
-  force?: boolean;
-  ok: boolean;
-  httpStatus: number;
-  code?: string;
-  message?: string;
-  columnsUpdated?: string[];
+const NEXT: Record<string, string[]> = {
+  requested: ["assigned", "cancelled"],
+  assigned: ["on_the_way", "arrived", "enroute", "cancelled"],
+  on_the_way: ["arrived", "enroute", "cancelled"],
+  arrived: ["on_trip", "completed", "cancelled"],
+  enroute: ["arrived", "on_trip", "completed", "cancelled"],
+  on_trip: ["completed", "cancelled"],
+  completed: [],
+  cancelled: [],
 };
 
-function getLogStore(): DispatchActionLog[] {
-  const g = globalThis as any;
-  if (!g.__JRIDE_DISPATCH_LOGS) g.__JRIDE_DISPATCH_LOGS = [];
-  return g.__JRIDE_DISPATCH_LOGS as DispatchActionLog[];
+function norm(v: any) {
+  return String(v ?? "").trim().toLowerCase();
 }
 
-function pushLog(entry: DispatchActionLog) {
-  const store = getLogStore();
-  store.unshift(entry);
-  if (store.length > 10) store.length = 10;
+async function fetchBooking(supabase: ReturnType<typeof createClient>, booking_id?: string | null, booking_code?: string | null) {
+  if (booking_id) {
+    const r = await supabase.from("bookings").select("*").eq("id", booking_id).maybeSingle();
+    return { data: r.data, error: r.error?.message || null };
+  }
+  if (booking_code) {
+    const r = await supabase.from("bookings").select("*").eq("booking_code", booking_code).maybeSingle();
+    return { data: r.data, error: r.error?.message || null };
+  }
+  return { data: null, error: "Missing booking_id or booking_code" };
 }
 
-function randId() {
-  return Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
-}
-
-function getActor(req: Request) {
-  const h = req.headers;
-  return h.get("x-dispatcher") || h.get("x-dispatcher-name") || h.get("x-user") || "unknown";
-}
-
-function getIp(req: Request) {
-  const h = req.headers;
-  const xf = h.get("x-forwarded-for");
-  if (xf) return xf.split(",")[0].trim();
-  return h.get("x-real-ip") || null;
-}
-
-// GET /api/dispatch/status?log=1 -> last 10 actions (status + assign)
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const wantLog = url.searchParams.get("log");
-  if (!wantLog) return bad("Missing log=1", {}, 400);
-  return NextResponse.json({ ok: true, actions: getLogStore() });
+async function bestEffortUpdate(supabase: ReturnType<typeof createClient>, bookingId: string, patch: Record<string, any>) {
+  const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
+  if (r.error) return { ok: false, error: r.error.message, data: null as any };
+  return { ok: true, error: null as any, data: r.data };
 }
 
 export async function POST(req: Request) {
-  const actionId = randId();
-  const actor = getActor(req);
-  const ip = getIp(req);
+  const supabase = createClient();
+  const body = (await req.json().catch(() => ({}))) as StatusReq;
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
-
-  if (!supabaseUrl) {
-    const msg = "Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL";
-    pushLog({ id: actionId, at: new Date().toISOString(), type: "status", actor, ip, ok: false, httpStatus: 500, message: msg });
-    return bad(msg, {}, 500);
-  }
-  if (!serviceKey) {
-    const msg = "Missing SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY)";
-    pushLog({ id: actionId, at: new Date().toISOString(), type: "status", actor, ip, ok: false, httpStatus: 500, message: msg });
-    return bad(msg, {}, 500);
+  const target = norm(body.status);
+  if (!target || !ALLOWED.includes(target as any)) {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_STATUS", message: "Invalid status. Allowed: " + ALLOWED.join(", ") },
+      { status: 400 }
+    );
   }
 
-  let body: Body;
-  try { body = (await req.json()) as Body; }
-  catch {
-    const msg = "Invalid JSON body";
-    pushLog({ id: actionId, at: new Date().toISOString(), type: "status", actor, ip, ok: false, httpStatus: 400, message: msg });
-    return bad(msg);
+  const bk = await fetchBooking(supabase, body.booking_id ?? null, body.booking_code ?? null);
+  if (!bk.data) {
+    return NextResponse.json({ ok: false, code: "BOOKING_NOT_FOUND", message: bk.error || "Booking not found" }, { status: 404 });
   }
 
-  const bookingCode = body.bookingCode ? String(body.bookingCode).trim() : undefined;
-  const bookingId = body.bookingId ? String(body.bookingId).trim() : undefined;
-  const nextStatus = body.status ? String(body.status).trim() : "";
+  const booking: any = bk.data;
+  const cur = norm(booking.status) || "requested";
 
-  if (!nextStatus || (!bookingCode && !bookingId)) {
-    const msg = !nextStatus ? "Missing status" : "Missing bookingId or bookingCode";
-    pushLog({
-      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
-      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus: nextStatus ?? null,
-      ok: false, httpStatus: 400, message: msg
-    });
-    return bad(msg);
+  // Must have driver for statuses beyond requested (except cancel)
+  const hasDriver = !!booking.driver_id;
+  if (!hasDriver && target !== "requested" && target !== "cancelled") {
+    return NextResponse.json(
+      { ok: false, code: "NO_DRIVER", message: "Cannot set status without driver_id", current_status: booking.status ?? null },
+      { status: 409 }
+    );
   }
 
-  const where = bookingCode
-    ? `booking_code=eq.${encodeURIComponent(bookingCode)}`
-    : `id=eq.${encodeURIComponent(String(bookingId))}`;
-
-  const baseUrl = `${supabaseUrl}/rest/v1/bookings?${where}`;
-
-  // 1) Read row to detect status-like columns
-  const readRes = await fetch(`${baseUrl}&select=*`, {
-    method: "GET",
-    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-    cache: "no-store",
-  });
-
-  const readText = await readRes.text();
-  if (!readRes.ok) {
-    pushLog({
-      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
-      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
-      ok: false, httpStatus: readRes.status, code: "READ_FAILED", message: "READ_FAILED"
-    });
-    return bad("READ_FAILED", { httpStatus: readRes.status, detail: readText }, readRes.status);
+  // Idempotent: setting same status is OK
+  if (cur === target) {
+    return NextResponse.json(
+      { ok: true, changed: false, booking_id: String(booking.id), booking_code: booking.booking_code ?? null, status: booking.status ?? null, booking },
+      { status: 200 }
+    );
   }
 
-  let rows: any[] = [];
-  try { rows = JSON.parse(readText); } catch {}
-  if (!Array.isArray(rows) || rows.length === 0) {
-    pushLog({
-      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
-      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
-      ok: false, httpStatus: 404, code: "BOOKING_NOT_FOUND", message: "Booking not found"
-    });
-    return bad("BOOKING_NOT_FOUND", { bookingCode, bookingId }, 404);
+  const allowedNext = NEXT[cur] ?? [];
+  if (!allowedNext.includes(target)) {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_TRANSITION", message: `Cannot transition ${cur} -> ${target}`, allowed_next: allowedNext },
+      { status: 409 }
+    );
   }
 
-  const sample = rows[0] as Record<string, any>;
-  const cols = statusColumnsPresent(sample);
+  // Best-effort timestamp columns (only if they exist; errors ignored)
+  const patch: Record<string, any> = { status: target };
 
-  if (cols.length === 0) {
-    pushLog({
-      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
-      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
-      ok: false, httpStatus: 409, code: "NO_STATUS_COLUMNS_FOUND", message: "No status columns found"
-    });
-    return bad(
-      "NO_STATUS_COLUMNS_FOUND",
+  const nowIso = new Date().toISOString();
+  if (target === "assigned") patch.assigned_at = nowIso;
+  if (target === "on_the_way" || target === "enroute") patch.enroute_at = nowIso;
+  if (target === "arrived") patch.arrived_at = nowIso;
+  if (target === "on_trip") patch.on_trip_at = nowIso;
+  if (target === "completed") patch.completed_at = nowIso;
+  if (target === "cancelled") patch.cancelled_at = nowIso;
+
+  // Optional note (if you have a notes column, it will be ignored if missing)
+  if (body.note && String(body.note).trim() !== "") patch.status_note = String(body.note).trim();
+
+  // When completed/cancelled: driver becomes available automatically by busy-lock (because status leaves BUSY list)
+  const upd = await bestEffortUpdate(supabase, String(booking.id), patch);
+
+  // If timestamp/note columns do not exist, fallback to status-only update
+  if (!upd.ok && upd.error && upd.error.toLowerCase().includes("column")) {
+    const upd2 = await bestEffortUpdate(supabase, String(booking.id), { status: target });
+    return NextResponse.json(
       {
-        hint: "Bookings row has no known status-like columns.",
-        keys: Object.keys(sample).slice(0, 60),
+        ok: upd2.ok,
+        changed: true,
+        booking_id: String(booking.id),
+        booking_code: booking.booking_code ?? null,
+        status: target,
+        note: "Status updated. Extra columns not present; updated status only.",
+        update_error: upd2.error,
+        booking: upd2.data ?? null,
       },
-      409
+      { status: upd2.ok ? 200 : 500 }
     );
   }
 
-  // 2) Patch ALL present status-like columns
-  const patchBody: any = {};
-  for (const c of cols) patchBody[c] = nextStatus;
-
-  const patchRes = await fetch(baseUrl, {
-    method: "PATCH",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
+  return NextResponse.json(
+    {
+      ok: upd.ok,
+      changed: true,
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      status: target,
+      update_error: upd.error,
+      booking: upd.data ?? null,
     },
-    body: JSON.stringify(patchBody),
-  });
-
-  const patchText = await patchRes.text();
-  if (!patchRes.ok) {
-    pushLog({
-      id: actionId, at: new Date().toISOString(), type: "status", actor, ip,
-      bookingId: bookingId ?? null, bookingCode: bookingCode ?? null, nextStatus,
-      ok: false, httpStatus: patchRes.status, code: "PATCH_FAILED", message: "PATCH_FAILED"
-    });
-    return bad(
-      "PATCH_FAILED",
-      { httpStatus: patchRes.status, detail: patchText, attempted: patchBody, supabaseHost: safeHost(supabaseUrl) },
-      patchRes.status
-    );
-  }
-
-  let patched: any[] = [];
-  try { patched = JSON.parse(patchText); } catch {}
-
-  pushLog({
-    id: actionId,
-    at: new Date().toISOString(),
-    type: "status",
-    actor,
-    ip,
-    bookingId: (patched?.[0]?.id ?? bookingId ?? null) as any,
-    bookingCode: (patched?.[0]?.booking_code ?? bookingCode ?? null) as any,
-    nextStatus,
-    ok: true,
-    httpStatus: 200,
-    code: "OK",
-    message: "OK",
-    columnsUpdated: cols,
-  });
-
-  return NextResponse.json({
-    ok: true,
-    actionId,
-    bookingCode: patched?.[0]?.booking_code ?? bookingCode,
-    id: patched?.[0]?.id ?? bookingId,
-    status: nextStatus,
-    columnsUpdated: cols,
-    supabaseHost: safeHost(supabaseUrl),
-  });
+    { status: upd.ok ? 200 : 500 }
+  );
 }
