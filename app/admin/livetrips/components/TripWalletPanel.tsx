@@ -121,7 +121,7 @@ export default function TripWalletPanel({ trip }: Props) {
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
     if (vb <= 0) return null;
-    // fare â‰ˆ vendorEarnings / 0.90
+    // fare Ã¢â€°Ë† vendorEarnings / 0.90
     return Math.round((vb / 0.90) * 100) / 100;
   }, [trip, isTakeout]);
 
@@ -130,7 +130,7 @@ export default function TripWalletPanel({ trip }: Props) {
     if (derivedFare === null) return null;
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
-    const cut = derivedFare - vb; // â‰ˆ 10%
+    const cut = derivedFare - vb; // Ã¢â€°Ë† 10%
     return Math.round(cut * 100) / 100;
   }, [trip, isTakeout, derivedFare]);
 
@@ -346,7 +346,7 @@ const driverPayout = useMemo(() => {
               </div>
 
               {loading && (
-                <div className="text-sm text-slate-600">Loadingâ€¦</div>
+                <div className="text-sm text-slate-600">Loading...</div>
               )}
 
               {!loading && err && (

@@ -348,7 +348,12 @@ export default function LiveTripsClient() {
     let out: TripRow[] = [];
     if (f === "dispatch") out = allTrips.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus(t.status)));
     else if (f === "problem") out = allTrips.filter((t) => computeIsProblem(t) || stuckTripIds.has(normTripId(t)));
-    else out = allTrips.filter((t) => normStatus(t.status) === f);
+    else out = allTrips.filter((t) => normStatus(t.status) === f);  // JRIDE_PHASE7A_PROBLEM_EXCLUSIVE
+  // Keep Problem trips tab exclusive: if a trip is problem/stuck, it only shows in Problem trips view.
+  if (f !== "problem") {
+    out = out.filter((t) => !(computeIsProblem(t) || stuckTripIds.has(normTripId(t))));
+  }
+
 
     out.sort((a, b) => {
       const ta = new Date(a.updated_at || a.created_at || (0 as any)).getTime() || 0;
