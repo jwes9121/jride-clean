@@ -453,7 +453,7 @@ export default function LiveTripsClient() {
   async function assignDriver(bookingCode: string, driverId: string) {
     if (!bookingCode || !driverId) return;
     setLastAction("Assigning...");
-    await postJson("/api/dispatch/assign", { bookingCode, driverId });
+    await postJson("/api/dispatch/assign", { booking_code: bookingCode, bookingCode, driver_id: driverId, driverId });
     setLastAction("Assigned");
     await loadPage();
   }
@@ -462,7 +462,7 @@ export default function LiveTripsClient() {
     if (!bookingCode || !status) return;
     setLastAction("Updating status...");
     optimisticStatus(bookingCode, status);
-    await postJson("/api/dispatch/status", { bookingCode, status });
+    await postJson("/api/dispatch/status", { booking_code: bookingCode, bookingCode, status });
     setLastAction("Status updated");
     await loadPage();
   }
@@ -697,5 +697,6 @@ const id = normTripId(t);
     </div>
   );
 }
+
 
 

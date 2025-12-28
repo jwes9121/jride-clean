@@ -651,9 +651,17 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const id = String(raw.id ?? raw.bookingCode ?? i);
 
       const driverReal = getDriverReal(raw);
-      const driverDisplay = getDriverDisplay(driverReal);
       const pickup = getPickup(raw);
       const drop = getDropoff(raw);
+
+      // Fallback marker when driver GPS is missing:
+      // show a driver marker at pickup (or dropoff) for active statuses so dispatcher sees *something*.
+      let driverDisplay = getDriverDisplay(driverReal);
+      const statusNorm = String(raw.status ?? "").trim().toLowerCase();
+      if (!driverDisplay && (statusNorm === "assigned" || statusNorm === "on_the_way" || statusNorm === "on_trip")) {
+        const fb = pickup ?? drop ?? null;
+        if (fb) driverDisplay = fb;
+      }
 
       const isStuck = activeStuckIds.has(id);
       const isProblem = !!raw.isProblem;
@@ -1156,6 +1164,7 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
 
 
 
