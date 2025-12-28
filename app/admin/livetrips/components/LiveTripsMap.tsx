@@ -671,17 +671,15 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         let marker = driverMarkersRef.current[id];
         if (!marker) {
           const el = document.createElement("div");
-el.style.width = "42px";
-el.style.height = "42px";
-el.style.borderRadius = "9999px";
-el.style.background = "#111";
-el.style.color = "#fff";
-el.style.display = "flex";
-el.style.alignItems = "center";
-el.style.justifyContent = "center";
-el.style.fontSize = "14px";
-el.style.fontWeight = "700";
-el.textContent = "D";
+el.style.width = "44px";
+el.style.height = "44px";
+el.style.borderRadius = "50%";
+el.style.overflow = "hidden";
+el.style.backgroundImage = "url('/jride-logo.png')";
+el.style.backgroundRepeat = "no-repeat";
+el.style.backgroundSize = "160%";
+el.style.backgroundPosition = "50% 45%"; // centers inner tricycle
+el.style.boxShadow = "0 0 0 2px white";
 el.style.transform = "translate(-50%, -50%)";
 if (isStuck || isProblem) el.classList.add("jride-marker-blink");
           marker = new mapboxgl.Marker(el).setLngLat(driverDisplay).addTo(map);
@@ -1164,6 +1162,7 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
 
 
 
