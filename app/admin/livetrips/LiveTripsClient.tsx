@@ -347,7 +347,7 @@ export default function LiveTripsClient() {
 
     let out: TripRow[] = [];
     if (f === "dispatch") out = allTrips.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus(t.status)));
-    else if (f === "problem") out = allTrips.filter((t) => stuckTripIds.has(normTripId(t)));
+    else if (f === "problem") out = allTrips.filter((t) => computeIsProblem(t) || stuckTripIds.has(normTripId(t)));
     else out = allTrips.filter((t) => normStatus(t.status) === f);
 
     out.sort((a, b) => {
