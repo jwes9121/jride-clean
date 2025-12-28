@@ -22,7 +22,12 @@ const NEXT: Record<string, string[]> = {
 };
 
 function norm(v: any) {
-  return String(v ?? "").trim().toLowerCase();
+  let s = String(v ?? "").trim().toLowerCase();
+  if (!s) return "";
+  s = s.replace(/[\s\-]+/g, "_");
+  if (s === "new") return "requested";
+  if (s === "ongoing") return "on_trip";
+  return s;
 }
 
 async function fetchBooking(supabase: ReturnType<typeof createClient>, booking_id?: string | null, booking_code?: string | null) {
@@ -43,6 +48,39 @@ async function bestEffortUpdate(supabase: ReturnType<typeof createClient>, booki
   return { ok: true, error: null as any, data: r.data };
 }
 
+export async function GET(req: Request) {
+  const supabase = createClient();
+  try {
+    const url = new URL(req.url);
+    const bookingId = url.searchParams.get("booking_id") || url.searchParams.get("id");
+    const bookingCode = url.searchParams.get("booking_code") || url.searchParams.get("code");
+
+    const bk = await fetchBooking(supabase, bookingId ?? null, bookingCode ?? null);
+    if (!bk.data) {
+      return NextResponse.json(
+        { ok: false, code: "BOOKING_NOT_FOUND", message: bk.error || "Booking not found", booking_id: bookingId ?? null, booking_code: bookingCode ?? null },
+        { status: 404 }
+      );
+    }
+
+    const booking: any = bk.data;
+    const cur = norm(booking.status) || "requested";
+    const allowedNext = NEXT[cur] ?? [];
+    const hasDriver = !!booking.driver_id;
+
+    return NextResponse.json({
+      ok: true,
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      current_status: cur,
+      has_driver: hasDriver,
+      allowed_next: allowedNext,
+      booking
+    });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, code: "SERVER_ERROR", message: e?.message || "Unknown error" }, { status: 500 });
+  }
+}
 export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as StatusReq;
@@ -55,7 +93,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const bk = await fetchBooking(supabase, body.booking_id ?? null, body.booking_code ?? null);
+  const bk = await fetchBooking(supabase, (body.booking_id ?? (body as any).id ?? null), body.booking_code ?? null);
   if (!bk.data) {
     return NextResponse.json({ ok: false, code: "BOOKING_NOT_FOUND", message: bk.error || "Booking not found" }, { status: 404 });
   }
@@ -67,7 +105,18 @@ export async function POST(req: Request) {
   const hasDriver = !!booking.driver_id;
   if (!hasDriver && target !== "requested" && target !== "cancelled") {
     return NextResponse.json(
-      { ok: false, code: "NO_DRIVER", message: "Cannot set status without driver_id", current_status: booking.status ?? null },
+      {
+        ok: false,
+        code: "NO_DRIVER",
+        message: "Cannot set status without driver_id",
+        booking_id: String(booking.id),
+        booking_code: booking.booking_code ?? null,
+        current_status: cur,
+        target_status: target,
+        has_driver: hasDriver,
+        allowed_next: NEXT[cur] ?? [],
+        current_status_raw: booking.status ?? null
+      },
       { status: 409 }
     );
   }
@@ -83,7 +132,17 @@ export async function POST(req: Request) {
   const allowedNext = NEXT[cur] ?? [];
   if (!allowedNext.includes(target)) {
     return NextResponse.json(
-      { ok: false, code: "INVALID_TRANSITION", message: `Cannot transition ${cur} -> ${target}`, allowed_next: allowedNext },
+      {
+        ok: false,
+        code: "INVALID_TRANSITION",
+        message: `Cannot transition ${cur} -> ${target}`,
+        booking_id: String(booking.id),
+        booking_code: booking.booking_code ?? null,
+        current_status: cur,
+        target_status: target,
+        has_driver: hasDriver,
+        allowed_next: allowedNext
+      },
       { status: 409 }
     );
   }
