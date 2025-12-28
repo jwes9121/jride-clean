@@ -175,7 +175,7 @@ async function findNearestDriverSmart(
   pickup_lat: number,
   pickup_lng: number
 ) {
-  const r = await supabase.from("driver_locations_latest").select("*").limit(500);
+  const r = await supabase.from("driver_locations").select("*").limit(500);
   if (r.error) return { driver_id: null as string | null, note: "driver_locations_latest query failed: " + r.error.message };
 
   const rows = Array.isArray(r.data) ? r.data : [];
