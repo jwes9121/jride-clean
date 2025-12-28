@@ -675,14 +675,24 @@ el.style.width = "44px";
 el.style.height = "44px";
 el.style.borderRadius = "50%";
 el.style.overflow = "hidden";
-el.style.backgroundImage = "url('/jride-logo.png')";
-el.style.backgroundRepeat = "no-repeat";
-el.style.backgroundSize = "160%";
-el.style.backgroundPosition = "50% 45%"; // centers inner tricycle
-el.style.boxShadow = "0 0 0 2px white";
+el.style.background = "white";
+el.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.95)";
 el.style.transform = "translate(-50%, -50%)";
-if (isStuck || isProblem) el.classList.add("jride-marker-blink");
-          marker = new mapboxgl.Marker(el).setLngLat(driverDisplay).addTo(map);
+
+// Tricycle icon (crop/zoom to show inner trike)
+const img = document.createElement("img");
+img.src = "/icons/jride-trike.png";
+img.alt = "tricycle";
+img.style.width = "100%";
+img.style.height = "100%";
+img.style.display = "block";
+img.style.objectFit = "cover";
+img.style.objectPosition = "50% 45%";
+img.style.transform = "scale(1.35)";
+img.style.transformOrigin = "50% 50%";
+el.appendChild(img);
+
+if (isStuck || isProblem) el.classList.add("jride-marker-blink");marker = new mapboxgl.Marker(el).setLngLat(driverDisplay).addTo(map);
         } else {
           marker.setLngLat(driverDisplay);
           const el = marker.getElement();
@@ -1162,6 +1172,8 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
+
 
 
 

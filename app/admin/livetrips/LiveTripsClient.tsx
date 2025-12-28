@@ -466,6 +466,16 @@ export default function LiveTripsClient() {
     setLastAction("Status updated");
     await loadPage();
   }
+  // Admin override: backend must honor force:true
+  async function forceTripStatus(bookingCode: string, status: string) {
+    if (!bookingCode || !status) return;
+    setLastAction("Forcing status...");
+    optimisticStatus(bookingCode, status);
+    await postJson("/api/dispatch/status", { booking_code: bookingCode, bookingCode, status, force: true });
+    setLastAction("Force status sent");
+    await loadPage();
+  }
+
 
   const showThresholds = `Stuck watcher thresholds: on_the_way ---- ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ---- ${STUCK_THRESHOLDS_MIN.on_trip} min`;
 
@@ -697,6 +707,7 @@ const id = normTripId(t);
     </div>
   );
 }
+
 
 
 

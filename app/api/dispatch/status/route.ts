@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -85,6 +85,8 @@ export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as StatusReq;
 
+  const force = Boolean((body as any).force);
+
   const target = norm(body.status);
   if (!target || !ALLOWED.includes(target as any)) {
     return NextResponse.json(
@@ -130,7 +132,7 @@ export async function POST(req: Request) {
   }
 
   const allowedNext = NEXT[cur] ?? [];
-  if (!allowedNext.includes(target)) {
+  if (!force && !allowedNext.includes(target)) {
     return NextResponse.json(
       {
         ok: false,
