@@ -31,6 +31,55 @@ function normList(v: any): string[] {
   return (Array.isArray(v) ? v : []).map((x) => String(x));
 }
 
+function safeJsonParse(txt: string): any | null {
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return null;
+  }
+}
+
+function extractFromLog(log: string): { booking_id?: string; booking_code?: string } {
+  const j = safeJsonParse(log);
+  if (!j || typeof j !== "object") return {};
+
+  const bid =
+    (j.booking_id ?? j.bookingId ?? j.id ?? j.uuid ?? j?.booking?.id ?? j?.booking?.uuid) as any;
+  const bcode =
+    (j.booking_code ?? j.bookingCode ?? j?.booking?.booking_code ?? j?.booking?.code) as any;
+
+  const out: any = {};
+  if (bid != null && String(bid).trim()) out.booking_id = String(bid).trim();
+  if (bcode != null && String(bcode).trim()) out.booking_code = String(bcode).trim();
+  return out;
+}
+
+async function copyText(txt: string): Promise<boolean> {
+  const t = String(txt || "");
+  if (!t) return false;
+
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export default function DriverActionsPage() {
   const [bookingId, setBookingId] = React.useState("");
   const [bookingCode, setBookingCode] = React.useState("");
@@ -100,7 +149,33 @@ export default function DriverActionsPage() {
     }
   }
 
+  // --- Phase 6K harness helpers ---
+  function fillFromLog() {
+    const ex = extractFromLog(log);
+    if (ex.booking_id) setBookingId(ex.booking_id);
+    if (ex.booking_code) setBookingCode(ex.booking_code);
+  }
+
+  async function copyBookingId() {
+    const id = (inspect?.booking_id ?? "").toString();
+    const ok = await copyText(id);
+    if (!ok) setLog((prev) => (prev ? prev + "\n\n" : "") + "[COPY FAILED] booking_id");
+  }
+
+  async function copyBookingCode() {
+    const code = (inspect?.booking_code ?? "").toString();
+    const ok = await copyText(code);
+    if (!ok) setLog((prev) => (prev ? prev + "\n\n" : "") + "[COPY FAILED] booking_code");
+  }
+
+  async function advanceNextAllowed() {
+    const allowed = normList(inspect?.allowed_next);
+    if (allowed.length < 1) return;
+    await setStatus(allowed[0]);
+  }
+
   const allowed = normList(inspect?.allowed_next);
+  const nextAllowed = allowed[0] || "";
 
   const btn = (label: string, st: string) => {
     const enabled = allowed.includes(st);
@@ -157,13 +232,43 @@ export default function DriverActionsPage() {
               />
             </div>
 
-            <button
-              onClick={() => doInspect()}
-              disabled={pending.length > 0 || (!canUseId && !canUseCode)}
-              className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-            >
-              {pending === "inspect" ? "Inspecting..." : "Inspect"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => doInspect()}
+                disabled={pending.length > 0 || (!canUseId && !canUseCode)}
+                className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+              >
+                {pending === "inspect" ? "Inspecting..." : "Inspect"}
+              </button>
+
+              {/* Phase 6K harness */}
+              <button
+                onClick={fillFromLog}
+                disabled={pending.length > 0 || !log.trim()}
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                title="Parse Response Log JSON and fill booking_id/booking_code if found"
+              >
+                Fill from log
+              </button>
+
+              <button
+                onClick={copyBookingId}
+                disabled={pending.length > 0 || !inspect?.booking_id}
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                title="Copy inspect.booking_id"
+              >
+                Copy id
+              </button>
+
+              <button
+                onClick={copyBookingCode}
+                disabled={pending.length > 0 || !inspect?.booking_code}
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                title="Copy inspect.booking_code"
+              >
+                Copy code
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 text-sm">
@@ -183,6 +288,18 @@ export default function DriverActionsPage() {
           <p className="text-sm opacity-70 mt-1">
             Buttons enable only if the server says the transition is allowed.
           </p>
+
+          {/* Phase 6K harness */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={advanceNextAllowed}
+              disabled={pending.length > 0 || !inspect?.booking_id && !inspect?.booking_code || !nextAllowed}
+              className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+              title="POST the first allowed_next and refresh inspect"
+            >
+              Next allowed{nextAllowed ? `: ${nextAllowed}` : ""}
+            </button>
+          </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
             {btn("Assigned", "assigned")}

@@ -33,6 +33,55 @@ function normList(v: any): string[] {
   return (Array.isArray(v) ? v : []).map((x) => String(x));
 }
 
+function safeJsonParse(txt: string): any | null {
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return null;
+  }
+}
+
+function extractFromLog(log: string): { booking_id?: string; booking_code?: string } {
+  const j = safeJsonParse(log);
+  if (!j || typeof j !== "object") return {};
+
+  const bid =
+    (j.booking_id ?? j.bookingId ?? j.id ?? j.uuid ?? j?.booking?.id ?? j?.booking?.uuid) as any;
+  const bcode =
+    (j.booking_code ?? j.bookingCode ?? j?.booking?.booking_code ?? j?.booking?.code) as any;
+
+  const out: any = {};
+  if (bid != null && String(bid).trim()) out.booking_id = String(bid).trim();
+  if (bcode != null && String(bcode).trim()) out.booking_code = String(bcode).trim();
+  return out;
+}
+
+async function copyText(txt: string): Promise<boolean> {
+  const t = String(txt || "");
+  if (!t) return false;
+
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export default function AdminActionsPage() {
   const [bookingId, setBookingId] = React.useState("");
   const [bookingCode, setBookingCode] = React.useState("");
@@ -67,8 +116,7 @@ export default function AdminActionsPage() {
 
       setInspect(j);
 
-      // IMPORTANT: reset dropdown target based on the *new* server truth
-      // This avoids "Allowed now: NO" lies caused by stale target from a previous inspect/booking.
+      // Reset dropdown target based on the *new* server truth
       const allowedNext = normList(j.allowed_next);
       const cs = j.current_status ? String(j.current_status) : "";
       let nextTarget = "assigned";
@@ -87,7 +135,7 @@ export default function AdminActionsPage() {
     }
   }
 
-  async function doSet() {
+  async function postStatus(nextStatus: string) {
     if (!inspect?.booking_id && !inspect?.booking_code) return;
 
     setPending("set");
@@ -95,7 +143,7 @@ export default function AdminActionsPage() {
       const body: any = {};
       if (inspect.booking_id) body.booking_id = inspect.booking_id;
       if (inspect.booking_code) body.booking_code = inspect.booking_code;
-      body.status = target;
+      body.status = nextStatus;
       if (note.trim()) body.note = note.trim();
 
       const r = await fetch(`/api/dispatch/status`, {
@@ -118,8 +166,38 @@ export default function AdminActionsPage() {
     }
   }
 
+  async function doSet() {
+    await postStatus(String(target));
+  }
+
+  // --- Phase 6K harness helpers ---
+  function fillFromLog() {
+    const ex = extractFromLog(log);
+    if (ex.booking_id) setBookingId(ex.booking_id);
+    if (ex.booking_code) setBookingCode(ex.booking_code);
+  }
+
+  async function copyBookingId() {
+    const id = (inspect?.booking_id ?? "").toString();
+    const ok = await copyText(id);
+    if (!ok) setLog((prev) => (prev ? prev + "\n\n" : "") + "[COPY FAILED] booking_id");
+  }
+
+  async function copyBookingCode() {
+    const code = (inspect?.booking_code ?? "").toString();
+    const ok = await copyText(code);
+    if (!ok) setLog((prev) => (prev ? prev + "\n\n" : "") + "[COPY FAILED] booking_code");
+  }
+
+  async function advanceNextAllowed() {
+    const allowed = normList(inspect?.allowed_next);
+    if (allowed.length < 1) return;
+    await postStatus(allowed[0]);
+  }
+
   const allowed = normList(inspect?.allowed_next);
   const isAllowed = allowed.includes(String(target));
+  const nextAllowed = allowed[0] || "";
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -158,13 +236,43 @@ export default function AdminActionsPage() {
               />
             </div>
 
-            <button
-              onClick={() => doInspect()}
-              disabled={pending.length > 0 || (!canUseId && !canUseCode)}
-              className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-            >
-              {pending === "inspect" ? "Inspecting..." : "Inspect"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => doInspect()}
+                disabled={pending.length > 0 || (!canUseId && !canUseCode)}
+                className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+              >
+                {pending === "inspect" ? "Inspecting..." : "Inspect"}
+              </button>
+
+              {/* Phase 6K harness */}
+              <button
+                onClick={fillFromLog}
+                disabled={pending.length > 0 || !log.trim()}
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                title="Parse Response Log JSON and fill booking_id/booking_code if found"
+              >
+                Fill from log
+              </button>
+
+              <button
+                onClick={copyBookingId}
+                disabled={pending.length > 0 || !inspect?.booking_id}
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                title="Copy inspect.booking_id"
+              >
+                Copy id
+              </button>
+
+              <button
+                onClick={copyBookingCode}
+                disabled={pending.length > 0 || !inspect?.booking_code}
+                className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                title="Copy inspect.booking_code"
+              >
+                Copy code
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 text-sm">
@@ -204,6 +312,18 @@ export default function AdminActionsPage() {
               </select>
               <div className="text-xs mt-1 opacity-70">
                 Allowed now: <span className="font-mono">{isAllowed ? "YES" : "NO"}</span>
+              </div>
+
+              {/* Phase 6K harness */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={advanceNextAllowed}
+                  disabled={pending.length > 0 || !inspect?.booking_id && !inspect?.booking_code || !nextAllowed}
+                  className="px-3 py-2 rounded border text-sm disabled:opacity-50"
+                  title="POST the first allowed_next and refresh inspect"
+                >
+                  Next allowed{nextAllowed ? `: ${nextAllowed}` : ""}
+                </button>
               </div>
             </div>
 
