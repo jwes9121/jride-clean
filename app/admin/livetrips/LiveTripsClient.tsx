@@ -210,7 +210,19 @@ export default function LiveTripsClient() {
     )
   );
 }
-  async function loadPage() {
+  
+  async function purgeBrokenTrips() {
+    setLastAction("Purging broken trips...");
+    const res = await fetch("/api/admin/livetrips/purge-broken", { method: "POST" });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j?.ok) {
+      setLastAction("Purge FAILED: " + String(j?.error || res.status));
+      return;
+    }
+    setLastAction("Purged broken trips: " + String(j.count ?? 0));
+    await loadPage();
+  }
+async function loadPage() {
     const r = await fetch("/api/admin/livetrips/page-data?debug=1", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
 
@@ -664,6 +676,13 @@ const id = normTripId(t);
                             >
                               Force end
                             </button>
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => { e.stopPropagation(); purgeBrokenTrips().catch((err) => setLastAction(String(err?.message || err))); }}
+                              title="Admin ops: cancels live trips missing booking_code"
+                            >
+                              Purge broken trips
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -731,6 +750,8 @@ const id = normTripId(t);
     </div>
   );
 }
+
+
 
 
 

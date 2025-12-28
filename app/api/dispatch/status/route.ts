@@ -125,7 +125,23 @@ export async function POST(req: Request) {
 
   // Idempotent: setting same status is OK
   if (cur === target) {
-    return NextResponse.json(
+    
+    // Audit: forced status changes (best effort; actor may be unknown depending on auth setup)
+    if (force) {
+      try {
+        await supabase.from("admin_audit_log").insert({
+          actor_id: null,
+          actor_email: null,
+          action: "FORCE_STATUS",
+          booking_id: (booking as any)?.id ?? null,
+          booking_code: (booking as any)?.booking_code ?? null,
+          from_status: (booking as any)?.status ?? null,
+          to_status: status ?? null,
+          meta: { source: "dispatch/status" }
+        } as any);
+      } catch {}
+    }
+return NextResponse.json(
       { ok: true, changed: false, booking_id: String(booking.id), booking_code: booking.booking_code ?? null, status: booking.status ?? null, booking },
       { status: 200 }
     );
@@ -197,3 +213,4 @@ export async function POST(req: Request) {
     { status: upd.ok ? 200 : 500 }
   );
 }
+
