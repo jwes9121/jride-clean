@@ -307,15 +307,31 @@ export default function LiveTripsClient() {
   }, []);
 
   const stuckTripIds = useMemo(() => {
-    const s = new Set<string>();
-    for (const t of allTrips) {
-      if (computeIsProblem(t)) {
-        const id = normTripId(t);
-        if (id) s.add(id);
-      }
-    }
-    return s;
-  }, [allTrips]);
+  const stuck = new Set<string>();
+
+  const isDriverTrip = (t: any) => !!(t && ((t as any).driver_id ?? (t as any).driverId));
+
+  // Only driver-backed trips can be "stuck"
+  for (const t of allTrips) {
+    if (!isDriverTrip(t)) continue;
+
+    const statusNorm = normStatus((t as any).status);
+    const lastSeenIso =
+      (t as any).driver_last_seen_at ??
+      (t as any).updated_at ??
+      (t as any).created_at ??
+      (t as any).inserted_at ??
+      null;
+
+    const ageMin = minutesSince(lastSeenIso);
+    const isStale =
+      (["assigned", "on_the_way", "on_trip"].includes(statusNorm) && ageMin >= 3);
+
+    if (isStale) stuck.add(normTripId(t as any));
+  }
+
+  return stuck;
+}, [allTrips]);
 
   const counts = useMemo(() => {
     const c = {
@@ -343,26 +359,33 @@ export default function LiveTripsClient() {
   }, [allTrips]);
 
   const visibleTrips = useMemo(() => {
-    const f = tripFilter;
+  const f = tripFilter;
 
-    let out: TripRow[] = [];
-    if (f === "dispatch") out = allTrips.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus(t.status)));
-    else if (f === "problem") out = allTrips.filter((t) => computeIsProblem(t) || stuckTripIds.has(normTripId(t)));
-    else out = allTrips.filter((t) => normStatus(t.status) === f);  // JRIDE_PHASE7A_PROBLEM_EXCLUSIVE
-  // Keep Problem trips tab exclusive: if a trip is problem/stuck, it only shows in Problem trips view.
-  if (f !== "problem") {
-    out = out.filter((t) => !(computeIsProblem(t) || stuckTripIds.has(normTripId(t))));
+  const isDriverTrip = (t: any) => !!(t && ((t as any).driver_id ?? (t as any).driverId));
+
+  // Driver-backed only (exclude vendor/takeout-like bookings with no driver)
+  const base = allTrips.filter(isDriverTrip);
+
+  let out: TripRow[] = [];
+
+  if (f === "dispatch") {
+    out = base.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus((t as any).status)));
+  } else if (f === "problem") {
+    out = base.filter((t) => stuckTripIds.has(normTripId(t as any)));
+  } else if (f === "on_the_way") {
+    out = base.filter((t) => normStatus((t as any).status) === "on_the_way");
+  } else {
+    out = base.filter((t) => normStatus((t as any).status) === f);
   }
 
+  out.sort((a, b) => {
+    const ta = new Date((a as any).updated_at || (a as any).created_at || (0 as any)).getTime() || 0;
+    const tb = new Date((b as any).updated_at || (b as any).created_at || (0 as any)).getTime() || 0;
+    return tb - ta;
+  });
 
-    out.sort((a, b) => {
-      const ta = new Date(a.updated_at || a.created_at || (0 as any)).getTime() || 0;
-      const tb = new Date(b.updated_at || b.created_at || (0 as any)).getTime() || 0;
-      return tb - ta;
-    });
-
-    return out;
-  }, [allTrips, tripFilter, stuckTripIds]);
+  return out;
+}, [tripFilter, allTrips, stuckTripIds]);
 
   // Auto-select first trip in current filtered set (SAFE: in useEffect, not useMemo)
   useEffect(() => {
