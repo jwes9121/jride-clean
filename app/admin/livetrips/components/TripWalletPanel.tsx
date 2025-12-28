@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -234,6 +234,16 @@ const driverPayout = useMemo(() => {
   }, [open, kind, driverId, vendorId]);
 
   function openLedger(k: LedgerKind) {
+  // JRIDE_PHASE7A_OPENLEDGER_GUARD
+  // Prevent confusing modal when trip has no driver/vendor id (e.g., takeout-like bookings)
+  if (k === "driver" && !driverId) {
+    setErr("No driver_id on this trip.");
+    return;
+  }
+  if (k === "vendor" && !vendorId) {
+    setErr("No vendor_id on this trip.");
+    return;
+  }
     setKind(k);
     setOpen(true);
   }
