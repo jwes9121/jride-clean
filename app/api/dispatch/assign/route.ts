@@ -9,6 +9,8 @@ type AssignReq = {
   pickup_lng?: number | null;
 };
 
+const BUSY_STATUSES = ["assigned", "arrived", "on_the_way", "enroute", "on_trip"];
+
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const R = 6371;
@@ -24,6 +26,10 @@ function pickCoord(row: any) {
   const lat = typeof row.lat === "number" ? row.lat : typeof row.latitude === "number" ? row.latitude : null;
   const lng = typeof row.lng === "number" ? row.lng : typeof row.longitude === "number" ? row.longitude : null;
   return { lat, lng };
+}
+
+function normStatus(v: any) {
+  return String(v ?? "").trim().toLowerCase();
 }
 
 async function fetchBookingByIdOrCode(
@@ -47,18 +53,48 @@ async function bestEffortUpdateBooking(
   bookingId: string,
   patch: Record<string, any>
 ) {
-  // Best-effort update; do not throw to keep endpoint stable.
   const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
   if (r.error) return { ok: false, error: r.error.message, data: null as any };
   return { ok: true, error: null as any, data: r.data };
 }
 
-async function findNearestOnlineDriverInTown(
+async function fetchBusyDriverIdsInTown(
+  supabase: ReturnType<typeof createClient>,
+  town: string
+) {
+  // NOTE: we only need driver_id + status; keep select minimal but safe.
+  const r = await supabase
+    .from("bookings")
+    .select("driver_id,status,town")
+    .eq("town", town)
+    .in("status", BUSY_STATUSES)
+    .not("driver_id", "is", null)
+    .limit(500);
+
+  if (r.error) {
+    // Fail-open: no busy lock if query fails.
+    return { ok: false, note: "busy-check failed: " + r.error.message, busy: new Set<string>() };
+  }
+
+  const busy = new Set<string>();
+  const rows = Array.isArray(r.data) ? r.data : [];
+  for (const row of rows) {
+    const id = row && row.driver_id ? String(row.driver_id) : "";
+    if (id) busy.add(id);
+  }
+
+  return { ok: true, note: "busy drivers in town: " + busy.size, busy };
+}
+
+async function findNearestOnlineFreeDriverInTown(
   supabase: ReturnType<typeof createClient>,
   town: string,
   pickup_lat: number,
   pickup_lng: number
 ) {
+  const busyRes = await fetchBusyDriverIdsInTown(supabase, town);
+  const busy = busyRes.busy;
+
   const r = await supabase
     .from("driver_locations")
     .select("*")
@@ -72,11 +108,17 @@ async function findNearestOnlineDriverInTown(
 
   const rows = Array.isArray(r.data) ? r.data : [];
   let best: { driver_id: string; km: number } | null = null;
+  let skippedBusy = 0;
   let coordSeen = 0;
 
   for (const row of rows) {
     const dId = row.driver_id ? String(row.driver_id) : "";
     if (!dId) continue;
+
+    if (busy.has(dId)) {
+      skippedBusy++;
+      continue;
+    }
 
     const c = pickCoord(row);
     if (typeof c.lat !== "number" || typeof c.lng !== "number") continue;
@@ -87,14 +129,14 @@ async function findNearestOnlineDriverInTown(
   }
 
   if (!best) {
-    return { driver_id: null as string | null, note: "No eligible ONLINE drivers in town (rows=" + rows.length + ", coords=" + coordSeen + ")." };
+    let note = "No eligible ONLINE free drivers in town (online_rows=" + rows.length + ", coords=" + coordSeen + ", skipped_busy=" + skippedBusy + ").";
+    if (!busyRes.ok) note += " Note: " + busyRes.note;
+    return { driver_id: null as string | null, note };
   }
 
-  return { driver_id: best.driver_id, note: "Nearest ONLINE driver in town selected (km=" + best.km.toFixed(3) + ")." };
-}
-
-function normStatus(v: any) {
-  return String(v ?? "").trim().toLowerCase();
+  let note = "Nearest ONLINE free driver selected (km=" + best.km.toFixed(3) + ").";
+  if (!busyRes.ok) note += " Note: " + busyRes.note;
+  return { driver_id: best.driver_id, note };
 }
 
 export async function POST(req: Request) {
@@ -111,11 +153,10 @@ export async function POST(req: Request) {
 
   const booking: any = bookingRes.data;
 
-  // ----- HARDENING: idempotency / no overwrite -----
+  // ----- 6G HARDENING: idempotent / no overwrite -----
   const curStatus = normStatus(booking.status);
   const alreadyHasDriver = !!booking.driver_id;
 
-  // If already assigned (or beyond), do NOT reassign.
   if (alreadyHasDriver && curStatus && curStatus !== "requested") {
     return NextResponse.json(
       {
@@ -133,9 +174,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // If it has a driver but status is missing/empty/requested, treat as assigned and do not overwrite.
   if (alreadyHasDriver) {
-    // Best-effort bump status to assigned if currently requested/empty.
     if (!curStatus || curStatus === "requested") {
       await bestEffortUpdateBooking(supabase, String(booking.id), { status: "assigned" });
       const reread = await fetchBookingByIdOrCode(supabase, String(booking.id), null);
@@ -172,7 +211,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Only assign when status is requested OR empty (some schemas might not have status)
   if (curStatus && curStatus !== "requested") {
     return NextResponse.json(
       {
@@ -198,7 +236,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, code: "MISSING_PICKUP_COORDS", message: "Missing pickup_lat/pickup_lng for assignment" }, { status: 400 });
   }
 
-  const pick = await findNearestOnlineDriverInTown(supabase, town, pickup_lat, pickup_lng);
+  // ----- 6H: busy lock applied here -----
+  const pick = await findNearestOnlineFreeDriverInTown(supabase, town, pickup_lat, pickup_lng);
   if (!pick.driver_id) {
     return NextResponse.json(
       { ok: false, code: "NO_DRIVER_AVAILABLE", message: "No available driver", note: pick.note },
@@ -206,7 +245,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Update only if driver_id is still null (we already checked, but keep logic defensive)
   const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: pick.driver_id, status: "assigned" });
 
   return NextResponse.json(
