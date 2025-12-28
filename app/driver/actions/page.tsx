@@ -27,8 +27,8 @@ type PostResp = {
   booking?: any;
 };
 
-function cx(a: string, b?: boolean) {
-  return b ? a : a + " opacity-50 cursor-not-allowed";
+function normList(v: any): string[] {
+  return (Array.isArray(v) ? v : []).map((x) => String(x));
 }
 
 export default function DriverActionsPage() {
@@ -41,17 +41,27 @@ export default function DriverActionsPage() {
   const canUseId = bookingId.trim().length > 0;
   const canUseCode = bookingCode.trim().length > 0;
 
-  async function doInspect() {
+  // Prevent acting on stale inspect data if user edits lookup inputs
+  React.useEffect(() => {
+    setInspect(null);
+    setPending("");
+  }, [bookingId, bookingCode]);
+
+  async function doInspect(opts?: { silent?: boolean }) {
     setPending("inspect");
-    setLog("");
+    if (!opts?.silent) setLog("");
+
     try {
       const qs = canUseId
         ? `booking_id=${encodeURIComponent(bookingId.trim())}`
         : `booking_code=${encodeURIComponent(bookingCode.trim())}`;
+
       const r = await fetch(`/api/dispatch/status?${qs}`, { cache: "no-store" });
       const j = (await r.json()) as Inspect;
+
       setInspect(j);
-      setLog(JSON.stringify(j, null, 2));
+
+      if (!opts?.silent) setLog(JSON.stringify(j, null, 2));
     } catch (e: any) {
       setInspect(null);
       setLog(String(e?.message || e));
@@ -62,6 +72,7 @@ export default function DriverActionsPage() {
 
   async function setStatus(nextStatus: string) {
     if (!inspect?.booking_id && !inspect?.booking_code) return;
+
     setPending(nextStatus);
     try {
       const body: any = {};
@@ -74,10 +85,14 @@ export default function DriverActionsPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const j = (await r.json()) as PostResp;
+
+      // Keep POST response visible
       setLog(JSON.stringify(j, null, 2));
-      // Refresh inspector after update
-      await doInspect();
+
+      // Refresh inspector silently so UI stays in sync without overwriting the POST log
+      await doInspect({ silent: true });
     } catch (e: any) {
       setLog(String(e?.message || e));
     } finally {
@@ -85,10 +100,11 @@ export default function DriverActionsPage() {
     }
   }
 
-  const allowed = (inspect?.allowed_next || []).map((s) => String(s));
+  const allowed = normList(inspect?.allowed_next);
 
   const btn = (label: string, st: string) => {
     const enabled = allowed.includes(st);
+
     return (
       <button
         onClick={() => enabled && setStatus(st)}
@@ -142,7 +158,7 @@ export default function DriverActionsPage() {
             </div>
 
             <button
-              onClick={doInspect}
+              onClick={() => doInspect()}
               disabled={pending.length > 0 || (!canUseId && !canUseCode)}
               className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
             >
@@ -156,7 +172,8 @@ export default function DriverActionsPage() {
               status: <span className="font-mono">{inspect?.current_status ?? "-"}</span>
             </div>
             <div className="mt-1">
-              allowed_next: <span className="font-mono">{(inspect?.allowed_next || []).join(", ") || "-"}</span>
+              allowed_next:{" "}
+              <span className="font-mono">{(inspect?.allowed_next || []).join(", ") || "-"}</span>
             </div>
           </div>
         </div>

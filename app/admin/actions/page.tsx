@@ -27,7 +27,11 @@ type PostResp = {
   booking?: any;
 };
 
-const ALL = ["requested","assigned","on_the_way","arrived","enroute","on_trip","completed","cancelled"];
+const ALL = ["requested", "assigned", "on_the_way", "arrived", "enroute", "on_trip", "completed", "cancelled"];
+
+function normList(v: any): string[] {
+  return (Array.isArray(v) ? v : []).map((x) => String(x));
+}
 
 export default function AdminActionsPage() {
   const [bookingId, setBookingId] = React.useState("");
@@ -41,17 +45,40 @@ export default function AdminActionsPage() {
   const canUseId = bookingId.trim().length > 0;
   const canUseCode = bookingCode.trim().length > 0;
 
-  async function doInspect() {
+  // Prevent acting on stale inspect data if user edits lookup inputs
+  React.useEffect(() => {
+    setInspect(null);
+    setPending("");
+    // keep log visible; but clear "Allowed now" confusion by resetting to default
+    setTarget("assigned");
+  }, [bookingId, bookingCode]);
+
+  async function doInspect(opts?: { silent?: boolean }) {
     setPending("inspect");
-    setLog("");
+    if (!opts?.silent) setLog("");
+
     try {
       const qs = canUseId
         ? `booking_id=${encodeURIComponent(bookingId.trim())}`
         : `booking_code=${encodeURIComponent(bookingCode.trim())}`;
+
       const r = await fetch(`/api/dispatch/status?${qs}`, { cache: "no-store" });
       const j = (await r.json()) as Inspect;
+
       setInspect(j);
-      setLog(JSON.stringify(j, null, 2));
+
+      // IMPORTANT: reset dropdown target based on the *new* server truth
+      // This avoids "Allowed now: NO" lies caused by stale target from a previous inspect/booking.
+      const allowedNext = normList(j.allowed_next);
+      const cs = j.current_status ? String(j.current_status) : "";
+      let nextTarget = "assigned";
+
+      if (allowedNext.length > 0) nextTarget = allowedNext[0];
+      else if (cs && ALL.includes(cs)) nextTarget = cs;
+
+      setTarget(nextTarget);
+
+      if (!opts?.silent) setLog(JSON.stringify(j, null, 2));
     } catch (e: any) {
       setInspect(null);
       setLog(String(e?.message || e));
@@ -62,6 +89,7 @@ export default function AdminActionsPage() {
 
   async function doSet() {
     if (!inspect?.booking_id && !inspect?.booking_code) return;
+
     setPending("set");
     try {
       const body: any = {};
@@ -75,9 +103,14 @@ export default function AdminActionsPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const j = (await r.json()) as PostResp;
+
+      // Keep the POST response visible
       setLog(JSON.stringify(j, null, 2));
-      await doInspect();
+
+      // Refresh inspect silently to keep UI in sync without overwriting the POST log
+      await doInspect({ silent: true });
     } catch (e: any) {
       setLog(String(e?.message || e));
     } finally {
@@ -85,8 +118,8 @@ export default function AdminActionsPage() {
     }
   }
 
-  const allowed = (inspect?.allowed_next || []).map((s) => String(s));
-  const isAllowed = allowed.includes(target);
+  const allowed = normList(inspect?.allowed_next);
+  const isAllowed = allowed.includes(String(target));
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -126,7 +159,7 @@ export default function AdminActionsPage() {
             </div>
 
             <button
-              onClick={doInspect}
+              onClick={() => doInspect()}
               disabled={pending.length > 0 || (!canUseId && !canUseCode)}
               className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
             >
@@ -140,7 +173,8 @@ export default function AdminActionsPage() {
               status: <span className="font-mono">{inspect?.current_status ?? "-"}</span>
             </div>
             <div className="mt-1">
-              allowed_next: <span className="font-mono">{(inspect?.allowed_next || []).join(", ") || "-"}</span>
+              allowed_next:{" "}
+              <span className="font-mono">{(inspect?.allowed_next || []).join(", ") || "-"}</span>
             </div>
             <div className="mt-1">
               has_driver: <span className="font-mono">{String(!!inspect?.has_driver)}</span>
@@ -164,7 +198,7 @@ export default function AdminActionsPage() {
               >
                 {ALL.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {s}{allowed.includes(s) ? " (allowed)" : ""}
                   </option>
                 ))}
               </select>
@@ -185,7 +219,7 @@ export default function AdminActionsPage() {
 
             <button
               onClick={doSet}
-              disabled={pending.length > 0 || !inspect?.booking_id && !inspect?.booking_code}
+              disabled={pending.length > 0 || (!inspect?.booking_id && !inspect?.booking_code)}
               className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
             >
               {pending === "set" ? "Working..." : "Set status"}
