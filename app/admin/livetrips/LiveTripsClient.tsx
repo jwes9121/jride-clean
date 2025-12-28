@@ -631,6 +631,18 @@ const id = normTripId(t);
                             >
                               Start trip
                             </button>
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const code = (t as any).booking_code ?? (t as any).bookingCode;
+                                if (!code) return;
+                                forceTripStatus(String(code), "on_trip").catch((err) => setLastAction(String(err?.message || err)));
+                              }}
+                              title="Admin override: force on_trip"
+                            >
+                              Force start
+                            </button>
 
                             <button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -639,6 +651,18 @@ const id = normTripId(t);
                               title={s !== "on_trip" ? "Allowed only when status=on_trip" : "Complete trip"}
                             >
                               Drop off
+                            </button>
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const code = (t as any).booking_code ?? (t as any).bookingCode;
+                                if (!code) return;
+                                forceTripStatus(String(code), "completed").catch((err) => setLastAction(String(err?.message || err)));
+                              }}
+                              title="Admin override: force completed"
+                            >
+                              Force end
                             </button>
                           </div>
                         </td>
@@ -707,6 +731,7 @@ const id = normTripId(t);
     </div>
   );
 }
+
 
 
 
