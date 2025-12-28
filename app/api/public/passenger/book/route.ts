@@ -32,47 +32,6 @@ function rand4() {
   return Math.floor(Math.random() * 10000).toString().padStart(4, "0");
 }
 
-function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-  const q = s1 * s1 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * s2 * s2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(q)));
-}
-
-function pickCoord(row: any) {
-  const lat =
-    typeof row.lat === "number" ? row.lat :
-    typeof row.latitude === "number" ? row.latitude :
-    typeof row.pickup_lat === "number" ? row.pickup_lat :
-    null;
-
-  const lng =
-    typeof row.lng === "number" ? row.lng :
-    typeof row.longitude === "number" ? row.longitude :
-    typeof row.pickup_lng === "number" ? row.pickup_lng :
-    null;
-
-  return { lat, lng };
-}
-
-function pickTown(row: any) {
-  const t = (row.town ?? row.zone ?? row.home_town ?? row.municipality ?? row.city ?? null);
-  return t ? String(t) : null;
-}
-
-function pickOnline(row: any) {
-  const v = row.status ?? row.driver_status ?? row.state ?? row.availability ?? null;
-  if (v === null || v === undefined) return { hasField: false, isOnline: true, raw: null };
-  const s = String(v).trim().toLowerCase();
-  const online = s === "online" || s === "available" || s === "idle" || s === "active";
-  const notOnline = s === "offline" || s === "on_trip" || s === "busy" || s === "assigned";
-  return { hasField: true, isOnline: online && !notOnline, raw: s };
-}
-
 async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
   const out: any = { ok: true };
 
@@ -159,61 +118,11 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
   return true;
 }
 
-async function bestEffortUpdateBooking(
-  supabase: ReturnType<typeof createClient>,
-  bookingId: string,
-  patch: Record<string, any>
-) {
-  const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
-  if (r.error) return { ok: false, error: r.error.message, data: null as any };
-  return { ok: true, error: null as any, data: r.data };
-}
-
-async function findNearestDriverSmart(
-  supabase: ReturnType<typeof createClient>,
-  town: string,
-  pickup_lat: number,
-  pickup_lng: number
-) {
-  const r = await supabase.from("driver_locations").select("*").limit(500);
-  if (r.error) return { driver_id: null as string | null, note: "driver_locations_latest query failed: " + r.error.message };
-
-  const rows = Array.isArray(r.data) ? r.data : [];
-  let best: { driver_id: string; km: number } | null = null;
-
-  let usedTownField = false;
-  let statusFieldSeen = false;
-
-  for (const row of rows) {
-    const dId = row.driver_id ? String(row.driver_id) : "";
-    if (!dId) continue;
-
-    const t = pickTown(row);
-    if (t !== null) usedTownField = true;
-    if (t !== null && t !== town) continue;
-
-    const st = pickOnline(row);
-    if (st.hasField) statusFieldSeen = true;
-    if (st.hasField && !st.isOnline) continue;
-
-    const c = pickCoord(row);
-    if (typeof c.lat !== "number" || typeof c.lng !== "number") continue;
-
-    const km = haversineKm(pickup_lat, pickup_lng, c.lat, c.lng);
-    if (!best || km < best.km) best = { driver_id: dId, km };
-  }
-
-  if (!best) {
-    let note = "No eligible drivers found.";
-    if (!usedTownField) note += " (No town/zone field detected; could not filter by town.)";
-    if (!statusFieldSeen) note += " (No status field detected; could not filter online only.)";
-    return { driver_id: null as string | null, note };
-  }
-
-  let note = "Nearest driver selected (km=" + best.km.toFixed(3) + ").";
-  if (!statusFieldSeen) note += " Note: no status field detected; selection may include offline drivers.";
-  if (!usedTownField) note += " Note: no town field detected; selection not town-filtered.";
-  return { driver_id: best.driver_id, note };
+async function getBaseUrlFromHeaders(req: Request) {
+  const h = req.headers;
+  const proto = h.get("x-forwarded-proto") || "https";
+  const host = h.get("x-forwarded-host") || h.get("host") || "";
+  return `${proto}://${host}`;
 }
 
 export async function POST(req: Request) {
@@ -245,7 +154,6 @@ export async function POST(req: Request) {
   };
 
   const ins = await supabase.from("bookings").insert(payload).select("*").maybeSingle();
-
   if (ins.error) {
     const payload2: any = { ...payload };
     delete payload2.status;
@@ -256,44 +164,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "BOOKING_INSERT_FAILED", message: ins2.error.message }, { status: 500 });
     }
 
-    const booking: any = ins2.data;
+    let booking: any = ins2.data;
 
-    await bestEffortUpdateBooking(supabase, String(booking.id), { status: "requested" });
+    // best-effort set status requested
+    await supabase.from("bookings").update({ status: "requested" }).eq("id", String(booking.id));
 
-    const town = String(booking.town || body.town || "");
-    const pLat = booking.pickup_lat;
-    const pLng = booking.pickup_lng;
-
+    // Phase 6H2: CALL DISPATCH ASSIGN (single source of truth, includes busy lock)
+    const baseUrl = await getBaseUrlFromHeaders(req);
     let assign: any = { ok: false, note: "Assignment skipped." };
-    if (town && typeof pLat === "number" && typeof pLng === "number") {
-      const pick = await findNearestDriverSmart(supabase, town, pLat, pLng);
-      if (pick.driver_id) {
-        const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: pick.driver_id, status: "assigned" });
-        assign = { ok: true, driver_id: pick.driver_id, note: pick.note, update_ok: upd.ok, update_error: upd.error };
-      } else {
-        assign = { ok: false, note: pick.note };
-      }
+    try {
+      const resp = await fetch(`${baseUrl}/api/dispatch/assign`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ booking_id: String(booking.id) }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      assign = j;
+    } catch (err: any) {
+      assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };
     }
 
-    return NextResponse.json({ ok: true, booking_code, booking: booking ?? null, assign }, { status: 200 });
+    // re-read booking for final status/driver_id
+    const reread = await supabase.from("bookings").select("*").eq("id", String(booking.id)).maybeSingle();
+    if (!reread.error && reread.data) booking = reread.data;
+
+    return NextResponse.json({ ok: true, booking_code, booking, assign }, { status: 200 });
   }
 
-  const booking: any = ins.data;
+  let booking: any = ins.data;
 
-  const town = String(booking.town || body.town || "");
-  const pLat = booking.pickup_lat;
-  const pLng = booking.pickup_lng;
-
+  // Phase 6H2: CALL DISPATCH ASSIGN (single source of truth, includes busy lock)
+  const baseUrl = await getBaseUrlFromHeaders(req);
   let assign: any = { ok: false, note: "Assignment skipped." };
-  if (town && typeof pLat === "number" && typeof pLng === "number") {
-    const pick = await findNearestDriverSmart(supabase, town, pLat, pLng);
-    if (pick.driver_id) {
-      const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: pick.driver_id, status: "assigned" });
-      assign = { ok: true, driver_id: pick.driver_id, note: pick.note, update_ok: upd.ok, update_error: upd.error };
-    } else {
-      assign = { ok: false, note: pick.note };
-    }
+  try {
+    const resp = await fetch(`${baseUrl}/api/dispatch/assign`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ booking_id: String(booking.id) }),
+    });
+    const j = await resp.json().catch(() => ({}));
+    assign = j;
+  } catch (err: any) {
+    assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };
   }
 
-  return NextResponse.json({ ok: true, booking_code, booking: booking ?? null, assign }, { status: 200 });
+  // re-read booking for final status/driver_id
+  const reread = await supabase.from("bookings").select("*").eq("id", String(booking.id)).maybeSingle();
+  if (!reread.error && reread.data) booking = reread.data;
+
+  return NextResponse.json({ ok: true, booking_code, booking, assign }, { status: 200 });
 }
