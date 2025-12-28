@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+/* JRIDE_ENV_ECHO */
+function jrideEnvEcho() {
+  const u = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  let host = "";
+  try { host = u ? new URL(u).host : ""; } catch { host = ""; }
+  return {
+    supabase_host: host || null,
+    vercel_env: process.env.VERCEL_ENV || null,
+    nextauth_url: process.env.NEXTAUTH_URL || null
+  };
+}
+/* JRIDE_ENV_ECHO_END */
+
 type BookReq = {
   passenger_name?: string | null;
   town?: string | null;
@@ -188,7 +201,7 @@ export async function POST(req: Request) {
     const reread = await supabase.from("bookings").select("*").eq("id", String(booking.id)).maybeSingle();
     if (!reread.error && reread.data) booking = reread.data;
 
-    return NextResponse.json({ ok: true, booking_code, booking, assign }, { status: 200 });
+    return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign }, { status: 200 });
   }
 
   let booking: any = ins.data;
@@ -212,5 +225,5 @@ export async function POST(req: Request) {
   const reread = await supabase.from("bookings").select("*").eq("id", String(booking.id)).maybeSingle();
   if (!reread.error && reread.data) booking = reread.data;
 
-  return NextResponse.json({ ok: true, booking_code, booking, assign }, { status: 200 });
+  return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign }, { status: 200 });
 }

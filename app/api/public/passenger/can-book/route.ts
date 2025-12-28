@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+/* JRIDE_ENV_ECHO */
+function jrideEnvEcho() {
+  const u = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  let host = "";
+  try { host = u ? new URL(u).host : ""; } catch { host = ""; }
+  return {
+    supabase_host: host || null,
+    vercel_env: process.env.VERCEL_ENV || null,
+    nextauth_url: process.env.NEXTAUTH_URL || null
+  };
+}
+/* JRIDE_ENV_ECHO_END */
+
 type CanBookReq = {
   town?: string | null;
   service?: string | null;
@@ -179,8 +192,8 @@ export async function GET() {
   const v = await resolvePassengerVerification(supabase);
   const w = await resolvePassengerWallet(supabase);
 
-  return NextResponse.json(
-    {
+  return NextResponse.json({
+  env: jrideEnvEcho(),
       ok: true,
       nightGate,
       window: "20:00-05:00 Asia/Manila",
@@ -208,8 +221,8 @@ export async function POST(req: Request) {
   const w = await resolvePassengerWallet(supabase);
 
   if (nightGate && !v.verified) {
-    return NextResponse.json(
-      {
+    return NextResponse.json({
+  env: jrideEnvEcho(),
         ok: false,
         code: "NIGHT_GATE_UNVERIFIED",
         message: "Booking is restricted from 8PM to 5AM unless verified.",
@@ -224,8 +237,8 @@ export async function POST(req: Request) {
   }
 
   if (!w.ok) {
-    return NextResponse.json(
-      {
+    return NextResponse.json({
+  env: jrideEnvEcho(),
         ok: false,
         code: "WALLET_PRECHECK_FAILED",
         message: "Wallet precheck failed (locked or insufficient balance).",
@@ -240,8 +253,8 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json(
-    {
+  return NextResponse.json({
+  env: jrideEnvEcho(),
       ok: true,
       nightGate,
       allowed: true,
