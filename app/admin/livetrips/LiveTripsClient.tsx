@@ -81,6 +81,13 @@ const STUCK_THRESHOLDS_MIN = {
   on_trip: 25,
 };
 
+function prettyStatus(s: any) {
+  const v = String(s ?? "").trim().toLowerCase().replace(/[\s\-]+/g, "_");
+  if (v === "arrived") return "arrived (pickup reached)";
+  if (v === "on_the_way") return "on_the_way";
+  if (v === "on_trip") return "on_trip";
+  return v || "requested";
+}
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
@@ -764,6 +771,7 @@ const id = normTripId(t);
     </div>
   );
 }
+
 
 
 

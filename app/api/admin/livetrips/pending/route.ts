@@ -21,7 +21,7 @@ export async function GET() {
 
     // Get bookings with status 'pending' or 'searching' and no assigned driver
     const query =
-      "status=in.(pending,searching)&assigned_driver_id=is.null&order=created_at.asc";
+      "status=in.(pending,searching,arrived)&assigned_driver_id=is.null&order=created_at.asc";
     const url = `${SUPABASE_URL}/rest/v1/bookings?${query}&select=id,booking_code,status,assigned_driver_id,created_at,pickup_lat,pickup_lng`;
 
     const res = await fetch(url, {
@@ -83,4 +83,5 @@ export async function GET() {
     );
   }
 }
+
 

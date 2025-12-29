@@ -30,7 +30,7 @@ export async function GET() {
     // Pending: pending / searching with no assigned driver
     const pendingQuery = [
       `select=${selectCols}`,
-      "status=in.(pending,searching)",
+      "status=in.(pending,searching,arrived)",
       "assigned_driver_id=is.null",
       "order=created_at.asc",
     ].join("&");
@@ -164,4 +164,5 @@ export async function GET() {
     );
   }
 }
+
 
