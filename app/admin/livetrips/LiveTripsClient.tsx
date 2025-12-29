@@ -635,7 +635,15 @@ const id = normTripId(t);
                               On the way
                             </button>
 
-                            <button
+                                                        <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                              onClick={(e) => { e.stopPropagation(); if (!t.booking_code) return; updateTripStatus(t.booking_code, "arrived").then(loadPage).catch((err) => setLastAction(String(err?.message || err))); }}
+                              disabled={s !== "on_the_way"}
+                              title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Arrived at pickup"}
+                            >
+                              Arrived
+                            </button>
+<button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                               onClick={(e) => { e.stopPropagation(); if (!t.booking_code) return; updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err))); }}
                               disabled={s !== "on_the_way"}
@@ -643,7 +651,7 @@ const id = normTripId(t);
                             >
                               Start trip
                             </button>
-                            <button
+                            {(["on_the_way","arrived","enroute"].includes(s)) ? (<button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -654,7 +662,7 @@ const id = normTripId(t);
                               title="Admin override: force on_trip"
                             >
                               Force start
-                            </button>
+                            </button>) : null}
 
                             <button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
@@ -664,7 +672,7 @@ const id = normTripId(t);
                             >
                               Drop off
                             </button>
-                            <button
+                            {(s === "on_trip") ? (<button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -675,14 +683,14 @@ const id = normTripId(t);
                               title="Admin override: force completed"
                             >
                               Force end
-                            </button>
-                            <button
+                            </button>) : null}
+                            {(s !== "completed" && s !== "cancelled") ? (<button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
                               onClick={(e) => { e.stopPropagation(); purgeBrokenTrips().catch((err) => setLastAction(String(err?.message || err))); }}
                               title="Admin ops: cancels live trips missing booking_code"
                             >
                               Purge broken trips
-                            </button>
+                            </button>) : null}
                           </div>
                         </td>
                       </tr>
@@ -750,6 +758,7 @@ const id = normTripId(t);
     </div>
   );
 }
+
 
 
 
