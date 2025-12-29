@@ -176,6 +176,7 @@ type FilterKey =
   | "pending"
   | "assigned"
   | "on_the_way"
+  | "arrived"
   | "on_trip"
   | "completed"
   | "cancelled"
@@ -377,6 +378,7 @@ async function loadPage() {
       pending: 0,
       assigned: 0,
       on_the_way: 0,
+      arrived: 0,
       on_trip: 0,
       completed: 0,
       cancelled: 0,
@@ -387,6 +389,7 @@ async function loadPage() {
       if (s === "pending") c.pending++;
       if (s === "assigned") c.assigned++;
       if (s === "on_the_way") c.on_the_way++;
+      if (s === "arrived") c.arrived++;
       if (s === "on_trip") c.on_trip++;
       if (s === "completed") c.completed++;
       if (s === "cancelled") c.cancelled++;
@@ -519,7 +522,10 @@ async function loadPage() {
         <button className={pillClass(tripFilter === "on_the_way")} onClick={() => setFilterAndFocus("on_the_way")}>
           On the way <span className="text-xs opacity-80">{counts.on_the_way}</span>
         </button>
-        <button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>
+                <button className={pillClass(tripFilter === "arrived")} onClick={() => setFilterAndFocus("arrived")}>
+          Arrived <span className="text-xs opacity-80">{counts.arrived}</span>
+        </button>
+<button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>
           On trip <span className="text-xs opacity-80">{counts.on_trip}</span>
         </button>
         <button className={pillClass(tripFilter === "completed")} onClick={() => setFilterAndFocus("completed")}>
@@ -558,7 +564,7 @@ async function loadPage() {
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4" ref={tableRef}>
         <div className="rounded-lg border">
           <div className="p-3 border-b flex items-center justify-between">
-            <div className="font-semibold">{tripFilter === "dispatch" ? "Dispatch view (Pending + Assigned + On the way)" : "Trips"}</div>
+            <div className="font-semibold">{tripFilter === "dispatch" ? "Dispatch view (Pending + Assigned + On the way + Arrived)" : "Trips"}</div>
             <div className="text-xs text-gray-600">{visibleTrips.length} shown</div>
           </div>
 
@@ -758,6 +764,7 @@ const id = normTripId(t);
     </div>
   );
 }
+
 
 
 
