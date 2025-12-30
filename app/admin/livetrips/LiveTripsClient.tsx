@@ -168,7 +168,7 @@ function computeIsProblem(t: TripRow): boolean {
   const mins = minutesSince(t.updated_at || t.created_at || null);
 
   const isStuck =
-    (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
+    ((s === "on_the_way" || s === "arrived" || s === "enroute") && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
 
   const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
