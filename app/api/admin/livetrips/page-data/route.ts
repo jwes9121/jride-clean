@@ -111,7 +111,7 @@ export async function GET(req: Request) {
             status: b?.status ?? null,
             town: b?.town ?? null,
             zone: b?.town ?? null,
-            driver_id: b?.driver_id ?? null,
+            driver_id: b?.driver_id ?? (b as any)?.assigned_driver_id ?? null,
 
             pickup_lat: b?.pickup_lat ?? null,
             pickup_lng: b?.pickup_lng ?? null,

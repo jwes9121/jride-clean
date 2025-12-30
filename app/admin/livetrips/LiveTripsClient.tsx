@@ -356,10 +356,14 @@ async function loadPage() {
   const stuckTripIds = useMemo(() => {
   const stuck = new Set<string>();
 
-  const isDriverTrip = (t: any) => !!(t && ((t as any).driver_id ?? (t as any).driverId));
+  const isDriverTrip = (t: any) =>
+    !!(t && (((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) != null));
 
   // Only driver-backed trips can be "stuck"
-  for (const t of allTrips) {
+  const isDriverTripLocal = (t: any) =>
+      !!(t && (((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) != null));
+    const baseTrips = allTrips.filter(isDriverTripLocal);
+    for (const t of baseTrips) {
     if (!isDriverTrip(t)) continue;
 
     const statusNorm = normStatus((t as any).status);
@@ -393,7 +397,10 @@ async function loadPage() {
       cancelled: 0,
       problem: 0,
     };
-    for (const t of allTrips) {
+    const isDriverTripLocal = (t: any) =>
+      !!(t && (((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) != null));
+    const baseTrips = allTrips.filter(isDriverTripLocal);
+    for (const t of baseTrips) {
       const s = normStatus(t.status);
       if (s === "pending") c.pending++;
       if (s === "assigned") c.assigned++;
@@ -412,7 +419,8 @@ async function loadPage() {
   const visibleTrips = useMemo(() => {
   const f = tripFilter;
 
-  const isDriverTrip = (t: any) => !!(t && ((t as any).driver_id ?? (t as any).driverId));
+  const isDriverTrip = (t: any) =>
+    !!(t && (((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) != null));
 
   // Driver-backed only (exclude vendor/takeout-like bookings with no driver)
   const base = allTrips.filter(isDriverTrip);
