@@ -74,6 +74,79 @@ export async function GET(req: Request) {
 
     // 2) Extract trips safely (do NOT mutate rpcData output)
     const tripsRaw = extractTripsAnyShape(rpcData);
+
+    // FALLBACK_ACTIVE_BOOKINGS_MERGE_BEGIN
+    // If RPC doesn't include some active statuses (ex: 'arrived'), we still want them in the table.
+    // We pull directly from bookings and merge any missing by id/booking_code.
+    const existingCodes = new Set(
+      (tripsRaw as any[])
+        .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+        .map((v: any) => (v ? String(v).trim() : ""))
+        .filter(Boolean)
+    );
+    const existingIds = new Set(
+      (tripsRaw as any[])
+        .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+        .map((v: any) => (v ? String(v).trim() : ""))
+        .filter(Boolean)
+    );
+
+    const ACTIVE_STATUSES = ["assigned", "on_the_way", "arrived", "enroute", "on_trip"];
+
+    try {
+      const { data: activeRows, error: activeErr } = await supabase
+        .from("bookings")
+        .select("*")
+        .in("status", ACTIVE_STATUSES)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (activeErr) {
+        console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+      } else if (Array.isArray(activeRows) && activeRows.length) {
+        for (const b of activeRows) {
+          const bid = b?.id != null ? String(b.id) : "";
+          const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+
+          // Merge only if missing from RPC list
+          if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+
+          // Shape into a "trip-like" object for the frontend
+          const tripLike: any = {
+            id: bid || null,
+            uuid: bid || null,
+            booking_id: bid || null,
+            booking_code: bcode || null,
+            status: b?.status ?? null,
+            town: b?.town ?? null,
+            zone: b?.town ?? null,
+            driver_id: b?.driver_id ?? null,
+
+            pickup_lat: b?.pickup_lat ?? null,
+            pickup_lng: b?.pickup_lng ?? null,
+            dropoff_lat: b?.dropoff_lat ?? null,
+            dropoff_lng: b?.dropoff_lng ?? null,
+
+            // labels (support both naming styles)
+            pickup_label: b?.pickup_label ?? b?.from_label ?? null,
+            dropoff_label: b?.dropoff_label ?? b?.to_label ?? null,
+
+            created_at: b?.created_at ?? null,
+            updated_at: b?.updated_at ?? null,
+            trip_type: b?.trip_type ?? null,
+            vendor_id: b?.vendor_id ?? null
+          };
+
+          (tripsRaw as any[]).push(tripLike);
+
+          if (bid) existingIds.add(bid);
+          if (bcode) existingCodes.add(bcode);
+        }
+      }
+    } catch (e: any) {
+      console.error("LIVETRIPS_FALLBACK_ACTIVE_EXCEPTION", e?.message || e);
+    }
+    // FALLBACK_ACTIVE_BOOKINGS_MERGE_END
     // --- ARRIVED_INJECTOR_START ---
     // If the RPC does not include 'arrived' trips, inject them directly from bookings so LiveTrips can show Arrived immediately.
     // We only select known-safe columns to avoid schema assumptions.
@@ -300,4 +373,5 @@ export async function GET(req: Request) {
     return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
   }
 }
+
 
