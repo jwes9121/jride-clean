@@ -658,7 +658,7 @@ const id = normTripId(t);
                                                         <button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                               onClick={(e) => { e.stopPropagation(); if (!t.booking_code) return; updateTripStatus(t.booking_code, "arrived").then(loadPage).catch((err) => setLastAction(String(err?.message || err))); }}
-                              disabled={!["arrived","enroute"].includes(s)}
+                              disabled={s !== "on_the_way"}
                               title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Arrived at pickup"}
                             >
                               Arrived
