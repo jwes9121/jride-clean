@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 function safeText(v: any) {
   if (v == null) return "-";
@@ -125,7 +125,7 @@ function minutesSince(iso?: string | null): number {
 }
 
 function isActiveTripStatus(s: string) {
-  return ["pending", "assigned", "on_the_way", "on_trip"].includes(s);
+  return ["pending","assigned","on_the_way","arrived","enroute","on_trip"].includes(s);
 }
 
 function statusBadgeClass(s: string, isProblem: boolean, stale: boolean) {
@@ -184,6 +184,7 @@ type FilterKey =
   | "assigned"
   | "on_the_way"
   | "arrived"
+  | "enroute"
   | "on_trip"
   | "completed"
   | "cancelled"
@@ -371,7 +372,7 @@ async function loadPage() {
 
     const ageMin = minutesSince(lastSeenIso);
     const isStale =
-      (["assigned", "on_the_way", "on_trip"].includes(statusNorm) && ageMin >= 3);
+      (["assigned","on_the_way","arrived","enroute","on_trip"].includes(statusNorm) && ageMin >= 3);
 
     if (isStale) stuck.add(normTripId(t as any));
   }
@@ -386,6 +387,7 @@ async function loadPage() {
       assigned: 0,
       on_the_way: 0,
       arrived: 0,
+      enroute: 0,
       on_trip: 0,
       completed: 0,
       cancelled: 0,
@@ -397,10 +399,11 @@ async function loadPage() {
       if (s === "assigned") c.assigned++;
       if (s === "on_the_way") c.on_the_way++;
       if (s === "arrived") c.arrived++;
+      if (s === "enroute") c.enroute++;
       if (s === "on_trip") c.on_trip++;
       if (s === "completed") c.completed++;
       if (s === "cancelled") c.cancelled++;
-      if (["pending", "assigned", "on_the_way"].includes(s)) c.dispatch++;
+      if (["assigned","on_the_way","arrived","enroute","on_trip"].includes(s)) c.dispatch++;
       if (computeIsProblem(t)) c.problem++;
     }
     return c;
@@ -417,7 +420,7 @@ async function loadPage() {
   let out: TripRow[] = [];
 
   if (f === "dispatch") {
-    out = base.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus((t as any).status)));
+    out = base.filter((t) => ["assigned","on_the_way","arrived","enroute","on_trip"].includes(normStatus((t as any).status)));
   } else if (f === "problem") {
     out = base.filter((t) => stuckTripIds.has(normTripId(t as any)));
   } else if (f === "on_the_way") {
@@ -531,6 +534,10 @@ async function loadPage() {
         </button>
                 <button className={pillClass(tripFilter === "arrived")} onClick={() => setFilterAndFocus("arrived")}>
           Arrived <span className="text-xs opacity-80">{counts.arrived}</span>
+        </button>
+
+        <button className={pillClass(tripFilter === "enroute")} onClick={() => setFilterAndFocus("enroute")}>
+          Enroute <span className="text-xs opacity-80">{counts.enroute}</span>
         </button>
 <button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>
           On trip <span className="text-xs opacity-80">{counts.on_trip}</span>
@@ -651,7 +658,7 @@ const id = normTripId(t);
                                                         <button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                               onClick={(e) => { e.stopPropagation(); if (!t.booking_code) return; updateTripStatus(t.booking_code, "arrived").then(loadPage).catch((err) => setLastAction(String(err?.message || err))); }}
-                              disabled={s !== "on_the_way"}
+                              disabled={!["arrived","enroute"].includes(s)}
                               title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Arrived at pickup"}
                             >
                               Arrived
@@ -659,8 +666,8 @@ const id = normTripId(t);
 <button
                               className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                               onClick={(e) => { e.stopPropagation(); if (!t.booking_code) return; updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err))); }}
-                              disabled={s !== "on_the_way"}
-                              title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Start trip"}
+                              disabled={!["arrived","enroute"].includes(s)}
+                              title={!["arrived","enroute"].includes(s) ? "Allowed only when status=arrived/enroute" : "Start trip"}
                             >
                               Start trip
                             </button>
