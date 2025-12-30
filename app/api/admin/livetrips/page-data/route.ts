@@ -74,6 +74,63 @@ export async function GET(req: Request) {
 
     // 2) Extract trips safely (do NOT mutate rpcData output)
     const tripsRaw = extractTripsAnyShape(rpcData);
+    // --- ARRIVED_INJECTOR_START ---
+    // If the RPC does not include 'arrived' trips, inject them directly from bookings so LiveTrips can show Arrived immediately.
+    // We only select known-safe columns to avoid schema assumptions.
+    const rpcIds = new Set(
+      tripsRaw
+        .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+        .map((v: any) => (v ? String(v).trim() : ""))
+        .filter(Boolean)
+    );
+
+    const rpcCodes = new Set(
+      tripsRaw
+        .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+        .map((v: any) => (v ? String(v).trim() : ""))
+        .filter(Boolean)
+    );
+
+    // Pull arrived bookings (these often get omitted by RPC filters upstream)
+    const { data: arrivedRows, error: arrivedErr } = await supabase
+      .from("bookings")
+      .select("id, booking_code, status, town, driver_id, vendor_id, trip_type")
+      .eq("status", "arrived")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (arrivedErr) {
+      console.error("LIVETRIPS_ARRIVED_INJECT_ERROR", arrivedErr);
+    } else if (arrivedRows?.length) {
+      const arrivedTrips = (arrivedRows as any[])
+        .filter((b) => {
+          const id = b?.id ? String(b.id) : "";
+          const code = b?.booking_code ? String(b.booking_code) : "";
+          if (id && rpcIds.has(id)) return false;
+          if (code && rpcCodes.has(code)) return false;
+          return true;
+        })
+        .map((b) => ({
+          id: b.id,
+          uuid: b.id,
+          booking_code: b.booking_code,
+          status: b.status,
+          driver_id: b.driver_id ?? null,
+          vendor_id: b.vendor_id ?? null,
+          trip_type: b.trip_type ?? null,
+          zone: b.town ?? null,
+          town: b.town ?? null,
+          __injected: true
+        }));
+
+      if (arrivedTrips.length) {
+        // Merge: keep RPC trips first (rich data), then injected arrived (minimal but visible in UI)
+        tripsRaw.push(...arrivedTrips);
+        console.log("LIVETRIPS_ARRIVED_INJECTED_COUNT", arrivedTrips.length);
+      }
+    }
+    // --- ARRIVED_INJECTOR_END ---
+
 
     // 3) Gather booking codes + ids from trips
     const bookingCodes = uniq(
@@ -243,3 +300,4 @@ export async function GET(req: Request) {
     return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
   }
 }
+
