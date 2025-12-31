@@ -125,7 +125,7 @@ function minutesSince(iso?: string | null): number {
 }
 
 function isActiveTripStatus(s: string) {
-  return ["pending","assigned","on_the_way","arrived","enroute","on_trip"].includes(s);
+  return ["pending", "assigned", "on_the_way", "arrived", "enroute", "on_trip"].includes(s);
 }
 
 function statusBadgeClass(s: string, isProblem: boolean, stale: boolean) {
@@ -163,22 +163,50 @@ function freshnessText(mins: number) {
   return `${mins} min ago`;
 }
 
-function computeIsProblem(t: TripRow): boolean {
+function computeProblemReason(t: TripRow): string | null {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
 
-  const isStuck =
-    ((s === "on_the_way" || s === "arrived" || s === "enroute") && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
-    (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
+  const driverAny =
+    ((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) ?? null;
 
   const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
   const hasDropoff = Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
-  const missingCoords = isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
 
-  return isStuck || missingCoords;
+  // 1) Active trip missing coordinates (actionable: fix booking coords)
+  if (isActiveTripStatus(s) && (!hasPickup || !hasDropoff)) {
+    return "Missing pickup/dropoff coordinates";
+  }
+
+  // 2) Status says assigned but no driver linked (actionable: assign a driver)
+  if (s === "assigned" && !driverAny) {
+    return "Assigned but no driver linked";
+  }
+
+  // 3) Stuck logic (first-class: on_the_way, arrived, on_trip)
+  if (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) {
+    return `On the way stale (${mins}m)`;
+  }
+
+  if (s === "arrived" && mins >= (STUCK_THRESHOLDS_MIN as any).arrived) {
+    return `Arrived stale (${mins}m)`;
+  }
+
+  if (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip) {
+    return `On trip stale (${mins}m)`;
+  }
+
+  // Optional: enroute can be treated like arrived if you use it
+  if (s === "enroute" && mins >= (STUCK_THRESHOLDS_MIN as any).arrived) {
+    return `Enroute stale (${mins}m)`;
+  }
+
+  return null;
 }
 
-type FilterKey =
+function computeIsProblem(t: TripRow): boolean {
+  return !!computeProblemReason(t);
+}type FilterKey =
   | "dispatch"
   | "pending"
   | "assigned"
