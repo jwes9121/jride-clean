@@ -92,6 +92,26 @@ function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
 
+
+function hasDriver(t: any): boolean {
+  if (!t) return false;
+  const v =
+    (t as any).driver_id ??
+    (t as any).assigned_driver_id ??
+    (t as any).assignedDriverId ??
+    (t as any).driverId ??
+    null;
+  return v != null && String(v).length > 0;
+}
+
+// UI-effective status:
+// If backend says "assigned" but no driver is attached, treat as "pending"
+function effectiveStatus(t: any): string {
+  const s = normStatus((t as any)?.status);
+  if (s === "assigned" && !hasDriver(t)) return "pending";
+  if (s === "requested") return "pending";
+  return s;
+}
 function normTripId(t: TripRow): string {
   return String(t.uuid || t.id || t.booking_code || "");
 }
@@ -413,61 +433,59 @@ async function loadPage() {
 }, [allTrips]);
 
   const counts = useMemo(() => {
-    const c = {
-      dispatch: 0,
-      pending: 0,
-      assigned: 0,
-      on_the_way: 0,
-      arrived: 0,
-      enroute: 0,
-      on_trip: 0,
-      completed: 0,
-      cancelled: 0,
-      problem: 0,
-    };
-    const isDriverTripLocal = (t: any) =>
-      !!(t && (((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) != null));
-    const baseTrips = allTrips.filter(isDriverTripLocal);
-    for (const t of baseTrips) {
-      const s = normStatus(t.status);
-      if (s === "pending") c.pending++;
-      if (s === "assigned") c.assigned++;
-      if (s === "on_the_way") c.on_the_way++;
-      if (s === "arrived") c.arrived++;
-      if (s === "enroute") c.enroute++;
-      if (s === "on_trip") c.on_trip++;
-      if (s === "completed") c.completed++;
-      if (s === "cancelled") c.cancelled++;
-      if (["assigned","on_the_way","arrived","enroute","on_trip"].includes(s)) c.dispatch++;
-      if (computeIsProblem(t)) c.problem++;
-    }
-    return c;
-  }, [allTrips]);
+  const c = {
+    dispatch: 0,
+    pending: 0,
+    assigned: 0,
+    on_the_way: 0,
+    arrived: 0,
+    enroute: 0,
+    on_trip: 0,
+    completed: 0,
+    cancelled: 0,
+    problem: 0,
+  };
+
+  for (const t of allTrips) {
+    const s = effectiveStatus(t);
+
+    if (s === "pending") c.pending++;
+    if (s === "assigned") c.assigned++;
+    if (s === "on_the_way") c.on_the_way++;
+    if (s === "arrived") c.arrived++;
+    if (s === "enroute") c.enroute++;
+    if (s === "on_trip") c.on_trip++;
+    if (s === "completed") c.completed++;
+    if (s === "cancelled") c.cancelled++;
+
+    if (["pending","assigned","on_the_way","arrived","enroute","on_trip"].includes(s)) c.dispatch++;
+
+    if (computeIsProblem(t)) c.problem++;
+  }
+
+  return c;
+}, [allTrips]);
 
   const visibleTrips = useMemo(() => {
   const f = tripFilter;
 
-  const isDriverTrip = (t: any) =>
-    !!(t && (((t as any).driver_id ?? (t as any).assigned_driver_id ?? (t as any).driverId) != null));
-
-  // Driver-backed only (exclude vendor/takeout-like bookings with no driver)
-  const base = allTrips.filter(isDriverTrip);
-
   let out: TripRow[] = [];
 
   if (f === "dispatch") {
-    out = base.filter((t) => ["assigned","on_the_way","arrived","enroute","on_trip"].includes(normStatus((t as any).status)));
+    out = allTrips.filter((t) =>
+      ["pending","assigned","on_the_way","arrived","enroute","on_trip"].includes(effectiveStatus(t))
+    );
   } else if (f === "problem") {
-    out = base.filter((t) => stuckTripIds.has(normTripId(t as any)));
+    out = allTrips.filter((t) => stuckTripIds.has(normTripId(t as any)));
   } else if (f === "on_the_way") {
-    out = base.filter((t) => normStatus((t as any).status) === "on_the_way");
+    out = allTrips.filter((t) => effectiveStatus(t) === "on_the_way");
   } else {
-    out = base.filter((t) => normStatus((t as any).status) === f);
+    out = allTrips.filter((t) => effectiveStatus(t) === f);
   }
 
   out.sort((a, b) => {
-    const ta = new Date((a as any).updated_at || (a as any).created_at || (0 as any)).getTime() || 0;
-    const tb = new Date((b as any).updated_at || (b as any).created_at || (0 as any)).getTime() || 0;
+    const ta = new Date((a as any).updated_at || (a as any).created_at || 0).getTime() || 0;
+    const tb = new Date((b as any).updated_at || (b as any).created_at || 0).getTime() || 0;
     return tb - ta;
   });
 
