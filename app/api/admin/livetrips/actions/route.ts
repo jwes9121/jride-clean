@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-type ActionName = "NUDGE_DRIVER" | "REASSIGN_DRIVER" | "AUTO_ASSIGN";
+type ActionName = "NUDGE_DRIVER" | "REASSIGN_DRIVER" | "AUTO_ASSIGN" | "ARCHIVE_TEST_TRIPS";
 
 function num(v: any): number | null {
   const n = typeof v === "number" ? v : Number(v);
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const booking_code = body?.booking_code ? String(body.booking_code) : null;
   const trip_id = body?.trip_id ? String(body.trip_id) : null;
 
-  if (!action || !["NUDGE_DRIVER", "REASSIGN_DRIVER", "AUTO_ASSIGN"].includes(action)) {
+  if (!action || !["NUDGE_DRIVER", "REASSIGN_DRIVER", "AUTO_ASSIGN", "ARCHIVE_TEST_TRIPS"].includes(action)) {
     return NextResponse.json({ ok: false, code: "BAD_ACTION", action }, { status: 400 });
   }
   if (!booking_code && !trip_id) {
@@ -69,7 +69,33 @@ export async function POST(req: Request) {
   // always bump updated_at if it exists
   if (can("updated_at")) patch.updated_at = new Date().toISOString();
 
-  if (action === "NUDGE_DRIVER") {
+  
+
+  if (action === "ARCHIVE_TEST_TRIPS") {
+    // Bulk cleanup: archive TEST-% trips still in active statuses.
+    // If updated_at exists, only archive those older than 2 hours (avoid touching fresh tests).
+    const active = ["pending", "assigned", "on_the_way", "arrived", "enroute", "on_trip"];
+
+    const patch2: Record<string, any> = { status: "completed" };
+    if (can("updated_at")) patch2.updated_at = new Date().toISOString();
+
+    const q0 = supabase
+      .from("bookings")
+      .update(patch2)
+      .ilike("booking_code", "TEST-%")
+      .in("status", active);
+
+    const q = can("updated_at")
+      ? q0.lt("updated_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+      : q0;
+
+    const { error } = await q;
+    if (error) {
+      return NextResponse.json({ ok: false, code: "ARCHIVE_FAILED", message: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true, action });
+  }
+if (action === "NUDGE_DRIVER") {
     // Non-destructive: just bump updated_at so stale watchers can clear when driver is actually active
     return NextResponse.json({ ok: true, action, booking_code: b.booking_code ?? booking_code, patched: patch });
   }
