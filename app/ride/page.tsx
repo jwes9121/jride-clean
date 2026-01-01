@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -58,8 +58,7 @@ function norm(s: any): string {
   return String(s || "").trim();
 }
 
-function normUpper
-(s: any): string {
+function normUpper(s: any): string {
   return norm(s).toUpperCase();
 }
 
@@ -489,7 +488,7 @@ export default function RidePage() {
         ) : null}
 
         <div className="mt-3 grid grid-cols-1 gap-3">
-          {canInfo && canInfo.verification_note ? (
+          {canInfo && canInfo.verification_note && canInfo.verification_note.toLowerCase().indexOf("not signed in") < 0 ? (
             <div className="text-xs opacity-70 rounded-xl border border-black/10 p-3">
               <div className="font-semibold">Verification lookup</div>
               <div className="mt-1">
@@ -499,7 +498,7 @@ export default function RidePage() {
             </div>
           ) : null}
 
-          {canInfo && canInfo.wallet_note !== undefined ? (
+          {canInfo && canInfo.wallet_note !== undefined && String(canInfo.wallet_note).toLowerCase().indexOf("not signed in") < 0 ? (
             <div className="text-xs opacity-70 rounded-xl border border-black/10 p-3">
               <div className="font-semibold">Wallet precheck</div>
               <div className="mt-1">
