@@ -59,18 +59,20 @@ function norm(s: any): string {
 }
 
 function normUpper
-function verificationStatusLabel(info: any): string {
-  if (!info) return "Not submitted";
-  if (info.verified === true) return "Verified";
-  const note = String(info.verification_note || "").toLowerCase();
-  if (note.indexOf("dispatcher") >= 0) return "Pending admin approval";
-  if (note) return "Submitted (dispatcher review)";
-  return "Not submitted";
-}
 (s: any): string {
   return norm(s).toUpperCase();
 }
 
+
+function verificationStatusLabel(info: any): string {
+  if (!info) return "Not submitted";
+  if (info.verified === true) return "Verified";
+  const note = String(info.verification_note || "").toLowerCase();
+  if (note.indexOf("pre_approved_dispatcher") >= 0) return "Pending admin approval";
+  if (note.indexOf("dispatcher") >= 0) return "Pending admin approval";
+  if (note) return "Submitted (dispatcher review)";
+  return "Not submitted";
+}
 export default function RidePage() {
   const router = useRouter();
 
