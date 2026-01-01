@@ -48,7 +48,14 @@ function truthy(v: any) {
 }
 
 async function resolvePassengerVerification(supabase: ReturnType<typeof createClient>) {
-  const out = { verified: false, source: "none" as "none" | "passengers", note: "" as string };
+  const out = {
+    verified: false,
+    source: "none" as "none" | "passengers" | "passenger_verifications",
+    note: "" as string,
+    status: "not_submitted" as "not_submitted" | "submitted" | "pending_admin" | "verified" | "rejected",
+    raw_status: "" as string,
+  };
+
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes?.user;
 
@@ -60,32 +67,83 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
   const email = user.email ?? null;
   const userId = user.id;
 
+  function mapRawStatus(raw: any): "not_submitted" | "submitted" | "pending_admin" | "verified" | "rejected" {
+    const s = String(raw || "").trim();
+    const u = s.toLowerCase();
+    if (!u) return "not_submitted";
+    if (u === "approved_admin") return "verified";
+    if (u === "pre_approved_dispatcher") return "pending_admin";
+    if (u === "pending") return "submitted";
+    if (u === "rejected") return "rejected";
+    if (u.indexOf("approved") >= 0) return "verified";
+    if (u.indexOf("pre_approved") >= 0) return "pending_admin";
+    if (u.indexOf("pending") >= 0) return "submitted";
+    if (u.indexOf("reject") >= 0) return "rejected";
+    return "submitted";
+  }
+
+  async function trySelectFromPassengerVerifications(): Promise<boolean> {
+    const table = "passenger_verifications";
+    const selectors = ["status,updated_at", "status,created_at", "status"];
+    const keys = ["user_id", "passenger_id"];
+
+    for (let i = 0; i < selectors.length; i++) {
+      for (let k = 0; k < keys.length; k++) {
+        const key = keys[k];
+        try {
+          const { data, error } = await supabase
+            .from(table)
+            .select(selectors[i])
+            .eq(key as any, userId)
+            .order("updated_at", { ascending: false })
+            .limit(1);
+
+          if (!error && data && (data as any[]).length > 0) {
+            const row: any = (data as any[])[0];
+            const raw = String(row.status || "");
+            out.raw_status = raw;
+            out.status = mapRawStatus(raw);
+            out.source = "passenger_verifications";
+            out.note = "Matched passenger_verifications." + key;
+            out.verified = (out.status === "verified");
+            return true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return false;
+  }
+
+  const gotPipeline = await trySelectFromPassengerVerifications();
+  if (gotPipeline) return out;
+
+  // Fallback to passengers table (legacy verified flag)
   const selectors = "is_verified,verified,verification_tier";
 
-  async function tryQuery(filterCol: "auth_user_id" | "user_id" | "email", filterVal: string) {
-    return await supabase.from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
-  }
-
-  {
-    const r = await tryQuery("auth_user_id", userId);
-    if (!r.error && r.data) {
-      const row: any = r.data;
-      out.verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
-      out.source = "passengers";
-      out.note = "Matched passengers.auth_user_id";
-      return out;
+  async function tryQuery(col: string, val: any) {
+    try {
+      const { data, error } = await supabase
+        .from("passengers")
+        .select(selectors)
+        .eq(col as any, val)
+        .limit(1)
+        .maybeSingle();
+      return { data, error };
+    } catch (e: any) {
+      return { data: null, error: e };
     }
   }
 
-  {
-    const r = await tryQuery("user_id", userId);
-    if (!r.error && r.data) {
-      const row: any = r.data;
-      out.verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
-      out.source = "passengers";
-      out.note = "Matched passengers.user_id";
-      return out;
-    }
+  const rId = await tryQuery("id", userId);
+  if (!rId.error && rId.data) {
+    const row: any = rId.data;
+    out.verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
+    out.source = "passengers";
+    out.note = "Matched passengers.id";
+    out.status = out.verified ? "verified" : "not_submitted";
+    return out;
   }
 
   if (email) {
@@ -95,11 +153,13 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
       out.verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
       out.source = "passengers";
       out.note = "Matched passengers.email";
+      out.status = out.verified ? "verified" : "not_submitted";
       return out;
     }
   }
 
-  out.note = "Could not resolve verification from passengers (no match, schema differs, or RLS blocked). Defaulting to unverified.";
+  out.note = "Could not resolve verification (no match, schema differs, or RLS blocked). Defaulting to unverified.";
+  out.status = "not_submitted";
   return out;
 }
 
@@ -201,7 +261,9 @@ export async function GET() {
       verification_source: v.source,
       verification_note: v.note,
 
-      wallet_ok: w.ok,
+      
+      verification_status: v.status,
+      verification_raw_status: v.raw_status,wallet_ok: w.ok,
       wallet_locked: w.wallet_locked,
       wallet_balance: w.wallet_balance,
       min_wallet_required: w.min_wallet_required,
@@ -231,7 +293,9 @@ export async function POST(req: Request) {
         verified: false,
         verification_source: v.source,
         verification_note: v.note,
-      },
+      
+      verification_status: v.status,
+      verification_raw_status: v.raw_status,},
       { status: 403 }
     );
   }
@@ -265,7 +329,9 @@ export async function POST(req: Request) {
       verification_source: v.source,
       verification_note: v.note,
 
-      wallet_ok: true,
+      
+      verification_status: v.status,
+      verification_raw_status: v.raw_status,wallet_ok: true,
       wallet_locked: w.wallet_locked,
       wallet_balance: w.wallet_balance,
       min_wallet_required: w.min_wallet_required,
