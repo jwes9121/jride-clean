@@ -530,7 +530,14 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
 
                           <button
                             className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                            onClick={(e) => { e.stopPropagation(); forceTripStatus((t as any)?.booking_code, "completed"); }}
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            const st = effectiveStatus(t as any);
+                            if (st === "on_trip") {
+                              if (!confirm("Force end this on_trip ride? This will set status to completed.")) return;
+                            }
+                            forceTripStatus((t as any)?.booking_code, "completed");
+                          }}
                             disabled={!((t as any)?.booking_code)}
                             title="Force end (admin override)"
                           >
@@ -543,7 +550,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                               <button
                                 className={[
                                   "rounded border px-2 py-1 text-xs hover:bg-gray-50",
-                                  primary === "NUDGE_DRIVER" ? "border-black" : "",
+                                  primary === "NUDGE_DRIVER" ? "bg-black text-white border-black" : (primary ? "opacity-60" : ""),
                                 ].join(" ")}
                                 onClick={async (e) => {
                                   e.stopPropagation();
@@ -562,7 +569,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                               </button>
 
                               <button
-                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
+                                className={["rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40", primary ? "opacity-60" : ""].join(" ")}
                                 disabled={!hasDriver(t)}
                                 title={!hasDriver(t) ? "No driver linked" : "Clear driver and reset to assigned"}
                                 onClick={async (e) => {
@@ -584,7 +591,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                               <button
                                 className={[
                                   "rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40",
-                                  primary === "AUTO_ASSIGN" ? "border-black" : "",
+                                  primary === "AUTO_ASSIGN" ? "bg-black text-white border-black" : (primary ? "opacity-60" : ""),
                                 ].join(" ")}
                                 disabled={!canAutoAssign}
                                 title={!canAutoAssign ? "Requires pickup & dropoff coordinates" : "Auto-assign nearest driver"}
@@ -820,5 +827,6 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
