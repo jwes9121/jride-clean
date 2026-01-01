@@ -208,6 +208,24 @@ export default function LiveTripsClient() {
   const [lastAction, setLastAction] = useState<string>("");
   
   const [nudgedAt, setNudgedAt] = useState<Record<string, number>>({});
+
+  // ===== PHASE 9B: UI-only auto-resolve (nudge cooldown) =====
+  // After Nudge, hide PROBLEM badge/count/filter for a cooldown window.
+  // If still stuck after cooldown, PROBLEM can re-appear.
+  const NUDGE_COOLDOWN_MS = 6 * 60 * 1000; // 6 minutes
+  const NUDGE_MAX_KEEP_MS = 30 * 60 * 1000; // safety prune
+
+  function isCoolingTrip(key: string): boolean {
+    return recentlyNudged(nudgedAt, key, NUDGE_COOLDOWN_MS);
+  }
+
+  function isProblemEffective(t: TripRow): boolean {
+    const key = tripKey(t);
+    if (!key) return isProblemTrip(t);
+    if (isCoolingTrip(key)) return false;
+    return isProblemTrip(t);
+  }
+
 const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("Drivers: not loaded yet");
   const [manualDriverId, setManualDriverId] = useState<string>("");
@@ -242,6 +260,45 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     loadPage().catch((e) => setLastAction(String(e?.message || e)));
     loadDrivers().catch(() => {});
   }, []);
+
+  // Prune nudgedAt:
+  // - trip disappeared
+  // - trip completed/cancelled
+  // - trip updated after nudge (activity happened)
+  // - no longer a problem
+  // - too old record
+  useEffect(() => {
+    const now = Date.now();
+    setNudgedAt((prev) => {
+      const keys = Object.keys(prev || {});
+      if (!keys.length) return prev;
+
+      const next: Record<string, number> = { ...(prev || {}) };
+      let changed = false;
+
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const nAt = (next as any)[k] as number | undefined;
+        if (!nAt) { delete (next as any)[k]; changed = true; continue; }
+
+        if (now - nAt > NUDGE_MAX_KEEP_MS) { delete (next as any)[k]; changed = true; continue; }
+
+        const tr = allTrips.find((t) => tripKey(t) === k) || null;
+        if (!tr) { delete (next as any)[k]; changed = true; continue; }
+
+        const st = effectiveStatus(tr);
+        if (st === "completed" || st === "cancelled") { delete (next as any)[k]; changed = true; continue; }
+
+        const upd = new Date((tr as any)?.updated_at || (tr as any)?.created_at || 0).getTime() || 0;
+        if (upd && upd > nAt) { delete (next as any)[k]; changed = true; continue; }
+
+        if (!isProblemTrip(tr)) { delete (next as any)[k]; changed = true; continue; }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [allTrips, nudgedAt]);
+
 
   function setFilterAndFocus(f: FilterKey) {
     setTripFilter(f);
@@ -291,16 +348,16 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
       const s = effectiveStatus(t);
       if (c[s] != null) c[s]++;
       if (isActiveTripStatus(s)) c.dispatch++;
-      if (isProblemTrip(t)) c.problem++;
+      if (isProblemEffective(t)) c.problem++;
     }
     return c;
-  }, [allTrips]);
+  }, [allTrips, nudgedAt]);
 
   const visibleTrips = useMemo(() => {
     if (tripFilter === "dispatch") return allTrips.filter((t) => isActiveTripStatus(effectiveStatus(t)));
-    if (tripFilter === "problem") return allTrips.filter((t) => isProblemTrip(t));
+    if (tripFilter === "problem") return allTrips.filter((t) => isProblemEffective(t));
     return allTrips.filter((t) => effectiveStatus(t) === tripFilter);
-  }, [tripFilter, allTrips]);
+  }, [tripFilter, allTrips, nudgedAt]);
 
   const shown = visibleTrips.length;
 
@@ -437,7 +494,9 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                   const sEff = effectiveStatus(t);
 
                   const stale = isStale(t);
-                  const prob = isProblemTrip(t);
+                  const probRaw = isProblemTrip(t);
+                  const cooling = probRaw && isCoolingTrip(key);
+                  const prob = probRaw && !cooling;
                   const reason = computeProblemReason(t);
 
                   const canAutoAssign =
@@ -457,7 +516,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                       <td className="p-2 align-top">
                         <div className="font-medium">{(t as any)?.booking_code || "-----"}</div>
                         <div className="mt-1">
-                          {prob ? <span className={badgeClass("problem")}>PROBLEM</span> : null}
+                          {prob ? <span className={badgeClass("problem")}>PROBLEM</span> : (cooling ? <span className={badgeClass("stale")}>COOLDOWN</span> : null)}
                           {stale ? <span className={"ml-2 " + badgeClass("stale")}>STUCK</span> : null}
                         </div>
                         {reason ? (
@@ -476,7 +535,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                       </td>
 
                       <td className="p-2 align-top">
-                        <span className={badgeClass(prob ? "problem" : stale ? "stale" : "ok")}>{sRaw || sEff}</span>
+                        <span className={badgeClass(prob ? "problem" : (stale || cooling) ? "stale" : "ok")}>{sRaw || sEff}</span>
                       </td>
 
                       <td className="p-2 align-top">{tripZone(t)}</td>
@@ -545,7 +604,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           </button>
 
                           {/* Problem actions */}
-                          {prob ? (
+                          {probRaw ? (
                             <>
                               <button
                                 className={[
@@ -827,6 +886,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
 
