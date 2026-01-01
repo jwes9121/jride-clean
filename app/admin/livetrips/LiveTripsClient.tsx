@@ -231,6 +231,17 @@ export default function LiveTripsClient() {
     return isProblemTrip(t);
   }
 
+  function coolTextForTripKey(key: string): string | null {
+    const t = (nudgedAt as any)[key] as number | undefined;
+    if (!t) return null;
+    const now = Date.now();
+    const elapsedMs = Math.max(0, now - t);
+    const remainMs = Math.max(0, NUDGE_COOLDOWN_MS - elapsedMs);
+    const agoMin = Math.floor(elapsedMs / 60000);
+    const leftMin = Math.ceil(remainMs / 60000);
+    if (elapsedMs >= NUDGE_COOLDOWN_MS) return null;
+    return "Nudged " + String(agoMin) + "m ago (cooldown " + String(leftMin) + "m)";
+  }
 const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("Drivers: not loaded yet");
   const [manualDriverId, setManualDriverId] = useState<string>("");
@@ -540,6 +551,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                   const probRaw = isProblemTrip(t);
                   const cooling = probRaw && isCoolingTrip(key);
                   const prob = probRaw && !cooling;
+                  const coolText = cooling ? coolTextForTripKey(key) : null;
                   const reason = computeProblemReason(t);
 
                   const canAutoAssign =
@@ -560,6 +572,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                         <div className="font-medium">{(t as any)?.booking_code || "-----"}</div>
                         <div className="mt-1">
                           {prob ? <span className={badgeClass("problem")}>PROBLEM</span> : (cooling ? <span className={badgeClass("stale")}>COOLDOWN</span> : null)}
+                          {cooling && coolText ? <span className="ml-2 text-xs text-gray-600">{coolText}</span> : null}
                           {stale ? <span className={"ml-2 " + badgeClass("stale")}>STUCK</span> : null}
                         </div>
                         {reason ? (
@@ -951,6 +964,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
 
