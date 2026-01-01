@@ -56,6 +56,17 @@ function numOrNull(s: string): number | null {
 
 export default function RidePage() {
   const router = useRouter();
+  // Debug bypass: add ?debug=1 to URL to bypass night-gate verification checks in UI only.
+  const debugBypass = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const u = new URL(window.location.href);
+      return u.searchParams.get("debug") === "1";
+    } catch {
+      return false;
+    }
+  }, []);
+
 
   const [town, setTown] = React.useState("Lagawe");
   const [passengerName, setPassengerName] = React.useState("Test Passenger A");
@@ -186,13 +197,22 @@ export default function RidePage() {
 
       if (!can.ok) {
         const cj = can.json as CanBookInfo;
-        setResult("CAN_BOOK_BLOCKED: " + (cj.code || "BLOCKED") + " - " + (cj.message || "Not allowed"));
+      // UI-only debug bypass: if blocked only because of NIGHT_GATE_UNVERIFIED, allow booking when ?debug=1
+      try {
+        const blockCode = String(((can && can.json) ? (can.json.code || can.json.error_code) : "") || "");
+        if (debugBypass && blockCode === "NIGHT_GATE_UNVERIFIED") {
+          setResult("DEBUG_BYPASS: ignoring NIGHT_GATE_UNVERIFIED gate");
+        } else {        setResult("CAN_BOOK_BLOCKED: " + (cj.code || "BLOCKED") + " - " + (cj.message || "Not allowed"));
         await refreshCanBook();
-        return;
+        return;        }
+      } catch {
+        // If parsing fails, keep original block behavior.
+      }
       }
 
       const book = await postJson("/api/public/passenger/book", {
         passenger_name: passengerName,
+      debug: debugBypass,
         town,
         from_label: fromLabel,
         to_label: toLabel,
@@ -437,5 +457,6 @@ export default function RidePage() {
     </main>
   );
 }
+
 
 
