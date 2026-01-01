@@ -58,7 +58,16 @@ function norm(s: any): string {
   return String(s || "").trim();
 }
 
-function normUpper(s: any): string {
+function normUpper
+function verificationStatusLabel(info: any): string {
+  if (!info) return "Not submitted";
+  if (info.verified === true) return "Verified";
+  const note = String(info.verification_note || "").toLowerCase();
+  if (note.indexOf("dispatcher") >= 0) return "Pending admin approval";
+  if (note) return "Submitted (dispatcher review)";
+  return "Not submitted";
+}
+(s: any): string {
   return norm(s).toUpperCase();
 }
 
@@ -241,7 +250,7 @@ export default function RidePage() {
     if (unverifiedBlocked) {
       const win = norm(canInfo?.window);
       const extra = win ? (" Night gate window: " + win + ".") : "";
-      return "Your account is not verified, so ride booking is blocked during night gate rules." + extra + " Please request verification so an admin can approve your account.";
+      return "Your account is not verified. Ride booking is restricted during night gate hours until verification is approved.";
     }
     if (walletBlocked) {
       const bal = canInfo?.wallet_balance;
@@ -442,56 +451,38 @@ export default function RidePage() {
                   className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
                   onClick={() => setShowVerifyPanel(true)}
                 >
-                  Request verification
+                  Go to verification
                 </button>
               ) : null}
             </div>
 
             {showVerifyPanel && unverifiedBlocked ? (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-sm">Verification request</div>
-                  <button
-                    type="button"
-                    className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
-                    onClick={() => setShowVerifyPanel(false)}
-                  >
-                    Close
-                  </button>
-                </div>
+  <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+    <div className="font-semibold text-sm">Verification required</div>
 
-                <div className="mt-2 text-xs opacity-70">
-                  This is UI-only. Copy the request text below and send it to your local admin (Messenger/SMS/in-person).
-                </div>
+    <div className="mt-2 text-xs opacity-70">
+      Current status: <b>{verificationStatusLabel(canInfo)}</b>
+    </div>
 
-                <div className="mt-2">
-                  <textarea
-                    className="w-full rounded-xl border border-black/10 p-2 text-xs font-mono"
-                    rows={7}
-                    value={verifyRequestText()}
-                    readOnly
-                  />
-                </div>
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button
+        type="button"
+        className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90"
+        onClick={() => router.push("/verify")}
+      >
+        Go to verification
+      </button>
 
-                <div className="mt-2 flex flex-wrap gap-2 items-center">
-                  <button
-                    type="button"
-                    className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90"
-                    onClick={copyVerifyRequest}
-                  >
-                    {copied ? "Copied" : "Copy request"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold"
-                    onClick={refreshCanBook}
-                  >
-                    I am verified now - refresh
-                  </button>
-                </div>
-              </div>
-            ) : null}
+      <button
+        type="button"
+        className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold"
+        onClick={refreshCanBook}
+      >
+        Refresh status
+      </button>
+    </div>
+  </div>
+) : null}
           </div>
         ) : null}
 
@@ -634,7 +625,7 @@ export default function RidePage() {
               onClick={() => setShowVerifyPanel(true)}
               className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
             >
-              Request verification
+              Go to verification
             </button>
           ) : null}
         </div>
