@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -155,26 +155,24 @@ export default function PassengerVerifyPage() {
     }
 
     setCurrent(data as VerificationRecord);
-    setMessage("Verification submitted. Dispatcher/Admin will review your ID.");
+    setMessage("Verification submitted. Dispatcher will review first, then Admin will verify.");
   };
-
   const statusLabel = () => {
     if (!current) return "Not submitted";
     switch (current.status) {
       case "pending":
-        return "Pending review (dispatcher)";
+        return "Submitted (waiting for dispatcher review)";
       case "pre_approved_dispatcher":
-        return "Pre-approved by dispatcher (waiting for admin)";
+        return "Pending admin approval";
       case "approved_admin":
-        return "✅ Verified passenger (takeout and errand allowed)";
+        return "VERIFIED (rides and restricted services allowed)";
       case "rejected":
-        return "❌ Rejected – please check reason and re-submit";
+        return "REJECTED - check reason and re-submit";
       default:
-        return current.status;
+        return String(current.status || "");
     }
   };
-
-  return (
+return (
     <div className="p-4 text-sm max-w-xl mx-auto">
       <h1 className="text-lg font-bold mb-2">Passenger Verification</h1>
       <p className="text-xs text-gray-600 mb-3">
@@ -297,7 +295,7 @@ export default function PassengerVerifyPage() {
           disabled={loading}
           className="mt-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
         >
-          {loading ? "Submitting…" : "Submit for verification"}
+          {loading ? "Submitting?" : "Submit for verification"}
         </button>
       </form>
     </div>
