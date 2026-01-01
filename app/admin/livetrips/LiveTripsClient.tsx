@@ -657,9 +657,11 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   try {
+                                    const k = tripKey(t);
+                                    if (k) setNudgedAt((prev) => ({ ...prev, [k]: Date.now() }));
                                     setLastAction("Nudging...");
                                     await callLiveTripsAction("NUDGE_DRIVER", t);
-                                    setNudgedAt((prev) => ({ ...prev, [tripKey(t)]: Date.now() }));
+                                    // Phase 9B.1: nudgedAt set optimistically on click
                                     setLastAction("Nudge sent");
                                     await loadPage();
                                   } catch (err: any) {
@@ -949,6 +951,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
 
