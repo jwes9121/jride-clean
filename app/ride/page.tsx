@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -71,6 +71,13 @@ export default function RidePage() {
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<string>("");
 
+  const [activeCode, setActiveCode] = React.useState<string>("");
+  const [liveStatus, setLiveStatus] = React.useState<string>("");
+  const [liveDriverId, setLiveDriverId] = React.useState<string>("");
+  const [liveUpdatedAt, setLiveUpdatedAt] = React.useState<number | null>(null);
+  const [liveErr, setLiveErr] = React.useState<string>("");
+  const pollRef = React.useRef<any>(null);
+
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
   const [canInfoErr, setCanInfoErr] = React.useState<string>("");
 
@@ -79,7 +86,6 @@ export default function RidePage() {
     const j = (await r.json().catch(() => ({}))) as any;
     return { ok: r.ok, status: r.status, json: j };
   }
-
   async function postJson(url: string, body: any) {
     const r = await fetch(url, {
       method: "POST",
@@ -90,7 +96,6 @@ export default function RidePage() {
     const j = (await r.json().catch(() => ({}))) as any;
     return { ok: r.ok, status: r.status, json: j };
   }
-
   async function refreshCanBook() {
     setCanInfoErr("");
     try {
@@ -111,6 +116,64 @@ export default function RidePage() {
     refreshCanBook();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  React.useEffect(() => {
+    // Live status polling (UI-only). Requires public endpoint:
+    // GET /api/public/passenger/booking?code=BOOKING_CODE
+    if (!activeCode) return;
+
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      try {
+        setLiveErr("");
+        const url = "/api/public/passenger/booking?code=" + encodeURIComponent(activeCode);
+        const resp = await getJson(url);
+
+        if (!resp.ok) {
+          const msg = (resp.json && (resp.json.message || resp.json.error)) ? String(resp.json.message || resp.json.error) : "HTTP " + String(resp.status);
+          setLiveErr("BOOKING_POLL_FAILED: " + msg);
+          return;
+        }
+
+        const j = resp.json || {};
+        const b = (j.booking || (j.data && j.data.booking) || (j.payload && j.payload.booking) || j) as any;
+
+        const st = String((b && b.status) ? b.status : (j.status || "")) || "";
+        const did = String((b && b.driver_id) ? b.driver_id : (j.driver_id || "")) || "";
+
+        setLiveStatus(st);
+        setLiveDriverId(did);
+        setLiveUpdatedAt(Date.now());
+
+        const terminal = st === "completed" || st === "cancelled";
+        if (terminal && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } catch (e: any) {
+        setLiveErr("BOOKING_POLL_ERROR: " + String(e?.message || e));
+      }
+    }
+
+    // immediate tick + interval
+    tick();
+    pollRef.current = setInterval(() => { tick(); }, 3000);
+
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [activeCode]);
+
 
   async function submit() {
     setResult("");
@@ -166,6 +229,14 @@ export default function RidePage() {
       }
 
       setResult(lines.join("\n"));
+      // Start live polling after booking (if we have a booking_code)
+      const code = String((bj.booking && bj.booking.booking_code) ? bj.booking.booking_code : (bj.booking_code || "")).trim();
+      if (code) {
+        setActiveCode(code);
+        setLiveStatus(String((bj.booking && bj.booking.status) ? bj.booking.status : (bj.booking && bj.booking.status) ? bj.booking.status : ""));
+        setLiveDriverId(String((bj.booking && bj.booking.driver_id) ? bj.booking.driver_id : ""));
+        setLiveUpdatedAt(Date.now());
+      }
       await refreshCanBook();
     } catch (e: any) {
       setResult("ERROR: " + String(e?.message || e));
@@ -311,9 +382,60 @@ export default function RidePage() {
             <div className="mt-1 font-mono text-xs whitespace-pre-wrap">{result}</div>
           </div>
         ) : null}
+        {activeCode ? (
+          <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold">Trip status (live)</div>
+              <button
+                className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                onClick={() => {
+                  setActiveCode("");
+                  setLiveStatus("");
+                  setLiveDriverId("");
+                  setLiveUpdatedAt(null);
+                  setLiveErr("");
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="mt-1 text-xs font-mono">
+              code: <span className="font-semibold">{activeCode}</span>
+            </div>
+
+            <div className="mt-2">
+              <span className="text-xs opacity-70">status:</span>{" "}
+              <span className="font-mono text-xs">{liveStatus || "(loading)"}</span>
+            </div>
+
+            <div className="mt-1">
+              <span className="text-xs opacity-70">driver_id:</span>{" "}
+              <span className="font-mono text-xs">{liveDriverId || "(none)"}</span>
+            </div>
+
+            <div className="mt-1 text-xs opacity-70">
+              last update:{" "}
+              {liveUpdatedAt ? Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago" : "--"}
+            </div>
+
+            {liveErr ? (
+              <div className="mt-2 rounded-lg border border-red-500/20 bg-red-50 p-2 text-xs font-mono">
+                {liveErr}
+              </div>
+            ) : null}
+
+            <div className="mt-2 text-xs opacity-70">
+              Polling: /api/public/passenger/booking?code=...
+            </div>
+          </div>
+        ) : null}
+
 
         <div className="mt-6 text-xs opacity-70">Next: status lifecycle polish.</div>
       </div>
     </main>
   );
 }
+
+
