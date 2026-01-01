@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -742,7 +742,19 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
         <div className="rounded-lg border bg-white overflow-hidden">
           <div className="h-[720px]">
             <LiveTripsMap
-              trips={visibleTrips as any}
+              trips={
+  [...(visibleTrips as any)].sort((a: any, b: any) => {
+    const ap = isProblemTrip(a) ? 1 : 0;
+    const bp = isProblemTrip(b) ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+
+    const am = minutesSince(a?.updated_at || a?.created_at || null);
+    const bm = minutesSince(b?.updated_at || b?.created_at || null);
+    if (am !== bm) return bm - am;
+
+    return 0;
+  }) as any
+}
               selectedTripId={selectedTripId}
               stuckTripIds={new Set(
                 visibleTrips.filter((t) => isStale(t)).map((t) => tripKey(t))
@@ -808,4 +820,5 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
