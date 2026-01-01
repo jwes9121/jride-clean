@@ -91,12 +91,13 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
       for (let k = 0; k < keys.length; k++) {
         const key = keys[k];
         try {
-          const { data, error } = await supabase
-            .from(table)
-            .select(selectors[i])
-            .eq(key as any, userId)
-            .order("updated_at", { ascending: false })
-            .limit(1);
+          const query: any = (supabase as any).from(table)
+  .select(selectors[i])
+  .eq(key as any, userId)
+  .order("updated_at", { ascending: false })
+  .limit(1);
+
+const { data, error } = await query;
 
           if (!error && data && (data as any[]).length > 0) {
             const row: any = (data as any[])[0];
@@ -124,8 +125,7 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
 
   async function tryQuery(col: string, val: any) {
     try {
-      const { data, error } = await supabase
-        .from("passengers")
+      const { data, error } = await (supabase as any).from("passengers")
         .select(selectors)
         .eq(col as any, val)
         .limit(1)
@@ -189,7 +189,7 @@ async function resolvePassengerWallet(supabase: ReturnType<typeof createClient>)
   const selectors = "wallet_balance,min_wallet_required,wallet_locked";
 
   async function tryQuery(filterCol: "auth_user_id" | "user_id" | "email", filterVal: string) {
-    return await supabase.from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
+    return await (supabase as any).from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
   }
 
   // Try auth_user_id, then user_id, then email
