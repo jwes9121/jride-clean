@@ -451,7 +451,7 @@ export default function RidePage() {
                 <button
                   type="button"
                   className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
-                  onClick={() => setShowVerifyPanel(true)}
+                  onClick={() => router.push("/verify")}
                 >
                   Go to verification
                 </button>
@@ -624,7 +624,7 @@ export default function RidePage() {
             <button
               type="button"
               disabled={busy}
-              onClick={() => setShowVerifyPanel(true)}
+              onClick={() => router.push("/verify")}
               className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
             >
               Go to verification
