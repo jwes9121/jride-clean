@@ -176,8 +176,7 @@ return (
     <div className="p-4 text-sm max-w-xl mx-auto">
       <h1 className="text-lg font-bold mb-2">Passenger Verification</h1>
       <p className="text-xs text-gray-600 mb-3">
-        Upload your ID details so JRide can verify you. Only verified passengers
-        can order takeout food and errand services.
+        Upload your ID details so JRide can verify you. Verified passengers can book rides and access restricted services.
       </p>
 
       {!authUserPresent && (
