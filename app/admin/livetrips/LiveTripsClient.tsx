@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -118,6 +118,13 @@ function minutesSince(iso?: string | null): number {
   return Math.floor((Date.now() - ms) / 60000);
 }
 
+
+function recentlyNudged(nudgedAt: Record<string, number>, key: string, windowMs = 2 * 60 * 1000) {
+  const t = nudgedAt[key];
+  if (!t) return false;
+  return (Date.now() - t) < windowMs;
+}
+
 const STUCK_THRESHOLDS_MIN = {
   on_the_way: 15,
   on_trip: 25,
@@ -165,7 +172,7 @@ function badgeClass(kind: "problem" | "stale" | "ok") {
 
 /* -------------------- actions API helper -------------------- */
 
-async function callLiveTripsAction(action: "NUDGE_DRIVER" | "REASSIGN_DRIVER" | "AUTO_ASSIGN", t: any) {
+async function callLiveTripsAction(action: "NUDGE_DRIVER" | "REASSIGN_DRIVER" | "AUTO_ASSIGN" | "ARCHIVE_TEST_TRIPS" , t: any) {
   const booking_code = (t as any)?.booking_code ?? (t as any)?.bookingCode ?? null;
   const trip_id = (t as any)?.id ?? (t as any)?.uuid ?? null;
 
@@ -199,7 +206,9 @@ export default function LiveTripsClient() {
   }, [selectedTripId, allTrips]);
 
   const [lastAction, setLastAction] = useState<string>("");
-  const [drivers, setDrivers] = useState<DriverRow[]>([]);
+  
+  const [nudgedAt, setNudgedAt] = useState<Record<string, number>>({});
+const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("Drivers: not loaded yet");
   const [manualDriverId, setManualDriverId] = useState<string>("");
 
@@ -541,6 +550,7 @@ export default function LiveTripsClient() {
                                   try {
                                     setLastAction("Nudging...");
                                     await callLiveTripsAction("NUDGE_DRIVER", t);
+                                    setNudgedAt((prev) => ({ ...prev, [tripKey(t)]: Date.now() }));
                                     setLastAction("Nudge sent");
                                     await loadPage();
                                   } catch (err: any) {
