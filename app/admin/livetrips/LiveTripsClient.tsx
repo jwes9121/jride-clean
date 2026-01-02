@@ -224,6 +224,26 @@ export default function LiveTripsClient() {
 
   const [lastAction, setLastAction] = useState<string>("");
   const [nudgedAt, setNudgedAt] = useState<Record<string, number>>({});
+  // ===== PHASE B: UI-only escalation (flagging) =====
+  // Flagged trips are UI-only (no backend). Used for dispatcher follow-up.
+  const [flaggedAt, setFlaggedAt] = useState<Record<string, number>>({});
+  const [escalationStep, setEscalationStep] = useState<Record<string, number>>({}); // 0 none, 1 nudged, 2 auto-assigned, 3 flagged
+
+  function isFlaggedTripKey(key: string): boolean {
+    return !!(flaggedAt as any)[key];
+  }
+
+  function setFlagTripKey(key: string, step: number) {
+    if (!key) return;
+    setFlaggedAt((prev) => ({ ...(prev || {}), [key]: Date.now() }));
+    setEscalationStep((prev) => ({ ...(prev || {}), [key]: step }));
+  }
+
+  function setEscStep(key: string, step: number) {
+    if (!key) return;
+    setEscalationStep((prev) => ({ ...(prev || {}), [key]: step }));
+  }
+
 
   // ===== PHASE 9B: UI-only auto-resolve (nudge cooldown) =====
   // After Nudge, hide PROBLEM badge/count/filter for a cooldown window.
@@ -936,6 +956,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
 
