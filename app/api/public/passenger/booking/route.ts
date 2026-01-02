@@ -16,22 +16,21 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
 
-    const { data: auth } = await supabase.auth.getUser();
-    const user = auth?.user;
-    if (!user) {
-      return json(401, { ok: false, code: "NOT_SIGNED_IN", message: "Not signed in" });
-    }
-
     const url = new URL(req.url);
     const bookingCode = String(url.searchParams.get("code") || "").trim();
     if (!bookingCode) {
       return json(400, { ok: false, code: "MISSING_CODE", message: "Missing booking code" });
     }
 
-    // Minimal fields only (avoid schema assumptions)
+    // IMPORTANT:
+    // Do NOT require supabase.auth.getUser() here.
+    // Your passenger session is not a Supabase Auth cookie, so polling must work without it.
+
     const { data: b, error } = await supabase
       .from("bookings")
-      .select("id, booking_code, status, driver_id, updated_at, created_at")
+      .select(
+        "id, booking_code, status, driver_id, assigned_driver_id, created_at, updated_at, created_by_user_id"
+      )
       .eq("booking_code", bookingCode)
       .maybeSingle();
 
@@ -41,10 +40,6 @@ export async function GET(req: NextRequest) {
     if (!b) {
       return json(404, { ok: false, code: "NOT_FOUND", message: "Booking not found" });
     }
-
-    // Optional safety: if bookings has passenger_id, enforce ownership (best-effort, no assumptions)
-    // We do not query passenger_id directly to avoid hard failure on missing column.
-    // If you later confirm passenger_id exists, we can harden this.
 
     return json(200, { ok: true, booking: b });
   } catch (e: any) {
