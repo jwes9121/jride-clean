@@ -130,6 +130,10 @@ export default function RidePage() {
   const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
   const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
   const [geoErr, setGeoErr] = React.useState<string>("");
+  // Route preview (pickup -> dropoff) using Mapbox Directions API
+  const [routePreviewGeo, setRoutePreviewGeo] = React.useState<any>(null);
+  const [routePreviewErr, setRoutePreviewErr] = React.useState<string>("");
+
   const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
 
   const fromDebounceRef = React.useRef<any>(null);
@@ -393,7 +397,39 @@ export default function RidePage() {
       } catch {
         // ignore
       }
-    }
+    
+      // Route preview layer (pickup -> dropoff)
+      try {
+        if (routePreviewGeo && mapRef.current) {
+          const map = mapRef.current;
+
+          const srcId = "route-preview";
+          const layerId = "route-preview-line";
+
+          try { if (map.getLayer(layerId)) map.removeLayer(layerId); } catch {}
+          try { if (map.getSource(srcId)) map.removeSource(srcId); } catch {}
+
+          map.addSource(srcId, {
+            type: "geojson",
+            data: routePreviewGeo,
+          });
+
+          map.addLayer({
+            id: layerId,
+            type: "line",
+            source: srcId,
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: { "line-width": 4, "line-opacity": 0.8 },
+          });
+        } else if (mapRef.current) {
+          const map = mapRef.current;
+          try { if (map.getLayer("route-preview-line")) map.removeLayer("route-preview-line"); } catch {}
+          try { if (map.getSource("route-preview")) map.removeSource("route-preview"); } catch {}
+        }
+      } catch {
+        // ignore
+      }
+}
 
     initMap();
 
@@ -748,7 +784,12 @@ export default function RidePage() {
           <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-amber-300 bg-amber-50 p-3">
             {geoErr}
           </div>
+        ) : null}        {routePreviewErr ? (
+          <div className="mt-2 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
+            {routePreviewErr}
+          </div>
         ) : null}
+
 
         {!MAPBOX_TOKEN ? (
           <div className="mt-3 text-xs rounded-xl border border-amber-300 bg-amber-50 p-3">
@@ -1044,3 +1085,4 @@ export default function RidePage() {
     </main>
   );
 }
+
