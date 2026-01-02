@@ -139,10 +139,19 @@ export default function RidePage() {
       if (!r.ok) {
         setCanInfoErr("CAN_BOOK_INFO_FAILED: HTTP " + r.status);
         setCanInfo(null);
-    if (String((null as any)?.verification_status || "`").toLowerCase() === "verified" || (null as any)?.verified === true) { setShowVerifyPanel(false); }
         return;
       }
       setCanInfo(r.json as CanBookInfo);
+      // AUTO_CLOSE_VERIFY_PANEL_ON_REFRESH
+      try {
+        const st = String((r.json as any)?.verification_status || "").toLowerCase();
+        if (st === "verified" || (r.json as any)?.verified === true) {
+          setShowVerifyPanel(false);
+        }
+      } catch {
+        // ignore
+      }
+
     } catch (e: any) {
       setCanInfoErr("CAN_BOOK_INFO_ERROR: " + String(e?.message || e));
       setCanInfo(null);
@@ -436,7 +445,16 @@ export default function RidePage() {
             className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
           >
             Refresh status
-          </button>
+          </button>          {!verified ? (
+            <button
+              type="button"
+              onClick={() => router.push("/verify")}
+              className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+            >
+              Verify account
+            </button>
+          ) : null}
+
         </div>
 
         {canInfoErr ? (
@@ -460,7 +478,7 @@ export default function RidePage() {
                 ) : null}
               </div>
 
-              {unverifiedBlocked ? (
+              {!verified ? (
                 <button
                   type="button"
                   className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
@@ -633,7 +651,7 @@ export default function RidePage() {
             Clear
           </button>
 
-          {unverifiedBlocked ? (
+          {!verified ? (
             <button
               type="button"
               disabled={busy}
