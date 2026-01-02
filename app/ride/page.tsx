@@ -11,6 +11,7 @@ type CanBookInfo = {
   verified?: boolean;
   verification_source?: string;
   verification_note?: string;
+
   verification_status?: string | null;
   verification_raw_status?: string | null;
 
@@ -138,6 +139,7 @@ export default function RidePage() {
       if (!r.ok) {
         setCanInfoErr("CAN_BOOK_INFO_FAILED: HTTP " + r.status);
         setCanInfo(null);
+    if (String((null as any)?.verification_status || "`").toLowerCase() === "verified" || (null as any)?.verified === true) { setShowVerifyPanel(false); }
         return;
       }
       setCanInfo(r.json as CanBookInfo);
@@ -347,7 +349,7 @@ export default function RidePage() {
           code.indexOf("VERIFY") >= 0 ||
           msg.toLowerCase().indexOf("verify") >= 0;
 
-        if (looksUnverified) setShowVerifyPanel(true);
+        if (looksUnverified) if (!(String((canInfo as any)?.verification_status || "`").toLowerCase() === "verified" || verified === true)) { setShowVerifyPanel(true); }
         return;
       }
 
