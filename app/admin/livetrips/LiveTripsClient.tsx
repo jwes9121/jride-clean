@@ -119,6 +119,11 @@ function nextLifecycleStatus(sEff: string): string | null {
 }
 
 
+
+function isNextTransition(currentEff: string, target: string): boolean {
+  const next = nextLifecycleStatus(currentEff);
+  return normStatus(next) === normStatus(target);
+}
 function tripKey(t: TripRow): string {
   return String((t as any)?.uuid ?? (t as any)?.id ?? (t as any)?.booking_code ?? "");
 }
@@ -218,12 +223,6 @@ export default function LiveTripsClient() {
   }, [selectedTripId, allTrips]);
 
   const [lastAction, setLastAction] = useState<string>("");
-
-  // ===== PHASE 9B DEBUG SIMULATOR (UI-only) =====
-  // Enabled only on /admin/livetrips?debug=1
-  const [uiDebug, setUiDebug] = useState<boolean>(false);
-
-  
   const [nudgedAt, setNudgedAt] = useState<Record<string, number>>({});
 
   // ===== PHASE 9B: UI-only auto-resolve (nudge cooldown) =====
@@ -266,7 +265,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   }
 
   async function loadPage() {
-    const r = await fetch("/api/admin/livetrips/page-data?debug=1", { cache: "no-store" });
+    const r = await fetch("/api/admin/livetrips/page-data", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
     setZones(j.zones || []);
     setAllTrips((j.trips || j.bookings || j.data || []) as any[]);
@@ -287,10 +286,6 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   useEffect(() => {
     loadPage().catch((e) => setLastAction(String(e?.message || e)));
     loadDrivers().catch(() => {});
-    try {
-      const qs = new URLSearchParams(window.location.search || "");
-      setUiDebug(qs.get("debug") === "1");
-    } catch {}
   }, []);
 
   // Prune nudgedAt:
@@ -336,41 +331,6 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     setTripFilter(f);
     setTimeout(() => tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
-
-  function addDebugProblemTrip() {
-    const now = Date.now();
-    const key = "TEST-UI-" + String(now);
-    const oldIso = new Date(now - (20 * 60 * 1000)).toISOString(); // 20 minutes ago => stale
-    const fake: any = {
-      id: key,
-      uuid: key,
-      booking_code: key,
-      status: "on_the_way",
-      town: "Lagawe",
-      passenger_name: "Test Passenger",
-      pickup_label: "DEBUG Pickup (Lagawe)",
-      dropoff_label: "DEBUG Dropoff (Lagawe)",
-      // Valid coordinates near Lagawe so map stays safe
-      pickup_lat: 16.805,
-      pickup_lng: 121.104,
-      dropoff_lat: 16.810,
-      dropoff_lng: 121.112,
-      driver_id: "DEBUG_DRIVER_1",
-      created_at: oldIso,
-      updated_at: oldIso,
-      _ui_debug: true,
-    };
-    setAllTrips((prev) => [fake, ...(prev || [])]);
-    setLastAction("DEBUG: added PROBLEM trip " + key);
-    setTripFilter("dispatch");
-  }
-
-  function clearDebugTrips() {
-    setAllTrips((prev) => (prev || []).filter((t: any) => String(t?.booking_code || "").indexOf("TEST-UI-") !== 0));
-    setLastAction("DEBUG: cleared TEST-UI trips");
-  }
-
-
   async function assignDriver(bookingCode: string, driverId: string) {
     if (!bookingCode || !driverId) return;
     setLastAction("Assigning...");
@@ -651,8 +611,8 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           <button
                             className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); forceTripStatus((t as any)?.booking_code, "on_trip"); }}
-                            disabled={!((t as any)?.booking_code)}
-                            title="Force start (admin override)"
+                            disabled={true}
+                            title="Disabled in strict lifecycle mode"
                           >
                             Force start
                           </button>
@@ -667,8 +627,8 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                             }
                             forceTripStatus((t as any)?.booking_code, "completed");
                           }}
-                            disabled={!((t as any)?.booking_code)}
-                            title="Force end (admin override)"
+                            disabled={true}
+                            title="Disabled in strict lifecycle mode"
                           >
                             Force end
                           </button>
@@ -870,26 +830,6 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                 >
                   Refresh now
                 </button>
-
-                {uiDebug ? (
-                  <>
-                    <button
-                      className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
-                      onClick={() => addDebugProblemTrip()}
-                      title="UI-only: inject a stale on_the_way trip (valid coords) to test Phase 9B"
-                    >
-                      Add TEST PROBLEM
-                    </button>
-                    <button
-                      className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
-                      onClick={() => clearDebugTrips()}
-                      title="Remove TEST-UI-* trips"
-                    >
-                      Clear TEST trips
-                    </button>
-                  </>
-                ) : null}
-
               </div>
               <div className="text-xs text-gray-500 mt-2">Select a trip to enable assignment suggestions.</div>
             </div>
@@ -978,6 +918,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
 
