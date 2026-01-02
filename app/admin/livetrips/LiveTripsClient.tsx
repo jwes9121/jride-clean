@@ -258,9 +258,19 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [manualDriverId, setManualDriverId] = useState<string>("");
 
   async function postJson(url: string, body: any) {
-    const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j && (j.error || j.message)) || "REQUEST_FAILED");
+
+    if (!r.ok || j?.ok === false) {
+      const code = j?.code || "REQUEST_FAILED";
+      const msg  = j?.message || j?.error || ("HTTP " + r.status);
+      throw new Error(code + ": " + msg);
+    }
     return j;
   }
 
@@ -339,21 +349,29 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     await loadPage();
   }
 
-  async function updateTripStatus(bookingCode: string, status: string) {
+    async function updateTripStatus(bookingCode: string, status: string) {
     if (!bookingCode || !status) return;
-    setLastAction("Updating status...");
-    await postJson("/api/dispatch/status", { booking_code: bookingCode, bookingCode, status });
-    setLastAction("Status updated");
-    await loadPage();
+    try {
+      setLastAction("Updating status...");
+      await postJson("/api/dispatch/status", { booking_code: bookingCode, bookingCode, status });
+      setLastAction("Status updated");
+      await loadPage();
+    } catch (e: any) {
+      setLastAction("Status update failed: " + String(e?.message || e));
+    }
   }
 
   // backend must honor force:true
-  async function forceTripStatus(bookingCode: string, status: string) {
+    async function forceTripStatus(bookingCode: string, status: string) {
     if (!bookingCode || !status) return;
-    setLastAction("Forcing status...");
-    await postJson("/api/dispatch/status", { booking_code: bookingCode, bookingCode, status, force: true });
-    setLastAction("Force status sent");
-    await loadPage();
+    try {
+      setLastAction("Forcing status...");
+      await postJson("/api/dispatch/status", { booking_code: bookingCode, bookingCode, status, force: true });
+      setLastAction("Force status sent");
+      await loadPage();
+    } catch (e: any) {
+      setLastAction("Force failed: " + String(e?.message || e));
+    }
   }
 
   const counts = useMemo(() => {
@@ -918,6 +936,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     </div>
   );
 }
+
 
 
 
