@@ -50,6 +50,13 @@ type BookResp = {
   assign?: AssignInfo | null;
 };
 
+type GeoFeature = {
+  id?: string;
+  place_name?: string;
+  text?: string;
+  center?: [number, number]; // [lng, lat]
+};
+
 function numOrNull(s: string): number | null {
   const t = String(s || "").trim();
   if (!t) return null;
@@ -64,8 +71,6 @@ function norm(s: any): string {
 function normUpper(s: any): string {
   return norm(s).toUpperCase();
 }
-
-
 
 function verificationStatusLabelFromApi(canInfo: any): string {
   const s = String(canInfo?.verification_status || "").toLowerCase();
@@ -85,6 +90,7 @@ function verificationStatusLabel(info: any): string {
   if (note) return "Submitted (dispatcher review)";
   return "Not submitted";
 }
+
 export default function RidePage() {
   const router = useRouter();
 
@@ -114,6 +120,288 @@ export default function RidePage() {
 
   const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+
+  // ===== Mapbox geocode + map tap picker (UI-only) =====
+  const MAPBOX_TOKEN =
+    (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+      "") as string;
+
+  const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
+  const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
+  const [geoErr, setGeoErr] = React.useState<string>("");
+  const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
+
+  const fromDebounceRef = React.useRef<any>(null);
+  const toDebounceRef = React.useRef<any>(null);
+
+  const [showMapPicker, setShowMapPicker] = React.useState(false);
+  const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
+  const mapDivRef = React.useRef<HTMLDivElement | null>(null);
+  const mapRef = React.useRef<any>(null);
+  const mbRef = React.useRef<any>(null);
+  const pickupMarkerRef = React.useRef<any>(null);
+  const dropoffMarkerRef = React.useRef<any>(null);
+
+  function toNum(s: string, fallback: number): number {
+    const n = numOrNull(s);
+    return n === null ? fallback : n;
+  }
+
+  function buildQuery(label: string): string {
+    const q = norm(label);
+    if (!q) return "";
+    // Bias queries to your service area without hard-locking.
+    // Example: "IGH" becomes "IGH, Lagawe, Ifugao, Philippines"
+    return q + ", " + town + ", Ifugao, Philippines";
+  }
+
+  async function geocodeForward(label: string): Promise<GeoFeature[]> {
+    setGeoErr("");
+    const q = buildQuery(label);
+    if (!q) return [];
+
+    if (!MAPBOX_TOKEN) {
+      setGeoErr("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
+      return [];
+    }
+
+    // Use proximity near current pickup if available.
+    const proxLng = toNum(pickupLng, 121.1175);
+    const proxLat = toNum(pickupLat, 16.7999);
+
+    const url =
+      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+      encodeURIComponent(q) +
+      ".json?autocomplete=true&limit=6&country=PH&proximity=" +
+      encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
+      "&access_token=" +
+      encodeURIComponent(MAPBOX_TOKEN);
+
+    const r = await fetch(url, { method: "GET" });
+    const j = (await r.json().catch(() => ({}))) as any;
+    const feats = (j && j.features) ? (j.features as any[]) : [];
+    return feats.map((f) => ({
+      id: String(f.id || ""),
+      place_name: String(f.place_name || ""),
+      text: String(f.text || ""),
+      center: Array.isArray(f.center) ? [Number(f.center[0]), Number(f.center[1])] : undefined,
+    }));
+  }
+
+  async function geocodeReverse(lng: number, lat: number): Promise<string> {
+    if (!MAPBOX_TOKEN) return "";
+    const url =
+      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+      encodeURIComponent(String(lng) + "," + String(lat)) +
+      ".json?limit=1&country=PH&access_token=" +
+      encodeURIComponent(MAPBOX_TOKEN);
+    try {
+      const r = await fetch(url, { method: "GET" });
+      const j = (await r.json().catch(() => ({}))) as any;
+      const feats = (j && j.features) ? (j.features as any[]) : [];
+      if (feats.length) return String(feats[0].place_name || "");
+    } catch {
+      // ignore
+    }
+    return "";
+  }
+
+  function applyGeoSelection(field: "from" | "to", f: GeoFeature) {
+    const name = String(f.place_name || f.text || "").trim();
+    const c = f.center;
+    if (!c || c.length !== 2) return;
+
+    const lng = Number(c[0]);
+    const lat = Number(c[1]);
+
+    if (field === "from") {
+      if (name) setFromLabel(name);
+      setPickupLat(String(lat));
+      setPickupLng(String(lng));
+      setGeoFrom([]);
+      setActiveGeoField(null);
+    } else {
+      if (name) setToLabel(name);
+      setDropLat(String(lat));
+      setDropLng(String(lng));
+      setGeoTo([]);
+      setActiveGeoField(null);
+    }
+  }
+
+  function renderGeoList(field: "from" | "to") {
+    const items = field === "from" ? geoFrom : geoTo;
+    const open = activeGeoField === field && items && items.length > 0;
+
+    if (!open) return null;
+
+    return (
+      <div className="mt-2 rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
+        {items.map((f, idx) => {
+          const label = String(f.place_name || f.text || "").trim() || "(unknown)";
+          return (
+            <button
+              key={(f.id || "") + "_" + String(idx)}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-black/5"
+              onClick={() => applyGeoSelection(field, f)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Debounced geocoding for pickup label
+  React.useEffect(() => {
+    if (activeGeoField !== "from") return;
+    if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
+    fromDebounceRef.current = setTimeout(async () => {
+      try {
+        const feats = await geocodeForward(fromLabel);
+        setGeoFrom(feats);
+      } catch (e: any) {
+        setGeoErr("Geocode failed: " + String(e?.message || e));
+        setGeoFrom([]);
+      }
+    }, 350);
+    return () => {
+      if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
+      fromDebounceRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromLabel, activeGeoField, town]);
+
+  // Debounced geocoding for dropoff label
+  React.useEffect(() => {
+    if (activeGeoField !== "to") return;
+    if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
+    toDebounceRef.current = setTimeout(async () => {
+      try {
+        const feats = await geocodeForward(toLabel);
+        setGeoTo(feats);
+      } catch (e: any) {
+        setGeoErr("Geocode failed: " + String(e?.message || e));
+        setGeoTo([]);
+      }
+    }, 350);
+    return () => {
+      if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
+      toDebounceRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toLabel, activeGeoField, town]);
+
+  // Map picker init / refresh
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function initMap() {
+      if (!showMapPicker) return;
+      if (!mapDivRef.current) return;
+
+      if (!MAPBOX_TOKEN) {
+        setGeoErr("Map picker requires Mapbox token. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
+        return;
+      }
+
+      if (!mbRef.current) {
+        try {
+          const mb = await import("mapbox-gl");
+          mbRef.current = mb;
+        } catch (e: any) {
+          setGeoErr("Mapbox GL failed to load. Ensure mapbox-gl is installed.");
+          return;
+        }
+      }
+
+      if (cancelled) return;
+
+      const mbAny = mbRef.current as any;
+      if (mbAny && mbAny.default) {
+        mbAny.default.accessToken = MAPBOX_TOKEN;
+      } else if (mbAny) {
+        mbAny.accessToken = MAPBOX_TOKEN;
+      }
+
+      const MapboxGL = (mbAny && mbAny.default) ? mbAny.default : mbAny;
+
+      const centerLng = toNum(pickupLng, 121.1175);
+      const centerLat = toNum(pickupLat, 16.7999);
+
+      if (!mapRef.current) {
+        mapRef.current = new MapboxGL.Map({
+          container: mapDivRef.current,
+          style: "mapbox://styles/mapbox/streets-v12",
+          center: [centerLng, centerLat],
+          zoom: 14,
+        });
+
+        mapRef.current.addControl(new MapboxGL.NavigationControl(), "top-right");
+
+        mapRef.current.on("click", async (e: any) => {
+          try {
+            const lng = Number(e?.lngLat?.lng);
+            const lat = Number(e?.lngLat?.lat);
+            if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+
+            if (pickMode === "pickup") {
+              setPickupLat(String(lat));
+              setPickupLng(String(lng));
+              const name = await geocodeReverse(lng, lat);
+              if (name) setFromLabel(name);
+            } else {
+              setDropLat(String(lat));
+              setDropLng(String(lng));
+              const name2 = await geocodeReverse(lng, lat);
+              if (name2) setToLabel(name2);
+            }
+          } catch {
+            // ignore
+          }
+        });
+      } else {
+        // Recenter map when toggled
+        try {
+          mapRef.current.setCenter([centerLng, centerLat]);
+        } catch {
+          // ignore
+        }
+      }
+
+      // Update markers on each render
+      try {
+        const plng = toNum(pickupLng, 121.1175);
+        const plat = toNum(pickupLat, 16.7999);
+        const dlng = toNum(dropLng, 121.1222);
+        const dlat = toNum(dropLat, 16.8016);
+
+        if (!pickupMarkerRef.current) {
+          pickupMarkerRef.current = new MapboxGL.Marker({ color: "#16a34a" }).setLngLat([plng, plat]).addTo(mapRef.current);
+        } else {
+          pickupMarkerRef.current.setLngLat([plng, plat]);
+        }
+
+        if (!dropoffMarkerRef.current) {
+          dropoffMarkerRef.current = new MapboxGL.Marker({ color: "#dc2626" }).setLngLat([dlng, dlat]).addTo(mapRef.current);
+        } else {
+          dropoffMarkerRef.current.setLngLat([dlng, dlat]);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    initMap();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng]);
 
   async function getJson(url: string) {
     const r = await fetch(url, { method: "GET", cache: "no-store" });
@@ -151,7 +439,6 @@ export default function RidePage() {
       } catch {
         // ignore
       }
-
     } catch (e: any) {
       setCanInfoErr("CAN_BOOK_INFO_ERROR: " + String(e?.message || e));
       setCanInfo(null);
@@ -274,7 +561,7 @@ export default function RidePage() {
     if (unverifiedBlocked) {
       const win = norm(canInfo?.window);
       const extra = win ? (" Night gate window: " + win + ".") : "";
-      return "Your account is not verified. Ride booking is restricted during night gate hours until verification is approved.";
+      return "Your account is not verified. Ride booking is restricted during night gate hours until verification is approved." + extra;
     }
     if (walletBlocked) {
       const bal = canInfo?.wallet_balance;
@@ -445,7 +732,8 @@ export default function RidePage() {
             className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
           >
             Refresh status
-          </button>          {!verified ? (
+          </button>
+          {!verified ? (
             <button
               type="button"
               onClick={() => router.push("/verify")}
@@ -454,8 +742,19 @@ export default function RidePage() {
               Verify account
             </button>
           ) : null}
-
         </div>
+
+        {geoErr ? (
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-amber-300 bg-amber-50 p-3">
+            {geoErr}
+          </div>
+        ) : null}
+
+        {!MAPBOX_TOKEN ? (
+          <div className="mt-3 text-xs rounded-xl border border-amber-300 bg-amber-50 p-3">
+            Mapbox token missing. Autocomplete and map tap picker are disabled. Set <b>NEXT_PUBLIC_MAPBOX_TOKEN</b> (or <b>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</b>).
+          </div>
+        ) : null}
 
         {canInfoErr ? (
           <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
@@ -490,61 +789,34 @@ export default function RidePage() {
             </div>
 
             {showVerifyPanel && unverifiedBlocked ? (
-  <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
-    <div className="font-semibold text-sm">Verification required</div>
+              <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+                <div className="font-semibold text-sm">Verification required</div>
 
-    <div className="mt-2 text-xs opacity-70">
-      Current status: <b>{verificationStatusLabelFromApi(canInfo)}</b>
-    </div>
+                <div className="mt-2 text-xs opacity-70">
+                  Current status: <b>{verificationStatusLabelFromApi(canInfo)}</b>
+                </div>
 
-    <div className="mt-3 flex flex-wrap gap-2">
-      <button
-        type="button"
-        className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90"
-        onClick={() => router.push("/verify")}
-      >
-        Go to verification
-      </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90"
+                    onClick={() => router.push("/verify")}
+                  >
+                    Go to verification
+                  </button>
 
-      <button
-        type="button"
-        className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold"
-        onClick={refreshCanBook}
-      >
-        Refresh status
-      </button>
-    </div>
-  </div>
-) : null}
+                  <button
+                    type="button"
+                    className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold"
+                    onClick={refreshCanBook}
+                  >
+                    Refresh status
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
-
-        <div className="mt-3 grid grid-cols-1 gap-3">
-          {canInfo && canInfo.verification_status !== "verified" && canInfo.verification_note && canInfo.verification_note.toLowerCase().indexOf("not signed in") < 0 ? (
-            <div className="text-xs opacity-70 rounded-xl border border-black/10 p-3">
-              <div className="font-semibold">Verification lookup</div>
-              <div className="mt-1">
-                Source: <span className="font-mono">{String(canInfo.verification_source || "")}</span>
-              </div>
-              <div className="mt-1">{String(canInfo.verification_note || "")}</div>
-            </div>
-          ) : null}
-
-          {canInfo && canInfo.verification_status !== "verified" && canInfo.wallet_note !== undefined && String(canInfo.wallet_note).toLowerCase().indexOf("not signed in") < 0 ? (
-            <div className="text-xs opacity-70 rounded-xl border border-black/10 p-3">
-              <div className="font-semibold">Wallet precheck</div>
-              <div className="mt-1">
-                Source: <span className="font-mono">{String(canInfo.wallet_source || "")}</span>
-              </div>
-              <div className="mt-1">
-                Balance: <span className="font-mono">{String(canInfo.wallet_balance ?? "null")}</span> / Min required:{" "}
-                <span className="font-mono">{String(canInfo.min_wallet_required ?? "null")}</span> / Locked:{" "}
-                <span className="font-mono">{String(!!canInfo.wallet_locked)}</span>
-              </div>
-              <div className="mt-1">{String(canInfo.wallet_note || "")}</div>
-            </div>
-          ) : null}
-        </div>
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="rounded-2xl border border-black/10 p-4">
@@ -578,8 +850,10 @@ export default function RidePage() {
             <input
               className="w-full rounded-xl border border-black/10 px-3 py-2"
               value={fromLabel}
-              onChange={(e) => setFromLabel(e.target.value)}
+              onFocus={() => { setActiveGeoField("from"); }}
+              onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); }}
             />
+            {renderGeoList("from")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
@@ -604,8 +878,10 @@ export default function RidePage() {
             <input
               className="w-full rounded-xl border border-black/10 px-3 py-2"
               value={toLabel}
-              onChange={(e) => setToLabel(e.target.value)}
+              onFocus={() => { setActiveGeoField("to"); }}
+              onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); }}
             />
+            {renderGeoList("to")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
@@ -625,6 +901,50 @@ export default function RidePage() {
                 />
               </div>
             </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => { setShowMapPicker((v) => !v); }}
+              >
+                {showMapPicker ? "Hide map picker" : "Pick on map"}
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN || !showMapPicker}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => setPickMode("pickup")}
+                title="Next tap on the map sets pickup"
+              >
+                Pick pickup
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN || !showMapPicker}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => setPickMode("dropoff")}
+                title="Next tap on the map sets dropoff"
+              >
+                Pick dropoff
+              </button>
+
+              <span className="text-xs opacity-70">
+                Mode: <b>{pickMode === "pickup" ? "Pickup" : "Dropoff"}</b> (tap map to set)
+              </span>
+            </div>
+
+            {showMapPicker ? (
+              <div className="mt-3 rounded-2xl border border-black/10 overflow-hidden">
+                <div className="px-3 py-2 text-xs opacity-70 border-b border-black/10 bg-white">
+                  Tap the map to set {pickMode}. Markers: green pickup, red dropoff.
+                </div>
+                <div ref={mapDivRef} style={{ height: 260, width: "100%" }} />
+              </div>
+            ) : null}
           </div>
         </div>
 
