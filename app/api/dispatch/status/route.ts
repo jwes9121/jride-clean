@@ -6,9 +6,19 @@ type StatusReq = {
   booking_code?: string | null;
   status?: string | null;
   note?: string | null;
+  force?: boolean | null;
 };
 
-const ALLOWED = ["requested", "assigned", "on_the_way", "arrived", "enroute", "on_trip", "completed", "cancelled"] as const;
+const ALLOWED = [
+  "requested",
+  "assigned",
+  "on_the_way",
+  "arrived",
+  "enroute",
+  "on_trip",
+  "completed",
+  "cancelled",
+] as const;
 
 const NEXT: Record<string, string[]> = {
   requested: ["assigned", "cancelled"],
@@ -21,7 +31,7 @@ const NEXT: Record<string, string[]> = {
   cancelled: [],
 };
 
-function norm(v: any) {
+function norm(v: any): string {
   let s = String(v ?? "").trim().toLowerCase();
   if (!s) return "";
   s = s.replace(/[\s\-]+/g, "_");
@@ -30,22 +40,86 @@ function norm(v: any) {
   return s;
 }
 
-async function fetchBooking(supabase: ReturnType<typeof createClient>, booking_id?: string | null, booking_code?: string | null) {
-  if (booking_id) {
-    const r = await supabase.from("bookings").select("*").eq("id", booking_id).maybeSingle();
-    return { data: r.data, error: r.error?.message || null };
-  }
-  if (booking_code) {
-    const r = await supabase.from("bookings").select("*").eq("booking_code", booking_code).maybeSingle();
-    return { data: r.data, error: r.error?.message || null };
-  }
-  return { data: null, error: "Missing booking_id or booking_code" };
+function jsonOk(body: any, status = 200) {
+  return NextResponse.json(body, { status });
 }
 
-async function bestEffortUpdate(supabase: ReturnType<typeof createClient>, bookingId: string, patch: Record<string, any>) {
-  const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
-  if (r.error) return { ok: false, error: r.error.message, data: null as any };
-  return { ok: true, error: null as any, data: r.data };
+function jsonErr(code: string, message: string, status: number, extra?: any) {
+  return NextResponse.json(
+    Object.assign({ ok: false, code, message }, extra || {}),
+    { status }
+  );
+}
+
+async function fetchBooking(
+  supabase: ReturnType<typeof createClient>,
+  booking_id?: string | null,
+  booking_code?: string | null
+): Promise<{ data: any | null; error: string | null }> {
+  try {
+    if (booking_id) {
+      const r = await supabase.from("bookings").select("*").eq("id", booking_id).maybeSingle();
+      return { data: r.data ?? null, error: r.error?.message || null };
+    }
+    if (booking_code) {
+      const r = await supabase.from("bookings").select("*").eq("booking_code", booking_code).maybeSingle();
+      return { data: r.data ?? null, error: r.error?.message || null };
+    }
+    return { data: null, error: "Missing booking_id or booking_code" };
+  } catch (e: any) {
+    return { data: null, error: e?.message || "Booking lookup failed" };
+  }
+}
+
+async function tryUpdateBooking(
+  supabase: ReturnType<typeof createClient>,
+  bookingId: string,
+  patch: Record<string, any>
+): Promise<{ ok: boolean; data: any | null; error: string | null }> {
+  try {
+    const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
+    if (r.error) return { ok: false, data: null, error: r.error.message };
+    return { ok: true, data: r.data ?? null, error: null };
+  } catch (e: any) {
+    return { ok: false, data: null, error: e?.message || "Booking update failed" };
+  }
+}
+
+// Best-effort: keep driver status roughly aligned (does NOT block booking update)
+function driverStatusForBookingStatus(status: string): string | null {
+  const s = norm(status);
+  if (s === "assigned") return "assigned";
+  if (s === "on_the_way" || s === "enroute") return "on_the_way";
+  if (s === "arrived") return "arrived";
+  if (s === "on_trip") return "on_trip";
+  if (s === "completed") return "available";
+  if (s === "cancelled") return "available";
+  return null;
+}
+
+async function bestEffortUpdateDriverLocation(
+  supabase: ReturnType<typeof createClient>,
+  driverId: string,
+  bookingStatus: string
+): Promise<{ warning?: string }> {
+  const mapped = driverStatusForBookingStatus(bookingStatus);
+  if (!driverId || !mapped) return {};
+
+  try {
+    const r = await supabase
+      .from("driver_locations")
+      .update({ status: mapped, updated_at: new Date().toISOString() })
+      .eq("driver_id", driverId);
+
+    if (r.error) {
+      // Do not fail the request. Surface as warning.
+      return { warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR: " + r.error.message };
+    }
+    return {};
+  } catch (e: any) {
+    // If table doesn't exist or any other issue, do not fail booking update.
+    return { warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR: " + (e?.message || "Unknown error") };
+  }
 }
 
 export async function GET(req: Request) {
@@ -57,9 +131,11 @@ export async function GET(req: Request) {
 
     const bk = await fetchBooking(supabase, bookingId ?? null, bookingCode ?? null);
     if (!bk.data) {
-      return NextResponse.json(
-        { ok: false, code: "BOOKING_NOT_FOUND", message: bk.error || "Booking not found", booking_id: bookingId ?? null, booking_code: bookingCode ?? null },
-        { status: 404 }
+      return jsonErr(
+        "BOOKING_NOT_FOUND",
+        bk.error || "Booking not found",
+        404,
+        { booking_id: bookingId ?? null, booking_code: bookingCode ?? null }
       );
     }
 
@@ -68,107 +144,92 @@ export async function GET(req: Request) {
     const allowedNext = NEXT[cur] ?? [];
     const hasDriver = !!booking.driver_id;
 
-    return NextResponse.json({
+    return jsonOk({
       ok: true,
       booking_id: String(booking.id),
       booking_code: booking.booking_code ?? null,
       current_status: cur,
       has_driver: hasDriver,
       allowed_next: allowedNext,
-      booking
+      booking,
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, code: "SERVER_ERROR", message: e?.message || "Unknown error" }, { status: 500 });
+    return jsonErr("SERVER_ERROR", e?.message || "Unknown error", 500);
   }
 }
+
 export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as StatusReq;
 
-  const force = Boolean((body as any).force);
+  const force = Boolean(body.force);
 
   const target = norm(body.status);
-  if (!target || !ALLOWED.includes(target as any)) {
-    return NextResponse.json(
-      { ok: false, code: "INVALID_STATUS", message: "Invalid status. Allowed: " + ALLOWED.join(", ") },
-      { status: 400 }
+  if (!target || !(ALLOWED as any).includes(target)) {
+    return jsonErr(
+      "INVALID_STATUS",
+      "Invalid status. Allowed: " + ALLOWED.join(", "),
+      400
     );
   }
 
-  const bk = await fetchBooking(supabase, (body.booking_id ?? (body as any).id ?? null), body.booking_code ?? null);
+  const bookingId = (body.booking_id ?? (body as any).id ?? null) as any;
+  const bookingCode = body.booking_code ?? null;
+
+  const bk = await fetchBooking(supabase, bookingId ?? null, bookingCode);
   if (!bk.data) {
-    return NextResponse.json({ ok: false, code: "BOOKING_NOT_FOUND", message: bk.error || "Booking not found" }, { status: 404 });
+    return jsonErr("BOOKING_NOT_FOUND", bk.error || "Booking not found", 404, {
+      booking_id: bookingId ?? null,
+      booking_code: bookingCode ?? null,
+    });
   }
 
   const booking: any = bk.data;
   const cur = norm(booking.status) || "requested";
-
-  // Must have driver for statuses beyond requested (except cancel)
-  const hasDriver = !!booking.driver_id;
-  if (!hasDriver && target !== "requested" && target !== "cancelled") {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "NO_DRIVER",
-        message: "Cannot set status without driver_id",
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        current_status: cur,
-        target_status: target,
-        has_driver: hasDriver,
-        allowed_next: NEXT[cur] ?? [],
-        current_status_raw: booking.status ?? null
-      },
-      { status: 409 }
-    );
-  }
-
-  // Idempotent: setting same status is OK
-  if (cur === target) {
-    
-    // Audit: forced status changes (best effort; actor may be unknown depending on auth setup)
-    if (force) {
-      try {
-        await supabase.from("admin_audit_log").insert({
-          actor_id: null,
-          actor_email: null,
-          action: "FORCE_STATUS",
-          booking_id: (booking as any)?.id ?? null,
-          booking_code: (booking as any)?.booking_code ?? null,
-          from_status: (booking as any)?.status ?? null,
-          to_status: target ?? null,
-          meta: { source: "dispatch/status" }
-        } as any);
-      } catch {}
-    }
-return NextResponse.json(
-      { ok: true, changed: false, booking_id: String(booking.id), booking_code: booking.booking_code ?? null, status: booking.status ?? null, booking },
-      { status: 200 }
-    );
-  }
-
   const allowedNext = NEXT[cur] ?? [];
-  if (!force && !allowedNext.includes(target)) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "INVALID_TRANSITION",
-        message: `Cannot transition ${cur} -> ${target}`,
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        current_status: cur,
-        target_status: target,
-        has_driver: hasDriver,
-        allowed_next: allowedNext
-      },
-      { status: 409 }
-    );
+  const hasDriver = !!booking.driver_id;
+
+  // Must have driver for statuses beyond requested (except cancelled)
+  if (!hasDriver && target !== "requested" && target !== "cancelled") {
+    return jsonErr("NO_DRIVER", "Cannot set status without driver_id", 409, {
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      current_status: cur,
+      target_status: target,
+      has_driver: hasDriver,
+      allowed_next: allowedNext,
+      current_status_raw: booking.status ?? null,
+    });
   }
 
-  // Best-effort timestamp columns (only if they exist; errors ignored)
+  // Idempotent
+  if (cur === target) {
+    return jsonOk({
+      ok: true,
+      changed: false,
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      status: booking.status ?? null,
+      booking,
+    });
+  }
+
+  // Strict transitions unless forced
+  if (!force && !allowedNext.includes(target)) {
+    return jsonErr("INVALID_TRANSITION", "Cannot transition " + cur + " -> " + target, 409, {
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      current_status: cur,
+      target_status: target,
+      has_driver: hasDriver,
+      allowed_next: allowedNext,
+    });
+  }
+
+  // Try best-effort timestamp + note columns; fallback to status-only if columns don't exist.
+  const nowIso = new Date().toISOString();
   const patch: Record<string, any> = { status: target };
 
-  const nowIso = new Date().toISOString();
   if (target === "assigned") patch.assigned_at = nowIso;
   if (target === "on_the_way" || target === "enroute") patch.enroute_at = nowIso;
   if (target === "arrived") patch.arrived_at = nowIso;
@@ -176,59 +237,44 @@ return NextResponse.json(
   if (target === "completed") patch.completed_at = nowIso;
   if (target === "cancelled") patch.cancelled_at = nowIso;
 
-  // Optional note (if you have a notes column, it will be ignored if missing)
-  if (body.note && String(body.note).trim() !== "") patch.status_note = String(body.note).trim();
+  if (body.note && String(body.note).trim() !== "") {
+    patch.status_note = String(body.note).trim();
+  }
 
-  // When completed/cancelled: driver becomes available automatically by busy-lock (because status leaves BUSY list)
-  const upd = await bestEffortUpdate(supabase, String(booking.id), patch);
+  let upd = await tryUpdateBooking(supabase, String(booking.id), patch);
 
-  // If timestamp/note columns do not exist, fallback to status-only update
   if (!upd.ok && upd.error && upd.error.toLowerCase().includes("column")) {
-    const upd2 = await bestEffortUpdate(supabase, String(booking.id), { status: target });
-    return NextResponse.json(
-      {
-        ok: upd2.ok,
-        changed: true,
+    upd = await tryUpdateBooking(supabase, String(booking.id), { status: target });
+    if (!upd.ok) {
+      return jsonErr("DISPATCH_STATUS_DB_ERROR", upd.error || "Booking update failed", 500, {
         booking_id: String(booking.id),
         booking_code: booking.booking_code ?? null,
-        status: target,
-        note: "Status updated. Extra columns not present; updated status only.",
-        update_error: upd2.error,
-        booking: upd2.data ?? null,
-      },
-      { status: upd2.ok ? 200 : 500 }
-    );
+        current_status: cur,
+        target_status: target,
+      });
+    }
   }
 
-  
-  // Audit: forced status transitions (post-update; best effort)
-  if (force) {
-    try {
-      await supabase.from("admin_audit_log").insert({
-        actor_id: null,
-        actor_email: null,
-        action: "FORCE_STATUS",
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        from_status: cur ?? null,
-        to_status: target ?? null,
-        meta: { source: "dispatch/status", phase: "post-update", changed: true, note: body.note ?? null }
-      } as any);
-    } catch {}
-  }
-return NextResponse.json(
-    {
-      ok: upd.ok,
-      changed: true,
+  if (!upd.ok) {
+    return jsonErr("DISPATCH_STATUS_DB_ERROR", upd.error || "Booking update failed", 500, {
       booking_id: String(booking.id),
       booking_code: booking.booking_code ?? null,
-      status: target,
-      update_error: upd.error,
-      booking: upd.data ?? null,
-    },
-    { status: upd.ok ? 200 : 500 }
-  );
+      current_status: cur,
+      target_status: target,
+    });
+  }
+
+  const driverId = booking.driver_id ? String(booking.driver_id) : "";
+  const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
+
+  return jsonOk({
+    ok: true,
+    changed: true,
+    booking_id: String(booking.id),
+    booking_code: booking.booking_code ?? null,
+    status: target,
+    allowed_next: NEXT[target] ?? [],
+    booking: upd.data ?? null,
+    warning: drv.warning ?? null,
+  });
 }
-
-
-
