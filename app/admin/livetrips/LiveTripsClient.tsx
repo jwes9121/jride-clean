@@ -455,6 +455,8 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   }
 
   const selectedBookingCode = (selectedTrip as any)?.booking_code || null;
+  const selectedEff = selectedTrip ? effectiveStatus(selectedTrip as any) : "";
+
 
   return (
     <div className="p-4">
@@ -600,34 +602,34 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                         <div className="flex flex-wrap gap-2">
                           {/* Normal lifecycle path */}
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "on_the_way"); }}
-                            disabled={!((t as any)?.booking_code)}
+                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "on_the_way"}
                           >
                             On the way
                           </button>
 
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "arrived"); }}
-                            disabled={!((t as any)?.booking_code)}
+                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "arrived"}
                           >
                             Arrived
                           </button>
 
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "on_trip"); }}
-                            disabled={!((t as any)?.booking_code)}
+                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "on_trip"}
                             title="arrived/enroute -> on_trip"
                           >
                             Start trip
                           </button>
 
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "completed"); }}
-                            disabled={!((t as any)?.booking_code)}
+                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "completed"}
                             title="on_trip -> completed"
                           >
                             Drop off
@@ -635,7 +637,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
 
                           {/* Force buttons (fallback) */}
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); forceTripStatus((t as any)?.booking_code, "on_trip"); }}
                             disabled={!((t as any)?.booking_code)}
                             title="Force start (admin override)"
@@ -644,7 +646,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           </button>
 
                           <button
-                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                            className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => {
                             e.stopPropagation();
                             const st = effectiveStatus(t as any);
@@ -767,19 +769,19 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                     <div>Code: {(selectedTrip as any)?.booking_code}</div>
                     <div>Status: {normStatus((selectedTrip as any)?.status)}</div>
                     <div className="mt-2 flex gap-2 flex-wrap">
-                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                         onClick={() => updateTripStatus((selectedTrip as any)?.booking_code, "on_the_way")}
                         disabled={!selectedBookingCode}
                       >On the way</button>
-                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                         onClick={() => updateTripStatus((selectedTrip as any)?.booking_code, "arrived")}
                         disabled={!selectedBookingCode}
                       >Arrived</button>
-                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                         onClick={() => updateTripStatus((selectedTrip as any)?.booking_code, "on_trip")}
                         disabled={!selectedBookingCode}
                       >Start trip</button>
-                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                      <button className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                         onClick={() => updateTripStatus((selectedTrip as any)?.booking_code, "completed")}
                         disabled={!selectedBookingCode}
                       >Drop off</button>
