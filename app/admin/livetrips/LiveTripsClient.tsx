@@ -106,6 +106,18 @@ function effectiveStatus(t: any): string {
   if (s === "assigned" && !hasDriver(t)) return "pending";
   return s;
 }
+function nextLifecycleStatus(sEff: string): string | null {
+  // Next-only lifecycle:
+  // assigned -> on_the_way -> arrived -> on_trip -> completed
+  // Anything else: no next step
+  const s = normStatus(sEff);
+  if (s === "assigned") return "on_the_way";
+  if (s === "on_the_way") return "arrived";
+  if (s === "arrived" || s === "enroute") return "on_trip";
+  if (s === "on_trip") return "completed";
+  return null;
+}
+
 
 function tripKey(t: TripRow): string {
   return String((t as any)?.uuid ?? (t as any)?.id ?? (t as any)?.booking_code ?? "");
@@ -604,7 +616,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           <button
                             className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "on_the_way"); }}
-                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "on_the_way"}
+                            disabled={!((t as any)?.booking_code) || nextLifecycleStatus(sEff) !== "on_the_way"}
                           >
                             On the way
                           </button>
@@ -612,7 +624,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           <button
                             className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "arrived"); }}
-                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "arrived"}
+                            disabled={!((t as any)?.booking_code) || nextLifecycleStatus(sEff) !== "arrived"}
                           >
                             Arrived
                           </button>
@@ -620,7 +632,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           <button
                             className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "on_trip"); }}
-                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "on_trip"}
+                            disabled={!((t as any)?.booking_code) || nextLifecycleStatus(sEff) !== "on_trip"}
                             title="arrived/enroute -> on_trip"
                           >
                             Start trip
@@ -629,7 +641,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           <button
                             className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                             onClick={(e) => { e.stopPropagation(); updateTripStatus((t as any)?.booking_code, "completed"); }}
-                            disabled={!((t as any)?.booking_code) || effectiveStatus(t as any) === "completed"}
+                            disabled={!((t as any)?.booking_code) || nextLifecycleStatus(sEff) !== "completed"}
                             title="on_trip -> completed"
                           >
                             Drop off
