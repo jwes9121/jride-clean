@@ -50,6 +50,54 @@ function jsonErr(code: string, message: string, status: number, extra?: any) {
     { status }
   );
 }
+function getActorFromReq(req: Request): string {
+  try {
+    const h: any = (req as any)?.headers;
+    const v =
+      h?.get?.("x-dispatcher-id") ||
+      h?.get?.("x-user-id") ||
+      h?.get?.("x-admin-id") ||
+      h?.get?.("x-actor") ||
+      "system";
+    return String(v || "system");
+  } catch {
+    return "system";
+  }
+}
+
+async function bestEffortAudit(
+  supabase: ReturnType<typeof createClient>,
+  entry: {
+    booking_id?: string | null;
+    booking_code?: string | null;
+    from_status?: string | null;
+    to_status?: string | null;
+    actor?: string | null;
+    source?: string | null;
+  }
+): Promise<{ warning?: string }> {
+  const payload: any = {
+    booking_id: entry.booking_id ?? null,
+    booking_code: entry.booking_code ?? null,
+    from_status: entry.from_status ?? null,
+    to_status: entry.to_status ?? null,
+    actor: entry.actor ?? "system",
+    source: entry.source ?? "dispatch/status",
+    created_at: new Date().toISOString(),
+  };
+
+  const tables = ["dispatch_audit_log", "audit_log", "status_audit"];
+
+  for (let i = 0; i < tables.length; i++) {
+    const tbl = tables[i];
+    try {
+      const r: any = await supabase.from(tbl).insert(payload);
+      if (!r?.error) return {};
+    } catch {}
+  }
+  return { warning: "AUDIT_LOG_INSERT_FAILED" };
+}
+
 
 async function fetchBooking(
   supabase: ReturnType<typeof createClient>,
@@ -265,7 +313,21 @@ export async function POST(req: Request) {
   }
 
   const driverId = booking.driver_id ? String(booking.driver_id) : "";
-  const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
+    const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
+
+  const actor = getActorFromReq(req);
+  const audit = await bestEffortAudit(supabase, {
+    booking_id: String(booking.id),
+    booking_code: booking.booking_code ?? null,
+    from_status: cur,
+    to_status: target,
+    actor,
+    source: "dispatch/status",
+  });
+
+  const warn = drv.warning
+    ? (audit.warning ? (String(drv.warning) + "; " + String(audit.warning)) : String(drv.warning))
+    : (audit.warning ? String(audit.warning) : null);
 
   return jsonOk({
     ok: true,
@@ -275,6 +337,6 @@ export async function POST(req: Request) {
     status: target,
     allowed_next: NEXT[target] ?? [],
     booking: upd.data ?? null,
-    warning: drv.warning ?? null,
-  });
-}
+    warning: warn,
+  });}
+
