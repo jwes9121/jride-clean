@@ -397,34 +397,66 @@ export default function RidePage() {
       } catch {
         // ignore
       }
-    
-      // Route preview layer (pickup -> dropoff)
-      try {
-        if (routePreviewGeo && mapRef.current) {
+      // Route preview layer (pickup -> dropoff) - draw after map style loads
+      function drawRoutePreviewLine() {
+        try {
+          if (!mapRef.current) return;
           const map = mapRef.current;
+
+          // If style not loaded yet, delay draw
+          if (!(map && (map.isStyleLoaded ? map.isStyleLoaded() : map.loaded && map.loaded()))) {
+            return;
+          }
 
           const srcId = "route-preview";
           const layerId = "route-preview-line";
 
+          // Clear any old preview
           try { if (map.getLayer(layerId)) map.removeLayer(layerId); } catch {}
           try { if (map.getSource(srcId)) map.removeSource(srcId); } catch {}
 
-          map.addSource(srcId, {
-            type: "geojson",
-            data: routePreviewGeo,
-          });
+          if (!routePreviewGeo) {
+            return;
+          }
+
+          map.addSource(srcId, { type: "geojson", data: routePreviewGeo });
 
           map.addLayer({
             id: layerId,
             type: "line",
             source: srcId,
             layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-width": 4, "line-opacity": 0.8 },
+            paint: {
+              "line-width": 4,
+              "line-opacity": 0.85,
+              "line-color": "#2563eb"
+            },
           });
-        } else if (mapRef.current) {
+        } catch {
+          // ignore
+        }
+      }
+
+      try {
+        if (mapRef.current) {
           const map = mapRef.current;
-          try { if (map.getLayer("route-preview-line")) map.removeLayer("route-preview-line"); } catch {}
-          try { if (map.getSource("route-preview")) map.removeSource("route-preview"); } catch {}
+
+          // If map isn't loaded yet, draw once on load
+          if (!(map && (map.isStyleLoaded ? map.isStyleLoaded() : map.loaded && map.loaded()))) {
+            try {
+              map.once("load", () => { drawRoutePreviewLine(); });
+            } catch {
+              // ignore
+            }
+          } else {
+            drawRoutePreviewLine();
+          }
+
+          // If routePreviewGeo becomes null, clean up
+          if (!routePreviewGeo) {
+            try { if (map.getLayer("route-preview-line")) map.removeLayer("route-preview-line"); } catch {}
+            try { if (map.getSource("route-preview")) map.removeSource("route-preview"); } catch {}
+          }
         }
       } catch {
         // ignore
@@ -1085,4 +1117,5 @@ export default function RidePage() {
     </main>
   );
 }
+
 
