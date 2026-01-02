@@ -63,6 +63,16 @@ function normUpper(s: any): string {
 }
 
 
+
+function verificationStatusLabelFromApi(canInfo: any): string {
+  const s = String(canInfo?.verification_status || "").toLowerCase();
+  if (!s || s === "not_submitted") return "Not submitted";
+  if (s === "submitted") return "Submitted (dispatcher review)";
+  if (s === "pending_admin") return "Pending admin approval";
+  if (s === "verified") return "Verified";
+  if (s === "rejected") return "Rejected";
+  return String(canInfo?.verification_status || "");
+}
 function verificationStatusLabel(info: any): string {
   if (!info) return "Not submitted";
   if (info.verified === true) return "Verified";
@@ -462,7 +472,7 @@ export default function RidePage() {
     <div className="font-semibold text-sm">Verification required</div>
 
     <div className="mt-2 text-xs opacity-70">
-      Current status: <b>{verificationStatusLabel(canInfo)}</b>
+      Current status: <b>{verificationStatusLabelFromApi(canInfo)}</b>
     </div>
 
     <div className="mt-3 flex flex-wrap gap-2">
