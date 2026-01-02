@@ -240,7 +240,14 @@ export async function POST(req: Request) {
 
   const force = Boolean(body.force);
 
-  const target = norm(body.status);
+    // Payload sanity (cheap guardrails)
+  if (!body || (!body.booking_id && !body.booking_code)) {
+    return jsonErr("BAD_REQUEST", "Missing booking identifier", 400);
+  }
+  if (!body.status) {
+    return jsonErr("BAD_REQUEST", "Missing target status", 400);
+  }
+const target = norm(body.status);
   if (!target || !(ALLOWED as any).includes(target)) {
     return jsonErr(
       "INVALID_STATUS",
@@ -278,11 +285,12 @@ export async function POST(req: Request) {
     });
   }
 
-  // Idempotent
+    // Idempotent (safe retry)
   if (cur === target) {
     return jsonOk({
       ok: true,
       changed: false,
+      idempotent: true,
       booking_id: String(booking.id),
       booking_code: booking.booking_code ?? null,
       status: booking.status ?? null,
@@ -291,7 +299,22 @@ export async function POST(req: Request) {
   }
 
   // Strict transitions unless forced
-  if (!force && !allowedNext.includes(target)) {
+    // Stale transition guard: booking moved since client last saw it
+  if (!force && booking.status && norm(booking.status) !== cur) {
+    return jsonErr(
+      "STALE_TRANSITION",
+      "Booking status changed concurrently",
+      409,
+      {
+        booking_id: String(booking.id),
+        booking_code: booking.booking_code ?? null,
+        server_status: norm(booking.status),
+        requested_from: cur,
+        requested_to: target,
+      }
+    );
+  }
+if (!force && !allowedNext.includes(target)) {
     return jsonErr("INVALID_TRANSITION", "Cannot transition " + cur + " -> " + target, 409, {
       booking_id: String(booking.id),
       booking_code: booking.booking_code ?? null,
@@ -378,6 +401,7 @@ const mergedWarn =
     booking: upd.data ?? null,
     warning: mergedWarn,
   });}
+
 
 
 
