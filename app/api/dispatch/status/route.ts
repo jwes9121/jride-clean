@@ -97,6 +97,34 @@ async function bestEffortAudit(
   }
   return { warning: "AUDIT_LOG_INSERT_FAILED" };
 }
+async function bestEffortWalletSync(
+  supabase: ReturnType<typeof createClient>,
+  booking: any
+): Promise<{ warning?: string }> {
+  const bookingId = booking?.id ?? null;
+  const bookingCode = booking?.booking_code ?? null;
+
+  const rpcNames = [
+    "process_booking_wallet",
+    "process_booking_wallet_cut",
+  ];
+
+  for (let i = 0; i < rpcNames.length; i++) {
+    const name = rpcNames[i];
+    try {
+      const r: any = await supabase.rpc(name, {
+        booking_id: bookingId,
+        booking_code: bookingCode,
+      });
+      if (!r?.error) {
+        return {};
+      }
+    } catch {}
+  }
+
+  return { warning: "WALLET_SYNC_SKIPPED" };
+}
+
 
 
 async function fetchBooking(
@@ -325,9 +353,20 @@ export async function POST(req: Request) {
     source: "dispatch/status",
   });
 
-  const warn = drv.warning
-    ? (audit.warning ? (String(drv.warning) + "; " + String(audit.warning)) : String(drv.warning))
-    : (audit.warning ? String(audit.warning) : null);
+    let walletWarn: string | null = null;
+  if (target === "completed") {
+    const w = await bestEffortWalletSync(supabase, upd.data ?? booking);
+    walletWarn = w.warning ?? null;
+  }
+
+    const warn =
+    drv.warning
+      ? (audit.warning ? (String(drv.warning) + "; " + String(audit.warning)) : String(drv.warning))
+      : (audit.warning ? String(audit.warning) : null);
+const mergedWarn =
+    warn
+      ? (walletWarn ? (String(warn) + "; " + String(walletWarn)) : String(warn))
+      : (walletWarn ? String(walletWarn) : null);
 
   return jsonOk({
     ok: true,
@@ -337,6 +376,8 @@ export async function POST(req: Request) {
     status: target,
     allowed_next: NEXT[target] ?? [],
     booking: upd.data ?? null,
-    warning: warn,
+    warning: mergedWarn,
   });}
+
+
 
