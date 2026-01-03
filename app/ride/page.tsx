@@ -127,6 +127,13 @@ export default function RidePage() {
       process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
       "") as string;
 
+  // Mapbox Searchbox session token (improves relevance + grouping). UI-only.
+  const sessionTokenRef = React.useRef<string>("");
+  if (!sessionTokenRef.current) {
+    sessionTokenRef.current =
+      "sess_" + Math.random().toString(36).slice(2) + "_" + Date.now().toString(36);
+  }
+
   const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
   const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
   const [geoErr, setGeoErr] = React.useState<string>("");
@@ -149,11 +156,16 @@ export default function RidePage() {
   }
 
   function buildQuery(label: string): string {
-    const q = norm(label);
-    if (!q) return "";
-    // Bias queries to your service area without hard-locking.
-    // Example: "IGH" becomes "IGH, Lagawe, Ifugao, Philippines"
-    return q + ", " + town + ", Ifugao, Philippines";
+    const q0 = norm(label);
+    if (!q0) return "";
+
+    // Keep short acronyms intact (e.g., "IGH") to avoid pushing results to province/town only.
+    const q = q0.replace(/\s+/g, " ").trim();
+    if (q.length <= 4) return q;
+
+    // Light context bias without hard-locking.
+    // Example: "Ifugao General Hospital" -> "... , Lagawe, Ifugao"
+    return q + ", " + town + ", Ifugao";
   }
 
   async function geocodeForward(label: string): Promise<GeoFeature[]> {
@@ -166,30 +178,84 @@ export default function RidePage() {
       return [];
     }
 
-    // Use proximity near current pickup if available.
+    // Bias near current pickup if available
     const proxLng = toNum(pickupLng, 121.1175);
     const proxLat = toNum(pickupLat, 16.7999);
 
-    const url =
-      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
-      encodeURIComponent(q) +
-      ".json?autocomplete=true&limit=6&country=PH&proximity=" +
-      encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
-      "&access_token=" +
-      encodeURIComponent(MAPBOX_TOKEN);
+    // Lagawe bias bbox (minLng,minLat,maxLng,maxLat)
+    // Keep it as a bias only (not a hard filter).
+    const lagaweBbox = "121.08,16.77,121.16,16.83";
+    const useBbox = (String(town || "").toLowerCase() === "lagawe");
 
-    const r = await fetch(url, { method: "GET" });
+    const base =
+      "https://api.mapbox.com/search/searchbox/v1/suggest" +
+      "?q=" + encodeURIComponent(q) +
+      "&limit=6" +
+      "&country=PH" +
+      "&language=en" +
+      "&types=poi,address,place" +
+      "&proximity=" + encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
+      (useBbox ? ("&bbox=" + encodeURIComponent(lagaweBbox)) : "") +
+      "&session_token=" + encodeURIComponent(sessionTokenRef.current) +
+      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+
+    const r = await fetch(base, { method: "GET" });
     const j = (await r.json().catch(() => ({}))) as any;
-    const feats = (j && j.features) ? (j.features as any[]) : [];
-    return feats.map((f) => ({
-      id: String(f.id || ""),
-      place_name: String(f.place_name || ""),
-      text: String(f.text || ""),
-      center: Array.isArray(f.center) ? [Number(f.center[0]), Number(f.center[1])] : undefined,
-    }));
+
+    const arr = (j && (j.suggestions || j.results || j.features)) ? (j.suggestions || j.results || j.features) : [];
+    const items: any[] = Array.isArray(arr) ? arr : [];
+
+    function pickCenter(it: any): [number, number] | undefined {
+      // Try a few common shapes without assuming one schema.
+      const c1 = it?.geometry?.coordinates;
+      if (Array.isArray(c1) && c1.length >= 2) return [Number(c1[0]), Number(c1[1])];
+
+      const c2 = it?.coordinates;
+      if (c2 && typeof c2 === "object") {
+        const lng = Number(c2.longitude ?? c2.lng ?? c2.lon);
+        const lat = Number(c2.latitude ?? c2.lat);
+        if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
+      }
+
+      const c3 = it?.center;
+      if (Array.isArray(c3) && c3.length >= 2) return [Number(c3[0]), Number(c3[1])];
+
+      return undefined;
+    }
+
+    const mapped: GeoFeature[] = items.map((it) => {
+      const id = String(it?.mapbox_id || it?.id || "");
+      const name = String(it?.name || it?.text || "").trim();
+      const formatted = String(it?.place_formatted || it?.place_name || it?.full_address || "").trim();
+
+      const ft = String(it?.feature_type || it?.type || "").trim();
+      const labelOut = (formatted || name || "").trim();
+
+      return {
+        id,
+        place_name: labelOut,
+        text: name || labelOut,
+        center: pickCenter(it),
+        feature_type: ft as any,
+      } as any;
+    });
+
+    // Rank POIs first, then address, then place (keep stable ordering for same rank).
+    const rank = (f: any): number => {
+      const t = String(f?.feature_type || "").toLowerCase();
+      if (t === "poi") return 0;
+      if (t === "address") return 1;
+      if (t === "place") return 2;
+      return 9;
+    };
+
+    mapped.sort((a: any, b: any) => rank(a) - rank(b));
+
+    // Filter out entries that cannot be applied (need center)
+    return mapped.filter((f) => Array.isArray((f as any).center) && (f as any).center.length === 2);
   }
 
-  async function geocodeReverse(lng: number, lat: number): Promise<string> {
+  async function geocodeReverse(lng: number, lat: number): Promise<string> {(lng: number, lat: number): Promise<string> {
     if (!MAPBOX_TOKEN) return "";
     const url =
       "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
@@ -1044,3 +1110,4 @@ export default function RidePage() {
     </main>
   );
 }
+
