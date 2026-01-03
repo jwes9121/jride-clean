@@ -505,7 +505,10 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
       setGeoFrom([]);
       setActiveGeoField(null);
     } else {
-      if (selId) setSelectedGeoToId(selId);
+            {
+        const _selId = String(((f as any).mapbox_id || (f as any).id || "")).trim();
+        if (_selId) setSelectedGeoToId(_selId);
+      }
       if (name) setToLabel(name);
       setDropLat(String(lat));
       setDropLng(String(lng));
@@ -1384,6 +1387,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
