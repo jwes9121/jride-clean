@@ -255,7 +255,7 @@ export default function RidePage() {
     return mapped.filter((f) => Array.isArray((f as any).center) && (f as any).center.length === 2);
   }
 
-  async function geocodeReverse(lng: number, lat: number): Promise<string> {(lng: number, lat: number): Promise<string> {
+  async function geocodeReverse(lng: number, lat: number): Promise<string> {
     if (!MAPBOX_TOKEN) return "";
     const url =
       "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
@@ -1110,4 +1110,5 @@ export default function RidePage() {
     </main>
   );
 }
+
 
