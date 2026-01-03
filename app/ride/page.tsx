@@ -508,7 +508,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     }
   }
 
-  function renderGeoList(field: "from" | "to") {(field: "from" | "to") {
+  function renderGeoList(field: "from" | "to") {
     const items = field === "from" ? geoFrom : geoTo;
     const open = activeGeoField === field && items && items.length > 0;
 
@@ -1373,6 +1373,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
