@@ -139,6 +139,11 @@ export default function RidePage() {
 
   const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
   const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
+
+  // Selected suggestion highlight (UI-only)
+  const [selectedGeoFromId, setSelectedGeoFromId] = React.useState<string>("");
+  const [selectedGeoToId, setSelectedGeoToId] = React.useState<string>("");
+
   const [geoErr, setGeoErr] = React.useState<string>("");
   const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
 
@@ -500,6 +505,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
       setGeoFrom([]);
       setActiveGeoField(null);
     } else {
+      if (selId) setSelectedGeoToId(selId);
       if (name) setToLabel(name);
       setDropLat(String(lat));
       setDropLng(String(lng));
@@ -522,7 +528,12 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
             <button
               key={(f.id || "") + "_" + String(idx)}
               type="button"
-              className="w-full text-left px-3 py-2 text-sm hover:bg-black/5"
+              className={
+                "w-full text-left px-3 py-2 text-sm hover:bg-black/5 " +
+                (((field === "from" ? selectedGeoFromId : selectedGeoToId) === String((f.mapbox_id || f.id || "")).trim())
+                  ? "bg-black/10"
+                  : "")
+              }
               onClick={async () => { await applyGeoSelection(field, f); }}
             >
               {label}
@@ -1373,6 +1384,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
