@@ -150,6 +150,154 @@ export default function RidePage() {
   const pickupMarkerRef = React.useRef<any>(null);
   const dropoffMarkerRef = React.useRef<any>(null);
 
+  // ===== Route preview polyline (UI-only) =====
+  const ROUTE_SOURCE_ID = "jride_route_source";
+  const ROUTE_LAYER_ID = "jride_route_line";
+  const routeAbortRef = React.useRef<any>(null);
+  const routeDebounceRef = React.useRef<any>(null);
+  const [routeErr, setRouteErr] = React.useState<string>("");
+  const [routeInfo, setRouteInfo] = React.useState<{ distance_m: number; duration_s: number } | null>(null);
+  const routeGeoRef = React.useRef<any>({
+    type: "FeatureCollection",
+    features: [],
+  });
+
+  function hasBothPoints(): boolean {
+    const plng = toNum(pickupLng, 121.1175);
+    const plat = toNum(pickupLat, 16.7999);
+    const dlng = toNum(dropLng, 121.1222);
+    const dlat = toNum(dropLat, 16.8016);
+    return Number.isFinite(plng) && Number.isFinite(plat) && Number.isFinite(dlng) && Number.isFinite(dlat);
+  }
+
+  function emptyRouteGeo(): any {
+    return { type: "FeatureCollection", features: [] };
+  }
+
+  function ensureRouteLayer(map: any) {
+    try {
+      if (!map) return;
+      if (!map.getSource(ROUTE_SOURCE_ID)) {
+        map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: routeGeoRef.current });
+      }
+      if (!map.getLayer(ROUTE_LAYER_ID)) {
+        map.addLayer({
+          id: ROUTE_LAYER_ID,
+          type: "line",
+          source: ROUTE_SOURCE_ID,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-width": 4, "line-opacity": 0.85 },
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function pushRouteToMap(map: any, geo: any) {
+    try {
+      if (!map) return;
+      const src = map.getSource(ROUTE_SOURCE_ID);
+      if (src && src.setData) src.setData(geo);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function fetchRouteAndUpdate() {
+    setRouteErr("");
+
+    if (!MAPBOX_TOKEN) {
+      setRouteErr("Route preview requires Mapbox token.");
+      setRouteInfo(null);
+      routeGeoRef.current = emptyRouteGeo();
+      if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
+      return;
+    }
+
+    if (!hasBothPoints()) {
+      setRouteInfo(null);
+      routeGeoRef.current = emptyRouteGeo();
+      if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
+      return;
+    }
+
+    const plng = toNum(pickupLng, 121.1175);
+    const plat = toNum(pickupLat, 16.7999);
+    const dlng = toNum(dropLng, 121.1222);
+    const dlat = toNum(dropLat, 16.8016);
+
+    // Cancel in-flight request
+    try {
+      if (routeAbortRef.current) routeAbortRef.current.abort();
+    } catch {
+      // ignore
+    }
+    const ac = new AbortController();
+    routeAbortRef.current = ac;
+
+    // Directions API (no traffic for now; can switch to driving-traffic later)
+    const coords = String(plng) + "," + String(plat) + ";" + String(dlng) + "," + String(dlat);
+    const url =
+      "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+      encodeURIComponent(coords) +
+      "?geometries=geojson&overview=simplified&alternatives=false&access_token=" +
+      encodeURIComponent(MAPBOX_TOKEN);
+
+    try {
+      const r = await fetch(url, { method: "GET", signal: ac.signal });
+      const j = (await r.json().catch(() => ({}))) as any;
+
+      if (!r.ok) {
+        setRouteErr("Directions failed: HTTP " + String(r.status));
+        setRouteInfo(null);
+        routeGeoRef.current = emptyRouteGeo();
+        if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
+        return;
+      }
+
+      const route0 = (j && j.routes && Array.isArray(j.routes) && j.routes.length) ? j.routes[0] : null;
+      const geom = route0 && route0.geometry ? route0.geometry : null;
+
+      if (!geom || !geom.coordinates || !Array.isArray(geom.coordinates) || geom.coordinates.length < 2) {
+        setRouteErr("Directions returned no route geometry.");
+        setRouteInfo(null);
+        routeGeoRef.current = emptyRouteGeo();
+        if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
+        return;
+      }
+
+      const geo = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: geom,
+          },
+        ],
+      };
+
+      routeGeoRef.current = geo;
+      setRouteInfo({
+        distance_m: Number(route0.distance || 0),
+        duration_s: Number(route0.duration || 0),
+      });
+
+      if (mapRef.current) {
+        ensureRouteLayer(mapRef.current);
+        pushRouteToMap(mapRef.current, geo);
+      }
+    } catch (e: any) {
+      const msg = String(e && e.name ? e.name : "") === "AbortError" ? "" : String(e?.message || e);
+      if (msg) setRouteErr("Directions error: " + msg);
+      setRouteInfo(null);
+      routeGeoRef.current = emptyRouteGeo();
+      if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
+    }
+  }
+
+
   function toNum(s: string, fallback: number): number {
     const n = numOrNull(s);
     return n === null ? fallback : n;
@@ -408,6 +556,16 @@ export default function RidePage() {
 
         mapRef.current.addControl(new MapboxGL.NavigationControl(), "top-right");
 
+        mapRef.current.on("load", () => {
+          try {
+            ensureRouteLayer(mapRef.current);
+            // Push current route state (may be empty)
+            pushRouteToMap(mapRef.current, routeGeoRef.current);
+          } catch {
+            // ignore
+          }
+        });
+
         mapRef.current.on("click", async (e: any) => {
           try {
             const lng = Number(e?.lngLat?.lng);
@@ -468,6 +626,39 @@ export default function RidePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng]);
+
+  // Route preview fetch effect (UI-only)
+  React.useEffect(() => {
+    if (!showMapPicker) return;
+
+    // Ensure layer exists if map already initialized
+    try {
+      if (mapRef.current) ensureRouteLayer(mapRef.current);
+    } catch {
+      // ignore
+    }
+
+    if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+
+    // Only fetch when both pickup + dropoff are set
+    if (!hasBothPoints()) {
+      setRouteInfo(null);
+      routeGeoRef.current = emptyRouteGeo();
+      if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
+      return;
+    }
+
+    routeDebounceRef.current = setTimeout(async () => {
+      await fetchRouteAndUpdate();
+    }, 350);
+
+    return () => {
+      if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
+      routeDebounceRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMapPicker, pickupLat, pickupLng, dropLat, dropLng, MAPBOX_TOKEN]);
+
 
   async function getJson(url: string) {
     const r = await fetch(url, { method: "GET", cache: "no-store" });
@@ -1007,6 +1198,14 @@ export default function RidePage() {
               <div className="mt-3 rounded-2xl border border-black/10 overflow-hidden">
                 <div className="px-3 py-2 text-xs opacity-70 border-b border-black/10 bg-white">
                   Tap the map to set {pickMode}. Markers: green pickup, red dropoff.
+                  {hasBothPoints() ? (
+                    <span className="ml-2">
+                      Route preview: {routeInfo ? (Math.round(routeInfo.distance_m / 10) / 100) + " km, " + Math.round(routeInfo.duration_s / 60) + " min" : "loading..."}
+                      {routeErr ? (" | " + routeErr) : ""}
+                    </span>
+                  ) : (
+                    <span className="ml-2">Route preview: set both pickup and dropoff.</span>
+                  )}
                 </div>
                 <div ref={mapDivRef} style={{ height: 260, width: "100%" }} />
               </div>
@@ -1110,5 +1309,6 @@ export default function RidePage() {
     </main>
   );
 }
+
 
 
