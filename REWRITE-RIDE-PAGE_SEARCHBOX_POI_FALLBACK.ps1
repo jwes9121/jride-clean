@@ -1,4 +1,4 @@
-# REWRITE-RIDE-PAGE_POI_AUTOCOMPLETE_CLEAR_FIX.ps1
+# REWRITE-RIDE-PAGE_SEARCHBOX_POI_FALLBACK.ps1
 # One file only: app\ride\page.tsx
 # UI-only. PowerShell 5. ASCII only.
 
@@ -26,21 +26,10 @@ import { useRouter } from "next/navigation";
 type CanBookInfo = {
   ok?: boolean;
   nightGate?: boolean;
-  window?: string;
-
   verified?: boolean;
-  verification_source?: string;
-  verification_note?: string;
-
-  verification_status?: string | null;
-  verification_raw_status?: string | null;
 
   wallet_ok?: boolean;
   wallet_locked?: boolean;
-  wallet_balance?: number | null;
-  min_wallet_required?: number | null;
-  wallet_source?: string;
-  wallet_note?: string;
 
   code?: string;
   message?: string;
@@ -75,8 +64,20 @@ type GeoFeature = {
   place_name?: string;
   text?: string;
   center?: [number, number]; // [lng, lat]
-  place_type?: string[];     // e.g., ["poi"] / ["address"] / ["place"]
+  place_type?: string[];
 };
+
+type SearchboxSuggest = {
+  kind: "searchbox";
+  mapbox_id: string;
+  name: string;
+  full_address: string;
+  feature_type: string;
+};
+
+type SuggestItem =
+  | { kind: "geocode"; f: GeoFeature }
+  | SearchboxSuggest;
 
 function numOrNull(s: string): number | null {
   const t = String(s || "").trim();
@@ -97,20 +98,10 @@ function normUpper(s: any): string {
   return norm(s).toUpperCase();
 }
 
-function verificationStatusLabelFromApi(canInfo: any): string {
-  const s = String(canInfo?.verification_status || "").toLowerCase();
-  if (!s || s === "not_submitted") return "Not submitted";
-  if (s === "submitted") return "Submitted (dispatcher review)";
-  if (s === "pending_admin") return "Pending admin approval";
-  if (s === "verified") return "Verified";
-  if (s === "rejected") return "Rejected";
-  return String(canInfo?.verification_status || "");
-}
-
 export default function RidePage() {
   const router = useRouter();
 
-  // Defaults (keep your baseline)
+  // Defaults
   const DEFAULT_TOWN = "Lagawe";
   const DEFAULT_FROM_LABEL = "Lagawe Public Market";
   const DEFAULT_TO_LABEL = "Lagawe Town Plaza";
@@ -143,20 +134,22 @@ export default function RidePage() {
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
   const [canInfoErr, setCanInfoErr] = React.useState<string>("");
 
-  // Mapbox geocode + map tap picker (UI-only)
+  // Mapbox
   const MAPBOX_TOKEN =
     (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
       process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
       "") as string;
 
-  const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
-  const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
   const [geoErr, setGeoErr] = React.useState<string>("");
+
   const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
+  const [fromSug, setFromSug] = React.useState<SuggestItem[]>([]);
+  const [toSug, setToSug] = React.useState<SuggestItem[]>([]);
 
   const fromDebounceRef = React.useRef<any>(null);
   const toDebounceRef = React.useRef<any>(null);
 
+  // Map picker (kept simple)
   const [showMapPicker, setShowMapPicker] = React.useState(false);
   const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
@@ -165,7 +158,7 @@ export default function RidePage() {
   const pickupMarkerRef = React.useRef<any>(null);
   const dropoffMarkerRef = React.useRef<any>(null);
 
-  // Route preview (pickup -> dropoff) using Mapbox Directions API
+  // Route preview
   const [routePreviewGeo, setRoutePreviewGeo] = React.useState<any>(null);
   const [routePreviewErr, setRoutePreviewErr] = React.useState<string>("");
 
@@ -177,19 +170,22 @@ export default function RidePage() {
   function buildQuery(label: string): string {
     const q = norm(label);
     if (!q) return "";
-    // Light bias, do not over-append
     const hasComma = q.indexOf(",") >= 0;
     if (hasComma) return q;
-    // If user typed generic keywords, add town to localize
     const low = q.toLowerCase();
-    const isGeneric = (q.length <= 10) || (low.indexOf("hospital") >= 0) || (low.indexOf("school") >= 0);
-    if (isGeneric) return q + ", " + town + ", Ifugao";
+    const generic =
+      q.length <= 12 ||
+      low.indexOf("hospital") >= 0 ||
+      low.indexOf("clinic") >= 0 ||
+      low.indexOf("school") >= 0 ||
+      low.indexOf("market") >= 0;
+
+    if (generic) return q + ", " + town + ", Ifugao";
     return q + ", Ifugao";
   }
 
   function scoreType(placeType: string[]): number {
     const pt = placeType || [];
-    // prefer poi > address > place > region/country/etc.
     if (pt.indexOf("poi") >= 0) return 0;
     if (pt.indexOf("address") >= 0) return 1;
     if (pt.indexOf("place") >= 0) return 2;
@@ -214,11 +210,12 @@ export default function RidePage() {
 
   async function fetchGeocode(q: string, limit: number): Promise<GeoFeature[]> {
     if (!MAPBOX_TOKEN) return [];
+
     const proxLng = toNum(pickupLng, 121.1175);
     const proxLat = toNum(pickupLat, 16.7999);
 
-    // Ifugao-ish bbox (approx). Keep results local.
-    const bbox = "120.85,16.60,121.35,16.98";
+    // Ifugao-ish bbox (approx). Keep results local, but not too tight.
+    const bbox = "120.70,16.50,121.55,17.05";
 
     const url =
       "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
@@ -245,47 +242,145 @@ export default function RidePage() {
     }));
   }
 
-  async function geocodeForward(label: string): Promise<GeoFeature[]> {
-    setGeoErr("");
-    const raw = norm(label);
-    const q = buildQuery(raw);
+  function sessionToken(): string {
+    // best-effort stable per tab
+    try {
+      const k = "jr_sb_sess";
+      const w = window as any;
+      if (w && w.sessionStorage) {
+        const prev = w.sessionStorage.getItem(k);
+        if (prev) return prev;
+        const tok = String(Date.now()) + "-" + String(Math.random()).slice(2);
+        w.sessionStorage.setItem(k, tok);
+        return tok;
+      }
+    } catch {}
+    return String(Date.now()) + "-" + String(Math.random()).slice(2);
+  }
+
+  async function searchboxSuggest(raw: string): Promise<SearchboxSuggest[]> {
+    // Mapbox Searchbox Suggest API (POI-focused)
+    if (!MAPBOX_TOKEN) return [];
+    const q = norm(raw);
     if (!q) return [];
+
+    const proxLng = toNum(pickupLng, 121.1175);
+    const proxLat = toNum(pickupLat, 16.7999);
+    const bbox = "120.70,16.50,121.55,17.05";
+
+    const st = sessionToken();
+
+    const url =
+      "https://api.mapbox.com/search/searchbox/v1/suggest" +
+      "?q=" + encodeURIComponent(q) +
+      "&limit=8" +
+      "&country=PH" +
+      "&language=en" +
+      "&proximity=" + encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
+      "&bbox=" + encodeURIComponent(bbox) +
+      "&session_token=" + encodeURIComponent(st) +
+      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+
+    const r = await fetch(url, { method: "GET" });
+    const j = (await r.json().catch(() => ({}))) as any;
+
+    // If token does not allow Searchbox, Mapbox often returns 401/403 with message.
+    if (!r.ok) {
+      const msg = String((j && (j.message || j.error)) ? (j.message || j.error) : ("HTTP " + String(r.status)));
+      throw new Error("Searchbox suggest failed: " + msg);
+    }
+
+    const sug = (j && j.suggestions) ? (j.suggestions as any[]) : [];
+    const out: SearchboxSuggest[] = [];
+    for (const s of sug) {
+      const mid = String(s.mapbox_id || "");
+      if (!mid) continue;
+      out.push({
+        kind: "searchbox",
+        mapbox_id: mid,
+        name: String(s.name || s.full_address || ""),
+        full_address: String(s.full_address || s.name || ""),
+        feature_type: String(s.feature_type || ""),
+      });
+    }
+    return out;
+  }
+
+  async function searchboxRetrieve(mapboxId: string): Promise<{ lng: number; lat: number; label: string } | null> {
+    if (!MAPBOX_TOKEN) return null;
+    const st = sessionToken();
+
+    const url =
+      "https://api.mapbox.com/search/searchbox/v1/retrieve/" +
+      encodeURIComponent(mapboxId) +
+      "?session_token=" + encodeURIComponent(st) +
+      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+
+    const r = await fetch(url, { method: "GET" });
+    const j = (await r.json().catch(() => ({}))) as any;
+
+    if (!r.ok) {
+      const msg = String((j && (j.message || j.error)) ? (j.message || j.error) : ("HTTP " + String(r.status)));
+      throw new Error("Searchbox retrieve failed: " + msg);
+    }
+
+    const feats = (j && j.features) ? (j.features as any[]) : [];
+    if (!feats.length) return null;
+
+    const f = feats[0];
+    const coords = f && f.geometry && f.geometry.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return null;
+
+    const lng = Number(coords[0]);
+    const lat = Number(coords[1]);
+    const props = f.properties || {};
+    const label =
+      String(props.name || props.full_address || props.place_formatted || props.feature_name || "") ||
+      String(props.address || "") ||
+      "Selected location";
+
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return { lng, lat, label };
+  }
+
+  async function geocodeForward(raw: string): Promise<SuggestItem[]> {
+    setGeoErr("");
 
     if (!MAPBOX_TOKEN) {
       setGeoErr("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
       return [];
     }
 
-    // Primary query
-    let feats = await fetchGeocode(q, 10);
+    const q = buildQuery(raw);
+    if (!q) return [];
 
-    // If user typed generic "hospital" or the results have no POIs, run a local POI fallback:
-    // Example: "hospital" -> "hospital near Lagawe"
-    const low = normLower(raw);
-    const hasPoi = feats.some((f) => (f.place_type || []).indexOf("poi") >= 0);
-
-    if (!hasPoi) {
-      // Fallback query increases chance of POIs: append keyword + town.
-      let fallback = raw;
-      if (low.indexOf("hospital") < 0 && low.indexOf("clinic") < 0 && low.indexOf("medical") < 0) {
-        // If they typed "Ifugao General Hospital" keep it, else boost with "hospital"
-        if (low.length <= 12) fallback = raw + " hospital";
-      }
-      fallback = norm(fallback) + ", " + town + ", Ifugao";
-
-      const feats2 = await fetchGeocode(fallback, 10);
-
-      // Merge unique by id
-      const seen: Record<string, boolean> = {};
-      const merged: GeoFeature[] = [];
-      for (const f of feats.concat(feats2)) {
-        const k = String(f.id || (String(f.place_name || "") + "|" + String(f.text || "")));
-        if (!seen[k]) { seen[k] = true; merged.push(f); }
-      }
-      feats = merged;
+    // Primary: Geocoding v5
+    let feats: GeoFeature[] = [];
+    try {
+      feats = await fetchGeocode(q, 10);
+    } catch (e: any) {
+      // don't block; try searchbox
+      feats = [];
     }
 
-    return sortGeo(feats).slice(0, 8);
+    const sorted = sortGeo(feats).slice(0, 8);
+    const hasGood =
+      sorted.some((f) => (f.place_type || []).indexOf("poi") >= 0) ||
+      sorted.some((f) => (f.place_type || []).indexOf("address") >= 0);
+
+    // If we only get PLACE/REGION results, fallback to Searchbox for POIs
+    if (!hasGood) {
+      try {
+        const sbq = norm(raw) ? (norm(raw) + ", " + town + ", Ifugao") : q;
+        const sb = await searchboxSuggest(sbq);
+        if (sb.length) return sb;
+      } catch (e: any) {
+        setGeoErr(String(e?.message || e));
+        // still show geocode results if any
+      }
+    }
+
+    return sorted.map((f) => ({ kind: "geocode", f: f } as any));
   }
 
   async function geocodeReverse(lng: number, lat: number): Promise<string> {
@@ -300,13 +395,11 @@ export default function RidePage() {
       const j = (await r.json().catch(() => ({}))) as any;
       const feats = (j && j.features) ? (j.features as any[]) : [];
       if (feats.length) return String(feats[0].place_name || "");
-    } catch {
-      // ignore
-    }
+    } catch {}
     return "";
   }
 
-  // Mapbox Directions API: route preview line between pickup and dropoff (works before assignment)
+  // Route preview (pickup -> dropoff)
   React.useEffect(() => {
     let cancelled = false;
 
@@ -358,50 +451,95 @@ export default function RidePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupLat, pickupLng, dropLat, dropLng, MAPBOX_TOKEN]);
 
-  function applyGeoSelection(field: "from" | "to", f: GeoFeature) {
-    const name = String(f.place_name || f.text || "").trim();
-    const c = f.center;
-    if (!c || c.length !== 2) return;
+  async function applySuggestion(field: "from" | "to", item: SuggestItem) {
+    try {
+      if ((item as any).kind === "searchbox") {
+        const sb = item as SearchboxSuggest;
+        const got = await searchboxRetrieve(sb.mapbox_id);
+        if (!got) return;
 
-    const lng = Number(c[0]);
-    const lat = Number(c[1]);
+        if (field === "from") {
+          setFromLabel(sb.full_address || sb.name || got.label);
+          setPickupLat(String(got.lat));
+          setPickupLng(String(got.lng));
+          setFromSug([]);
+          setActiveGeoField(null);
+        } else {
+          setToLabel(sb.full_address || sb.name || got.label);
+          setDropLat(String(got.lat));
+          setDropLng(String(got.lng));
+          setToSug([]);
+          setActiveGeoField(null);
+        }
+        return;
+      }
 
-    if (field === "from") {
-      if (name) setFromLabel(name);
-      setPickupLat(String(lat));
-      setPickupLng(String(lng));
-      setGeoFrom([]);
-      setActiveGeoField(null);
-    } else {
-      if (name) setToLabel(name);
-      setDropLat(String(lat));
-      setDropLng(String(lng));
-      setGeoTo([]);
-      setActiveGeoField(null);
+      const f = (item as any).f as GeoFeature;
+      const name = String(f.place_name || f.text || "").trim();
+      const c = f.center;
+      if (!c || c.length !== 2) return;
+
+      const lng = Number(c[0]);
+      const lat = Number(c[1]);
+
+      if (field === "from") {
+        if (name) setFromLabel(name);
+        setPickupLat(String(lat));
+        setPickupLng(String(lng));
+        setFromSug([]);
+        setActiveGeoField(null);
+      } else {
+        if (name) setToLabel(name);
+        setDropLat(String(lat));
+        setDropLng(String(lng));
+        setToSug([]);
+        setActiveGeoField(null);
+      }
+    } catch (e: any) {
+      setGeoErr(String(e?.message || e));
     }
   }
 
-  function renderGeoList(field: "from" | "to") {
-    const items = field === "from" ? geoFrom : geoTo;
+  function badgeFor(item: SuggestItem): string {
+    if ((item as any).kind === "searchbox") {
+      const ft = String((item as any).feature_type || "");
+      if (ft) return ft.toUpperCase();
+      return "POI";
+    }
+    const f = (item as any).f as GeoFeature;
+    const pt = (f.place_type || []).join(",");
+    if (pt.indexOf("poi") >= 0) return "POI";
+    if (pt.indexOf("address") >= 0) return "ADDR";
+    if (pt.indexOf("place") >= 0) return "PLACE";
+    return "AREA";
+  }
+
+  function labelFor(item: SuggestItem): string {
+    if ((item as any).kind === "searchbox") {
+      const sb = item as SearchboxSuggest;
+      return String(sb.full_address || sb.name || "").trim();
+    }
+    const f = (item as any).f as GeoFeature;
+    return String(f.place_name || f.text || "").trim();
+  }
+
+  function renderSugList(field: "from" | "to") {
+    const items = field === "from" ? fromSug : toSug;
     const open = activeGeoField === field && items && items.length > 0;
     if (!open) return null;
 
     return (
       <div className="mt-2 rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
-        {items.map((f, idx) => {
-          const label = String(f.place_name || f.text || "").trim() || "(unknown)";
-          const pt = (f.place_type || []).join(",");
-          const badge =
-            pt.indexOf("poi") >= 0 ? "POI" :
-            pt.indexOf("address") >= 0 ? "ADDR" :
-            pt.indexOf("place") >= 0 ? "PLACE" : "AREA";
+        {items.map((it, idx) => {
+          const label = labelFor(it) || "(unknown)";
+          const badge = badgeFor(it);
 
           return (
             <button
-              key={(f.id || "") + "_" + String(idx)}
+              key={String(idx) + "_" + label}
               type="button"
               className="w-full text-left px-3 py-2 text-sm hover:bg-black/5"
-              onClick={() => applyGeoSelection(field, f)}
+              onClick={() => applySuggestion(field, it)}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="truncate">{label}</div>
@@ -414,19 +552,21 @@ export default function RidePage() {
     );
   }
 
-  // Debounced geocoding for pickup label
+  // Debounced autocomplete
   React.useEffect(() => {
     if (activeGeoField !== "from") return;
     if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
+
     fromDebounceRef.current = setTimeout(async () => {
       try {
-        const feats = await geocodeForward(fromLabel);
-        setGeoFrom(feats);
+        const items = await geocodeForward(fromLabel);
+        setFromSug(items);
       } catch (e: any) {
-        setGeoErr("Geocode failed: " + String(e?.message || e));
-        setGeoFrom([]);
+        setGeoErr(String(e?.message || e));
+        setFromSug([]);
       }
     }, 250);
+
     return () => {
       if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
       fromDebounceRef.current = null;
@@ -434,19 +574,20 @@ export default function RidePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromLabel, activeGeoField, town]);
 
-  // Debounced geocoding for dropoff label
   React.useEffect(() => {
     if (activeGeoField !== "to") return;
     if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
+
     toDebounceRef.current = setTimeout(async () => {
       try {
-        const feats = await geocodeForward(toLabel);
-        setGeoTo(feats);
+        const items = await geocodeForward(toLabel);
+        setToSug(items);
       } catch (e: any) {
-        setGeoErr("Geocode failed: " + String(e?.message || e));
-        setGeoTo([]);
+        setGeoErr(String(e?.message || e));
+        setToSug([]);
       }
     }, 250);
+
     return () => {
       if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
       toDebounceRef.current = null;
@@ -454,7 +595,7 @@ export default function RidePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toLabel, activeGeoField, town]);
 
-  // Map picker init / refresh
+  // Map picker init / refresh + route draw
   React.useEffect(() => {
     let cancelled = false;
 
@@ -463,7 +604,7 @@ export default function RidePage() {
       if (!mapDivRef.current) return;
 
       if (!MAPBOX_TOKEN) {
-        setGeoErr("Map picker requires Mapbox token. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
+        setGeoErr("Map picker requires Mapbox token.");
         return;
       }
 
@@ -515,15 +656,13 @@ export default function RidePage() {
               const name2 = await geocodeReverse(lng, lat);
               if (name2) setToLabel(name2);
             }
-          } catch {
-            // ignore
-          }
+          } catch {}
         });
       } else {
         try { mapRef.current.setCenter([centerLng, centerLat]); } catch {}
       }
 
-      // Update markers
+      // Markers
       try {
         const plng = toNum(pickupLng, 121.1175);
         const plat = toNum(pickupLat, 16.7999);
@@ -541,16 +680,12 @@ export default function RidePage() {
         } else {
           dropoffMarkerRef.current.setLngLat([dlng, dlat]);
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
 
-      // Draw route preview after map load (safe)
       function drawRoutePreviewLine() {
         try {
           if (!mapRef.current) return;
           const map = mapRef.current;
-
           if (!(map && (map.isStyleLoaded ? map.isStyleLoaded() : (map.loaded && map.loaded())))) return;
 
           const srcId = "route-preview";
@@ -570,9 +705,7 @@ export default function RidePage() {
             layout: { "line-join": "round", "line-cap": "round" },
             paint: { "line-width": 4, "line-opacity": 0.85, "line-color": "#2563eb" },
           });
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
 
       try {
@@ -589,16 +722,13 @@ export default function RidePage() {
             try { if (map.getSource("route-preview")) map.removeSource("route-preview"); } catch {}
           }
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
     initMap();
-
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng, routePreviewGeo]);
+  }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng, routePreviewGeo, MAPBOX_TOKEN]);
 
   async function getJson(url: string) {
     const r = await fetch(url, { method: "GET", cache: "no-store" });
@@ -633,10 +763,7 @@ export default function RidePage() {
     }
   }
 
-  React.useEffect(() => {
-    refreshCanBook();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  React.useEffect(() => { refreshCanBook(); }, []);
 
   // Live polling
   React.useEffect(() => {
@@ -703,6 +830,19 @@ export default function RidePage() {
   const walletOk = canInfo?.wallet_ok;
   const walletLocked = !!canInfo?.wallet_locked;
 
+  const canCode = normUpper(canInfo?.code);
+  const canMsg = norm(canInfo?.message);
+
+  const unverifiedBlocked =
+    !verified &&
+    (nightGate ||
+      canCode.indexOf("UNVERIFIED") >= 0 ||
+      canCode.indexOf("VERIFY") >= 0 ||
+      (canMsg && canMsg.toLowerCase().indexOf("verify") >= 0));
+
+  const walletBlocked = walletOk === false || walletLocked === true;
+  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked;
+
   function pill(text: string, good: boolean) {
     return (
       <span
@@ -720,19 +860,6 @@ export default function RidePage() {
     walletOk === undefined ? "Wallet: (no data)" : walletOk ? "Wallet: OK" : walletLocked ? "Wallet: LOCKED" : "Wallet: LOW";
   const walletPillGood = walletOk === true;
 
-  const canCode = normUpper(canInfo?.code);
-  const canMsg = norm(canInfo?.message);
-
-  const unverifiedBlocked =
-    !verified &&
-    (nightGate ||
-      canCode.indexOf("UNVERIFIED") >= 0 ||
-      canCode.indexOf("VERIFY") >= 0 ||
-      (canMsg && canMsg.toLowerCase().indexOf("verify") >= 0));
-
-  const walletBlocked = walletOk === false || walletLocked === true;
-  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked;
-
   async function submit() {
     setResult("");
     setBusy(true);
@@ -740,9 +867,9 @@ export default function RidePage() {
     try {
       const can = await postJson("/api/public/passenger/can-book", { town, service: "ride" });
       if (!can.ok) {
-        const cj = (can.json || {}) as CanBookInfo;
-        const code = normUpper((cj as any).code || (cj as any).error_code);
-        const msg = norm((cj as any).message) || "Not allowed";
+        const cj = (can.json || {}) as any;
+        const code = normUpper(cj.code || cj.error_code);
+        const msg = norm(cj.message) || "Not allowed";
         setResult("CAN_BOOK_BLOCKED: " + (code || "BLOCKED") + " - " + msg);
         await refreshCanBook();
         return;
@@ -779,8 +906,6 @@ export default function RidePage() {
         lines.push("assign.ok: " + String(!!bj.assign.ok));
         if (bj.assign.driver_id) lines.push("assign.driver_id: " + String(bj.assign.driver_id));
         if (bj.assign.note) lines.push("assign.note: " + String(bj.assign.note));
-        if (bj.assign.update_ok !== undefined) lines.push("assign.update_ok: " + String(!!bj.assign.update_ok));
-        if (bj.assign.update_error) lines.push("assign.update_error: " + String(bj.assign.update_error));
       } else {
         lines.push("assign: (none)");
       }
@@ -806,8 +931,8 @@ export default function RidePage() {
   function clearAll() {
     setResult("");
     setGeoErr("");
-    setGeoFrom([]);
-    setGeoTo([]);
+    setFromSug([]);
+    setToSug([]);
     setActiveGeoField(null);
     setShowMapPicker(false);
     setPickMode("pickup");
@@ -923,7 +1048,7 @@ export default function RidePage() {
               onFocus={() => { setActiveGeoField("from"); }}
               onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); }}
             />
-            {renderGeoList("from")}
+            {renderSugList("from")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
@@ -943,7 +1068,7 @@ export default function RidePage() {
               onFocus={() => { setActiveGeoField("to"); }}
               onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); }}
             />
-            {renderGeoList("to")}
+            {renderSugList("to")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
@@ -971,7 +1096,6 @@ export default function RidePage() {
                 disabled={!MAPBOX_TOKEN || !showMapPicker}
                 className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
                 onClick={() => setPickMode("pickup")}
-                title="Next tap on the map sets pickup"
               >
                 Pick pickup
               </button>
@@ -981,7 +1105,6 @@ export default function RidePage() {
                 disabled={!MAPBOX_TOKEN || !showMapPicker}
                 className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
                 onClick={() => setPickMode("dropoff")}
-                title="Next tap on the map sets dropoff"
               >
                 Pick dropoff
               </button>
@@ -1008,7 +1131,6 @@ export default function RidePage() {
             disabled={!allowSubmit}
             onClick={submit}
             className={"rounded-xl px-5 py-2 font-semibold text-white " + (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")}
-            title={!allowSubmit ? "Booking is blocked by rules above" : "Submit booking"}
           >
             {busy ? "Booking..." : "Submit booking"}
           </button>
