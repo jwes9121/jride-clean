@@ -52,9 +52,12 @@ type BookResp = {
 
 type GeoFeature = {
   id?: string;
+  mapbox_id?: string;
   place_name?: string;
   text?: string;
   center?: [number, number]; // [lng, lat]
+  feature_type?: string;
+  raw?: any;
 };
 
 function numOrNull(s: string): number | null {
@@ -381,10 +384,12 @@ export default function RidePage() {
 
       return {
         id,
+        mapbox_id: id,
         place_name: labelOut,
         text: name || labelOut,
         center: pickCenter(it),
         feature_type: ft as any,
+        raw: it,
       } as any;
     });
 
@@ -400,10 +405,54 @@ export default function RidePage() {
     mapped.sort((a: any, b: any) => rank(a) - rank(b));
 
     // Filter out entries that cannot be applied (need center)
-    return mapped.filter((f) => Array.isArray((f as any).center) && (f as any).center.length === 2);
+    return mapped;
   }
 
-  async function geocodeReverse(lng: number, lat: number): Promise<string> {
+    async function searchboxRetrieve(mapboxId: string): Promise<GeoFeature | null> {
+    if (!MAPBOX_TOKEN) return null;
+    const id = String(mapboxId || "").trim();
+    if (!id) return null;
+
+    const url =
+      "https://api.mapbox.com/search/searchbox/v1/retrieve/" +
+      encodeURIComponent(id) +
+      "?session_token=" + encodeURIComponent(sessionTokenRef.current) +
+      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+
+    try {
+      const r = await fetch(url, { method: "GET" });
+      const j = (await r.json().catch(() => ({}))) as any;
+      if (!r.ok) return null;
+
+      // retrieve returns "features" in GeoJSON-like shape
+      const feats = (j && j.features && Array.isArray(j.features)) ? j.features : [];
+      if (!feats.length) return null;
+
+      const f0 = feats[0] || {};
+      const coords = f0?.geometry?.coordinates;
+      const name = String(f0?.properties?.name || f0?.properties?.place_formatted || f0?.properties?.full_address || "").trim();
+      const formatted = String(f0?.properties?.place_formatted || f0?.properties?.full_address || "").trim();
+      const ft = String(f0?.properties?.feature_type || f0?.properties?.type || "").trim();
+
+      let center: [number, number] | undefined = undefined;
+      if (Array.isArray(coords) && coords.length >= 2) center = [Number(coords[0]), Number(coords[1])];
+
+      const labelOut = (formatted || name || "").trim();
+
+      return {
+        id: id,
+        mapbox_id: id,
+        place_name: labelOut || name,
+        text: name || labelOut,
+        center,
+        feature_type: ft,
+        raw: f0,
+      };
+    } catch {
+      return null;
+    }
+  }
+async function geocodeReverse(lng: number, lat: number): Promise<string> {
     if (!MAPBOX_TOKEN) return "";
     const url =
       "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
@@ -421,9 +470,24 @@ export default function RidePage() {
     return "";
   }
 
-  function applyGeoSelection(field: "from" | "to", f: GeoFeature) {
+  async function applyGeoSelection(field: "from" | "to", f: GeoFeature) {
     const name = String(f.place_name || f.text || "").trim();
-    const c = f.center;
+    let c = f.center;
+
+    // Searchbox /suggest often has no coordinates. Retrieve on select using mapbox_id.
+    if ((!c || c.length !== 2) && f.mapbox_id) {
+      const got = await searchboxRetrieve(String(f.mapbox_id));
+      if (got && got.center && got.center.length === 2) {
+        c = got.center;
+        // Prefer retrieve formatted name if present
+        const nm = String(got.place_name || got.text || "").trim();
+        if (nm) {
+          if (field === "from") setFromLabel(nm);
+          else setToLabel(nm);
+        }
+      }
+    }
+
     if (!c || c.length !== 2) return;
 
     const lng = Number(c[0]);
@@ -444,7 +508,7 @@ export default function RidePage() {
     }
   }
 
-  function renderGeoList(field: "from" | "to") {
+  function renderGeoList(field: "from" | "to") {(field: "from" | "to") {
     const items = field === "from" ? geoFrom : geoTo;
     const open = activeGeoField === field && items && items.length > 0;
 
@@ -459,7 +523,7 @@ export default function RidePage() {
               key={(f.id || "") + "_" + String(idx)}
               type="button"
               className="w-full text-left px-3 py-2 text-sm hover:bg-black/5"
-              onClick={() => applyGeoSelection(field, f)}
+              onClick={async () => { await applyGeoSelection(field, f); }}
             >
               {label}
             </button>
@@ -1309,6 +1373,7 @@ export default function RidePage() {
     </main>
   );
 }
+
 
 
 
