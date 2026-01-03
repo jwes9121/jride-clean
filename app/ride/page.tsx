@@ -231,20 +231,65 @@ export default function RidePage() {
   React.useEffect(() => {
     if (localLoadedRef.current) return;
     localLoadedRef.current = true;
+
     try {
       const list = loadLocalPOIs();
-      setLocalPOIs(list);
+      const seeded = seedDefaultPOIsIfEmpty(list);
+      setLocalPOIs(seeded);
+      saveLocalPOIs(seeded);
     } catch {
-      setLocalPOIs([]);
+      const seeded = seedDefaultPOIsIfEmpty([]);
+      setLocalPOIs(seeded);
+      saveLocalPOIs(seeded);
     }
-  }, []);
-
-  function persistLocalPOIs(next: LocalPOI[]) {
+  }, []);function persistLocalPOIs(next: LocalPOI[]) {
     setLocalPOIs(next);
     saveLocalPOIs(next);
   }
 
-  function upsertLocalPOI(name: string, aliasCsv: string, lat: number, lng: number) {
+  function seedDefaultPOIsIfEmpty(current: LocalPOI[]) {
+    try {
+      const hasAny = Array.isArray(current) && current.length > 0;
+      if (hasAny) return current;
+
+      const now = Date.now();
+
+      const mkLat = parseFloat(String(DEFAULT_PICKUP_LAT || ""));
+      const mkLng = parseFloat(String(DEFAULT_PICKUP_LNG || ""));
+      const plLat = parseFloat(String(DEFAULT_DROP_LAT || ""));
+      const plLng = parseFloat(String(DEFAULT_DROP_LNG || ""));
+
+      const seeded: LocalPOI[] = [];
+
+      if (Number.isFinite(mkLat) && Number.isFinite(mkLng)) {
+        seeded.push({
+          id: "seed_market_" + String(now),
+          name: String(DEFAULT_FROM_LABEL || "Lagawe Public Market"),
+          aliases: ["market", "public", "public market", "palengke", "lagawe market"],
+          town: String(DEFAULT_TOWN || town || "Lagawe"),
+          lat: Number(mkLat),
+          lng: Number(mkLng),
+          updatedAt: now,
+        });
+      }
+
+      if (Number.isFinite(plLat) && Number.isFinite(plLng)) {
+        seeded.push({
+          id: "seed_plaza_" + String(now + 1),
+          name: String(DEFAULT_TO_LABEL || "Lagawe Town Plaza"),
+          aliases: ["plaza", "town plaza", "lagawe plaza", "poblacion", "center"],
+          town: String(DEFAULT_TOWN || town || "Lagawe"),
+          lat: Number(plLat),
+          lng: Number(plLng),
+          updatedAt: now,
+        });
+      }
+
+      return seeded;
+    } catch {
+      return current || [];
+    }
+  }function upsertLocalPOI(name: string, aliasCsv: string, lat: number, lng: number) {
     const cleanName = String(name || "").trim();
     if (!cleanName) return;
 
@@ -1433,6 +1478,7 @@ if ((item as any).kind === "searchbox") {
     </main>
   );
 }
+
 
 
 
