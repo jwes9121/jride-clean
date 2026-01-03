@@ -344,24 +344,26 @@ export default function RidePage() {
     }
 
     const sorted = sortGeo(feats).slice(0, 8);
-    const hasGood =
-      sorted.some((f) => (f.place_type || []).indexOf("poi") >= 0) ||
-      sorted.some((f) => (f.place_type || []).indexOf("address") >= 0);
+    const hasPOI =
+      sorted.some((f) => (f.place_type || []).indexOf("poi") >= 0);
 
-    // If we only get PLACE/REGION results, fallback to Searchbox for POIs
-    if (!hasGood) {
+    const geoItems = sorted.map((f) => ({ kind: "geocode", f: f } as any));
+
+    // IMPORTANT: If NO POI is present, call Searchbox (POI-focused) even if address/place exists.
+    if (!hasPOI) {
       try {
         const sbq = norm(raw) ? (norm(raw) + ", " + town + ", Ifugao") : q;
         const sb = await searchboxSuggest(sbq);
-        if (sb.length) return sb;
+
+        // Show POI suggestions first, then fallback geocode results.
+        if (sb && sb.length) return ([] as any[]).concat(sb as any, geoItems as any);
       } catch (e: any) {
         setGeoErr(String(e?.message || e));
         // still show geocode results if any
       }
     }
 
-    return sorted.map((f) => ({ kind: "geocode", f: f } as any));
-  }
+    return geoItems;}
 
   async function geocodeReverse(lng: number, lat: number): Promise<string> {
     if (!MAPBOX_TOKEN) return "";
@@ -1196,3 +1198,4 @@ export default function RidePage() {
     </main>
   );
 }
+
