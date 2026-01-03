@@ -6,10 +6,21 @@ import { useRouter } from "next/navigation";
 type CanBookInfo = {
   ok?: boolean;
   nightGate?: boolean;
+  window?: string;
+
   verified?: boolean;
+  verification_source?: string;
+  verification_note?: string;
+
+  verification_status?: string | null;
+  verification_raw_status?: string | null;
 
   wallet_ok?: boolean;
   wallet_locked?: boolean;
+  wallet_balance?: number | null;
+  min_wallet_required?: number | null;
+  wallet_source?: string;
+  wallet_note?: string;
 
   code?: string;
   message?: string;
@@ -44,104 +55,8 @@ type GeoFeature = {
   place_name?: string;
   text?: string;
   center?: [number, number]; // [lng, lat]
-  place_type?: string[];
 };
 
-type SearchboxSuggest = {
-  kind: "searchbox";
-  mapbox_id: string;
-  name: string;
-  full_address: string;
-  feature_type: string;
-};
-
-type LocalPOI = {
-  id: string;
-  name: string;
-  aliases: string[]; // keywords like: ["igh","hospital"]
-  town?: string | null; // optional filter
-  lat: number;
-  lng: number;
-  updatedAt: number;
-};
-
-type LocalSuggest = {
-  kind: "local";
-  poi: LocalPOI;
-};
-
-type SuggestItem =
-  | { kind: "geocode"; f: GeoFeature }
-  | SearchboxSuggest
-  | LocalSuggest;
-
-const LOCAL_POI_KEY = "jr_local_pois_v1";
-
-function safeJsonParse(s: string): any {
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-function loadLocalPOIs(): LocalPOI[] {
-  try {
-    const raw = window.localStorage.getItem(LOCAL_POI_KEY);
-    if (!raw) return [];
-    const j = safeJsonParse(raw);
-    if (!Array.isArray(j)) return [];
-    const out: LocalPOI[] = [];
-    for (const it of j) {
-      const lat = Number(it && it.lat);
-      const lng = Number(it && it.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      out.push({
-        id: String(it.id || ""),
-        name: String(it.name || ""),
-        aliases: Array.isArray(it.aliases) ? it.aliases.map((x: any) => String(x || "").toLowerCase()).filter(Boolean) : [],
-        town: (it.town === null || it.town === undefined) ? null : String(it.town),
-        lat: lat,
-        lng: lng,
-        updatedAt: Number(it.updatedAt || Date.now()),
-      });
-    }
-    return out.filter((p) => p.id && p.name);
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalPOIs(list: LocalPOI[]) {
-  try {
-    window.localStorage.setItem(LOCAL_POI_KEY, JSON.stringify(list || []));
-  } catch {}
-}
-
-function normTokens(s: string): string[] {
-  const t = String(s || "").toLowerCase();
-  return t
-    .replace(/[^a-z0-9\s,]/g, " ")
-    .split(/[\s,]+/g)
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
-function matchScore(query: string, poi: LocalPOI): number {
-  const q = normTokens(query);
-  if (!q.length) return 0;
-
-  const name = String(poi.name || "").toLowerCase();
-  const aliases = (poi.aliases || []).map((x) => String(x || "").toLowerCase());
-  const hay = [name].concat(aliases);
-
-  let hits = 0;
-  for (const tok of q) {
-    let found = false;
-    for (const h of hay) {
-      if (h.indexOf(tok) >= 0) { found = true; break; }
-    }
-    if (found) hits++;
-  }
-  // favor more hits; small bias for shorter names
-  return hits * 100 - Math.min(30, name.length);
-}
 function numOrNull(s: string): number | null {
   const t = String(s || "").trim();
   if (!t) return null;
@@ -153,36 +68,42 @@ function norm(s: any): string {
   return String(s || "").trim();
 }
 
-function normLower(s: any): string {
-  return norm(s).toLowerCase();
-}
-
 function normUpper(s: any): string {
   return norm(s).toUpperCase();
+}
+
+function verificationStatusLabelFromApi(canInfo: any): string {
+  const s = String(canInfo?.verification_status || "").toLowerCase();
+  if (!s || s === "not_submitted") return "Not submitted";
+  if (s === "submitted") return "Submitted (dispatcher review)";
+  if (s === "pending_admin") return "Pending admin approval";
+  if (s === "verified") return "Verified";
+  if (s === "rejected") return "Rejected";
+  return String(canInfo?.verification_status || "");
+}
+function verificationStatusLabel(info: any): string {
+  if (!info) return "Not submitted";
+  if (info.verified === true) return "Verified";
+  const note = String(info.verification_note || "").toLowerCase();
+  if (note.indexOf("pre_approved_dispatcher") >= 0) return "Pending admin approval";
+  if (note.indexOf("dispatcher") >= 0) return "Pending admin approval";
+  if (note) return "Submitted (dispatcher review)";
+  return "Not submitted";
 }
 
 export default function RidePage() {
   const router = useRouter();
 
-  // Defaults
-  const DEFAULT_TOWN = "Lagawe";
-  const DEFAULT_FROM_LABEL = "Lagawe Public Market";
-  const DEFAULT_TO_LABEL = "Lagawe Town Plaza";
-  const DEFAULT_PICKUP_LAT = "16.7999";
-  const DEFAULT_PICKUP_LNG = "121.1175";
-  const DEFAULT_DROP_LAT = "16.8016";
-  const DEFAULT_DROP_LNG = "121.1222";
-
-  const [town, setTown] = React.useState(DEFAULT_TOWN);
+  const [town, setTown] = React.useState("Lagawe");
   const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
-  const [fromLabel, setFromLabel] = React.useState(DEFAULT_FROM_LABEL);
-  const [toLabel, setToLabel] = React.useState(DEFAULT_TO_LABEL);
+  const [fromLabel, setFromLabel] = React.useState("Lagawe Public Market");
+  const [toLabel, setToLabel] = React.useState("Lagawe Town Plaza");
 
-  const [pickupLat, setPickupLat] = React.useState(DEFAULT_PICKUP_LAT);
-  const [pickupLng, setPickupLng] = React.useState(DEFAULT_PICKUP_LNG);
-  const [dropLat, setDropLat] = React.useState(DEFAULT_DROP_LAT);
-  const [dropLng, setDropLng] = React.useState(DEFAULT_DROP_LNG);
+  const [pickupLat, setPickupLat] = React.useState("16.7999");
+  const [pickupLng, setPickupLng] = React.useState("121.1175");
+  const [dropLat, setDropLat] = React.useState("16.8016");
+  const [dropLng, setDropLng] = React.useState("121.1222");
 
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<string>("");
@@ -197,22 +118,23 @@ export default function RidePage() {
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
   const [canInfoErr, setCanInfoErr] = React.useState<string>("");
 
-  // Mapbox
+  const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  // ===== Mapbox geocode + map tap picker (UI-only) =====
   const MAPBOX_TOKEN =
     (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
       process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
       "") as string;
 
+  const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
+  const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
   const [geoErr, setGeoErr] = React.useState<string>("");
-
   const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
-  const [fromSug, setFromSug] = React.useState<SuggestItem[]>([]);
-  const [toSug, setToSug] = React.useState<SuggestItem[]>([]);
 
   const fromDebounceRef = React.useRef<any>(null);
   const toDebounceRef = React.useRef<any>(null);
 
-  // Map picker (kept simple)
   const [showMapPicker, setShowMapPicker] = React.useState(false);
   const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
@@ -221,107 +143,7 @@ export default function RidePage() {
   const pickupMarkerRef = React.useRef<any>(null);
   const dropoffMarkerRef = React.useRef<any>(null);
 
-  // Route preview
-  const [routePreviewGeo, setRoutePreviewGeo] = React.useState<any>(null);
-  const [routePreviewErr, setRoutePreviewErr] = React.useState<string>("");
-
-  const [localPOIs, setLocalPOIs] = React.useState<LocalPOI[]>([]);
-  const localLoadedRef = React.useRef(false);
-
-  React.useEffect(() => {
-    if (localLoadedRef.current) return;
-    localLoadedRef.current = true;
-
-    try {
-      const list = loadLocalPOIs();
-      const seeded = seedDefaultPOIsIfEmpty(list);
-      setLocalPOIs(seeded);
-      saveLocalPOIs(seeded);
-    } catch {
-      const seeded = seedDefaultPOIsIfEmpty([]);
-      setLocalPOIs(seeded);
-      saveLocalPOIs(seeded);
-    }
-  }, []);function persistLocalPOIs(next: LocalPOI[]) {
-    setLocalPOIs(next);
-    saveLocalPOIs(next);
-  }
-
-  function seedDefaultPOIsIfEmpty(current: LocalPOI[]) {
-    try {
-      const hasAny = Array.isArray(current) && current.length > 0;
-      if (hasAny) return current;
-
-      const now = Date.now();
-
-      const mkLat = parseFloat(String(DEFAULT_PICKUP_LAT || ""));
-      const mkLng = parseFloat(String(DEFAULT_PICKUP_LNG || ""));
-      const plLat = parseFloat(String(DEFAULT_DROP_LAT || ""));
-      const plLng = parseFloat(String(DEFAULT_DROP_LNG || ""));
-
-      const seeded: LocalPOI[] = [];
-
-      if (Number.isFinite(mkLat) && Number.isFinite(mkLng)) {
-        seeded.push({
-          id: "seed_market_" + String(now),
-          name: String(DEFAULT_FROM_LABEL || "Lagawe Public Market"),
-          aliases: ["market", "public", "public market", "palengke", "lagawe market"],
-          town: String(DEFAULT_TOWN || town || "Lagawe"),
-          lat: Number(mkLat),
-          lng: Number(mkLng),
-          updatedAt: now,
-        });
-      }
-
-      if (Number.isFinite(plLat) && Number.isFinite(plLng)) {
-        seeded.push({
-          id: "seed_plaza_" + String(now + 1),
-          name: String(DEFAULT_TO_LABEL || "Lagawe Town Plaza"),
-          aliases: ["plaza", "town plaza", "lagawe plaza", "poblacion", "center"],
-          town: String(DEFAULT_TOWN || town || "Lagawe"),
-          lat: Number(plLat),
-          lng: Number(plLng),
-          updatedAt: now,
-        });
-      }
-
-      return seeded;
-    } catch {
-      return current || [];
-    }
-  }function upsertLocalPOI(name: string, aliasCsv: string, lat: number, lng: number) {
-    const cleanName = String(name || "").trim();
-    if (!cleanName) return;
-
-    const aliases = normTokens(aliasCsv).filter(Boolean);
-    const id = "poi_" + String(Date.now()) + "_" + String(Math.random()).slice(2);
-
-    const poi: LocalPOI = {
-      id: id,
-      name: cleanName,
-      aliases: aliases,
-      town: town || null,
-      lat: lat,
-      lng: lng,
-      updatedAt: Date.now(),
-    };
-
-    const existing = (localPOIs || []).slice(0);
-    existing.unshift(poi);
-    // cap
-    const capped = existing.slice(0, 80);
-    persistLocalPOIs(capped);
-  }
-
-  function deleteLocalPOI(id: string) {
-    const next = (localPOIs || []).filter((p) => String(p.id) !== String(id));
-    persistLocalPOIs(next);
-  }
-
-  function clearAllLocalPOIs() {
-    persistLocalPOIs([]);
-  }
-function toNum(s: string, fallback: number): number {
+  function toNum(s: string, fallback: number): number {
     const n = numOrNull(s);
     return n === null ? fallback : n;
   }
@@ -329,65 +151,32 @@ function toNum(s: string, fallback: number): number {
   function buildQuery(label: string): string {
     const q = norm(label);
     if (!q) return "";
-    const hasComma = q.indexOf(",") >= 0;
-    if (hasComma) return q;
-    const low = q.toLowerCase();
-    const generic =
-      q.length <= 12 ||
-      low.indexOf("hospital") >= 0 ||
-      low.indexOf("clinic") >= 0 ||
-      low.indexOf("school") >= 0 ||
-      low.indexOf("market") >= 0;
-
-    if (generic) return q + ", " + town + ", Ifugao";
-    return q + ", Ifugao";
+    // Bias queries to your service area without hard-locking.
+    // Example: "IGH" becomes "IGH, Lagawe, Ifugao, Philippines"
+    return q + ", " + town + ", Ifugao, Philippines";
   }
 
-  function scoreType(placeType: string[]): number {
-    const pt = placeType || [];
-    if (pt.indexOf("poi") >= 0) return 0;
-    if (pt.indexOf("address") >= 0) return 1;
-    if (pt.indexOf("place") >= 0) return 2;
-    if (pt.indexOf("locality") >= 0) return 3;
-    if (pt.indexOf("region") >= 0) return 4;
-    if (pt.indexOf("country") >= 0) return 5;
-    return 9;
-  }
+  async function geocodeForward(label: string): Promise<GeoFeature[]> {
+    setGeoErr("");
+    const q = buildQuery(label);
+    if (!q) return [];
 
-  function sortGeo(feats: GeoFeature[]): GeoFeature[] {
-    const arr = (feats || []).slice(0);
-    arr.sort((a, b) => {
-      const sa = scoreType(a.place_type || []);
-      const sb = scoreType(b.place_type || []);
-      if (sa !== sb) return sa - sb;
-      const la = String(a.place_name || a.text || "");
-      const lb = String(b.place_name || b.text || "");
-      return la.localeCompare(lb);
-    });
-    return arr;
-  }
+    if (!MAPBOX_TOKEN) {
+      setGeoErr("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
+      return [];
+    }
 
-  async function fetchGeocode(q: string, limit: number): Promise<GeoFeature[]> {
-    if (!MAPBOX_TOKEN) return [];
-
+    // Use proximity near current pickup if available.
     const proxLng = toNum(pickupLng, 121.1175);
     const proxLat = toNum(pickupLat, 16.7999);
-
-    // Ifugao-ish bbox (approx). Keep results local, but not too tight.
-    const bbox = "120.70,16.50,121.55,17.05";
 
     const url =
       "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
       encodeURIComponent(q) +
-      ".json?autocomplete=true" +
-      "&limit=" + String(limit) +
-      "&country=PH" +
-      "&types=poi,address,place" +
-      "&language=en" +
-      "&bbox=" + encodeURIComponent(bbox) +
-      "&proximity=" + encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
-      "&fuzzyMatch=true" +
-      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+      ".json?autocomplete=true&limit=6&country=PH&proximity=" +
+      encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
+      "&access_token=" +
+      encodeURIComponent(MAPBOX_TOKEN);
 
     const r = await fetch(url, { method: "GET" });
     const j = (await r.json().catch(() => ({}))) as any;
@@ -397,358 +186,68 @@ function toNum(s: string, fallback: number): number {
       place_name: String(f.place_name || ""),
       text: String(f.text || ""),
       center: Array.isArray(f.center) ? [Number(f.center[0]), Number(f.center[1])] : undefined,
-      place_type: Array.isArray(f.place_type) ? (f.place_type.map((x: any) => String(x)) as string[]) : [],
     }));
   }
-
-  function sessionToken(): string {
-    // best-effort stable per tab
-    try {
-      const k = "jr_sb_sess";
-      const w = window as any;
-      if (w && w.sessionStorage) {
-        const prev = w.sessionStorage.getItem(k);
-        if (prev) return prev;
-        const tok = String(Date.now()) + "-" + String(Math.random()).slice(2);
-        w.sessionStorage.setItem(k, tok);
-        return tok;
-      }
-    } catch {}
-    return String(Date.now()) + "-" + String(Math.random()).slice(2);
-  }
-
-  async function searchboxSuggest(raw: string): Promise<SearchboxSuggest[]> {
-    // Mapbox Searchbox Suggest API (POI-focused)
-    if (!MAPBOX_TOKEN) return [];
-    const q = norm(raw);
-    if (!q) return [];
-
-    const proxLng = toNum(pickupLng, 121.1175);
-    const proxLat = toNum(pickupLat, 16.7999);
-    const bbox = "120.70,16.50,121.55,17.05";
-
-    const st = sessionToken();
-
-    const url =
-      "https://api.mapbox.com/search/searchbox/v1/suggest" +
-      "?q=" + encodeURIComponent(q) +
-      "&limit=8" +
-      "&country=PH" +
-      "&language=en" +
-      "&proximity=" + encodeURIComponent(String(proxLng) + "," + String(proxLat)) +
-      "&bbox=" + encodeURIComponent(bbox) +
-      "&session_token=" + encodeURIComponent(st) +
-      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
-
-    const r = await fetch(url, { method: "GET" });
-    const j = (await r.json().catch(() => ({}))) as any;
-
-    // If token does not allow Searchbox, Mapbox often returns 401/403 with message.
-    if (!r.ok) {
-      const msg = String((j && (j.message || j.error)) ? (j.message || j.error) : ("HTTP " + String(r.status)));
-      throw new Error("Searchbox suggest failed: " + msg);
-    }
-
-    const sug = (j && j.suggestions) ? (j.suggestions as any[]) : [];
-    const out: SearchboxSuggest[] = [];
-    for (const s of sug) {
-      const mid = String(s.mapbox_id || "");
-      if (!mid) continue;
-      out.push({
-        kind: "searchbox",
-        mapbox_id: mid,
-        name: String(s.name || s.full_address || ""),
-        full_address: String(s.full_address || s.name || ""),
-        feature_type: String(s.feature_type || ""),
-      });
-    }
-    return out;
-  }
-
-  async function searchboxRetrieve(mapboxId: string): Promise<{ lng: number; lat: number; label: string } | null> {
-    if (!MAPBOX_TOKEN) return null;
-    const st = sessionToken();
-
-    const url =
-      "https://api.mapbox.com/search/searchbox/v1/retrieve/" +
-      encodeURIComponent(mapboxId) +
-      "?session_token=" + encodeURIComponent(st) +
-      "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
-
-    const r = await fetch(url, { method: "GET" });
-    const j = (await r.json().catch(() => ({}))) as any;
-
-    if (!r.ok) {
-      const msg = String((j && (j.message || j.error)) ? (j.message || j.error) : ("HTTP " + String(r.status)));
-      throw new Error("Searchbox retrieve failed: " + msg);
-    }
-
-    const feats = (j && j.features) ? (j.features as any[]) : [];
-    if (!feats.length) return null;
-
-    const f = feats[0];
-    const coords = f && f.geometry && f.geometry.coordinates;
-    if (!Array.isArray(coords) || coords.length < 2) return null;
-
-    const lng = Number(coords[0]);
-    const lat = Number(coords[1]);
-    const props = f.properties || {};
-    const label =
-      String(props.name || props.full_address || props.place_formatted || props.feature_name || "") ||
-      String(props.address || "") ||
-      "Selected location";
-
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
-    return { lng, lat, label };
-  }
-
-  async function geocodeForward(raw: string): Promise<SuggestItem[]> {
-    setGeoErr("");
-
-    const localItems: LocalSuggest[] = [];
-    try {
-      const qraw = String(raw || "").trim();
-      if (qraw && localPOIs && localPOIs.length) {
-        const scored = (localPOIs || [])
-          .map((p) => ({ p: p, s: matchScore(qraw, p) }))
-          .filter((x) => x.s > 0)
-          // prefer same town if set
-          .sort((a, b) => {
-            const at = String(a.p.town || "").toLowerCase();
-            const bt = String(b.p.town || "").toLowerCase();
-            const tt = String(town || "").toLowerCase();
-            const aTown = (at && tt && at === tt) ? 1 : 0;
-            const bTown = (bt && tt && bt === tt) ? 1 : 0;
-            if (aTown !== bTown) return bTown - aTown;
-            return b.s - a.s;
-          })
-          .slice(0, 6);
-
-        for (const it of scored) {
-          localItems.push({ kind: "local", poi: it.p });
-        }
-      }
-    } catch {}
-if (!MAPBOX_TOKEN) {
-      setGeoErr("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
-      return [];
-    }
-
-    const q = buildQuery(raw);
-    if (!q) return [];
-
-    // Primary: Geocoding v5
-    let feats: GeoFeature[] = [];
-    try {
-      feats = await fetchGeocode(q, 10);
-    } catch (e: any) {
-      // don't block; try searchbox
-      feats = [];
-    }
-
-    const sorted = sortGeo(feats).slice(0, 8);
-    const hasPOI =
-      sorted.some((f) => (f.place_type || []).indexOf("poi") >= 0);
-
-    const geoItems = sorted.map((f) => ({ kind: "geocode", f: f } as any));
-
-    // IMPORTANT: If NO POI is present, call Searchbox (POI-focused) even if address/place exists.
-    if (!hasPOI) {
-      try {
-        const sbq = norm(raw) ? (norm(raw) + ", " + town + ", Ifugao") : q;
-        const sb = await searchboxSuggest(sbq);
-
-        // Show POI suggestions first, then fallback geocode results.
-        if (sb && sb.length) return ([] as any[]).concat(localItems as any, sb as any, geoItems as any);
-      } catch (e: any) {
-        setGeoErr(String(e?.message || e));
-        // still show geocode results if any
-      }
-    }
-
-    return ([] as any[]).concat(localItems as any, geoItems as any);}
 
   async function geocodeReverse(lng: number, lat: number): Promise<string> {
     if (!MAPBOX_TOKEN) return "";
     const url =
       "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
       encodeURIComponent(String(lng) + "," + String(lat)) +
-      ".json?limit=1&country=PH&language=en&access_token=" +
+      ".json?limit=1&country=PH&access_token=" +
       encodeURIComponent(MAPBOX_TOKEN);
     try {
       const r = await fetch(url, { method: "GET" });
       const j = (await r.json().catch(() => ({}))) as any;
       const feats = (j && j.features) ? (j.features as any[]) : [];
       if (feats.length) return String(feats[0].place_name || "");
-    } catch {}
+    } catch {
+      // ignore
+    }
     return "";
   }
 
-  // Route preview (pickup -> dropoff)
-  React.useEffect(() => {
-    let cancelled = false;
+  function applyGeoSelection(field: "from" | "to", f: GeoFeature) {
+    const name = String(f.place_name || f.text || "").trim();
+    const c = f.center;
+    if (!c || c.length !== 2) return;
 
-    const t = setTimeout(async () => {
-      try {
-        setRoutePreviewErr("");
-        if (!MAPBOX_TOKEN) { setRoutePreviewGeo(null); return; }
+    const lng = Number(c[0]);
+    const lat = Number(c[1]);
 
-        const plng = numOrNull(pickupLng);
-        const plat = numOrNull(pickupLat);
-        const dlng = numOrNull(dropLng);
-        const dlat = numOrNull(dropLat);
-
-        if (plng === null || plat === null || dlng === null || dlat === null) {
-          setRoutePreviewGeo(null);
-          return;
-        }
-
-        const coords = String(plng) + "," + String(plat) + ";" + String(dlng) + "," + String(dlat);
-
-        const url =
-          "https://api.mapbox.com/directions/v5/mapbox/driving/" +
-          coords +
-          "?geometries=geojson&overview=full&access_token=" +
-          encodeURIComponent(MAPBOX_TOKEN);
-
-        const r = await fetch(url, { method: "GET" });
-        const j = (await r.json().catch(() => ({}))) as any;
-
-        if (!r.ok || !j || !j.routes || !j.routes.length || !j.routes[0].geometry) {
-          setRoutePreviewGeo(null);
-          if (!cancelled) setRoutePreviewErr("Route preview not available.");
-          return;
-        }
-
-        const geom = j.routes[0].geometry;
-        if (!cancelled) {
-          setRoutePreviewGeo({ type: "Feature", geometry: geom, properties: {} });
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          setRoutePreviewGeo(null);
-          setRoutePreviewErr("Route preview failed: " + String(e?.message || e));
-        }
-      }
-    }, 450);
-
-    return () => { cancelled = true; clearTimeout(t); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickupLat, pickupLng, dropLat, dropLng, MAPBOX_TOKEN]);
-
-  async function applySuggestion(field: "from" | "to", item: SuggestItem) {
-    try {
-      if ((item as any).kind === "local") {
-        const poi = (item as any).poi as LocalPOI;
-        if (!poi) return;
-
-        if (field === "from") {
-          setFromLabel(String(poi.name || ""));
-          setPickupLat(String(poi.lat));
-          setPickupLng(String(poi.lng));
-          setFromSug([]);
-          setActiveGeoField(null);
-        } else {
-          setToLabel(String(poi.name || ""));
-          setDropLat(String(poi.lat));
-          setDropLng(String(poi.lng));
-          setToSug([]);
-          setActiveGeoField(null);
-        }
-        return;
-      }
-if ((item as any).kind === "searchbox") {
-        const sb = item as SearchboxSuggest;
-        const got = await searchboxRetrieve(sb.mapbox_id);
-        if (!got) return;
-
-        if (field === "from") {
-          setFromLabel(sb.full_address || sb.name || got.label);
-          setPickupLat(String(got.lat));
-          setPickupLng(String(got.lng));
-          setFromSug([]);
-          setActiveGeoField(null);
-        } else {
-          setToLabel(sb.full_address || sb.name || got.label);
-          setDropLat(String(got.lat));
-          setDropLng(String(got.lng));
-          setToSug([]);
-          setActiveGeoField(null);
-        }
-        return;
-      }
-
-      const f = (item as any).f as GeoFeature;
-      const name = String(f.place_name || f.text || "").trim();
-      const c = f.center;
-      if (!c || c.length !== 2) return;
-
-      const lng = Number(c[0]);
-      const lat = Number(c[1]);
-
-      if (field === "from") {
-        if (name) setFromLabel(name);
-        setPickupLat(String(lat));
-        setPickupLng(String(lng));
-        setFromSug([]);
-        setActiveGeoField(null);
-      } else {
-        if (name) setToLabel(name);
-        setDropLat(String(lat));
-        setDropLng(String(lng));
-        setToSug([]);
-        setActiveGeoField(null);
-      }
-    } catch (e: any) {
-      setGeoErr(String(e?.message || e));
+    if (field === "from") {
+      if (name) setFromLabel(name);
+      setPickupLat(String(lat));
+      setPickupLng(String(lng));
+      setGeoFrom([]);
+      setActiveGeoField(null);
+    } else {
+      if (name) setToLabel(name);
+      setDropLat(String(lat));
+      setDropLng(String(lng));
+      setGeoTo([]);
+      setActiveGeoField(null);
     }
   }
 
-  function badgeFor(item: SuggestItem): string {
-    if ((item as any).kind === "local") return "SAVED";if ((item as any).kind === "searchbox") {
-      const ft = String((item as any).feature_type || "");
-      if (ft) return ft.toUpperCase();
-      return "POI";
-    }
-    const f = (item as any).f as GeoFeature;
-    const pt = (f.place_type || []).join(",");
-    if (pt.indexOf("poi") >= 0) return "POI";
-    if (pt.indexOf("address") >= 0) return "ADDR";
-    if (pt.indexOf("place") >= 0) return "PLACE";
-    return "AREA";
-  }
-
-  function labelFor(item: SuggestItem): string {
-    if ((item as any).kind === "searchbox") {
-      const sb = item as SearchboxSuggest;
-      return String(sb.full_address || sb.name || "").trim();
-    }
-    const f = (item as any).f as GeoFeature;
-    return String(f.place_name || f.text || "").trim();
-  }
-
-  function renderSugList(field: "from" | "to") {
-    const items = field === "from" ? fromSug : toSug;
+  function renderGeoList(field: "from" | "to") {
+    const items = field === "from" ? geoFrom : geoTo;
     const open = activeGeoField === field && items && items.length > 0;
+
     if (!open) return null;
 
     return (
       <div className="mt-2 rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
-        {items.map((it, idx) => {
-          const label = labelFor(it) || "(unknown)";
-          const badge = badgeFor(it);
-
+        {items.map((f, idx) => {
+          const label = String(f.place_name || f.text || "").trim() || "(unknown)";
           return (
             <button
-              key={String(idx) + "_" + label}
+              key={(f.id || "") + "_" + String(idx)}
               type="button"
               className="w-full text-left px-3 py-2 text-sm hover:bg-black/5"
-              onClick={() => applySuggestion(field, it)}
+              onClick={() => applyGeoSelection(field, f)}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="truncate">{label}</div>
-                <div className="text-[10px] px-2 py-0.5 rounded-full bg-black/5">{badge}</div>
-              </div>
+              {label}
             </button>
           );
         })}
@@ -756,21 +255,19 @@ if ((item as any).kind === "searchbox") {
     );
   }
 
-  // Debounced autocomplete
+  // Debounced geocoding for pickup label
   React.useEffect(() => {
     if (activeGeoField !== "from") return;
     if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
-
     fromDebounceRef.current = setTimeout(async () => {
       try {
-        const items = await geocodeForward(fromLabel);
-        setFromSug(items);
+        const feats = await geocodeForward(fromLabel);
+        setGeoFrom(feats);
       } catch (e: any) {
-        setGeoErr(String(e?.message || e));
-        setFromSug([]);
+        setGeoErr("Geocode failed: " + String(e?.message || e));
+        setGeoFrom([]);
       }
-    }, 250);
-
+    }, 350);
     return () => {
       if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
       fromDebounceRef.current = null;
@@ -778,20 +275,19 @@ if ((item as any).kind === "searchbox") {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromLabel, activeGeoField, town]);
 
+  // Debounced geocoding for dropoff label
   React.useEffect(() => {
     if (activeGeoField !== "to") return;
     if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
-
     toDebounceRef.current = setTimeout(async () => {
       try {
-        const items = await geocodeForward(toLabel);
-        setToSug(items);
+        const feats = await geocodeForward(toLabel);
+        setGeoTo(feats);
       } catch (e: any) {
-        setGeoErr(String(e?.message || e));
-        setToSug([]);
+        setGeoErr("Geocode failed: " + String(e?.message || e));
+        setGeoTo([]);
       }
-    }, 250);
-
+    }, 350);
     return () => {
       if (toDebounceRef.current) clearTimeout(toDebounceRef.current);
       toDebounceRef.current = null;
@@ -799,7 +295,7 @@ if ((item as any).kind === "searchbox") {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toLabel, activeGeoField, town]);
 
-  // Map picker init / refresh + route draw
+  // Map picker init / refresh
   React.useEffect(() => {
     let cancelled = false;
 
@@ -808,7 +304,7 @@ if ((item as any).kind === "searchbox") {
       if (!mapDivRef.current) return;
 
       if (!MAPBOX_TOKEN) {
-        setGeoErr("Map picker requires Mapbox token.");
+        setGeoErr("Map picker requires Mapbox token. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
         return;
       }
 
@@ -825,8 +321,11 @@ if ((item as any).kind === "searchbox") {
       if (cancelled) return;
 
       const mbAny = mbRef.current as any;
-      if (mbAny && mbAny.default) mbAny.default.accessToken = MAPBOX_TOKEN;
-      else if (mbAny) mbAny.accessToken = MAPBOX_TOKEN;
+      if (mbAny && mbAny.default) {
+        mbAny.default.accessToken = MAPBOX_TOKEN;
+      } else if (mbAny) {
+        mbAny.accessToken = MAPBOX_TOKEN;
+      }
 
       const MapboxGL = (mbAny && mbAny.default) ? mbAny.default : mbAny;
 
@@ -860,13 +359,20 @@ if ((item as any).kind === "searchbox") {
               const name2 = await geocodeReverse(lng, lat);
               if (name2) setToLabel(name2);
             }
-          } catch {}
+          } catch {
+            // ignore
+          }
         });
       } else {
-        try { mapRef.current.setCenter([centerLng, centerLat]); } catch {}
+        // Recenter map when toggled
+        try {
+          mapRef.current.setCenter([centerLng, centerLat]);
+        } catch {
+          // ignore
+        }
       }
 
-      // Markers
+      // Update markers on each render
       try {
         const plng = toNum(pickupLng, 121.1175);
         const plat = toNum(pickupLat, 16.7999);
@@ -884,55 +390,18 @@ if ((item as any).kind === "searchbox") {
         } else {
           dropoffMarkerRef.current.setLngLat([dlng, dlat]);
         }
-      } catch {}
-
-      function drawRoutePreviewLine() {
-        try {
-          if (!mapRef.current) return;
-          const map = mapRef.current;
-          if (!(map && (map.isStyleLoaded ? map.isStyleLoaded() : (map.loaded && map.loaded())))) return;
-
-          const srcId = "route-preview";
-          const layerId = "route-preview-line";
-
-          try { if (map.getLayer(layerId)) map.removeLayer(layerId); } catch {}
-          try { if (map.getSource(srcId)) map.removeSource(srcId); } catch {}
-
-          if (!routePreviewGeo) return;
-
-          map.addSource(srcId, { type: "geojson", data: routePreviewGeo });
-
-          map.addLayer({
-            id: layerId,
-            type: "line",
-            source: srcId,
-            layout: { "line-join": "round", "line-cap": "round" },
-            paint: { "line-width": 4, "line-opacity": 0.85, "line-color": "#2563eb" },
-          });
-        } catch {}
+      } catch {
+        // ignore
       }
-
-      try {
-        const map = mapRef.current;
-        if (map) {
-          if (!(map && (map.isStyleLoaded ? map.isStyleLoaded() : (map.loaded && map.loaded())))) {
-            try { map.once("load", () => { drawRoutePreviewLine(); }); } catch {}
-          } else {
-            drawRoutePreviewLine();
-          }
-
-          if (!routePreviewGeo) {
-            try { if (map.getLayer("route-preview-line")) map.removeLayer("route-preview-line"); } catch {}
-            try { if (map.getSource("route-preview")) map.removeSource("route-preview"); } catch {}
-          }
-        }
-      } catch {}
     }
 
     initMap();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng, routePreviewGeo, MAPBOX_TOKEN]);
+  }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng]);
 
   async function getJson(url: string) {
     const r = await fetch(url, { method: "GET", cache: "no-store" });
@@ -961,16 +430,29 @@ if ((item as any).kind === "searchbox") {
         return;
       }
       setCanInfo(r.json as CanBookInfo);
+      // AUTO_CLOSE_VERIFY_PANEL_ON_REFRESH
+      try {
+        const st = String((r.json as any)?.verification_status || "").toLowerCase();
+        if (st === "verified" || (r.json as any)?.verified === true) {
+          setShowVerifyPanel(false);
+        }
+      } catch {
+        // ignore
+      }
     } catch (e: any) {
       setCanInfoErr("CAN_BOOK_INFO_ERROR: " + String(e?.message || e));
       setCanInfo(null);
     }
   }
 
-  React.useEffect(() => { refreshCanBook(); }, []);
-
-  // Live polling
   React.useEffect(() => {
+    refreshCanBook();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    // Live status polling:
+    // GET /api/public/passenger/booking?code=BOOKING_CODE
     if (!activeCode) return;
 
     if (pollRef.current) {
@@ -1034,19 +516,6 @@ if ((item as any).kind === "searchbox") {
   const walletOk = canInfo?.wallet_ok;
   const walletLocked = !!canInfo?.wallet_locked;
 
-  const canCode = normUpper(canInfo?.code);
-  const canMsg = norm(canInfo?.message);
-
-  const unverifiedBlocked =
-    !verified &&
-    (nightGate ||
-      canCode.indexOf("UNVERIFIED") >= 0 ||
-      canCode.indexOf("VERIFY") >= 0 ||
-      (canMsg && canMsg.toLowerCase().indexOf("verify") >= 0));
-
-  const walletBlocked = walletOk === false || walletLocked === true;
-  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked;
-
   function pill(text: string, good: boolean) {
     return (
       <span
@@ -1064,21 +533,123 @@ if ((item as any).kind === "searchbox") {
     walletOk === undefined ? "Wallet: (no data)" : walletOk ? "Wallet: OK" : walletLocked ? "Wallet: LOCKED" : "Wallet: LOW";
   const walletPillGood = walletOk === true;
 
+  const canCode = normUpper(canInfo?.code);
+  const canMsg = norm(canInfo?.message);
+
+  const unverifiedBlocked =
+    !verified &&
+    (
+      nightGate ||
+      canCode.indexOf("UNVERIFIED") >= 0 ||
+      canCode.indexOf("VERIFY") >= 0 ||
+      canMsg.toLowerCase().indexOf("verify") >= 0
+    );
+
+  const walletBlocked =
+    walletOk === false || walletLocked === true;
+
+  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked;
+
+  function blockTitle(): string {
+    if (unverifiedBlocked) return "Verification required";
+    if (walletBlocked) return "Wallet requirement not met";
+    if (canCode || canMsg) return "Booking blocked";
+    return "Booking blocked";
+  }
+
+  function blockBody(): string {
+    if (unverifiedBlocked) {
+      const win = norm(canInfo?.window);
+      const extra = win ? (" Night gate window: " + win + ".") : "";
+      return "Your account is not verified. Ride booking is restricted during night gate hours until verification is approved." + extra;
+    }
+    if (walletBlocked) {
+      const bal = canInfo?.wallet_balance;
+      const min = canInfo?.min_wallet_required;
+      const locked = !!canInfo?.wallet_locked;
+      const parts: string[] = [];
+      parts.push("Your wallet does not meet the minimum requirement to book a ride.");
+      parts.push("Balance: " + String(bal ?? "null") + " | Min required: " + String(min ?? "null") + " | Locked: " + String(locked));
+      return parts.join(" ");
+    }
+    if (canCode || canMsg) {
+      return (canCode ? (canCode + ": ") : "") + (canMsg || "Not allowed right now.");
+    }
+    return "Not allowed right now.";
+  }
+
+  function verifyRequestText(): string {
+    const now = new Date();
+    const lines: string[] = [];
+    lines.push("JRIDE VERIFICATION REQUEST");
+    lines.push("Passenger name: " + passengerName);
+    lines.push("Town: " + town);
+    lines.push("Requested at: " + now.toISOString());
+    lines.push("Reason: Please verify my passenger account so I can book rides.");
+    lines.push("Notes: " + (nightGate ? "Night gate is ON and booking is blocked while unverified." : "Booking is blocked while unverified."));
+    return lines.join("\n");
+  }
+
+  async function copyVerifyRequest() {
+    setCopied(false);
+    try {
+      const text = verifyRequestText();
+      if (navigator && (navigator as any).clipboard && (navigator as any).clipboard.writeText) {
+        await (navigator as any).clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = verifyRequestText();
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   async function submit() {
     setResult("");
     setBusy(true);
 
     try {
-      const can = await postJson("/api/public/passenger/can-book", { town, service: "ride" });
+      // 1) Gate check (server-authoritative)
+      const can = await postJson("/api/public/passenger/can-book", {
+        town,
+        service: "ride",
+      });
+
       if (!can.ok) {
-        const cj = (can.json || {}) as any;
-        const code = normUpper(cj.code || cj.error_code);
-        const msg = norm(cj.message) || "Not allowed";
+        const cj = (can.json || {}) as CanBookInfo;
+        const code = normUpper((cj as any).code || (cj as any).error_code);
+        const msg = norm((cj as any).message) || "Not allowed";
+
         setResult("CAN_BOOK_BLOCKED: " + (code || "BLOCKED") + " - " + msg);
+
+        // Refresh visible status pills/cards
         await refreshCanBook();
+
+        // If this looks like an unverified block, open the UX panel automatically
+        const looksUnverified =
+          (!cj.verified && (!!cj.nightGate)) ||
+          code.indexOf("UNVERIFIED") >= 0 ||
+          code.indexOf("VERIFY") >= 0 ||
+          msg.toLowerCase().indexOf("verify") >= 0;
+
+        if (looksUnverified) if (!(String((canInfo as any)?.verification_status || "`").toLowerCase() === "verified" || verified === true)) { setShowVerifyPanel(true); }
         return;
       }
 
+      // 2) Create booking (no debug flags)
       const book = await postJson("/api/public/passenger/book", {
         passenger_name: passengerName,
         town,
@@ -1110,12 +681,15 @@ if ((item as any).kind === "searchbox") {
         lines.push("assign.ok: " + String(!!bj.assign.ok));
         if (bj.assign.driver_id) lines.push("assign.driver_id: " + String(bj.assign.driver_id));
         if (bj.assign.note) lines.push("assign.note: " + String(bj.assign.note));
+        if (bj.assign.update_ok !== undefined) lines.push("assign.update_ok: " + String(!!bj.assign.update_ok));
+        if (bj.assign.update_error) lines.push("assign.update_error: " + String(bj.assign.update_error));
       } else {
         lines.push("assign: (none)");
       }
 
       setResult(lines.join("\n"));
 
+      // 3) Start live polling after booking (if we have a booking_code)
       const code = norm((bj.booking && bj.booking.booking_code) ? bj.booking.booking_code : (bj.booking_code || ""));
       if (code) {
         setActiveCode(code);
@@ -1130,29 +704,6 @@ if ((item as any).kind === "searchbox") {
     } finally {
       setBusy(false);
     }
-  }
-
-  function clearAll() {
-    setResult("");
-    setGeoErr("");
-    setFromSug([]);
-    setToSug([]);
-    setActiveGeoField(null);
-    setShowMapPicker(false);
-    setPickMode("pickup");
-
-    setFromLabel(DEFAULT_FROM_LABEL);
-    setToLabel(DEFAULT_TO_LABEL);
-    setPickupLat(DEFAULT_PICKUP_LAT);
-    setPickupLng(DEFAULT_PICKUP_LNG);
-    setDropLat(DEFAULT_DROP_LAT);
-    setDropLng(DEFAULT_DROP_LNG);
-
-    setActiveCode("");
-    setLiveStatus("");
-    setLiveDriverId("");
-    setLiveUpdatedAt(null);
-    setLiveErr("");
   }
 
   return (
@@ -1199,12 +750,6 @@ if ((item as any).kind === "searchbox") {
           </div>
         ) : null}
 
-        {routePreviewErr ? (
-          <div className="mt-2 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
-            {routePreviewErr}
-          </div>
-        ) : null}
-
         {!MAPBOX_TOKEN ? (
           <div className="mt-3 text-xs rounded-xl border border-amber-300 bg-amber-50 p-3">
             Mapbox token missing. Autocomplete and map tap picker are disabled. Set <b>NEXT_PUBLIC_MAPBOX_TOKEN</b> (or <b>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</b>).
@@ -1214,6 +759,62 @@ if ((item as any).kind === "searchbox") {
         {canInfoErr ? (
           <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
             {canInfoErr}
+          </div>
+        ) : null}
+
+        {(unverifiedBlocked || walletBlocked || (canCode || canMsg)) ? (
+          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-amber-900">{blockTitle()}</div>
+                <div className="mt-1 text-sm text-amber-900/80">
+                  {blockBody()}
+                </div>
+                {(canCode || canMsg) ? (
+                  <div className="mt-2 text-xs text-amber-900/70">
+                    Details: <span className="font-mono">{(canCode || "BLOCKED")}</span>{canMsg ? (" - " + canMsg) : ""}
+                  </div>
+                ) : null}
+              </div>
+
+              {!verified ? (
+                <button
+                  type="button"
+                  className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
+                  onClick={() => router.push("/verify")}
+                >
+                  Go to verification
+                </button>
+              ) : null}
+            </div>
+
+            {showVerifyPanel && unverifiedBlocked ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+                <div className="font-semibold text-sm">Verification required</div>
+
+                <div className="mt-2 text-xs opacity-70">
+                  Current status: <b>{verificationStatusLabelFromApi(canInfo)}</b>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90"
+                    onClick={() => router.push("/verify")}
+                  >
+                    Go to verification
+                  </button>
+
+                  <button
+                    type="button"
+                    className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold"
+                    onClick={refreshCanBook}
+                  >
+                    Refresh status
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1252,16 +853,24 @@ if ((item as any).kind === "searchbox") {
               onFocus={() => { setActiveGeoField("from"); }}
               onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); }}
             />
-            {renderSugList("from")}
+            {renderGeoList("from")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lat</label>
-                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={pickupLat} onChange={(e) => setPickupLat(e.target.value)} />
+                <input
+                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  value={pickupLat}
+                  onChange={(e) => setPickupLat(e.target.value)}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lng</label>
-                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={pickupLng} onChange={(e) => setPickupLng(e.target.value)} />
+                <input
+                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  value={pickupLng}
+                  onChange={(e) => setPickupLng(e.target.value)}
+                />
               </div>
             </div>
 
@@ -1272,16 +881,24 @@ if ((item as any).kind === "searchbox") {
               onFocus={() => { setActiveGeoField("to"); }}
               onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); }}
             />
-            {renderSugList("to")}
+            {renderGeoList("to")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lat</label>
-                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={dropLat} onChange={(e) => setDropLat(e.target.value)} />
+                <input
+                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  value={dropLat}
+                  onChange={(e) => setDropLat(e.target.value)}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lng</label>
-                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={dropLng} onChange={(e) => setDropLng(e.target.value)} />
+                <input
+                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  value={dropLng}
+                  onChange={(e) => setDropLng(e.target.value)}
+                />
               </div>
             </div>
 
@@ -1299,56 +916,23 @@ if ((item as any).kind === "searchbox") {
                 type="button"
                 disabled={!MAPBOX_TOKEN || !showMapPicker}
                 className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => setPickMode("pickup")}
+                title="Next tap on the map sets pickup"
+              >
+                Pick pickup
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN || !showMapPicker}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
                 onClick={() => setPickMode("dropoff")}
+                title="Next tap on the map sets dropoff"
               >
                 Pick dropoff
               </button>
 
-              <button
-                type="button"
-                disabled={!MAPBOX_TOKEN}
-                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
-                onClick={() => {
-                  const lat = numOrNull(pickupLat);
-                  const lng = numOrNull(pickupLng);
-                  if (lat === null || lng === null) return;
-                  const name = window.prompt("Save pickup as place name:", fromLabel || "");
-                  if (!name) return;
-                  const aliases = window.prompt("Aliases (comma separated), e.g. IGH,hospital:", "") || "";
-                  upsertLocalPOI(String(name), String(aliases), Number(lat), Number(lng));
-                }}
-              >
-                Save pickup
-              </button>
-
-              <button
-                type="button"
-                disabled={!MAPBOX_TOKEN}
-                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
-                onClick={() => {
-                  const lat = numOrNull(dropLat);
-                  const lng = numOrNull(dropLng);
-                  if (lat === null || lng === null) return;
-                  const name = window.prompt("Save dropoff as place name:", toLabel || "");
-                  if (!name) return;
-                  const aliases = window.prompt("Aliases (comma separated), e.g. plaza,terminal:", "") || "";
-                  upsertLocalPOI(String(name), String(aliases), Number(lat), Number(lng));
-                }}
-              >
-                Save dropoff
-              </button>
-
-              <button
-                type="button"
-                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold hover:bg-black/5"}
-                onClick={() => {
-                  if (!localPOIs || !localPOIs.length) return;
-                  const ok = window.confirm("Clear ALL saved places on this device?");
-                  if (ok) clearAllLocalPOIs();
-                }}
-              >
-                Clear saved
-              </button><span className="text-xs opacity-70">
+              <span className="text-xs opacity-70">
                 Mode: <b>{pickMode === "pickup" ? "Pickup" : "Dropoff"}</b> (tap map to set)
               </span>
             </div>
@@ -1356,33 +940,10 @@ if ((item as any).kind === "searchbox") {
             {showMapPicker ? (
               <div className="mt-3 rounded-2xl border border-black/10 overflow-hidden">
                 <div className="px-3 py-2 text-xs opacity-70 border-b border-black/10 bg-white">
-                  Tap the map to set {pickMode}. Markers: green pickup, red dropoff. Route preview: blue line.
+                  Tap the map to set {pickMode}. Markers: green pickup, red dropoff.
                 </div>
                 <div ref={mapDivRef} style={{ height: 260, width: "100%" }} />
-
-                {localPOIs && localPOIs.length ? (
-                  <div className="px-3 py-2 text-xs border-t border-black/10 bg-white">
-                    <div className="font-semibold mb-1">Saved places (this device)</div>
-                    <div className="space-y-1">
-                      {localPOIs.slice(0, 8).map((p) => (
-                        <div key={p.id} className="flex items-center justify-between gap-2">
-                          <div className="truncate">
-                            <span className="inline-flex text-[10px] px-2 py-0.5 rounded-full bg-black/5 mr-2">SAVED</span>
-                            {p.name}
-                            <span className="opacity-60 ml-2">{p.aliases && p.aliases.length ? "(" + p.aliases.join(",") + ")" : ""}</span>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-[10px] rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
-                            onClick={() => deleteLocalPOI(p.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}</div>
+              </div>
             ) : null}
           </div>
         </div>
@@ -1392,7 +953,11 @@ if ((item as any).kind === "searchbox") {
             type="button"
             disabled={!allowSubmit}
             onClick={submit}
-            className={"rounded-xl px-5 py-2 font-semibold text-white " + (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")}
+            className={
+              "rounded-xl px-5 py-2 font-semibold text-white " +
+              (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")
+            }
+            title={!allowSubmit ? "Booking is blocked by rules above" : "Submit booking"}
           >
             {busy ? "Booking..." : "Submit booking"}
           </button>
@@ -1400,7 +965,7 @@ if ((item as any).kind === "searchbox") {
           <button
             type="button"
             disabled={busy}
-            onClick={clearAll}
+            onClick={() => setResult("")}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
           >
             Clear
@@ -1458,7 +1023,8 @@ if ((item as any).kind === "searchbox") {
             </div>
 
             <div className="mt-1 text-xs opacity-70">
-              last update: {liveUpdatedAt ? Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago" : "--"}
+              last update:{" "}
+              {liveUpdatedAt ? Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago" : "--"}
             </div>
 
             {liveErr ? (
@@ -1478,7 +1044,3 @@ if ((item as any).kind === "searchbox") {
     </main>
   );
 }
-
-
-
-
