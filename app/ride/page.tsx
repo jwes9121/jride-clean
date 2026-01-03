@@ -55,10 +55,93 @@ type SearchboxSuggest = {
   feature_type: string;
 };
 
+type LocalPOI = {
+  id: string;
+  name: string;
+  aliases: string[]; // keywords like: ["igh","hospital"]
+  town?: string | null; // optional filter
+  lat: number;
+  lng: number;
+  updatedAt: number;
+};
+
+type LocalSuggest = {
+  kind: "local";
+  poi: LocalPOI;
+};
+
 type SuggestItem =
   | { kind: "geocode"; f: GeoFeature }
-  | SearchboxSuggest;
+  | SearchboxSuggest
+  | LocalSuggest;
 
+const LOCAL_POI_KEY = "jr_local_pois_v1";
+
+function safeJsonParse(s: string): any {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function loadLocalPOIs(): LocalPOI[] {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_POI_KEY);
+    if (!raw) return [];
+    const j = safeJsonParse(raw);
+    if (!Array.isArray(j)) return [];
+    const out: LocalPOI[] = [];
+    for (const it of j) {
+      const lat = Number(it && it.lat);
+      const lng = Number(it && it.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      out.push({
+        id: String(it.id || ""),
+        name: String(it.name || ""),
+        aliases: Array.isArray(it.aliases) ? it.aliases.map((x: any) => String(x || "").toLowerCase()).filter(Boolean) : [],
+        town: (it.town === null || it.town === undefined) ? null : String(it.town),
+        lat: lat,
+        lng: lng,
+        updatedAt: Number(it.updatedAt || Date.now()),
+      });
+    }
+    return out.filter((p) => p.id && p.name);
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalPOIs(list: LocalPOI[]) {
+  try {
+    window.localStorage.setItem(LOCAL_POI_KEY, JSON.stringify(list || []));
+  } catch {}
+}
+
+function normTokens(s: string): string[] {
+  const t = String(s || "").toLowerCase();
+  return t
+    .replace(/[^a-z0-9\s,]/g, " ")
+    .split(/[\s,]+/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function matchScore(query: string, poi: LocalPOI): number {
+  const q = normTokens(query);
+  if (!q.length) return 0;
+
+  const name = String(poi.name || "").toLowerCase();
+  const aliases = (poi.aliases || []).map((x) => String(x || "").toLowerCase());
+  const hay = [name].concat(aliases);
+
+  let hits = 0;
+  for (const tok of q) {
+    let found = false;
+    for (const h of hay) {
+      if (h.indexOf(tok) >= 0) { found = true; break; }
+    }
+    if (found) hits++;
+  }
+  // favor more hits; small bias for shorter names
+  return hits * 100 - Math.min(30, name.length);
+}
 function numOrNull(s: string): number | null {
   const t = String(s || "").trim();
   if (!t) return null;
@@ -142,7 +225,58 @@ export default function RidePage() {
   const [routePreviewGeo, setRoutePreviewGeo] = React.useState<any>(null);
   const [routePreviewErr, setRoutePreviewErr] = React.useState<string>("");
 
-  function toNum(s: string, fallback: number): number {
+  const [localPOIs, setLocalPOIs] = React.useState<LocalPOI[]>([]);
+  const localLoadedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (localLoadedRef.current) return;
+    localLoadedRef.current = true;
+    try {
+      const list = loadLocalPOIs();
+      setLocalPOIs(list);
+    } catch {
+      setLocalPOIs([]);
+    }
+  }, []);
+
+  function persistLocalPOIs(next: LocalPOI[]) {
+    setLocalPOIs(next);
+    saveLocalPOIs(next);
+  }
+
+  function upsertLocalPOI(name: string, aliasCsv: string, lat: number, lng: number) {
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return;
+
+    const aliases = normTokens(aliasCsv).filter(Boolean);
+    const id = "poi_" + String(Date.now()) + "_" + String(Math.random()).slice(2);
+
+    const poi: LocalPOI = {
+      id: id,
+      name: cleanName,
+      aliases: aliases,
+      town: town || null,
+      lat: lat,
+      lng: lng,
+      updatedAt: Date.now(),
+    };
+
+    const existing = (localPOIs || []).slice(0);
+    existing.unshift(poi);
+    // cap
+    const capped = existing.slice(0, 80);
+    persistLocalPOIs(capped);
+  }
+
+  function deleteLocalPOI(id: string) {
+    const next = (localPOIs || []).filter((p) => String(p.id) !== String(id));
+    persistLocalPOIs(next);
+  }
+
+  function clearAllLocalPOIs() {
+    persistLocalPOIs([]);
+  }
+function toNum(s: string, fallback: number): number {
     const n = numOrNull(s);
     return n === null ? fallback : n;
   }
@@ -326,7 +460,31 @@ export default function RidePage() {
   async function geocodeForward(raw: string): Promise<SuggestItem[]> {
     setGeoErr("");
 
-    if (!MAPBOX_TOKEN) {
+    const localItems: LocalSuggest[] = [];
+    try {
+      const qraw = String(raw || "").trim();
+      if (qraw && localPOIs && localPOIs.length) {
+        const scored = (localPOIs || [])
+          .map((p) => ({ p: p, s: matchScore(qraw, p) }))
+          .filter((x) => x.s > 0)
+          // prefer same town if set
+          .sort((a, b) => {
+            const at = String(a.p.town || "").toLowerCase();
+            const bt = String(b.p.town || "").toLowerCase();
+            const tt = String(town || "").toLowerCase();
+            const aTown = (at && tt && at === tt) ? 1 : 0;
+            const bTown = (bt && tt && bt === tt) ? 1 : 0;
+            if (aTown !== bTown) return bTown - aTown;
+            return b.s - a.s;
+          })
+          .slice(0, 6);
+
+        for (const it of scored) {
+          localItems.push({ kind: "local", poi: it.p });
+        }
+      }
+    } catch {}
+if (!MAPBOX_TOKEN) {
       setGeoErr("Mapbox token missing. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
       return [];
     }
@@ -356,14 +514,14 @@ export default function RidePage() {
         const sb = await searchboxSuggest(sbq);
 
         // Show POI suggestions first, then fallback geocode results.
-        if (sb && sb.length) return ([] as any[]).concat(sb as any, geoItems as any);
+        if (sb && sb.length) return ([] as any[]).concat(localItems as any, sb as any, geoItems as any);
       } catch (e: any) {
         setGeoErr(String(e?.message || e));
         // still show geocode results if any
       }
     }
 
-    return geoItems;}
+    return ([] as any[]).concat(localItems as any, geoItems as any);}
 
   async function geocodeReverse(lng: number, lat: number): Promise<string> {
     if (!MAPBOX_TOKEN) return "";
@@ -435,7 +593,26 @@ export default function RidePage() {
 
   async function applySuggestion(field: "from" | "to", item: SuggestItem) {
     try {
-      if ((item as any).kind === "searchbox") {
+      if ((item as any).kind === "local") {
+        const poi = (item as any).poi as LocalPOI;
+        if (!poi) return;
+
+        if (field === "from") {
+          setFromLabel(String(poi.name || ""));
+          setPickupLat(String(poi.lat));
+          setPickupLng(String(poi.lng));
+          setFromSug([]);
+          setActiveGeoField(null);
+        } else {
+          setToLabel(String(poi.name || ""));
+          setDropLat(String(poi.lat));
+          setDropLng(String(poi.lng));
+          setToSug([]);
+          setActiveGeoField(null);
+        }
+        return;
+      }
+if ((item as any).kind === "searchbox") {
         const sb = item as SearchboxSuggest;
         const got = await searchboxRetrieve(sb.mapbox_id);
         if (!got) return;
@@ -483,7 +660,7 @@ export default function RidePage() {
   }
 
   function badgeFor(item: SuggestItem): string {
-    if ((item as any).kind === "searchbox") {
+    if ((item as any).kind === "local") return "SAVED";if ((item as any).kind === "searchbox") {
       const ft = String((item as any).feature_type || "");
       if (ft) return ft.toUpperCase();
       return "POI";
@@ -1077,21 +1254,56 @@ export default function RidePage() {
                 type="button"
                 disabled={!MAPBOX_TOKEN || !showMapPicker}
                 className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
-                onClick={() => setPickMode("pickup")}
-              >
-                Pick pickup
-              </button>
-
-              <button
-                type="button"
-                disabled={!MAPBOX_TOKEN || !showMapPicker}
-                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
                 onClick={() => setPickMode("dropoff")}
               >
                 Pick dropoff
               </button>
 
-              <span className="text-xs opacity-70">
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => {
+                  const lat = numOrNull(pickupLat);
+                  const lng = numOrNull(pickupLng);
+                  if (lat === null || lng === null) return;
+                  const name = window.prompt("Save pickup as place name:", fromLabel || "");
+                  if (!name) return;
+                  const aliases = window.prompt("Aliases (comma separated), e.g. IGH,hospital:", "") || "";
+                  upsertLocalPOI(String(name), String(aliases), Number(lat), Number(lng));
+                }}
+              >
+                Save pickup
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => {
+                  const lat = numOrNull(dropLat);
+                  const lng = numOrNull(dropLng);
+                  if (lat === null || lng === null) return;
+                  const name = window.prompt("Save dropoff as place name:", toLabel || "");
+                  if (!name) return;
+                  const aliases = window.prompt("Aliases (comma separated), e.g. plaza,terminal:", "") || "";
+                  upsertLocalPOI(String(name), String(aliases), Number(lat), Number(lng));
+                }}
+              >
+                Save dropoff
+              </button>
+
+              <button
+                type="button"
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold hover:bg-black/5"}
+                onClick={() => {
+                  if (!localPOIs || !localPOIs.length) return;
+                  const ok = window.confirm("Clear ALL saved places on this device?");
+                  if (ok) clearAllLocalPOIs();
+                }}
+              >
+                Clear saved
+              </button><span className="text-xs opacity-70">
                 Mode: <b>{pickMode === "pickup" ? "Pickup" : "Dropoff"}</b> (tap map to set)
               </span>
             </div>
@@ -1102,7 +1314,30 @@ export default function RidePage() {
                   Tap the map to set {pickMode}. Markers: green pickup, red dropoff. Route preview: blue line.
                 </div>
                 <div ref={mapDivRef} style={{ height: 260, width: "100%" }} />
-              </div>
+
+                {localPOIs && localPOIs.length ? (
+                  <div className="px-3 py-2 text-xs border-t border-black/10 bg-white">
+                    <div className="font-semibold mb-1">Saved places (this device)</div>
+                    <div className="space-y-1">
+                      {localPOIs.slice(0, 8).map((p) => (
+                        <div key={p.id} className="flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="inline-flex text-[10px] px-2 py-0.5 rounded-full bg-black/5 mr-2">SAVED</span>
+                            {p.name}
+                            <span className="opacity-60 ml-2">{p.aliases && p.aliases.length ? "(" + p.aliases.join(",") + ")" : ""}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="text-[10px] rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                            onClick={() => deleteLocalPOI(p.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}</div>
             ) : null}
           </div>
         </div>
@@ -1198,4 +1433,6 @@ export default function RidePage() {
     </main>
   );
 }
+
+
 
