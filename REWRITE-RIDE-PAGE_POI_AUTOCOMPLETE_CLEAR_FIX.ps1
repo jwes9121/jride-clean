@@ -1,4 +1,24 @@
-﻿"use client";
+# REWRITE-RIDE-PAGE_POI_AUTOCOMPLETE_CLEAR_FIX.ps1
+# One file only: app\ride\page.tsx
+# UI-only. PowerShell 5. ASCII only.
+
+$ErrorActionPreference = "Stop"
+function Fail($m){ throw $m }
+function Ok($m){ Write-Host "[OK] $m" -ForegroundColor Green }
+function Info($m){ Write-Host "[INFO] $m" -ForegroundColor Cyan }
+
+$root = Get-Location
+$rel  = "app\ride\page.tsx"
+$path = Join-Path $root $rel
+if (!(Test-Path $path)) { Fail "File not found: $path" }
+
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$bak = "$path.bak.$stamp"
+Copy-Item $path $bak -Force
+Ok "Backup: $bak"
+
+$new = @'
+"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -1074,3 +1094,8 @@ export default function RidePage() {
     </main>
   );
 }
+'@
+
+Set-Content -Path $path -Value $new -Encoding UTF8
+Ok "Rewrote: $rel"
+Info "Done."
