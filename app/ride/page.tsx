@@ -150,6 +150,11 @@ export default function RidePage() {
   const fromDebounceRef = React.useRef<any>(null);
   const toDebounceRef = React.useRef<any>(null);
 
+  // Keyboard navigation for suggestions (UI-only)
+  const [geoNavFromIdx, setGeoNavFromIdx] = React.useState<number>(-1);
+  const [geoNavToIdx, setGeoNavToIdx] = React.useState<number>(-1);
+
+
   const [showMapPicker, setShowMapPicker] = React.useState(false);
   const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
@@ -523,21 +528,39 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
     if (!open) return null;
 
+    const activeIdx = field === "from" ? geoNavFromIdx : geoNavToIdx;
+    const selectedId = field === "from" ? selectedGeoFromId : selectedGeoToId;
+
     return (
       <div className="mt-2 rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
         {items.map((f, idx) => {
           const label = String(f.place_name || f.text || "").trim() || "(unknown)";
+          const id = String((f.mapbox_id || f.id || "")).trim();
+
+          const isActive = idx === activeIdx;
+          const isSelected = !!selectedId && !!id && selectedId === id;
+
+          const cls =
+            "w-full text-left px-3 py-2 text-sm " +
+            (isActive ? "bg-black/10 " : "hover:bg-black/5 ") +
+            (isSelected ? "font-semibold " : "");
+
           return (
             <button
               key={(f.id || "") + "_" + String(idx)}
               type="button"
-              className={
-                "w-full text-left px-3 py-2 text-sm hover:bg-black/5 " +
-                (((field === "from" ? selectedGeoFromId : selectedGeoToId) === String((f.mapbox_id || f.id || "")).trim())
-                  ? "bg-black/10"
-                  : "")
-              }
-              onClick={async () => { await applyGeoSelection(field, f); }}
+              className={cls}
+              onMouseEnter={() => {
+                if (field === "from") setGeoNavFromIdx(idx);
+                else setGeoNavToIdx(idx);
+              }}
+              onClick={() => {
+                if (id) {
+                  if (field === "from") setSelectedGeoFromId(id);
+                  else setSelectedGeoToId(id);
+                }
+                applyGeoSelection(field, f);
+              }}
             >
               {label}
             </button>
@@ -1186,7 +1209,47 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               className="w-full rounded-xl border border-black/10 px-3 py-2"
               value={fromLabel}
               onFocus={() => { setActiveGeoField("from"); }}
-              onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); }}
+              onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); setGeoNavFromIdx(-1); }}
+              onKeyDown={(e) => {
+                const items = geoFrom || [];
+                const open = activeGeoField === "from" && items.length > 0;
+
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setActiveGeoField(null);
+                  setGeoFrom([]);
+                  setGeoNavFromIdx(-1);
+                  return;
+                }
+
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("from"); return; }
+                  const next = Math.min((geoNavFromIdx < 0 ? 0 : geoNavFromIdx + 1), items.length - 1);
+                  setGeoNavFromIdx(next);
+                  return;
+                }
+
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("from"); return; }
+                  const prev = Math.max((geoNavFromIdx < 0 ? items.length - 1 : geoNavFromIdx - 1), 0);
+                  setGeoNavFromIdx(prev);
+                  return;
+                }
+
+                if (e.key === "Enter") {
+                  if (!open) return;
+                  e.preventDefault();
+                  const idx = geoNavFromIdx < 0 ? 0 : geoNavFromIdx;
+                  const f = items[idx];
+                  if (f) {
+                    const id = String((f.mapbox_id || f.id || "")).trim();
+                    if (id) setSelectedGeoFromId(id);
+                    applyGeoSelection("from", f);
+                  }
+                }
+              }}
             />
             {renderGeoList("from")}
 
@@ -1214,7 +1277,47 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               className="w-full rounded-xl border border-black/10 px-3 py-2"
               value={toLabel}
               onFocus={() => { setActiveGeoField("to"); }}
-              onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); }}
+              onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); setGeoNavToIdx(-1); }}
+              onKeyDown={(e) => {
+                const items = geoTo || [];
+                const open = activeGeoField === "to" && items.length > 0;
+
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setActiveGeoField(null);
+                  setGeoTo([]);
+                  setGeoNavToIdx(-1);
+                  return;
+                }
+
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("to"); return; }
+                  const next = Math.min((geoNavToIdx < 0 ? 0 : geoNavToIdx + 1), items.length - 1);
+                  setGeoNavToIdx(next);
+                  return;
+                }
+
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("to"); return; }
+                  const prev = Math.max((geoNavToIdx < 0 ? items.length - 1 : geoNavToIdx - 1), 0);
+                  setGeoNavToIdx(prev);
+                  return;
+                }
+
+                if (e.key === "Enter") {
+                  if (!open) return;
+                  e.preventDefault();
+                  const idx = geoNavToIdx < 0 ? 0 : geoNavToIdx;
+                  const f = items[idx];
+                  if (f) {
+                    const id = String((f.mapbox_id || f.id || "")).trim();
+                    if (id) setSelectedGeoToId(id);
+                    applyGeoSelection("to", f);
+                  }
+                }
+              }}
             />
             {renderGeoList("to")}
 
@@ -1387,6 +1490,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
