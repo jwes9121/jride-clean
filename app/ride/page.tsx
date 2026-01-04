@@ -100,6 +100,24 @@ export default function RidePage() {
   const [town, setTown] = React.useState("Lagawe");
   const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
+  // Phase 12A (UI-only): Vehicle type + passenger count
+  const [vehicleType, setVehicleType] = React.useState<"tricycle" | "motorcycle">("tricycle");
+  const [passengerCount, setPassengerCount] = React.useState<string>("1");
+
+  function paxMaxForVehicle(v: string): number {
+    return v === "motorcycle" ? 1 : 4;
+  }
+
+  function clampPax(v: string, raw: string): string {
+    const t = String(raw || "").trim();
+    if (!t) return "1";
+    const n = Math.floor(Number(t));
+    if (!Number.isFinite(n) || n <= 0) return "1";
+    const max = paxMaxForVehicle(v);
+    return String(Math.min(n, max));
+  }
+
+
   const [fromLabel, setFromLabel] = React.useState("Lagawe Public Market");
   const [toLabel, setToLabel] = React.useState("Lagawe Town Plaza");
 
@@ -978,6 +996,22 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
   async function submit() {
     setResult("");
     setBusy(true);
+    // PHASE12A_VALIDATE_VEHICLE_PAX (UI-only)
+    const v = (vehicleType === "motorcycle") ? "motorcycle" : "tricycle";
+    const pax = Number(clampPax(v, passengerCount));
+    const maxPax = paxMaxForVehicle(v);
+
+    if (!pax || !Number.isFinite(pax) || pax <= 0) {
+      setResult("Please enter passengers (1 to " + String(maxPax) + ").");
+      setBusy(false);
+      return;
+    }
+    if (pax > maxPax) {
+      setResult("Too many passengers for " + v + ". Max is " + String(maxPax) + ".");
+      setBusy(false);
+      return;
+    }
+
 
     try {
       // 1) Gate check (server-authoritative)
@@ -1511,6 +1545,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
