@@ -190,6 +190,12 @@ export default function RidePage() {
 
   async function refreshGeoGate(opts?: { prompt?: boolean }) {
     const prompt = !!opts?.prompt;
+
+    // PHASE13-C2_1_MOBILE_GEO: mobile browsers often need a user-initiated, high-accuracy request
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod/i.test(String((navigator as any)?.userAgent || ""));
+
     setGeoGateErr("");
 
     try {
@@ -270,8 +276,9 @@ export default function RidePage() {
             resolve();
           },
           {
-            enableHighAccuracy: false,
-            timeout: 8000,
+            // On mobile, when user taps "Enable location", request better accuracy and allow more time.
+            enableHighAccuracy: prompt && isMobile,
+            timeout: prompt && isMobile ? 15000 : 8000,
             maximumAge: 60000,
           }
         );
@@ -1863,6 +1870,7 @@ if (!can.ok) {
     </main>
   );
 }
+
 
 
 
