@@ -924,7 +924,8 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
   const walletBlocked =
     walletOk === false || walletLocked === true;
 
-  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked;
+    const bookingSubmitted = !!activeCode;
+  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked && !bookingSubmitted;
 
   function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
@@ -1238,14 +1239,14 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
             <label className="block text-xs font-semibold opacity-70 mb-1">Passenger name</label>
             <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
               value={passengerName}
               onChange={(e) => setPassengerName(e.target.value)}
             />
 
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Town</label>
             <select
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
               value={town}
               onChange={(e) => setTown(e.target.value)}
             >
@@ -1257,8 +1258,9 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
             </select>
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Vehicle type</label>
             <select
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
               value={vehicleType}
+              disabled={busy || bookingSubmitted}
               onChange={(e) => {
                 const v = (e.target.value as any) === "motorcycle" ? "motorcycle" : "tricycle";
                 setVehicleType(v);
@@ -1271,8 +1273,13 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Passengers</label>
             <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              type="number"
               inputMode="numeric"
+              min={1}
+              max={paxMaxForVehicle(vehicleType)}
+              step={1}
+              disabled={busy || bookingSubmitted}
               value={passengerCount}
               onChange={(e) => {
                 setPassengerCount(clampPax(vehicleType, e.target.value));
@@ -1289,7 +1296,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
             <label className="block text-xs font-semibold opacity-70 mb-1">Pickup label</label>
             <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
               value={fromLabel}
               onFocus={() => { setActiveGeoField("from"); }}
               onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); setGeoNavFromIdx(-1); }}
@@ -1340,7 +1347,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lat</label>
                 <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
                   value={pickupLat}
                   onChange={(e) => setPickupLat(e.target.value)}
                 />
@@ -1348,7 +1355,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lng</label>
                 <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
                   value={pickupLng}
                   onChange={(e) => setPickupLng(e.target.value)}
                 />
@@ -1357,7 +1364,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Dropoff label</label>
             <input
-              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
               value={toLabel}
               onFocus={() => { setActiveGeoField("to"); }}
               onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); setGeoNavToIdx(-1); }}
@@ -1408,7 +1415,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lat</label>
                 <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
                   value={dropLat}
                   onChange={(e) => setDropLat(e.target.value)}
                 />
@@ -1416,7 +1423,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               <div>
                 <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lng</label>
                 <input
-                  className="w-full rounded-xl border border-black/10 px-3 py-2"
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
                   value={dropLng}
                   onChange={(e) => setDropLng(e.target.value)}
                 />
@@ -1507,15 +1514,22 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               "rounded-xl px-5 py-2 font-semibold text-white " +
               (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")
             }
-            title={!allowSubmit ? "Booking is blocked by rules above" : "Submit booking"}
+            title={bookingSubmitted ? "Booking already submitted. Press Clear to book again." : (!allowSubmit ? "Booking is blocked by rules above" : "Submit booking")}
           >
-            {busy ? "Booking..." : "Submit booking"}
+            {busy ? "Booking..." : (bookingSubmitted ? "Booking submitted" : "Submit booking")}
           </button>
 
           <button
             type="button"
             disabled={busy}
-            onClick={() => setResult("")}
+            onClick={() => {
+              setResult("");
+              setActiveCode("");
+              setLiveStatus("");
+              setLiveDriverId("");
+              setLiveUpdatedAt(null);
+              setLiveErr("");
+            }}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
           >
             Clear
@@ -1594,6 +1608,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
