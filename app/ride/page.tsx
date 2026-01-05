@@ -98,6 +98,14 @@ export default function RidePage() {
   const router = useRouter();
 
   const [town, setTown] = React.useState("Lagawe");
+  // PHASE13-E1_PILOT_TOWN_GATE (UI-only)
+  // Pilot towns enabled: Lagawe, Hingyon, Banaue
+  // Temporarily disabled (paperwork pending): Kiangan, Lamut
+  const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
+  function isPilotTown(t: string): boolean {
+    return PILOT_TOWNS.indexOf((String(t || "").trim() as any)) >= 0;
+  }
+
   const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
   // Phase 12A (UI-only): Vehicle type + passenger count
@@ -1152,15 +1160,19 @@ React.useEffect(() => {
   const walletBlocked =
     walletOk === false || walletLocked === true;
   const bookingSubmitted = !!activeCode;
+  // PHASE13-E1: pilot town gate (UI-only)
+  const pilotTownAllowed = isPilotTown(town);
+
+  // Phase 13: booking allowed if (geo ok) OR (local verification code present)
+  const geoOk = (geoPermission === "granted" && geoInsideIfugao === true);
+  const geoOrLocalOk = geoOk || hasLocalVerify();
   const allowSubmit =
     !busy &&
     !unverifiedBlocked &&
     !walletBlocked &&
     !bookingSubmitted &&
-    (
-      (geoPermission === "granted" && geoInsideIfugao === true) ||
-      hasLocalVerify()
-    );
+    pilotTownAllowed &&
+    geoOrLocalOk;
 function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
@@ -1578,11 +1590,14 @@ if (!can.ok) {
               onChange={(e) => setTown(e.target.value)}
             >
               <option value="Lagawe">Lagawe</option>
-              <option value="Kiangan">Kiangan</option>
-              <option value="Lamut">Lamut</option>
+              <option value="Kiangan" disabled>Kiangan (pending)</option>
+              <option value="Lamut" disabled>Lamut (pending)</option>
               <option value="Hingyon">Hingyon</option>
               <option value="Banaue">Banaue</option>
             </select>
+            <div className="mt-2 text-xs text-amber-900/80">
+              Pilot phase: <b>Lagawe</b>, <b>Hingyon</b>, <b>Banaue</b> enabled. <b>Kiangan</b> and <b>Lamut</b> are temporarily disabled for pickup.
+            </div>
             <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Vehicle type</label>
             <select
               className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
@@ -1935,6 +1950,7 @@ if (!can.ok) {
     </main>
   );
 }
+
 
 
 
