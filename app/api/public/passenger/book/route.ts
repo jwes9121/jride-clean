@@ -149,24 +149,25 @@ export async function POST(req: Request) {
 
   // PHASE13-B_BACKEND_GEO_GATE
   // Booking must include location and must be inside Ifugao (conservative bbox).
+  // Phase 13-C1: allow a local verification code fallback (QR/referral/admin code).
+  const expectedLocal = String(process.env.JRIDE_LOCAL_VERIFY_CODE || "").trim();
+  const providedLocal = String(((body as any)?.local_verification_code || (body as any)?.local_verify || "")).trim();
+  const localOk = !!expectedLocal && !!providedLocal && (providedLocal === expectedLocal);
+
   const lat = Number((body as any)?.pickup_lat);
   const lng = Number((body as any)?.pickup_lng);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (!localOk && (!Number.isFinite(lat) || !Number.isFinite(lng))) {
     return NextResponse.json(
       { ok: false, code: "GEO_REQUIRED", message: "Location is required to book a ride." },
       { status: 400 }
     );
   }
-
-  if (!inIfugaoBBox(lat, lng)) {
+  if (!localOk && Number.isFinite(lat) && Number.isFinite(lng) && !inIfugaoBBox(lat, lng)) {
     return NextResponse.json(
       { ok: false, code: "GEO_OUTSIDE_IFUGAO", message: "Booking is only allowed inside Ifugao." },
       { status: 403 }
     );
   }
-
-
   try {
     await canBookOrThrow(supabase);
   } catch (e: any) {
@@ -252,4 +253,5 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign }, { status: 200 });
 }
+
 

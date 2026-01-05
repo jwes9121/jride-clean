@@ -151,6 +151,16 @@ export default function RidePage() {
   const [geoGateErr, setGeoGateErr] = React.useState<string>("");
   const [geoCheckedAt, setGeoCheckedAt] = React.useState<number | null>(null);
 
+  // ===== Phase 13-C2: Local verification code (UI-only) =====
+  // Allows booking if (geo ok) OR (local code present). Backend validates the code.
+  const LOCAL_VERIFY_KEY = "jride.local_verify_code";
+  const [localVerify, setLocalVerify] = React.useState<string>("");
+
+  function hasLocalVerify(): boolean {
+    return !!String(localVerify || "").trim();
+  }
+  // ===== END Phase 13-C2_UI_LOCAL_VERIFY =====
+
   function inIfugaoBBox(lat: number, lng: number): boolean {
     // Rough conservative Ifugao bounding box (UI-only).
     // lat: 16.5..17.2, lng: 120.8..121.4
@@ -962,7 +972,15 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
   // Phase 13-A: check geo permission/state on load without triggering a prompt
   React.useEffect(() => {
     refreshGeoGate({ prompt: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
+    // Phase 13-C2: load local verification code (UI-only)
+    try {
+      const v = window.localStorage.getItem(LOCAL_VERIFY_KEY);
+      if (v) setLocalVerify(String(v));
+    } catch {
+      // ignore
+    }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 React.useEffect(() => {
     // Live status polling:
@@ -1061,15 +1079,16 @@ React.useEffect(() => {
 
   const walletBlocked =
     walletOk === false || walletLocked === true;
-
   const bookingSubmitted = !!activeCode;
   const allowSubmit =
     !busy &&
     !unverifiedBlocked &&
     !walletBlocked &&
     !bookingSubmitted &&
-    (geoPermission === "granted") &&
-    (geoInsideIfugao === true);
+    (
+      (geoPermission === "granted" && geoInsideIfugao === true) ||
+      hasLocalVerify()
+    );
 function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
@@ -1207,7 +1226,8 @@ if (!can.ok) {
         dropoff_lat: numOrNull(dropLat),
         dropoff_lng: numOrNull(dropLng),
         service: "ride",
-      });
+      local_verification_code: hasLocalVerify() ? localVerify : undefined,
+        });
 
       if (!book.ok) {
         const bj = (book.json || {}) as BookResp;
@@ -1352,7 +1372,33 @@ if (!can.ok) {
                 <div className="font-semibold text-amber-900">{geoGateBlockTitle()}</div>
                 <div className="mt-1 text-sm text-amber-900/80">{geoGateBlockBody()}</div>
 
-                <div className="mt-2 text-xs text-amber-900/70">
+                
+                {/* PHASE13-C2_UI_LOCAL_VERIFY */}
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold opacity-70 mb-1">
+                    Local verification code (optional)
+                  </label>
+                  <input
+                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm"
+                    placeholder="Enter local code if provided"
+                    value={localVerify}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLocalVerify(v);
+                      try {
+                        if (v) window.localStorage.setItem(LOCAL_VERIFY_KEY, v);
+                        else window.localStorage.removeItem(LOCAL_VERIFY_KEY);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  />
+                  <div className="mt-1 text-[11px] opacity-70">
+                    Use only if location fails. Provided by JRide admin / QR / referral.
+                  </div>
+                </div>
+                {/* END PHASE13-C2_UI_LOCAL_VERIFY */}
+<div className="mt-2 text-xs text-amber-900/70">
                   Permission: <span className="font-mono">{geoPermission}</span>
                   {" | "}
                   Inside Ifugao: <span className="font-mono">{String(geoInsideIfugao)}</span>
@@ -1817,6 +1863,7 @@ if (!can.ok) {
     </main>
   );
 }
+
 
 
 
