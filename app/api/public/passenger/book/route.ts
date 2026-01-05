@@ -1,6 +1,11 @@
 ﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+
+function inIfugaoBBox(lat: number, lng: number): boolean {
+  // Conservative backend geofence (matches UI)
+  return lat >= 16.5 && lat <= 17.2 && lng >= 120.8 && lng <= 121.4;
+}
 /* JRIDE_ENV_ECHO */
 function jrideEnvEcho() {
   const u = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -142,6 +147,26 @@ export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as BookReq;
 
+  // PHASE13-B_BACKEND_GEO_GATE
+  // Booking must include location and must be inside Ifugao (conservative bbox).
+  const lat = Number((body as any)?.pickup_lat);
+  const lng = Number((body as any)?.pickup_lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return NextResponse.json(
+      { ok: false, code: "GEO_REQUIRED", message: "Location is required to book a ride." },
+      { status: 400 }
+    );
+  }
+
+  if (!inIfugaoBBox(lat, lng)) {
+    return NextResponse.json(
+      { ok: false, code: "GEO_OUTSIDE_IFUGAO", message: "Booking is only allowed inside Ifugao." },
+      { status: 403 }
+    );
+  }
+
+
   try {
     await canBookOrThrow(supabase);
   } catch (e: any) {
@@ -227,3 +252,4 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign }, { status: 200 });
 }
+
