@@ -35,6 +35,22 @@ export default function VendorOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // VENDOR_CORE_V3_UI_SYNC
+  // Merge backend-confirmed order into existing list safely
+  function mergeUpdatedOrder(prev: VendorOrder[], updated: VendorOrder) {
+    return prev.map((o) => {
+      if (o.id !== updated.id) return o;
+      return {
+        ...o,
+        status: updated.status,
+        totalBill: updated.totalBill,
+        customerName: updated.customerName,
+        bookingCode: updated.bookingCode,
+        createdAt: updated.createdAt,
+      };
+    });
+  }
+
   // VENDOR_CORE_V1_REFINEMENTS
   // Prevent poll flicker while a status update is in-flight
   const updatingIdRef = React.useRef<string | null>(null);
@@ -70,71 +86,7 @@ export default function VendorOrdersPage() {
         createdAt: o.created_at,
       }));
 
-      setOrders(mapped);
-    } catch (err: any) {
-      console.error("[VendorOrders] loadOrders error:", err);
-      setError(err.message || "Failed to load orders.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // Initial load
-    loadOrders().catch(() => undefined);
-    // Optional: auto-refresh every 20s so vendor sees new orders
-    const id = setInterval(() => {
-      if (updatingIdRef.current) return;
-      loadOrders().catch(() => undefined);
-    }, 20000);return () => clearInterval(id);
-  }, []);
-
-  const activeOrders = useMemo(
-    () => orders.filter((o) => o.status !== "completed"),
-    [orders]
-  );
-  const completedOrders = useMemo(
-    () => orders.filter((o) => o.status === "completed"),
-    [orders]
-  );
-
-  const formatAmount = (value: number) => `₱${value.toFixed(2)}`;
-
-  const handleStatusUpdate = async (order: VendorOrder, action: UpdateAction) => {
-    try {
-      setUpdatingId(order.id);
-      setError(null);
-
-      const res = await fetch("/api/vendor-orders", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          bookingCode: order.bookingCode,
-          action,
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Failed to update status (status ${res.status})`);
-      }
-
-      const data: { order: ApiOrder } = await res.json();
-      const updated: VendorOrder = {
-        id: data.order.id,
-        bookingCode: data.order.booking_code,
-        customerName: data.order.customer_name ?? "",
-        totalBill: data.order.total_bill ?? 0,
-        status: (data.order.vendor_status ?? "preparing") as VendorOrderStatus,
-        createdAt: data.order.created_at,
-      };
-
-      setOrders((prev) =>
-        prev.map((o) => (o.id === updated.id ? updated : o))
-      );
+      setOrders((prev) => mergeUpdatedOrder(prev, updated));
     } catch (err: any) {
       console.error("[VendorOrders] handleStatusUpdate error:", err);
       setError(err.message || "Failed to update order status.");
@@ -352,4 +304,5 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
 
