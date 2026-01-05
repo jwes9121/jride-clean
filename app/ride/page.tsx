@@ -1233,6 +1233,33 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
               <option value="Hingyon">Hingyon</option>
               <option value="Banaue">Banaue</option>
             </select>
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Vehicle type</label>
+            <select
+              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              value={vehicleType}
+              onChange={(e) => {
+                const v = (e.target.value as any) === "motorcycle" ? "motorcycle" : "tricycle";
+                setVehicleType(v);
+                setPassengerCount((prev) => clampPax(v, prev));
+              }}
+            >
+              <option value="tricycle">Tricycle (max 4 passengers)</option>
+              <option value="motorcycle">Motorcycle (max 1 passenger)</option>
+            </select>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Passengers</label>
+            <input
+              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              inputMode="numeric"
+              value={passengerCount}
+              onChange={(e) => {
+                setPassengerCount(clampPax(vehicleType, e.target.value));
+              }}
+            />
+
+            <div className="mt-2 text-xs opacity-70">
+              Fare is proposed by drivers. You can accept to proceed or reject to request another driver quote.
+            </div>
           </div>
 
           <div className="rounded-2xl border border-black/10 p-4">
@@ -1545,6 +1572,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
