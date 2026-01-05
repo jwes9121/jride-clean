@@ -35,22 +35,6 @@ export default function VendorOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // VENDOR_CORE_V3_UI_SYNC
-  // Merge backend-confirmed order into existing list safely
-  function mergeUpdatedOrder(prev: VendorOrder[], updated: VendorOrder) {
-    return prev.map((o) => {
-      if (o.id !== updated.id) return o;
-      return {
-        ...o,
-        status: updated.status,
-        totalBill: updated.totalBill,
-        customerName: updated.customerName,
-        bookingCode: updated.bookingCode,
-        createdAt: updated.createdAt,
-      };
-    });
-  }
-
   // VENDOR_CORE_V1_REFINEMENTS
   // Prevent poll flicker while a status update is in-flight
   const updatingIdRef = React.useRef<string | null>(null);
@@ -85,8 +69,10 @@ export default function VendorOrdersPage() {
         status: (o.vendor_status ?? "preparing") as VendorOrderStatus,
         createdAt: o.created_at,
       }));
-
-      setOrders((prev) => mergeUpdatedOrder(prev, updated));
+      // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: (nextStatus as any) } : o))
+      );
     } catch (err: any) {
       console.error("[VendorOrders] handleStatusUpdate error:", err);
       setError(err.message || "Failed to update order status.");
@@ -304,5 +290,6 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
 
 
