@@ -188,6 +188,71 @@ export default function RidePage() {
     return "Not allowed right now.";
   }
 
+    // PHASE13-C2_1_MOBILE_GEO_CLICK
+  // Mobile Chrome can require geolocation to be called directly inside a user gesture handler.
+  // This must be called from an onClick handler. It triggers getCurrentPosition immediately.
+  function promptGeoFromClick() {
+    setGeoGateErr("");
+
+    try {
+      const anyGeo: any = (navigator as any)?.geolocation;
+      if (!anyGeo || !anyGeo.getCurrentPosition) {
+        setGeoGateErr("Geolocation not available on this device/browser.");
+        setGeoPermission("denied");
+        setGeoInsideIfugao(null);
+        setGeoCheckedAt(Date.now());
+        return;
+      }
+
+      const ua = String((navigator as any)?.userAgent || "");
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+
+      // IMPORTANT: call getCurrentPosition immediately (no await / no permission query first)
+      anyGeo.getCurrentPosition(
+        (pos: any) => {
+          const lat = Number(pos?.coords?.latitude);
+          const lng = Number(pos?.coords?.longitude);
+
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            setGeoGateErr("Could not read coordinates.");
+            setGeoInsideIfugao(null);
+            setGeoCheckedAt(Date.now());
+            return;
+          }
+
+          setGeoPermission("granted");
+          setGeoLat(lat);
+          setGeoLng(lng);
+          setGeoInsideIfugao(inIfugaoBBox(lat, lng));
+          setGeoCheckedAt(Date.now());
+        },
+        (err: any) => {
+          const code = Number(err?.code || 0);
+          const msg = String(err?.message || err || "");
+
+          if (code === 1) {
+            setGeoPermission("denied");
+            setGeoGateErr("Location permission denied.");
+          } else {
+            setGeoGateErr(msg ? ("Location error: " + msg) : "Location error.");
+          }
+          setGeoInsideIfugao(null);
+          setGeoCheckedAt(Date.now());
+        },
+        {
+          enableHighAccuracy: isMobile ? true : false,
+          timeout: isMobile ? 15000 : 8000,
+          maximumAge: 0,
+        }
+      );
+    } catch (e: any) {
+      setGeoGateErr("Location check failed: " + String(e?.message || e));
+      setGeoInsideIfugao(null);
+      setGeoCheckedAt(Date.now());
+    }
+  }
+
+
   async function refreshGeoGate(opts?: { prompt?: boolean }) {
     const prompt = !!opts?.prompt;
 
@@ -1330,7 +1395,7 @@ if (!can.ok) {
           )}
           <button
             type="button"
-            onClick={() => refreshGeoGate({ prompt: true })}
+            onClick={() => promptGeoFromClick()}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
             title="Enable or re-check location"
           >
@@ -1432,7 +1497,7 @@ if (!can.ok) {
               <button
                 type="button"
                 className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
-                onClick={() => refreshGeoGate({ prompt: true })}
+                onClick={() => promptGeoFromClick()}
               >
                 {geoPermission !== "granted" ? "Enable location" : "Re-check"}
               </button>
@@ -1870,6 +1935,7 @@ if (!can.ok) {
     </main>
   );
 }
+
 
 
 
