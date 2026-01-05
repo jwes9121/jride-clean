@@ -139,7 +139,140 @@ export default function RidePage() {
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
   const [canInfoErr, setCanInfoErr] = React.useState<string>("");
 
-  const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
+  // ===== Phase 13-A: UI-only location gate (Ifugao geofence) =====
+  // Signup/Login allowed anywhere; booking/actions blocked unless:
+  // - location permission granted AND inside Ifugao
+  // (Backend enforcement comes later in Phase 13-B)
+
+  const [geoPermission, setGeoPermission] = React.useState<"unknown" | "granted" | "denied">("unknown");
+  const [geoInsideIfugao, setGeoInsideIfugao] = React.useState<boolean | null>(null);
+  const [geoLat, setGeoLat] = React.useState<number | null>(null);
+  const [geoLng, setGeoLng] = React.useState<number | null>(null);
+  const [geoGateErr, setGeoGateErr] = React.useState<string>("");
+  const [geoCheckedAt, setGeoCheckedAt] = React.useState<number | null>(null);
+
+  function inIfugaoBBox(lat: number, lng: number): boolean {
+    // Rough conservative Ifugao bounding box (UI-only).
+    // lat: 16.5..17.2, lng: 120.8..121.4
+    // This is intentionally simple and safe; can be refined later.
+    return lat >= 16.5 && lat <= 17.2 && lng >= 120.8 && lng <= 121.4;
+  }
+
+  function geoGateBlocked(): boolean {
+    return geoPermission !== "granted" || geoInsideIfugao !== true;
+  }
+
+  function geoGateBlockTitle(): string {
+    if (geoPermission !== "granted") return "Location permission required";
+    if (geoInsideIfugao !== true) return "Outside Ifugao";
+    return "Booking blocked";
+  }
+
+  function geoGateBlockBody(): string {
+    if (geoPermission !== "granted") {
+      return "To book a ride, allow location access. Login/signup works anywhere, but booking requires being inside Ifugao.";
+    }
+    if (geoInsideIfugao !== true) {
+      return "Booking is only available inside Ifugao. You may login/signup anywhere, but booking/actions are blocked outside Ifugao.";
+    }
+    return "Not allowed right now.";
+  }
+
+  async function refreshGeoGate(opts?: { prompt?: boolean }) {
+    const prompt = !!opts?.prompt;
+    setGeoGateErr("");
+
+    try {
+      // 1) Read permission state without triggering a prompt (if supported)
+      try {
+        const anyNav: any = navigator as any;
+        if (anyNav && anyNav.permissions && anyNav.permissions.query) {
+          const st = await anyNav.permissions.query({ name: "geolocation" } as any);
+          const s = String(st?.state || "");
+          if (s === "granted") setGeoPermission("granted");
+          else if (s === "denied") setGeoPermission("denied");
+          else setGeoPermission("unknown");
+
+          // If not prompting, only proceed to position lookup when already granted
+          if (!prompt && s !== "granted") {
+            setGeoInsideIfugao(null);
+            setGeoCheckedAt(Date.now());
+            return;
+          }
+        } else {
+          // No permissions API; do not force prompt unless user asked
+          if (!prompt) {
+            setGeoCheckedAt(Date.now());
+            return;
+          }
+        }
+      } catch {
+        // ignore permission query failures
+        if (!prompt) {
+          setGeoCheckedAt(Date.now());
+          return;
+        }
+      }
+
+      // 2) Get current position (may prompt if user initiated)
+      const anyGeo: any = (navigator as any)?.geolocation;
+      if (!anyGeo || !anyGeo.getCurrentPosition) {
+        setGeoGateErr("Geolocation not available on this device/browser.");
+        setGeoPermission("denied");
+        setGeoInsideIfugao(null);
+        setGeoCheckedAt(Date.now());
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        anyGeo.getCurrentPosition(
+          (pos: any) => {
+            const lat = Number(pos?.coords?.latitude);
+            const lng = Number(pos?.coords?.longitude);
+
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+              setGeoGateErr("Could not read coordinates.");
+              setGeoInsideIfugao(null);
+              setGeoCheckedAt(Date.now());
+              resolve();
+              return;
+            }
+
+            setGeoPermission("granted");
+            setGeoLat(lat);
+            setGeoLng(lng);
+            setGeoInsideIfugao(inIfugaoBBox(lat, lng));
+            setGeoCheckedAt(Date.now());
+            resolve();
+          },
+          (err: any) => {
+            const code = Number(err?.code || 0);
+            const msg = String(err?.message || err || "");
+
+            if (code === 1) {
+              setGeoPermission("denied");
+              setGeoGateErr("Location permission denied.");
+            } else {
+              setGeoGateErr(msg ? ("Location error: " + msg) : "Location error.");
+            }
+            setGeoInsideIfugao(null);
+            setGeoCheckedAt(Date.now());
+            resolve();
+          },
+          {
+            enableHighAccuracy: false,
+            timeout: 8000,
+            maximumAge: 60000,
+          }
+        );
+      });
+    } catch (e: any) {
+      setGeoGateErr("Location check failed: " + String(e?.message || e));
+      setGeoInsideIfugao(null);
+      setGeoCheckedAt(Date.now());
+    }
+  }
+const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
   // ===== Mapbox geocode + map tap picker (UI-only) =====
@@ -826,7 +959,12 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Phase 13-A: check geo permission/state on load without triggering a prompt
   React.useEffect(() => {
+    refreshGeoGate({ prompt: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+React.useEffect(() => {
     // Live status polling:
     // GET /api/public/passenger/booking?code=BOOKING_CODE
     if (!activeCode) return;
@@ -924,10 +1062,15 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
   const walletBlocked =
     walletOk === false || walletLocked === true;
 
-    const bookingSubmitted = !!activeCode;
-  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked && !bookingSubmitted;
-
-  function blockTitle(): string {
+  const bookingSubmitted = !!activeCode;
+  const allowSubmit =
+    !busy &&
+    !unverifiedBlocked &&
+    !walletBlocked &&
+    !bookingSubmitted &&
+    (geoPermission === "granted") &&
+    (geoInsideIfugao === true);
+function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
     if (canCode || canMsg) return "Booking blocked";
@@ -1015,13 +1158,24 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
 
     try {
+      // PHASE13_UI_GEO_GATE (UI-only): block booking until location is granted + inside Ifugao
+      if (geoPermission !== "granted" || geoInsideIfugao !== true) {
+        // Attempt a prompt only if user already pressed submit (this is a user action)
+        await refreshGeoGate({ prompt: true });
+
+        if (geoPermission !== "granted" || geoInsideIfugao !== true) {
+          setResult("GEO_BLOCKED: " + geoGateBlockTitle() + " - " + geoGateBlockBody());
+          setBusy(false);
+          return;
+        }
+      }
+
       // 1) Gate check (server-authoritative)
       const can = await postJson("/api/public/passenger/can-book", {
         town,
         service: "ride",
       });
-
-      if (!can.ok) {
+if (!can.ok) {
         const cj = (can.json || {}) as CanBookInfo;
         const code = normUpper((cj as any).code || (cj as any).error_code);
         const msg = norm((cj as any).message) || "Not allowed";
@@ -1141,7 +1295,21 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
           {pill("Verified: " + (verified ? "YES" : "NO"), verified)}
           {pill("Night gate now: " + (nightGate ? "ON" : "OFF"), !nightGate)}
           {pill(walletPillText, walletPillGood)}
+          {pill(
+            geoPermission !== "granted"
+              ? "Location: OFF"
+              : (geoInsideIfugao === true ? "Location: Ifugao" : (geoInsideIfugao === false ? "Location: Outside" : "Location: ...")),
+            (geoPermission === "granted" && geoInsideIfugao === true)
+          )}
           <button
+            type="button"
+            onClick={() => refreshGeoGate({ prompt: true })}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+            title="Enable or re-check location"
+          >
+            {geoPermission !== "granted" ? "Enable location" : "Re-check location"}
+          </button>
+<button
             type="button"
             onClick={refreshCanBook}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
@@ -1177,7 +1345,48 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
           </div>
         ) : null}
 
-        {(unverifiedBlocked || walletBlocked || (canCode || canMsg)) ? (
+        {geoGateBlocked() ? (
+          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-amber-900">{geoGateBlockTitle()}</div>
+                <div className="mt-1 text-sm text-amber-900/80">{geoGateBlockBody()}</div>
+
+                <div className="mt-2 text-xs text-amber-900/70">
+                  Permission: <span className="font-mono">{geoPermission}</span>
+                  {" | "}
+                  Inside Ifugao: <span className="font-mono">{String(geoInsideIfugao)}</span>
+                  {" | "}
+                  Last check:{" "}
+                  <span className="font-mono">
+                    {geoCheckedAt ? Math.max(0, Math.floor((Date.now() - geoCheckedAt) / 1000)) + "s ago" : "--"}
+                  </span>
+                </div>
+
+                {geoLat !== null && geoLng !== null ? (
+                  <div className="mt-1 text-xs text-amber-900/70">
+                    Coords: <span className="font-mono">{geoLat.toFixed(5) + ", " + geoLng.toFixed(5)}</span>
+                  </div>
+                ) : null}
+
+                {geoGateErr ? (
+                  <div className="mt-2 rounded-lg border border-red-500/20 bg-red-50 p-2 text-xs font-mono">
+                    {geoGateErr}
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
+                onClick={() => refreshGeoGate({ prompt: true })}
+              >
+                {geoPermission !== "granted" ? "Enable location" : "Re-check"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+{(unverifiedBlocked || walletBlocked || (canCode || canMsg)) ? (
           <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1608,6 +1817,8 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
+
 
 
 
