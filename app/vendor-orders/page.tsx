@@ -35,6 +35,13 @@ export default function VendorOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // VENDOR_CORE_V1_REFINEMENTS
+  // Prevent poll flicker while a status update is in-flight
+  const updatingIdRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    updatingIdRef.current = updatingId;
+  }, [updatingId]);
+
   const loadOrders = async () => {
     try {
       setIsLoading(true);
@@ -77,16 +84,16 @@ export default function VendorOrdersPage() {
     loadOrders().catch(() => undefined);
     // Optional: auto-refresh every 20s so vendor sees new orders
     const id = setInterval(() => {
+      if (updatingIdRef.current) return;
       loadOrders().catch(() => undefined);
-    }, 20000);
-    return () => clearInterval(id);
+    }, 20000);return () => clearInterval(id);
   }, []);
 
   const activeOrders = useMemo(
     () => orders.filter((o) => o.status !== "completed"),
     [orders]
   );
-  const completedToday = useMemo(
+  const completedOrders = useMemo(
     () => orders.filter((o) => o.status === "completed"),
     [orders]
   );
@@ -151,7 +158,7 @@ export default function VendorOrdersPage() {
       case "driver_arrived":
         return (
           <span className={`${base} bg-sky-50 text-sky-700 border-sky-200`}>
-            driver arrived
+            Mark ready
           </span>
         );
       case "picked_up":
@@ -194,8 +201,8 @@ export default function VendorOrdersPage() {
               <span className="font-semibold">{activeOrders.length}</span>
             </div>
             <div className="px-3 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
-              Completed today:{" "}
-              <span className="font-semibold">{completedToday.length}</span>
+              Completed orders:{" "}
+              <span className="font-semibold">{completedOrders.length}</span>
             </div>
           </div>
         </div>
@@ -206,7 +213,17 @@ export default function VendorOrdersPage() {
         {/* Error / loading */}
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            {error}
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">{error}</div>
+              <button
+                type="button"
+                className="shrink-0 rounded border border-red-300 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50"
+                onClick={() => loadOrders().catch(() => undefined)}
+                disabled={isLoading}
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
         {isLoading && (
@@ -265,7 +282,7 @@ export default function VendorOrdersPage() {
                               }
                               className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                              Driver arrived
+                              Mark ready
                             </button>
                           )}
                           {o.status === "driver_arrived" && (
@@ -301,15 +318,15 @@ export default function VendorOrdersPage() {
         {/* Completed today */}
         <section>
           <h2 className="text-sm font-semibold text-slate-800 mb-2">
-            Completed today
+            Completed orders
           </h2>
-          {completedToday.length === 0 ? (
+          {completedOrders.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-200 bg-white px-3 py-4 text-xs text-slate-500">
               No completed orders yet for today.
             </div>
           ) : (
             <ul className="space-y-1 text-xs">
-              {completedToday.map((o) => (
+              {completedOrders.map((o) => (
                 <li
                   key={o.id}
                   className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2"
@@ -335,3 +352,4 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
