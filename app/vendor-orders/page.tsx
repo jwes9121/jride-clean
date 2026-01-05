@@ -71,7 +71,7 @@ export default function VendorOrdersPage() {
       }));
       // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
       setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status: (nextStatus as any) } : o))
+        prev.map((o) => (o.id === id ? { ...o, status: (nextStatus as any) } : o))
       );
     } catch (err: any) {
       console.error("[VendorOrders] handleStatusUpdate error:", err);
@@ -290,6 +290,7 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
 
 
 
