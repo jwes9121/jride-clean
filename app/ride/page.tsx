@@ -1079,6 +1079,28 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
         lines.push("assign: (none)");
       }
 
+      
+      // PHASE12B_BACKEND_PROBE (read-only): does backend return vehicle_type / passenger_count?
+      try {
+        const b: any = (bj && ((bj as any).booking || bj)) as any;
+        const vtRaw: any = b ? (b.vehicle_type || b.vehicleType) : "";
+        const pcRaw: any = b ? (b.passenger_count ?? b.passengerCount) : "";
+
+        const vt = String(vtRaw || "").trim();
+        const pc =
+          (pcRaw === null || pcRaw === undefined || pcRaw === "")
+            ? ""
+            : String(pcRaw).trim();
+
+        if (vt || pc) {
+          lines.push("vehicle_type: " + (vt || "(none)"));
+          lines.push("passenger_count: " + (pc || "(none)"));
+        } else {
+          lines.push("vehicle_type/passenger_count: (not returned by API)");
+        }
+      } catch {
+        lines.push("vehicle_type/passenger_count: (probe error)");
+      }
       setResult(lines.join("\n"));
 
       // 3) Start live polling after booking (if we have a booking_code)
@@ -1572,6 +1594,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
     </main>
   );
 }
+
 
 
 
