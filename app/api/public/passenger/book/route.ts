@@ -147,6 +147,23 @@ export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as BookReq;
 
+  // PHASE13-E2_BACKEND_PILOT_TOWN_GATE
+  // Enforce pilot pickup towns (UI + backend parity)
+  const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
+  const pickupTown = String((body as any)?.town || "").trim();
+  const pilotTownAllowed = PILOT_TOWNS.includes(pickupTown as any);
+
+  if (!pilotTownAllowed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "PILOT_TOWN_DISABLED",
+        message: "Pickup in Kiangan/Lamut is temporarily unavailable during pilot.",
+      },
+      { status: 403 }
+    );
+  }
+
   // PHASE13-B_BACKEND_GEO_GATE
   // Booking must include location and must be inside Ifugao (conservative bbox).
   // Phase 13-C1: allow a local verification code fallback (QR/referral/admin code).
@@ -253,5 +270,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign }, { status: 200 });
 }
+
 
 
