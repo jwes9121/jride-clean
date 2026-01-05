@@ -39,7 +39,76 @@ export default function DriverDashboard() {
     "7d45e50c-3d76-4aa6-ac22-abb4538859ca"
   );
 
-  const [assigned, setAssigned] = useState<Ride | null>(null);
+  
+  // PHASE13-D_DRIVER_GEO_GATE
+  function inIfugaoBBox(lat: number, lng: number): boolean {
+    // Conservative bbox, same as passenger gate
+    return lat >= 16.5 && lat <= 17.2 && lng >= 120.8 && lng <= 121.4;
+  }
+
+  const [geoPermission, setGeoPermission] = useState<"unknown" | "granted" | "denied">("unknown");
+  const [geoInsideIfugao, setGeoInsideIfugao] = useState<boolean | null>(null);
+  const [geoErr, setGeoErr] = useState<string>("");
+
+  // Must be called directly from a click handler on mobile browsers
+  function promptDriverGeoFromClick() {
+    setGeoErr("");
+
+    try {
+      const anyGeo: any = (navigator as any)?.geolocation;
+      if (!anyGeo || !anyGeo.getCurrentPosition) {
+        setGeoPermission("denied");
+        setGeoInsideIfugao(null);
+        setGeoErr("Geolocation not available.");
+        return;
+      }
+
+      const ua = String((navigator as any)?.userAgent || "");
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+
+      anyGeo.getCurrentPosition(
+        (pos: any) => {
+          const lat = Number(pos?.coords?.latitude);
+          const lng = Number(pos?.coords?.longitude);
+
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            setGeoPermission("unknown");
+            setGeoInsideIfugao(null);
+            setGeoErr("Could not read coordinates.");
+            return;
+          }
+
+          setGeoPermission("granted");
+          setGeoInsideIfugao(inIfugaoBBox(lat, lng));
+        },
+        (err: any) => {
+          const code = Number(err?.code || 0);
+          const msg = String(err?.message || err || "");
+          setGeoInsideIfugao(null);
+
+          if (code === 1) {
+            setGeoPermission("denied");
+            setGeoErr("Location permission denied.");
+          } else {
+            setGeoPermission("unknown");
+            setGeoErr(msg ? ("Location error: " + msg) : "Location error.");
+          }
+        },
+        {
+          enableHighAccuracy: isMobile ? true : true,
+          timeout: isMobile ? 15000 : 10000,
+          maximumAge: 0,
+        }
+      );
+    } catch (e: any) {
+      setGeoPermission("unknown");
+      setGeoInsideIfugao(null);
+      setGeoErr("Location check failed.");
+    }
+  }
+
+  const driverGeoOk = geoPermission === "granted" && geoInsideIfugao === true;
+const [assigned, setAssigned] = useState<Ride | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
   const [available, setAvailable] = useState(true);
 
@@ -178,8 +247,24 @@ export default function DriverDashboard() {
   return (
     <div className="p-6 max-w-xl space-y-4">
       <h1 className="text-xl font-semibold">JRide • Driver</h1>
+      {/* PHASE13-D_DRIVER_GEO_GATE_UI_PANEL */}
+      <div className="mt-3 border rounded-2xl p-3 bg-amber-50 border-amber-300 space-y-2">
+        <div className="font-medium text-amber-900">Driver location check</div>
+        <div className="text-xs text-amber-900/80">
+          Permission: {geoPermission} | Inside Ifugao: {String(geoInsideIfugao)}
+        </div>
+        {geoErr ? <div className="text-xs text-red-700">{geoErr}</div> : null}
+        <button
+          type="button"
+          className="border rounded px-3 py-2 bg-amber-900 text-white"
+          onClick={() => promptDriverGeoFromClick()}
+        >
+          {geoPermission === "granted" ? "Re-check location" : "Enable location"}
+        </button>
+      </div>
+      {/* END PHASE13-D_DRIVER_GEO_GATE_UI_PANEL */}
 
-      {/* Driver config + shift controls */}
+{/* Driver config + shift controls */}
       <div className="space-y-2 border rounded-2xl p-3">
         <label className="text-sm">Driver UUID</label>
         <input
@@ -330,3 +415,5 @@ export default function DriverDashboard() {
     </div>
   );
 }
+
+
