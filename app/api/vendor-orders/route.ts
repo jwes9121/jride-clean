@@ -32,7 +32,71 @@ function canTransition(prev: VendorStatus, next: VendorStatus): boolean {
 export async function GET(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
 
-  try {
+  
+    // VENDOR_ORDERS_POST_CREATE_OR_UPDATE
+    // Accept both snake_case and camelCase from UI
+    const body = await req.json().catch(() => ({} as any));
+
+    const order_id = String(body.order_id ?? body.orderId ?? "").trim();
+    const vendor_id = String(body.vendor_id ?? body.vendorId ?? "").trim();
+
+    const vendor_status_in = String(body.vendor_status ?? body.vendorStatus ?? "").trim();
+    const vendor_status = vendor_status_in || "preparing";
+
+    const customer_name = String(body.customer_name ?? body.customerName ?? "").trim();
+    const customer_phone = String(body.customer_phone ?? body.customerPhone ?? "").trim();
+    const delivery_address = String(body.delivery_address ?? body.deliveryAddress ?? "").trim();
+    const items = String(body.items ?? "").trim();
+    const note = String(body.note ?? "").trim();
+
+    if (!vendor_id) {
+      return NextResponse.json(
+        { ok: false, error: "vendor_id required", message: "vendor_id required" },
+        { status: 400 }
+      );
+    }
+
+    // CREATE (no order_id): insert a vendor-backed booking row
+    if (!order_id) {
+      const insertRow: any = {
+        vendor_id,
+        vendor_status,
+        service_type: "takeout",
+        status: "requested",
+      };
+
+      if (customer_name) insertRow.passenger_name = customer_name;
+      if (customer_phone) insertRow.passenger_phone = customer_phone;
+      if (delivery_address) insertRow.dropoff_label = delivery_address;
+      if (items) insertRow.items = items;
+      if (note) insertRow.note = note;
+
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert(insertRow)
+        .select("*")
+        .single();
+
+      if (error) {
+        return NextResponse.json(
+          { ok: false, error: error.message, message: error.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        action: "created",
+        order_id: data?.id ?? null,
+        id: data?.id ?? null,
+        booking_code: data?.booking_code ?? null,
+        vendor_id: data?.vendor_id ?? vendor_id,
+        vendor_status: data?.vendor_status ?? vendor_status,
+      });
+    }
+
+    // If order_id exists, we fall through to the existing UPDATE logic below.
+try {
     const url = new URL(req.url);
     const vendorId = url.searchParams.get("vendorId");
 
@@ -83,7 +147,71 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
 
-  try {
+  
+    // VENDOR_ORDERS_POST_CREATE_OR_UPDATE
+    // Accept both snake_case and camelCase from UI
+    const body = await req.json().catch(() => ({} as any));
+
+    const order_id = String(body.order_id ?? body.orderId ?? "").trim();
+    const vendor_id = String(body.vendor_id ?? body.vendorId ?? "").trim();
+
+    const vendor_status_in = String(body.vendor_status ?? body.vendorStatus ?? "").trim();
+    const vendor_status = vendor_status_in || "preparing";
+
+    const customer_name = String(body.customer_name ?? body.customerName ?? "").trim();
+    const customer_phone = String(body.customer_phone ?? body.customerPhone ?? "").trim();
+    const delivery_address = String(body.delivery_address ?? body.deliveryAddress ?? "").trim();
+    const items = String(body.items ?? "").trim();
+    const note = String(body.note ?? "").trim();
+
+    if (!vendor_id) {
+      return NextResponse.json(
+        { ok: false, error: "vendor_id required", message: "vendor_id required" },
+        { status: 400 }
+      );
+    }
+
+    // CREATE (no order_id): insert a vendor-backed booking row
+    if (!order_id) {
+      const insertRow: any = {
+        vendor_id,
+        vendor_status,
+        service_type: "takeout",
+        status: "requested",
+      };
+
+      if (customer_name) insertRow.passenger_name = customer_name;
+      if (customer_phone) insertRow.passenger_phone = customer_phone;
+      if (delivery_address) insertRow.dropoff_label = delivery_address;
+      if (items) insertRow.items = items;
+      if (note) insertRow.note = note;
+
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert(insertRow)
+        .select("*")
+        .single();
+
+      if (error) {
+        return NextResponse.json(
+          { ok: false, error: error.message, message: error.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        action: "created",
+        order_id: data?.id ?? null,
+        id: data?.id ?? null,
+        booking_code: data?.booking_code ?? null,
+        vendor_id: data?.vendor_id ?? vendor_id,
+        vendor_status: data?.vendor_status ?? vendor_status,
+      });
+    }
+
+    // If order_id exists, we fall through to the existing UPDATE logic below.
+try {
     const body = (await req.json().catch(() => ({}))) as any;
 
     const order_id = String(body?.order_id || body?.id || "").trim();
@@ -189,6 +317,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
 
 
 
