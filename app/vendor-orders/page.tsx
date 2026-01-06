@@ -69,11 +69,10 @@ export default function VendorOrdersPage() {
         status: (o.vendor_status ?? "preparing") as VendorOrderStatus,
         createdAt: o.created_at,
       }));
-      // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
+            // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
       setOrders((prev) =>
         prev.map((o) => (o.id === id ? { ...o, status: (nextStatus as any) } : o))
-      );
-    } catch (err: any) {
+      );} catch (err: any) {
       console.error("[VendorOrders] handleStatusUpdate error:", err);
       setError(err.message || "Failed to update order status.");
     } finally {
@@ -290,6 +289,7 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
 
 
 
