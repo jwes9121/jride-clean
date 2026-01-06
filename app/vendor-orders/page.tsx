@@ -18,6 +18,13 @@ type VendorOrder = {
   createdAt: string;
 };
 
+function formatAmount(n: number | null | undefined) {
+  const v = Number(n || 0);
+  if (!isFinite(v)) return "â‚±0.00";
+  return "â‚±" + v.toFixed(2);
+}
+
+
 type ApiOrder = {
   id: string;
   booking_code: string;
@@ -31,6 +38,15 @@ type UpdateAction = "driver_arrived" | "picked_up" | "completed";
 
 export default function VendorOrdersPage() {
   const [orders, setOrders] = useState<VendorOrder[]>([]);
+
+  const activeOrders = useMemo(() => {
+    return orders.filter((o) => o.status !== "completed");
+  }, [orders]);
+
+  const completedOrders = useMemo(() => {
+    return orders.filter((o) => o.status === "completed");
+  }, [orders]);
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -69,10 +85,15 @@ export default function VendorOrdersPage() {
         status: (o.vendor_status ?? "preparing") as VendorOrderStatus,
         createdAt: o.created_at,
       }));
-            // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
+                  // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
+      // Use updatingId (known in scope) to target the row we just updated.
       setOrders((prev) =>
-        prev.map((o) => (o.id === id ? { ...o, status: (nextStatus as any) } : o))
-      );} catch (err: any) {
+        prev.map((o) =>
+          o.id === updatingId ? { ...o, status: (status as any) } : o
+        )
+      );
+
+    } catch (err: any) {
       console.error("[VendorOrders] handleStatusUpdate error:", err);
       setError(err.message || "Failed to update order status.");
     } finally {
@@ -85,7 +106,9 @@ export default function VendorOrdersPage() {
       "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border";
     switch (status) {
       case "preparing":
-        return (
+
+
+  return (
           <span
             className={`${base} bg-amber-50 text-amber-700 border-amber-200`}
           >
@@ -93,13 +116,17 @@ export default function VendorOrdersPage() {
           </span>
         );
       case "driver_arrived":
-        return (
+
+
+  return (
           <span className={`${base} bg-sky-50 text-sky-700 border-sky-200`}>
             Mark ready
           </span>
         );
       case "picked_up":
-        return (
+
+
+  return (
           <span
             className={`${base} bg-emerald-50 text-emerald-700 border-emerald-200`}
           >
@@ -108,13 +135,62 @@ export default function VendorOrdersPage() {
         );
       case "completed":
       default:
-        return (
+
+
+  return (
           <span className={`${base} bg-slate-100 text-slate-600 border-slate-200`}>
             completed
           </span>
         );
     }
   };
+
+  async function handleStatusUpdate(order: VendorOrder, nextStatus: any) {
+    try {
+      setError(null);
+      setUpdatingId(order.id);
+
+      // Instant UI feedback (safe): update only this row locally
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o))
+      );
+
+      const vendor_id =
+        (order as any).vendorId ||
+        (order as any).vendor_id ||
+        (order as any).vendorID ||
+        "";
+
+      const res = await fetch("/api/vendor-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order_id: order.id,
+          vendor_id,
+          vendor_status: String(nextStatus),
+        }),
+      });
+
+      const j = await res.json().catch(() => ({} as any));
+      if (!res.ok || j?.ok === false) {
+        const msg =
+          j?.message ||
+          j?.error ||
+          `Failed to update status (HTTP ${res.status})`;
+        throw new Error(msg);
+      }
+
+      // Re-sync from backend truth (prevents drift / handles idempotency / transitions)
+      await loadOrders();
+    } catch (err: any) {
+      console.error("[VendorOrders] handleStatusUpdate error:", err);
+      setError(err?.message || "Failed to update order status.");
+      // If something failed, refresh to get back to truth
+      try { await loadOrders(); } catch {}
+    } finally {
+      setUpdatingId(null);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -289,6 +365,11 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
+
+
+
+
 
 
 
