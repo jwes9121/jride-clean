@@ -51,6 +51,97 @@ export default function VendorOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // PHASE13_VENDOR_ACTION_GEO_GATE
+  // UI-only: vendor can view page anywhere, but ACTIONS require location permission + inside Ifugao.
+  const [vGeoPermission, setVGeoPermission] = useState<"unknown" | "granted" | "denied">("unknown");
+  const [vGeoInsideIfugao, setVGeoInsideIfugao] = useState<boolean>(false);
+  const [vGeoErr, setVGeoErr] = useState<string | null>(null);
+  const [vGeoLast, setVGeoLast] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Generous bbox to avoid false "outside" for Ifugao towns (includes Lamut/Kiangan edges)
+  const IFUGAO_BBOX = { minLat: 16.40, maxLat: 17.80, minLng: 120.80, maxLng: 121.70 };
+
+  function inIfugaoBBox(lat: number, lng: number) {
+    return (
+      lat >= IFUGAO_BBOX.minLat &&
+      lat <= IFUGAO_BBOX.maxLat &&
+      lng >= IFUGAO_BBOX.minLng &&
+      lng <= IFUGAO_BBOX.maxLng
+    );
+  }
+
+  async function refreshVendorGeoGate(opts?: { prompt?: boolean }) {
+    try {
+      setVGeoErr(null);
+
+      if (typeof window === "undefined" || typeof navigator === "undefined") {
+        setVGeoPermission("unknown");
+        setVGeoInsideIfugao(false);
+        return;
+      }
+
+      if (!("geolocation" in navigator)) {
+        setVGeoPermission("denied");
+        setVGeoInsideIfugao(false);
+        setVGeoErr("Geolocation not supported on this device/browser.");
+        return;
+      }
+
+      const permApi: any = (navigator as any).permissions;
+      if (permApi && permApi.query) {
+        try {
+          const st = await permApi.query({ name: "geolocation" });
+          if (st?.state === "granted") setVGeoPermission("granted");
+          else if (st?.state === "denied") setVGeoPermission("denied");
+          else setVGeoPermission("unknown");
+        } catch {
+          // ignore
+        }
+      }
+
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: opts?.prompt ? 0 : 30000,
+        });
+      });
+
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      setVGeoLast({ lat, lng });
+      setVGeoPermission("granted");
+
+      const inside = inIfugaoBBox(lat, lng);
+      setVGeoInsideIfugao(inside);
+      if (!inside) {
+        setVGeoErr("Action blocked: you appear outside Ifugao.");
+      }
+    } catch (e: any) {
+      const code = e?.code;
+      const msg =
+        code === 1
+          ? "Location permission denied. Actions are disabled."
+          : code === 2
+          ? "Location unavailable. Actions are disabled."
+          : code === 3
+          ? "Location request timed out. Actions are disabled."
+          : e?.message || "Location check failed. Actions are disabled.";
+
+      setVGeoPermission(code === 1 ? "denied" : "unknown");
+      setVGeoInsideIfugao(false);
+      setVGeoErr(msg);
+    }
+  }
+
+  useEffect(() => {
+    refreshVendorGeoGate({ prompt: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const vendorActionBlocked = !(vGeoPermission === "granted" && vGeoInsideIfugao);
+
   // VENDOR_CORE_V1_REFINEMENTS
   // Prevent poll flicker while a status update is in-flight
   const updatingIdRef = React.useRef<string | null>(null);
@@ -194,6 +285,34 @@ export default function VendorOrdersPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
+      {/* PHASE13_VENDOR_ACTION_GEO_GATE: Action gating banner (page still accessible) */}
+      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-medium">Vendor action location check</div>
+          <button
+            type="button"
+            className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100"
+            onClick={() => refreshVendorGeoGate({ prompt: true })}
+          >
+            Refresh location
+          </button>
+        </div>
+        <div className="mt-1 opacity-90">
+          Permission: <span className="font-semibold">{vGeoPermission}</span> Â· Inside Ifugao:{" "}
+          <span className="font-semibold">{String(vGeoInsideIfugao)}</span>
+          {vGeoLast ? (
+            <span className="opacity-80"> Â· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
+          ) : null}
+        </div>
+        {vendorActionBlocked ? (
+          <div className="mt-1 text-red-700">
+            Actions disabled until location permission is granted and you are inside Ifugao.
+            {vGeoErr ? <span className="opacity-90"> ({vGeoErr})</span> : null}
+          </div>
+        ) : (
+          <div className="mt-1 text-emerald-700">Actions enabled.</div>
+        )}
+      </div>
       <OfflineIndicator />
 
       {/* Header */}
@@ -289,10 +408,8 @@ export default function VendorOrdersPage() {
                           {o.status === "preparing" && (
                             <button
                               type="button"
-                              disabled={updatingId === o.id}
-                              onClick={() =>
-                                handleStatusUpdate(o, "driver_arrived")
-                              }
+                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id}
+                              onClick={() => (vendorActionBlocked ? null : handleStatusUpdate(o, "driver_arrived"))}
                               className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Mark ready
@@ -301,8 +418,8 @@ export default function VendorOrdersPage() {
                           {o.status === "driver_arrived" && (
                             <button
                               type="button"
-                              disabled={updatingId === o.id}
-                              onClick={() => handleStatusUpdate(o, "picked_up")}
+                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id}
+                              onClick={() => (vendorActionBlocked ? null : handleStatusUpdate(o, "picked_up"))}
                               className="rounded-full border border-emerald-500 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Order picked up
@@ -311,8 +428,8 @@ export default function VendorOrdersPage() {
                           {o.status === "picked_up" && (
                             <button
                               type="button"
-                              disabled={updatingId === o.id}
-                              onClick={() => handleStatusUpdate(o, "completed")}
+                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id}
+                              onClick={() => (vendorActionBlocked ? null : handleStatusUpdate(o, "completed"))}
                               className="rounded-full border border-slate-500 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Mark completed
@@ -365,6 +482,7 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
 
 
 
