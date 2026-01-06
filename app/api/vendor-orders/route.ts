@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,37 @@ export async function GET(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
 
   
-    // VENDOR_ORDERS_POST_CREATE_OR_UPDATE
+      // VENDOR_ORDERS_ADMIN_CLIENT
+  // Use route-handler client for auth (RLS), but service-role client for DB writes (bypass RLS) in this trusted API route.
+  const { data: authData } = await supabase.auth.getUser();
+  const authedUser = authData?.user ?? null;
+  if (!authedUser) {
+    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED", message: "Login required" }, { status: 401 });
+  }
+
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
+
+  if (!url || !serviceKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "SERVER_MISCONFIG",
+        message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+      },
+      { status: 500 }
+    );
+  }
+
+  const admin = createAdminClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+// VENDOR_ORDERS_POST_CREATE_OR_UPDATE
     // Accept both snake_case and camelCase from UI
     const body = await req.json().catch(() => ({} as any));
 
@@ -68,7 +99,7 @@ export async function GET(req: Request) {
       // NOTE: We intentionally do NOT insert optional fields here (delivery address / phone / items / note).
       // We must not assume bookings table columns exist.
 
-const { data, error } = await supabase
+const { data, error } = await admin
         .from("bookings")
         .insert(insertRow)
         .select("*")
@@ -146,7 +177,37 @@ export async function POST(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
 
   
-    // VENDOR_ORDERS_POST_CREATE_OR_UPDATE
+      // VENDOR_ORDERS_ADMIN_CLIENT
+  // Use route-handler client for auth (RLS), but service-role client for DB writes (bypass RLS) in this trusted API route.
+  const { data: authData } = await supabase.auth.getUser();
+  const authedUser = authData?.user ?? null;
+  if (!authedUser) {
+    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED", message: "Login required" }, { status: 401 });
+  }
+
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
+
+  if (!url || !serviceKey) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "SERVER_MISCONFIG",
+        message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+      },
+      { status: 500 }
+    );
+  }
+
+  const admin = createAdminClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+// VENDOR_ORDERS_POST_CREATE_OR_UPDATE
     // Accept both snake_case and camelCase from UI
     const body = await req.json().catch(() => ({} as any));
 
@@ -181,7 +242,7 @@ export async function POST(req: Request) {
       // NOTE: We intentionally do NOT insert optional fields here (delivery address / phone / items / note).
       // We must not assume bookings table columns exist.
 
-const { data, error } = await supabase
+const { data, error } = await admin
         .from("bookings")
         .insert(insertRow)
         .select("*")
@@ -273,7 +334,7 @@ try {
       });
     }
 
-    const { data: updated, error: updErr } = await supabase
+    const { data: updated, error: updErr } = await admin
       .from("bookings")
       .update({ vendor_status: next })
       .eq("id", order_id)
@@ -312,6 +373,7 @@ try {
     );
   }
 }
+
 
 
 
