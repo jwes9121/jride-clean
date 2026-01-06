@@ -65,13 +65,10 @@ export async function GET(req: Request) {
         status: "requested",
       };
 
-      if (customer_name) insertRow.passenger_name = customer_name;
-      if (customer_phone) insertRow.passenger_phone = customer_phone;
-      if (delivery_address) insertRow.dropoff_label = delivery_address;
-      if (items) insertRow.items = items;
-      if (note) insertRow.note = note;
+      // NOTE: We intentionally do NOT insert optional fields here (delivery address / phone / items / note).
+      // We must not assume bookings table columns exist.
 
-      const { data, error } = await supabase
+const { data, error } = await supabase
         .from("bookings")
         .insert(insertRow)
         .select("*")
@@ -106,7 +103,8 @@ try {
 
     // --- KEEP YOUR EXISTING QUERY SHAPE ---
     // NOTE: We intentionally keep this broad select; runtime behavior unchanged.
-    const { data, error } = await supabase
+
+const { data, error } = await supabase
       .from("bookings")
       .select("*")
       .eq("vendor_id", vendorId)
@@ -180,13 +178,10 @@ export async function POST(req: Request) {
         status: "requested",
       };
 
-      if (customer_name) insertRow.passenger_name = customer_name;
-      if (customer_phone) insertRow.passenger_phone = customer_phone;
-      if (delivery_address) insertRow.dropoff_label = delivery_address;
-      if (items) insertRow.items = items;
-      if (note) insertRow.note = note;
+      // NOTE: We intentionally do NOT insert optional fields here (delivery address / phone / items / note).
+      // We must not assume bookings table columns exist.
 
-      const { data, error } = await supabase
+const { data, error } = await supabase
         .from("bookings")
         .insert(insertRow)
         .select("*")
@@ -317,6 +312,8 @@ try {
     );
   }
 }
+
+
 
 
 
