@@ -52,6 +52,32 @@ export default function VendorOrdersPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // PHASE13_VENDOR_ACTION_GEO_GATE
+
+  // PHASE14_VENDOR_CORE_HARDEN
+  // UI-only vendor transition gating (fails open on unknown status to avoid regressions).
+  const VENDOR_FLOW_UI = ["preparing","ready","driver_arrived","picked_up","completed"] as const;
+  type VendorFlowStatus = typeof VENDOR_FLOW_UI[number];
+
+  function normVendorFlowStatus(s: any): VendorFlowStatus | null {
+    const v = String(s || "").trim();
+    return (VENDOR_FLOW_UI as readonly string[]).includes(v) ? (v as VendorFlowStatus) : null;
+  }
+
+  function nextVendorFlowStatus(cur: VendorFlowStatus): VendorFlowStatus | null {
+    const i = VENDOR_FLOW_UI.indexOf(cur);
+    if (i < 0) return null;
+    return i + 1 < VENDOR_FLOW_UI.length ? VENDOR_FLOW_UI[i + 1] : null;
+  }
+
+  function vendorCanTransitionUI(order: any, target: any): boolean {
+    const cur = normVendorFlowStatus(order?.status);
+    const tgt = normVendorFlowStatus(target);
+    if (!cur || !tgt) return true; // fails open if unknown
+    if (cur === tgt) return false; // no-op clicks disabled
+    const next = nextVendorFlowStatus(cur);
+    return next === tgt;
+  }
+
   // UI-only: vendor can view page anywhere, but ACTIONS require location permission + inside Ifugao.
   const [vGeoPermission, setVGeoPermission] = useState<"unknown" | "granted" | "denied">("unknown");
   const [vGeoInsideIfugao, setVGeoInsideIfugao] = useState<boolean>(false);
@@ -408,8 +434,8 @@ export default function VendorOrdersPage() {
                           {o.status === "preparing" && (
                             <button
                               type="button"
-                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id}
-                              onClick={() => (vendorActionBlocked ? null : handleStatusUpdate(o, "driver_arrived"))}
+                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"driver_arrived")}
+                              onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o,"driver_arrived") ? null : handleStatusUpdate(o, "driver_arrived"))}
                               className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Mark ready
@@ -418,8 +444,8 @@ export default function VendorOrdersPage() {
                           {o.status === "driver_arrived" && (
                             <button
                               type="button"
-                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id}
-                              onClick={() => (vendorActionBlocked ? null : handleStatusUpdate(o, "picked_up"))}
+                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"picked_up")}
+                              onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o,"picked_up") ? null : handleStatusUpdate(o, "picked_up"))}
                               className="rounded-full border border-emerald-500 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Order picked up
@@ -428,8 +454,8 @@ export default function VendorOrdersPage() {
                           {o.status === "picked_up" && (
                             <button
                               type="button"
-                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id}
-                              onClick={() => (vendorActionBlocked ? null : handleStatusUpdate(o, "completed"))}
+                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"completed")}
+                              onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o,"completed") ? null : handleStatusUpdate(o, "completed"))}
                               className="rounded-full border border-slate-500 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               Mark completed
@@ -482,6 +508,7 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
+
 
 
 
