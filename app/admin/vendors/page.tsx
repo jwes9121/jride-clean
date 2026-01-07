@@ -15,7 +15,62 @@ export default function VendorsPage() {
   const [vendors, setVendors] = React.useState<Vendor[]>([]);
   const [copied, setCopied] = React.useState<string | null>(null);
 
-  const baseUrl =
+  
+
+  // PHASE2A1_ADMIN_SEED_MENU
+  const [seedName, setSeedName] = React.useState<Record<string, string>>({});
+  const [seedPrice, setSeedPrice] = React.useState<Record<string, string>>({});
+  const [seedDesc, setSeedDesc] = React.useState<Record<string, string>>({});
+  const [seedBusy, setSeedBusy] = React.useState<string | null>(null);
+  const [seedMsg, setSeedMsg] = React.useState<Record<string, string>>({});
+
+  async function seedMenuItem(vendorId: string) {
+    const name = String(seedName[vendorId] || "").trim();
+    const price = String(seedPrice[vendorId] || "").trim();
+    const description = String(seedDesc[vendorId] || "").trim();
+
+    if (!name) {
+      setSeedMsg((m) => ({ ...m, [vendorId]: "Name required" }));
+      return;
+    }
+    if (!price || isNaN(Number(price))) {
+      setSeedMsg((m) => ({ ...m, [vendorId]: "Price must be a number" }));
+      return;
+    }
+
+    setSeedBusy(vendorId);
+    setSeedMsg((m) => ({ ...m, [vendorId]: "" }));
+
+    try {
+      const res = await fetch("/api/admin/vendor-menu-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor_id: vendorId,
+          name,
+          price: Number(price),
+          description: description || null,
+          sort_order: 0,
+        }),
+      });
+
+      const j = await res.json().catch(() => ({} as any));
+      if (!res.ok || !j?.ok) {
+        throw new Error(j?.message || j?.error || "Failed to seed menu item");
+      }
+
+      setSeedMsg((m) => ({ ...m, [vendorId]: "Added âœ“" }));
+      setSeedName((s) => ({ ...s, [vendorId]: "" }));
+      setSeedPrice((s) => ({ ...s, [vendorId]: "" }));
+      setSeedDesc((s) => ({ ...s, [vendorId]: "" }));
+
+      setTimeout(() => setSeedMsg((m) => ({ ...m, [vendorId]: "" })), 1500);
+    } catch (e: any) {
+      setSeedMsg((m) => ({ ...m, [vendorId]: String(e?.message || e || "Failed") }));
+    } finally {
+      setSeedBusy(null);
+    }
+  }const baseUrl =
     (typeof window !== "undefined" && window.location?.origin) ? window.location.origin : "https://app.jride.net";
 
   async function load() {
@@ -147,6 +202,43 @@ export default function VendorsPage() {
 </div>
                         </div>
                         <div className="mt-1 break-all font-mono text-[11px] opacity-70">{link}</div>
+
+                        {/* PHASE2A1_ADMIN_SEED_MENU_UI */}
+                        <div className="mt-3 rounded-lg border border-black/10 bg-slate-50 p-2">
+                          <div className="text-[11px] font-medium opacity-80">Seed menu item (admin)</div>
+                          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                            <input
+                              value={seedName[v.id] || ""}
+                              onChange={(e) => setSeedName((s) => ({ ...s, [v.id]: e.target.value }))}
+                              placeholder="Item name"
+                              className="rounded border border-black/10 bg-white px-2 py-1 text-xs"
+                            />
+                            <input
+                              value={seedPrice[v.id] || ""}
+                              onChange={(e) => setSeedPrice((s) => ({ ...s, [v.id]: e.target.value }))}
+                              placeholder="Price"
+                              inputMode="decimal"
+                              className="rounded border border-black/10 bg-white px-2 py-1 text-xs"
+                            />
+                            <input
+                              value={seedDesc[v.id] || ""}
+                              onChange={(e) => setSeedDesc((s) => ({ ...s, [v.id]: e.target.value }))}
+                              placeholder="Description (optional)"
+                              className="rounded border border-black/10 bg-white px-2 py-1 text-xs"
+                            />
+                            <button
+                              type="button"
+                              disabled={seedBusy === v.id}
+                              onClick={() => seedMenuItem(v.id)}
+                              className="rounded border border-black/10 bg-white px-3 py-1 text-xs hover:bg-black/5 disabled:opacity-60"
+                            >
+                              {seedBusy === v.id ? "Adding..." : "Add item"}
+                            </button>
+                          </div>
+                          {seedMsg[v.id] ? (
+                            <div className="mt-2 text-[11px] opacity-80">{seedMsg[v.id]}</div>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
