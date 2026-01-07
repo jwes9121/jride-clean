@@ -2,6 +2,7 @@
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,23 @@ export async function GET(req: Request) {
   
       // VENDOR_ORDERS_ADMIN_CLIENT
   // Use route-handler client for auth (RLS), but service-role client for DB writes (bypass RLS) in this trusted API route.
-  const { data: authData } = await supabase.auth.getUser();
-  const authedUser = authData?.user ?? null;
-  if (!authedUser) {
-    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED", message: "Login required" }, { status: 401 });
+  // Auth gate: accept NextAuth session (Passenger dashboard) OR Supabase auth user
+  const session = await auth().catch(() => null as any);
+  let authed = !!(session && session.user);
+
+  if (!authed) {
+    const { data: authData } = await supabase.auth.getUser();
+    authed = !!(authData && authData.user);
   }
 
-  const url =
+  if (!authed) {
+    return NextResponse.json(
+      { ok: false, error: "UNAUTHENTICATED", message: "Login required" },
+      { status: 401 }
+    );
+  }
+
+const url =
     process.env.SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     "";
@@ -179,13 +190,23 @@ export async function POST(req: Request) {
   
       // VENDOR_ORDERS_ADMIN_CLIENT
   // Use route-handler client for auth (RLS), but service-role client for DB writes (bypass RLS) in this trusted API route.
-  const { data: authData } = await supabase.auth.getUser();
-  const authedUser = authData?.user ?? null;
-  if (!authedUser) {
-    return NextResponse.json({ ok: false, error: "UNAUTHENTICATED", message: "Login required" }, { status: 401 });
+  // Auth gate: accept NextAuth session (Passenger dashboard) OR Supabase auth user
+  const session = await auth().catch(() => null as any);
+  let authed = !!(session && session.user);
+
+  if (!authed) {
+    const { data: authData } = await supabase.auth.getUser();
+    authed = !!(authData && authData.user);
   }
 
-  const url =
+  if (!authed) {
+    return NextResponse.json(
+      { ok: false, error: "UNAUTHENTICATED", message: "Login required" },
+      { status: 401 }
+    );
+  }
+
+const url =
     process.env.SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     "";
@@ -373,6 +394,7 @@ try {
     );
   }
 }
+
 
 
 
