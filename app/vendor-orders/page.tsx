@@ -22,8 +22,8 @@ type VendorOrder = {
 
 function formatAmount(n: number | null | undefined) {
   const v = Number(n || 0);
-  if (!isFinite(v)) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â±0.00";
-  return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â±" + v.toFixed(2);
+  if (!isFinite(v)) return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±0.00";
+  return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±" + v.toFixed(2);
 }
 
 
@@ -40,6 +40,7 @@ type UpdateAction = "driver_arrived" | "picked_up" | "completed";
 function VendorOrdersInner() {
 const searchParams = useSearchParams();
   const vendorIdFromQuery = String(searchParams?.get("vendor_id") || "").trim();
+  console.log("VendorOrders vendor_id =", vendorIdFromQuery);
   const [orders, setOrders] = useState<VendorOrder[]>([]);
 
   const activeOrders = useMemo(() => {
@@ -296,7 +297,7 @@ setUpdatingId(order.id);
         vendorIdFromQuery ||
         "";
 
-      const res = await fetch("/api/vendor-orders", {
+      const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorIdFromQuery), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -342,10 +343,10 @@ setUpdatingId(order.id);
           </button>
         </div>
         <div className="mt-1 opacity-90">
-          Permission: <span className="font-semibold">{vGeoPermission}</span> ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚· Inside Ifugao:{" "}
+          Permission: <span className="font-semibold">{vGeoPermission}</span> ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÂ· Inside Ifugao:{" "}
           <span className="font-semibold">{String(vGeoInsideIfugao)}</span>
           {vGeoLast ? (
-            <span className="opacity-80"> ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
+            <span className="opacity-80"> ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÂ· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
           ) : null}
         </div>
         {vendorActionBlocked ? (
@@ -419,7 +420,7 @@ setUpdatingId(order.id);
         )}
         {isLoading && (
           <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            Loading ordersÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
+            Loading ordersÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦
           </div>
         )}
 
@@ -543,7 +544,7 @@ setUpdatingId(order.id);
 }
 export default function VendorOrdersPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersÃ¢â‚¬Â¦</div>}>
+    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div>}>
       <VendorOrdersInner />
     </Suspense>
   );
