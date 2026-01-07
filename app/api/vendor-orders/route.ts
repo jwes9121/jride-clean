@@ -33,18 +33,29 @@ async function isAuthedWithEither(supabase: any) {
 export async function GET(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies });
 
-  const authed = await isAuthedWithEither(supabase);
-  if (!authed) return json(401, { ok: false, error: "UNAUTHENTICATED", message: "Login required" });
-
   // Accept both vendor_id and vendorId (for safety)
   const vendor_id =
     String(req.nextUrl.searchParams.get("vendor_id") || req.nextUrl.searchParams.get("vendorId") || "").trim();
 
-  if (!vendor_id) {
-    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+  // PILOT MODE RULE:
+  // - If authed: allow.
+  // - If NOT authed: still allow, BUT vendor_id must be present (private link acts as the "key").
+  const authed = await isAuthedWithEither(supabase);
+  if (!authed && !vendor_id) {
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required (pilot mode)" });
   }
 
-  const { data, error } = await supabase
+  const admin = getServiceRoleAdmin();
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    });
+  }
+
+  // Always read using service role to avoid RLS surprises in pilot mode.
+  const { data, error } = await admin
     .from("bookings")
     .select("*")
     .eq("vendor_id", vendor_id)
@@ -70,6 +81,7 @@ export async function GET(req: NextRequest) {
     delivery_address: r.delivery_address ?? r.dropoff_label ?? null,
     items: r.items ?? null,
     note: r.note ?? null,
+    total_bill: r.total_bill ?? r.totalBill ?? r.fare ?? null,
   }));
 
   return json(200, { ok: true, vendor_id, orders });
@@ -81,8 +93,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies });
 
+  const body = await req.json().catch(() => ({} as any));
+
+  const order_id = String(body.order_id ?? body.orderId ?? "").trim();
+  const vendor_id = String(body.vendor_id ?? body.vendorId ?? "").trim();
+  const vendor_status = String(body.vendor_status ?? body.vendorStatus ?? body.status ?? "").trim() || "preparing";
+
+  // PILOT MODE RULE:
+  // - If authed: allow.
+  // - If NOT authed: still allow, BUT vendor_id must be present (private link acts as the "key").
   const authed = await isAuthedWithEither(supabase);
-  if (!authed) return json(401, { ok: false, error: "UNAUTHENTICATED", message: "Login required" });
+  if (!authed && !vendor_id) {
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required (pilot mode)" });
+  }
 
   const admin = getServiceRoleAdmin();
   if (!admin) {
@@ -93,17 +116,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = await req.json().catch(() => ({} as any));
-
-  const order_id = String(body.order_id ?? body.orderId ?? "").trim();
-  const vendor_id = String(body.vendor_id ?? body.vendorId ?? "").trim();
-  const vendor_status = String(body.vendor_status ?? body.vendorStatus ?? body.status ?? "").trim() || "preparing";
-
   if (!vendor_id) {
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
   }
 
-  // CREATE
+  // CREATE (kept for completeness; you can ignore/disable from UI)
   if (!order_id) {
     const insertRow: any = {
       vendor_id,
@@ -127,7 +144,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // UPDATE (vendor_status only, no column assumptions)
+  // UPDATE (vendor_status only)
   const patch: any = { vendor_status };
 
   const { data, error } = await admin
