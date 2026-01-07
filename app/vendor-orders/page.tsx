@@ -22,8 +22,8 @@ type VendorOrder = {
 
 function formatAmount(n: number | null | undefined) {
   const v = Number(n || 0);
-  if (!isFinite(v)) return "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±0.00";
-  return "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±" + v.toFixed(2);
+  if (!isFinite(v)) return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â±0.00";
+  return "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â±" + v.toFixed(2);
 }
 
 
@@ -342,10 +342,10 @@ setUpdatingId(order.id);
           </button>
         </div>
         <div className="mt-1 opacity-90">
-          Permission: <span className="font-semibold">{vGeoPermission}</span> Ãƒâ€šÃ‚Â· Inside Ifugao:{" "}
+          Permission: <span className="font-semibold">{vGeoPermission}</span> ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚· Inside Ifugao:{" "}
           <span className="font-semibold">{String(vGeoInsideIfugao)}</span>
           {vGeoLast ? (
-            <span className="opacity-80"> Ãƒâ€šÃ‚Â· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
+            <span className="opacity-80"> ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
           ) : null}
         </div>
         {vendorActionBlocked ? (
@@ -409,7 +409,7 @@ setUpdatingId(order.id);
               <button
                 type="button"
                 className="shrink-0 rounded border border-red-300 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50"
-                onClick={() => loadOrders().catch(() => undefined)}
+                onClick={() => { if (vendorIdFromQuery) loadOrders().catch(() => undefined); }}
                 disabled={isLoading}
               >
                 Retry
@@ -419,7 +419,7 @@ setUpdatingId(order.id);
         )}
         {isLoading && (
           <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            Loading ordersÃ¢â‚¬Â¦
+            Loading ordersÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
           </div>
         )}
 
@@ -543,7 +543,7 @@ setUpdatingId(order.id);
 }
 export default function VendorOrdersPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersâ€¦</div>}>
+    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersÃ¢â‚¬Â¦</div>}>
       <VendorOrdersInner />
     </Suspense>
   );
