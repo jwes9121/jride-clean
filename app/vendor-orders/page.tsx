@@ -213,9 +213,9 @@ const searchParams = useSearchParams();
       
 
       if (!vendorId) {
-        throw new Error("vendor_id_required: open /vendor-orders?vendor_id=YOUR_VENDOR_UUID once, then it will be remembered and the URL will be cleaned.");
+        // vendor_id_required: allow API to resolve vendor from session (no URL param required)
       }
-const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorId), {
+const res = await fetch((vendorId ? "/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/api/vendor-orders"), {
         method: "GET",
         headers: { "Accept": "application/json" },
       });
@@ -308,7 +308,7 @@ const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(ven
       
 
       if (!vendorIdFromQuery) {
-        throw new Error('vendor_id_required (append ?vendor_id=YOUR_VENDOR_UUID): open /vendor-orders?vendor_id=YOUR_VENDOR_UUID');
+        // vendor_id_required: allow API to resolve vendor from session (no URL param required)
       }
 setUpdatingId(order.id);
 
@@ -324,7 +324,7 @@ setUpdatingId(order.id);
         vendorIdFromQuery ||
         "";
 
-      const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorIdFromQuery), {
+      const res = await fetch((vendorId ? (vendorId ? "/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/api/vendor-orders") : "/api/vendor-orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
