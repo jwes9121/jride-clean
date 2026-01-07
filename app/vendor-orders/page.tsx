@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import OfflineIndicator from "@/components/OfflineIndicator";
@@ -55,7 +55,7 @@ export default function VendorOrdersPage() {
 
   // PHASE14_VENDOR_CORE_HARDEN
   // UI-only vendor transition gating (fails open on unknown status to avoid regressions).
-  const VENDOR_FLOW_UI = ["preparing","ready","driver_arrived","picked_up","completed"] as const;
+  const VENDOR_FLOW_UI = ["preparing","driver_arrived","picked_up","completed"] as const;
   type VendorFlowStatus = typeof VENDOR_FLOW_UI[number];
 
   function normVendorFlowStatus(s: any): VendorFlowStatus | null {
@@ -77,8 +77,9 @@ export default function VendorOrdersPage() {
     const next = nextVendorFlowStatus(cur);
     return next === tgt;
   }
-
   // UI-only: vendor can view page anywhere, but ACTIONS require location permission + inside Ifugao.
+  // Dev/test bypass (OFF by default). Set NEXT_PUBLIC_VENDOR_GEO_BYPASS=1 to enable actions anywhere.
+  const DEV_VENDOR_GEO_BYPASS = process.env.NEXT_PUBLIC_VENDOR_GEO_BYPASS === "1";
   const [vGeoPermission, setVGeoPermission] = useState<"unknown" | "granted" | "denied">("unknown");
   const [vGeoInsideIfugao, setVGeoInsideIfugao] = useState<boolean>(false);
   const [vGeoErr, setVGeoErr] = useState<string | null>(null);
@@ -165,9 +166,7 @@ export default function VendorOrdersPage() {
     refreshVendorGeoGate({ prompt: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const vendorActionBlocked = !(vGeoPermission === "granted" && vGeoInsideIfugao);
-
+  const vendorActionBlocked = !DEV_VENDOR_GEO_BYPASS && !(vGeoPermission === "granted" && vGeoInsideIfugao);
   // VENDOR_CORE_V1_REFINEMENTS
   // Prevent poll flicker while a status update is in-flight
   const updatingIdRef = React.useRef<string | null>(null);
@@ -175,16 +174,14 @@ export default function VendorOrdersPage() {
     updatingIdRef.current = updatingId;
   }, [updatingId]);
 
-  const loadOrders = async () => {
+    const loadOrders = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
       const res = await fetch("/api/vendor-orders", {
         method: "GET",
-        headers: {
-          "Accept": "application/json",
-        },
+        headers: { "Accept": "application/json" },
       });
 
       if (!res.ok) {
@@ -194,7 +191,7 @@ export default function VendorOrdersPage() {
 
       const data: { orders: ApiOrder[] } = await res.json();
 
-      const mapped: VendorOrder[] = data.orders.map((o) => ({
+      const mapped: VendorOrder[] = (data.orders || []).map((o) => ({
         id: o.id,
         bookingCode: o.booking_code,
         customerName: o.customer_name ?? "",
@@ -202,21 +199,28 @@ export default function VendorOrdersPage() {
         status: (o.vendor_status ?? "preparing") as VendorOrderStatus,
         createdAt: o.created_at,
       }));
-                  // VENDOR_CORE_V3_UI_SYNC (safe local update, backend-confirmed by reload)
-      // Use updatingId (known in scope) to target the row we just updated.
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === updatingId ? { ...o, status: (status as any) } : o
-        )
-      );
 
+      // Prevent poll flicker while a status update is in-flight
+      if (updatingIdRef.current) return;
+
+      setOrders(mapped);
     } catch (err: any) {
-      console.error("[VendorOrders] handleStatusUpdate error:", err);
-      setError(err.message || "Failed to update order status.");
+      console.error("[VendorOrders] loadOrders error:", err);
+      setError(err?.message || "Failed to load orders.");
     } finally {
-      setUpdatingId(null);
+      setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadOrders().catch(() => undefined);
+    const t = setInterval(() => {
+      // Poll every 10s (skips replace while updatingIdRef is set)
+      loadOrders().catch(() => undefined);
+    }, 10000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const renderStatusBadge = (status: VendorOrderStatus) => {
     const base =
@@ -237,7 +241,7 @@ export default function VendorOrdersPage() {
 
   return (
           <span className={`${base} bg-sky-50 text-sky-700 border-sky-200`}>
-            Mark ready
+            ready
           </span>
         );
       case "picked_up":
@@ -434,7 +438,7 @@ export default function VendorOrdersPage() {
                           {o.status === "preparing" && (
                             <button
                               type="button"
-                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"driver_arrived")}
+                              disabled={vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"driver_arrived")}
                               onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o,"driver_arrived") ? null : handleStatusUpdate(o, "driver_arrived"))}
                               className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
@@ -444,7 +448,7 @@ export default function VendorOrdersPage() {
                           {o.status === "driver_arrived" && (
                             <button
                               type="button"
-                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"picked_up")}
+                              disabled={vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"picked_up")}
                               onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o,"picked_up") ? null : handleStatusUpdate(o, "picked_up"))}
                               className="rounded-full border border-emerald-500 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
@@ -454,7 +458,7 @@ export default function VendorOrdersPage() {
                           {o.status === "picked_up" && (
                             <button
                               type="button"
-                              disabled={vendorActionBlocked || vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"completed")}
+                              disabled={vendorActionBlocked || updatingId === o.id || !vendorCanTransitionUI(o,"completed")}
                               onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o,"completed") ? null : handleStatusUpdate(o, "completed"))}
                               className="rounded-full border border-slate-500 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
