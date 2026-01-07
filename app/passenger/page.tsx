@@ -1,20 +1,34 @@
 ﻿"use client";
 
 import * as React from "react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+
+type Choice = "ride" | "takeout" | "errand";
 
 export default function PassengerDashboardPage() {
   const router = useRouter();
-  const [choice, setChoice] = React.useState<"ride" | "takeout" | "errand">("ride");
+  const { data: session, status } = useSession();
+
+  const authed = !!session?.user;
+  const [choice, setChoice] = React.useState<Choice>("ride");
 
   function go() {
+    // Safe gating: NO JSX guard blocks. Only redirect on action.
+    if (!authed) {
+      const cb = encodeURIComponent("/passenger");
+      window.location.href = "/api/auth/signin?callbackUrl=" + cb;
+      return;
+    }
+
     if (choice === "ride") router.push("/ride");
     if (choice === "takeout") router.push("/takeout");
     if (choice === "errand") router.push("/errand");
   }
 
-  function Card(props: { id: "ride" | "takeout" | "errand"; title: string; desc: string }) {
+  function Card(props: { id: Choice; title: string; desc: string }) {
     const active = choice === props.id;
+
     return (
       <button
         type="button"
@@ -33,8 +47,17 @@ export default function PassengerDashboardPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-white">
       <div className="w-full max-w-2xl rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold mb-1">Passenger Dashboard</h1>
-        <p className="text-sm opacity-70 mb-5">Choose what you want to do.</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold mb-1">Passenger Dashboard</h1>
+            <p className="text-sm opacity-70 mb-5">Choose what you want to do.</p>
+          </div>
+
+          <div className="text-xs rounded-full border border-black/10 px-3 py-1">
+            {authed ? "Logged in" : "Not logged in"}
+            <span className="opacity-70"> Â· {status}</span>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Card id="ride" title="Book Ride" desc="Go to ride booking" />
