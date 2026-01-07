@@ -22,11 +22,9 @@ type VendorOrder = {
 
 function formatAmount(n: number | null | undefined) {
   const v = Number(n || 0);
-  if (!isFinite(v)) return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±0.00";
-  return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±" + v.toFixed(2);
+  if (!isFinite(v)) return "PHP 0.00";
+  return "PHP " + v.toFixed(2);
 }
-
-
 type ApiOrder = {
   id: string;
   booking_code: string;
@@ -343,10 +341,10 @@ setUpdatingId(order.id);
           </button>
         </div>
         <div className="mt-1 opacity-90">
-          Permission: <span className="font-semibold">{vGeoPermission}</span> ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÂ· Inside Ifugao:{" "}
+          Permission: <span className="font-semibold">{vGeoPermission}</span> ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ã‚Â· Inside Ifugao:{" "}
           <span className="font-semibold">{String(vGeoInsideIfugao)}</span>
           {vGeoLast ? (
-            <span className="opacity-80"> ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÂ· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
+            <span className="opacity-80">Last: {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
           ) : null}
         </div>
         {vendorActionBlocked ? (
@@ -420,7 +418,7 @@ setUpdatingId(order.id);
         )}
         {isLoading && (
           <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            Loading ordersÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦
+            Loading ordersÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦
           </div>
         )}
 
@@ -544,7 +542,7 @@ setUpdatingId(order.id);
 }
 export default function VendorOrdersPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div>}>
+    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦</div>}>
       <VendorOrdersInner />
     </Suspense>
   );
