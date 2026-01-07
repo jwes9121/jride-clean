@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+
 import OfflineIndicator from "@/components/OfflineIndicator";
 
 type VendorOrderStatus =
@@ -20,8 +22,8 @@ type VendorOrder = {
 
 function formatAmount(n: number | null | undefined) {
   const v = Number(n || 0);
-  if (!isFinite(v)) return "â‚±0.00";
-  return "â‚±" + v.toFixed(2);
+  if (!isFinite(v)) return "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±0.00";
+  return "ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±" + v.toFixed(2);
 }
 
 
@@ -35,8 +37,9 @@ type ApiOrder = {
 };
 
 type UpdateAction = "driver_arrived" | "picked_up" | "completed";
-
-export default function VendorOrdersPage() {
+function VendorOrdersInner() {
+const searchParams = useSearchParams();
+  const vendorIdFromQuery = String(searchParams?.get("vendor_id") || "").trim();
   const [orders, setOrders] = useState<VendorOrder[]>([]);
 
   const activeOrders = useMemo(() => {
@@ -179,7 +182,12 @@ export default function VendorOrdersPage() {
       setIsLoading(true);
       setError(null);
 
-      const res = await fetch("/api/vendor-orders", {
+      
+
+      if (!vendorIdFromQuery) {
+        throw new Error('vendor_id_required (append ?vendor_id=YOUR_VENDOR_UUID): open /vendor-orders?vendor_id=YOUR_VENDOR_UUID');
+      }
+const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorIdFromQuery), {
         method: "GET",
         headers: { "Accept": "application/json" },
       });
@@ -269,17 +277,23 @@ export default function VendorOrdersPage() {
   async function handleStatusUpdate(order: VendorOrder, nextStatus: any) {
     try {
       setError(null);
-      setUpdatingId(order.id);
+      
+
+      if (!vendorIdFromQuery) {
+        throw new Error('vendor_id_required (append ?vendor_id=YOUR_VENDOR_UUID): open /vendor-orders?vendor_id=YOUR_VENDOR_UUID');
+      }
+setUpdatingId(order.id);
 
       // Instant UI feedback (safe): update only this row locally
       setOrders((prev) =>
         prev.map((o) => (o.id === order.id ? { ...o, status: nextStatus } : o))
       );
 
-      const vendor_id =
+            const vendor_id =
         (order as any).vendorId ||
         (order as any).vendor_id ||
         (order as any).vendorID ||
+        vendorIdFromQuery ||
         "";
 
       const res = await fetch("/api/vendor-orders", {
@@ -328,10 +342,10 @@ export default function VendorOrdersPage() {
           </button>
         </div>
         <div className="mt-1 opacity-90">
-          Permission: <span className="font-semibold">{vGeoPermission}</span> Â· Inside Ifugao:{" "}
+          Permission: <span className="font-semibold">{vGeoPermission}</span> Ãƒâ€šÃ‚Â· Inside Ifugao:{" "}
           <span className="font-semibold">{String(vGeoInsideIfugao)}</span>
           {vGeoLast ? (
-            <span className="opacity-80"> Â· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
+            <span className="opacity-80"> Ãƒâ€šÃ‚Â· {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
           ) : null}
         </div>
         {vendorActionBlocked ? (
@@ -343,6 +357,21 @@ export default function VendorOrdersPage() {
           <div className="mt-1 text-emerald-700">Actions enabled.</div>
         )}
       </div>
+
+      {/* PHASE15_VENDOR_CONTEXT: Vendor id required */}
+      {!vendorIdFromQuery ? (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <div className="font-medium">Vendor context not set</div>
+          <div className="mt-1 opacity-90">
+            Add <span className="font-semibold">?vendor_id=&lt;vendor_uuid&gt;</span> to the URL to view and manage orders.
+          </div>
+        </div>
+      ) : (
+        <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+          Vendor ID: <span className="font-semibold">{vendorIdFromQuery}</span>
+        </div>
+      )}
+
       <OfflineIndicator />
 
       {/* Header */}
@@ -390,7 +419,7 @@ export default function VendorOrdersPage() {
         )}
         {isLoading && (
           <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            Loading orders…
+            Loading ordersÃ¢â‚¬Â¦
           </div>
         )}
 
@@ -512,15 +541,10 @@ export default function VendorOrdersPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
+export default function VendorOrdersPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersâ€¦</div>}>
+      <VendorOrdersInner />
+    </Suspense>
+  );
+}
