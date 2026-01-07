@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -31,7 +31,9 @@ function canTransition(prev: VendorStatus, next: VendorStatus): boolean {
   return ni === pi + 1;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const vendorIdFromQuery = req.nextUrl.searchParams.get("vendor_id");
+
   const supabase = createRouteHandlerClient({ cookies });
 
   
@@ -80,8 +82,7 @@ const url =
     const body = await req.json().catch(() => ({} as any));
 
     const order_id = String(body.order_id ?? body.orderId ?? "").trim();
-    const vendor_id = String(body.vendor_id ?? body.vendorId ?? "").trim();
-
+    const vendor_id = String((body as any)?.vendor_id ?? (body as any)?.vendorId ?? "").trim() || (session as any)?.user?.vendor_id || (session as any)?.user?.vendorId || null;
     const vendor_status_in = String(body.vendor_status ?? body.vendorStatus ?? "").trim();
     const vendor_status = vendor_status_in || "preparing";
 
@@ -156,7 +157,7 @@ const { data, error } = await supabase
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // ✅ Type-narrow once (TS fix only)
+    // Ã¢Å“â€¦ Type-narrow once (TS fix only)
     const rows = (Array.isArray(data) ? data : []) as any[];
 
     const orders = rows.map((r) => {
@@ -233,8 +234,7 @@ const url =
     const body = await req.json().catch(() => ({} as any));
 
     const order_id = String(body.order_id ?? body.orderId ?? "").trim();
-    const vendor_id = String(body.vendor_id ?? body.vendorId ?? "").trim();
-
+    const vendor_id = String((body as any)?.vendor_id ?? (body as any)?.vendorId ?? "").trim() || (session as any)?.user?.vendor_id || (session as any)?.user?.vendorId || null;
     const vendor_status_in = String(body.vendor_status ?? body.vendorStatus ?? "").trim();
     const vendor_status = vendor_status_in || "preparing";
 
@@ -292,7 +292,7 @@ try {
     const body = (await req.json().catch(() => ({}))) as any;
 
     const order_id = String(body?.order_id || body?.id || "").trim();
-    const vendor_id = String(body?.vendor_id || body?.vendorId || "").trim();
+    const vendor_id = String((body as any)?.vendor_id ?? (body as any)?.vendorId ?? "").trim() || (session as any)?.user?.vendor_id || (session as any)?.user?.vendorId || null;
     const vendor_status_raw = String(body?.vendor_status || body?.status || "").trim();
 
     if (!order_id || !vendor_id || !vendor_status_raw) {
