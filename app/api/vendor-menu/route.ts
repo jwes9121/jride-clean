@@ -42,8 +42,7 @@ export async function GET(req: NextRequest) {
     .from("vendor_menu_today")
     .select("*")
     .eq("vendor_id", vendor_id)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
+    .order("sort_order", { ascending: true }).order("name", { ascending: true });
 
   if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
 
@@ -137,8 +136,7 @@ export async function POST(req: NextRequest) {
     .from("vendor_menu_today")
     .select("*")
     .eq("vendor_id", vendor_id)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
+    .order("sort_order", { ascending: true }).order("name", { ascending: true });
 
   if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
 
