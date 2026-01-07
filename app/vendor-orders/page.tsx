@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
+
 import { useSearchParams } from "next/navigation";
 
 import OfflineIndicator from "@/components/OfflineIndicator";
@@ -53,7 +54,9 @@ const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+
   // PHASE13_VENDOR_ACTION_GEO_GATE
+
 
   // PHASE14_VENDOR_CORE_HARDEN
   // UI-only vendor transition gating (fails open on unknown status to avoid regressions).
@@ -341,7 +344,7 @@ setUpdatingId(order.id);
           </button>
         </div>
         <div className="mt-1 opacity-90">
-          Permission: <span className="font-semibold">{vGeoPermission}</span> ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ã‚Â· Inside Ifugao:{" "}
+            Permission: <span className="font-semibold">{vGeoPermission}</span> | Inside Ifugao: <span className="font-semibold">{String(vGeoInsideIfugao)}</span> | Last: {vGeoLast ? `${vGeoLast.lat.toFixed(5)},${vGeoLast.lng.toFixed(5)}` : "n/a"}
           <span className="font-semibold">{String(vGeoInsideIfugao)}</span>
           {vGeoLast ? (
             <span className="opacity-80">Last: {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
@@ -418,7 +421,7 @@ setUpdatingId(order.id);
         )}
         {isLoading && (
           <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            Loading ordersÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦
+            Loading orders...
           </div>
         )}
 
@@ -542,7 +545,7 @@ setUpdatingId(order.id);
 }
 export default function VendorOrdersPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor ordersÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦</div>}>
+      <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor orders...</div>}>
       <VendorOrdersInner />
     </Suspense>
   );
