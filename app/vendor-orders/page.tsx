@@ -39,6 +39,32 @@ type UpdateAction = "driver_arrived" | "picked_up" | "completed";
 function VendorOrdersInner() {
 const searchParams = useSearchParams();
   const vendorIdFromQuery = String(searchParams?.get("vendor_id") || "").trim();
+  // PHASE15_VENDORID_REMEMBER: store vendor_id once then keep URL clean (/vendor-orders)
+  const [vendorId, setVendorId] = useState<string>("");
+
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const fromQuery = String(vendorIdFromQuery || "").trim();
+      const stored = String(window.localStorage.getItem("JRIDE_VENDOR_ID") || "").trim();
+      const resolved = (fromQuery || stored).trim();
+
+      if (fromQuery) {
+        window.localStorage.setItem("JRIDE_VENDOR_ID", fromQuery);
+        // Clean the page URL (do not keep vendor_id in address bar)
+        try {
+          const clean = window.location.pathname;
+          window.history.replaceState({}, "", clean);
+        } catch {}
+      }
+
+      setVendorId(resolved);
+    } catch {
+      setVendorId(String(vendorIdFromQuery || "").trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorIdFromQuery]);
+
   console.log("VendorOrders vendor_id =", vendorIdFromQuery);
   const [orders, setOrders] = useState<VendorOrder[]>([]);
 
@@ -186,10 +212,10 @@ const searchParams = useSearchParams();
 
       
 
-      if (!vendorIdFromQuery) {
-        throw new Error('vendor_id_required (append ?vendor_id=YOUR_VENDOR_UUID): open /vendor-orders?vendor_id=YOUR_VENDOR_UUID');
+      if (!vendorId) {
+        throw new Error("vendor_id_required: open /vendor-orders?vendor_id=YOUR_VENDOR_UUID once, then it will be remembered and the URL will be cleaned.");
       }
-const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorIdFromQuery), {
+const res = await fetch("/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorId), {
         method: "GET",
         headers: { "Accept": "application/json" },
       });
