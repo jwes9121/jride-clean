@@ -1,5 +1,6 @@
-﻿"use client";
+"use client";
 
+export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -8,13 +9,15 @@ type Choice = "ride" | "takeout" | "errand";
 
 export default function PassengerDashboardPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
+    const _sess: any = (useSession as any)?.() ?? {};
+  const session = _sess?.data;
+  const status = _sess?.status ?? "unknown";
 
   const authed = !!session?.user;
   const [choice, setChoice] = React.useState<Choice>("ride");
 
   function go() {
-    // Safe gating: NO JSX guard blocks. Only redirect on action.
+    // Safe gating: ONLY redirect on action (no JSX guard blocks)
     if (!authed) {
       const cb = encodeURIComponent("/passenger");
       window.location.href = "/api/auth/signin?callbackUrl=" + cb;
@@ -55,7 +58,7 @@ export default function PassengerDashboardPage() {
 
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
             {authed ? "Logged in" : "Not logged in"}
-            <span className="opacity-70"> Â· {status}</span>
+            <span className="opacity-70"> Ãƒâ€šÃ‚Â· {status}</span>
           </div>
         </div>
 
