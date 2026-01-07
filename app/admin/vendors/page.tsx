@@ -135,6 +135,16 @@ export default function VendorsPage() {
                           >
                             Open
                           </a>
+<div className="mt-2">
+  <a href={link} target="_blank" rel="noreferrer" className="inline-block">
+    <img
+      src={qrUrl(link)}
+      alt="QR"
+      className="h-[84px] w-[84px] rounded border border-black/10 bg-white"
+    />
+  </a>
+  <div className="mt-1 text-[11px] opacity-60">Scan to open</div>
+</div>
                         </div>
                         <div className="mt-1 break-all font-mono text-[11px] opacity-70">{link}</div>
                       </td>
@@ -152,4 +162,10 @@ export default function VendorsPage() {
       </div>
     </main>
   );
+}
+
+function qrUrl(text: string) {
+  // Simple remote QR generator (no deps). Treat as display only.
+  // If offline or blocked, QR just won't load (link still works).
+  return "https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=" + encodeURIComponent(text);
 }
