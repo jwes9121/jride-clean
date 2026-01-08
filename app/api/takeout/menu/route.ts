@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
     // availability flags (best-effort)
     is_available:
       (typeof r.is_available === "boolean" ? r.is_available : null) ??
+      (typeof r.is_available_today === "boolean" ? r.is_available_today : null) ??
       (typeof r.available_today === "boolean" ? r.available_today : null) ??
       (typeof r.available === "boolean" ? r.available : null) ??
       null,
