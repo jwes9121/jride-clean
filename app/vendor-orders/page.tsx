@@ -13,15 +13,27 @@ type VendorOrder = {
   totalBill: number;
   status: VendorOrderStatus;
   createdAt: string;
+  items?: SnapshotItem[] | null;
+  itemsSubtotal?: number | null;
 };
 
 type ApiOrder = {
-  id: string;
+
+type SnapshotItem = {
+  menu_item_id: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  snapshot_at?: string;
+};
+id: string;
   booking_code: string;
   customer_name: string;
   total_bill: number;
   vendor_status: VendorOrderStatus | null;
   created_at: string;
+  items?: SnapshotItem[] | null;
+  items_subtotal?: number | null;
 };
 
 type MenuItem = {
@@ -45,6 +57,14 @@ function formatAmount(n: number | null | undefined) {
   return "PHP " + v.toFixed(2);
 }
 
+
+
+function formatItemLine(it: any) {
+  const name = String(it?.name || "");
+  const qty = Number(it?.quantity || 0) || 0;
+  const price = Number(it?.price || 0) || 0;
+  return `${qty}x ${name} â€” PHP ${price.toFixed(2)}`;
+}
 function isSameLocalDay(iso: string | null | undefined) {
   if (!iso) return false;
   const d = new Date(iso);
@@ -237,6 +257,8 @@ const res = await fetch(
         bookingCode: o.booking_code,
         customerName: o.customer_name ?? "",
         totalBill: (o.total_bill ?? 0) as any,
+        items: (o as any).items ?? null,
+        itemsSubtotal: ((o as any).items_subtotal ?? null) as any,
         status: (o.vendor_status ?? "preparing") as VendorOrderStatus,
         createdAt: o.created_at,
       }));
@@ -536,8 +558,20 @@ const res = await fetch(
                       {activeOrders.map((o) => (
                         <tr key={o.id} className="hover:bg-slate-50/60">
                           <td className="px-3 py-2 font-semibold text-slate-900">{o.bookingCode}</td>
-                          <td className="px-3 py-2 text-slate-700">{o.customerName}</td>
-                          <td className="px-3 py-2 text-slate-900">{formatAmount(o.totalBill)}</td>
+                          <td className="px-3 py-2 text-slate-700">
+  <div>{o.customerName}</div>
+  {(o as any).items && Array.isArray((o as any).items) && (o as any).items.length > 0 ? (
+    <div className="mt-1 space-y-0.5 text-[11px] text-slate-500">
+      {(o as any).items.slice(0, 6).map((it: any, idx: number) => (
+        <div key={idx}>{formatItemLine(it)}</div>
+      ))}
+      {(o as any).items.length > 6 ? <div className="opacity-70">+ {(o as any).items.length - 6} moreâ€¦</div> : null}
+    </div>
+  ) : (
+    <div className="mt-1 text-[11px] text-amber-700">No snapshot items yet (Phase 2D pending)</div>
+  )}
+</td>
+                          <td className="px-3 py-2 text-slate-900">{formatAmount((o as any).itemsSubtotal ?? o.totalBill)}</td>
                           <td className="px-3 py-2">{renderStatusBadge(o.status)}</td>
                           <td className="px-3 py-2">
                             <div className="flex flex-wrap gap-1">
@@ -597,7 +631,7 @@ const res = await fetch(
                         <span className="text-slate-500">{o.customerName}</span>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold text-slate-900">{formatAmount(o.totalBill)}</div>
+                        <div className="font-semibold text-slate-900">{formatAmount((o as any).itemsSubtotal ?? o.totalBill)}</div>
                         <div className="text-[11px] text-slate-400">Completed</div>
                       </div>
                     </li>
