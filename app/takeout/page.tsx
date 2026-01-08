@@ -305,7 +305,7 @@ export default function TakeoutPage() {
     <div className="mx-auto max-w-3xl p-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-2xl font-bold">Takeout (Passenger) â€“ Phase 2B</div>
+          <div className="text-2xl font-bold">Takeout (Passenger) - Phase 2B</div>
           <div className="text-sm text-slate-600">
             Passenger sees today menu, selects items, then submits a pilot order to <code>/vendor-orders</code>.
           </div>
