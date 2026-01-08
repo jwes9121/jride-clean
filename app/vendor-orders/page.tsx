@@ -17,8 +17,6 @@ type VendorOrder = {
   itemsSubtotal?: number | null;
 };
 
-type ApiOrder = {
-
 type SnapshotItem = {
   menu_item_id: string | null;
   name: string;
@@ -26,6 +24,8 @@ type SnapshotItem = {
   quantity: number;
   snapshot_at?: string;
 };
+
+type ApiOrder = {
 id: string;
   booking_code: string;
   customer_name: string;
@@ -63,7 +63,7 @@ function formatItemLine(it: any) {
   const name = String(it?.name || "");
   const qty = Number(it?.quantity || 0) || 0;
   const price = Number(it?.price || 0) || 0;
-  return `${qty}x ${name} â€” PHP ${price.toFixed(2)}`;
+  return `${qty}x ${name} Ã¢â‚¬â€ PHP ${price.toFixed(2)}`;
 }
 function isSameLocalDay(iso: string | null | undefined) {
   if (!iso) return false;
@@ -565,7 +565,7 @@ const res = await fetch(
       {(o as any).items.slice(0, 6).map((it: any, idx: number) => (
         <div key={idx}>{formatItemLine(it)}</div>
       ))}
-      {(o as any).items.length > 6 ? <div className="opacity-70">+ {(o as any).items.length - 6} moreâ€¦</div> : null}
+      {(o as any).items.length > 6 ? <div className="opacity-70">+ {(o as any).items.length - 6} moreÃ¢â‚¬Â¦</div> : null}
     </div>
   ) : (
     <div className="mt-1 text-[11px] text-amber-700">No snapshot items yet (Phase 2D pending)</div>

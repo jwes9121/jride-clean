@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -6,7 +6,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const supabase =
   supabaseUrl && supabaseServiceKey
-    ? createClient(supabaseUrl, supabaseServiceKey)
+    ? createAdminClient(supabaseUrl, supabaseServiceKey)
     : null;
 
 function num(v: any): number {
@@ -65,7 +65,7 @@ export async function GET() {
       .limit(100);
 
     if (error) {
-      console.error("❌ orders-list error:", error);
+      console.error("Ã¢ÂÅ’ orders-list error:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
@@ -79,7 +79,7 @@ export async function GET() {
 
     return NextResponse.json({ orders });
   } catch (err: any) {
-    console.error("❌ orders-list server error:", err);
+    console.error("Ã¢ÂÅ’ orders-list server error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
