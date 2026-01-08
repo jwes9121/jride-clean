@@ -212,7 +212,14 @@ function VendorOrdersInner() {
       setIsLoading(true);
       setError(null);
 
-      const res = await fetch(
+            const v = String(vendorId || "").trim();
+      if (!v) {
+        // Do not call API until vendorId is loaded from query/localStorage
+        setError("vendor_id_required (pilot mode)");
+        setIsLoading(false);
+        return;
+      }
+const res = await fetch(
         vendorId ? "/api/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/api/vendor-orders",
         { method: "GET", headers: { Accept: "application/json" } }
       );
@@ -245,13 +252,18 @@ function VendorOrdersInner() {
   };
 
   useEffect(() => {
+  const v = String(vendorId || "").trim();
+  if (!v) return;
+
+  loadOrders().catch(() => undefined);
+
+  const t = setInterval(() => {
     loadOrders().catch(() => undefined);
-    const t = setInterval(() => {
-      loadOrders().catch(() => undefined);
-    }, 10000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, 10000);
+
+  return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [vendorId]);
 
   const renderStatusBadge = (status: VendorOrderStatus) => {
     const base = "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border";
