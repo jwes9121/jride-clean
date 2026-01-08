@@ -258,9 +258,38 @@ export default function TakeoutPage() {
       if (addrMode === "new" && saveAddr) {
         await saveAddressToDb(addressText, !!setPrimary);
         if (setPrimary) setAddrMode("saved");
-      }
+      }      // PHASE 2D: build structured items[] for snapshot lock (menu edits must NOT affect history)
+      const menuById: Record<string, any> = {};
+      try {
+        for (const m of (Array.isArray(menu) ? menu : [])) {
+          const id = String((m as any)?.menu_item_id || (m as any)?.id || "").trim();
+          if (id) menuById[id] = m;
+        }
+      } catch {}
 
-      // Snapshot payload (menu) â€” Phase 2D will lock this into bookings later
+      const itemsSnapshot = (Array.isArray(selectedLines) ? selectedLines : [])
+        .map((l: any) => {
+          const mid = String(l?.menu_item_id || l?.menuItemId || l?.id || l?.item_id || "").trim();
+          const mm = mid ? menuById[mid] : null;
+
+          const name = String(l?.name || mm?.name || "").trim();
+          const price = Number(mm?.price ?? l?.price ?? l?.unit_price ?? 0);
+          const qtyRaw = l?.quantity ?? l?.qty ?? l?.count ?? 1;
+          const qty = Math.max(1, parseInt(String(qtyRaw), 10) || 1);
+
+          if (!name) return null;
+
+          return {
+            menu_item_id: mid || null,
+            name,
+            price: Number.isFinite(price) ? price : 0,
+            quantity: qty,
+          };
+        })
+        .filter(Boolean);
+
+
+      // Snapshot payload (menu) Ã¢â‚¬â€ Phase 2D will lock this into bookings later
       const payload = {
         vendor_id: vendorId.trim(),
         vendorId: vendorId.trim(),
@@ -276,7 +305,8 @@ export default function TakeoutPage() {
         toLabel: addressText,
 
         // Human readable (helps vendor UI today)
-        items: itemsText,
+        items_text: itemsText,
+        items: itemsSnapshot,
         // JSON snapshot for future order-lock (harmless if ignored)
         items_json: itemsJson,
         itemsJson: itemsJson,
@@ -424,7 +454,7 @@ export default function TakeoutPage() {
                   </>
                 ) : (
                   <div className="text-sm text-slate-700">
-                    No saved address yet. Choose â€œEnter a new addressâ€.
+                    No saved address yet. Choose Ã¢â‚¬Å“Enter a new addressÃ¢â‚¬Â.
                   </div>
                 )}
               </div>
@@ -464,7 +494,7 @@ export default function TakeoutPage() {
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-600">
-                  Tip: â€œSet as primaryâ€ makes it the default next time.
+                  Tip: Ã¢â‚¬Å“Set as primaryÃ¢â‚¬Â makes it the default next time.
                 </div>
               </div>
             )}
@@ -503,10 +533,10 @@ export default function TakeoutPage() {
 
             {!vendorId.trim() ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
-                Paste a <b>vendor_id</b> to load todayâ€™s menu.
+                Paste a <b>vendor_id</b> to load todayÃ¢â‚¬â„¢s menu.
               </div>
             ) : menuBusy ? (
-              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menuâ€¦</div>
+              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menuÃ¢â‚¬Â¦</div>
             ) : menuSelectable.length === 0 ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
                 No menu items available today.
@@ -547,7 +577,7 @@ export default function TakeoutPage() {
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
-                          âˆ’
+                          Ã¢Ë†â€™
                         </button>
                         <input
                           className="h-8 w-14 rounded border px-2 text-center text-sm"

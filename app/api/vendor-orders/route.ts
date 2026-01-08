@@ -166,7 +166,66 @@ export async function POST(req: NextRequest) {
     const insertRow: any = { vendor_id, vendor_status, service_type: "takeout", status: "requested" };
     const { data, error } = await admin.from("bookings").insert(insertRow).select("*").single();
     if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
-    return json(200, { ok: true, action: "created", order_id: data?.id ?? null });
+        // PHASE 2D: ORDER SNAPSHOT LOCK (TAKEOUT) â€” freeze menu items per order
+    let takeoutSnapshot: any = null;
+    try {
+      const bookingId = String(data?.id ?? "");
+      const vid = String(vendor_id || "").trim();
+      const itemsIn = (Array.isArray((body as any)?.items) ? (body as any).items : []) as any[];
+
+      if (!vid || !itemsIn.length) {
+        takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Missing vendor_id or items[]" };
+      } else {
+        const rows: any[] = [];
+        let subtotal = 0;
+
+        for (const it of itemsIn) {
+          const mid = String(it?.menu_item_id || it?.menuItemId || it?.id || it?.item_id || "").trim() || null;
+          const name = String(it?.name || "").trim();
+          const price = Number(it?.price ?? 0);
+          const qty = Math.max(1, parseInt(String(it?.quantity ?? it?.qty ?? 1), 10) || 1);
+
+          if (!name) continue;
+
+          rows.push({
+            booking_id: bookingId,
+            menu_item_id: mid,
+            name,
+            price: Number.isFinite(price) ? price : 0,
+            quantity: qty,
+            snapshot_at: new Date().toISOString(),
+          });
+
+          subtotal += (Number.isFinite(price) ? price : 0) * qty;
+        }
+
+        if (!rows.length) {
+          takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "No valid items to snapshot" };
+        } else {
+          const insItems = await admin.from("takeout_order_items").insert(rows);
+          if (insItems?.error) {
+            takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Insert failed: " + insItems.error.message };
+          } else {
+            // lock totals onto booking
+            const up = await admin
+              .from("bookings")
+              .update({ service_type: "takeout", takeout_items_subtotal: subtotal })
+              .eq("id", bookingId);
+
+            takeoutSnapshot = {
+              ok: !up?.error,
+              inserted: rows.length,
+              subtotal,
+              note: up?.error ? ("Subtotal update failed: " + up.error.message) : "OK",
+            };
+          }
+        }
+      }
+    } catch (e: any) {
+      takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Snapshot exception: " + String(e?.message || e) };
+    }
+
+    return json(200, { ok: true, action: "created", order_id: data?.id ?? null, takeoutSnapshot });
   }
 
   const { data, error } = await admin
