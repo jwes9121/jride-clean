@@ -307,8 +307,7 @@ const ua = String((navigator as any)?.userAgent || "");
       try {
         const anyNav: any = navigator as any;
         if (anyNav && anyNav.permissions && anyNav.permissions.query) {
-          const st = await anyNav.permissions.query({ name: "geolocation" }
-as any);
+          const st = await anyNav.permissions.query({ name: "geolocation" } as any);
           const s = String(st?.state || "");
           if (s === "granted") setGeoPermission("granted");
           else if (s === "denied") setGeoPermission("denied");
