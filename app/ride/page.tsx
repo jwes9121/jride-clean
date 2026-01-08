@@ -1351,24 +1351,35 @@ if (!can.ok) {
       if (!isTakeout) return base;
 
       // Best-effort: read from in-scope variables if they exist
-      const scope: any = {
-        vendorId: (typeof (vendorId as any) !== "undefined" ? (vendorId as any) : null),
-        vendor_id: (typeof (vendor_id as any) !== "undefined" ? (vendor_id as any) : null),
-        activeVendorId: (typeof (activeVendorId as any) !== "undefined" ? (activeVendorId as any) : null),
-        selectedVendorId: (typeof (selectedVendorId as any) !== "undefined" ? (selectedVendorId as any) : null),
-        vendor: (typeof (vendor as any) !== "undefined" ? (vendor as any) : null),
+      const scope: any = (() => {
+        // Only use base payload + safe global/window reads. Never reference undeclared identifiers.
+        let g: any = {};
+        try { g = (globalThis as any) || {}; } catch { g = {}; }
+        const w: any = (g && g.window) ? g.window : g;
+        const cache: any = (w && (w.__JRIDE_TAKEOUT__ || w.__JRIDE__ || w.JRIDE || null)) || null;
 
-        takeoutCart: (typeof (takeoutCart as any) !== "undefined" ? (takeoutCart as any) : null),
-        cart: (typeof (cart as any) !== "undefined" ? (cart as any) : null),
-        orderItems: (typeof (orderItems as any) !== "undefined" ? (orderItems as any) : null),
-        items: (typeof (items as any) !== "undefined" ? (items as any) : null),
-        takeoutItems: (typeof (takeoutItems as any) !== "undefined" ? (takeoutItems as any) : null),
-        menuItems: (typeof (menuItems as any) !== "undefined" ? (menuItems as any) : null),
-        cartItems: (typeof (cartItems as any) !== "undefined" ? (cartItems as any) : null),
-      };
+        return {
+          // vendor candidates
+          vendorId: cache?.vendorId ?? cache?.vendor_id ?? null,
+          vendor_id: cache?.vendor_id ?? cache?.vendorId ?? null,
+          activeVendorId: cache?.activeVendorId ?? null,
+          selectedVendorId: cache?.selectedVendorId ?? null,
+          vendor: cache?.vendor ?? null,
 
-      const vid = String((base as any).vendor_id || (base as any).vendorId || jridePhase2dVendorIdFromAny(scope) || "").trim();
-      const arr = (Array.isArray((base as any).items) && (base as any).items.length) ? (base as any).items : jridePhase2dItemsFromAny(scope);
+          // items candidates
+          takeoutCart: cache?.takeoutCart ?? null,
+          cart: cache?.cart ?? null,
+          orderItems: cache?.orderItems ?? null,
+          items: cache?.items ?? null,
+          takeoutItems: cache?.takeoutItems ?? null,
+          menuItems: cache?.menuItems ?? null,
+          cartItems: cache?.cartItems ?? null,
+          takeout_cart: cache?.takeout_cart ?? null,
+          takeout_items: cache?.takeout_items ?? null,
+        };
+      })();
+
+      const vid = String((base as any).vendor_id || (base as any).vendorId || jridePhase2dVendorIdFromAny(scope) || "").trim();const arr = (Array.isArray((base as any).items) && (base as any).items.length) ? (base as any).items : jridePhase2dItemsFromAny(scope);
       const norm = jridePhase2dNormalizeItems(arr);
 
       const out: any = { ...base };
