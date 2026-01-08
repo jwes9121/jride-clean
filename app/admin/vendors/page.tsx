@@ -59,7 +59,7 @@ export default function VendorsPage() {
         throw new Error(j?.message || j?.error || "Failed to seed menu item");
       }
 
-      setSeedMsg((m) => ({ ...m, [vendorId]: "Added âœ“" }));
+      setSeedMsg((m) => ({ ...m, [vendorId]: "Added OK" }));
       setSeedName((s) => ({ ...s, [vendorId]: "" }));
       setSeedPrice((s) => ({ ...s, [vendorId]: "" }));
       setSeedDesc((s) => ({ ...s, [vendorId]: "" }));
