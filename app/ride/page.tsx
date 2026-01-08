@@ -1,7 +1,40 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+
+
+/* PHASE2D_TAKEOUT_PAYLOAD_HELPER_BEGIN */
+function jridePhase2dPick(obj: any, keys: string[]) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k) && (obj as any)[k] != null) return (obj as any)[k];
+  }
+  return null;
+}
+function jridePhase2dItemsFromAny(anyScope: any): any[] {
+  const cands = [
+    jridePhase2dPick(anyScope, ["takeoutCart","cart","orderItems","items","takeoutItems","menuItems"]),
+    jridePhase2dPick(anyScope, ["cartItems","takeout_cart","takeout_items"]),
+  ];
+  for (const c of cands) if (Array.isArray(c) && c.length) return c;
+  return [];
+}
+function jridePhase2dVendorIdFromAny(anyScope: any): string {
+  const v = jridePhase2dPick(anyScope, ["vendorId","vendor_id","activeVendorId","selectedVendorId","vendor"]);
+  return String(v || "").trim();
+}
+function jridePhase2dNormalizeItems(items: any[]): any[] {
+  return (items || [])
+    .map((it: any) => {
+      const menu_item_id = String(it?.menu_item_id || it?.menuItemId || it?.id || it?.item_id || it?.itemId || "").trim();
+      const quantity = Math.max(1, parseInt(String(it?.quantity ?? it?.qty ?? it?.count ?? 1), 10) || 1);
+      const name = it?.name ?? it?.title ?? it?.label ?? null;
+      const price = (typeof it?.price === "number" ? it.price : (it?.unit_price ?? it?.unitPrice ?? null));
+      return menu_item_id ? { menu_item_id, quantity, name, price } : null;
+    })
+    .filter(Boolean);
+}
+/* PHASE2D_TAKEOUT_PAYLOAD_HELPER_END */
 
 type CanBookInfo = {
   ok?: boolean;
@@ -105,8 +138,7 @@ export default function RidePage() {
   function isPilotTown(t: string): boolean {
     return PILOT_TOWNS.indexOf((String(t || "").trim() as any)) >= 0;
   }
-
-  const [passengerName, setPassengerName] = React.useState("Test Passenger A");
+const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
   // Phase 12A (UI-only): Vehicle type + passenger count
   const [vehicleType, setVehicleType] = React.useState<"tricycle" | "motorcycle">("tricycle");
@@ -211,8 +243,7 @@ export default function RidePage() {
         setGeoCheckedAt(Date.now());
         return;
       }
-
-      const ua = String((navigator as any)?.userAgent || "");
+const ua = String((navigator as any)?.userAgent || "");
       const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
 
       // IMPORTANT: call getCurrentPosition immediately (no await / no permission query first)
@@ -276,7 +307,8 @@ export default function RidePage() {
       try {
         const anyNav: any = navigator as any;
         if (anyNav && anyNav.permissions && anyNav.permissions.query) {
-          const st = await anyNav.permissions.query({ name: "geolocation" } as any);
+          const st = await anyNav.permissions.query({ name: "geolocation" }
+as any);
           const s = String(st?.state || "");
           if (s === "granted") setGeoPermission("granted");
           else if (s === "denied") setGeoPermission("denied");
@@ -432,7 +464,8 @@ const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
     try {
       if (!map) return;
       if (!map.getSource(ROUTE_SOURCE_ID)) {
-        map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: routeGeoRef.current });
+        map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: routeGeoRef.current }
+);
       }
       if (!map.getLayer(ROUTE_LAYER_ID)) {
         map.addLayer({
@@ -453,7 +486,8 @@ const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
       if (!map) return;
       const src = map.getSource(ROUTE_SOURCE_ID);
       if (src && src.setData) src.setData(geo);
-    } catch {
+    }
+catch {
       // ignore
     }
   }
@@ -468,8 +502,7 @@ const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
       if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
       return;
     }
-
-    if (!hasBothPoints()) {
+if (!hasBothPoints()) {
       setRouteInfo(null);
       routeGeoRef.current = emptyRouteGeo();
       if (mapRef.current) pushRouteToMap(mapRef.current, routeGeoRef.current);
@@ -736,7 +769,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
           if (field === "from") setFromLabel(nm);
           else setToLabel(nm);
         }
-      }
+}
     }
 
     if (!c || c.length !== 2) return;
@@ -789,7 +822,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
           return (
             <button
               key={(f.id || "") + "_" + String(idx)}
-              type="button"
+type="button"
               className={cls}
               onMouseEnter={() => {
                 if (field === "from") setGeoNavFromIdx(idx);
@@ -863,8 +896,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
         setGeoErr("Map picker requires Mapbox token. Set NEXT_PUBLIC_MAPBOX_TOKEN (or NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN).");
         return;
       }
-
-      if (!mbRef.current) {
+if (!mbRef.current) {
         try {
           const mb = await import("mapbox-gl");
           mbRef.current = mb;
@@ -1003,7 +1035,8 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
 
 
   async function getJson(url: string) {
-    const r = await fetch(url, { method: "GET", cache: "no-store" });
+    const r = await fetch(url, { method: "GET", cache: "no-store" }
+);
     const j = (await r.json().catch(() => ({}))) as any;
     return { ok: r.ok, status: r.status, json: j };
   }
@@ -1011,7 +1044,8 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
   async function postJson(url: string, body: any) {
     const r = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json" }
+,
       body: JSON.stringify(body),
       cache: "no-store",
     });
@@ -1028,7 +1062,7 @@ async function geocodeReverse(lng: number, lat: number): Promise<string> {
         setCanInfo(null);
         return;
       }
-      setCanInfo(r.json as CanBookInfo);
+setCanInfo(r.json as CanBookInfo);
       // AUTO_CLOSE_VERIFY_PANEL_ON_REFRESH
       try {
         const st = String((r.json as any)?.verification_status || "").toLowerCase();
@@ -1089,8 +1123,7 @@ React.useEffect(() => {
           setLiveErr("BOOKING_POLL_FAILED: " + msg);
           return;
         }
-
-        const j = resp.json || {};
+const j = resp.json || {};
         const b = (j.booking || (j.data && j.data.booking) || (j.payload && j.payload.booking) || j) as any;
 
         const st = String((b && b.status) ? b.status : (j.status || "")) || "";
@@ -1135,7 +1168,7 @@ React.useEffect(() => {
           "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold " +
           (good ? "bg-green-600 text-white" : "bg-slate-200 text-slate-800")
         }
-      >
+>
         {text}
       </span>
     );
@@ -1223,7 +1256,7 @@ function blockTitle(): string {
         setTimeout(() => setCopied(false), 1500);
         return;
       }
-    } catch {
+} catch {
       // ignore
     }
     try {
@@ -1253,7 +1286,7 @@ function blockTitle(): string {
       setBusy(false);
       return;
     }
-    if (pax > maxPax) {
+if (pax > maxPax) {
       setResult("Too many passengers for " + v + ". Max is " + String(maxPax) + ".");
       setBusy(false);
       return;
@@ -1300,7 +1333,8 @@ if (!can.ok) {
       }
 
       // 2) Create booking (no debug flags)
-      const book = await postJson("/api/public/passenger/book", {
+      const book = await postJson("/api/public/passenger/book", (() => {
+      const base: any = {
         passenger_name: passengerName,
         town,
         from_label: fromLabel,
@@ -1311,7 +1345,39 @@ if (!can.ok) {
         dropoff_lng: numOrNull(dropLng),
         service: "ride",
       local_verification_code: hasLocalVerify() ? localVerify : undefined,
-        });
+        };
+      // Phase 2D: ensure takeout submits vendor_id + items[] for snapshot lock
+      const svc = String((base as any).service || (base as any).service_type || (base as any).serviceType || "").toLowerCase();
+      const isTakeout = svc.includes("takeout") || (base as any).vendor_id || (base as any).vendorId;
+      if (!isTakeout) return base;
+
+      // Best-effort: read from in-scope variables if they exist
+      const scope: any = {
+        vendorId: (typeof (vendorId as any) !== "undefined" ? (vendorId as any) : null),
+        vendor_id: (typeof (vendor_id as any) !== "undefined" ? (vendor_id as any) : null),
+        activeVendorId: (typeof (activeVendorId as any) !== "undefined" ? (activeVendorId as any) : null),
+        selectedVendorId: (typeof (selectedVendorId as any) !== "undefined" ? (selectedVendorId as any) : null),
+        vendor: (typeof (vendor as any) !== "undefined" ? (vendor as any) : null),
+
+        takeoutCart: (typeof (takeoutCart as any) !== "undefined" ? (takeoutCart as any) : null),
+        cart: (typeof (cart as any) !== "undefined" ? (cart as any) : null),
+        orderItems: (typeof (orderItems as any) !== "undefined" ? (orderItems as any) : null),
+        items: (typeof (items as any) !== "undefined" ? (items as any) : null),
+        takeoutItems: (typeof (takeoutItems as any) !== "undefined" ? (takeoutItems as any) : null),
+        menuItems: (typeof (menuItems as any) !== "undefined" ? (menuItems as any) : null),
+        cartItems: (typeof (cartItems as any) !== "undefined" ? (cartItems as any) : null),
+      };
+
+      const vid = String((base as any).vendor_id || (base as any).vendorId || jridePhase2dVendorIdFromAny(scope) || "").trim();
+      const arr = (Array.isArray((base as any).items) && (base as any).items.length) ? (base as any).items : jridePhase2dItemsFromAny(scope);
+      const norm = jridePhase2dNormalizeItems(arr);
+
+      const out: any = { ...base };
+      out.service = "takeout";
+      if (vid) out.vendor_id = vid;
+      if (norm.length) out.items = norm;
+      return out;
+    })());
 
       if (!book.ok) {
         const bj = (book.json || {}) as BookResp;
