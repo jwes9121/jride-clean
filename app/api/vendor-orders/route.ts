@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   // - If authed: allow.
   // - If NOT authed: still allow, BUT vendor_id must be present (private link acts as the "key").
   const authed = await isAuthedWithEither(supabase);
-  if (!authed && !vendor_id) {
+  if (!vendor_id) {
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required (pilot mode)" });
   }
 
