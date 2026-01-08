@@ -8,40 +8,48 @@ function cls(...s: Array<string | false | null | undefined>) {
   return s.filter(Boolean).join(" ");
 }
 
-type SavedAddress = {
-  id: string; // local id
+type AddressRow = {
+  id: string;
   label?: string | null;
-  address: string;
-  is_primary?: boolean;
+  address_text: string;
+  landmark?: string | null;
+  notes?: string | null;
+  is_primary: boolean;
   updated_at?: string | null;
 };
 
-const LS_ADDRS = "JRIDE_PAX_ADDRS_V1";
+const LS_DEVICE_KEY = "JRIDE_PAX_DEVICE_KEY";
 
-function safeJsonParse<T>(v: string | null, fallback: T): T {
-  try {
-    if (!v) return fallback;
-    return JSON.parse(v) as T;
-  } catch {
-    return fallback;
+function getOrCreateDeviceKey(): string {
+  if (typeof window === "undefined") return "";
+  const existing = String(window.localStorage.getItem(LS_DEVICE_KEY) || "").trim();
+  if (existing) return existing;
+
+  const key = "dev_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+  window.localStorage.setItem(LS_DEVICE_KEY, key);
+  return key;
+}
+
+async function getJson(url: string) {
+  const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || (j && j.ok === false)) {
+    throw new Error(j?.message || j?.error || ("HTTP " + res.status));
   }
+  return j;
 }
 
-function loadSavedAddresses(): SavedAddress[] {
-  if (typeof window === "undefined") return [];
-  const arr = safeJsonParse<SavedAddress[]>(window.localStorage.getItem(LS_ADDRS), []);
-  return Array.isArray(arr) ? arr.filter(Boolean) : [];
-}
-
-function saveSavedAddresses(addrs: SavedAddress[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(LS_ADDRS, JSON.stringify(addrs || []));
-}
-
-function getPrimary(addrs: SavedAddress[]): SavedAddress | null {
-  if (!addrs?.length) return null;
-  const p = addrs.find((a) => a?.is_primary);
-  return p || addrs[0] || null;
+async function postJson(url: string, body: any) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || (j && j.ok === false)) {
+    throw new Error(j?.message || j?.error || ("HTTP " + res.status));
+  }
+  return j;
 }
 
 export default function TakeoutPage() {
@@ -49,14 +57,18 @@ export default function TakeoutPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
-  // Phase 2B.0 - address choice
-  const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
+  // Phase 2B.0 - DB-backed address choice (pilot via device_key)
+  const [deviceKey, setDeviceKey] = useState("");
   const [addrMode, setAddrMode] = useState<"saved" | "new">("saved");
+  const [saved, setSaved] = useState<AddressRow[]>([]);
+  const [addrBusy, setAddrBusy] = useState(false);
+  const [addrErr, setAddrErr] = useState<string | null>(null);
+
   const [newAddr, setNewAddr] = useState("");
   const [saveAddr, setSaveAddr] = useState(true);
   const [setPrimary, setSetPrimary] = useState(true);
 
-  // Keep for backwards compatibility (we still send delivery_address variants)
+  // Pilot payload fields
   const [items, setItems] = useState("");
   const [note, setNote] = useState("");
 
@@ -64,79 +76,64 @@ export default function TakeoutPage() {
   const [result, setResult] = useState<string>("");
   const [lastJson, setLastJson] = useState<ApiResp | null>(null);
 
-  useEffect(() => {
-    const arr = loadSavedAddresses();
-    setSavedAddrs(arr);
-    // If no saved, default to "new"
-    if (!arr.length) setAddrMode("new");
-  }, []);
-
-  const primaryAddr = useMemo(() => getPrimary(savedAddrs), [savedAddrs]);
+  const primary = useMemo(() => saved.find((a) => a.is_primary) || saved[0] || null, [saved]);
 
   const resolvedDeliveryAddress = useMemo(() => {
-    if (addrMode === "saved") return (primaryAddr?.address || "").trim();
+    if (addrMode === "saved") return (primary?.address_text || "").trim();
     return (newAddr || "").trim();
-  }, [addrMode, primaryAddr, newAddr]);
+  }, [addrMode, primary, newAddr]);
 
   const canSubmit = useMemo(() => {
     const hasVendor = vendorId.trim().length > 0;
     const hasName = customerName.trim().length > 0;
     const hasItems = items.trim().length > 0;
-    const hasAddr = resolvedDeliveryAddress.length > 0; // require address for takeout
+    const hasAddr = resolvedDeliveryAddress.length > 0;
     return hasVendor && hasName && hasItems && hasAddr && !busy;
   }, [vendorId, customerName, items, resolvedDeliveryAddress, busy]);
 
-  async function postJson(url: string, body: any) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok || (j && j.ok === false)) {
-      const msg = j?.message || j?.error || ("HTTP " + res.status);
-      throw new Error(msg);
+  async function refreshAddresses(k?: string) {
+    const dk = String(k || deviceKey || "").trim();
+    if (!dk) return;
+    setAddrBusy(true);
+    setAddrErr(null);
+    try {
+      const j = await getJson("/api/passenger-addresses?device_key=" + encodeURIComponent(dk));
+      const rows = Array.isArray(j?.addresses) ? (j.addresses as AddressRow[]) : [];
+      setSaved(rows);
+      if (!rows.length) setAddrMode("new");
+    } catch (e: any) {
+      setAddrErr(String(e?.message || e || "Failed to load addresses"));
+      setSaved([]);
+      setAddrMode("new");
+    } finally {
+      setAddrBusy(false);
     }
-    return j;
   }
 
-  function upsertLocalAddress(addressText: string, makePrimary: boolean) {
+  useEffect(() => {
+    const dk = getOrCreateDeviceKey();
+    setDeviceKey(dk);
+    refreshAddresses(dk).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function saveAddressToDb(addressText: string, makePrimary: boolean) {
     const addr = String(addressText || "").trim();
-    if (!addr) return;
+    if (!addr) throw new Error("Address required");
 
-    const nowIso = new Date().toISOString();
-    let next = [...(savedAddrs || [])];
+    await postJson("/api/passenger-addresses", {
+      device_key: deviceKey,
+      address_text: addr,
+      is_primary: makePrimary,
+    });
 
-    // De-dupe by exact text
-    const existingIdx = next.findIndex((a) => String(a?.address || "").trim().toLowerCase() === addr.toLowerCase());
-    if (existingIdx >= 0) {
-      next[existingIdx] = {
-        ...next[existingIdx],
-        address: addr,
-        updated_at: nowIso,
-      };
-      if (makePrimary) {
-        next = next.map((a, i) => ({ ...a, is_primary: i === existingIdx }));
-      }
-    } else {
-      const id = "addr_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
-      const row: SavedAddress = {
-        id,
-        label: null,
-        address: addr,
-        is_primary: makePrimary || next.length === 0,
-        updated_at: nowIso,
-      };
-      if (makePrimary) {
-        next = next.map((a) => ({ ...a, is_primary: false }));
-      }
-      next.unshift(row);
-      // Ensure exactly one primary
-      if (!next.some((a) => a.is_primary)) next[0].is_primary = true;
-    }
+    await refreshAddresses(deviceKey);
+  }
 
-    setSavedAddrs(next);
-    saveSavedAddresses(next);
+  async function makePrimaryExisting(id: string) {
+    const row = saved.find((a) => a.id === id);
+    if (!row) return;
+    await saveAddressToDb(row.address_text, true);
   }
 
   async function submit() {
@@ -147,18 +144,17 @@ export default function TakeoutPage() {
 
       const addressText = resolvedDeliveryAddress;
 
-      // Persist locally if requested (ONLY in "new" mode)
+      // Persist to DB if requested (ONLY in "new" mode)
       if (addrMode === "new" && saveAddr) {
-        upsertLocalAddress(addressText, !!setPrimary);
+        await saveAddressToDb(addressText, !!setPrimary);
+        if (setPrimary) setAddrMode("saved");
       }
 
-      // Flexible payload:
-      // - For current bookings schema: use to_label (delivery) and optionally dropoff coords later.
-      // - Keep legacy delivery_address keys for forwards compatibility.
+      // For your current bookings schema, best safe place is to_label (delivery address).
+      // Also include future-safe keys.
       const payload = {
         vendor_id: vendorId.trim(),
         vendorId: vendorId.trim(),
-
         service_type: "takeout",
         vendor_status: "preparing",
 
@@ -167,11 +163,8 @@ export default function TakeoutPage() {
         customer_phone: customerPhone.trim(),
         customerPhone: customerPhone.trim(),
 
-        // Best match to current bookings schema:
         to_label: addressText,
         toLabel: addressText,
-
-        // Backwards / future-safe keys:
         delivery_address: addressText,
         deliveryAddress: addressText,
 
@@ -185,12 +178,7 @@ export default function TakeoutPage() {
       const maybeId =
         j?.order_id || j?.orderId || j?.booking_id || j?.bookingId || j?.id || "";
 
-      setResult(
-        "Created takeout order successfully." +
-          (maybeId ? " ID: " + String(maybeId) : "")
-      );
-
-      // If new mode, keep new address filled (helps repeated tests)
+      setResult("Created takeout order successfully." + (maybeId ? " ID: " + String(maybeId) : ""));
     } catch (e: any) {
       setResult("Create takeout order failed: " + (e?.message || "Unknown error"));
     } finally {
@@ -244,9 +232,19 @@ export default function TakeoutPage() {
             />
           </div>
 
-          {/* PHASE2B0_ADDRESS_PICKER */}
+          {/* PHASE2B0_ADDRESS_PICKER_DB */}
           <div className="md:col-span-2">
-            <label className="text-xs font-medium text-slate-700">Delivery address (required)</label>
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-medium text-slate-700">Delivery address (required)</label>
+              <button
+                type="button"
+                onClick={() => refreshAddresses().catch(() => undefined)}
+                className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                disabled={addrBusy}
+              >
+                {addrBusy ? "Refreshing..." : "Refresh saved"}
+              </button>
+            </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
               <label className="inline-flex items-center gap-2">
@@ -255,7 +253,7 @@ export default function TakeoutPage() {
                   name="addrMode"
                   checked={addrMode === "saved"}
                   onChange={() => setAddrMode("saved")}
-                  disabled={savedAddrs.length === 0}
+                  disabled={saved.length === 0}
                 />
                 <span>Use saved address</span>
               </label>
@@ -271,16 +269,41 @@ export default function TakeoutPage() {
               </label>
             </div>
 
+            {addrErr ? (
+              <div className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">
+                {addrErr}
+              </div>
+            ) : null}
+
             {addrMode === "saved" ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm">
-                {primaryAddr ? (
+                {primary ? (
                   <>
-                    <div className="text-xs font-semibold text-slate-700">
-                      Primary address on this device
-                    </div>
-                    <div className="mt-1 text-sm text-slate-900">{primaryAddr.address}</div>
+                    <div className="text-xs font-semibold text-slate-700">Primary address</div>
+                    <div className="mt-1 text-sm text-slate-900">{primary.address_text}</div>
+
+                    {saved.length > 1 ? (
+                      <div className="mt-3">
+                        <div className="text-[11px] font-medium text-slate-600">Other saved addresses</div>
+                        <div className="mt-2 space-y-2">
+                          {saved.filter((a) => a.id !== primary.id).slice(0, 5).map((a) => (
+                            <div key={a.id} className="flex items-start justify-between gap-2 rounded border bg-white p-2">
+                              <div className="text-xs text-slate-800">{a.address_text}</div>
+                              <button
+                                type="button"
+                                onClick={() => makePrimaryExisting(a.id).catch(() => undefined)}
+                                className="shrink-0 rounded border px-2 py-1 text-[11px] hover:bg-black/5"
+                              >
+                                Make primary
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div className="mt-2 text-[11px] text-slate-600">
-                      (Pilot mode: saved on this device only)
+                      (Pilot mode: tied to this device key)
                     </div>
                   </>
                 ) : (
@@ -335,6 +358,10 @@ export default function TakeoutPage() {
                 Using: <span className="font-semibold">{resolvedDeliveryAddress}</span>
               </div>
             ) : null}
+
+            <div className="mt-2 text-[11px] text-slate-500">
+              Device key: <code>{deviceKey || "..."}</code>
+            </div>
           </div>
 
           <div className="md:col-span-2">
