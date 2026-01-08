@@ -4,6 +4,93 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
+
+/* PHASE2D_VENDOR_ORDERS_SNAPSHOT_BEGIN */
+function phase2dNum(v: any): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+function phase2dPickItemsArray(body: any): any[] {
+  const cands = [body?.items, body?.cart, body?.order_items, body?.takeout_items, body?.menu_snapshot];
+  for (const x of cands) if (Array.isArray(x) && x.length) return x;
+  return [];
+}
+function phase2dPickId(it: any): string {
+  return String(it?.menu_item_id || it?.menuItemId || it?.id || it?.item_id || it?.itemId || "").trim();
+}
+function phase2dPickQty(it: any): number {
+  const q = parseInt(String(it?.quantity ?? it?.qty ?? it?.count ?? 1), 10);
+  return Number.isFinite(q) && q > 0 ? q : 1;
+}
+function phase2dPickName(it: any): string {
+  return String(it?.name || it?.title || it?.label || "").trim();
+}
+function phase2dPickPrice(it: any): number {
+  return phase2dNum(it?.price ?? it?.unit_price ?? it?.unitPrice ?? it?.amount ?? 0);
+}
+async function phase2dFetchMenuRowsForVendor(admin: any, vendorId: string): Promise<any[]> {
+  const tables = ["vendor_menu_items", "takeout_menu_items", "menu_items", "vendor_menu"];
+  for (const t of tables) {
+    try {
+      let r = await admin.from(t).select("*").eq("vendor_id", vendorId).limit(2000);
+      if (r?.error) r = await admin.from(t).select("*").limit(2000);
+      if (!r?.error && Array.isArray(r.data)) return r.data;
+    } catch {}
+  }
+  return [];
+}
+function phase2dMenuById(menuRows: any[]): Record<string, any> {
+  const m: Record<string, any> = {};
+  for (const r of (menuRows || [])) {
+    const id = String(r?.menu_item_id || r?.id || r?.item_id || r?.menuItemId || "").trim();
+    if (id) m[id] = r;
+  }
+  return m;
+}
+
+async function phase2dSnapshotTakeout(admin: any, bookingId: string, vendorId: string, body: any) {
+  const itemsIn = phase2dPickItemsArray(body);
+  if (!vendorId || !itemsIn.length) return { ok: false, inserted: 0, subtotal: 0, note: "Missing vendor_id or items[]" };
+
+  const menuRows = await phase2dFetchMenuRowsForVendor(admin, vendorId);
+  const byId = phase2dMenuById(menuRows);
+
+  const rows: any[] = [];
+  let subtotal = 0;
+
+  for (const it of itemsIn) {
+    const mid = phase2dPickId(it);
+    const qty = phase2dPickQty(it);
+
+    const mr = mid ? byId[mid] : null;
+    const name = String((mr?.name ?? mr?.item_name ?? mr?.title) ?? phase2dPickName(it) ?? "").trim();
+    const price = phase2dNum((mr?.price ?? mr?.unit_price ?? mr?.amount) ?? phase2dPickPrice(it) ?? 0);
+
+    if (!name) continue;
+
+    rows.push({
+      booking_id: bookingId,
+      menu_item_id: mid || null,
+      name,
+      price,
+      quantity: qty,
+      snapshot_at: new Date().toISOString(),
+    });
+
+    subtotal += price * qty;
+  }
+
+  if (!rows.length) return { ok: false, inserted: 0, subtotal: 0, note: "No valid items to snapshot" };
+
+  const ins = await admin.from("takeout_order_items").insert(rows);
+  if (ins?.error) return { ok: false, inserted: 0, subtotal: 0, note: "Snapshot insert failed: " + ins.error.message };
+
+  const up = await admin.from("bookings").update({ takeout_items_subtotal: subtotal, service_type: "takeout" }).eq("id", bookingId);
+  if (up?.error) return { ok: true, inserted: rows.length, subtotal, note: "Subtotal update failed: " + up.error.message };
+
+  return { ok: true, inserted: rows.length, subtotal };
+}
+/* PHASE2D_VENDOR_ORDERS_SNAPSHOT_END */
 export const dynamic = "force-dynamic";
 
 function json(status: number, payload: any) {
@@ -166,7 +253,22 @@ export async function POST(req: NextRequest) {
     const insertRow: any = { vendor_id, vendor_status, service_type: "takeout", status: "requested" };
     const { data, error } = await admin.from("bookings").insert(insertRow).select("*").single();
     if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
-    return json(200, { ok: true, action: "created", order_id: data?.id ?? null });
+
+    const bookingId = String(data?.id ?? "").trim();
+
+    // PHASE2D: snapshot lock (items frozen per order + subtotal stored on booking)
+    let takeoutSnapshot: any = null;
+    try {
+      if (bookingId) {
+        takeoutSnapshot = await phase2dSnapshotTakeout(admin, bookingId, vendor_id, body as any);
+      } else {
+        takeoutSnapshot = { ok: false, note: "Missing bookingId after insert" };
+      }
+    } catch (e: any) {
+      takeoutSnapshot = { ok: false, note: "Snapshot threw: " + String(e?.message || e) };
+    }
+
+    return json(200, { ok: true, action: "created", order_id: data?.id ?? null, takeoutSnapshot });
   }
 
   const { data, error } = await admin
