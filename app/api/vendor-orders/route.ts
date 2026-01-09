@@ -242,26 +242,62 @@ export async function POST(req: NextRequest) {
 
   const subtotal = computeSubtotal(items);
 
-  // Create booking row
-  const ins = await admin
-    .from("bookings")
-    .insert({
-      vendor_id,
-      service_type: "takeout",
-      vendor_status,
-      status: "requested",
+  // Create booking row (schema-safe: auto-drop unknown columns and retry)
+  async function insertBookingSchemaSafe(initial: Record<string, any>) {
+    // Keep a mutable copy
+    let payload: Record<string, any> = { ...initial };
 
-      rider_name: customer_name || null,
-      rider_phone: customer_phone || null,
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const res = await admin!.from("bookings").insert(payload).select("*").single();
 
-      // Map delivery address to existing schema (dropoff_label is common in bookings)
-      dropoff_label: to_label || null,
+      if (!res.error) return res;
 
-      // Phase 2D requirement
-      takeout_items_subtotal: subtotal,
-    })
-    .select("*")
-    .single();
+      const msg = String((res.error as any)?.message || "");
+
+      // Supabase schema cache error pattern
+      const m = msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i);
+      if (m && m[1]) {
+        const col = String(m[1]);
+        // Remove unknown column and retry
+        delete (payload as any)[col];
+        continue;
+      }
+
+      // Any other DB error: stop
+      return res;
+    }
+
+    return {
+      data: null,
+      error: { message: "DB_ERROR: schema-safe insert retries exceeded" },
+    } as any;
+  }
+
+  const createPayload: Record<string, any> = {
+    // Likely required / core
+    vendor_id,
+    service_type: "takeout",
+    vendor_status,
+    status: "requested",
+
+    // Optional fields (will be auto-dropped if columns don't exist)
+    rider_name: customer_name || null,
+    rider_phone: customer_phone || null,
+
+    customer_name: customer_name || null,
+    customer_phone: customer_phone || null,
+
+    to_label: to_label || null,
+    dropoff_label: to_label || null,
+
+    note: note || null,
+    items_text: items_text || null,
+
+    // Phase 2D requirement
+    takeout_items_subtotal: subtotal,
+  };
+
+  const ins = await insertBookingSchemaSafe(createPayload);
 
   if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
 
@@ -282,7 +318,7 @@ export async function POST(req: NextRequest) {
       // Ensure booking subtotal is set (repair only; do not re-snapshot)
       const cur = toNum((ins.data as any)?.takeout_items_subtotal);
       if (!(cur > 0) && subtotal > 0) {
-        await admin.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
+        await admin!.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
       }
       takeoutSnapshot = { ok: true, inserted: 0, subtotal, note: "already_snapshotted" };
     } else {
