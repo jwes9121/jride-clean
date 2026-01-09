@@ -63,7 +63,8 @@ function formatItemLine(it: any) {
   const name = String(it?.name || "");
   const qty = Number(it?.quantity || 0) || 0;
   const price = Number(it?.price || 0) || 0;
-  return `${qty}x ${name} Ã¢â‚¬â€ PHP ${price.toFixed(2)}`;
+  // ASCII-only separator to prevent mojibake regressions
+  return `${qty}x ${name} - PHP ${price.toFixed(2)}`;
 }
 function isSameLocalDay(iso: string | null | undefined) {
   if (!iso) return false;
