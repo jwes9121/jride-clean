@@ -577,8 +577,8 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
 
     dropoff_lng: dropLL.lng,
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
+    // bookings has 'town' column (no 'zone' column) â€” keep town only
     town: deriveTownFromLatLng(vendorLL.lat, vendorLL.lng),
-    zone: deriveZoneFromTown(deriveTownFromLatLng(vendorLL.lat, vendorLL.lng)),
 
 
 
