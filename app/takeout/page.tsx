@@ -454,7 +454,7 @@ export default function TakeoutPage() {
                   </>
                 ) : (
                   <div className="text-sm text-slate-700">
-                    No saved address yet. Choose Ã¢â‚¬Å“Enter a new addressÃ¢â‚¬Â.
+                    No saved address yet. Choose "Enter a new addressÃ¢â‚¬Â.
                   </div>
                 )}
               </div>
@@ -494,7 +494,7 @@ export default function TakeoutPage() {
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-600">
-                  Tip: Ã¢â‚¬Å“Set as primaryÃ¢â‚¬Â makes it the default next time.
+                  Tip: "Set as primaryÃ¢â‚¬Â makes it the default next time.
                 </div>
               </div>
             )}
@@ -533,10 +533,10 @@ export default function TakeoutPage() {
 
             {!vendorId.trim() ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
-                Paste a <b>vendor_id</b> to load todayÃ¢â‚¬â„¢s menu.
+                Paste a <b>vendor_id</b> to load today's menu.
               </div>
             ) : menuBusy ? (
-              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menuÃ¢â‚¬Â¦</div>
+              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menu...</div>
             ) : menuSelectable.length === 0 ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
                 No menu items available today.
@@ -577,7 +577,7 @@ export default function TakeoutPage() {
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
-                          Ã¢Ë†â€™
+                          -
                         </button>
                         <input
                           className="h-8 w-14 rounded border px-2 text-center text-sm"

@@ -565,7 +565,7 @@ const res = await fetch(
       {(o as any).items.slice(0, 6).map((it: any, idx: number) => (
         <div key={idx}>{formatItemLine(it)}</div>
       ))}
-      {(o as any).items.length > 6 ? <div className="opacity-70">+ {(o as any).items.length - 6} moreÃ¢â‚¬Â¦</div> : null}
+      {(o as any).items.length > 6 ? <div className="opacity-70">+ {(o as any).items.length - 6} more...</div> : null}
     </div>
   ) : (
     <div className="mt-1 text-[11px] text-amber-700">No snapshot items yet (Phase 2D pending)</div>
