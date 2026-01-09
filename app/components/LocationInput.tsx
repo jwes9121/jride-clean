@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useRef } from 'react';
 
@@ -17,12 +17,12 @@ interface LocationInputProps {
   onLocationSelect: (location: Location) => void;
   showMapButton?: boolean;
   onMapButtonClick?: () => void;
-  label?: string;       // Ã¢Å“â€¦ added
-  icon?: string;        // Ã¢Å“â€¦ added
-  iconColor?: string;   // Ã¢Å“â€¦ added
+  label?: string;       // âœ… added
+  icon?: string;        // âœ… added
+  iconColor?: string;   // âœ… added
 }
 
-// Ã°Å¸â€Â¹ Your static location data
+// ðŸ”¹ Your static location data
 const IFUGAO_LOCATIONS = [
   { name: 'Poblacion East, Lagawe', municipality: 'Lagawe', barangay: 'Poblacion East', type: 'barangay', lat: 16.7800, lng: 121.1200 },
   { name: 'Poblacion North, Lagawe', municipality: 'Lagawe', barangay: 'Poblacion North', type: 'barangay', lat: 16.7820, lng: 121.1180 },
@@ -177,7 +177,7 @@ export default function LocationInput({
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{location.name}</p>
                       <p className="text-xs text-gray-500 capitalize">
-                        {location.type} Ã¢â‚¬Â¢ {location.municipality}
+                        {location.type} â€¢ {location.municipality}
                       </p>
                     </div>
                   </div>

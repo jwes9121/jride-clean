@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -32,7 +32,7 @@ export default function LandingPage() {
           <div>
             <h1 className="text-4xl font-['Pacifico'] text-white mb-2">J-Ride</h1>
             <p className="text-orange-100 text-lg font-medium">Ride. Eat. Repeat.</p>
-            <p className="text-orange-200 text-sm mt-2">Ã°Å¸â€¡ÂµÃ°Å¸â€¡Â­ Lagawe, Ifugao</p>
+            <p className="text-orange-200 text-sm mt-2">ðŸ‡µðŸ‡­ Lagawe, Ifugao</p>
           </div>
         </div>
 
@@ -58,9 +58,9 @@ export default function LandingPage() {
                   <h3 className="text-xl font-bold text-gray-800 mb-1">Use J-Ride App</h3>
                   <p className="text-gray-600 text-sm">Book rides, order food, send errands</p>
                   <div className="flex items-center mt-2 space-x-2">
-                    <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">Ã°Å¸Å¡Â² Rides</span>
-                    <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">Ã°Å¸Ââ€ Food</span>
-                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">Ã°Å¸â€œÂ¦ Errands</span>
+                    <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">ðŸš² Rides</span>
+                    <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full">ðŸ” Food</span>
+                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">ðŸ“¦ Errands</span>
                   </div>
                 </div>
                 <i className="ri-arrow-right-line text-gray-400 group-hover:text-orange-500 transition-colors"></i>
@@ -79,9 +79,9 @@ export default function LandingPage() {
                   <h3 className="text-xl font-bold text-gray-800 mb-1">Visit Our Website</h3>
                   <p className="text-gray-600 text-sm">Learn more about J-Ride services</p>
                   <div className="flex items-center mt-2 space-x-2">
-                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">Ã¢â€žÂ¹Ã¯Â¸Â About</span>
-                    <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">Ã°Å¸â€œÅ¾ Contact</span>
-                    <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded-full">Ã°Å¸â€™Â¼ Business</span>
+                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full">â„¹ï¸ About</span>
+                    <span className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">ðŸ“ž Contact</span>
+                    <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded-full">ðŸ’¼ Business</span>
                   </div>
                 </div>
                 <i className="ri-arrow-right-line text-gray-400 group-hover:text-blue-500 transition-colors"></i>
@@ -153,7 +153,7 @@ export default function LandingPage() {
             <h3 className="text-xl font-bold text-gray-900 mb-3">For Passengers</h3>
             <p className="text-gray-600 mb-6">Book rides, track your trips, and manage payments easily</p>
             <div className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg inline-block text-sm font-medium">
-              Open App Ã¢â€ â€™
+              Open App â†’
             </div>
           </a>
 
@@ -167,7 +167,7 @@ export default function LandingPage() {
             <h3 className="text-xl font-bold text-gray-900 mb-3">For Dispatchers</h3>
             <p className="text-gray-600 mb-6">Manage bookings, track drivers, and handle operations</p>
             <div className="bg-green-50 text-green-600 px-4 py-2 rounded-lg inline-block text-sm font-medium">
-              Open Portal Ã¢â€ â€™
+              Open Portal â†’
             </div>
           </a>
         </div>
@@ -190,7 +190,7 @@ export default function LandingPage() {
             </a>
           </div>
           <p className="text-sm text-gray-500 mt-4">
-            Bookmark: <strong>app.jride.net</strong> (App) Ã¢â‚¬Â¢ <strong>dispatch.jride.net</strong> (Dispatch)
+            Bookmark: <strong>app.jride.net</strong> (App) â€¢ <strong>dispatch.jride.net</strong> (Dispatch)
           </p>
         </div>
 

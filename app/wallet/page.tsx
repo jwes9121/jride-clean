@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import BottomNavigation from '@/components/BottomNavigation';
@@ -132,7 +132,7 @@ export default function WalletPage() {
 
   const formatAmount = (amount: number, type: string) => {
     const prefix = ['credit', 'topup'].includes(type) ? '+' : '-';
-    return `${prefix}Ã¢â€šÂ±${Math.abs(amount).toFixed(2)}`;
+    return `${prefix}â‚±${Math.abs(amount).toFixed(2)}`;
   };
 
   const canAcceptBookings = () => {
@@ -189,7 +189,7 @@ export default function WalletPage() {
 
         <div className="text-center mb-6">
           <div className="text-sm opacity-90 mb-2">Available Balance</div>
-          <div className="text-4xl font-bold">Ã¢â€šÂ±{user.wallet_balance.toFixed(2)}</div>
+          <div className="text-4xl font-bold">â‚±{user.wallet_balance.toFixed(2)}</div>
           <div className="text-sm opacity-80 mt-1">
             {user.user_type === 'passenger' ? 'Passenger Account' : 
              user.user_type === 'driver' ? 'Driver Account' : 'Vendor Account'}
@@ -200,7 +200,7 @@ export default function WalletPage() {
           <div className="bg-yellow-500/20 border border-yellow-300 rounded-xl p-3 mb-4">
             <div className="flex items-center space-x-2">
               <i className="ri-alert-line text-yellow-200"></i>
-              <span className="text-sm">Ã¢Å¡Â  Low Wallet Balance, please top-up to continue accepting {user.user_type === 'driver' ? 'rides' : 'orders'}.</span>
+              <span className="text-sm">âš  Low Wallet Balance, please top-up to continue accepting {user.user_type === 'driver' ? 'rides' : 'orders'}.</span>
             </div>
           </div>
         )}
@@ -209,7 +209,7 @@ export default function WalletPage() {
           <div className="bg-red-500/20 border border-red-300 rounded-xl p-3 mb-4">
             <div className="flex items-center space-x-2">
               <i className="ri-lock-line text-red-200"></i>
-              <span className="text-sm">Ã°Å¸Å¡Â« Booking locked. Minimum Ã¢â€šÂ±100 balance required to accept bookings.</span>
+              <span className="text-sm">ðŸš« Booking locked. Minimum â‚±100 balance required to accept bookings.</span>
             </div>
           </div>
         )}
@@ -269,7 +269,7 @@ export default function WalletPage() {
                 <div className="bg-green-50 p-4 rounded-xl">
                   <div className="text-green-600 text-sm font-medium">Total Income</div>
                   <div className="text-xl font-bold text-green-700">
-                    Ã¢â€šÂ±{transactions
+                    â‚±{transactions
                       .filter(t => ['credit', 'topup', 'referral_bonus'].includes(t.type) && t.status === 'completed')
                       .reduce((sum, t) => sum + t.amount, 0)
                       .toFixed(2)}
@@ -278,7 +278,7 @@ export default function WalletPage() {
                 <div className="bg-red-50 p-4 rounded-xl">
                   <div className="text-red-600 text-sm font-medium">Total Spent</div>
                   <div className="text-xl font-bold text-red-700">
-                    Ã¢â€šÂ±{transactions
+                    â‚±{transactions
                       .filter(t => ['debit', 'payout', 'ride', 'errand', 'vendor_order'].includes(t.type) && t.status === 'completed')
                       .reduce((sum, t) => sum + t.amount, 0)
                       .toFixed(2)}
@@ -293,7 +293,7 @@ export default function WalletPage() {
                       <i className="ri-user-add-line text-purple-600"></i>
                       <span className="text-purple-600 font-medium">Referral Earnings</span>
                     </div>
-                    <span className="text-xl font-bold text-purple-600">Ã¢â€šÂ±{referralEarnings}</span>
+                    <span className="text-xl font-bold text-purple-600">â‚±{referralEarnings}</span>
                   </div>
                   <div className="text-sm text-purple-600 mt-1">
                     From successful referrals
@@ -381,10 +381,10 @@ export default function WalletPage() {
               {user.user_type === 'driver' ? 'Driver' : 'Vendor'} Requirements
             </h3>
             <ul className="text-sm text-blue-700 space-y-1">
-              <li>Ã¢â‚¬Â¢ Minimum top-up: Ã¢â€šÂ±500 (first registration)</li>
-              <li>Ã¢â‚¬Â¢ Minimum balance to accept bookings: Ã¢â€šÂ±100</li>
-              <li>Ã¢â‚¬Â¢ Auto-notification at Ã¢â€šÂ±200 balance</li>
-              <li>Ã¢â‚¬Â¢ Company share deducted automatically</li>
+              <li>â€¢ Minimum top-up: â‚±500 (first registration)</li>
+              <li>â€¢ Minimum balance to accept bookings: â‚±100</li>
+              <li>â€¢ Auto-notification at â‚±200 balance</li>
+              <li>â€¢ Company share deducted automatically</li>
             </ul>
           </div>
         )}
@@ -393,10 +393,10 @@ export default function WalletPage() {
           <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
             <h3 className="font-semibold text-green-800 mb-2">Passenger Benefits</h3>
             <ul className="text-sm text-green-700 space-y-1">
-              <li>Ã¢â‚¬Â¢ Minimum top-up: Ã¢â€šÂ±50</li>
-              <li>Ã¢â‚¬Â¢ No booking limits</li>
-              <li>Ã¢â‚¬Â¢ Cash payment option available</li>
-              <li>Ã¢â‚¬Â¢ Use wallet for rides, errands & vendor orders</li>
+              <li>â€¢ Minimum top-up: â‚±50</li>
+              <li>â€¢ No booking limits</li>
+              <li>â€¢ Cash payment option available</li>
+              <li>â€¢ Use wallet for rides, errands & vendor orders</li>
             </ul>
           </div>
         )}

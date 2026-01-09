@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 export const dynamic = "force-static";
 
 import { useState } from "react";
@@ -19,10 +19,10 @@ export default function PassengerCountPage() {
         ))}
       </div>
       <p className="text-xs text-yellow-700 mb-4">
-        âš ï¸ Tricycles can accommodate up to four (4) passengers only. Motorcycle rides are limited to one (1) passenger.
+        ⚠️ Tricycles can accommodate up to four (4) passengers only. Motorcycle rides are limited to one (1) passenger.
       </p>
       <button className="px-4 py-2 rounded bg-green-600 text-white" onClick={()=>router.push(`/request/confirm-fare?count=${count}`)}>
-        Continue â†’
+        Continue →
       </button>
     </main>
   );

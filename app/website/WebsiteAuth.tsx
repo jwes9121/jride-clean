@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
@@ -215,7 +215,7 @@ export default function WebsiteAuth() {
                   <i className="ri-wallet-line text-green-600 text-xl"></i>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">Ã¢â€šÂ±0</p>
+                  <p className="text-2xl font-bold text-gray-900">â‚±0</p>
                   <p className="text-sm text-gray-600">Wallet Balance</p>
                 </div>
               </div>
@@ -322,7 +322,7 @@ export default function WebsiteAuth() {
 
           <div className="mt-4 text-center">
             <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">
-              Ã¢â€ Â Back to Homepage
+              â† Back to Homepage
             </Link>
           </div>
         </div>

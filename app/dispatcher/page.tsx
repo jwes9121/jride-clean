@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 
@@ -109,7 +109,7 @@ export default function DispatchPage(): JSX.Element {
 
       <div className="rounded-2xl border p-4 shadow">
         <h2 className="font-medium mb-3">Queue</h2>
-        {loading ? <p>Loadingâ€¦</p> : rows.length === 0 ? <p>No active rides.</p> : (
+        {loading ? <p>Loading…</p> : rows.length === 0 ? <p>No active rides.</p> : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left border-b">

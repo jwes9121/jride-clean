@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect } from 'react';
 interface BookingFormProps {
   onBookingCreated: (booking: any) => void;
@@ -166,15 +166,15 @@ export default function BookingForm({ onBookingCreated }: BookingFormProps) {
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-blue-700">Base fare:</span>
-                  <span className="font-medium">Ã¢â€šÂ±{fareCalculation.baseFare}</span>
+                  <span className="font-medium">â‚±{fareCalculation.baseFare}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-blue-700">Distance fare:</span>
-                  <span className="font-medium">Ã¢â€šÂ±{fareCalculation.distanceFare}</span>
+                  <span className="font-medium">â‚±{fareCalculation.distanceFare}</span>
                 </div>
                 <div className="border-t border-blue-200 pt-1 flex justify-between font-semibold">
                   <span className="text-blue-900">Total:</span>
-                  <span className="text-blue-900">Ã¢â€šÂ±{fareCalculation.total}</span>
+                  <span className="text-blue-900">â‚±{fareCalculation.total}</span>
                 </div>
               </div>
             </div>
@@ -197,7 +197,7 @@ export default function BookingForm({ onBookingCreated }: BookingFormProps) {
               </button>
             </div>
             <div className="relative">
-              <span className="absolute left-3 top-3 text-gray-500">Ã¢â€šÂ±</span>
+              <span className="absolute left-3 top-3 text-gray-500">â‚±</span>
               <input
                 type="number"
                 value={formData.fare}

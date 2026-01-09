@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from "react";
@@ -34,10 +34,10 @@ export default function AuditPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Admin Ã‚Â· Audit</h1>
+      <h1 className="text-2xl font-bold">Admin Â· Audit</h1>
       {err && <div className="text-red-600 text-sm">{err}</div>}
       {loading ? (
-        <div className="text-sm opacity-70">LoadingÃ¢â‚¬Â¦</div>
+        <div className="text-sm opacity-70">Loadingâ€¦</div>
       ) : (
         <table className="w-full text-sm">
           <thead>
@@ -58,10 +58,10 @@ export default function AuditPage() {
                 <td className="py-2 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="whitespace-nowrap">{r.actor_email}</td>
                 <td className="whitespace-nowrap">{r.action}</td>
-                <td className="whitespace-nowrap">{r.reason ?? "Ã¢â‚¬â€"}</td>
-                <td className="whitespace-nowrap">{r.booking_id.slice(0, 8)}Ã¢â‚¬Â¦</td>
-                <td className="whitespace-nowrap">{r.rider_name ?? "Ã¢â‚¬â€"}</td>
-                <td className="whitespace-nowrap">{r.pickup_town ?? "Ã¢â‚¬â€"}</td>
+                <td className="whitespace-nowrap">{r.reason ?? "â€”"}</td>
+                <td className="whitespace-nowrap">{r.booking_id.slice(0, 8)}â€¦</td>
+                <td className="whitespace-nowrap">{r.rider_name ?? "â€”"}</td>
+                <td className="whitespace-nowrap">{r.pickup_town ?? "â€”"}</td>
                 <td className="text-xs">
                   <pre className="whitespace-pre-wrap">{JSON.stringify(r.details, null, 2)}</pre>
                 </td>
