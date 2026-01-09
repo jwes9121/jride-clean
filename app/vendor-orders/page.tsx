@@ -594,7 +594,7 @@ const res = await fetch(
                               {o.status === "preparing" && (
   <button
     type="button"
-    disabled={vendorActionBlocked || updatingId === o.id}
+    disabled={updatingId === o.id}
     onClick={() => handleStatusUpdate(o, "driver_arrived")}
     className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
     title={vendorActionBlocked ? "Action blocked" : (updatingId === o.id ? "Updating..." : "Mark order ready")}
