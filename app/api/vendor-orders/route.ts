@@ -250,8 +250,10 @@ export async function POST(req: NextRequest) {
       service_type: "takeout",
       vendor_status,
       status: "requested",
-      customer_name: customer_name || null,
-      customer_phone: customer_phone || null,
+
+      rider_name: customer_name || null,
+      rider_phone: customer_phone || null,
+
       to_label: to_label || null,
       note: note || null,
       items_text: items_text || null,
