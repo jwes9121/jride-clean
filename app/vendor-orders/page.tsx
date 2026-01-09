@@ -592,12 +592,16 @@ const res = await fetch(
                           <td className="px-3 py-2">
                             <div className="flex flex-wrap gap-1">
                               {o.status === "preparing" && (
-                                <button type="button" onClick={() => (vendorActionBlocked || !vendorCanTransitionUI(o, "driver_arrived") ? null : handleStatusUpdate(o, "driver_arrived"))}
-                                  className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                  Mark ready
-                                </button>
-                              )}
+  <button
+    type="button"
+    disabled={vendorActionBlocked || updatingId === o.id}
+    onClick={() => handleStatusUpdate(o, "driver_arrived")}
+    className="rounded-full border border-sky-500 px-2 py-1 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-60 disabled:cursor-not-allowed"
+    title={vendorActionBlocked ? "Action blocked" : (updatingId === o.id ? "Updating..." : "Mark order ready")}
+  >
+    {updatingId === o.id ? "Marking..." : "Mark ready"}
+  </button>
+)}
                               {o.status === "driver_arrived" && (
                                 <button
                                   type="button"
