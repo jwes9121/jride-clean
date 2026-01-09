@@ -7,6 +7,20 @@ import { auth } from "@/auth";
 // PHASE_3D_TAKEOUT_COORDS_HELPERS
 type LatLng = { lat: number | null; lng: number | null };
 
+function isFiniteNum(n: any) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : null;
+}
+
+// Treat 0/0 as invalid for this app (Ifugao coords will never be 0/0)
+function normalizeLL(ll: LatLng): LatLng {
+  const lat = isFiniteNum(ll?.lat);
+  const lng = isFiniteNum(ll?.lng);
+  if (lat == null || lng == null) return { lat: null, lng: null };
+  if (lat === 0 || lng === 0) return { lat: null, lng: null };
+  return { lat, lng };
+}
+
 function pickLatLng(obj: any): LatLng {
   if (!obj || typeof obj !== "object") return { lat: null, lng: null };
 
@@ -14,8 +28,8 @@ function pickLatLng(obj: any): LatLng {
   const lowerMap: Record<string, any> = {};
   for (const k of keys) lowerMap[k.toLowerCase()] = (obj as any)[k];
 
-  const latKeys = ["pickup_lat", "lat", "latitude", "location_lat", "vendor_lat", "from_lat", "start_lat"];
-  const lngKeys = ["pickup_lng", "lng", "longitude", "location_lng", "vendor_lng", "from_lng", "start_lng"];
+  const latKeys = ["lat","latitude","location_lat","pickup_lat","from_lat","start_lat","vendor_lat","store_lat","merchant_lat"];
+  const lngKeys = ["lng","lon","longitude","location_lng","pickup_lng","from_lng","start_lng","vendor_lng","store_lng","merchant_lng"];
 
   function firstNum(cands: string[]) {
     for (const k of cands) {
@@ -30,17 +44,32 @@ function pickLatLng(obj: any): LatLng {
   const lat = firstNum(latKeys);
   const lng = firstNum(lngKeys);
 
-  if ((lat == null || lng == null) && lowerMap["gps"] && typeof lowerMap["gps"] === "object") {
-    const g = lowerMap["gps"];
-    const glat = Number((g as any).lat ?? (g as any).latitude);
-    const glng = Number((g as any).lng ?? (g as any).longitude);
-    return {
-      lat: Number.isFinite(glat) ? glat : lat,
-      lng: Number.isFinite(glng) ? glng : lng,
-    };
-  }
+  return normalizeLL({ lat, lng });
+}
 
-  return { lat, lng };
+function pickTown(obj: any): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const keys = Object.keys(obj);
+  const lower: Record<string, any> = {};
+  for (const k of keys) lower[k.toLowerCase()] = (obj as any)[k];
+  const cands = ["town","municipality","lgu","city"];
+  for (const k of cands) {
+    if (k in lower) {
+      const v = String(lower[k] ?? "").trim();
+      if (v) return v;
+    }
+  }
+  return null;
+}
+
+function inferTownFromLabel(label: string | null): string | null {
+  const s = String(label || "").toLowerCase();
+  if (!s) return null;
+  const towns = ["kiangan","lagawe","hingyon","lamut","banaue"];
+  for (const t of towns) {
+    if (s.includes(t)) return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  return null;
 }
 
 async function tryFetchRowById(admin: any, table: string, idField: string, idValue: string) {
@@ -54,83 +83,85 @@ async function tryFetchRowById(admin: any, table: string, idField: string, idVal
   }
 }
 
-/* PHASE_3E_VENDOR_TOWN_HELPER */
-async function fetchVendorTown(admin: any, vendorId: string): Promise<string | null> {
-  const candidates: Array<[string, string]> = [
-    ["vendors", "id"],
-    ["vendor_profiles", "id"],
-    ["vendors", "vendor_id"],
-    ["vendor_profiles", "vendor_id"],
-  ];
+async function mapboxGeocode(label: string): Promise<LatLng> {
+  const q = String(label || "").trim();
+  if (!q) return { lat: null, lng: null };
 
-  function pickTown(row: any): string | null {
-    if (!row || typeof row !== "object") return null;
-    const keys = Object.keys(row);
-    const lower: Record<string, any> = {};
-    for (const k of keys) lower[k.toLowerCase()] = (row as any)[k];
+  const token =
+    process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+    process.env.MAPBOX_ACCESS_TOKEN ||
+    process.env.MAPBOX_TOKEN ||
+    "";
 
-    const cands = ["town", "municipality", "lgu", "zone", "city"];
-    for (const k of cands) {
-      if (k in lower) {
-        const v = String(lower[k] ?? "").trim();
-        if (v) return v;
-      }
-    }
-    return null;
+  if (!token) return { lat: null, lng: null };
+
+  const url =
+    "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+    encodeURIComponent(q) +
+    ".json?limit=1&language=en&access_token=" +
+    encodeURIComponent(token);
+
+  try {
+    const r = await fetch(url, { method: "GET" });
+    const j: any = await r.json().catch(() => null);
+    const f = j?.features?.[0];
+    const center = Array.isArray(f?.center) ? f.center : null; // [lng,lat]
+    const lng = center && center.length >= 2 ? Number(center[0]) : null;
+    const lat = center && center.length >= 2 ? Number(center[1]) : null;
+    return normalizeLL({ lat, lng });
+  } catch {
+    return { lat: null, lng: null };
   }
-
-  for (const [table, key] of candidates) {
-    const row = await tryFetchRowById(admin, table, key, vendorId);
-    const t = pickTown(row);
-    if (t) return t;
-  }
-  return null;
 }
-/* PHASE_3E_VENDOR_TOWN_HELPER_END */
-async function fetchVendorCoords(admin: any, vendorId: string): Promise<LatLng> {
+
+async function fetchVendorCoordsAndTown(admin: any, vendorId: string): Promise<{ ll: LatLng; town: string | null }> {
   const candidates: Array<[string, string]> = [
-    ["vendors", "id"],
-    ["vendor_profiles", "id"],
-    ["vendors", "vendor_id"],
-    ["vendor_profiles", "vendor_id"],
+    ["vendor_accounts", "id"],
+    ["vendor_accounts", "vendor_id"],
   ];
 
   for (const [table, key] of candidates) {
     const row = await tryFetchRowById(admin, table, key, vendorId);
     if (!row) continue;
     const ll = pickLatLng(row);
-    if (ll.lat != null && ll.lng != null) return ll;
+    const town = pickTown(row);
+    if (ll.lat != null && ll.lng != null) return { ll, town };
+    if (town) return { ll: { lat: null, lng: null }, town };
   }
-  return { lat: null, lng: null };
+
+  return { ll: { lat: null, lng: null }, town: null };
 }
 
-async function fetchAddressCoords(admin: any, deviceKey: string, addressId: string | null): Promise<LatLng> {
-  let row: any = null;
-
-  if (addressId) {
-    row = await tryFetchRowById(admin, "passenger_addresses", "id", addressId);
-    if (row) {
+async function fetchAddressCoords(admin: any, deviceKey: string, addressId: string | null, addressText: string | null): Promise<LatLng> {
+  try {
+    if (addressId) {
+      const byId = await admin.from("passenger_addresses").select("*").eq("id", addressId).limit(1);
+      const row = Array.isArray(byId.data) ? byId.data[0] : null;
       const ll = pickLatLng(row);
       if (ll.lat != null && ll.lng != null) return ll;
     }
-  }
+  } catch {}
 
-  if (deviceKey) {
-    try {
+  try {
+    const dk = String(deviceKey || "").trim();
+    if (dk) {
       const pri = await admin
         .from("passenger_addresses")
         .select("*")
-        .eq("device_key", deviceKey)
+        .eq("device_key", dk)
         .order("is_primary", { ascending: false })
         .order("updated_at", { ascending: false })
         .limit(1);
 
-      if (!pri.error) {
-        row = Array.isArray(pri.data) ? pri.data[0] : null;
-        const ll = pickLatLng(row);
-        if (ll.lat != null && ll.lng != null) return ll;
-      }
-    } catch {}
+      const row = Array.isArray(pri.data) ? pri.data[0] : null;
+      const ll = pickLatLng(row);
+      if (ll.lat != null && ll.lng != null) return ll;
+    }
+  } catch {}
+
+  if (addressText) {
+    const ll = await mapboxGeocode(addressText);
+    if (ll.lat != null && ll.lng != null) return ll;
   }
 
   return { lat: null, lng: null };
@@ -359,24 +390,35 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({} as any));
 
-  const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
+    const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   if (!vendor_id) {
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
   }
 
-  // PHASE_3D_TAKEOUT_COORDS_FIX
-  // PROBLEM_TRIP_MISSING_COORDS: LiveTrips actions disabled when pickup/dropoff coords are null.
+  // PHASE_3F_TAKEOUT_COORDS_TOWN
   const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
   const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
 
-  const vendorLL = await fetchVendorCoords(admin, vendor_id);
-  const dropLL = await fetchAddressCoords(admin, device_key, address_id);
-  // PHASE_3E_DERIVED_TOWN_VAR
-  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
-  const vendorTown = explicitTown ? null : await fetchVendorTown(admin, vendor_id);
-  const derivedTown = (explicitTown || vendorTown || deriveTownFromLatLng(vendorLL.lat, vendorLL.lng)) || null;
+  const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
 
-  const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
+  const v = await fetchVendorCoordsAndTown(admin, vendor_id);
+  const vendorLL = v.ll;
+  const vendorTown = v.town;
+
+  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
+
+  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
+  const derivedTown =
+    explicitTown ||
+    vendorTown ||
+    inferTownFromLabel(to_label_hint) ||
+    deriveTownFromLatLng(vendorLL.lat, vendorLL.lng) ||
+    null;
+
+  const pickupLL = normalizeLL(vendorLL);
+  const dropoffLL = normalizeLL(dropLL);
+  // PHASE_3F_TAKEOUT_COORDS_TOWN_END
+const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
 
@@ -603,19 +645,13 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
   const createPayload: Record<string, any> = {    // PHASE_3D_TAKEOUT_COORDS_FIX fields
 
 
-    pickup_lat: vendorLL.lat,
 
 
-    pickup_lng: vendorLL.lng,
 
 
-    dropoff_lat: dropLL.lat,
-
-
-    dropoff_lng: dropLL.lng,
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
     // bookings has 'town' column (no 'zone' column) â€” keep town only
-    town: (typeof derivedTown !== "undefined" ? derivedTown : null),
+
     // Likely required / core
 
 
@@ -626,6 +662,12 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
 
 
     vendor_status,
+  // PHASE_3F create-time town + coords (no 0/0)
+  town: (typeof derivedTown !== "undefined" ? derivedTown : null),
+  pickup_lat: (pickupLL.lat != null ? pickupLL.lat : null),
+  pickup_lng: (pickupLL.lng != null ? pickupLL.lng : null),
+  dropoff_lat: (dropoffLL.lat != null ? dropoffLL.lat : null),
+  dropoff_lng: (dropoffLL.lng != null ? dropoffLL.lng : null),
 
 
     status: "requested",
