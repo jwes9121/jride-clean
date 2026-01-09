@@ -84,7 +84,7 @@ export async function GET(req: Request) {
         .filter(Boolean)
     );
 
-    const ACTIVE_STATUSES = ["assigned", "on_the_way", "arrived", "enroute", "on_trip"];
+    const ACTIVE_STATUSES = ["requested", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
 
     try {
       const { data: activeRows, error: activeErr } = await supabase
