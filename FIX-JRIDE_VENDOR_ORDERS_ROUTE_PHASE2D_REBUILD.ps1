@@ -1,3 +1,31 @@
+# FIX-JRIDE_VENDOR_ORDERS_ROUTE_PHASE2D_REBUILD.ps1
+# Rebuild app/api/vendor-orders/route.ts into a valid Next.js route module with GET + POST
+# Phase 2D: idempotent takeout snapshot lock ONLY on create path; store subtotal in bookings.takeout_items_subtotal
+# UTF-8 (no BOM). Full overwrite (anchorless) to avoid brace/return corruption.
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m) { throw $m }
+function Info($m) { Write-Host $m -ForegroundColor Cyan }
+function Ok($m)   { Write-Host $m -ForegroundColor Green }
+function Warn($m) { Write-Host $m -ForegroundColor Yellow }
+
+$root = (Get-Location).Path
+$targetRel = "app\api\vendor-orders\route.ts"
+$target = Join-Path $root $targetRel
+
+if (!(Test-Path $target)) {
+  Fail "Target not found: $targetRel (run from repo root)"
+}
+
+# Backup
+$ts = Get-Date -Format "yyyyMMdd_HHmmss"
+$bak = "$target.bak.$ts"
+Copy-Item -LiteralPath $target -Destination $bak -Force
+Ok "[OK] Backup: $targetRel -> $(Split-Path -Leaf $bak)"
+
+# New file content (valid module shape)
+$code = @'
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -311,3 +339,18 @@ export async function POST(req: NextRequest) {
     takeoutSnapshot,
   });
 }
+'@
+
+# Write UTF-8 no BOM
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, $code, $utf8NoBom)
+
+# Sanity checks
+$written = Get-Content -LiteralPath $target -Raw
+if ($written -notmatch "export\s+async\s+function\s+GET") { Fail "Sanity check failed: GET export missing after write" }
+if ($written -notmatch "export\s+async\s+function\s+POST") { Fail "Sanity check failed: POST export missing after write" }
+Ok "[OK] Rebuilt: $targetRel (GET + POST restored, Phase 2D snapshot idempotent)"
+
+Info "`nNEXT:"
+Info "1) Run build: npm run build"
+Info "2) If green, commit/tag/push (commands below)"
