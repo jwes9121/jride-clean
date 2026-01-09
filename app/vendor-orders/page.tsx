@@ -10,6 +10,7 @@ type VendorOrder = {
   id: string;
   bookingCode: string;
   customerName: string;
+    deliveryLabel?: string | null;
   totalBill: number;
   status: VendorOrderStatus;
   createdAt: string;
@@ -59,8 +60,18 @@ function formatAmount(n: number | null | undefined) {
 
 
 
+// UI-only: normalize display text (prevents mojibake regressions without mutating data)
+function normText(s: any): string {
+  const v = String(s ?? "");
+  try {
+    // If already clean, this returns same; if mojibake, best-effort fixes common cases
+    return decodeURIComponent(escape(v));
+  } catch {
+    return v;
+  }
+}
 function formatItemLine(it: any) {
-  const name = String(it?.name || "");
+  const name = (typeof normText === "function") ? normText(it?.name || "") : String(it?.name || "");
   const qty = Number(it?.quantity || 0) || 0;
   const price = Number(it?.price || 0) || 0;
   // ASCII-only separator to prevent mojibake regressions
@@ -255,9 +266,9 @@ const res = await fetch(
 
       const mapped: VendorOrder[] = (data.orders || []).map((o) => ({
         id: o.id,
-        bookingCode: o.booking_code,
-        customerName: o.customer_name ?? "",
-        totalBill: (o.total_bill ?? 0) as any,
+        bookingCode: normText(o.booking_code),
+        customerName: normText((o as any).customer_name ?? (o as any).rider_name ?? (o as any).passenger_name ?? ""),
+                deliveryLabel: normText((o as any).to_label ?? (o as any).toLabel ?? (o as any).dropoff_label ?? (o as any).dropoffLabel ?? ""),totalBill: (o.total_bill ?? 0) as any,
         items: (o as any).items ?? null,
         itemsSubtotal: ((o as any).items_subtotal ?? null) as any,
         status: (o.vendor_status ?? "preparing") as VendorOrderStatus,
@@ -560,7 +571,11 @@ const res = await fetch(
                         <tr key={o.id} className="hover:bg-slate-50/60">
                           <td className="px-3 py-2 font-semibold text-slate-900">{o.bookingCode}</td>
                           <td className="px-3 py-2 text-slate-700">
-  <div>{o.customerName}</div>
+  <div className="font-medium">{normText(o.customerName)}</div>
+  {o.deliveryLabel ? (
+    <div className="mt-0.5 text-[11px] text-slate-500">{normText(o.deliveryLabel)}</div>
+  ) : null}
+
   {(o as any).items && Array.isArray((o as any).items) && (o as any).items.length > 0 ? (
     <div className="mt-1 space-y-0.5 text-[11px] text-slate-500">
       {(o as any).items.slice(0, 6).map((it: any, idx: number) => (
@@ -569,7 +584,7 @@ const res = await fetch(
       {(o as any).items.length > 6 ? <div className="opacity-70">+ {(o as any).items.length - 6} more...</div> : null}
     </div>
   ) : (
-    <div className="mt-1 text-[11px] text-amber-700">No snapshot items yet (Phase 2D pending)</div>
+    <div className="mt-1 text-[11px] text-slate-400">No item snapshot yet.</div>
   )}
 </td>
                           <td className="px-3 py-2 text-slate-900">{formatAmount((o as any).itemsSubtotal ?? o.totalBill)}</td>
@@ -629,7 +644,7 @@ const res = await fetch(
                     <li key={o.id} className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-900">{o.bookingCode}</span>
-                        <span className="text-slate-500">{o.customerName}</span>
+                        <span className="text-slate-500">{normText(o.customerName)}</span>
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-slate-900">{formatAmount((o as any).itemsSubtotal ?? o.totalBill)}</div>
