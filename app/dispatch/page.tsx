@@ -1359,7 +1359,7 @@ const missingCountUi = computedMissing.length;
                                   const low = isLowWalletByDriver(d);
                                   return (
                                     <span className={"text-[11px] " + (low ? "text-red-700" : "text-slate-600")}>
-                                      ₱{bal === null ? "?" : bal.toFixed(2)} / min ₱{min === null ? "?" : min.toFixed(2)}
+                                      â‚±{bal === null ? "?" : bal.toFixed(2)} / min â‚±{min === null ? "?" : min.toFixed(2)}
                                     </span>
                                   );
                                 })()}{d?.wallet_locked ? (
@@ -1475,7 +1475,7 @@ const missingCountUi = computedMissing.length;
                     <div className="text-[11px] text-slate-500">{a.at ? new Date(a.at).toLocaleTimeString() : ""}</div>
                   </div>
                   <div className="mt-1 text-[11px] text-slate-600">
-                    {String(a.type || "status")} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
+                    {String(a.type || "status")} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€š ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ {String(a.nextStatus || a.driverId || "-")} ({a.ok ? "OK" : "BLOCKED"})
                   </div>
                 </div>
               ))
