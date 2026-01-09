@@ -54,6 +54,39 @@ async function tryFetchRowById(admin: any, table: string, idField: string, idVal
   }
 }
 
+/* PHASE_3E_VENDOR_TOWN_HELPER */
+async function fetchVendorTown(admin: any, vendorId: string): Promise<string | null> {
+  const candidates: Array<[string, string]> = [
+    ["vendors", "id"],
+    ["vendor_profiles", "id"],
+    ["vendors", "vendor_id"],
+    ["vendor_profiles", "vendor_id"],
+  ];
+
+  function pickTown(row: any): string | null {
+    if (!row || typeof row !== "object") return null;
+    const keys = Object.keys(row);
+    const lower: Record<string, any> = {};
+    for (const k of keys) lower[k.toLowerCase()] = (row as any)[k];
+
+    const cands = ["town", "municipality", "lgu", "zone", "city"];
+    for (const k of cands) {
+      if (k in lower) {
+        const v = String(lower[k] ?? "").trim();
+        if (v) return v;
+      }
+    }
+    return null;
+  }
+
+  for (const [table, key] of candidates) {
+    const row = await tryFetchRowById(admin, table, key, vendorId);
+    const t = pickTown(row);
+    if (t) return t;
+  }
+  return null;
+}
+/* PHASE_3E_VENDOR_TOWN_HELPER_END */
 async function fetchVendorCoords(admin: any, vendorId: string): Promise<LatLng> {
   const candidates: Array<[string, string]> = [
     ["vendors", "id"],
@@ -338,6 +371,10 @@ export async function POST(req: NextRequest) {
 
   const vendorLL = await fetchVendorCoords(admin, vendor_id);
   const dropLL = await fetchAddressCoords(admin, device_key, address_id);
+  // PHASE_3E_DERIVED_TOWN_VAR
+  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
+  const vendorTown = explicitTown ? null : await fetchVendorTown(admin, vendor_id);
+  const derivedTown = (explicitTown || vendorTown || deriveTownFromLatLng(vendorLL.lat, vendorLL.lng)) || null;
 
   const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
@@ -578,12 +615,7 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
     dropoff_lng: dropLL.lng,
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
     // bookings has 'town' column (no 'zone' column) â€” keep town only
-    town: deriveTownFromLatLng(vendorLL.lat, vendorLL.lng),
-
-
-
-
-
+    town: (typeof derivedTown !== "undefined" ? derivedTown : null),
     // Likely required / core
 
 
