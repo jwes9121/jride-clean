@@ -4,16 +4,6 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
-export const dynamic = "force-dynamic";
-
-function json(status: number, payload: any) {
-  return NextResponse.json(payload, { status });
-}
-
-function toNum(v: any): number {
-
-
-
 // PHASE_3D_TAKEOUT_COORDS_HELPERS
 type LatLng = { lat: number | null; lng: number | null };
 
@@ -114,6 +104,14 @@ async function fetchAddressCoords(admin: any, deviceKey: string, addressId: stri
 }
 // PHASE_3D_TAKEOUT_COORDS_HELPERS_END
 
+
+export const dynamic = "force-dynamic";
+
+function json(status: number, payload: any) {
+  return NextResponse.json(payload, { status });
+}
+
+function toNum(v: any): number {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
@@ -303,7 +301,8 @@ export async function POST(req: NextRequest) {
 
   const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   if (!vendor_id) {
-    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+  }
 
   // PHASE_3D_TAKEOUT_COORDS_FIX
   // PROBLEM_TRIP_MISSING_COORDS: LiveTrips actions disabled when pickup/dropoff coords are null.
@@ -312,8 +311,6 @@ export async function POST(req: NextRequest) {
 
   const vendorLL = await fetchVendorCoords(admin, vendor_id);
   const dropLL = await fetchAddressCoords(admin, device_key, address_id);
-
-  }
 
   const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
@@ -489,160 +486,474 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
       // Supabase schema cache error pattern
       const m = msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i);
       if (m && m[1]) {
-      // PHASE_3D_TAKEOUT_COORDS_FIX fields
-      pickup_lat: vendorLL.lat,
-      pickup_lng: vendorLL.lng,
-      dropoff_lat: dropLL.lat,
-      dropoff_lng: dropLL.lng,
+      
+
         const col = String(m[1]);
+
+
         // Remove unknown column and retry
+
+
         delete (payload as any)[col];
+
+
         continue;
+
+
       }
 
+
+
+
+
       // Any other DB error: stop
+
+
       return res;
+
+
     }
 
+
+
+
+
     return {
+
+
       data: null,
+
+
       error: { message: "DB_ERROR: schema-safe insert retries exceeded" },
+
+
     } as any;
+
+
   }
 
-  const createPayload: Record<string, any> = {
+
+
+
+
+  const createPayload: Record<string, any> = {    // PHASE_3D_TAKEOUT_COORDS_FIX fields
+
+
+    pickup_lat: vendorLL.lat,
+
+
+    pickup_lng: vendorLL.lng,
+
+
+    dropoff_lat: dropLL.lat,
+
+
+    dropoff_lng: dropLL.lng,
+
+
+
+
+
     // Likely required / core
+
+
     vendor_id,
+
+
     service_type: "takeout",
+
+
     vendor_status,
+
+
     status: "requested",
 
+
+
+
+
     // Optional fields (will be auto-dropped if columns don't exist)
+
+
     rider_name: customer_name || null,
+
+
     rider_phone: customer_phone || null,
 
+
+
+
+
     customer_name: customer_name || null,
+
+
     customer_phone: customer_phone || null,
 
+
+
+
+
     to_label: to_label || null,
+
+
     dropoff_label: to_label || null,
 
+
+
+
+
     note: note || null,
+
+
     items_text: items_text || null,
 
+
+
+
+
     // Phase 2D requirement
+
+
     takeout_items_subtotal: subtotal,
+
+
   };
+
+
+
+
 
   const ins = await insertBookingSchemaSafe(createPayload);
 
+
+
+
+
   if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
 
+
+
+
+
   const bookingId = String(ins.data?.id ?? "");
+
+
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
 
+
+
+
+
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_START
+
+
   try {
+
+
     // 1) vendor pickup coords (preferred)
+
+
     const vendorMeta = await loadVendorMeta(vendor_id);
+
+
     const vLL = pickLatLng(vendorMeta);
+
+
     const vTown = pickTown(vendorMeta);
+
+
     const vLabel = pickVendorLabel(vendorMeta);
 
+
+
+
+
     // 2) dropoff coords from passenger primary address if available (device_key comes from takeout page)
+
+
     const addr = await loadPrimaryAddressByDeviceKey(String(body?.device_key ?? body?.deviceKey ?? ""));
+
+
     const aLat =
+
+
       pickNum(addr?.dropoff_lat) ?? pickNum(addr?.lat) ?? pickNum(addr?.latitude) ?? pickNum(addr?.location_lat) ?? null;
+
+
     const aLng =
+
+
       pickNum(addr?.dropoff_lng) ?? pickNum(addr?.lng) ?? pickNum(addr?.longitude) ?? pickNum(addr?.location_lng) ?? null;
 
+
+
+
+
     // 3) accept coords if caller provided them (future-proof)
+
+
     const bPickupLat = pickNum(body?.pickup_lat ?? body?.pickupLat ?? null);
+
+
     const bPickupLng = pickNum(body?.pickup_lng ?? body?.pickupLng ?? null);
+
+
     const bDropLat = pickNum(body?.dropoff_lat ?? body?.dropoffLat ?? body?.to_lat ?? body?.toLat ?? null);
+
+
     const bDropLng = pickNum(body?.dropoff_lng ?? body?.dropoffLng ?? body?.to_lng ?? body?.toLng ?? null);
 
+
+
+
+
     const pickup_lat = bPickupLat ?? vLL.lat;
+
+
     const pickup_lng = bPickupLng ?? vLL.lng;
 
+
+
+
+
     // If we can't find a dropoff coordinate, fallback to pickup coords (pilot-safe: removes PROBLEM trips)
+
+
     const dropoff_lat = bDropLat ?? aLat ?? pickup_lat ?? null;
+
+
     const dropoff_lng = bDropLng ?? aLng ?? pickup_lng ?? null;
 
+
+
+
+
     const updatePayload: Record<string, any> = {
+
+
       // labels (schema-safe; unknown cols auto-dropped)
+
+
       pickup_label: vLabel || null,
+
+
       from_label: vLabel || null,
 
+
+
+
+
       dropoff_label: to_label || null,
+
+
       to_label: to_label || null,
 
+
+
+
+
       // coords
+
+
       pickup_lat,
+
+
       pickup_lng,
+
+
       dropoff_lat,
+
+
       dropoff_lng,
 
+
+
+
+
       // town defaults help zoning
+
+
       town: vTown || null,
+
+
     };
 
+
+
+
+
     // only update if we have at least pickup coords (and ideally dropoff coords too)
+
+
     const hasAny =
+
+
       (pickup_lat != null && pickup_lng != null) || (dropoff_lat != null && dropoff_lng != null);
 
+
+
+
+
     if (hasAny) {
+
+
       await schemaSafeUpdateBooking(bookingId, updatePayload);
+
+
     }
+
+
   } catch {
+
+
     // fail-open: creation must succeed even if hydration fails
+
+
   }
+
+
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_END
 
 
+
+
+
+
+
+
   // Snapshot lock (idempotent): if already exists, do not insert again
+
+
   let takeoutSnapshot: any = null;
+
+
   try {
+
+
     const already = await admin
+
+
       .from("takeout_order_items")
+
+
       .select("id", { count: "exact", head: true })
+
+
       .eq("booking_id", bookingId);
+
+
+
+
 
     const existingCount = (already as any)?.count ?? 0;
 
+
+
+
+
     if (existingCount > 0) {
+
+
       // Ensure booking subtotal is set (repair only; do not re-snapshot)
+
+
       const cur = toNum((ins.data as any)?.takeout_items_subtotal);
+
+
       if (!(cur > 0) && subtotal > 0) {
+
+
         await admin!.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
+
+
       }
+
+
       takeoutSnapshot = { ok: true, inserted: 0, subtotal, note: "already_snapshotted" };
+
+
     } else {
+
+
       const rowsToInsert = items.map((it) => ({
+
+
         booking_id: bookingId,
+
+
         menu_item_id: it.menu_item_id,
+
+
         name: it.name,
+
+
         price: toNum(it.price),
+
+
         quantity: Math.max(1, it.quantity || 1),
+
+
         snapshot_at: new Date().toISOString(),
+
+
       }));
 
+
+
+
+
       const snapIns = await admin.from("takeout_order_items").insert(rowsToInsert);
+
+
       if (snapIns.error) {
+
+
         takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Insert failed: " + snapIns.error.message };
+
+
       } else {
+
+
         takeoutSnapshot = { ok: true, inserted: rowsToInsert.length, subtotal, note: "OK" };
+
+
       }
+
+
     }
+
+
   } catch (e: any) {
+
+
     takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Snapshot exception: " + String(e?.message || e) };
+
+
   }
 
+
+
+
+
   return json(200, {
+
+
     ok: true,
+
+
     action: "created",
+
+
     order_id: bookingId,
+
+
     takeout_items_subtotal: subtotal,
+
+
     takeoutSnapshot,
+
+
   });
+
+
 }
