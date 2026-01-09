@@ -11,6 +11,109 @@ function json(status: number, payload: any) {
 }
 
 function toNum(v: any): number {
+
+
+
+// PHASE_3D_TAKEOUT_COORDS_HELPERS
+type LatLng = { lat: number | null; lng: number | null };
+
+function pickLatLng(obj: any): LatLng {
+  if (!obj || typeof obj !== "object") return { lat: null, lng: null };
+
+  const keys = Object.keys(obj);
+  const lowerMap: Record<string, any> = {};
+  for (const k of keys) lowerMap[k.toLowerCase()] = (obj as any)[k];
+
+  const latKeys = ["pickup_lat", "lat", "latitude", "location_lat", "vendor_lat", "from_lat", "start_lat"];
+  const lngKeys = ["pickup_lng", "lng", "longitude", "location_lng", "vendor_lng", "from_lng", "start_lng"];
+
+  function firstNum(cands: string[]) {
+    for (const k of cands) {
+      if (k in lowerMap) {
+        const n = Number(lowerMap[k]);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+    return null;
+  }
+
+  const lat = firstNum(latKeys);
+  const lng = firstNum(lngKeys);
+
+  if ((lat == null || lng == null) && lowerMap["gps"] && typeof lowerMap["gps"] === "object") {
+    const g = lowerMap["gps"];
+    const glat = Number((g as any).lat ?? (g as any).latitude);
+    const glng = Number((g as any).lng ?? (g as any).longitude);
+    return {
+      lat: Number.isFinite(glat) ? glat : lat,
+      lng: Number.isFinite(glng) ? glng : lng,
+    };
+  }
+
+  return { lat, lng };
+}
+
+async function tryFetchRowById(admin: any, table: string, idField: string, idValue: string) {
+  try {
+    const res = await admin.from(table).select("*").eq(idField, idValue).limit(1);
+    if (res.error) return null;
+    const row = Array.isArray(res.data) ? res.data[0] : null;
+    return row || null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchVendorCoords(admin: any, vendorId: string): Promise<LatLng> {
+  const candidates: Array<[string, string]> = [
+    ["vendors", "id"],
+    ["vendor_profiles", "id"],
+    ["vendors", "vendor_id"],
+    ["vendor_profiles", "vendor_id"],
+  ];
+
+  for (const [table, key] of candidates) {
+    const row = await tryFetchRowById(admin, table, key, vendorId);
+    if (!row) continue;
+    const ll = pickLatLng(row);
+    if (ll.lat != null && ll.lng != null) return ll;
+  }
+  return { lat: null, lng: null };
+}
+
+async function fetchAddressCoords(admin: any, deviceKey: string, addressId: string | null): Promise<LatLng> {
+  let row: any = null;
+
+  if (addressId) {
+    row = await tryFetchRowById(admin, "passenger_addresses", "id", addressId);
+    if (row) {
+      const ll = pickLatLng(row);
+      if (ll.lat != null && ll.lng != null) return ll;
+    }
+  }
+
+  if (deviceKey) {
+    try {
+      const pri = await admin
+        .from("passenger_addresses")
+        .select("*")
+        .eq("device_key", deviceKey)
+        .order("is_primary", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      if (!pri.error) {
+        row = Array.isArray(pri.data) ? pri.data[0] : null;
+        const ll = pickLatLng(row);
+        if (ll.lat != null && ll.lng != null) return ll;
+      }
+    } catch {}
+  }
+
+  return { lat: null, lng: null };
+}
+// PHASE_3D_TAKEOUT_COORDS_HELPERS_END
+
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
@@ -200,7 +303,16 @@ export async function POST(req: NextRequest) {
 
   const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   if (!vendor_id) {
-    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+
+  // PHASE_3D_TAKEOUT_COORDS_FIX
+  // PROBLEM_TRIP_MISSING_COORDS: LiveTrips actions disabled when pickup/dropoff coords are null.
+  const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
+  const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
+
+  const vendorLL = await fetchVendorCoords(admin, vendor_id);
+  const dropLL = await fetchAddressCoords(admin, device_key, address_id);
+
   }
 
   const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
@@ -377,6 +489,11 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
       // Supabase schema cache error pattern
       const m = msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i);
       if (m && m[1]) {
+      // PHASE_3D_TAKEOUT_COORDS_FIX fields
+      pickup_lat: vendorLL.lat,
+      pickup_lng: vendorLL.lng,
+      dropoff_lat: dropLL.lat,
+      dropoff_lng: dropLL.lng,
         const col = String(m[1]);
         // Remove unknown column and retry
         delete (payload as any)[col];

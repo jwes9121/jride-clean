@@ -289,8 +289,13 @@ export default function TakeoutPage() {
         .filter(Boolean);
 
 
-      // Snapshot payload (menu) Ã¢â‚¬â€ Phase 2D will lock this into bookings later
+      // Snapshot payload (menu) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Phase 2D will lock this into bookings later
       const payload = {
+        // PHASE_3D_TAKEOUT_COORDS_FIX (payload-only; enables server-side dropoff coords)
+        device_key: deviceKey,
+        deviceKey: deviceKey,
+        address_id: (addrMode === "saved" ? (primary?.id || null) : null),
+        addressId: (addrMode === "saved" ? (primary?.id || null) : null),
         vendor_id: vendorId.trim(),
         vendorId: vendorId.trim(),
         service_type: "takeout",
@@ -454,7 +459,7 @@ export default function TakeoutPage() {
                   </>
                 ) : (
                   <div className="text-sm text-slate-700">
-                    No saved address yet. Choose "Enter a new addressÃ¢â‚¬Â.
+                    No saved address yet. Choose "Enter a new addressÃƒÂ¢Ã¢â€šÂ¬Ã‚Â.
                   </div>
                 )}
               </div>
@@ -494,7 +499,7 @@ export default function TakeoutPage() {
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-600">
-                  Tip: "Set as primaryÃ¢â‚¬Â makes it the default next time.
+                  Tip: "Set as primaryÃƒÂ¢Ã¢â€šÂ¬Ã‚Â makes it the default next time.
                 </div>
               </div>
             )}
