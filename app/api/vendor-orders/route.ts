@@ -254,9 +254,10 @@ export async function POST(req: NextRequest) {
       rider_name: customer_name || null,
       rider_phone: customer_phone || null,
 
-      to_label: to_label || null,
-      note: note || null,
-      items_text: items_text || null,
+      // Map delivery address to existing schema (dropoff_label is common in bookings)
+      dropoff_label: to_label || null,
+
+      // Phase 2D requirement
       takeout_items_subtotal: subtotal,
     })
     .select("*")
