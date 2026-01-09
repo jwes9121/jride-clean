@@ -207,11 +207,40 @@ export async function POST(req: NextRequest) {
 
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
 
-  // If order_id exists, treat as "update vendor_status" only (NO SNAPSHOT HERE)
+  // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
+// Phase 3A bridge: when vendor marks ready (driver_arrived), also move booking.status -> "assigned"
+// so it becomes dispatch-visible. Idempotent: only if status is still requested/empty.
   if (order_id) {
+    const cur = await admin
+      .from("bookings")
+      .select("id,status,vendor_status")
+      .eq("id", order_id)
+      .eq("vendor_id", vendor_id)
+      .single();
+
+    if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
+
+    const curStatus = String((cur.data as any)?.status || "").trim();
+    const nextVendor = vendor_status;
+
+    const patch: any = { vendor_status: nextVendor };
+
+    // Bridge rule: vendor ready -> dispatch sees it
+    // Only advance if booking hasn't progressed yet.
+    const stillRequested = !curStatus || curStatus === "requested";
+    const isReadySignal =
+      nextVendor === "driver_arrived" ||
+      nextVendor === "ready" ||
+      nextVendor === "prepared" ||
+      nextVendor === "pickup_ready";
+
+    if (stillRequested && isReadySignal) {
+      patch.status = "assigned";
+    }
+
     const up = await admin
       .from("bookings")
-      .update({ vendor_status })
+      .update(patch)
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
       .select("*")
@@ -223,7 +252,9 @@ export async function POST(req: NextRequest) {
       ok: true,
       action: "updated",
       order_id: up.data?.id ?? order_id,
-      vendor_status: up.data?.vendor_status ?? vendor_status,
+      vendor_status: up.data?.vendor_status ?? nextVendor,
+      status: up.data?.status ?? curStatus,
+      bridgedToDispatch: !!patch.status,
     });
   }
 
