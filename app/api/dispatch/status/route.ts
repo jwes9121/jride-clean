@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -241,7 +241,27 @@ export async function POST(req: Request) {
   const force = Boolean(body.force);
 
     // Payload sanity (cheap guardrails)
-  if (!body || (!body.booking_id && !body.booking_code)) {
+      // PHASE3B_FIX_MISSING_IDENTIFIER_GATE
+    // Normalize booking identifiers from common payload variants before validating.
+    // Accept: booking_id / bookingId / id ; booking_code / bookingCode / code
+    const anyBody: any = (typeof body !== "undefined" ? (body as any) : ({} as any));
+    const normBookingId =
+      anyBody?.booking_id ??
+      anyBody?.bookingId ??
+      anyBody?.id ??
+      anyBody?.booking?.id ??
+      null;
+
+    const normBookingCode =
+      anyBody?.booking_code ??
+      anyBody?.bookingCode ??
+      anyBody?.code ??
+      anyBody?.booking?.booking_code ??
+      anyBody?.booking?.bookingCode ??
+      null;
+
+    if (normBookingId != null && String(normBookingId).trim() !== "") anyBody.booking_id = String(normBookingId).trim();
+    if (normBookingCode != null && String(normBookingCode).trim() !== "") anyBody.booking_code = String(normBookingCode).trim();if (!body || (!body.booking_id && !body.booking_code)) {
     return jsonErr("BAD_REQUEST", "Missing booking identifier", 400);
   }
   if (!body.status) {
