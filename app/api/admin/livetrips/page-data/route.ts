@@ -2,6 +2,33 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+/* PHASE_3E_TOWNZONE_DERIVE_START */
+function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+  const la = (lat == null ? NaN : Number(lat));
+  const lo = (lng == null ? NaN : Number(lng));
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+
+  // Rough Ifugao municipality boxes (fallback).
+  const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+    { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+    { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+    { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+    { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+    { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  ];
+
+  for (const b of BOXES) {
+    if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  }
+  return null;
+}
+
+function deriveZoneFromTown(town: string | null): string | null {
+  const t = String(town || "").trim();
+  return t ? t : null; // zone==town for now
+}
+/* PHASE_3E_TOWNZONE_DERIVE_END */
+
 export const revalidate = 0;
 
 function bad(message: string, code: string, status = 400, extra: any = {}) {
@@ -117,7 +144,6 @@ export async function GET(req: Request) {
             pickup_lng: b?.pickup_lng ?? null,
             dropoff_lat: b?.dropoff_lat ?? null,
             dropoff_lng: b?.dropoff_lng ?? null,
-
             pickup_label: b?.pickup_label ?? b?.from_label ?? null,
             dropoff_label: b?.dropoff_label ?? b?.to_label ?? null,
 
