@@ -95,6 +95,16 @@ function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
 
+
+function hasValidCoords(t: any): boolean {
+  const pLat = Number((t as any)?.pickup_lat ?? (t as any)?.pickupLatitude ?? (t as any)?.from_lat ?? (t as any)?.fromLat ?? null);
+  const pLng = Number((t as any)?.pickup_lng ?? (t as any)?.pickupLongitude ?? (t as any)?.from_lng ?? (t as any)?.fromLng ?? null);
+  const dLat = Number((t as any)?.dropoff_lat ?? (t as any)?.dropoffLatitude ?? (t as any)?.to_lat ?? (t as any)?.toLat ?? null);
+  const dLng = Number((t as any)?.dropoff_lng ?? (t as any)?.dropoffLongitude ?? (t as any)?.to_lng ?? (t as any)?.toLng ?? null);
+
+  const ok = (n: any) => Number.isFinite(n) && n !== 0;
+  return ok(pLat) && ok(pLng) && ok(dLat) && ok(dLng);
+}
 function hasDriver(t: any): boolean {
   const v = (t as any)?.driver_id ?? (t as any)?.assigned_driver_id ?? (t as any)?.driverId ?? null;
   return v != null && String(v).length > 0;
@@ -196,7 +206,11 @@ async function callLiveTripsAction(action: "NUDGE_DRIVER" | "REASSIGN_DRIVER" | 
   const res = await fetch("/api/admin/livetrips/actions", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, trip_id: String(((t as any)?.id ?? (t as any)?.trip_id ?? "") || "") || null, booking_code, trip_id }),
+    body: JSON.stringify({
+        action,
+        trip_id: (String((t as any).id ?? (t as any).trip_id ?? (t as any).tripId ?? "").trim() || null),
+        booking_code: (String((t as any).booking_code ?? (t as any).bookingCode ?? "").trim() || null),
+      }),
   });
 
   const js: any = await res.json().catch(() => ({}));
@@ -959,6 +973,9 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
     </div>
   );
 }
+
+
+
 
 
 
