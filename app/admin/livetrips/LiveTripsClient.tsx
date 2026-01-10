@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -196,7 +196,7 @@ async function callLiveTripsAction(action: "NUDGE_DRIVER" | "REASSIGN_DRIVER" | 
   const res = await fetch("/api/admin/livetrips/actions", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, booking_code, trip_id }),
+    body: JSON.stringify({ action, trip_id: String(((t as any)?.id ?? (t as any)?.trip_id ?? "") || "") || null, booking_code, trip_id }),
   });
 
   const js: any = await res.json().catch(() => ({}));
@@ -567,8 +567,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                   const coolText = cooling ? coolTextForTripKey(key) : null;
                   const reason = computeProblemReason(t);
 
-                  const canAutoAssign =
-                    Number.isFinite((t as any)?.pickup_lat as any) && Number.isFinite((t as any)?.dropoff_lat as any);
+                  const canAutoAssign = hasValidCoords(t);
 
                   const primary = primaryProblemAction(t);
 
@@ -960,6 +959,7 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
     </div>
   );
 }
+
 
 
 
