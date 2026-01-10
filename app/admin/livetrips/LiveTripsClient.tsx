@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -228,6 +228,7 @@ export default function LiveTripsClient() {
   // Flagged trips are UI-only (no backend). Used for dispatcher follow-up.
   const [flaggedAt, setFlaggedAt] = useState<Record<string, number>>({});
   const [escalationStep, setEscalationStep] = useState<Record<string, number>>({}); // 0 none, 1 nudged, 2 auto-assigned, 3 flagged
+  const [pendingAutoAssignById, setPendingAutoAssignById] = useState<Record<string, boolean>>({}); // UI lock for AUTO_ASSIGN
 
   function isFlaggedTripKey(key: string): boolean {
     return !!(flaggedAt as any)[key];
@@ -722,14 +723,17 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                                   "rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40",
                                   primary === "AUTO_ASSIGN" ? "bg-black text-white border-black" : (primary ? "opacity-60" : ""),
                                 ].join(" ")}
-                                disabled={!canAutoAssign}
+                                disabled={!canAutoAssign || !!pendingAutoAssignById[String((t as any)?.id ?? (t as any)?.booking_id ?? (t as any)?.bookingId ?? "")]}
                                 title={!canAutoAssign ? "Requires pickup & dropoff coordinates" : "Auto-assign nearest driver"}
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   try {
-                                    setLastAction("Auto-assigning...");
-                                    await callLiveTripsAction("AUTO_ASSIGN", t);
-                                    setLastAction("Auto-assigned");
+                                    const _id = String((t as any)?.id ?? (t as any)?.booking_id ?? (t as any)?.bookingId ?? "");
+if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: true }));
+setLastAction("Auto-assigning...");
+await callLiveTripsAction("AUTO_ASSIGN", t);
+setLastAction("Auto-assigned");
+if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
                                     await loadPage();
                                   } catch (err: any) {
                                     setLastAction("Auto-assign failed: " + String(err?.message || err));
