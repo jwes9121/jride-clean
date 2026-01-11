@@ -602,8 +602,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     vendor_status,
   // PHASE_3F create-time town + coords (no 0/0)
   town: (typeof derivedTown !== "undefined" ? derivedTown : null),
-        pickup_lat: (pickupLL as any).lat,
-        pickup_lng: (pickupLL as any).lng,
+        pickup_lat: (vendorLL as any).lat,
+        pickup_lng: (vendorLL as any).lng,
         dropoff_lat: (dropoffLL as any).lat,
         dropoff_lng: (dropoffLL as any).lng,
     status: "requested",
