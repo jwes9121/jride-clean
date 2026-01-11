@@ -677,6 +677,22 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   const bookingId = String(ins.data?.id ?? "");
 
+  // PHASE3I_FORCE_POSTCREATE_COORDS
+  try {
+    const forcePayload: Record<string, any> = {
+      vendor_id,
+      pickup_lat: (vendorLL as any)?.lat ?? null,
+      pickup_lng: (vendorLL as any)?.lng ?? null,
+      dropoff_lat: (dropoffLL as any)?.lat ?? null,
+      dropoff_lng: (dropoffLL as any)?.lng ?? null,
+      town: derivedTown ?? null,
+    };
+
+    await admin.from("bookings").update(forcePayload).eq("id", bookingId);
+  } catch {}
+  // PHASE3I_FORCE_POSTCREATE_COORDS_END
+
+
 
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
 
