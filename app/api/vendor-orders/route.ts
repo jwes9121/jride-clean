@@ -117,7 +117,9 @@ async function mapboxGeocode(label: string): Promise<LatLng> {
 async function fetchVendorCoordsAndTown(admin: any, vendorId: string): Promise<{ ll: LatLng; town: string | null }> {
   const candidates: Array<[string, string]> = [
     ["vendor_accounts", "id"],
-    ["vendor_accounts", "vendor_id"],
+    ["vendor_accounts", "email"],
+    ["vendor_accounts", "display_name"],
+    ["vendor_accounts", "location_label"],
   ];
 
   for (const [table, key] of candidates) {
