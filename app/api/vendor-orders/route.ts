@@ -1017,6 +1017,17 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
 
 
+  // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG
+  let coords_debug: any = null;
+  try {
+    const chk = await admin
+      .from("bookings")
+      .select("id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town")
+      .eq("id", bookingId)
+      .single();
+    coords_debug = (chk && !chk.error) ? chk.data : null;
+  } catch {}
+  // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG_END
   return json(200, {
 
 
@@ -1029,7 +1040,12 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     order_id: bookingId,
 
 
-    takeout_items_subtotal: subtotal,
+    
+    resolved_pickup: pickupLL ?? vendorLL ?? null,
+    resolved_dropoff: dropoffLL ?? dropLL ?? null,
+    db_coords: coords_debug,
+
+takeout_items_subtotal: subtotal,
 
 
     takeoutSnapshot,
