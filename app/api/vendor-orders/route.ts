@@ -604,10 +604,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   town: (typeof derivedTown !== "undefined" ? derivedTown : null),
         pickup_lat: (pickupLL as any).lat,
         pickup_lng: (pickupLL as any).lng,
-        dropoff_lat: (dropLL as any).lat,
-        dropoff_lng: (dropLL as any).lng,
-
-
+        dropoff_lat: (dropoffLL as any).lat,
+        dropoff_lng: (dropoffLL as any).lng,
     status: "requested",
 
 
@@ -695,7 +693,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     // 1) vendor pickup coords (preferred)
     const vendorMeta =
       (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
-      (await tryFetchRowById(admin, "vendor_accounts", "vendor_id", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "email", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "display_name", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
       null;
     const vLL = pickLatLng(vendorMeta);
 
@@ -722,20 +722,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         ? (_addrRes as any).data[0]
         : null;
     const aLat =
-
-
-      isFiniteNum(addr?.dropoff_lat) ?? isFiniteNum(addr?.lat) ?? isFiniteNum(addr?.latitude) ?? isFiniteNum(addr?.location_lat) ?? null;
-
-
+      isFiniteNum(addr?.lat) ?? null;
     const aLng =
-
-
-      isFiniteNum(addr?.dropoff_lng) ?? isFiniteNum(addr?.lng) ?? isFiniteNum(addr?.longitude) ?? isFiniteNum(addr?.location_lng) ?? null;
-
-
-
-
-
+      isFiniteNum(addr?.lng) ?? null;
     // 3) accept coords if caller provided them (future-proof)
 
 
