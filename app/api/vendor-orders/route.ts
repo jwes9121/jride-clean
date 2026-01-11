@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -389,8 +389,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({} as any));
-
-    const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
+const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   if (!vendor_id) {
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
   }
@@ -418,6 +417,30 @@ export async function POST(req: NextRequest) {
   const pickupLL = normalizeLL(vendorLL);
   const dropoffLL = normalizeLL(dropLL);
   // PHASE_3F_TAKEOUT_COORDS_TOWN_END
+/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_START
+   Ensure CREATE path will never write missing coords (prevents LiveTrips PROBLEM noise).
+   Uses vars computed above in PHASE_3F:
+   - pickupLL, dropoffLL, derivedTown
+*/
+const town = derivedTown;
+const zone = deriveZoneFromTown(town) || town;
+
+if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
+  return json(400, {
+    ok: false,
+    error: "TAKEOUT_COORDS_MISSING",
+    message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng (or Mapbox token fallback).",
+    details: {
+      pickup_lat: pickupLL?.lat ?? null,
+      pickup_lng: pickupLL?.lng ?? null,
+      dropoff_lat: dropoffLL?.lat ?? null,
+      dropoff_lng: dropoffLL?.lng ?? null,
+      town,
+      zone,
+    },
+  });
+}
+/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_END */
 const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
@@ -474,94 +497,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   }
 
   // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
-// PHASE3C_TAKEOUT_COORDS_HYDRATE_START
-// Goal: ensure takeout-created bookings have pickup/dropoff coords so LiveTrips can assign.
-// No auth changes, no schema changes, schema-safe update only.
 
-function pickNum(v: any): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function pickLatLng(obj: any): { lat: number | null; lng: number | null } {
-  if (!obj) return { lat: null, lng: null };
-  const lat =
-    pickNum(obj.pickup_lat) ?? pickNum(obj.lat) ?? pickNum(obj.latitude) ?? pickNum(obj.location_lat) ?? pickNum(obj.pickupLatitude) ?? null;
-  const lng =
-    pickNum(obj.pickup_lng) ?? pickNum(obj.lng) ?? pickNum(obj.longitude) ?? pickNum(obj.location_lng) ?? pickNum(obj.pickupLongitude) ?? null;
-  return { lat, lng };
-}
-
-function pickTown(obj: any): string | null {
-  if (!obj) return null;
-  const v = String(obj.town ?? obj.municipality ?? obj.city ?? obj.area ?? obj.zone_town ?? "").trim();
-  return v ? v : null;
-}
-
-function pickVendorLabel(obj: any): string | null {
-  if (!obj) return null;
-  const v =
-    String(obj.pickup_label ?? obj.location_label ?? obj.address_label ?? obj.address_text ?? obj.address ?? obj.store_name ?? obj.name ?? "").trim();
-  return v ? v : null;
-}
-
-async function tryLoadOne(table: string, id: string): Promise<any | null> {
-  try {
-    const r = await admin!.from(table).select("*").eq("id", id).maybeSingle();
-    if (r && !r.error && r.data) return r.data;
-  } catch {}
-  return null;
-}
-
-async function loadVendorMeta(vendor_id: string): Promise<any | null> {
-  // try multiple common vendor tables, first that returns data wins
-  const tables = ["vendors", "vendor_profiles", "vendor_settings", "vendor_accounts"];
-  for (const t of tables) {
-    const d = await tryLoadOne(t, vendor_id);
-    if (d) return d;
-  }
-  return null;
-}
-
-async function loadPrimaryAddressByDeviceKey(deviceKey: string): Promise<any | null> {
-  const dk = String(deviceKey || "").trim();
-  if (!dk) return null;
-  try {
-    // table name used by your /api/passenger-addresses route is usually passenger_addresses
-    const r = await admin!
-      .from("passenger_addresses")
-      .select("*")
-      .eq("device_key", dk)
-      .order("is_primary", { ascending: false })
-      .order("updated_at", { ascending: false })
-      .limit(1);
-
-    if (r && !r.error && Array.isArray(r.data) && r.data[0]) return r.data[0];
-  } catch {}
-  return null;
-}
-
-async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>) {
-  let payload: Record<string, any> = { ...initial };
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const res = await admin!.from("bookings").update(payload).eq("id", id).select("id").single();
-
-    if (!res.error) return res;
-
-    const msg = String((res.error as any)?.message || "");
-    const m = msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i);
-    if (m && m[1]) {
-      const col = String(m[1]);
-      delete (payload as any)[col];
-      continue;
-    }
-    return res;
-  }
-
-  return { data: null, error: { message: "DB_ERROR: schema-safe update retries exceeded" } } as any;
-}
-// PHASE3C_TAKEOUT_COORDS_HYDRATE_END
 
   const customer_name = String(body?.customer_name ?? body?.customerName ?? "").trim();
   const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
@@ -664,10 +600,10 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
     vendor_status,
   // PHASE_3F create-time town + coords (no 0/0)
   town: (typeof derivedTown !== "undefined" ? derivedTown : null),
-  pickup_lat: (pickupLL.lat != null ? pickupLL.lat : null),
-  pickup_lng: (pickupLL.lng != null ? pickupLL.lng : null),
-  dropoff_lat: (dropoffLL.lat != null ? dropoffLL.lat : null),
-  dropoff_lng: (dropoffLL.lng != null ? dropoffLL.lng : null),
+        pickup_lat: (pickupLL as any).lat,
+        pickup_lng: (pickupLL as any).lng,
+        dropoff_lat: (dropLL as any).lat,
+        dropoff_lng: (dropLL as any).lng,
 
 
     status: "requested",
@@ -755,39 +691,44 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
 
 
     // 1) vendor pickup coords (preferred)
-
-
-    const vendorMeta = await loadVendorMeta(vendor_id);
-
-
+    const vendorMeta =
+      (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "vendor_id", vendor_id)) ||
+      null;
     const vLL = pickLatLng(vendorMeta);
 
 
     const vTown = pickTown(vendorMeta);
-
-
-    const vLabel = pickVendorLabel(vendorMeta);
-
-
-
-
-
+    const vLabel =
+      String((body as any)?.pickup_label ?? (body as any)?.from_label ?? (body as any)?.vendor_label ?? "").trim() ||
+      null;
     // 2) dropoff coords from passenger primary address if available (device_key comes from takeout page)
+    const _dk = String(body?.device_key ?? body?.deviceKey ?? "").trim();
+    const _addrRes =
+      _dk
+        ? await admin
+            .from("passenger_addresses")
+            .select("*")
+            .eq("device_key", _dk)
+            .order("is_primary", { ascending: false })
+            .order("updated_at", { ascending: false })
+            .limit(1)
+        : null;
 
-
-    const addr = await loadPrimaryAddressByDeviceKey(String(body?.device_key ?? body?.deviceKey ?? ""));
-
-
+    const addr =
+      (_addrRes && !(_addrRes as any).error && Array.isArray((_addrRes as any).data) && (_addrRes as any).data[0])
+        ? (_addrRes as any).data[0]
+        : null;
     const aLat =
 
 
-      pickNum(addr?.dropoff_lat) ?? pickNum(addr?.lat) ?? pickNum(addr?.latitude) ?? pickNum(addr?.location_lat) ?? null;
+      isFiniteNum(addr?.dropoff_lat) ?? isFiniteNum(addr?.lat) ?? isFiniteNum(addr?.latitude) ?? isFiniteNum(addr?.location_lat) ?? null;
 
 
     const aLng =
 
 
-      pickNum(addr?.dropoff_lng) ?? pickNum(addr?.lng) ?? pickNum(addr?.longitude) ?? pickNum(addr?.location_lng) ?? null;
+      isFiniteNum(addr?.dropoff_lng) ?? isFiniteNum(addr?.lng) ?? isFiniteNum(addr?.longitude) ?? isFiniteNum(addr?.location_lng) ?? null;
 
 
 
@@ -796,16 +737,16 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
     // 3) accept coords if caller provided them (future-proof)
 
 
-    const bPickupLat = pickNum(body?.pickup_lat ?? body?.pickupLat ?? null);
+    const bPickupLat = isFiniteNum(body?.pickup_lat ?? body?.pickupLat ?? null);
 
 
-    const bPickupLng = pickNum(body?.pickup_lng ?? body?.pickupLng ?? null);
+    const bPickupLng = isFiniteNum(body?.pickup_lng ?? body?.pickupLng ?? null);
 
 
-    const bDropLat = pickNum(body?.dropoff_lat ?? body?.dropoffLat ?? body?.to_lat ?? body?.toLat ?? null);
+    const bDropLat = isFiniteNum(body?.dropoff_lat ?? body?.dropoffLat ?? body?.to_lat ?? body?.toLat ?? null);
 
 
-    const bDropLng = pickNum(body?.dropoff_lng ?? body?.dropoffLng ?? body?.to_lng ?? body?.toLng ?? null);
+    const bDropLng = isFiniteNum(body?.dropoff_lng ?? body?.dropoffLng ?? body?.to_lng ?? body?.toLng ?? null);
 
 
 
@@ -899,11 +840,41 @@ async function schemaSafeUpdateBooking(id: string, initial: Record<string, any>)
 
 
     if (hasAny) {
+      // Inline schema-safe update (drop unknown booking columns and retry)
+      let _payload: any = { ...(updatePayload as any) };
 
+      let _lastErr: any = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const _res = await admin
+          .from("bookings")
+          .update(_payload)
+          .eq("id", bookingId)
+          .select("id")
+          .single();
 
-      await schemaSafeUpdateBooking(bookingId, updatePayload);
+        if (!_res.error) {
+          _lastErr = null;
+          break;
+        }
 
+        _lastErr = _res.error;
+        const msg = String((_res.error as any)?.message || "");
+        const m =
+          msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i) ||
+          msg.match(/column\s+"([^"]+)"\s+of\s+relation\s+"bookings"\s+does\s+not\s+exist/i);
 
+        if (m && m[1]) {
+          const col = String(m[1]);
+          delete (_payload as any)[col];
+          continue;
+        }
+
+        break; // unknown error -> stop retrying
+      }
+
+      if (_lastErr) {
+        throw _lastErr;
+      }
     }
 
 
