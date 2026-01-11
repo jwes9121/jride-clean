@@ -433,10 +433,10 @@ if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || 
     error: "TAKEOUT_COORDS_MISSING",
     message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng (or Mapbox token fallback).",
     details: {
-      pickup_lat: pickupLL?.lat ?? null,
-      pickup_lng: pickupLL?.lng ?? null,
-      dropoff_lat: dropoffLL?.lat ?? null,
-      dropoff_lng: dropoffLL?.lng ?? null,
+      pickup_lat: (pickupLL as any)?.lat ?? null,
+      pickup_lng: (pickupLL as any)?.lng ?? null,
+      dropoff_lat: (dropoffLL as any)?.lat ?? null,
+      dropoff_lng: (dropoffLL as any)?.lng ?? null,
       town,
       zone,
     },
@@ -602,10 +602,10 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     vendor_status,
   // PHASE_3F create-time town + coords (no 0/0)
   town: (typeof derivedTown !== "undefined" ? derivedTown : null),
-        pickup_lat: (vendorLL as any).lat,
-        pickup_lng: (vendorLL as any).lng,
-        dropoff_lat: (dropoffLL as any).lat,
-        dropoff_lng: (dropoffLL as any).lng,
+        pickup_lat: (pickupLL as any)?.lat ?? null,
+        pickup_lng: (pickupLL as any)?.lng ?? null,
+        dropoff_lat: (dropoffLL as any)?.lat ?? null,
+        dropoff_lng: (dropoffLL as any)?.lng ?? null,
     status: "requested",
 
 
@@ -681,8 +681,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   try {
     const forcePayload: Record<string, any> = {
       vendor_id,
-      pickup_lat: (vendorLL as any)?.lat ?? null,
-      pickup_lng: (vendorLL as any)?.lng ?? null,
+      pickup_lat: (pickupLL as any)?.lat ?? null,
+      pickup_lng: (pickupLL as any)?.lng ?? null,
       dropoff_lat: (dropoffLL as any)?.lat ?? null,
       dropoff_lng: (dropoffLL as any)?.lng ?? null,
       town: derivedTown ?? null,
@@ -695,6 +695,23 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
 
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
+
+  // PHASE3I_AFTER_INSERT_FORCE_UPDATE
+  // DB appears to default coords to 0/0 on INSERT. Force-correct via UPDATE immediately.
+  try {
+    const forcePayload: Record<string, any> = {
+      vendor_id,
+      pickup_lat: (pickupLL as any)?.lat ?? null,
+      pickup_lng: (pickupLL as any)?.lng ?? null,
+      dropoff_lat: (dropoffLL as any)?.lat ?? null,
+      dropoff_lng: (dropoffLL as any)?.lng ?? null,
+      town: derivedTown ?? null,
+    };
+
+    await admin.from("bookings").update(forcePayload).eq("id", bookingId);
+  } catch {}
+  // PHASE3I_AFTER_INSERT_FORCE_UPDATE_END
+
 
 
 
