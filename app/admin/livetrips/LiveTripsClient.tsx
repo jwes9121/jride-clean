@@ -293,6 +293,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [manualDriverId, setManualDriverId] = useState<string>("");
 
 
+
   // Manual-assign UI feedback
   const [isAssigning, setIsAssigning] = useState(false);
 
@@ -406,11 +407,17 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     setTimeout(() => tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
   async function assignDriver(bookingCode: string, driverId: string) {
-    if (!bookingCode || !driverId) return;
-    setLastAction("Assigning...");
-    await postJson("/api/dispatch/assign", { booking_code: bookingCode, bookingCode, driver_id: driverId, driverId });
-    setLastAction("Assigned");
-    await loadPage();
+    try {
+      setLastAction("Assigning...");
+          if (!bookingCode || !driverId) return;
+          setLastAction("Assigning...");
+          await postJson("/api/dispatch/assign", { booking_code: bookingCode, bookingCode, driver_id: driverId, driverId });
+          setLastAction("Assigned");
+          await loadPage();
+    } catch (err: any) {
+      setLastAction("Assign failed: " + String(err?.message || err));
+      throw err;
+    }
   }
 
     async function updateTripStatus(bookingCode: string, status: string) {
