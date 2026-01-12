@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -676,46 +676,35 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
 
   const bookingId = String(ins.data?.id ?? "");
-
-  // PHASE3I_FORCE_POSTCREATE_COORDS
-  try {
-    const forcePayload: Record<string, any> = {
-      vendor_id,
-      pickup_lat: (pickupLL as any)?.lat ?? null,
-      pickup_lng: (pickupLL as any)?.lng ?? null,
-      dropoff_lat: (dropoffLL as any)?.lat ?? null,
-      dropoff_lng: (dropoffLL as any)?.lng ?? null,
-      town: derivedTown ?? null,
-    };
-
-    await admin.from("bookings").update(forcePayload).eq("id", bookingId);
-  } catch {}
-  // PHASE3I_FORCE_POSTCREATE_COORDS_END
-
-
-
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
+  // PHASE3I_FORCE_COORDS_AUTHORITATIVE_START
+  // DB appears to default coords to 0/0 on INSERT for takeout in some cases.
+  // Force-correct via UPDATE immediately and surface any error (do NOT swallow).
+  const forcePayload: Record<string, any> = {
+    vendor_id,
+    pickup_lat: (pickupLL as any)?.lat ?? null,
+    pickup_lng: (pickupLL as any)?.lng ?? null,
+    dropoff_lat: (dropoffLL as any)?.lat ?? null,
+    dropoff_lng: (dropoffLL as any)?.lng ?? null,
+    town: (typeof derivedTown !== "undefined" ? derivedTown : null),
+  };
 
-  // PHASE3I_AFTER_INSERT_FORCE_UPDATE
-  // DB appears to default coords to 0/0 on INSERT. Force-correct via UPDATE immediately.
-  try {
-    const forcePayload: Record<string, any> = {
-      vendor_id,
-      pickup_lat: (pickupLL as any)?.lat ?? null,
-      pickup_lng: (pickupLL as any)?.lng ?? null,
-      dropoff_lat: (dropoffLL as any)?.lat ?? null,
-      dropoff_lng: (dropoffLL as any)?.lng ?? null,
-      town: derivedTown ?? null,
-    };
+  const forceRes = await admin
+    .from("bookings")
+    .update(forcePayload)
+    .eq("id", bookingId)
+    .select("id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town")
+    .single();
 
-    await admin.from("bookings").update(forcePayload).eq("id", bookingId);
-  } catch {}
-  // PHASE3I_AFTER_INSERT_FORCE_UPDATE_END
-
-
-
-
-
+  if (forceRes.error) {
+    return json(500, {
+      ok: false,
+      error: "FORCE_UPDATE_FAILED",
+      message: forceRes.error.message,
+      forcePayload,
+    });
+  }
+  // PHASE3I_FORCE_COORDS_AUTHORITATIVE_END
 
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_START
 
@@ -822,23 +811,6 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
 
       // coords
-
-
-      pickup_lat,
-
-
-      pickup_lng,
-
-
-      dropoff_lat,
-
-
-      dropoff_lng,
-
-
-
-
-
       // town defaults help zoning
 
 
