@@ -85,7 +85,7 @@ export async function GET(req: Request) {
     const debug = url.searchParams.get("debug") === "1";
 
     const { data: rpcData, error: rpcErr } = await supabase.rpc(
-      "admin_get_live_trips_page_data"
+      "admin_get_live_trips_page_data_v2"
     );
 
     if (rpcErr) {
