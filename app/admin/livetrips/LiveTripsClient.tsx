@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -167,10 +167,10 @@ function computeProblemReason(t: TripRow): string | null {
   const s = normStatus((t as any)?.status);
   const mins = minutesSince((t as any)?.updated_at || (t as any)?.created_at || null);
 
-  const pLatOk = Number.isFinite((t as any)?.pickup_lat as any);
-  const dLatOk = Number.isFinite((t as any)?.dropoff_lat as any);
+  const coordsOk = hasValidCoords(t);
+  
 
-  if (isActiveTripStatus(s) && (!pLatOk || !dLatOk)) return "Missing pickup/dropoff coordinates";
+  if (isActiveTripStatus(s) && !coordsOk) return "Missing pickup/dropoff coordinates";
   if (s === "assigned" && !hasDriver(t)) return "Assigned but no driver linked";
   if (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) return `On the way stale (${mins}m)`;
   if (s === "arrived" && mins >= STUCK_THRESHOLDS_MIN.arrived) return `Arrived stale (${mins}m)`;

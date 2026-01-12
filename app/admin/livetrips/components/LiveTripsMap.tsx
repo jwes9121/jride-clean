@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
@@ -40,6 +40,10 @@ function minutesSinceIso(iso: any): number {
 }
 
 
+function isActiveStatusForProblem(s: any): boolean {
+  const x = String(s ?? "").trim().toLowerCase();
+  return ["pending","assigned","on_the_way","arrived","enroute","on_trip"].includes(x);
+}
 function num(v: any): number | null {
   if (typeof v === "number" && !Number.isNaN(v)) return v;
   const n = parseFloat(String(v));
@@ -57,7 +61,7 @@ function getPickup(trip: any): LngLatTuple | null {
     num(trip.pickup_lng) ??
     num(trip.from_lng) ??
     num(trip.origin_lng);
-  if (lat != null && lng != null) return [lng, lat];
+  if (lat != null && lng != null && !(lat === 0 && lng === 0)) return [lng, lat];
   return null;
 }
 
@@ -72,7 +76,7 @@ function getDropoff(trip: any): LngLatTuple | null {
     num(trip.to_lng) ??
     num(trip.dest_lng) ??
     num(trip.destination_lng);
-  if (lat != null && lng != null) return [lng, lat];
+  if (lat != null && lng != null && !(lat === 0 && lng === 0)) return [lng, lat];
   return null;
 }
 
@@ -391,7 +395,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     for (const tRaw of trips as any[]) {
       const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
       const isStuck = activeStuckIds.has(id);
-      const isProblem = !!tRaw.isProblem;
+      const isProblem = !!tRaw.isProblem && isActiveStatusForProblem(tRaw.status);
       if (isStuck || isProblem) {
         currentProblemIds.add(id);
       }
@@ -461,7 +465,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const status = String(tRaw.status ?? "");
       const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
       const isStuck = activeStuckIds.has(id);
-      const isProblem = !!tRaw.isProblem;
+      const isProblem = !!tRaw.isProblem && isActiveStatusForProblem(tRaw.status);
 
       if (["pending", "assigned", "on_the_way", "on_trip"].includes(status)) {
         active++;
@@ -664,7 +668,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       }
 
       const isStuck = activeStuckIds.has(id);
-      const isProblem = !!raw.isProblem;
+      const isProblem = !!raw.isProblem && isActiveStatusForProblem(raw.status);
 
       // DRIVER marker
       if (driverDisplay) {
