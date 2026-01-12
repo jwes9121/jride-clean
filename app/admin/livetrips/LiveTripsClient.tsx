@@ -292,6 +292,35 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("Drivers: not loaded yet");
   const [manualDriverId, setManualDriverId] = useState<string>("");
 
+
+  // Manual-assign UI feedback
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  // Available-first sorting
+  const driversSorted = useMemo(() => {
+    const arr = Array.isArray(drivers) ? [...drivers] : [];
+    const isAvail = (d: any) => String((d?.status ?? "")).trim().toLowerCase() === "available";
+    arr.sort((a: any, b: any) => {
+      const aa = isAvail(a) ? 0 : 1;
+      const bb = isAvail(b) ? 0 : 1;
+      if (aa !== bb) return aa - bb;
+      const an = String(a?.name ?? a?.driver_name ?? "Driver");
+      const bn = String(b?.name ?? b?.driver_name ?? "Driver");
+      return an.localeCompare(bn);
+    });
+    return arr;
+  }, [drivers]);
+
+  const manualDriverObj = useMemo(() => {
+    const mid = String(manualDriverId || "");
+    if (!mid) return null;
+    return (driversSorted || []).find((d: any) => String(d?.driver_id ?? d?.id ?? "") === mid) || null;
+  }, [driversSorted, manualDriverId]);
+
+  const manualDriverIsAvailable = useMemo(() => {
+    const s = String((manualDriverObj as any)?.status ?? "").trim().toLowerCase();
+    return s === "available";
+  }, [manualDriverObj]);
   async function postJson(url: string, body: any) {
     const r = await fetch(url, {
       method: "POST",
@@ -857,14 +886,14 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
                   onChange={(e) => setManualDriverId(e.target.value)}
                 >
                   <option value="">Select driver</option>
-                  {drivers.map((d, idx) => {
+                  {driversSorted.map((d, idx) => {
                     const id = String((d as any)?.driver_id ?? (d as any)?.id ?? "");
                     const name = String((d as any)?.name ?? (d as any)?.driver_name ?? "Driver");
                     const town = String((d as any)?.town ?? "");
                     const status = String((d as any)?.status ?? "");
                     const label = [name, town ? `(${town})` : "", status ? `- ${status}` : ""].filter(Boolean).join(" ");
                     return (
-                      <option key={id || idx} value={id}>
+                      <option key={id || idx} value={id} disabled={String(status || "").trim().toLowerCase() !== "available"}>
                         {label}
                       </option>
                     );
@@ -872,11 +901,31 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
                 </select>
 
                 <button
-                  className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
-                  onClick={() => selectedBookingCode && manualDriverId ? assignDriver(selectedBookingCode, manualDriverId) : null}
-                  disabled={!selectedBookingCode || !manualDriverId}
+                  className="rounded border px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
+                  disabled={!selectedBookingCode || !manualDriverId || !manualDriverIsAvailable || isAssigning}
+                  onClick={async () => {
+                    if (!selectedBookingCode) return;
+                    if (!manualDriverId) return;
+
+                    if (!manualDriverIsAvailable) {
+                      setLastAction("Select an AVAILABLE driver (others are disabled).");
+                      return;
+                    }
+
+                    try {
+                      setIsAssigning(true);
+                      setLastAction("Assigning...");
+                      await assignDriver(selectedBookingCode, manualDriverId);
+                      setLastAction("Assigned");
+                      await loadPage();
+                    } catch (err: any) {
+                      setLastAction("Assign failed: " + String(err?.message || err));
+                    } finally {
+                      setIsAssigning(false);
+                    }
+                  }}
                 >
-                  Assign
+                  {isAssigning ? "Assigning..." : "Assign"}
                 </button>
 
                 <button
