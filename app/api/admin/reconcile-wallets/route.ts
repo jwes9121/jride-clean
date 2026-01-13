@@ -7,6 +7,10 @@ function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
 }
 
+function s(v: any) {
+  return String(v ?? "").trim();
+}
+
 function getAdmin() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -17,23 +21,21 @@ function getAdmin() {
   });
 }
 
-function s(v: any) { return String(v ?? "").trim(); }
-
 export async function GET(req: NextRequest) {
   try {
     const admin = getAdmin();
     if (!admin) {
       return json(500, {
         ok: false,
-        error: "SERVER_MISCONFIG",
+        code: "SERVER_MISCONFIG",
         message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
       });
     }
 
     const url = new URL(req.url);
-    const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10) || 200, 1000);
+    const limit = Math.min(parseInt(url.searchParams.get("limit") || "300", 10) || 300, 1000);
 
-    // 1) Completed bookings (basic fields only)
+    // 1) Completed bookings
     const { data: bookings, error: bErr } = await admin
       .from("bookings")
       .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,completed_at,updated_at")
@@ -41,56 +43,33 @@ export async function GET(req: NextRequest) {
       .order("updated_at", { ascending: false })
       .limit(limit);
 
-    if (bErr) {
-      return json(500, { ok: false, error: "DB_ERROR", message: bErr.message, stage: "bookings" });
-    }
+    if (bErr) return json(500, { ok: false, code: "DB_ERROR", stage: "bookings", message: bErr.message });
 
     const completed = bookings || [];
     const completedIds = completed.map((x: any) => x.id).filter(Boolean);
     const completedCodes = completed.map((x: any) => x.booking_code).filter(Boolean);
 
-    // 2) Driver wallet tx for those bookings (if table exists)
-    let driverTx: any[] = [];
-    const { data: dProbe } = await admin.from("driver_wallet_transactions").select("id").limit(1);
-    if (Array.isArray(dProbe)) {
-      const { data: dTx, error: dErr } = await admin
-        .from("driver_wallet_transactions")
-        .select("id,driver_id,amount,reason,booking_id,created_at")
-        .in("booking_id", completedIds.length ? completedIds : ["00000000-0000-0000-0000-000000000000"])
-        .order("created_at", { ascending: false })
-        .limit(5000);
+    // 2) Driver wallet tx for completed booking ids (table exists in your schema)
+    const { data: driverTx, error: dErr } = await admin
+      .from("driver_wallet_transactions")
+      .select("id,driver_id,amount,reason,booking_id,created_at")
+      .in("booking_id", completedIds.length ? completedIds : ["00000000-0000-0000-0000-000000000000"])
+      .order("created_at", { ascending: false })
+      .limit(5000);
 
-      if (dErr) {
-        return json(500, { ok: false, error: "DB_ERROR", message: dErr.message, stage: "driver_wallet_transactions" });
-      }
-      driverTx = dTx || [];
-    }
+    if (dErr) return json(500, { ok: false, code: "DB_ERROR", stage: "driver_wallet_transactions", message: dErr.message });
 
-    // 3) Vendor wallet tx for those booking_codes (if table exists)
-    let vendorTx: any[] = [];
-    let vendorTxExists = false;
-    try {
-      const { data: vProbe, error: vProbeErr } = await admin.from("vendor_wallet_transactions").select("id").limit(1);
-      vendorTxExists = !vProbeErr;
-      if (vendorTxExists) {
-        const { data: vTx, error: vErr } = await admin
-          .from("vendor_wallet_transactions")
-          .select("id,vendor_id,booking_code,amount,kind,note,created_at")
-          .in("booking_code", completedCodes.length ? completedCodes : ["__none__"])
-          .order("created_at", { ascending: false })
-          .limit(5000);
+    // 3) Vendor wallet tx for completed booking codes (table exists in your schema)
+    const { data: vendorTx, error: vErr } = await admin
+      .from("vendor_wallet_transactions")
+      .select("id,vendor_id,booking_code,amount,kind,note,created_at")
+      .in("booking_code", completedCodes.length ? completedCodes : ["__none__"])
+      .order("created_at", { ascending: false })
+      .limit(5000);
 
-        if (vErr) {
-          return json(500, { ok: false, error: "DB_ERROR", message: vErr.message, stage: "vendor_wallet_transactions" });
-        }
-        vendorTx = vTx || [];
-      }
-    } catch {
-      vendorTxExists = false;
-      vendorTx = [];
-    }
+    if (vErr) return json(500, { ok: false, code: "DB_ERROR", stage: "vendor_wallet_transactions", message: vErr.message });
 
-    // 4) Negative balances (views exist per your schema snapshot)
+    // 4) Negative balances (views exist)
     const { data: dBal, error: dBalErr } = await admin
       .from("driver_wallet_balances_v1")
       .select("driver_id,balance,last_tx_at,tx_count")
@@ -98,9 +77,7 @@ export async function GET(req: NextRequest) {
       .order("balance", { ascending: true })
       .limit(200);
 
-    if (dBalErr) {
-      return json(500, { ok: false, error: "DB_ERROR", message: dBalErr.message, stage: "driver_wallet_balances_v1" });
-    }
+    if (dBalErr) return json(500, { ok: false, code: "DB_ERROR", stage: "driver_wallet_balances_v1", message: dBalErr.message });
 
     const { data: vBal, error: vBalErr } = await admin
       .from("vendor_wallet_balances_v1")
@@ -109,22 +86,19 @@ export async function GET(req: NextRequest) {
       .order("balance", { ascending: true })
       .limit(200);
 
-    if (vBalErr) {
-      return json(500, { ok: false, error: "DB_ERROR", message: vBalErr.message, stage: "vendor_wallet_balances_v1" });
-    }
+    if (vBalErr) return json(500, { ok: false, code: "DB_ERROR", stage: "vendor_wallet_balances_v1", message: vBalErr.message });
 
     // ---- Compute flags ----
 
-    // Driver: detect per booking_id credit presence + duplicates
+    // Driver tx by booking_id
     const txByBooking: Record<string, any[]> = {};
-    for (const t of driverTx) {
+    for (const t of driverTx || []) {
       const bid = s((t as any).booking_id);
       if (!bid) continue;
       if (!txByBooking[bid]) txByBooking[bid] = [];
       txByBooking[bid].push(t);
     }
 
-    // missing driver credit (completed booking has driver_id but no wallet tx linked)
     const missing_driver_credits = completed
       .filter((b: any) => !!b.driver_id)
       .filter((b: any) => !txByBooking[s(b.id)] || txByBooking[s(b.id)].length === 0)
@@ -136,7 +110,7 @@ export async function GET(req: NextRequest) {
         completed_at: b.completed_at ?? null,
         updated_at: b.updated_at ?? null,
       }))
-      .slice(0, 300);
+      .slice(0, 500);
 
     const duplicate_driver_credits = Object.keys(txByBooking)
       .filter((bid) => (txByBooking[bid]?.length || 0) > 1)
@@ -145,11 +119,11 @@ export async function GET(req: NextRequest) {
         count: txByBooking[bid].length,
         tx: txByBooking[bid].slice(0, 5),
       }))
-      .slice(0, 200);
+      .slice(0, 300);
 
-    // Vendor: only for takeout where vendor_status completed and booking_code present
+    // Vendor tx by booking_code
     const vtxByCode: Record<string, any[]> = {};
-    for (const t of vendorTx) {
+    for (const t of vendorTx || []) {
       const code = s((t as any).booking_code);
       if (!code) continue;
       if (!vtxByCode[code]) vtxByCode[code] = [];
@@ -167,7 +141,6 @@ export async function GET(req: NextRequest) {
       .filter((b: any) => {
         const code = s(b.booking_code);
         const list = vtxByCode[code] || [];
-        // vendor earning tx should exist; in your schema: kind='earning'
         return list.filter((t: any) => s(t.kind).toLowerCase() === "earning").length === 0;
       })
       .map((b: any) => ({
@@ -178,7 +151,7 @@ export async function GET(req: NextRequest) {
         completed_at: b.completed_at ?? null,
         updated_at: b.updated_at ?? null,
       }))
-      .slice(0, 300);
+      .slice(0, 500);
 
     const duplicate_vendor_earnings = Object.keys(vtxByCode)
       .map((code) => {
@@ -191,13 +164,13 @@ export async function GET(req: NextRequest) {
         count: x.earnings.length,
         tx: x.earnings.slice(0, 5),
       }))
-      .slice(0, 200);
+      .slice(0, 300);
 
     const summary = {
       completed_count: completed.length,
       completed_takeout_vendor_completed_count: takeoutCompleted.length,
-      driver_tx_seen: driverTx.length,
-      vendor_tx_seen: vendorTxExists ? vendorTx.length : 0,
+      driver_tx_seen: (driverTx || []).length,
+      vendor_tx_seen: (vendorTx || []).length,
       missing_driver_credits_count: missing_driver_credits.length,
       missing_vendor_credits_count: missing_vendor_credits.length,
       duplicate_driver_credits_count: duplicate_driver_credits.length,
@@ -215,9 +188,8 @@ export async function GET(req: NextRequest) {
       duplicate_vendor_earnings,
       negative_driver_balances: dBal || [],
       negative_vendor_balances: vBal || [],
-      note: vendorTxExists ? null : "vendor_wallet_transactions table not accessible; vendor checks may be incomplete",
     });
   } catch (e: any) {
-    return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e || "Unknown") });
+    return json(500, { ok: false, code: "SERVER_ERROR", message: String(e?.message || e || "Unknown") });
   }
 }
