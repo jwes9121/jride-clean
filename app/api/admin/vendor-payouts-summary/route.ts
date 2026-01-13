@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     // Only allow expected sources (read-only)
     const source =
       view === "summary"
-        ? "admin_vendor_payouts_summary"
+        ? "admin_vendor_payout_summary"
         : "admin_vendor_payout_monthly";
 
     const qs = new URLSearchParams();
