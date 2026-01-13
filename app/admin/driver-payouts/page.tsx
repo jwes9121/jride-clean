@@ -19,17 +19,13 @@ type Banner = { kind: "ok" | "warn" | "err"; text: string } | null;
 
 function fmt(ts?: string | null) {
   if (!ts) return "";
-  try {
-    return new Date(ts).toLocaleString();
-  } catch {
-    return String(ts);
-  }
+  try { return new Date(ts).toLocaleString(); } catch { return String(ts); }
 }
 
 function normalizeErr(e: any): string {
   const raw = (e?.message || e?.error || String(e || "")).trim();
   if (!raw) return "Request failed.";
-  if (raw.length > 180) return raw.slice(0, 180) + "â€¦";
+  if (raw.length > 260) return raw.slice(0, 260) + "â€¦";
   return raw;
 }
 
@@ -47,7 +43,7 @@ export default function AdminDriverPayoutsPage() {
   const [banner, setBanner] = useState<Banner>(null);
   const [driverQuery, setDriverQuery] = useState("");
 
-  // For Mark Paid modal only
+  // Mark Paid modal only
   const [markPaidId, setMarkPaidId] = useState<number | string | null>(null);
   const [method, setMethod] = useState("gcash");
   const [ref, setRef] = useState("");
@@ -59,7 +55,7 @@ export default function AdminDriverPayoutsPage() {
     try {
       const res = await fetch(`/api/admin/driver-payouts?status=${status}&limit=200`, { cache: "no-store" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "Failed to load payouts");
+      if (!res.ok) throw new Error(data?.message || data?.error || "Failed to load payouts");
       setRows(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setRows([]);
@@ -69,18 +65,17 @@ export default function AdminDriverPayoutsPage() {
     }
   }
 
-  async function act(action: "approve" | "reject" | "mark_paid", id: number | string) {
+  async function markPaid(id: number | string) {
     setLoading(true);
     setBanner(null);
     try {
-      const body: any = { id, action };
-
-      // Only include payout fields for mark_paid
-      if (action === "mark_paid") {
-        body.payout_method = method;
-        body.payout_ref = ref || null;
-        body.admin_note = note || null;
-      }
+      const body: any = {
+        id,
+        action: "mark_paid",
+        payout_method: method,
+        payout_ref: ref || null,
+        admin_note: note || null,
+      };
 
       const res = await fetch("/api/admin/driver-payouts", {
         method: "POST",
@@ -89,17 +84,23 @@ export default function AdminDriverPayoutsPage() {
       });
 
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.message || data?.error || "Action failed");
 
-      setBanner({ kind: "ok", text: `Action '${action}' applied for #${id}.` });
-
-      // Close modal after mark_paid
-      if (action === "mark_paid") {
-        setMarkPaidId(null);
-        setRef("");
-        setNote("");
+      // Some failures come back as {code, details, hint} (Postgres-style)
+      if (!res.ok) {
+        const msg =
+          data?.message ||
+          data?.error ||
+          data?.details ||
+          (data?.code ? `DB_ERROR ${data.code}` : "") ||
+          "Action failed";
+        const hint = data?.hint ? ` Hint: ${String(data.hint)}` : "";
+        throw new Error(String(msg) + hint);
       }
 
+      setBanner({ kind: "ok", text: `Marked paid for #${id}.` });
+      setMarkPaidId(null);
+      setRef("");
+      setNote("");
       await load();
     } catch (e: any) {
       setBanner({ kind: "err", text: normalizeErr(e) });
@@ -126,6 +127,7 @@ export default function AdminDriverPayoutsPage() {
       color: k === "ok" ? "#065f46" : k === "warn" ? "#92400e" : "#991b1b",
       fontSize: 14,
       maxWidth: 980,
+      whiteSpace: "pre-wrap",
     } as any);
 
   const btn = {
@@ -176,7 +178,7 @@ export default function AdminDriverPayoutsPage() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["id","driver_id","amount","status","requested_at","processed_at","method","ref","note","actions"].map(h => (
+              {["id","driver_id","amount","status","requested_at","processed_at","method","ref","note","actions"].map((h) => (
                 <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>{h}</th>
               ))}
             </tr>
@@ -185,7 +187,7 @@ export default function AdminDriverPayoutsPage() {
           <tbody>
             {filtered.map((r) => {
               const st = String(r.status || "").toLowerCase();
-              const canAct = st === "pending" || st === "approved";
+              const canMarkPaid = st === "pending"; // safest: only pending -> paid
               return (
                 <tr key={String(r.id)}>
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(r.id)}</td>
@@ -200,34 +202,15 @@ export default function AdminDriverPayoutsPage() {
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
-                        style={!canAct || loading ? btnDisabled : btn}
-                        disabled={!canAct || loading}
-                        onClick={() => act("approve", r.id)}
-                        title="pending -> approved"
-                      >
-                        Approve
-                      </button>
-
-                      <button
-                        style={!canAct || loading ? btnDisabled : btn}
-                        disabled={!canAct || loading}
-                        onClick={() => act("reject", r.id)}
-                        title="pending -> rejected"
-                      >
-                        Reject
-                      </button>
-
-                      <button
-                        style={!canAct || loading ? btnDisabled : btn}
-                        disabled={!canAct || loading}
+                        style={!canMarkPaid || loading ? btnDisabled : btn}
+                        disabled={!canMarkPaid || loading}
                         onClick={() => {
                           setMarkPaidId(r.id);
                           setMethod(String(r.payout_method || "gcash"));
                           setNote("");
-                          // Auto-generate a short payout reference immediately
                           setRef(genRef(r.id));
                         }}
-                        title="mark as paid (no wallet deduction)"
+                        title="pending -> paid (no wallet deduction)"
                       >
                         Mark Paid
                       </button>
@@ -248,7 +231,7 @@ export default function AdminDriverPayoutsPage() {
 
       {markPaidId != null ? (
         <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 10, maxWidth: 720 }}>
-          <div style={{ fontWeight: 700, marginBottom: 10 }}>Mark Paid â€” #{String(markPaidId)}</div>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>Mark Paid - #{String(markPaidId)}</div>
 
           <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, alignItems: "center" }}>
             <div>Method</div>
@@ -280,7 +263,7 @@ export default function AdminDriverPayoutsPage() {
             <button
               style={loading || !ref.trim() ? btnDisabled : btn}
               disabled={loading || !ref.trim()}
-              onClick={() => act("mark_paid", markPaidId)}
+              onClick={() => markPaid(markPaidId)}
             >
               Confirm
             </button>
@@ -288,14 +271,14 @@ export default function AdminDriverPayoutsPage() {
             <button
               style={loading ? btnDisabled : btn}
               disabled={loading}
-              onClick={() => { setMarkPaidId(null); }}
+              onClick={() => setMarkPaidId(null)}
             >
               Cancel
             </button>
           </div>
 
           <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-            Reference recommendation: keep it short and unique (auto-generated like <span style={{ fontFamily: "monospace" }}>PAY-19-A1B2</span>).
+            Reference recommendation: short + unique (auto-generated like <span style={{ fontFamily: "monospace" }}>PAY-19-A1B2</span>).
           </div>
         </div>
       ) : null}
