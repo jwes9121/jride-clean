@@ -35,10 +35,11 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "300", 10) || 300, 1000);
 
-    // 1) Completed bookings
+    // NOTE: bookings.completed_at does NOT exist in your schema.
+    // Use updated_at for timing in output.
     const { data: bookings, error: bErr } = await admin
       .from("bookings")
-      .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,completed_at,updated_at")
+      .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,updated_at")
       .eq("status", "completed")
       .order("updated_at", { ascending: false })
       .limit(limit);
@@ -49,7 +50,6 @@ export async function GET(req: NextRequest) {
     const completedIds = completed.map((x: any) => x.id).filter(Boolean);
     const completedCodes = completed.map((x: any) => x.booking_code).filter(Boolean);
 
-    // 2) Driver wallet tx for completed booking ids (table exists in your schema)
     const { data: driverTx, error: dErr } = await admin
       .from("driver_wallet_transactions")
       .select("id,driver_id,amount,reason,booking_id,created_at")
@@ -59,7 +59,6 @@ export async function GET(req: NextRequest) {
 
     if (dErr) return json(500, { ok: false, code: "DB_ERROR", stage: "driver_wallet_transactions", message: dErr.message });
 
-    // 3) Vendor wallet tx for completed booking codes (table exists in your schema)
     const { data: vendorTx, error: vErr } = await admin
       .from("vendor_wallet_transactions")
       .select("id,vendor_id,booking_code,amount,kind,note,created_at")
@@ -69,7 +68,6 @@ export async function GET(req: NextRequest) {
 
     if (vErr) return json(500, { ok: false, code: "DB_ERROR", stage: "vendor_wallet_transactions", message: vErr.message });
 
-    // 4) Negative balances (views exist)
     const { data: dBal, error: dBalErr } = await admin
       .from("driver_wallet_balances_v1")
       .select("driver_id,balance,last_tx_at,tx_count")
@@ -90,7 +88,6 @@ export async function GET(req: NextRequest) {
 
     // ---- Compute flags ----
 
-    // Driver tx by booking_id
     const txByBooking: Record<string, any[]> = {};
     for (const t of driverTx || []) {
       const bid = s((t as any).booking_id);
@@ -107,7 +104,6 @@ export async function GET(req: NextRequest) {
         booking_code: b.booking_code ?? null,
         driver_id: b.driver_id ?? null,
         service_type: b.service_type ?? null,
-        completed_at: b.completed_at ?? null,
         updated_at: b.updated_at ?? null,
       }))
       .slice(0, 500);
@@ -121,7 +117,6 @@ export async function GET(req: NextRequest) {
       }))
       .slice(0, 300);
 
-    // Vendor tx by booking_code
     const vtxByCode: Record<string, any[]> = {};
     for (const t of vendorTx || []) {
       const code = s((t as any).booking_code);
@@ -148,7 +143,6 @@ export async function GET(req: NextRequest) {
         booking_id: b.id,
         vendor_id: b.vendor_id ?? null,
         vendor_status: b.vendor_status ?? null,
-        completed_at: b.completed_at ?? null,
         updated_at: b.updated_at ?? null,
       }))
       .slice(0, 500);
