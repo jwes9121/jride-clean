@@ -40,12 +40,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const admin = getAdmin();
-  if (!admin) return json(500, { ok: false, code: "SERVER_MISCONFIG", message: "Missing SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY" });
+  if (!admin) return json(500, { ok: false, code: "SERVER_MISCONFIG", message: "Missing required env: SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY" });
 
   const body = await req.json().catch(() => ({} as any));
   const driver_id = s(body.driver_id);
-  const amount = n(body.amount);
+  
+  if (!driver_id || driver_id.toUpperCase().includes("REPLACE_DRIVER_UUID") || driver_id.toLowerCase() === "your_driver_uuid") {
+    return json(400, { ok: false, code: "BAD_DRIVER_ID", message: "Provide a real driver_id UUID." });
+  }const amount = n(body.amount);
   const note = s(body.note);
 
   if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
@@ -80,5 +84,8 @@ export async function POST(req: NextRequest) {
 
   if (insErr) return json(500, { ok: false, code: "DB_ERROR", stage: "insert", message: insErr.message });
 
-  return json(200, { ok: true, request: ins, balance_at_request_time: balance, min_payout: min });
+      return json(200, { ok: true, request: ins, balance_at_request_time: balance, min_payout: min });
+  } catch (e: any) {
+    return json(500, { ok: false, code: "UNHANDLED", message: String(e?.message || e) });
+  }
 }
