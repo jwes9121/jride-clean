@@ -23,7 +23,7 @@ function fmt(ts?: string | null) {
 function normalizeErr(e: any): string {
   const raw = (e?.message || e?.error || String(e || "")).trim();
   if (!raw) return "Request failed.";
-  if (raw.length > 260) return raw.slice(0, 260) + "â€¦";
+  if (raw.length > 260) return raw.slice(0, 260) + "...";
   return raw;
 }
 
@@ -37,6 +37,14 @@ export default function AdminVendorPayoutsPage() {
 
   const [markPaidId, setMarkPaidId] = useState<string | null>(null);
   const [reviewedBy, setReviewedBy] = useState("admin");
+
+  // restore reviewedBy from localStorage
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("vendor_payouts_reviewed_by");
+      if (v) setReviewedBy(v);
+    } catch {}
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -55,9 +63,11 @@ export default function AdminVendorPayoutsPage() {
   }
 
   async function markPaid(id: string) {
+    // optimistic disable + persist reviewer
     setLoading(true);
     setBanner(null);
     try {
+      localStorage.setItem("vendor_payouts_reviewed_by", reviewedBy || "admin");
       const body = { id, action: "mark_paid", reviewed_by: reviewedBy || "admin" };
       const res = await fetch("/api/admin/vendor-payouts", {
         method: "POST",
@@ -70,8 +80,8 @@ export default function AdminVendorPayoutsPage() {
         throw new Error(String(msg));
       }
       setBanner({ kind: "ok", text: `Marked paid for ${id}.` });
-      setMarkPaidId(null);
-      await load();
+      setMarkPaidId(null); // auto-close panel
+      await load();        // auto-refresh list
     } catch (e: any) {
       setBanner({ kind: "err", text: normalizeErr(e) });
     } finally {
@@ -129,13 +139,13 @@ export default function AdminVendorPayoutsPage() {
           <input
             value={vendorQuery}
             onChange={(e) => setVendorQuery(e.target.value)}
-            placeholder="search vendor_idâ€¦"
+            placeholder="search vendor_id..."
             style={{ width: 260 }}
           />
         </label>
 
         <button style={loading ? btnDisabled : btn} onClick={load} disabled={loading}>Refresh</button>
-        {loading ? <span style={{ opacity: 0.7 }}>Loadingâ€¦</span> : null}
+        {loading ? <span style={{ opacity: 0.7 }}>Loading...</span> : null}
       </div>
 
       {banner ? <div style={bannerStyle(banner.kind)}>{banner.text}</div> : null}
@@ -168,7 +178,7 @@ export default function AdminVendorPayoutsPage() {
                     <button
                       style={!canMarkPaid || loading ? btnDisabled : btn}
                       disabled={!canMarkPaid || loading}
-                      onClick={() => { setMarkPaidId(String(r.id)); setReviewedBy("admin"); }}
+                      onClick={() => { setMarkPaidId(String(r.id)); setReviewedBy(reviewedBy || "admin"); }}
                       title="pending -> paid (NO wallet mutation)"
                     >
                       Mark Paid
