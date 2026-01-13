@@ -19,7 +19,11 @@ type Banner = { kind: "ok" | "warn" | "err"; text: string } | null;
 
 function fmt(ts?: string | null) {
   if (!ts) return "";
-  try { return new Date(ts).toLocaleString(); } catch { return String(ts); }
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return String(ts);
+  }
 }
 
 function normalizeErr(e: any): string {
@@ -29,6 +33,13 @@ function normalizeErr(e: any): string {
   return raw;
 }
 
+// Short ref generator: PAY-<id>-<4chars>
+function genRef(id: number | string) {
+  const s = String(id || "").replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "X";
+  const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `PAY-${s}-${rnd}`;
+}
+
 export default function AdminDriverPayoutsPage() {
   const [status, setStatus] = useState<"pending" | "paid" | "all">("pending");
   const [rows, setRows] = useState<PayoutRow[]>([]);
@@ -36,7 +47,8 @@ export default function AdminDriverPayoutsPage() {
   const [banner, setBanner] = useState<Banner>(null);
   const [driverQuery, setDriverQuery] = useState("");
 
-  const [actingId, setActingId] = useState<number | string | null>(null);
+  // For Mark Paid modal only
+  const [markPaidId, setMarkPaidId] = useState<number | string | null>(null);
   const [method, setMethod] = useState("gcash");
   const [ref, setRef] = useState("");
   const [note, setNote] = useState("");
@@ -57,27 +69,37 @@ export default function AdminDriverPayoutsPage() {
     }
   }
 
-  async function act(action: "approve" | "reject" | "mark_paid") {
-    if (!actingId) return;
+  async function act(action: "approve" | "reject" | "mark_paid", id: number | string) {
     setLoading(true);
     setBanner(null);
     try {
-      const body: any = { id: actingId, action };
+      const body: any = { id, action };
+
+      // Only include payout fields for mark_paid
       if (action === "mark_paid") {
         body.payout_method = method;
         body.payout_ref = ref || null;
         body.admin_note = note || null;
       }
+
       const res = await fetch("/api/admin/driver-payouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.message || data?.error || "Action failed");
-      setActingId(null);
-      setRef(""); setNote("");
-      setBanner({ kind: "ok", text: `Action '${action}' applied.` });
+
+      setBanner({ kind: "ok", text: `Action '${action}' applied for #${id}.` });
+
+      // Close modal after mark_paid
+      if (action === "mark_paid") {
+        setMarkPaidId(null);
+        setRef("");
+        setNote("");
+      }
+
       await load();
     } catch (e: any) {
       setBanner({ kind: "err", text: normalizeErr(e) });
@@ -91,74 +113,190 @@ export default function AdminDriverPayoutsPage() {
   const filtered = useMemo(() => {
     const q = driverQuery.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(r => String(r.driver_id || "").toLowerCase().includes(q));
+    return rows.filter((r) => String(r.driver_id || "").toLowerCase().includes(q));
   }, [rows, driverQuery]);
+
+  const bannerStyle = (k: "ok" | "warn" | "err") =>
+    ({
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #e5e7eb",
+      marginTop: 12,
+      background: k === "ok" ? "#ecfdf5" : k === "warn" ? "#fffbeb" : "#fef2f2",
+      color: k === "ok" ? "#065f46" : k === "warn" ? "#92400e" : "#991b1b",
+      fontSize: 14,
+      maxWidth: 980,
+    } as any);
+
+  const btn = {
+    padding: "6px 10px",
+    border: "1px solid #ddd",
+    borderRadius: 8,
+    background: "white",
+    cursor: "pointer",
+    fontSize: 12,
+  } as any;
+
+  const btnDisabled = { ...btn, opacity: 0.5, cursor: "not-allowed" } as any;
 
   return (
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 20, fontWeight: 700 }}>Driver Payouts</h1>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-        <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
-          <option value="pending">pending</option>
-          <option value="paid">paid</option>
-          <option value="all">all</option>
-        </select>
+        <label>
+          Status:&nbsp;
+          <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
+            <option value="pending">pending</option>
+            <option value="paid">paid</option>
+            <option value="all">all</option>
+          </select>
+        </label>
 
-        <input
-          value={driverQuery}
-          onChange={(e) => setDriverQuery(e.target.value)}
-          placeholder="search driver_idâ€¦"
-          style={{ width: 260 }}
-        />
+        <label>
+          Driver:&nbsp;
+          <input
+            value={driverQuery}
+            onChange={(e) => setDriverQuery(e.target.value)}
+            placeholder="search driver_idâ€¦"
+            style={{ width: 260 }}
+          />
+        </label>
 
-        <button onClick={load} disabled={loading}>Refresh</button>
+        <button style={loading ? btnDisabled : btn} onClick={load} disabled={loading}>
+          Refresh
+        </button>
+
+        {loading ? <span style={{ opacity: 0.7 }}>Loadingâ€¦</span> : null}
       </div>
 
-      {banner ? <div style={{ marginTop: 10 }}>{banner.text}</div> : null}
+      {banner ? <div style={bannerStyle(banner.kind)}>{banner.text}</div> : null}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-        <thead>
-          <tr>
-            {["id","driver_id","amount","status","requested_at","processed_at","method","ref","note","actions"].map(h => (
-              <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map(r => (
-            <tr key={String(r.id)}>
-              <td>{r.id}</td>
-              <td style={{ fontFamily: "monospace" }}>{r.driver_id}</td>
-              <td>{Number(r.amount).toFixed(2)}</td>
-              <td>{r.status}</td>
-              <td>{fmt(r.requested_at)}</td>
-              <td>{fmt(r.processed_at)}</td>
-              <td>{r.payout_method || ""}</td>
-              <td>{r.payout_ref || ""}</td>
-              <td>{r.admin_note || ""}</td>
-              <td>
-                {String(r.status).toLowerCase() === "pending" ? (
-                  <>
-                    <button onClick={() => { setActingId(r.id); act("approve"); }}>Approve</button>
-                    <button onClick={() => { setActingId(r.id); act("reject"); }}>Reject</button>
-                    <button onClick={() => setActingId(r.id)}>Mark Paid</button>
-                  </>
-                ) : null}
-              </td>
+      <div style={{ marginTop: 12, overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {["id","driver_id","amount","status","requested_at","processed_at","method","ref","note","actions"].map(h => (
+                <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
 
-      {actingId ? (
-        <div style={{ marginTop: 12 }}>
-          <h3>Mark Paid</h3>
-          <input value={method} onChange={e => setMethod(e.target.value)} placeholder="method" />
-          <input value={ref} onChange={e => setRef(e.target.value)} placeholder="reference" />
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="note" />
-          <button disabled={!ref} onClick={() => act("mark_paid")}>Confirm</button>
-          <button onClick={() => setActingId(null)}>Cancel</button>
+          <tbody>
+            {filtered.map((r) => {
+              const st = String(r.status || "").toLowerCase();
+              const canAct = st === "pending" || st === "approved";
+              return (
+                <tr key={String(r.id)}>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(r.id)}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace" }}>{r.driver_id}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{Number(r.amount || 0).toFixed(2)}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{st}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{fmt(r.requested_at)}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{fmt(r.processed_at)}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.payout_method || ""}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.payout_ref || ""}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{r.admin_note || ""}</td>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        style={!canAct || loading ? btnDisabled : btn}
+                        disabled={!canAct || loading}
+                        onClick={() => act("approve", r.id)}
+                        title="pending -> approved"
+                      >
+                        Approve
+                      </button>
+
+                      <button
+                        style={!canAct || loading ? btnDisabled : btn}
+                        disabled={!canAct || loading}
+                        onClick={() => act("reject", r.id)}
+                        title="pending -> rejected"
+                      >
+                        Reject
+                      </button>
+
+                      <button
+                        style={!canAct || loading ? btnDisabled : btn}
+                        disabled={!canAct || loading}
+                        onClick={() => {
+                          setMarkPaidId(r.id);
+                          setMethod(String(r.payout_method || "gcash"));
+                          setNote("");
+                          // Auto-generate a short payout reference immediately
+                          setRef(genRef(r.id));
+                        }}
+                        title="mark as paid (no wallet deduction)"
+                      >
+                        Mark Paid
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={10} style={{ padding: 12, color: "#666" }}>No rows.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
+      {markPaidId != null ? (
+        <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 10, maxWidth: 720 }}>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>Mark Paid â€” #{String(markPaidId)}</div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, alignItems: "center" }}>
+            <div>Method</div>
+            <input value={method} onChange={(e) => setMethod(e.target.value)} />
+
+            <div>Reference</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                value={ref}
+                onChange={(e) => setRef(e.target.value)}
+                placeholder="required"
+                style={{ flex: 1 }}
+              />
+              <button
+                style={loading ? btnDisabled : btn}
+                disabled={loading}
+                onClick={() => setRef(genRef(markPaidId))}
+                title="Generate a new short reference"
+              >
+                Generate
+              </button>
+            </div>
+
+            <div>Note</div>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" />
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            <button
+              style={loading || !ref.trim() ? btnDisabled : btn}
+              disabled={loading || !ref.trim()}
+              onClick={() => act("mark_paid", markPaidId)}
+            >
+              Confirm
+            </button>
+
+            <button
+              style={loading ? btnDisabled : btn}
+              disabled={loading}
+              onClick={() => { setMarkPaidId(null); }}
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+            Reference recommendation: keep it short and unique (auto-generated like <span style={{ fontFamily: "monospace" }}>PAY-19-A1B2</span>).
+          </div>
         </div>
       ) : null}
     </div>
