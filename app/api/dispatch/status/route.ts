@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -50,6 +50,7 @@ function jsonErr(code: string, message: string, status: number, extra?: any) {
     { status }
   );
 }
+
 function getActorFromReq(req: Request): string {
   try {
     const h: any = (req as any)?.headers;
@@ -97,35 +98,6 @@ async function bestEffortAudit(
   }
   return { warning: "AUDIT_LOG_INSERT_FAILED" };
 }
-async function bestEffortWalletSync(
-  supabase: ReturnType<typeof createClient>,
-  booking: any
-): Promise<{ warning?: string }> {
-  const bookingId = booking?.id ?? null;
-  const bookingCode = booking?.booking_code ?? null;
-
-  const rpcNames = [
-    "process_booking_wallet",
-    "process_booking_wallet_cut",
-  ];
-
-  for (let i = 0; i < rpcNames.length; i++) {
-    const name = rpcNames[i];
-    try {
-      const r: any = await supabase.rpc(name, {
-        booking_id: bookingId,
-        booking_code: bookingCode,
-      });
-      if (!r?.error) {
-        return {};
-      }
-    } catch {}
-  }
-
-  return { warning: "WALLET_SYNC_SKIPPED" };
-}
-
-
 
 async function fetchBooking(
   supabase: ReturnType<typeof createClient>,
@@ -134,11 +106,19 @@ async function fetchBooking(
 ): Promise<{ data: any | null; error: string | null }> {
   try {
     if (booking_id) {
-      const r = await supabase.from("bookings").select("*").eq("id", booking_id).maybeSingle();
+      const r = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("id", booking_id)
+        .maybeSingle();
       return { data: r.data ?? null, error: r.error?.message || null };
     }
     if (booking_code) {
-      const r = await supabase.from("bookings").select("*").eq("booking_code", booking_code).maybeSingle();
+      const r = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("booking_code", booking_code)
+        .maybeSingle();
       return { data: r.data ?? null, error: r.error?.message || null };
     }
     return { data: null, error: "Missing booking_id or booking_code" };
@@ -153,7 +133,12 @@ async function tryUpdateBooking(
   patch: Record<string, any>
 ): Promise<{ ok: boolean; data: any | null; error: string | null }> {
   try {
-    const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
+    const r = await supabase
+      .from("bookings")
+      .update(patch)
+      .eq("id", bookingId)
+      .select("*")
+      .maybeSingle();
     if (r.error) return { ok: false, data: null, error: r.error.message };
     return { ok: true, data: r.data ?? null, error: null };
   } catch (e: any) {
@@ -161,7 +146,7 @@ async function tryUpdateBooking(
   }
 }
 
-// Best-effort: keep driver status roughly aligned (does NOT block booking update)
+// Best-effort: keep driver status roughly aligned (non-blocking)
 function driverStatusForBookingStatus(status: string): string | null {
   const s = norm(status);
   if (s === "assigned") return "assigned";
@@ -188,14 +173,61 @@ async function bestEffortUpdateDriverLocation(
       .eq("driver_id", driverId);
 
     if (r.error) {
-      // Do not fail the request. Surface as warning.
       return { warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR: " + r.error.message };
     }
     return {};
   } catch (e: any) {
-    // If table doesn't exist or any other issue, do not fail booking update.
     return { warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR: " + (e?.message || "Unknown error") };
   }
+}
+
+/**
+ * PHASE 3L - wallet sync (completion only)
+ * IMPORTANT: Do NOT call admin_finalize_trip_and_credit_wallets(text)
+ * because you have a DB trigger that credits driver wallet on status -> completed.
+ * Calling finalize could double-credit driver earnings.
+ *
+ * What we DO:
+ * - apply platform cut via process_booking_wallet_cut(p_booking_id uuid)
+ * - for takeout: sync vendor wallet via sync_vendor_takeout_wallet(v_vendor_id uuid)
+ */
+async function bestEffortWalletSyncOnComplete(
+  supabase: ReturnType<typeof createClient>,
+  booking: any
+): Promise<{ warning?: string }> {
+  const bookingId = booking?.id ? String(booking.id) : null;
+  const serviceType = String(booking?.service_type ?? booking?.serviceType ?? "").toLowerCase();
+  const vendorId = booking?.vendor_id ? String(booking.vendor_id) : null;
+
+  const warnings: string[] = [];
+
+  // 1) Apply platform/company cut (driver wallet deduction)
+  if (bookingId) {
+    try {
+      const r: any = await supabase.rpc("process_booking_wallet_cut", {
+        p_booking_id: bookingId,
+      });
+      if (r?.error) warnings.push("WALLET_CUT_RPC_ERROR: " + r.error.message);
+    } catch (e: any) {
+      warnings.push("WALLET_CUT_RPC_ERROR: " + String(e?.message || e));
+    }
+  } else {
+    warnings.push("WALLET_CUT_SKIPPED_NO_BOOKING_ID");
+  }
+
+  // 2) Vendor wallet for takeout only
+  if (serviceType === "takeout" && vendorId) {
+    try {
+      const r: any = await supabase.rpc("sync_vendor_takeout_wallet", {
+        v_vendor_id: vendorId,
+      });
+      if (r?.error) warnings.push("VENDOR_SYNC_RPC_ERROR: " + r.error.message);
+    } catch (e: any) {
+      warnings.push("VENDOR_SYNC_RPC_ERROR: " + String(e?.message || e));
+    }
+  }
+
+  return warnings.length ? { warning: warnings.join("; ") } : {};
 }
 
 export async function GET(req: Request) {
@@ -236,54 +268,49 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const supabase = createClient();
-  const body = (await req.json().catch(() => ({}))) as StatusReq;
+  const rawBody = (await req.json().catch(() => ({}))) as any;
 
-  const force = Boolean(body.force);
+  const booking_id =
+    rawBody?.booking_id ??
+    rawBody?.bookingId ??
+    rawBody?.id ??
+    rawBody?.booking?.id ??
+    null;
 
-    // Payload sanity (cheap guardrails)
-      // PHASE3B_FIX_MISSING_IDENTIFIER_GATE
-    // Normalize booking identifiers from common payload variants before validating.
-    // Accept: booking_id / bookingId / id ; booking_code / bookingCode / code
-    const anyBody: any = (typeof body !== "undefined" ? (body as any) : ({} as any));
-    const normBookingId =
-      anyBody?.booking_id ??
-      anyBody?.bookingId ??
-      anyBody?.id ??
-      anyBody?.booking?.id ??
-      null;
+  const booking_code =
+    rawBody?.booking_code ??
+    rawBody?.bookingCode ??
+    rawBody?.code ??
+    rawBody?.booking?.booking_code ??
+    rawBody?.booking?.bookingCode ??
+    null;
 
-    const normBookingCode =
-      anyBody?.booking_code ??
-      anyBody?.bookingCode ??
-      anyBody?.code ??
-      anyBody?.booking?.booking_code ??
-      anyBody?.booking?.bookingCode ??
-      null;
+  const status = rawBody?.status ?? null;
+  const note = rawBody?.note ?? null;
+  const force = Boolean(rawBody?.force);
 
-    if (normBookingId != null && String(normBookingId).trim() !== "") anyBody.booking_id = String(normBookingId).trim();
-    if (normBookingCode != null && String(normBookingCode).trim() !== "") anyBody.booking_code = String(normBookingCode).trim();if (!body || (!body.booking_id && !body.booking_code)) {
+  if ((!booking_id || String(booking_id).trim() === "") && (!booking_code || String(booking_code).trim() === "")) {
     return jsonErr("BAD_REQUEST", "Missing booking identifier", 400);
   }
-  if (!body.status) {
+  if (!status) {
     return jsonErr("BAD_REQUEST", "Missing target status", 400);
   }
-const target = norm(body.status);
+
+  const target = norm(status);
   if (!target || !(ALLOWED as any).includes(target)) {
-    return jsonErr(
-      "INVALID_STATUS",
-      "Invalid status. Allowed: " + ALLOWED.join(", "),
-      400
-    );
+    return jsonErr("INVALID_STATUS", "Invalid status. Allowed: " + ALLOWED.join(", "), 400);
   }
 
-  const bookingId = (body.booking_id ?? (body as any).id ?? null) as any;
-  const bookingCode = body.booking_code ?? null;
+  const bk = await fetchBooking(
+    supabase,
+    booking_id ? String(booking_id).trim() : null,
+    booking_code ? String(booking_code).trim() : null
+  );
 
-  const bk = await fetchBooking(supabase, bookingId ?? null, bookingCode);
   if (!bk.data) {
     return jsonErr("BOOKING_NOT_FOUND", bk.error || "Booking not found", 404, {
-      booking_id: bookingId ?? null,
-      booking_code: bookingCode ?? null,
+      booking_id: booking_id ?? null,
+      booking_code: booking_code ?? null,
     });
   }
 
@@ -292,7 +319,17 @@ const target = norm(body.status);
   const allowedNext = NEXT[cur] ?? [];
   const hasDriver = !!booking.driver_id;
 
-  // Must have driver for statuses beyond requested (except cancelled)
+  // PHASE 3L: Trip lock
+  if ((cur === "completed" || cur === "cancelled") && cur !== target) {
+    return jsonErr("TRIP_LOCKED", "Trip already " + cur + " (no further updates allowed)", 409, {
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      current_status: cur,
+      target_status: target,
+    });
+  }
+
+  // Require driver for lifecycle statuses (except requested/cancelled)
   if (!hasDriver && target !== "requested" && target !== "cancelled") {
     return jsonErr("NO_DRIVER", "Cannot set status without driver_id", 409, {
       booking_id: String(booking.id),
@@ -305,7 +342,7 @@ const target = norm(body.status);
     });
   }
 
-    // Idempotent (safe retry)
+  // Idempotent retry
   if (cur === target) {
     return jsonOk({
       ok: true,
@@ -319,22 +356,7 @@ const target = norm(body.status);
   }
 
   // Strict transitions unless forced
-    // Stale transition guard: booking moved since client last saw it
-  if (!force && booking.status && norm(booking.status) !== cur) {
-    return jsonErr(
-      "STALE_TRANSITION",
-      "Booking status changed concurrently",
-      409,
-      {
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        server_status: norm(booking.status),
-        requested_from: cur,
-        requested_to: target,
-      }
-    );
-  }
-if (!force && !allowedNext.includes(target)) {
+  if (!force && !allowedNext.includes(target)) {
     return jsonErr("INVALID_TRANSITION", "Cannot transition " + cur + " -> " + target, 409, {
       booking_id: String(booking.id),
       booking_code: booking.booking_code ?? null,
@@ -345,7 +367,7 @@ if (!force && !allowedNext.includes(target)) {
     });
   }
 
-  // Try best-effort timestamp + note columns; fallback to status-only if columns don't exist.
+  // Best-effort timestamps + note (falls back to status-only if columns missing)
   const nowIso = new Date().toISOString();
   const patch: Record<string, any> = { status: target };
 
@@ -356,22 +378,14 @@ if (!force && !allowedNext.includes(target)) {
   if (target === "completed") patch.completed_at = nowIso;
   if (target === "cancelled") patch.cancelled_at = nowIso;
 
-  if (body.note && String(body.note).trim() !== "") {
-    patch.status_note = String(body.note).trim();
+  if (note && String(note).trim() !== "") {
+    patch.status_note = String(note).trim();
   }
 
   let upd = await tryUpdateBooking(supabase, String(booking.id), patch);
 
   if (!upd.ok && upd.error && upd.error.toLowerCase().includes("column")) {
     upd = await tryUpdateBooking(supabase, String(booking.id), { status: target });
-    if (!upd.ok) {
-      return jsonErr("DISPATCH_STATUS_DB_ERROR", upd.error || "Booking update failed", 500, {
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        current_status: cur,
-        target_status: target,
-      });
-    }
   }
 
   if (!upd.ok) {
@@ -383,9 +397,16 @@ if (!force && !allowedNext.includes(target)) {
     });
   }
 
-  const driverId = booking.driver_id ? String(booking.driver_id) : "";
-    const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
+  const updatedBooking = upd.data ?? booking;
 
+  // Driver location sync (non-blocking)
+  const driverId =
+    updatedBooking?.driver_id ? String(updatedBooking.driver_id) :
+    (booking?.driver_id ? String(booking.driver_id) : "");
+
+  const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
+
+  // Audit (non-blocking)
   const actor = getActorFromReq(req);
   const audit = await bestEffortAudit(supabase, {
     booking_id: String(booking.id),
@@ -396,17 +417,19 @@ if (!force && !allowedNext.includes(target)) {
     source: "dispatch/status",
   });
 
-    let walletWarn: string | null = null;
+  // Wallet sync (completion only)
+  let walletWarn: string | null = null;
   if (target === "completed") {
-    const w = await bestEffortWalletSync(supabase, upd.data ?? booking);
+    const w = await bestEffortWalletSyncOnComplete(supabase, updatedBooking);
     walletWarn = w.warning ?? null;
   }
 
-    const warn =
+  const warn =
     drv.warning
       ? (audit.warning ? (String(drv.warning) + "; " + String(audit.warning)) : String(drv.warning))
       : (audit.warning ? String(audit.warning) : null);
-const mergedWarn =
+
+  const mergedWarn =
     warn
       ? (walletWarn ? (String(warn) + "; " + String(walletWarn)) : String(warn))
       : (walletWarn ? String(walletWarn) : null);
@@ -418,10 +441,7 @@ const mergedWarn =
     booking_code: booking.booking_code ?? null,
     status: target,
     allowed_next: NEXT[target] ?? [],
-    booking: upd.data ?? null,
+    booking: updatedBooking ?? null,
     warning: mergedWarn,
-  });}
-
-
-
-
+  });
+}
