@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type AssignReq = {
@@ -152,6 +152,22 @@ export async function POST(req: Request) {
   }
 
   const booking: any = bookingRes.data;
+
+  // PHASE 3L: lock completed / cancelled trips (no further assignment allowed)
+  const lockStatus = String(booking?.status ?? "").trim().toLowerCase();
+  if (lockStatus === "completed" || lockStatus === "cancelled") {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "TRIP_LOCKED",
+        message: "Trip already " + lockStatus + " (assignment disabled)",
+        booking_id: String(booking.id),
+        booking_code: booking.booking_code ?? null,
+        status: booking.status ?? null,
+      },
+      { status: 409 }
+    );
+  }
 
   // ----- 6G HARDENING: idempotent / no overwrite -----
   const curStatus = normStatus(booking.status);
