@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type AssignReq = {
@@ -230,6 +230,64 @@ export async function POST(req: Request) {
   const town = (body.town ?? booking.town ?? "").toString();
   const pickup_lat = typeof body.pickup_lat === "number" ? body.pickup_lat : booking.pickup_lat;
   const pickup_lng = typeof body.pickup_lng === "number" ? body.pickup_lng : booking.pickup_lng;
+
+  const manual_driver_id = (body as any)?.manual_driver_id ?? (body as any)?.driver_id ?? (body as any)?.driverId ?? null;
+
+  // ----- MANUAL_DRIVER_SELECTED -----
+  if (manual_driver_id) {
+    const dId = String(manual_driver_id);
+
+    const dr = await supabase
+      .from("driver_locations")
+      .select("driver_id,town,status,lat,lng")
+      .eq("driver_id", dId)
+      .maybeSingle();
+
+    if (!dr.data) {
+      return NextResponse.json(
+        { ok: false, code: "DRIVER_NOT_FOUND", message: "Driver not found in driver_locations", driver_id: dId },
+        { status: 404 }
+      );
+    }
+
+    const dStatus = String((dr.data as any)?.status ?? "").toLowerCase();
+    const eligible = (dStatus === "online" || dStatus === "available");
+    if (!eligible) {
+      return NextResponse.json(
+        { ok: false, code: "DRIVER_NOT_ELIGIBLE", message: "Driver not eligible (must be online/available)", status: dStatus, driver_id: dId },
+        { status: 409 }
+      );
+    }
+
+    const bTown = String((booking as any)?.town ?? "");
+    const dTown = String((dr.data as any)?.town ?? "");
+    if (bTown && dTown && bTown !== dTown) {
+      return NextResponse.json(
+        { ok: false, code: "DRIVER_TOWN_MISMATCH", message: "Driver town mismatch", booking_town: bTown, driver_town: dTown, driver_id: dId },
+        { status: 409 }
+      );
+    }
+
+    const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: dId, status: "assigned" });
+    const reread = await fetchBookingByIdOrCode(supabase, String(booking.id), null);
+    const b2: any = reread.data ?? booking;
+
+    return NextResponse.json(
+      {
+        ok: true,
+        assigned: true,
+        code: "MANUAL_ASSIGNED",
+        booking_id: String(b2.id),
+        booking_code: b2.booking_code ?? null,
+        driver_id: dId,
+        status: b2.status ?? null,
+        update_ok: upd.ok,
+        update_error: upd.error,
+        booking: b2,
+      },
+      { status: 200 }
+    );
+  }
 
   if (!town) return NextResponse.json({ ok: false, code: "MISSING_TOWN", message: "Missing town for assignment" }, { status: 400 });
   if (typeof pickup_lat !== "number" || typeof pickup_lng !== "number") {
