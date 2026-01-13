@@ -11,6 +11,11 @@ function s(v: any) {
   return String(v ?? "").trim();
 }
 
+function n(v: any) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
 function getAdmin() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -19,6 +24,14 @@ function getAdmin() {
   return createAdminClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+function isCreditTx(t: any) {
+  // credit-like means: positive amount AND reason suggests earnings/credit
+  const amt = n(t?.amount);
+  if (!(amt > 0)) return false;
+  const r = s(t?.reason).toLowerCase();
+  return r.includes("credit") || r.includes("earning") || r.includes("earnings");
 }
 
 export async function GET(req: NextRequest) {
@@ -35,11 +48,10 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "300", 10) || 300, 1000);
 
-    // NOTE: bookings.completed_at does NOT exist in your schema.
-    // Use updated_at for timing in output.
+    // Pull fields needed to compute expected payout
     const { data: bookings, error: bErr } = await admin
       .from("bookings")
-      .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,updated_at")
+      .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,updated_at,driver_payout,verified_fare,company_cut")
       .eq("status", "completed")
       .order("updated_at", { ascending: false })
       .limit(limit);
@@ -55,7 +67,7 @@ export async function GET(req: NextRequest) {
       .select("id,driver_id,amount,reason,booking_id,created_at")
       .in("booking_id", completedIds.length ? completedIds : ["00000000-0000-0000-0000-000000000000"])
       .order("created_at", { ascending: false })
-      .limit(5000);
+      .limit(8000);
 
     if (dErr) return json(500, { ok: false, code: "DB_ERROR", stage: "driver_wallet_transactions", message: dErr.message });
 
@@ -64,7 +76,7 @@ export async function GET(req: NextRequest) {
       .select("id,vendor_id,booking_code,amount,kind,note,created_at")
       .in("booking_code", completedCodes.length ? completedCodes : ["__none__"])
       .order("created_at", { ascending: false })
-      .limit(5000);
+      .limit(8000);
 
     if (vErr) return json(500, { ok: false, code: "DB_ERROR", stage: "vendor_wallet_transactions", message: vErr.message });
 
@@ -88,35 +100,56 @@ export async function GET(req: NextRequest) {
 
     // ---- Compute flags ----
 
-    const txByBooking: Record<string, any[]> = {};
+    // Map booking_id -> credit-like driver tx
+    const creditTxByBooking: Record<string, any[]> = {};
     for (const t of driverTx || []) {
       const bid = s((t as any).booking_id);
       if (!bid) continue;
-      if (!txByBooking[bid]) txByBooking[bid] = [];
-      txByBooking[bid].push(t);
+      if (!isCreditTx(t)) continue;
+      if (!creditTxByBooking[bid]) creditTxByBooking[bid] = [];
+      creditTxByBooking[bid].push(t);
+    }
+
+    // Expected payout:
+    // 1) driver_payout (if > 0)
+    // 2) else max(verified_fare - company_cut, 0)
+    function expectedDriverPayout(b: any) {
+      const dp = n(b?.driver_payout);
+      if (dp > 0) return dp;
+      const vf = n(b?.verified_fare);
+      const cc = n(b?.company_cut);
+      const est = vf - cc;
+      return est > 0 ? est : 0;
     }
 
     const missing_driver_credits = completed
       .filter((b: any) => !!b.driver_id)
-      .filter((b: any) => !txByBooking[s(b.id)] || txByBooking[s(b.id)].length === 0)
-      .map((b: any) => ({
-        booking_id: b.id,
-        booking_code: b.booking_code ?? null,
-        driver_id: b.driver_id ?? null,
-        service_type: b.service_type ?? null,
-        updated_at: b.updated_at ?? null,
+      .map((b: any) => ({ b, expected: expectedDriverPayout(b) }))
+      .filter((x: any) => x.expected > 0) // âœ… only flag when something is actually expected
+      .filter((x: any) => {
+        const bid = s(x.b.id);
+        return !creditTxByBooking[bid] || creditTxByBooking[bid].length === 0;
+      })
+      .map((x: any) => ({
+        booking_id: x.b.id,
+        booking_code: x.b.booking_code ?? null,
+        driver_id: x.b.driver_id ?? null,
+        service_type: x.b.service_type ?? null,
+        expected_driver_payout: x.expected,
+        updated_at: x.b.updated_at ?? null,
       }))
       .slice(0, 500);
 
-    const duplicate_driver_credits = Object.keys(txByBooking)
-      .filter((bid) => (txByBooking[bid]?.length || 0) > 1)
+    const duplicate_driver_credits = Object.keys(creditTxByBooking)
+      .filter((bid) => (creditTxByBooking[bid]?.length || 0) > 1)
       .map((bid) => ({
         booking_id: bid,
-        count: txByBooking[bid].length,
-        tx: txByBooking[bid].slice(0, 5),
+        count: creditTxByBooking[bid].length,
+        tx: creditTxByBooking[bid].slice(0, 5),
       }))
       .slice(0, 300);
 
+    // Vendor: only completed takeout vendor_status=completed, require earning kind
     const vtxByCode: Record<string, any[]> = {};
     for (const t of vendorTx || []) {
       const code = s((t as any).booking_code);
@@ -136,7 +169,7 @@ export async function GET(req: NextRequest) {
       .filter((b: any) => {
         const code = s(b.booking_code);
         const list = vtxByCode[code] || [];
-        return list.filter((t: any) => s(t.kind).toLowerCase() === "earning").length === 0;
+        return list.filter((t: any) => s(t.kind).toLowerCase() === "earning" && n(t.amount) > 0).length === 0;
       })
       .map((b: any) => ({
         booking_code: b.booking_code,
@@ -149,7 +182,7 @@ export async function GET(req: NextRequest) {
 
     const duplicate_vendor_earnings = Object.keys(vtxByCode)
       .map((code) => {
-        const earnings = (vtxByCode[code] || []).filter((t: any) => s(t.kind).toLowerCase() === "earning");
+        const earnings = (vtxByCode[code] || []).filter((t: any) => s(t.kind).toLowerCase() === "earning" && n(t.amount) > 0);
         return { code, earnings };
       })
       .filter((x) => x.earnings.length > 1)
@@ -165,10 +198,14 @@ export async function GET(req: NextRequest) {
       completed_takeout_vendor_completed_count: takeoutCompleted.length,
       driver_tx_seen: (driverTx || []).length,
       vendor_tx_seen: (vendorTx || []).length,
+
+      // updated metrics:
       missing_driver_credits_count: missing_driver_credits.length,
+      duplicate_driver_credit_tx_count: duplicate_driver_credits.length,
+
       missing_vendor_credits_count: missing_vendor_credits.length,
-      duplicate_driver_credits_count: duplicate_driver_credits.length,
       duplicate_vendor_earnings_count: duplicate_vendor_earnings.length,
+
       negative_driver_balances_count: (dBal || []).length,
       negative_vendor_balances_count: (vBal || []).length,
     };
@@ -182,6 +219,7 @@ export async function GET(req: NextRequest) {
       duplicate_vendor_earnings,
       negative_driver_balances: dBal || [],
       negative_vendor_balances: vBal || [],
+      note: "Driver missing/duplicate now based on expected payout > 0 and credit-like tx only.",
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: String(e?.message || e || "Unknown") });
