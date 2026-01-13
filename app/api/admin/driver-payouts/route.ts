@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 function mustEnv(name: string) {
   const v = process.env[name];
-  if (!v) throw new Error(\Missing env var: \\);
+  if (!v) throw new Error("Missing env var: " + name);
   return v;
 }
 
@@ -19,12 +19,12 @@ function jsonErr(code: string, message: string, status: number, extra?: any) {
 async function restGetOneById(SUPABASE_URL: string, SERVICE_ROLE: string, id: string) {
   const qs = new URLSearchParams();
   qs.set("select", "id,driver_id,amount,status,requested_at,processed_at,payout_method,payout_ref,receipt_url,admin_note");
-  qs.set("id", \eq.\\);
+  qs.set("id", "eq." + id);
   qs.set("limit", "1");
 
-  const url = \\/rest/v1/driver_payout_requests?\\;
+  const url = SUPABASE_URL + "/rest/v1/driver_payout_requests?" + qs.toString();
   const res = await fetch(url, {
-    headers: { apikey: SERVICE_ROLE, Authorization: \Bearer \\ },
+    headers: { apikey: SERVICE_ROLE, Authorization: "Bearer " + SERVICE_ROLE },
     cache: "no-store",
   });
 
@@ -44,15 +44,15 @@ async function restPatchById(
   patch: Record<string, any>
 ) {
   const qs = new URLSearchParams();
-  qs.set("id", \eq.\\);
+  qs.set("id", "eq." + id);
   qs.set("select", "id,driver_id,amount,status,requested_at,processed_at,payout_method,payout_ref,receipt_url,admin_note");
 
-  const url = \\/rest/v1/driver_payout_requests?\\;
+  const url = SUPABASE_URL + "/rest/v1/driver_payout_requests?" + qs.toString();
   const res = await fetch(url, {
     method: "PATCH",
     headers: {
       apikey: SERVICE_ROLE,
-      Authorization: \Bearer \\,
+      Authorization: "Bearer " + SERVICE_ROLE,
       "Content-Type": "application/json",
       Prefer: "return=representation",
     },
@@ -81,16 +81,11 @@ export async function GET(req: Request) {
     qs.set("select", "id,driver_id,amount,status,requested_at,processed_at,payout_method,payout_ref,receipt_url,admin_note");
     qs.set("order", "id.desc");
     qs.set("limit", String(limit));
-    if (status && status !== "all") {
-      qs.set("status", \eq.\\);
-    }
+    if (status && status !== "all") qs.set("status", "eq." + status);
 
-    const restUrl = \\/rest/v1/driver_payout_requests?\\;
+    const restUrl = SUPABASE_URL + "/rest/v1/driver_payout_requests?" + qs.toString();
     const res = await fetch(restUrl, {
-      headers: {
-        apikey: SERVICE_ROLE,
-        Authorization: \Bearer \\,
-      },
+      headers: { apikey: SERVICE_ROLE, Authorization: "Bearer " + SERVICE_ROLE },
       cache: "no-store",
     });
 
@@ -127,42 +122,35 @@ export async function POST(req: Request) {
     const SUPABASE_URL = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
     const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-    // Load current row
     const cur = await restGetOneById(SUPABASE_URL, SERVICE_ROLE, id);
     if (!cur.ok) return jsonErr("DB_ERROR", cur.text || "Failed to load payout request", 500);
     if (!cur.row) return jsonErr("NOT_FOUND", "Payout request not found", 404, { id });
 
     const currentStatus = String(cur.row.status || "").toLowerCase();
 
-    // Decide target status + patch
     let targetStatus: string | null = null;
-
     if (action === "approve") targetStatus = "approved";
     else if (action === "reject") targetStatus = "rejected";
     else if (action === "mark_paid") targetStatus = "paid";
     else return jsonErr("BAD_REQUEST", "Invalid action (approve|reject|mark_paid)", 400, { action });
 
-    // Idempotent: already in target
     if (currentStatus === targetStatus) {
       return jsonOk({ ok: true, changed: false, idempotent: true, id, status: currentStatus, row: cur.row });
     }
 
-    // Light safety rules:
-    // - approve/reject only from pending
     if ((targetStatus === "approved" || targetStatus === "rejected") && currentStatus !== "pending") {
       return jsonErr(
         "INVALID_STATE",
-        \Cannot \ when status is \\,
+        "Cannot " + targetStatus + " when status is " + currentStatus,
         409,
         { id, current_status: currentStatus, target_status: targetStatus }
       );
     }
 
-    // - mark_paid from approved OR pending (you can tighten later if needed)
     if (targetStatus === "paid" && !(currentStatus === "approved" || currentStatus === "pending")) {
       return jsonErr(
         "INVALID_STATE",
-        \Cannot mark_paid when status is \\,
+        "Cannot mark_paid when status is " + currentStatus,
         409,
         { id, current_status: currentStatus, target_status: targetStatus }
       );
@@ -173,7 +161,6 @@ export async function POST(req: Request) {
       processed_at: new Date().toISOString(),
     };
 
-    // Optional fields
     if (body.payout_method != null) patch.payout_method = body.payout_method;
     if (body.payout_ref != null) patch.payout_ref = body.payout_ref;
     if (body.receipt_url != null) patch.receipt_url = body.receipt_url;
