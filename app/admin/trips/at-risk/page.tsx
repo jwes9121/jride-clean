@@ -32,10 +32,25 @@ type TripRow = {
 
 type Banner = { kind: "ok" | "warn" | "err"; text: string } | null;
 
-const STUCK_THRESHOLDS_MIN = {
+const SLA_BASE_MIN: Record<string, number> = {
   on_the_way: 15,
   on_trip: 25,
+  assigned: 8,
+  pending: 10,
 };
+
+// "At-risk" triggers at base threshold. Escalation uses multiples of base.
+type Severity = "warn" | "high" | "critical";
+function severity(mins: number, base: number): Severity {
+  if (mins >= base * 3) return "critical";
+  if (mins >= base * 2) return "high";
+  return "warn";
+}
+function sevColor(sev: Severity) {
+  if (sev === "critical") return "#dc2626";
+  if (sev === "high") return "#ea580c";
+  return "#ca8a04";
+}
 
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
@@ -49,12 +64,7 @@ function safeArray<T>(v: any): T[] {
 
 function parseTripsFromPageData(j: any): TripRow[] {
   if (!j) return [];
-  const candidates = [
-    j.trips,
-    j.bookings,
-    j.data,
-    Array.isArray(j) ? j : null,
-  ];
+  const candidates = [j.trips, j.bookings, j.data, Array.isArray(j) ? j : null];
   for (const c of candidates) {
     const arr = safeArray<TripRow>(c);
     if (arr.length) return arr;
@@ -75,26 +85,7 @@ function hasFinite(n: any): boolean {
 }
 
 function isActiveTripStatus(s: string) {
-  // keep conservative and aligned to typical lifecycle (read-only)
   return ["pending", "assigned", "on_the_way", "on_trip"].includes(s);
-}
-
-function computeAtRiskReason(t: TripRow): { at_risk: boolean; reason: string | null; mins: number; base: number } {
-  const s = normStatus(t.status);
-  const mins = minutesSince(t.updated_at || t.created_at || null);
-
-  const hasPickup = hasFinite(t.pickup_lat) && hasFinite(t.pickup_lng);
-  const hasDropoff = hasFinite(t.dropoff_lat) && hasFinite(t.dropoff_lng);
-  const missingCoords = isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
-
-  const stuckOnTheWay = s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way;
-  const stuckOnTrip = s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip;
-
-  if (stuckOnTheWay) return { at_risk: true, reason: `STUCK: on_the_way >= ${STUCK_THRESHOLDS_MIN.on_the_way} min`, mins, base: STUCK_THRESHOLDS_MIN.on_the_way };
-  if (stuckOnTrip) return { at_risk: true, reason: `STUCK: on_trip >= ${STUCK_THRESHOLDS_MIN.on_trip} min`, mins, base: STUCK_THRESHOLDS_MIN.on_trip };
-  if (missingCoords) return { at_risk: true, reason: "DATA: missing pickup/dropoff coordinates", mins, base: 10 };
-
-  return { at_risk: false, reason: null, mins, base: 10 };
 }
 
 function pickBookingCode(t: TripRow): string {
@@ -114,17 +105,33 @@ function normalizeErr(e: any): string {
   return raw;
 }
 
-type Severity = "warn" | "high" | "critical";
-function severity(mins: number, base: number): Severity {
-  if (mins >= base * 3) return "critical";
-  if (mins >= base * 2) return "high";
-  return "warn";
+function baseForStatus(status: string): number {
+  return SLA_BASE_MIN[status] ?? 10;
 }
 
-function sevColor(sev: Severity) {
-  if (sev === "critical") return "#dc2626"; // red
-  if (sev === "high") return "#ea580c"; // orange
-  return "#ca8a04"; // amber
+function computeAtRisk(t: TripRow) {
+  const status = normStatus(t.status);
+  const mins = minutesSince(t.updated_at || t.created_at || null);
+  const base = baseForStatus(status);
+
+  const hasPickup = hasFinite(t.pickup_lat) && hasFinite(t.pickup_lng);
+  const hasDropoff = hasFinite(t.dropoff_lat) && hasFinite(t.dropoff_lng);
+  const missingCoords = isActiveTripStatus(status) && (!hasPickup || !hasDropoff);
+
+  const atRiskByTime = isActiveTripStatus(status) && mins >= base;
+  const atRiskByData = missingCoords;
+
+  const at_risk = atRiskByTime || atRiskByData;
+  const sev = severity(mins, base);
+
+  const mins_to_breach = Math.max(base - mins, 0);
+  const breach = mins >= base;
+
+  let reason: string | null = null;
+  if (missingCoords) reason = "DATA: missing pickup/dropoff coordinates";
+  else if (breach) reason = `SLA: ${status} >= ${base} min`;
+
+  return { status, mins, base, mins_to_breach, breach, at_risk, sev, reason };
 }
 
 export default function AtRiskTripsPage() {
@@ -134,6 +141,10 @@ export default function AtRiskTripsPage() {
 
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "assigned" | "on_the_way" | "on_trip">("all");
+  const [sevFilter, setSevFilter] = useState<"all" | Severity>("all");
+  const [onlyActive, setOnlyActive] = useState(true);
+
+  const [sortMode, setSortMode] = useState<"most_overdue" | "nearest_breach" | "status_then_time">("most_overdue");
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
@@ -174,19 +185,29 @@ export default function AtRiskTripsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const atRisk = useMemo(() => {
-    const out: Array<TripRow & { __mins: number; __reason: string; __status: string; __code: string; __id: string; __base: number; __sev: Severity }> = [];
+  const computed = useMemo(() => {
     const qq = q.trim().toLowerCase();
+    const out: Array<any> = [];
 
     for (const t of rows) {
-      const status = normStatus(t.status);
-      if (statusFilter !== "all" && status !== statusFilter) continue;
-
-      const { at_risk, reason, mins, base } = computeAtRiskReason(t);
-      if (!at_risk || !reason) continue;
-
       const code = pickBookingCode(t);
       const id = pickTripId(t);
+
+      const c = computeAtRisk(t);
+      const status = c.status;
+
+      if (onlyActive && !isActiveTripStatus(status)) continue;
+      if (statusFilter !== "all" && status !== statusFilter) continue;
+      if (sevFilter !== "all" && c.sev !== sevFilter) continue;
+
+      // NOTE: Phase 9C shows both "at_risk" (SLA breach or data issue) and "near breach"
+      // We'll include near-breach (within 3 mins) even if not yet at_risk, to enable prevention.
+      const near = isActiveTripStatus(status) && !c.breach && c.mins_to_breach <= 3;
+      const include = c.at_risk || near;
+
+      if (!include) continue;
+
+      const reason = c.reason || (near ? `NEAR SLA: ${status} in ${c.mins_to_breach} min` : "AT_RISK");
 
       const hay = [
         code, id, status,
@@ -201,13 +222,50 @@ export default function AtRiskTripsPage() {
 
       if (qq && !hay.includes(qq)) continue;
 
-      const sev = severity(mins, base);
-      out.push(Object.assign({}, t, { __mins: mins, __reason: reason, __status: status, __code: code, __id: id, __base: base, __sev: sev }));
+      out.push({
+        ...t,
+        __code: code,
+        __id: id,
+        __status: status,
+        __mins: c.mins,
+        __base: c.base,
+        __mins_to_breach: c.mins_to_breach,
+        __breach: c.breach,
+        __sev: c.sev,
+        __reason: reason,
+        __near: near,
+      });
     }
 
-    out.sort((a, b) => (b.__mins - a.__mins));
+    // sorting
+    if (sortMode === "most_overdue") {
+      out.sort((a, b) => (b.__mins - a.__mins));
+    } else if (sortMode === "nearest_breach") {
+      out.sort((a, b) => (a.__mins_to_breach - b.__mins_to_breach));
+    } else {
+      // status_then_time
+      const rank: Record<string, number> = { pending: 1, assigned: 2, on_the_way: 3, on_trip: 4 };
+      out.sort((a, b) => {
+        const ra = rank[a.__status] ?? 99;
+        const rb = rank[b.__status] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return b.__mins - a.__mins;
+      });
+    }
+
     return out;
-  }, [rows, q, statusFilter]);
+  }, [rows, q, statusFilter, sevFilter, onlyActive, sortMode]);
+
+  const counts = useMemo(() => {
+    const c = { warn: 0, high: 0, critical: 0, near: 0 };
+    for (const r of computed) {
+      if (r.__near) c.near++;
+      if (r.__sev === "warn") c.warn++;
+      if (r.__sev === "high") c.high++;
+      if (r.__sev === "critical") c.critical++;
+    }
+    return c;
+  }, [computed]);
 
   const btn: any = {
     padding: "6px 10px",
@@ -264,18 +322,18 @@ export default function AtRiskTripsPage() {
       background: k === "ok" ? "#ecfdf5" : k === "warn" ? "#fffbeb" : "#fef2f2",
       color: k === "ok" ? "#065f46" : k === "warn" ? "#92400e" : "#991b1b",
       fontSize: 14,
-      maxWidth: 1100,
+      maxWidth: 1200,
       whiteSpace: "pre-wrap",
     } as any);
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>At-Risk Trips (Read-only)</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>At-Risk Trips (Read-only) â€” SLA & Escalation</h1>
       <div style={{ marginTop: 6, opacity: 0.7, fontSize: 12 }}>
-        QoL: copy IDs, severity badges. No actions here. Links only.
+        Phase 9C adds SLA timers and escalation buckets. No actions here. Links and copy only.
       </div>
 
-      <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label style={{ fontSize: 12 }}>
           Status:&nbsp;
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
@@ -285,6 +343,30 @@ export default function AtRiskTripsPage() {
             <option value="on_the_way">on_the_way</option>
             <option value="on_trip">on_trip</option>
           </select>
+        </label>
+
+        <label style={{ fontSize: 12 }}>
+          Severity:&nbsp;
+          <select value={sevFilter} onChange={(e) => setSevFilter(e.target.value as any)}>
+            <option value="all">all</option>
+            <option value="warn">warn</option>
+            <option value="high">high</option>
+            <option value="critical">critical</option>
+          </select>
+        </label>
+
+        <label style={{ fontSize: 12 }}>
+          Sort:&nbsp;
+          <select value={sortMode} onChange={(e) => setSortMode(e.target.value as any)}>
+            <option value="most_overdue">most overdue</option>
+            <option value="nearest_breach">nearest breach</option>
+            <option value="status_then_time">status then time</option>
+          </select>
+        </label>
+
+        <label style={{ fontSize: 12 }}>
+          <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} />
+          &nbsp;only active statuses
         </label>
 
         <label style={{ fontSize: 12 }}>
@@ -302,7 +384,7 @@ export default function AtRiskTripsPage() {
 
         <span style={{ opacity: 0.6 }}>|</span>
         <span style={{ fontSize: 12 }}>
-          Showing <b>{atRisk.length}</b> at-risk trip(s)
+          Total <b>{computed.length}</b> Â· Near <b>{counts.near}</b> Â· Warn <b>{counts.warn}</b> Â· High <b>{counts.high}</b> Â· Critical <b>{counts.critical}</b>
         </span>
 
         <span style={{ opacity: 0.6 }}>|</span>
@@ -313,10 +395,10 @@ export default function AtRiskTripsPage() {
       {toast ? <div style={toastStyle}>{toast}</div> : null}
 
       <div style={{ marginTop: 12, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1280 }}>
           <thead>
             <tr>
-              {["mins", "status", "reason", "booking_code", "trip_id", "driver", "town", "pickup", "dropoff", "actions"].map((h) => (
+              {["sla", "mins", "to_breach", "status", "reason", "booking_code", "trip_id", "driver", "town", "actions"].map((h) => (
                 <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8, fontSize: 12, whiteSpace: "nowrap" }}>
                   {h}
                 </th>
@@ -325,14 +407,16 @@ export default function AtRiskTripsPage() {
           </thead>
 
           <tbody>
-            {atRisk.map((t: any) => {
+            {computed.map((t: any) => {
               const code = t.__code || "";
               const id = t.__id || "";
               const status = t.__status || "";
               const mins = Number(t.__mins || 0);
-              const reason = t.__reason || "";
               const base = Number(t.__base || 10);
+              const toBreach = Number(t.__mins_to_breach || 0);
+              const reason = t.__reason || "";
               const sev: Severity = t.__sev || "warn";
+              const isNear = !!t.__near;
 
               const href = code
                 ? `/admin/livetrips?booking_code=${encodeURIComponent(code)}`
@@ -343,12 +427,25 @@ export default function AtRiskTripsPage() {
                 (t.driver_phone ? String(t.driver_phone) : "") ||
                 (t.driver_id ? String(t.driver_id) : "");
 
+              const slaLabel = isNear ? "NEAR" : "BREACHED";
+
               return (
                 <tr key={String(code || id || Math.random())}>
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace" }}>
+                    <span style={{ ...badge, color: isNear ? "#065f46" : "#991b1b", background: isNear ? "#ecfdf5" : "#fef2f2" }}>
+                      {slaLabel}
+                    </span>{" "}
+                    <span style={{ fontSize: 11, opacity: 0.7 }}>base {base}m</span>
+                  </td>
+
                   <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace" }}>
                     <span style={{ ...badge, color: "white", border: "1px solid rgba(0,0,0,0.06)", background: sevColor(sev) }}>
                       {mins}m
                     </span>
+                  </td>
+
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace" }}>
+                    {isNear ? `${toBreach}m` : "0m"}
                   </td>
 
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
@@ -358,7 +455,7 @@ export default function AtRiskTripsPage() {
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
                     {reason}
                     <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.65 }}>
-                      (base {base}m Â· {sev})
+                      ({sev})
                     </span>
                   </td>
 
@@ -378,13 +475,14 @@ export default function AtRiskTripsPage() {
                   </td>
 
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(t.town || "")}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(t.pickup_label || "")}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(t.dropoff_label || "")}</td>
 
                   <td style={{ padding: 8, borderBottom: "1px solid #eee", whiteSpace: "nowrap" }}>
                     <Link href={href} style={btn}>Open LiveTrips</Link>
                     <span style={{ marginLeft: 8 }} />
-                    <button style={miniBtn} onClick={() => copyText("livetrips_link", (typeof window !== "undefined" ? (window.location.origin + href) : href))}>
+                    <button
+                      style={miniBtn}
+                      onClick={() => copyText("livetrips_link", (typeof window !== "undefined" ? (window.location.origin + href) : href))}
+                    >
                       Copy Link
                     </button>
                   </td>
@@ -392,10 +490,10 @@ export default function AtRiskTripsPage() {
               );
             })}
 
-            {atRisk.length === 0 ? (
+            {computed.length === 0 ? (
               <tr>
                 <td colSpan={10} style={{ padding: 12, color: "#666" }}>
-                  No at-risk trips right now.
+                  No near-breach or breached trips right now.
                 </td>
               </tr>
             ) : null}
@@ -404,7 +502,7 @@ export default function AtRiskTripsPage() {
       </div>
 
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-        Locked rule: this page is read-only. It only reads LiveTrips page-data and provides links/copy utilities.
+        Locked rule: read-only. This page reads LiveTrips page-data and provides SLA visibility only.
       </div>
     </div>
   );
