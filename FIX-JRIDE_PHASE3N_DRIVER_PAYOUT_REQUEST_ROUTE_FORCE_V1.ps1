@@ -1,3 +1,34 @@
+# FIX-JRIDE_PHASE3N_DRIVER_PAYOUT_REQUEST_ROUTE_FORCE_V1.ps1
+# Force-create /api/driver/payout-request with GET+POST JSON, so no more 405/HTML shell.
+# UTF-8 without BOM
+
+$ErrorActionPreference = "Stop"
+function Fail($m){ throw $m }
+function Ok($m){ Write-Host $m -ForegroundColor Green }
+
+function Find-RepoRoot([string]$startDir) {
+  $d = Resolve-Path $startDir
+  while ($true) {
+    if (Test-Path (Join-Path $d "package.json")) { return $d }
+    $parent = Split-Path $d -Parent
+    if ($parent -eq $d) { break }
+    $d = $parent
+  }
+  Fail "Could not find repo root (package.json)."
+}
+
+$root = Find-RepoRoot (Get-Location).Path
+$dir  = Join-Path $root "app\api\driver\payout-request"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+$target = Join-Path $dir "route.ts"
+if (Test-Path $target) {
+  $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+  Copy-Item $target "$target.bak.$ts" -Force
+  Ok "[OK] Backup: $target.bak.$ts"
+}
+
+$code = @'
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
@@ -82,3 +113,10 @@ export async function POST(req: NextRequest) {
 
   return json(200, { ok: true, request: ins, balance_at_request_time: balance, min_payout: min });
 }
+'@
+
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, $code, $utf8NoBom)
+
+Ok "[OK] Wrote: $target"
+Ok "DONE"
