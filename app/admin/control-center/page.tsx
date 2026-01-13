@@ -1,139 +1,166 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
 
 type Item = {
   title: string;
   desc: string;
   href: string;
-  tags: string[];
 };
 
-function norm(s: string) { return (s || "").toLowerCase().trim(); }
+type Section = {
+  heading: string;
+  items: Item[];
+};
 
 export default function AdminControlCenterPage() {
-  const [q, setQ] = useState("");
+  const sections: Section[] = [
+    {
+      heading: "Core Admin",
+      items: [
+        {
+          title: "Live Trips",
+          desc: "Real-time dispatch and tracking view (navigation only).",
+          href: "/admin/livetrips",
+        },
+        {
+          title: "At-Risk Trips (SLA)",
+          desc: "Trips nearing or breaching SLA thresholds (read-only).",
+          href: "/admin/trips/at-risk",
+        },
+        {
+          title: "Driver Payouts",
+          desc: "Driver payout records and status overview.",
+          href: "/admin/driver-payouts",
+        },
+        {
+          title: "Vendor Payouts",
+          desc: "Vendor payout records and request list.",
+          href: "/admin/vendor-payouts",
+        },
+        {
+          title: "Vendor Payout Summary",
+          desc: "Read-only payout summaries per vendor.",
+          href: "/admin/vendor-payouts-summary",
+        },
+        {
+          title: "LGU / Accounting Exports",
+          desc: "Accounting and LGU export views (CSV-ready, read-only).",
+          href: "/admin/reports/lgu",
+        },
+      ],
+    },
 
-  const items: Item[] = useMemo(() => ([
     {
-      title: "Live Trips (Dispatch / Tracking)",
-      desc: "Live operations view. Link only (no embedding) to avoid regressions.",
-      href: "/admin/livetrips",
-      tags: ["livetrips", "map", "dispatch", "tracking"],
+      heading: "Reports",
+      items: [
+        {
+          title: "Vendor Monthly Report",
+          desc: "Monthly vendor performance and revenue summary.",
+          href: "/admin/reports/vendor-monthly",
+        },
+        {
+          title: "Vendor Summary Report",
+          desc: "Overall vendor statistics and aggregates.",
+          href: "/admin/reports/vendor-summary",
+        },
+        {
+          title: "Driver Payout Requests (LGU View)",
+          desc: "LGU-safe view of driver payout requests.",
+          href: "/admin/reports/driver-payout-requests",
+        },
+      ],
     },
-    {
-      title: "Driver Payouts",
-      desc: "Admin payouts UI (use existing backend endpoints).",
-      href: "/admin/driver-payouts",
-      tags: ["driver", "payouts", "wallet", "cashout"],
-    },
-    {
-      title: "Vendor Payouts",
-      desc: "Vendor payout requests & mark-paid flow (read-only wallet rule honored).",
-      href: "/admin/vendor-payouts",
-      tags: ["vendor", "payouts", "takeout"],
-    },
-    {
-      title: "Vendor Payouts Report (Read-only)",
-      desc: "Monthly / summary payout reporting for vendors (read-only).",
-      href: "/admin/vendor-payouts-summary",
-      tags: ["vendor", "report", "monthly", "summary"],
-    },
-    {
-      title: "LGU / Accounting Exports (Read-only)",
-      desc: "Vendor + driver exports + CSV (read-only).",
-      href: "/admin/reports/lgu",
-      tags: ["lgu", "exports", "csv", "accounting", "reports"],
-    },
-  ]), []);
 
-  const filtered = useMemo(() => {
-    const qq = norm(q);
-    if (!qq) return items;
-    return items.filter(it => {
-      const hay = norm([it.title, it.desc, it.href, it.tags.join(" ")].join(" "));
-      return hay.includes(qq);
-    });
-  }, [q, items]);
+    {
+      heading: "Quality / Operations",
+      items: [
+        {
+          title: "Stuck Drivers",
+          desc: "Drivers flagged for inactivity or stalled trips.",
+          href: "/admin/ops/stuck-drivers",
+        },
+        {
+          title: "Auto-Assign Monitor",
+          desc: "Read-only monitoring of auto-assign behavior.",
+          href: "/admin/ops/auto-assign-monitor",
+        },
+        {
+          title: "Wallet Reconciliation",
+          desc: "Read-only wallet balance and reconciliation status.",
+          href: "/admin/ops/wallet-reconciliation",
+        },
+      ],
+    },
+  ];
 
   const card: any = {
     border: "1px solid #e5e7eb",
     borderRadius: 12,
     padding: 14,
     background: "white",
-    maxWidth: 620,
   };
 
   const btn: any = {
     display: "inline-block",
-    padding: "8px 10px",
-    border: "1px solid #ddd",
+    padding: "8px 12px",
+    border: "1px solid #d1d5db",
     borderRadius: 10,
     background: "white",
-    fontSize: 12,
+    fontSize: 13,
     textDecoration: "none",
-  };
-
-  const tag: any = {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 999,
-    border: "1px solid #eee",
-    fontSize: 11,
-    opacity: 0.75,
-    marginRight: 6,
-    marginTop: 6,
   };
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Admin Control Center</h1>
-      <div style={{ marginTop: 6, opacity: 0.7, fontSize: 12 }}>
-        One-page hub with links. Safe: UI-only. No wallet mutations. No payout actions executed here.
+      <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>
+        Admin Control Center
+      </h1>
+
+      <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
+        Centralized navigation hub. Read-only. No actions are executed here.
       </div>
 
-      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <label style={{ fontSize: 12 }}>
-          Search:&nbsp;
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="type keywords..."
-            style={{ width: 320 }}
-          />
-        </label>
+      {sections.map((section) => (
+        <div key={section.heading} style={{ marginTop: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>
+            {section.heading}
+          </h2>
 
-        <a href="/admin" style={btn}>/admin</a>
-        <a href="/admin/control-center" style={btn}>/admin/control-center</a>
-      </div>
+          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            {section.items.map((it) => (
+              <div key={it.href} style={card}>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>
+                  {it.title}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>
+                  {it.desc}
+                </div>
 
-      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-        {filtered.map((it) => (
-          <div key={it.href} style={card}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>{it.title}</div>
-            <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>{it.desc}</div>
-
-            <div style={{ marginTop: 10 }}>
-              {it.tags.map(t => <span key={t} style={tag}>{t}</span>)}
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <Link href={it.href} style={btn}>Open</Link>
-              <span style={{ marginLeft: 10, fontFamily: "monospace", fontSize: 12, opacity: 0.7 }}>
-                {it.href}
-              </span>
-            </div>
+                <div style={{ marginTop: 10 }}>
+                  <Link href={it.href} style={btn}>
+                    Open
+                  </Link>
+                  <span
+                    style={{
+                      marginLeft: 10,
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      opacity: 0.6,
+                    }}
+                  >
+                    {it.href}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+      ))}
 
-        {filtered.length === 0 ? (
-          <div style={{ opacity: 0.7, fontSize: 13 }}>No matches.</div>
-        ) : null}
-      </div>
-
-      <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-        Locked rule: this page is navigation only. It does not call admin APIs and does not modify any state.
+      <div style={{ marginTop: 24, fontSize: 12, opacity: 0.6 }}>
+        Rule enforced: navigation only. No API calls, no state mutations,
+        no embedded tools.
       </div>
     </div>
   );
