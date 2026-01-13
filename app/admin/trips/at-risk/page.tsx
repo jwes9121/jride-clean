@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type TripRow = {
   id?: string | number | null;
@@ -49,7 +49,12 @@ function safeArray<T>(v: any): T[] {
 
 function parseTripsFromPageData(j: any): TripRow[] {
   if (!j) return [];
-  const candidates = [j.trips, j.bookings, j.data, j["0"], Array.isArray(j) ? j : null];
+  const candidates = [
+    j.trips,
+    j.bookings,
+    j.data,
+    Array.isArray(j) ? j : null,
+  ];
   for (const c of candidates) {
     const arr = safeArray<TripRow>(c);
     if (arr.length) return arr;
@@ -65,16 +70,16 @@ function minutesSince(iso?: string | null): number {
   return Math.floor((now - t) / 60000);
 }
 
-function isActiveTripStatus(s: string) {
-  // Keep aligned to existing LiveTripsClient logic (no guessing of extra statuses)
-  return ["pending", "assigned", "on_the_way", "on_trip"].includes(s);
-}
-
 function hasFinite(n: any): boolean {
   return Number.isFinite(Number(n));
 }
 
-function computeAtRiskReason(t: TripRow): { at_risk: boolean; reason: string | null; mins: number } {
+function isActiveTripStatus(s: string) {
+  // keep conservative and aligned to typical lifecycle (read-only)
+  return ["pending", "assigned", "on_the_way", "on_trip"].includes(s);
+}
+
+function computeAtRiskReason(t: TripRow): { at_risk: boolean; reason: string | null; mins: number; base: number } {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
 
@@ -85,11 +90,11 @@ function computeAtRiskReason(t: TripRow): { at_risk: boolean; reason: string | n
   const stuckOnTheWay = s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way;
   const stuckOnTrip = s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip;
 
-  if (stuckOnTheWay) return { at_risk: true, reason: `STUCK: on_the_way >= ${STUCK_THRESHOLDS_MIN.on_the_way} min`, mins };
-  if (stuckOnTrip) return { at_risk: true, reason: `STUCK: on_trip >= ${STUCK_THRESHOLDS_MIN.on_trip} min`, mins };
-  if (missingCoords) return { at_risk: true, reason: "DATA: missing pickup/dropoff coordinates", mins };
+  if (stuckOnTheWay) return { at_risk: true, reason: `STUCK: on_the_way >= ${STUCK_THRESHOLDS_MIN.on_the_way} min`, mins, base: STUCK_THRESHOLDS_MIN.on_the_way };
+  if (stuckOnTrip) return { at_risk: true, reason: `STUCK: on_trip >= ${STUCK_THRESHOLDS_MIN.on_trip} min`, mins, base: STUCK_THRESHOLDS_MIN.on_trip };
+  if (missingCoords) return { at_risk: true, reason: "DATA: missing pickup/dropoff coordinates", mins, base: 10 };
 
-  return { at_risk: false, reason: null, mins };
+  return { at_risk: false, reason: null, mins, base: 10 };
 }
 
 function pickBookingCode(t: TripRow): string {
@@ -109,6 +114,19 @@ function normalizeErr(e: any): string {
   return raw;
 }
 
+type Severity = "warn" | "high" | "critical";
+function severity(mins: number, base: number): Severity {
+  if (mins >= base * 3) return "critical";
+  if (mins >= base * 2) return "high";
+  return "warn";
+}
+
+function sevColor(sev: Severity) {
+  if (sev === "critical") return "#dc2626"; // red
+  if (sev === "high") return "#ea580c"; // orange
+  return "#ca8a04"; // amber
+}
+
 export default function AtRiskTripsPage() {
   const [rows, setRows] = useState<TripRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -116,6 +134,25 @@ export default function AtRiskTripsPage() {
 
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "assigned" | "on_the_way" | "on_trip">("all");
+
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<any>(null);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 1200);
+  }
+
+  async function copyText(label: string, v: string) {
+    try {
+      if (!v) return;
+      await navigator.clipboard.writeText(v);
+      showToast(`${label} copied`);
+    } catch {
+      showToast("Copy failed");
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -138,18 +175,19 @@ export default function AtRiskTripsPage() {
   useEffect(() => { load(); }, []);
 
   const atRisk = useMemo(() => {
-    const out: Array<TripRow & { __mins: number; __reason: string; __status: string; __code: string; __id: string }> = [];
+    const out: Array<TripRow & { __mins: number; __reason: string; __status: string; __code: string; __id: string; __base: number; __sev: Severity }> = [];
+    const qq = q.trim().toLowerCase();
+
     for (const t of rows) {
       const status = normStatus(t.status);
       if (statusFilter !== "all" && status !== statusFilter) continue;
 
-      const { at_risk, reason, mins } = computeAtRiskReason(t);
+      const { at_risk, reason, mins, base } = computeAtRiskReason(t);
       if (!at_risk || !reason) continue;
 
       const code = pickBookingCode(t);
       const id = pickTripId(t);
 
-      // optional client-side search (booking code, driver, labels, town)
       const hay = [
         code, id, status,
         String(t.driver_name || ""),
@@ -161,13 +199,12 @@ export default function AtRiskTripsPage() {
         reason,
       ].join(" ").toLowerCase();
 
-      const qq = q.trim().toLowerCase();
       if (qq && !hay.includes(qq)) continue;
 
-      out.push(Object.assign({}, t, { __mins: mins, __reason: reason, __status: status, __code: code, __id: id }));
+      const sev = severity(mins, base);
+      out.push(Object.assign({}, t, { __mins: mins, __reason: reason, __status: status, __code: code, __id: id, __base: base, __sev: sev }));
     }
 
-    // Sort: most overdue first
     out.sort((a, b) => (b.__mins - a.__mins));
     return out;
   }, [rows, q, statusFilter]);
@@ -190,7 +227,32 @@ export default function AtRiskTripsPage() {
     borderRadius: 999,
     border: "1px solid #eee",
     fontSize: 11,
-    opacity: 0.85,
+    opacity: 0.9,
+    whiteSpace: "nowrap",
+  };
+
+  const miniBtn: any = {
+    padding: "2px 8px",
+    border: "1px solid #ddd",
+    borderRadius: 10,
+    background: "white",
+    cursor: "pointer",
+    fontSize: 11,
+    lineHeight: "18px",
+  };
+
+  const toastStyle: any = {
+    position: "fixed",
+    right: 16,
+    bottom: 16,
+    zIndex: 9999,
+    background: "#111827",
+    color: "white",
+    padding: "10px 12px",
+    borderRadius: 12,
+    fontSize: 13,
+    opacity: 0.95,
+    boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
   };
 
   const bannerStyle = (k: "ok" | "warn" | "err") =>
@@ -210,7 +272,7 @@ export default function AtRiskTripsPage() {
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>At-Risk Trips (Read-only)</h1>
       <div style={{ marginTop: 6, opacity: 0.7, fontSize: 12 }}>
-        Flags stuck trips and missing coordinates using the same thresholds as LiveTrips. No actions here.
+        QoL: copy IDs, severity badges. No actions here. Links only.
       </div>
 
       <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -239,24 +301,23 @@ export default function AtRiskTripsPage() {
         {loading ? <span style={{ opacity: 0.7 }}>Loading...</span> : null}
 
         <span style={{ opacity: 0.6 }}>|</span>
-
         <span style={{ fontSize: 12 }}>
           Showing <b>{atRisk.length}</b> at-risk trip(s)
         </span>
 
         <span style={{ opacity: 0.6 }}>|</span>
-
         <Link href="/admin/livetrips" style={btn}>Open LiveTrips</Link>
       </div>
 
       {banner ? <div style={bannerStyle(banner.kind)}>{banner.text}</div> : null}
+      {toast ? <div style={toastStyle}>{toast}</div> : null}
 
       <div style={{ marginTop: 12, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
           <thead>
             <tr>
-              {["mins", "status", "reason", "booking_code", "driver", "town", "pickup", "dropoff", "actions"].map((h) => (
-                <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8, fontSize: 12 }}>
+              {["mins", "status", "reason", "booking_code", "trip_id", "driver", "town", "pickup", "dropoff", "actions"].map((h) => (
+                <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8, fontSize: 12, whiteSpace: "nowrap" }}>
                   {h}
                 </th>
               ))}
@@ -270,8 +331,9 @@ export default function AtRiskTripsPage() {
               const status = t.__status || "";
               const mins = Number(t.__mins || 0);
               const reason = t.__reason || "";
+              const base = Number(t.__base || 10);
+              const sev: Severity = t.__sev || "warn";
 
-              // Link-only: pass booking_code + id as query params (harmless if ignored)
               const href = code
                 ? `/admin/livetrips?booking_code=${encodeURIComponent(code)}`
                 : `/admin/livetrips?id=${encodeURIComponent(id)}`;
@@ -284,23 +346,47 @@ export default function AtRiskTripsPage() {
               return (
                 <tr key={String(code || id || Math.random())}>
                   <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace" }}>
-                    {String(mins)}
+                    <span style={{ ...badge, color: "white", border: "1px solid rgba(0,0,0,0.06)", background: sevColor(sev) }}>
+                      {mins}m
+                    </span>
                   </td>
+
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
                     <span style={badge}>{status}</span>
                   </td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{reason}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace" }}>
-                    {code || "(no code)"}
-                  </td>
+
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                    {driverLabel || "(unassigned)"}
+                    {reason}
+                    <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.65 }}>
+                      (base {base}m Â· {sev})
+                    </span>
                   </td>
+
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                    {code || "(no code)"}{" "}
+                    {code ? <button style={miniBtn} onClick={() => copyText("booking_code", code)}>Copy</button> : null}
+                  </td>
+
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                    {id || "(no id)"}{" "}
+                    {id ? <button style={miniBtn} onClick={() => copyText("trip_id", id)}>Copy</button> : null}
+                  </td>
+
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                    {driverLabel || "(unassigned)"}{" "}
+                    {t.driver_id ? <button style={miniBtn} onClick={() => copyText("driver_id", String(t.driver_id))}>Copy</button> : null}
+                  </td>
+
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(t.town || "")}</td>
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(t.pickup_label || "")}</td>
                   <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{String(t.dropoff_label || "")}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                    <Link href={href} style={btn}>Open in LiveTrips</Link>
+
+                  <td style={{ padding: 8, borderBottom: "1px solid #eee", whiteSpace: "nowrap" }}>
+                    <Link href={href} style={btn}>Open LiveTrips</Link>
+                    <span style={{ marginLeft: 8 }} />
+                    <button style={miniBtn} onClick={() => copyText("livetrips_link", (typeof window !== "undefined" ? (window.location.origin + href) : href))}>
+                      Copy Link
+                    </button>
                   </td>
                 </tr>
               );
@@ -308,7 +394,7 @@ export default function AtRiskTripsPage() {
 
             {atRisk.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ padding: 12, color: "#666" }}>
+                <td colSpan={10} style={{ padding: 12, color: "#666" }}>
                   No at-risk trips right now.
                 </td>
               </tr>
@@ -318,7 +404,7 @@ export default function AtRiskTripsPage() {
       </div>
 
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-        Locked rule: this page is read-only. It only reads LiveTrips page-data and provides navigation links.
+        Locked rule: this page is read-only. It only reads LiveTrips page-data and provides links/copy utilities.
       </div>
     </div>
   );
