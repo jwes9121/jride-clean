@@ -328,7 +328,7 @@ export default function AtRiskTripsPage() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>At-Risk Trips (Read-only) â€” SLA & Escalation</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>At-Risk Trips (Read-only)  -  SLA & Escalation</h1>
       <div style={{ marginTop: 6, opacity: 0.7, fontSize: 12 }}>
         Phase 9C adds SLA timers and escalation buckets. No actions here. Links and copy only.
       </div>
@@ -384,7 +384,7 @@ export default function AtRiskTripsPage() {
 
         <span style={{ opacity: 0.6 }}>|</span>
         <span style={{ fontSize: 12 }}>
-          Total <b>{computed.length}</b> Â· Near <b>{counts.near}</b> Â· Warn <b>{counts.warn}</b> Â· High <b>{counts.high}</b> Â· Critical <b>{counts.critical}</b>
+          Total <b>{computed.length}</b>  |  Near <b>{counts.near}</b>  |  Warn <b>{counts.warn}</b>  |  High <b>{counts.high}</b>  |  Critical <b>{counts.critical}</b>
         </span>
 
         <span style={{ opacity: 0.6 }}>|</span>
