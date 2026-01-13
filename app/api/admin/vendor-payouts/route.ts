@@ -1,99 +1,157 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-function json(status: number, payload: any) {
-  return NextResponse.json(payload, { status });
+function mustEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error("Missing env var: " + name);
+  return v;
 }
 
-function s(v: any) {
-  return String(v ?? "").trim();
+function jsonOk(body: any, status = 200) {
+  return NextResponse.json(body, { status });
 }
 
-function getAdmin() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!url || !key) return null;
+function jsonErr(code: string, message: string, status: number, extra?: any) {
+  return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
+}
 
-  return createAdminClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
+async function restGetOneById(SUPABASE_URL: string, SERVICE_ROLE: string, id: string) {
+  const qs = new URLSearchParams();
+  qs.set("select", "id,vendor_id,requested_amount,status,note,created_at,reviewed_at,reviewed_by");
+  qs.set("id", "eq." + id);
+  qs.set("limit", "1");
+
+  const url = SUPABASE_URL + "/rest/v1/vendor_payout_requests?" + qs.toString();
+  const res = await fetch(url, {
+    headers: { apikey: SERVICE_ROLE, Authorization: "Bearer " + SERVICE_ROLE },
+    cache: "no-store",
   });
+
+  const text = await res.text();
+  if (!res.ok) return { ok: false, status: res.status, text };
+
+  let arr: any[] = [];
+  try { arr = JSON.parse(text || "[]"); } catch { arr = []; }
+  const row = Array.isArray(arr) && arr.length ? arr[0] : null;
+  return { ok: true, row };
 }
 
-export async function GET(req: NextRequest) {
+async function restPatchById(SUPABASE_URL: string, SERVICE_ROLE: string, id: string, patch: Record<string, any>) {
+  const qs = new URLSearchParams();
+  qs.set("id", "eq." + id);
+  qs.set("select", "id,vendor_id,requested_amount,status,note,created_at,reviewed_at,reviewed_by");
+
+  const url = SUPABASE_URL + "/rest/v1/vendor_payout_requests?" + qs.toString();
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      apikey: SERVICE_ROLE,
+      Authorization: "Bearer " + SERVICE_ROLE,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(patch),
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  if (!res.ok) return { ok: false, status: res.status, text };
+
+  let out: any[] = [];
+  try { out = JSON.parse(text || "[]"); } catch { out = []; }
+  return { ok: true, row: Array.isArray(out) && out.length ? out[0] : null };
+}
+
+export async function GET(req: Request) {
   try {
-    const admin = getAdmin();
-    if (!admin) {
-      return json(500, {
-        ok: false,
-        code: "SERVER_MISCONFIG",
-        message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-      });
-    }
-
     const url = new URL(req.url);
-    const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10) || 200, 1000);
+    const status = (url.searchParams.get("status") || "pending").toLowerCase();
+    const limit = Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200);
 
-    const { data, error } = await admin
-      .from("vendor_wallet_balances_v1")
-      .select("vendor_id,balance,last_tx_at,tx_count")
-      .order("balance", { ascending: false })
-      .limit(limit);
+    const SUPABASE_URL = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (error) {
-      return json(500, { ok: false, code: "DB_ERROR", message: error.message });
-    }
+    const qs = new URLSearchParams();
+    qs.set("select", "id,vendor_id,requested_amount,status,note,created_at,reviewed_at,reviewed_by");
+    qs.set("order", "created_at.desc");
+    qs.set("limit", String(limit));
+    if (status && status !== "all") qs.set("status", "eq." + status);
 
-    return json(200, { ok: true, vendors: data ?? [] });
+    const restUrl = SUPABASE_URL + "/rest/v1/vendor_payout_requests?" + qs.toString();
+    const res = await fetch(restUrl, {
+      headers: { apikey: SERVICE_ROLE, Authorization: "Bearer " + SERVICE_ROLE },
+      cache: "no-store",
+    });
+
+    const text = await res.text();
+    if (!res.ok) return NextResponse.json({ error: text }, { status: res.status });
+
+    return new NextResponse(text, { status: 200, headers: { "Content-Type": "application/json" } });
   } catch (e: any) {
-    return json(500, { ok: false, code: "SERVER_ERROR", message: String(e?.message || e || "Unknown") });
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
   }
 }
 
-type VendorSettleReq = {
-  action?: string | null;
-  vendor_id?: string | null;
-  vendorId?: string | null;
-  note?: string | null;
+type ActionReq = {
+  id?: string | null;
+  action?: "mark_paid" | string | null;
+  reviewed_by?: string | null;
 };
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const admin = getAdmin();
-    if (!admin) {
-      return json(500, {
-        ok: false,
-        code: "SERVER_MISCONFIG",
-        message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    const body = (await req.json().catch(() => ({}))) as ActionReq;
+
+    const idRaw = body?.id;
+    const action = String(body?.action || "").trim().toLowerCase();
+
+    if (!idRaw) return jsonErr("BAD_REQUEST", "Missing id", 400);
+    if (!action) return jsonErr("BAD_REQUEST", "Missing action", 400);
+
+    if (action !== "mark_paid") {
+      return jsonErr("BAD_REQUEST", "Invalid action (mark_paid only)", 400, { action });
+    }
+
+    const id = String(idRaw);
+
+    const SUPABASE_URL = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+    const cur = await restGetOneById(SUPABASE_URL, SERVICE_ROLE, id);
+    if (!cur.ok) return jsonErr("DB_ERROR", cur.text || "Failed to load vendor payout request", 500);
+    if (!cur.row) return jsonErr("NOT_FOUND", "Vendor payout request not found", 404, { id });
+
+    const currentStatus = String(cur.row.status || "").toLowerCase();
+
+    // If already paid, idempotent success
+    if (currentStatus === "paid") {
+      return jsonOk({ ok: true, changed: false, idempotent: true, id, status: currentStatus, row: cur.row });
+    }
+
+    // Only allow pending -> paid (safest, avoids unknown status constraints)
+    if (currentStatus !== "pending") {
+      return jsonErr("INVALID_STATE", "Cannot mark_paid when status is " + currentStatus, 409, {
+        id,
+        current_status: currentStatus,
+        target_status: "paid",
       });
     }
 
-    const body = (await req.json().catch(() => ({}))) as VendorSettleReq;
-    const action = s(body.action).toLowerCase();
-    if (action !== "settle") {
-      return json(400, { ok: false, code: "BAD_REQUEST", message: "action must be 'settle'" });
-    }
+    // IMPORTANT: NO wallet mutations. Only update payout request row fields.
+    const patch: any = {
+      status: "paid",
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: (body.reviewed_by != null && String(body.reviewed_by).trim().length)
+        ? String(body.reviewed_by).trim()
+        : "admin",
+    };
 
-    const vendor_id = s(body.vendor_id ?? body.vendorId);
-    if (!vendor_id) {
-      return json(400, { ok: false, code: "BAD_REQUEST", message: "vendor_id required" });
-    }
+    const upd = await restPatchById(SUPABASE_URL, SERVICE_ROLE, id, patch);
+    if (!upd.ok) return jsonErr("DB_ERROR", upd.text || "Failed to update vendor payout request", 500);
 
-    const note = (body.note === null || body.note === undefined) ? null : s(body.note);
-
-    // Calls DB function: settle_vendor_wallet(v_vendor_id uuid, v_note text DEFAULT ...)
-    const { error } = await admin.rpc("settle_vendor_wallet", {
-      v_vendor_id: vendor_id,
-      v_note: note && note.length ? note : "Cash payout settlement",
-    });
-
-    if (error) {
-      return json(500, { ok: false, code: "RPC_ERROR", message: error.message });
-    }
-
-    return json(200, { ok: true, vendor_id, settled: true });
+    return jsonOk({ ok: true, changed: true, id, status: "paid", row: upd.row });
   } catch (e: any) {
-    return json(500, { ok: false, code: "SERVER_ERROR", message: String(e?.message || e || "Unknown") });
+    return jsonErr("SERVER_ERROR", e?.message || String(e), 500);
   }
 }
