@@ -31,7 +31,7 @@ function isCreditTx(t: any) {
   const amt = n(t?.amount);
   if (!(amt > 0)) return false;
   const r = s(t?.reason).toLowerCase();
-  return r.includes("credit") || r.includes("earning") || r.includes("earnings");
+  return r.includes("credit") || r.includes("earning") || r.includes("earnings") || r.includes("backfill") || r.includes("reconcile");
 }
 
 export async function GET(req: NextRequest) {
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
     const missing_driver_credits = completed
       .filter((b: any) => !!b.driver_id)
       .map((b: any) => ({ b, expected: expectedDriverPayout(b) }))
-      .filter((x: any) => x.expected > 0) // âœ… only flag when something is actually expected
+      .filter((x: any) => x.expected > 0) // Ã¢Å“â€¦ only flag when something is actually expected
       .filter((x: any) => {
         const bid = s(x.b.id);
         return !creditTxByBooking[bid] || creditTxByBooking[bid].length === 0;
