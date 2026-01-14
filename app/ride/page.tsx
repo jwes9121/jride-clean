@@ -54,7 +54,7 @@ function p1FriendlyError(raw: any): string {
 
 function p1RenderStepper(stRaw: any) {
 /* ===== PHASE P3: Booking block reason clarity (UI-only) ===== */
-function p3ExplainBlock(resultText) {
+function p3ExplainBlock(resultText: any): null | { title: string; body: string; next: string } {
   const t = String(resultText || "").toUpperCase();
   if (!t) return null;
 
@@ -144,6 +144,44 @@ function p3ExplainBlock(resultText) {
   );
 }
 /* ===== END PHASE P1 TOPLEVEL HELPERS (AUTO) ===== */
+
+/* ===== PHASE P3 TOPLEVEL EXPLAIN BLOCK (AUTO) ===== */
+function p3ExplainBlock(resultText: any): null | { title: string; body: string; next: string } {
+  const t = String(resultText || "").toUpperCase();
+  if (!t) return null;
+
+  // Try to detect common block reasons from existing strings/codes without backend changes
+  if (t.includes("VERIFY") || t.includes("VERIFICATION") || t.includes("UNVERIFIED")) {
+    return {
+      title: "Account verification required",
+      body: "Please verify your account before booking a ride.",
+      next: "Verify your account to continue."
+    };
+  }
+  if (t.includes("NIGHT")) {
+    return {
+      title: "Booking unavailable at this time",
+      body: "Bookings may be limited during night hours.",
+      next: "Please try again later."
+    };
+  }
+  if (t.includes("GEO") || t.includes("AREA") || t.includes("OUTSIDE") || t.includes("SERVICE AREA")) {
+    return {
+      title: "Service not available in your area",
+      body: "This service is currently limited to supported locations.",
+      next: "Move to a supported area and try again."
+    };
+  }
+  if (t.includes("BLOCK") || t.includes("UNAVAILABLE")) {
+    return {
+      title: "Booking temporarily unavailable",
+      body: "Weâ€™re unable to process bookings right now.",
+      next: "Please try again later."
+    };
+  }
+  return null;
+}
+/* ===== END PHASE P3 TOPLEVEL EXPLAIN BLOCK (AUTO) ===== */
 
 
 
