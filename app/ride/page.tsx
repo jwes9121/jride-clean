@@ -1,3 +1,4 @@
+/* PHASE P1E DISABLED VISUALS (UI-only): add disabled button styling on native <button> tags */
 "use client";
 
 import * as React from "react";
@@ -1850,7 +1851,7 @@ if (!can.ok) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           onClick={async () => {
                             try {
                               if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
@@ -1936,7 +1937,7 @@ if (!can.ok) {
 <button
             type="button"
             onClick={refreshCanBook}
-            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Refresh status
           </button>
@@ -2028,7 +2029,7 @@ if (!can.ok) {
 
               <button
                 type="button"
-                className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
+                className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 onClick={() => promptGeoFromClick()}
               >
                 {geoPermission !== "granted" ? "Enable location" : "Re-check"}
@@ -2054,7 +2055,7 @@ if (!can.ok) {
               {!verified ? (
                 <button
                   type="button"
-                  className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800"
+                  className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   onClick={() => router.push("/verify")}
                 >
                   Go to verification
@@ -2073,7 +2074,7 @@ if (!can.ok) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90"
+                    className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     onClick={() => router.push("/verify")}
                   >
                     Go to verification
@@ -2081,7 +2082,7 @@ if (!can.ok) {
 
                   <button
                     type="button"
-                    className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold"
+                    className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     onClick={refreshCanBook}
                   >
                     Refresh status
@@ -2523,7 +2524,7 @@ if (!can.ok) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           onClick={async () => {
                             try {
                               if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
@@ -2538,7 +2539,7 @@ if (!can.ok) {
 
                         <button
                           type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           onClick={() => {
                             // UI-only reset: remove debug_status param and reload
                             try {
@@ -2690,7 +2691,7 @@ if (!can.ok) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           onClick={async () => {
                             try {
                               if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
@@ -2710,7 +2711,7 @@ if (!can.ok) {
 
                         <button
                           type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           onClick={() => {
                             // UI-only reset (no backend calls)
                             setActiveCode("");
