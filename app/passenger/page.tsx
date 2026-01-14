@@ -57,9 +57,11 @@ export default function PassengerDashboardPage() {
           </div>
 
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
-            {authed ? "Logged in" : "Not logged in"}
-            <span className="opacity-70"> Ãƒâ€šÃ‚Â· {status}</span>
-          </div>
+                        <span className="font-semibold">{authed ? "Signed in" : "Guest"}</span>
+            <span className="opacity-70">
+              {" Â· "}
+              {status === "authenticated" ? "authenticated" : status === "unauthenticated" ? "unauthenticated" : "loading"}
+            </span>          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -72,9 +74,22 @@ export default function PassengerDashboardPage() {
           <button
             type="button"
             onClick={go}
-            className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 font-semibold"
+            disabled={status === "loading"}
+            title={
+              status === "loading"
+                ? "Loading sessionâ€¦"
+                : authed
+                ? "Continue"
+                : "Sign in to continue"
+            }
+            className={
+              "rounded-xl px-5 py-2 font-semibold text-white " +
+              (status === "loading"
+                ? "bg-blue-600/60 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-500")
+            }
           >
-            Continue
+            {status === "loading" ? "Loadingâ€¦" : authed ? "Continue" : "Sign in to continue"}
           </button>
 
           <button
