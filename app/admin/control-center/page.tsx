@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -129,7 +129,11 @@ export default function AdminControlCenterPage() {
             desc: "Read-only monitoring of auto-assign behavior.",
             href: "/admin/ops/auto-assign-monitor",
           },
-          {
+                    {
+            title: "Ops Health Dashboard",
+            desc: "High-level operational health indicators (read-only).",
+            href: "/admin/ops/health",
+          },{
             title: "Audit Trail (Read-only)",
             desc: "Snapshot audit helper (UI-only). No backend mutations.",
             href: "/admin/audit",
