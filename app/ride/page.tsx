@@ -2241,6 +2241,102 @@ if (!can.ok) {
               ) : null}
 
               {p1RenderStepper(liveStatus)}
+              {/* ===== PHASE P2: Trip receipt (terminal-only, UI-only) ===== */}
+              {(() => {
+                const st = String(liveStatus || "").trim().toLowerCase();
+                const isTerminal = st === "completed" || st === "cancelled";
+                if (!isTerminal) return null;
+
+                const code = String(activeCode || "").trim();
+                const driver = String(liveDriverId || "").trim();
+                const updated = liveUpdatedAt ? new Date(liveUpdatedAt).toLocaleString() : "";
+
+                const receiptText =
+                  "JRIDE TRIP RECEIPT\n" +
+                  (code ? ("Code: " + code + "\n") : "") +
+                  ("Status: " + (st ? (st.charAt(0).toUpperCase() + st.slice(1)) : "Unknown") + "\n") +
+                  (driver ? ("Driver: " + driver + "\n") : "") +
+                  (updated ? ("Last update: " + updated + "\n") : "");
+
+                return (
+                  <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Trip receipt</div>
+                        <div className="text-xs opacity-70">
+                          {st === "completed" ? "Completed trip summary" : "Cancelled trip summary"}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          onClick={async () => {
+                            try {
+                              if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(receiptText);
+                                setResult("Receipt copied to clipboard.");
+                              } else {
+                                setResult("Copy not supported on this device/browser.");
+                              }
+                            } catch {
+                              setResult("Copy failed. Please try again.");
+                            }
+                          }}
+                          title="Copy receipt text"
+                        >
+                          Copy receipt
+                        </button>
+
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          onClick={() => {
+                            // UI-only reset (no backend calls)
+                            setActiveCode("");
+                            setLiveStatus("");
+                            setLiveDriverId("");
+                            setLiveUpdatedAt(null);
+                            setLiveErr("");
+                            setResult("");
+                          }}
+                          title="Clear receipt and start a new booking"
+                        >
+                          Book again
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Code</div>
+                        <div className="font-mono text-xs">{code || "(none)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Status</div>
+                        <div className="font-mono text-xs">{st || "(unknown)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Driver</div>
+                        <div className="font-mono text-xs">{driver || "(none)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Last update</div>
+                        <div className="font-mono text-xs">{updated || "--"}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-xs opacity-70">
+                      Tip: Keep this receipt for reference when reporting issues.
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P2 ===== */}
 
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="rounded-xl border border-black/10 p-2">
