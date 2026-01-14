@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -42,7 +42,7 @@ function getRoleFromClient(): { role: Role; debug: boolean; source: string } {
   }
 
   // 3) Default: admin
-  return { role: "admin", debug, source: "default" };
+  return { role: "admin", debug: false, source: "default" };
 }
 
 export default function AdminControlCenterPage() {
@@ -87,17 +87,17 @@ export default function AdminControlCenterPage() {
             desc: "Read-only payout summaries per vendor.",
             href: "/admin/vendor-payouts-summary",
           },
-          {
-            title: "LGU / Accounting Exports",
-            desc: "Accounting and LGU export views (CSV-ready, read-only).",
-            href: "/admin/reports/lgu",
-          },
         ],
       },
 
       {
         heading: "Reports",
         items: [
+          {
+            title: "LGU / Accounting Exports",
+            desc: "Accounting and LGU export views (CSV-ready, read-only).",
+            href: "/admin/reports/lgu",
+          },
           {
             title: "Vendor Monthly Report",
             desc: "Monthly vendor performance and revenue summary.",
@@ -130,8 +130,19 @@ export default function AdminControlCenterPage() {
             href: "/admin/ops/auto-assign-monitor",
           },
           {
+            title: "Audit Trail (Read-only)",
+            desc: "Snapshot audit helper (UI-only). No backend mutations.",
+            href: "/admin/audit",
+          },
+        ],
+      },
+
+      {
+        heading: "Accounting (Read-only)",
+        items: [
+          {
             title: "Wallet Reconciliation",
-            desc: "Read-only wallet balance and reconciliation status.",
+            desc: "Read-only reconciliation status dashboard placeholder.",
             href: "/admin/ops/wallet-reconciliation",
           },
         ],
@@ -140,7 +151,7 @@ export default function AdminControlCenterPage() {
     []
   );
 
-  // Dispatcher is ops-only + live + at-risk (NO payouts/reports/exports/wallet recon)
+  // Dispatcher allowed links: ops-only + live + at-risk + audit helper
   const dispatcherAllow = useMemo(
     () =>
       new Set<string>([
@@ -148,6 +159,7 @@ export default function AdminControlCenterPage() {
         "/admin/trips/at-risk",
         "/admin/ops/stuck-drivers",
         "/admin/ops/auto-assign-monitor",
+        "/admin/audit",
       ]),
     []
   );
@@ -219,61 +231,59 @@ export default function AdminControlCenterPage() {
         Centralized navigation hub. Read-only. No actions are executed here.
       </div>
 
-      <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <span style={badge}>
-          Role: <b>{role}</b>
-          <span style={{ marginLeft: 8, opacity: 0.6, fontFamily: "monospace" }}>{roleSource}</span>
-        </span>
-
-        <span style={{ fontSize: 12, opacity: 0.65 }}>
-          Test: <span style={{ fontFamily: "monospace" }}>?role=dispatcher</span> or{" "}
-          <span style={{ fontFamily: "monospace" }}>?role=admin</span>
+          Role: <b>{role}</b>{" "}
+          <span style={{ opacity: 0.7 }}>
+            {debug ? "(debug)" : ""} {roleSource ? `Â· ${roleSource}` : ""}
+          </span>
         </span>
 
         {debug ? (
           <>
-            <span style={{ opacity: 0.5 }}>|</span>
-            <button style={miniBtn} onClick={() => setRoleHint("admin")}>
-              Set Admin
+            <button type="button" style={miniBtn} onClick={() => setRoleHint("admin")}>
+              Set role: admin
             </button>
-            <button style={miniBtn} onClick={() => setRoleHint("dispatcher")}>
-              Set Dispatcher
+            <button type="button" style={miniBtn} onClick={() => setRoleHint("dispatcher")}>
+              Set role: dispatcher
             </button>
-            <span style={{ fontSize: 12, opacity: 0.6 }}>(debug=1 only)</span>
           </>
         ) : null}
+
+        <a href="/admin" style={btn}>
+          /admin
+        </a>
+        <a href="/admin/control-center" style={btn}>
+          /admin/control-center
+        </a>
       </div>
 
-      {visibleSections.length === 0 ? (
-        <div style={{ marginTop: 20, fontSize: 13, opacity: 0.7 }}>No tools available for this role.</div>
-      ) : (
-        visibleSections.map((section) => (
-          <div key={section.heading} style={{ marginTop: 20 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700 }}>{section.heading}</h2>
-
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+        {visibleSections.map((section) => (
+          <div key={section.heading} style={card}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>{section.heading}</div>
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
               {section.items.map((it) => (
-                <div key={it.href} style={card}>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>{it.title}</div>
+                <div key={it.href} style={{ borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>{it.title}</div>
+                    <span style={{ fontFamily: "monospace", fontSize: 12, opacity: 0.65 }}>{it.href}</span>
+                  </div>
                   <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>{it.desc}</div>
-
                   <div style={{ marginTop: 10 }}>
                     <Link href={it.href} style={btn}>
                       Open
                     </Link>
-                    <span style={{ marginLeft: 10, fontFamily: "monospace", fontSize: 12, opacity: 0.6 }}>
-                      {it.href}
-                    </span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        ))
-      )}
+        ))}
+      </div>
 
-      <div style={{ marginTop: 24, fontSize: 12, opacity: 0.6 }}>
-        Rule enforced: navigation only. No API calls, no state mutations, no embedded tools.
+      <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
+        Locked rule: this page is navigation only (Link/push only). No wallet mutations. No Mapbox changes. No LiveTrips logic changes.
       </div>
     </div>
   );
