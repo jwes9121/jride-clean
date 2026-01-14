@@ -195,6 +195,27 @@ function p4Preflight(resultText: any, authed: any): { ok: boolean; title: string
   return { ok: true, title: "Ready to book", body: "You can proceed to request a driver." };
 }
 /* ===== END PHASE P4 PREFLIGHT HELPERS (AUTO) ===== */
+/* ===== PHASE P5: Debug status simulator (UI-only) ===== */
+function p5GetDebugStatus(): string {
+  try {
+    if (typeof window === "undefined") return "";
+    const sp = new URLSearchParams(window.location.search || "");
+    const v = String(sp.get("debug_status") || "").trim().toLowerCase();
+    const allowed = new Set([
+      "requested","assigned","on_the_way","arrived","on_trip","completed","cancelled"
+    ]);
+    return allowed.has(v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+
+function p5OverrideStatus(liveStatus: any): any {
+  const dbg = p5GetDebugStatus();
+  return dbg ? dbg : liveStatus;
+}
+/* ===== END PHASE P5 ===== */
+
 
 
 
@@ -2291,12 +2312,12 @@ if (!can.ok) {
               <button
                 className={
                   "text-xs rounded-lg border border-black/10 px-2 py-1 " +
-                  (p1IsNonCancellable(liveStatus) ? "opacity-50 cursor-not-allowed" : "hover:bg-black/5")
+                  (p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "opacity-50 cursor-not-allowed" : "hover:bg-black/5")
                 }
-                disabled={p1IsNonCancellable(liveStatus)}
-                title={p1IsNonCancellable(liveStatus) ? "You canâ€™t cancel/clear once the driver is on the way." : "Clear trip status card"}
+                disabled={p1IsNonCancellable(p5OverrideStatus(liveStatus))}
+                title={p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "You canâ€™t cancel/clear once the driver is on the way." : "Clear trip status card"}
                 onClick={() => {
-                  if (p1IsNonCancellable(liveStatus)) return;
+                  if (p1IsNonCancellable(p5OverrideStatus(liveStatus))) return;
                   setActiveCode("");
                   setLiveStatus("");
                   setLiveDriverId("");
@@ -2317,16 +2338,29 @@ if (!can.ok) {
                 Whatâ€™s happening now?
               </div>
               <div className="mt-1 text-sm opacity-80">
-                {p1NowMessage(liveStatus)}
+                {p1NowMessage(p5OverrideStatus(liveStatus))}
               </div>
 
-              {p1WaitHint(liveStatus) ? (
+              {p1WaitHint(p5OverrideStatus(liveStatus)) ? (
                 <div className="mt-2 text-xs opacity-70">
-                  {p1WaitHint(liveStatus)}
+                  {p1WaitHint(p5OverrideStatus(liveStatus))}
                 </div>
               ) : null}
 
-              {p1RenderStepper(liveStatus)}
+              {p1RenderStepper(p5OverrideStatus(liveStatus))}
+              {/* ===== PHASE P5: Debug status banner (UI-only) ===== */}
+              {(() => {
+                const dbg = p5GetDebugStatus();
+                if (!dbg) return null;
+                return (
+                  <div className="mt-2 rounded-xl border border-purple-200 bg-purple-50 p-2 text-xs">
+                    <span className="font-semibold">Debug preview:</span>
+                    <span className="font-mono">{" "}{dbg}</span>
+                    <span className="opacity-70">{" "} (remove ?debug_status=... to disable)</span>
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P5 BANNER ===== */}
               {/* ===== PHASE P4: Preflight panel (UI-only) ===== */}
               {(() => {
                 const pf = p4Preflight(result, status === "authenticated");
