@@ -29,11 +29,11 @@ function getRoleFromClient(): { role: Role; debug: boolean; source: string } {
   const sp = new URLSearchParams(window.location.search);
   const debug = sp.get("debug") === "1";
 
-  // 1) Explicit query param override (most reliable, no API calls)
+  // 1) Explicit query param override
   const qpRole = safeNormRole(sp.get("role"));
   if (qpRole) return { role: qpRole, debug, source: "query" };
 
-  // 2) Local storage hint (UI-only)
+  // 2) Local storage hint
   try {
     const ls = safeNormRole(window.localStorage.getItem("jride_role"));
     if (ls) return { role: ls, debug, source: "localStorage" };
@@ -140,26 +140,26 @@ export default function AdminControlCenterPage() {
     []
   );
 
-  // Dispatcher is ops-only + live visibility
-  const dispatcherAllow = useMemo(() => {
-    return new Set<string>([
-      "/admin/livetrips",
-      "/admin/trips/at-risk",
-      "/admin/ops/stuck-drivers",
-      "/admin/ops/auto-assign-monitor",
-      // Intentionally NOT allowed for dispatcher:
-      // payouts, exports, reports, wallet reconciliation
-    ]);
-  }, []);
+  // Dispatcher is ops-only + live + at-risk (NO payouts/reports/exports/wallet recon)
+  const dispatcherAllow = useMemo(
+    () =>
+      new Set<string>([
+        "/admin/livetrips",
+        "/admin/trips/at-risk",
+        "/admin/ops/stuck-drivers",
+        "/admin/ops/auto-assign-monitor",
+      ]),
+    []
+  );
 
   const visibleSections = useMemo(() => {
     if (role === "admin") return sections;
 
-    // dispatcher
+    // dispatcher: filter down to allowed hrefs and drop empty sections
     const filtered: Section[] = [];
     for (const s of sections) {
-      const items = s.items.filter((it) => dispatcherAllow.has(it.href));
-      if (items.length) filtered.push({ ...s, items });
+      const allowedItems = s.items.filter((it) => dispatcherAllow.has(it.href));
+      if (allowedItems.length > 0) filtered.push({ ...s, items: allowedItems });
     }
     return filtered;
   }, [role, sections, dispatcherAllow]);
@@ -226,49 +226,51 @@ export default function AdminControlCenterPage() {
         </span>
 
         <span style={{ fontSize: 12, opacity: 0.65 }}>
-          Tip: use <span style={{ fontFamily: "monospace" }}>?role=dispatcher</span> (or <span style={{ fontFamily: "monospace" }}>?role=admin</span>) for UI-only testing.
+          Test: <span style={{ fontFamily: "monospace" }}>?role=dispatcher</span> or{" "}
+          <span style={{ fontFamily: "monospace" }}>?role=admin</span>
         </span>
 
         {debug ? (
           <>
             <span style={{ opacity: 0.5 }}>|</span>
-            <button style={miniBtn} onClick={() => setRoleHint("admin")}>Set Admin</button>
-            <button style={miniBtn} onClick={() => setRoleHint("dispatcher")}>Set Dispatcher</button>
+            <button style={miniBtn} onClick={() => setRoleHint("admin")}>
+              Set Admin
+            </button>
+            <button style={miniBtn} onClick={() => setRoleHint("dispatcher")}>
+              Set Dispatcher
+            </button>
             <span style={{ fontSize: 12, opacity: 0.6 }}>(debug=1 only)</span>
           </>
         ) : null}
       </div>
 
-      {visibleSections.map((section) => (
-        <div key={section.heading} style={{ marginTop: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>{section.heading}</h2>
+      {visibleSections.length === 0 ? (
+        <div style={{ marginTop: 20, fontSize: 13, opacity: 0.7 }}>No tools available for this role.</div>
+      ) : (
+        visibleSections.map((section) => (
+          <div key={section.heading} style={{ marginTop: 20 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>{section.heading}</h2>
 
-          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-            {section.items.map((it) => (
-              <div key={it.href} style={card}>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>{it.title}</div>
-                <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>{it.desc}</div>
+            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+              {section.items.map((it) => (
+                <div key={it.href} style={card}>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{it.title}</div>
+                  <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>{it.desc}</div>
 
-                <div style={{ marginTop: 10 }}>
-                  <Link href={it.href} style={btn}>
-                    Open
-                  </Link>
-                  <span
-                    style={{
-                      marginLeft: 10,
-                      fontFamily: "monospace",
-                      fontSize: 12,
-                      opacity: 0.6,
-                    }}
-                  >
-                    {it.href}
-                  </span>
+                  <div style={{ marginTop: 10 }}>
+                    <Link href={it.href} style={btn}>
+                      Open
+                    </Link>
+                    <span style={{ marginLeft: 10, fontFamily: "monospace", fontSize: 12, opacity: 0.6 }}>
+                      {it.href}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        ))
+      )}
 
       <div style={{ marginTop: 24, fontSize: 12, opacity: 0.6 }}>
         Rule enforced: navigation only. No API calls, no state mutations, no embedded tools.
