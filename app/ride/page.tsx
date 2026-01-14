@@ -182,6 +182,19 @@ function p3ExplainBlock(resultText: any): null | { title: string; body: string; 
   return null;
 }
 /* ===== END PHASE P3 TOPLEVEL EXPLAIN BLOCK (AUTO) ===== */
+/* ===== PHASE P4 PREFLIGHT HELPERS (AUTO) ===== */
+function p4Preflight(resultText: any, authed: any): { ok: boolean; title: string; body: string } {
+  const info = p3ExplainBlock(resultText);
+  if (!authed) {
+    return { ok: false, title: "Sign in required", body: "Please sign in before booking a ride." };
+  }
+  if (info) {
+    return { ok: false, title: info.title, body: info.next };
+  }
+  // If no block info is detected, we assume "ready" (UI-only)
+  return { ok: true, title: "Ready to book", body: "You can proceed to request a driver." };
+}
+/* ===== END PHASE P4 PREFLIGHT HELPERS (AUTO) ===== */
 
 
 
@@ -2314,6 +2327,41 @@ if (!can.ok) {
               ) : null}
 
               {p1RenderStepper(liveStatus)}
+              {/* ===== PHASE P4: Preflight panel (UI-only) ===== */}
+              {(() => {
+                const pf = p4Preflight(result, authed);
+                return (
+                  <div className={"mt-3 rounded-2xl border p-3 " + (pf.ok ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50")}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">{pf.title}</div>
+                        <div className="mt-1 text-xs opacity-80">{pf.body}</div>
+                      </div>
+                      <div className={"text-xs rounded-full px-3 py-1 font-semibold " + (pf.ok ? "bg-emerald-600 text-white" : "bg-slate-800 text-white")}>
+                        {pf.ok ? "READY" : "NOT READY"}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 bg-white p-2">
+                        <div className="text-[11px] opacity-70">Signed in</div>
+                        <div className="text-xs font-mono">{authed ? "yes" : "no"}</div>
+                      </div>
+                      <div className="rounded-xl border border-black/10 bg-white p-2">
+                        <div className="text-[11px] opacity-70">Block detected</div>
+                        <div className="text-xs font-mono">{p3ExplainBlock(result) ? "yes" : "no"}</div>
+                      </div>
+                    </div>
+
+                    {!pf.ok ? (
+                      <div className="mt-2 text-xs opacity-80">
+                        If this looks wrong, refresh the page or try again later.
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P4 ===== */}
               {/* ===== PHASE P3: Block reason clarity (UI-only) ===== */}
               {(() => {
                 const info = p3ExplainBlock(result);
