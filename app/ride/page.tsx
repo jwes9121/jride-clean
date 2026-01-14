@@ -2354,36 +2354,29 @@ if (!can.ok) {
                 const isTerminal = eff === "completed" || eff === "cancelled";
                 if (!isTerminal) return null;
 
-                // Defensive reads: do not assume these vars exist
-                const code =
-                  (typeof activeCode !== "undefined" && activeCode) ? String(activeCode) :
-                  (typeof bookingCode !== "undefined" && bookingCode) ? String(bookingCode) :
-                  (typeof code !== "undefined" && code) ? String(code) :
-                  "(debug)";
+                const receiptCode: string =
+                  (typeof activeCode !== "undefined" && activeCode) ? String(activeCode) : "(debug)";
 
-                const driver =
-                  (typeof liveDriverId !== "undefined" && liveDriverId) ? String(liveDriverId) :
-                  (typeof driverId !== "undefined" && driverId) ? String(driverId) :
-                  "";
+                const driver: string =
+                  (typeof liveDriverId !== "undefined" && liveDriverId) ? String(liveDriverId) : "";
 
                 const updatedRaw =
-                  (typeof liveUpdatedAt !== "undefined" && liveUpdatedAt) ? liveUpdatedAt :
-                  (typeof updatedAt !== "undefined" && updatedAt) ? updatedAt :
-                  null;
+                  (typeof liveUpdatedAt !== "undefined" && liveUpdatedAt) ? liveUpdatedAt : null;
 
-                const updated = updatedRaw ? (() => { try { return new Date(updatedRaw as any).toLocaleString(); } catch { return String(updatedRaw); } })() : "";
+                const updated: string = updatedRaw
+                  ? (() => { try { return new Date(updatedRaw as any).toLocaleString(); } catch { return String(updatedRaw); } })()
+                  : "";
 
                 const statusLabel = eff ? (eff.charAt(0).toUpperCase() + eff.slice(1)) : "Unknown";
+                const dbg = (typeof p5GetDebugStatus === "function") ? p5GetDebugStatus() : "";
 
                 const receiptText =
                   "JRIDE TRIP RECEIPT\n" +
-                  ("Code: " + code + "\n") +
+                  ("Code: " + receiptCode + "\n") +
                   ("Status: " + statusLabel + "\n") +
                   (driver ? ("Driver: " + driver + "\n") : "") +
                   (updated ? ("Last update: " + updated + "\n") : "") +
-                  ("(Preview via debug_status)\n");
-
-                const canSetResult = (typeof setResult !== "undefined");
+                  (dbg ? ("Debug: " + dbg + "\n") : "");
 
                 return (
                   <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
@@ -2403,13 +2396,8 @@ if (!can.ok) {
                             try {
                               if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
                                 await navigator.clipboard.writeText(receiptText);
-                                if (canSetResult) setResult("Receipt copied to clipboard.");
-                              } else {
-                                if (canSetResult) setResult("Copy not supported on this device/browser.");
                               }
-                            } catch {
-                              if (canSetResult) setResult("Copy failed. Please try again.");
-                            }
+                            } catch {}
                           }}
                           title="Copy receipt text"
                         >
@@ -2420,7 +2408,7 @@ if (!can.ok) {
                           type="button"
                           className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
                           onClick={() => {
-                            // UI-only reset: safest is a refresh without debug_status
+                            // UI-only reset: remove debug_status param and reload
                             try {
                               if (typeof window !== "undefined") {
                                 const u = new URL(window.location.href);
@@ -2441,7 +2429,7 @@ if (!can.ok) {
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="rounded-xl border border-black/10 p-2">
                         <div className="text-xs opacity-70">Code</div>
-                        <div className="font-mono text-xs">{code}</div>
+                        <div className="font-mono text-xs">{receiptCode}</div>
                       </div>
 
                       <div className="rounded-xl border border-black/10 p-2">
@@ -2460,9 +2448,11 @@ if (!can.ok) {
                       </div>
                     </div>
 
-                    <div className="mt-3 text-xs opacity-70">
-                      Debug tip: Remove <span className="font-mono">?debug_status=...</span> to return to normal behavior.
-                    </div>
+                    {dbg ? (
+                      <div className="mt-3 text-xs opacity-70">
+                        Debug preview active: <span className="font-mono">debug_status={dbg}</span>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })()}
