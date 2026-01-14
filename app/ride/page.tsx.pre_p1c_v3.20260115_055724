@@ -1520,14 +1520,13 @@ const j = resp.json || {};
   // Phase 13: booking allowed if (geo ok) OR (local verification code present)
   const geoOk = (geoPermission === "granted" && geoInsideIfugao === true);
   const geoOrLocalOk = geoOk || hasLocalVerify();
-  // PHASE P1C_MINI: allowSubmit lock (UI-only)
   const allowSubmit =
     !busy &&
     !unverifiedBlocked &&
     !walletBlocked &&
     !bookingSubmitted &&
     pilotTownAllowed &&
-    geoOrLocalOk && !["requested","assigned","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase());
+    geoOrLocalOk;
 function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
