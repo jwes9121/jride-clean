@@ -53,7 +53,42 @@ function p1FriendlyError(raw: any): string {
 }
 
 function p1RenderStepper(stRaw: any) {
-  const st = p1NormStatus(stRaw);
+/* ===== PHASE P3: Booking block reason clarity (UI-only) ===== */
+function p3ExplainBlock(resultText) {
+  const t = String(resultText || "").toUpperCase();
+  if (!t) return null;
+
+  if (t.includes("VERIFY") || t.includes("VERIFICATION")) {
+    return {
+      title: "Account verification required",
+      body: "Please verify your account before booking a ride.",
+      next: "Verify your account to continue."
+    };
+  }
+  if (t.includes("NIGHT")) {
+    return {
+      title: "Booking unavailable at this time",
+      body: "Bookings are limited during night hours.",
+      next: "Please try again after service hours resume."
+    };
+  }
+  if (t.includes("GEO") || t.includes("AREA") || t.includes("OUTSIDE")) {
+    return {
+      title: "Service not available in your area",
+      body: "This service is currently limited to supported locations.",
+      next: "Move to a supported area and try again."
+    };
+  }
+  if (t.includes("BLOCK") || t.includes("UNAVAILABLE")) {
+    return {
+      title: "Booking temporarily unavailable",
+      body: "Weâ€™re unable to process bookings right now.",
+      next: "Please try again later."
+    };
+  }
+  return null;
+}
+/* ===== END PHASE P3 HELPERS ===== */  const st = p1NormStatus(stRaw);
   const idx = p1StatusIndex(st);
 
   if (st === "cancelled") {
@@ -2241,6 +2276,28 @@ if (!can.ok) {
               ) : null}
 
               {p1RenderStepper(liveStatus)}
+              {/* ===== PHASE P3: Block reason clarity (UI-only) ===== */}
+              {(() => {
+                const info = p3ExplainBlock(result);
+                if (!info) return null;
+                return (
+                  <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                    <div className="text-sm font-semibold text-amber-900">
+                      {info.title}
+                    </div>
+                    <div className="mt-1 text-xs text-amber-900/80">
+                      {info.body}
+                    </div>
+                    <div className="mt-2 text-xs font-medium text-amber-900">
+                      What you can do next:
+                    </div>
+                    <div className="text-xs text-amber-900/80">
+                      {info.next}
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P3 ===== */}
               {/* ===== PHASE P2: Trip receipt (terminal-only, UI-only) ===== */}
               {(() => {
                 const st = String(liveStatus || "").trim().toLowerCase();
