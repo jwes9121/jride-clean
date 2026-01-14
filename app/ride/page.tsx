@@ -18,14 +18,14 @@ function p1StatusIndex(st: string): number {
 
 function p1NowMessage(stRaw: any): string {
   const st = p1NormStatus(stRaw);
-  if (st === "requested") return "Weâ€™re looking for a nearby driver.";
+  if (st === "requested") return "We're looking for a nearby driver.";
   if (st === "assigned") return "A driver has accepted your request.";
   if (st === "on_the_way") return "Driver is heading to your pickup point.";
   if (st === "arrived") return "Driver has arrived. Please proceed.";
-  if (st === "on_trip") return "Youâ€™re on the way to your destination.";
+  if (st === "on_trip") return "You're on the way to your destination.";
   if (st === "completed") return "Trip completed. Thank you for riding!";
   if (st === "cancelled") return "This trip was cancelled.";
-  return "Weâ€™re updating your trip status. Please wait.";
+  return "We're updating your trip status. Please wait.";
 }
 
 function p1WaitHint(stRaw: any): string {
@@ -46,8 +46,8 @@ function p1FriendlyError(raw: any): string {
   if (!t) return "";
   if (u.indexOf("CAN_BOOK_BLOCKED") >= 0) return "Booking is temporarily unavailable.";
   if (u.indexOf("GEO_BLOCKED") >= 0) return "Booking is restricted outside the service area.";
-  if (u.indexOf("BOOKING_POLL_FAILED") >= 0 || u.indexOf("BOOKING_POLL_ERROR") >= 0) return "Weâ€™re having trouble updating trip status.";
-  if (u.indexOf("CAN_BOOK_INFO_FAILED") >= 0 || u.indexOf("CAN_BOOK_INFO_ERROR") >= 0) return "Weâ€™re having trouble loading booking eligibility.";
+  if (u.indexOf("BOOKING_POLL_FAILED") >= 0 || u.indexOf("BOOKING_POLL_ERROR") >= 0) return "We're having trouble updating trip status.";
+  if (u.indexOf("CAN_BOOK_INFO_FAILED") >= 0 || u.indexOf("CAN_BOOK_INFO_ERROR") >= 0) return "We're having trouble loading booking eligibility.";
   if (u.indexOf("BOOK_FAILED") >= 0) return "Booking failed. Please try again.";
   return "";
 }
@@ -82,7 +82,7 @@ function p3ExplainBlock(resultText: any): null | { title: string; body: string; 
   if (t.includes("BLOCK") || t.includes("UNAVAILABLE")) {
     return {
       title: "Booking temporarily unavailable",
-      body: "Weâ€™re unable to process bookings right now.",
+      body: "We're unable to process bookings right now.",
       next: "Please try again later."
     };
   }
@@ -175,7 +175,7 @@ function p3ExplainBlock(resultText: any): null | { title: string; body: string; 
   if (t.includes("BLOCK") || t.includes("UNAVAILABLE")) {
     return {
       title: "Booking temporarily unavailable",
-      body: "Weâ€™re unable to process bookings right now.",
+      body: "We're unable to process bookings right now.",
       next: "Please try again later."
     };
   }
@@ -256,14 +256,14 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
 
   function p1NowMessage(stRaw: any): string {
     const st = p1NormStatus(stRaw);
-    if (st === "requested") return "Weâ€™re looking for a nearby driver.";
+    if (st === "requested") return "We're looking for a nearby driver.";
     if (st === "assigned") return "A driver has accepted your request.";
     if (st === "on_the_way") return "Driver is heading to your pickup point.";
     if (st === "arrived") return "Driver has arrived. Please proceed.";
-    if (st === "on_trip") return "Youâ€™re on the way to your destination.";
+    if (st === "on_trip") return "You're on the way to your destination.";
     if (st === "completed") return "Trip completed. Thank you for riding!";
     if (st === "cancelled") return "This trip was cancelled.";
-    return "Weâ€™re updating your trip status. Please wait.";
+    return "We're updating your trip status. Please wait.";
   }
 
   function p1WaitHint(stRaw: any): string {
@@ -285,8 +285,8 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
     if (!t) return "";
     if (u.indexOf("CAN_BOOK_BLOCKED") >= 0) return "Booking is temporarily unavailable.";
     if (u.indexOf("GEO_BLOCKED") >= 0) return "Booking is restricted outside the service area.";
-    if (u.indexOf("BOOKING_POLL_FAILED") >= 0 || u.indexOf("BOOKING_POLL_ERROR") >= 0) return "Weâ€™re having trouble updating trip status.";
-    if (u.indexOf("CAN_BOOK_INFO_FAILED") >= 0 || u.indexOf("CAN_BOOK_INFO_ERROR") >= 0) return "Weâ€™re having trouble loading booking eligibility.";
+    if (u.indexOf("BOOKING_POLL_FAILED") >= 0 || u.indexOf("BOOKING_POLL_ERROR") >= 0) return "We're having trouble updating trip status.";
+    if (u.indexOf("CAN_BOOK_INFO_FAILED") >= 0 || u.indexOf("CAN_BOOK_INFO_ERROR") >= 0) return "We're having trouble loading booking eligibility.";
     if (u.indexOf("BOOK_FAILED") >= 0) return "Booking failed. Please try again.";
     return "";
   }
@@ -1827,6 +1827,16 @@ if (!can.ok) {
                 <div className="mt-3">
                   {/* Stepper preview (P1) */}
                   {p1RenderStepper(eff)}
+                  {/* ===== PHASE P1B: What's happening now? (UI-only) ===== */}
+                  <div className="mt-2 rounded-xl border border-black/10 bg-white p-2 text-xs">
+                    <div className="font-semibold">What's happening now?</div>
+                    <div className="mt-1">{p1NowMessage(eff)}</div>
+                    {p1WaitHint(eff) ? (
+                      <div className="mt-1 opacity-70">{p1WaitHint(eff)}</div>
+                    ) : null}
+                  </div>
+                  {/* ===== END PHASE P1B (DEBUG) ===== */}
+
                 </div>
 
                 {/* Receipt preview (P2B behavior) */}
@@ -2426,7 +2436,7 @@ if (!can.ok) {
                   (p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "opacity-50 cursor-not-allowed" : "hover:bg-black/5")
                 }
                 disabled={p1IsNonCancellable(p5OverrideStatus(liveStatus))}
-                title={p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "You canâ€™t cancel/clear once the driver is on the way." : "Clear trip status card"}
+                title={p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "You can't cancel/clear once the driver is on the way." : "Clear trip status card"}
                 onClick={() => {
                   if (p1IsNonCancellable(p5OverrideStatus(liveStatus))) return;
                   setActiveCode("");
@@ -2446,7 +2456,7 @@ if (!can.ok) {
 
             <div className="mt-2">
               <div className="text-sm font-semibold">
-                Whatâ€™s happening now?
+                What's happening now?
               </div>
               <div className="mt-1 text-sm opacity-80">
                 {p1NowMessage(p5OverrideStatus(liveStatus))}
@@ -2459,6 +2469,20 @@ if (!can.ok) {
               ) : null}
 
               {p1RenderStepper(p5OverrideStatus(liveStatus))}
+              {/* ===== PHASE P1B: What's happening now? (UI-only) ===== */}
+              {(() => {
+                const eff = p5OverrideStatus(liveStatus);
+                return (
+                  <div className="mt-2 rounded-xl border border-black/10 bg-white p-2 text-xs">
+                    <div className="font-semibold">What's happening now?</div>
+                    <div className="mt-1">{p1NowMessage(eff)}</div>
+                    {p1WaitHint(eff) ? (
+                      <div className="mt-1 opacity-70">{p1WaitHint(eff)}</div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P1B (REAL) ===== */}
               {/* ===== PHASE P2B: Trip receipt (debug-aware, UI-only) ===== */}
               {(() => {
                 const eff = String(p5OverrideStatus(liveStatus) || "").trim().toLowerCase();
