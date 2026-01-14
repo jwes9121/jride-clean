@@ -58,8 +58,8 @@ export default function PassengerDashboardPage() {
 
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
                         <span className="font-semibold">{authed ? "Signed in" : "Guest"}</span>
-            <span className="opacity-70">
-              {" Â· "}
+                                    <span className="opacity-70">
+              {" · "}
               {status === "authenticated" ? "authenticated" : status === "unauthenticated" ? "unauthenticated" : "loading"}
             </span>          </div>
         </div>
