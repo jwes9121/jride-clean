@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import * as React from "react";
 
 type ButtonHTMLProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
@@ -31,7 +31,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         type={type}
-        className={`inline-flex items-center justify-center rounded-2xl border border-transparent ${v} ${s} transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:pointer-events-none ${className}`}
+        className={`inline-flex items-center justify-center rounded-2xl border border-transparent ${v} ${s} transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed /* PHASE P1E.1 BUTTON CURSOR NOT ALLOWED */ ${className}`}
         {...props}
       />
     );
