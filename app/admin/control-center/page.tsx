@@ -144,7 +144,11 @@ export default function AdminControlCenterPage() {
       {
         heading: "Accounting (Read-only)",
         items: [
-          {
+                    {
+            title: "Financial Summary (Read-only)",
+            desc: "Snapshot-based totals and quick export (no wallet mutations).",
+            href: "/admin/finance/summary",
+          },{
             title: "Wallet Reconciliation",
             desc: "Read-only reconciliation status dashboard placeholder.",
             href: "/admin/ops/wallet-reconciliation",
@@ -239,7 +243,7 @@ export default function AdminControlCenterPage() {
         <span style={badge}>
           Role: <b>{role}</b>{" "}
           <span style={{ opacity: 0.7 }}>
-            {debug ? "(debug)" : ""} {roleSource ? `Â· ${roleSource}` : ""}
+            {debug ? "(debug)" : ""} {roleSource ? `Ã‚· ${roleSource}` : ""}
           </span>
         </span>
 
