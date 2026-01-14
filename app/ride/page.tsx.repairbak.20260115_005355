@@ -215,6 +215,38 @@ function p5OverrideStatus(liveStatus: any): any {
   return dbg ? dbg : liveStatus;
 }
 /* ===== END PHASE P5 ===== */
+/* ===== PHASE P1C: Action guardrails (UI-only) ===== */
+function p1cEffectiveStatus(liveStatus: any): string {
+  try {
+    return String(p5OverrideStatus(liveStatus) || "").trim().toLowerCase();
+  } catch {
+    return String(liveStatus || "").trim().toLowerCase();
+  }
+}
+
+function p1cIsActiveTrip(st: string): boolean {
+  return st === "requested" || st === "assigned" || st === "on_the_way" || st === "arrived" || st === "on_trip";
+}
+
+function p1cIsTerminal(st: string): boolean {
+  return st === "completed" || st === "cancelled";
+}
+
+function p1cLockReason(st: string): string {
+  if (!st) return "";
+  if (st === "requested") return "We are looking for a nearby driver.";
+  if (st === "assigned") return "A driver is assigned. Please wait.";
+  if (st === "on_the_way") return "Driver is on the way. Actions are locked to avoid changes.";
+  if (st === "arrived") return "Driver has arrived. Actions are locked.";
+  if (st === "on_trip") return "Trip is in progress. Actions are locked.";
+  return "";
+}
+/* ===== END PHASE P1C ===== */
+
+
+
+
+
 /* PHASE2D_TAKEOUT_PAYLOAD_HELPER_BEGIN */
 function jridePhase2dPick(obj: any, keys: string[]) {
   for (const k of keys) {
@@ -2367,23 +2399,36 @@ if (!can.ok) {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3 items-center">
+                {/* ===== PHASE P1C: Guardrails banner (UI-only) ===== */}
+                {(() => {
+                  const st = p1cEffectiveStatus(liveStatus);
+                  if (!p1cIsActiveTrip(st)) return null;
+                  const msg = p1cLockReason(st) || "Trip is active. Actions are locked.";
+                  return (
+                    <div className="mb-2 rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs">
+                      <div className="font-semibold">Trip is active</div>
+                      <div className="mt-1">{msg}</div>
+                    </div>
+                  );
+                })()}
+                {/* ===== END PHASE P1C BANNER ===== */}
           <button
             type="button"
-          disabled={!allowSubmit}
+            disabled={!allowSubmit}
             onClick={submit}
             className={
               "rounded-xl px-5 py-2 font-semibold text-white " +
               (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")
             }
             title={bookingSubmitted ? "Booking already submitted. Press Clear to book again." : (!allowSubmit ? "Booking is blocked by rules above" : "Submit booking")}
-          >
+           data-p1c="submit" disabled={p1cIsActiveTrip(p1cEffectiveStatus(liveStatus))} aria-disabled={p1cIsActiveTrip(p1cEffectiveStatus(liveStatus))}>
             {busy ? "Booking..." : (bookingSubmitted ? "Booking submitted" : "Submit booking")}
           </button>
 
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
+            onClick={() = data-p1c="clear" disabled={p1cIsActiveTrip(p1cEffectiveStatus(liveStatus))} aria-disabled={p1cIsActiveTrip(p1cEffectiveStatus(liveStatus))}> {
               setResult("");
               setActiveCode("");
               setLiveStatus("");
