@@ -1786,6 +1786,117 @@ if (!can.ok) {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Book a Ride</h1>
+          {/* ===== PHASE P5B: Always-visible debug preview panel (UI-only) ===== */}
+          {(() => {
+            const dbg = (typeof p5GetDebugStatus === "function") ? p5GetDebugStatus() : "";
+            if (!dbg) return null;
+
+            const eff = String(dbg || "").trim().toLowerCase();
+            const isTerminal = eff === "completed" || eff === "cancelled";
+
+            // TS-strict safe placeholders (no backend / no assumptions)
+            const receiptCode: string = "(debug)";
+            const driver: string = "";
+            const updated: string = "";
+
+            const statusLabel = eff ? (eff.charAt(0).toUpperCase() + eff.slice(1)) : "Unknown";
+            const receiptText =
+              "JRIDE TRIP RECEIPT\n" +
+              ("Code: " + receiptCode + "\n") +
+              ("Status: " + statusLabel + "\n") +
+              ("Debug: " + dbg + "\n");
+
+            return (
+              <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Debug preview</div>
+                    <div className="text-xs opacity-80">
+                      Showing UI state for <span className="font-mono">debug_status={dbg}</span>
+                    </div>
+                  </div>
+                  <a
+                    className="text-xs rounded-lg border border-black/10 bg-white px-2 py-1 hover:bg-black/5"
+                    href="/ride"
+                    title="Remove debug_status"
+                  >
+                    Exit debug
+                  </a>
+                </div>
+
+                <div className="mt-3">
+                  {/* Stepper preview (P1) */}
+                  {p1RenderStepper(eff)}
+                </div>
+
+                {/* Receipt preview (P2B behavior) */}
+                {isTerminal ? (
+                  <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Trip receipt</div>
+                        <div className="text-xs opacity-70">
+                          {eff === "completed" ? "Completed trip summary" : "Cancelled trip summary"}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          onClick={async () => {
+                            try {
+                              if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(receiptText);
+                              }
+                            } catch {}
+                          }}
+                          title="Copy receipt text"
+                        >
+                          Copy receipt
+                        </button>
+
+                        <a
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                          href="/ride"
+                          title="Clear debug and start fresh"
+                        >
+                          Book again
+                        </a>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Code</div>
+                        <div className="font-mono text-xs">{receiptCode}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Status</div>
+                        <div className="font-mono text-xs">{eff}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Driver</div>
+                        <div className="font-mono text-xs">{driver || "(none)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Last update</div>
+                        <div className="font-mono text-xs">{updated || "--"}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 text-xs opacity-80">
+                    Tip: use <span className="font-mono">completed</span> or <span className="font-mono">cancelled</span> to preview the receipt.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {/* ===== END PHASE P5B ===== */}
           <button
             type="button"
             onClick={() => router.push("/passenger")}
