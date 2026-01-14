@@ -2329,7 +2329,7 @@ if (!can.ok) {
               {p1RenderStepper(liveStatus)}
               {/* ===== PHASE P4: Preflight panel (UI-only) ===== */}
               {(() => {
-                const pf = p4Preflight(result, authed);
+                const pf = p4Preflight(result, status === "authenticated");
                 return (
                   <div className={"mt-3 rounded-2xl border p-3 " + (pf.ok ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50")}>
                     <div className="flex items-start justify-between gap-3">
@@ -2345,7 +2345,7 @@ if (!can.ok) {
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="rounded-xl border border-black/10 bg-white p-2">
                         <div className="text-[11px] opacity-70">Signed in</div>
-                        <div className="text-xs font-mono">{authed ? "yes" : "no"}</div>
+                        <div className="text-xs font-mono">{status === "authenticated" ? "yes" : "no"}</div>
                       </div>
                       <div className="rounded-xl border border-black/10 bg-white p-2">
                         <div className="text-[11px] opacity-70">Block detected</div>
