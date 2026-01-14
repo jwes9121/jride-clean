@@ -2,6 +2,114 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+/* ===== PHASE P1 TOPLEVEL HELPERS (AUTO) ===== */
+const P1_STATUS_STEPS = ["requested", "assigned", "on_the_way", "arrived", "on_trip", "completed"] as const;
+
+function p1NormStatus(s: any): string {
+  return String(s || "").trim().toLowerCase();
+}
+
+function p1StatusIndex(st: string): number {
+  const s = p1NormStatus(st);
+  if (s === "cancelled") return -2;
+  const idx = (P1_STATUS_STEPS as any).indexOf(s);
+  return idx;
+}
+
+function p1NowMessage(stRaw: any): string {
+  const st = p1NormStatus(stRaw);
+  if (st === "requested") return "Weâ€™re looking for a nearby driver.";
+  if (st === "assigned") return "A driver has accepted your request.";
+  if (st === "on_the_way") return "Driver is heading to your pickup point.";
+  if (st === "arrived") return "Driver has arrived. Please proceed.";
+  if (st === "on_trip") return "Youâ€™re on the way to your destination.";
+  if (st === "completed") return "Trip completed. Thank you for riding!";
+  if (st === "cancelled") return "This trip was cancelled.";
+  return "Weâ€™re updating your trip status. Please wait.";
+}
+
+function p1WaitHint(stRaw: any): string {
+  const st = p1NormStatus(stRaw);
+  if (!st || st === "requested") return "Most pickups take a few minutes. Please wait while we assign a driver.";
+  if (st === "assigned") return "Driver assignment is confirmed. Please prepare at your pickup point.";
+  return "";
+}
+
+function p1IsNonCancellable(stRaw: any): boolean {
+  const st = p1NormStatus(stRaw);
+  return st === "on_the_way" || st === "arrived" || st === "on_trip";
+}
+
+function p1FriendlyError(raw: any): string {
+  const t = String(raw || "").trim();
+  const u = t.toUpperCase();
+  if (!t) return "";
+  if (u.indexOf("CAN_BOOK_BLOCKED") >= 0) return "Booking is temporarily unavailable.";
+  if (u.indexOf("GEO_BLOCKED") >= 0) return "Booking is restricted outside the service area.";
+  if (u.indexOf("BOOKING_POLL_FAILED") >= 0 || u.indexOf("BOOKING_POLL_ERROR") >= 0) return "Weâ€™re having trouble updating trip status.";
+  if (u.indexOf("CAN_BOOK_INFO_FAILED") >= 0 || u.indexOf("CAN_BOOK_INFO_ERROR") >= 0) return "Weâ€™re having trouble loading booking eligibility.";
+  if (u.indexOf("BOOK_FAILED") >= 0) return "Booking failed. Please try again.";
+  return "";
+}
+
+function p1RenderStepper(stRaw: any) {
+  const st = p1NormStatus(stRaw);
+  const idx = p1StatusIndex(st);
+
+  if (st === "cancelled") {
+    return (
+      <div className="mt-3">
+        <span className="inline-flex items-center rounded-full bg-red-600 text-white px-3 py-1 text-xs font-semibold">
+          Cancelled
+        </span>
+      </div>
+    );
+  }
+
+  const cur = idx;
+
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {P1_STATUS_STEPS.map((s, i) => {
+          const done = cur >= 0 && i < cur;
+          const now = cur >= 0 && i === cur;
+
+          const bubble =
+            "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold " +
+            (now ? "bg-blue-600 text-white" : done ? "bg-black/70 text-white" : "bg-slate-200 text-slate-700");
+
+          const label =
+            "text-[11px] " +
+            (now ? "font-semibold" : done ? "opacity-80" : "opacity-50");
+
+          const pretty =
+            s === "on_the_way" ? "On the way" :
+            s === "on_trip" ? "On trip" :
+            (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, " ");
+
+          return (
+            <div key={s} className="flex items-center gap-2">
+              <div className={bubble}>{i + 1}</div>
+              <div className={label}>{pretty}</div>
+              {i < P1_STATUS_STEPS.length - 1 ? (
+                <div className={"w-6 h-[2px] " + (done ? "bg-black/40" : "bg-black/10")} />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {cur < 0 ? (
+        <div className="mt-2 text-xs opacity-70">
+          Status: <span className="font-mono">{st || "(loading)"}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+/* ===== END PHASE P1 TOPLEVEL HELPERS (AUTO) ===== */
+
 
 
 /* PHASE2D_TAKEOUT_PAYLOAD_HELPER_BEGIN */
