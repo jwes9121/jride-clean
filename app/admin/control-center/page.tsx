@@ -129,7 +129,11 @@ export default function AdminControlCenterPage() {
             desc: "Read-only monitoring of auto-assign behavior.",
             href: "/admin/ops/auto-assign-monitor",
           },
-                    {
+                              {
+            title: "Incident Log (Read-only)",
+            desc: "Operational issues board: stuck, unassigned, at-risk, cancelled (derived).",
+            href: "/admin/ops/incidents",
+          },{
             title: "Ops Health Dashboard",
             desc: "High-level operational health indicators (read-only).",
             href: "/admin/ops/health",
@@ -243,7 +247,7 @@ export default function AdminControlCenterPage() {
         <span style={badge}>
           Role: <b>{role}</b>{" "}
           <span style={{ opacity: 0.7 }}>
-            {debug ? "(debug)" : ""} {roleSource ? `Ã‚· ${roleSource}` : ""}
+            {debug ? "(debug)" : ""} {roleSource ? `Ãƒâ€šÂ· ${roleSource}` : ""}
           </span>
         </span>
 
