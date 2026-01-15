@@ -15,8 +15,23 @@ type TripSummary = {
   farePhp?: number;
   distanceKm?: number;
   status: TripStatus;
-  _raw?: any; // keep raw for debugging without breaking UI
+  _raw?: any;
 };
+
+function normalizeText(v: any): string {
+  if (v === null || typeof v === "undefined") return "â€”";
+  if (typeof v !== "string") return String(v);
+
+  return v
+    .replace(/Ã¢â€šÂ±/g, "â‚±")
+    .replace(/Ã¢â‚¬â€/g, "â€”")
+    .replace(/Ã¢â‚¬â€œ/g, "â€“")
+    .replace(/Ã‚Â·/g, "Â·")
+    .replace(/Ã¢â‚¬Ëœ|Ã¢â‚¬â„¢/g, "'")
+    .replace(/Ã¢â‚¬Å“|Ã¢â‚¬ /g, '"')
+    .replace(/Ã‚/g, "")
+    .trim();
+}
 
 function peso(n?: number) {
   if (typeof n !== "number" || !isFinite(n)) return "â€”";
@@ -50,7 +65,12 @@ function safeNum(v: any): number | undefined {
 
 function pickFirst(obj: any, keys: string[]): any {
   for (const k of keys) {
-    if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== null && typeof obj[k] !== "undefined") {
+    if (
+      obj &&
+      Object.prototype.hasOwnProperty.call(obj, k) &&
+      obj[k] !== null &&
+      typeof obj[k] !== "undefined"
+    ) {
       return obj[k];
     }
   }
@@ -61,26 +81,31 @@ function fmtDateLabel(v: any): string {
   const s = safeStr(v, "");
   const d = s ? new Date(s) : null;
   if (d && !isNaN(d.getTime())) {
-    return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "2-digit", hour: "numeric", minute: "2-digit" });
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
-  // last resort: show raw
   return s || "â€”";
 }
 
 function buildReceiptText(t: TripSummary) {
   const lines: string[] = [];
   lines.push("JRIDE TRIP RECEIPT");
-  lines.push("Trip Reference: " + t.ref);
-  lines.push("Date: " + t.dateLabel);
+  lines.push("Trip Reference: " + normalizeText(t.ref));
+  lines.push("Date: " + normalizeText(t.dateLabel));
   lines.push("Service: " + t.service);
-  lines.push("Status: " + safeStr(t.status, "").toUpperCase());
+  lines.push("Status: " + normalizeText(safeStr(t.status, "")).toUpperCase());
   lines.push("");
-  lines.push("Pickup: " + t.pickup);
-  lines.push("Dropoff: " + t.dropoff);
+  lines.push("Pickup: " + normalizeText(t.pickup));
+  lines.push("Dropoff: " + normalizeText(t.dropoff));
   lines.push("");
-  if (typeof t.distanceKm === "number") lines.push("Distance: " + km(t.distanceKm));
-  if (typeof t.farePhp === "number") lines.push("Fare: " + peso(t.farePhp));
-  lines.push("Payment: " + safeStr(t.payment, "â€”"));
+  if (typeof t.distanceKm === "number") lines.push("Distance: " + normalizeText(km(t.distanceKm)));
+  if (typeof t.farePhp === "number") lines.push("Fare: " + normalizeText(peso(t.farePhp)));
+  lines.push("Payment Clearing: " + normalizeText(safeStr(t.payment, "â€”")));
   lines.push("");
   lines.push("Thank you for riding with JRide.");
   return lines.join("\n");
@@ -96,7 +121,6 @@ async function copyToClipboard(text: string) {
     // fall through
   }
 
-  // Fallback (older browsers)
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -115,11 +139,6 @@ async function copyToClipboard(text: string) {
 }
 
 function normalizeTrips(payload: any): TripSummary[] {
-  // Accept common shapes:
-  // 1) [ ... ]
-  // 2) { rides: [...] }
-  // 3) { data: [...] }
-  // 4) { items: [...] }
   const arr: any[] =
     (Array.isArray(payload) ? payload : null) ||
     (payload && Array.isArray(payload.rides) ? payload.rides : null) ||
@@ -134,49 +153,56 @@ function normalizeTrips(payload: any): TripSummary[] {
     );
 
     const pickup = safeStr(
-      pickFirst(r, ["pickup_address", "pickup", "from_address", "from", "origin", "pickup_label", "pickup_name"]),
+      pickFirst(r, ["from_label", "pickup_address", "pickup", "from_address", "from", "origin"]),
       "â€”"
     );
 
     const dropoff = safeStr(
-      pickFirst(r, ["dropoff_address", "dropoff", "to_address", "to", "destination", "dropoff_label", "dropoff_name"]),
+      pickFirst(r, ["to_label", "dropoff_address", "dropoff", "to_address", "to", "destination"]),
       "â€”"
     );
 
-    const farePhp = safeNum(pickFirst(r, ["fare", "fare_php", "farePhp", "amount", "total_fare", "total"]));
-    const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm", "distance", "km"]));
-    const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
-    const payment = safeStr(pickFirst(r, ["payment_method", "payment", "paymentMethod", "paid_via"]), "â€”");
+    const farePhp =
+      safeNum(pickFirst(r, ["verified_fare"])) ??
+      safeNum(pickFirst(r, ["passenger_fare_response"])) ??
+      safeNum(pickFirst(r, ["proposed_fare"])) ??
+      safeNum(pickFirst(r, ["fare", "fare_php", "farePhp", "amount", "total_fare", "total"]));
 
-    const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at", "timestamp"]);
+    const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm", "distance", "km"]));
+
+    const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
+
+    const payment = safeStr(
+      pickFirst(r, ["payment_method", "payment", "paymentMethod", "paid_via", "payment_mode"]),
+      "â€”"
+    );
+
+    const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at"]);
     const dateLabel = fmtDateLabel(created);
 
     return {
-      ref,
-      dateLabel,
+      ref: normalizeText(ref),
+      dateLabel: normalizeText(dateLabel),
       service: "Ride",
-      pickup,
-      dropoff,
-      payment: (payment as any) || "â€”",
+      pickup: normalizeText(pickup),
+      dropoff: normalizeText(dropoff),
+      payment: normalizeText(payment),
       farePhp,
       distanceKm,
-      status,
+      status: normalizeText(status),
       _raw: r,
     };
   });
 
-  // Prefer completed trips for receipts, but don't hide everything if status values differ.
   const completed = out.filter((t) => String(t.status).toLowerCase() === "completed");
   if (completed.length > 0) return completed;
 
-  // Fallback: also consider "done"/"finished" if used
   const doneLike = out.filter((t) => {
     const s = String(t.status).toLowerCase();
     return s === "done" || s === "finished" || s === "complete";
   });
   if (doneLike.length > 0) return doneLike;
 
-  // Otherwise show whatever we have
   return out;
 }
 
@@ -201,7 +227,7 @@ export default function HistoryPage() {
         const j = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          const msg = safeStr(j?.error, "") || ("HTTP " + res.status);
+          const msg = normalizeText(safeStr(j?.error, "")) || ("HTTP " + res.status);
           throw new Error(msg);
         }
 
@@ -215,7 +241,7 @@ export default function HistoryPage() {
         });
       } catch (e: any) {
         if (!alive) return;
-        setLoadErr(e?.message || "Failed to load trips.");
+        setLoadErr(normalizeText(e?.message || "Failed to load trips."));
         setTrips([]);
         setSelectedRef("");
       } finally {
@@ -244,7 +270,6 @@ export default function HistoryPage() {
   async function onShare(trip: TripSummary) {
     const text = buildReceiptText(trip);
 
-    // Prefer Web Share API when available
     try {
       const anyNav: any = navigator as any;
       if (anyNav?.share) {
@@ -254,7 +279,7 @@ export default function HistoryPage() {
         return;
       }
     } catch {
-      // fall back to copy
+      // fall back
     }
 
     const ok = await copyToClipboard(text);
@@ -278,7 +303,6 @@ export default function HistoryPage() {
           )}
         </div>
 
-        {/* States */}
         {loading && (
           <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm text-sm opacity-70">
             Loading tripsâ€¦
@@ -300,10 +324,8 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {/* Two-column on desktop: list + receipt */}
         {!loading && !loadErr && trips.length > 0 && (
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* List */}
             <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
               <div className="font-semibold mb-2">Trips</div>
 
@@ -317,14 +339,12 @@ export default function HistoryPage() {
                       onClick={() => setSelectedRef(t.ref)}
                       className={
                         "w-full text-left rounded-xl border px-3 py-3 transition " +
-                        (active
-                          ? "border-blue-600 bg-blue-50"
-                          : "border-black/10 hover:bg-black/5")
+                        (active ? "border-blue-600 bg-blue-50" : "border-black/10 hover:bg-black/5")
                       }
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-semibold">
-                          {t.ref}{" "}
+                          {normalizeText(t.ref)}{" "}
                           <span className="text-xs opacity-60 font-normal">Â· {t.service}</span>
                         </div>
                         <span
@@ -337,17 +357,17 @@ export default function HistoryPage() {
                               : "border-amber-200 bg-amber-50 text-amber-700")
                           }
                         >
-                          {t.status}
+                          {normalizeText(t.status)}
                         </span>
                       </div>
 
-                      <div className="text-xs opacity-70 mt-1">{t.dateLabel}</div>
+                      <div className="text-xs opacity-70 mt-1">{normalizeText(t.dateLabel)}</div>
                       <div className="text-sm mt-2">
                         <div className="truncate">
-                          <span className="opacity-70">From:</span> {t.pickup}
+                          <span className="opacity-70">From:</span> {normalizeText(t.pickup)}
                         </div>
                         <div className="truncate">
-                          <span className="opacity-70">To:</span> {t.dropoff}
+                          <span className="opacity-70">To:</span> {normalizeText(t.dropoff)}
                         </div>
                       </div>
                     </button>
@@ -355,12 +375,9 @@ export default function HistoryPage() {
                 })}
               </div>
 
-              <div className="mt-3 text-xs opacity-60">
-                Showing trips from /api/rides/list (completed preferred).
-              </div>
+              <div className="mt-3 text-xs opacity-60">Showing trips from /api/rides/list.</div>
             </div>
 
-            {/* Receipt */}
             <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -390,45 +407,42 @@ export default function HistoryPage() {
 
               {selectedTrip ? (
                 <div className="mt-4">
-                  {/* Trip reference emphasis */}
                   <div className="rounded-2xl border border-black/10 bg-gray-50 p-4">
                     <div className="text-xs opacity-70">Trip Reference</div>
-                    <div className="text-2xl font-extrabold tracking-tight">{selectedTrip.ref}</div>
-                    <div className="text-xs opacity-60 mt-1">{selectedTrip.dateLabel}</div>
+                    <div className="text-2xl font-extrabold tracking-tight">{normalizeText(selectedTrip.ref)}</div>
+                    <div className="text-xs opacity-60 mt-1">{normalizeText(selectedTrip.dateLabel)}</div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Pickup</div>
-                      <div className="font-semibold">{selectedTrip.pickup}</div>
+                      <div className="font-semibold">{normalizeText(selectedTrip.pickup)}</div>
                     </div>
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Dropoff</div>
-                      <div className="font-semibold">{selectedTrip.dropoff}</div>
+                      <div className="font-semibold">{normalizeText(selectedTrip.dropoff)}</div>
                     </div>
 
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Fare</div>
-                      <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
+                      <div className="font-semibold">{normalizeText(peso(selectedTrip.farePhp))}</div>
                     </div>
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Distance</div>
-                      <div className="font-semibold">{km(selectedTrip.distanceKm)}</div>
+                      <div className="font-semibold">{normalizeText(km(selectedTrip.distanceKm))}</div>
                     </div>
 
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Payment</div>
-                      <div className="font-semibold">{selectedTrip.payment}</div>
+                      <div className="font-semibold">{normalizeText(selectedTrip.payment)}</div>
                     </div>
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Status</div>
-                      <div className="font-semibold">{selectedTrip.status}</div>
+                      <div className="font-semibold">{normalizeText(selectedTrip.status)}</div>
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">
-                    Layout unchanged â€” now using real data from /api/rides/list.
-                  </div>
+                  <div className="mt-4 text-xs opacity-60">Layout unchanged â€” mojibake cleaned at render.</div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>
