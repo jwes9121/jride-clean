@@ -1,25 +1,25 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import BottomNavigation from "@/components/BottomNavigation";
 
-type TripStatus = "completed" | "cancelled" | "pending";
+type TripStatus = "completed" | "cancelled" | "pending" | string;
 
 type TripSummary = {
-  ref: string;            // Trip Reference / booking code
-  dateLabel: string;      // UI label only
-  service: "Ride";        // keep simple for now
+  ref: string; // Trip Reference / booking code
+  dateLabel: string;
+  service: "Ride";
   pickup: string;
   dropoff: string;
-  payment: "Cash" | "Wallet";
-  farePhp?: number;       // optional for now
-  distanceKm?: number;    // optional for now
+  payment: "Cash" | "Wallet" | string;
+  farePhp?: number;
+  distanceKm?: number;
   status: TripStatus;
+  _raw?: any; // keep raw for debugging without breaking UI
 };
 
 function peso(n?: number) {
   if (typeof n !== "number" || !isFinite(n)) return "â€”";
-  // Keep formatting simple and stable
   return "â‚±" + n.toFixed(2);
 }
 
@@ -28,20 +28,59 @@ function km(n?: number) {
   return n.toFixed(1) + " km";
 }
 
+function safeStr(v: any, fallback = ""): string {
+  if (v === null || typeof v === "undefined") return fallback;
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return fallback;
+  }
+}
+
+function safeNum(v: any): number | undefined {
+  if (typeof v === "number" && isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    if (isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function pickFirst(obj: any, keys: string[]): any {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== null && typeof obj[k] !== "undefined") {
+      return obj[k];
+    }
+  }
+  return undefined;
+}
+
+function fmtDateLabel(v: any): string {
+  const s = safeStr(v, "");
+  const d = s ? new Date(s) : null;
+  if (d && !isNaN(d.getTime())) {
+    return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "2-digit", hour: "numeric", minute: "2-digit" });
+  }
+  // last resort: show raw
+  return s || "â€”";
+}
+
 function buildReceiptText(t: TripSummary) {
   const lines: string[] = [];
   lines.push("JRIDE TRIP RECEIPT");
   lines.push("Trip Reference: " + t.ref);
   lines.push("Date: " + t.dateLabel);
   lines.push("Service: " + t.service);
-  lines.push("Status: " + t.status.toUpperCase());
+  lines.push("Status: " + safeStr(t.status, "").toUpperCase());
   lines.push("");
   lines.push("Pickup: " + t.pickup);
   lines.push("Dropoff: " + t.dropoff);
   lines.push("");
   if (typeof t.distanceKm === "number") lines.push("Distance: " + km(t.distanceKm));
   if (typeof t.farePhp === "number") lines.push("Fare: " + peso(t.farePhp));
-  lines.push("Payment: " + t.payment);
+  lines.push("Payment: " + safeStr(t.payment, "â€”"));
   lines.push("");
   lines.push("Thank you for riding with JRide.");
   return lines.join("\n");
@@ -75,45 +114,126 @@ async function copyToClipboard(text: string) {
   }
 }
 
+function normalizeTrips(payload: any): TripSummary[] {
+  // Accept common shapes:
+  // 1) [ ... ]
+  // 2) { rides: [...] }
+  // 3) { data: [...] }
+  // 4) { items: [...] }
+  const arr: any[] =
+    (Array.isArray(payload) ? payload : null) ||
+    (payload && Array.isArray(payload.rides) ? payload.rides : null) ||
+    (payload && Array.isArray(payload.data) ? payload.data : null) ||
+    (payload && Array.isArray(payload.items) ? payload.items : null) ||
+    [];
+
+  const out: TripSummary[] = arr.map((r) => {
+    const ref = safeStr(
+      pickFirst(r, ["booking_code", "code", "ref", "reference", "bookingCode", "trip_code", "id"]),
+      "â€”"
+    );
+
+    const pickup = safeStr(
+      pickFirst(r, ["pickup_address", "pickup", "from_address", "from", "origin", "pickup_label", "pickup_name"]),
+      "â€”"
+    );
+
+    const dropoff = safeStr(
+      pickFirst(r, ["dropoff_address", "dropoff", "to_address", "to", "destination", "dropoff_label", "dropoff_name"]),
+      "â€”"
+    );
+
+    const farePhp = safeNum(pickFirst(r, ["fare", "fare_php", "farePhp", "amount", "total_fare", "total"]));
+    const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm", "distance", "km"]));
+    const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
+    const payment = safeStr(pickFirst(r, ["payment_method", "payment", "paymentMethod", "paid_via"]), "â€”");
+
+    const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at", "timestamp"]);
+    const dateLabel = fmtDateLabel(created);
+
+    return {
+      ref,
+      dateLabel,
+      service: "Ride",
+      pickup,
+      dropoff,
+      payment: (payment as any) || "â€”",
+      farePhp,
+      distanceKm,
+      status,
+      _raw: r,
+    };
+  });
+
+  // Prefer completed trips for receipts, but don't hide everything if status values differ.
+  const completed = out.filter((t) => String(t.status).toLowerCase() === "completed");
+  if (completed.length > 0) return completed;
+
+  // Fallback: also consider "done"/"finished" if used
+  const doneLike = out.filter((t) => {
+    const s = String(t.status).toLowerCase();
+    return s === "done" || s === "finished" || s === "complete";
+  });
+  if (doneLike.length > 0) return doneLike;
+
+  // Otherwise show whatever we have
+  return out;
+}
+
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState("history");
 
-  // UI-only placeholder list (no API calls). Replace later with real trip data.
-  const demoTrips: TripSummary[] = useMemo(
-    () => [
-      {
-        ref: "JR-2026-0001",
-        dateLabel: "Jan 14, 2026 Â· 9:10 PM",
-        service: "Ride",
-        pickup: "Lagawe Public Market",
-        dropoff: "Lamut Municipal Hall",
-        payment: "Cash",
-        farePhp: 120,
-        distanceKm: 9.3,
-        status: "completed",
-      },
-      {
-        ref: "JR-2026-0002",
-        dateLabel: "Jan 12, 2026 Â· 6:42 PM",
-        service: "Ride",
-        pickup: "Banaue Viewpoint",
-        dropoff: "Kiangan Town Plaza",
-        payment: "Wallet",
-        farePhp: 260,
-        distanceKm: 18.7,
-        status: "completed",
-      },
-    ],
-    []
-  );
-
-  const [selectedRef, setSelectedRef] = useState<string>(demoTrips[0]?.ref || "");
-  const selectedTrip = useMemo(
-    () => demoTrips.find((t) => t.ref === selectedRef) || demoTrips[0],
-    [demoTrips, selectedRef]
-  );
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string>("");
+  const [trips, setTrips] = useState<TripSummary[]>([]);
+  const [selectedRef, setSelectedRef] = useState<string>("");
 
   const [toast, setToast] = useState<string>("");
+
+  useEffect(() => {
+    let alive = true;
+
+    async function run() {
+      setLoading(true);
+      setLoadErr("");
+      try {
+        const res = await fetch("/api/rides/list", { method: "GET", cache: "no-store" });
+        const j = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const msg = safeStr(j?.error, "") || ("HTTP " + res.status);
+          throw new Error(msg);
+        }
+
+        const norm = normalizeTrips(j);
+        if (!alive) return;
+
+        setTrips(norm);
+        setSelectedRef((prev) => {
+          if (prev && norm.some((t) => t.ref === prev)) return prev;
+          return norm[0]?.ref || "";
+        });
+      } catch (e: any) {
+        if (!alive) return;
+        setLoadErr(e?.message || "Failed to load trips.");
+        setTrips([]);
+        setSelectedRef("");
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectedTrip = useMemo(() => {
+    if (!selectedRef) return null;
+    return trips.find((t) => t.ref === selectedRef) || null;
+  }, [trips, selectedRef]);
 
   async function onCopy(trip: TripSummary) {
     const ok = await copyToClipboard(buildReceiptText(trip));
@@ -128,10 +248,7 @@ export default function HistoryPage() {
     try {
       const anyNav: any = navigator as any;
       if (anyNav?.share) {
-        await anyNav.share({
-          title: "JRide Trip Receipt",
-          text,
-        });
+        await anyNav.share({ title: "JRide Trip Receipt", text });
         setToast("Share opened.");
         window.setTimeout(() => setToast(""), 1800);
         return;
@@ -151,9 +268,7 @@ export default function HistoryPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold">Ride History</h1>
-            <div className="text-sm opacity-70">
-              Receipt preview is UI-only for now (no backend calls).
-            </div>
+            <div className="text-sm opacity-70">View completed trips and share receipts.</div>
           </div>
 
           {toast && (
@@ -163,140 +278,164 @@ export default function HistoryPage() {
           )}
         </div>
 
-        {/* Two-column on desktop: list + receipt */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* List */}
-          <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-            <div className="font-semibold mb-2">Trips</div>
+        {/* States */}
+        {loading && (
+          <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm text-sm opacity-70">
+            Loading tripsâ€¦
+          </div>
+        )}
 
-            <div className="space-y-2">
-              {demoTrips.map((t) => {
-                const active = t.ref === selectedRef;
-                return (
-                  <button
-                    key={t.ref}
-                    type="button"
-                    onClick={() => setSelectedRef(t.ref)}
-                    className={
-                      "w-full text-left rounded-xl border px-3 py-3 transition " +
-                      (active
-                        ? "border-blue-600 bg-blue-50"
-                        : "border-black/10 hover:bg-black/5")
-                    }
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold">
-                        {t.ref}{" "}
-                        <span className="text-xs opacity-60 font-normal">Â· {t.service}</span>
-                      </div>
-                      <span
-                        className={
-                          "text-xs rounded-full px-2 py-0.5 border " +
-                          (t.status === "completed"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : t.status === "cancelled"
-                            ? "border-red-200 bg-red-50 text-red-700"
-                            : "border-amber-200 bg-amber-50 text-amber-700")
-                        }
-                      >
-                        {t.status}
-                      </span>
-                    </div>
+        {!loading && loadErr && (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm text-sm text-red-700">
+            Failed to load trips: {loadErr}
+          </div>
+        )}
 
-                    <div className="text-xs opacity-70 mt-1">{t.dateLabel}</div>
-                    <div className="text-sm mt-2">
-                      <div className="truncate">
-                        <span className="opacity-70">From:</span> {t.pickup}
-                      </div>
-                      <div className="truncate">
-                        <span className="opacity-70">To:</span> {t.dropoff}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-3 text-xs opacity-60">
-              Replace demo trips with real trip data later.
+        {!loading && !loadErr && trips.length === 0 && (
+          <div className="mt-4 rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
+            <div className="font-semibold">No completed trips yet</div>
+            <div className="text-sm opacity-70 mt-1">
+              Once you complete a ride, it will appear here with a shareable receipt.
             </div>
           </div>
+        )}
 
-          {/* Receipt */}
-          <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold">Receipt</div>
-                <div className="text-xs opacity-60">Passenger-side receipt shell (UI only)</div>
+        {/* Two-column on desktop: list + receipt */}
+        {!loading && !loadErr && trips.length > 0 && (
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* List */}
+            <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+              <div className="font-semibold mb-2">Trips</div>
+
+              <div className="space-y-2">
+                {trips.map((t) => {
+                  const active = t.ref === selectedRef;
+                  return (
+                    <button
+                      key={t.ref}
+                      type="button"
+                      onClick={() => setSelectedRef(t.ref)}
+                      className={
+                        "w-full text-left rounded-xl border px-3 py-3 transition " +
+                        (active
+                          ? "border-blue-600 bg-blue-50"
+                          : "border-black/10 hover:bg-black/5")
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="font-semibold">
+                          {t.ref}{" "}
+                          <span className="text-xs opacity-60 font-normal">Â· {t.service}</span>
+                        </div>
+                        <span
+                          className={
+                            "text-xs rounded-full px-2 py-0.5 border " +
+                            (String(t.status).toLowerCase() === "completed"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : String(t.status).toLowerCase() === "cancelled"
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-amber-200 bg-amber-50 text-amber-700")
+                          }
+                        >
+                          {t.status}
+                        </span>
+                      </div>
+
+                      <div className="text-xs opacity-70 mt-1">{t.dateLabel}</div>
+                      <div className="text-sm mt-2">
+                        <div className="truncate">
+                          <span className="opacity-70">From:</span> {t.pickup}
+                        </div>
+                        <div className="truncate">
+                          <span className="opacity-70">To:</span> {t.dropoff}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
-              {selectedTrip && (
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onCopy(selectedTrip)}
-                    className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
-                  >
-                    Copy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onShare(selectedTrip)}
-                    className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 text-sm font-semibold"
-                  >
-                    Share
-                  </button>
+              <div className="mt-3 text-xs opacity-60">
+                Showing trips from /api/rides/list (completed preferred).
+              </div>
+            </div>
+
+            {/* Receipt */}
+            <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold">Receipt</div>
+                  <div className="text-xs opacity-60">Passenger-side receipt (wired)</div>
                 </div>
+
+                {selectedTrip && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onCopy(selectedTrip)}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onShare(selectedTrip)}
+                      className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 text-sm font-semibold"
+                    >
+                      Share
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {selectedTrip ? (
+                <div className="mt-4">
+                  {/* Trip reference emphasis */}
+                  <div className="rounded-2xl border border-black/10 bg-gray-50 p-4">
+                    <div className="text-xs opacity-70">Trip Reference</div>
+                    <div className="text-2xl font-extrabold tracking-tight">{selectedTrip.ref}</div>
+                    <div className="text-xs opacity-60 mt-1">{selectedTrip.dateLabel}</div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-black/10 p-3">
+                      <div className="text-xs opacity-60">Pickup</div>
+                      <div className="font-semibold">{selectedTrip.pickup}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 p-3">
+                      <div className="text-xs opacity-60">Dropoff</div>
+                      <div className="font-semibold">{selectedTrip.dropoff}</div>
+                    </div>
+
+                    <div className="rounded-xl border border-black/10 p-3">
+                      <div className="text-xs opacity-60">Fare</div>
+                      <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 p-3">
+                      <div className="text-xs opacity-60">Distance</div>
+                      <div className="font-semibold">{km(selectedTrip.distanceKm)}</div>
+                    </div>
+
+                    <div className="rounded-xl border border-black/10 p-3">
+                      <div className="text-xs opacity-60">Payment</div>
+                      <div className="font-semibold">{selectedTrip.payment}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 p-3">
+                      <div className="text-xs opacity-60">Status</div>
+                      <div className="font-semibold">{selectedTrip.status}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 text-xs opacity-60">
+                    Layout unchanged â€” now using real data from /api/rides/list.
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 text-sm opacity-70">No trip selected.</div>
               )}
             </div>
-
-            {selectedTrip ? (
-              <div className="mt-4">
-                {/* Trip reference emphasis */}
-                <div className="rounded-2xl border border-black/10 bg-gray-50 p-4">
-                  <div className="text-xs opacity-70">Trip Reference</div>
-                  <div className="text-2xl font-extrabold tracking-tight">{selectedTrip.ref}</div>
-                  <div className="text-xs opacity-60 mt-1">{selectedTrip.dateLabel}</div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-black/10 p-3">
-                    <div className="text-xs opacity-60">Pickup</div>
-                    <div className="font-semibold">{selectedTrip.pickup}</div>
-                  </div>
-                  <div className="rounded-xl border border-black/10 p-3">
-                    <div className="text-xs opacity-60">Dropoff</div>
-                    <div className="font-semibold">{selectedTrip.dropoff}</div>
-                  </div>
-
-                  <div className="rounded-xl border border-black/10 p-3">
-                    <div className="text-xs opacity-60">Fare</div>
-                    <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
-                  </div>
-                  <div className="rounded-xl border border-black/10 p-3">
-                    <div className="text-xs opacity-60">Distance</div>
-                    <div className="font-semibold">{km(selectedTrip.distanceKm)}</div>
-                  </div>
-
-                  <div className="rounded-xl border border-black/10 p-3">
-                    <div className="text-xs opacity-60">Payment</div>
-                    <div className="font-semibold">{selectedTrip.payment}</div>
-                  </div>
-                  <div className="rounded-xl border border-black/10 p-3">
-                    <div className="text-xs opacity-60">Status</div>
-                    <div className="font-semibold">{selectedTrip.status}</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-xs opacity-60">
-                  This receipt is currently UI-only. Weâ€™ll wire real data later without changing the layout.
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 text-sm opacity-70">No trip selected.</div>
-            )}
           </div>
-        </div>
+        )}
       </div>
 
       <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
