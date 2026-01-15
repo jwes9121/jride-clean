@@ -6,7 +6,7 @@ import BottomNavigation from "@/components/BottomNavigation";
 type TripStatus = "completed" | "cancelled" | "pending" | string;
 
 type TripSummary = {
-  ref: string; // Trip Reference / booking code
+  ref: string;
   dateLabel: string;
   service: "Ride";
   pickup: string;
@@ -18,19 +18,44 @@ type TripSummary = {
   _raw?: any;
 };
 
+function tryDecodeMojibake(s: string): string {
+  // If the string looks like UTF-8 bytes that were incorrectly decoded as latin1,
+  // re-decode it properly using TextDecoder.
+  // Common mojibake markers: Ã¢, Ãƒ, Ã‚
+  if (!s) return s;
+  if (!(s.includes("Ã¢") || s.includes("Ãƒ") || s.includes("Ã‚"))) return s;
+
+  try {
+    // Interpret each JS charCode as a byte (0-255) and decode as UTF-8
+    const bytes = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i) & 0xff;
+    const dec = new TextDecoder("utf-8", { fatal: false });
+    return dec.decode(bytes);
+  } catch {
+    return s;
+  }
+}
+
 function normalizeText(v: any): string {
   if (v === null || typeof v === "undefined") return "â€”";
-  if (typeof v !== "string") return String(v);
+  let s = typeof v === "string" ? v : String(v);
 
-  return v
-    .replace(/Ã¢â€šÂ±/g, "â‚±")
+  // First pass: generic decoder
+  s = tryDecodeMojibake(s);
+
+  // Second pass: targeted cleanup for stragglers
+  s = s
+    .replace(/\u00A0/g, " ") // nbsp
+    .replace(/Ã‚/g, "")       // stray marker
+    .replace(/Ã¢â‚¬Â¦/g, "â€¦")
     .replace(/Ã¢â‚¬â€/g, "â€”")
     .replace(/Ã¢â‚¬â€œ/g, "â€“")
-    .replace(/Ã‚Â·/g, "Â·")
     .replace(/Ã¢â‚¬Ëœ|Ã¢â‚¬â„¢/g, "'")
     .replace(/Ã¢â‚¬Å“|Ã¢â‚¬ /g, '"')
-    .replace(/Ã‚/g, "")
+    .replace(/Ã¢â€šÂ±/g, "â‚±")
     .trim();
+
+  return s || "â€”";
 }
 
 function peso(n?: number) {
@@ -105,7 +130,7 @@ function buildReceiptText(t: TripSummary) {
   lines.push("");
   if (typeof t.distanceKm === "number") lines.push("Distance: " + normalizeText(km(t.distanceKm)));
   if (typeof t.farePhp === "number") lines.push("Fare: " + normalizeText(peso(t.farePhp)));
-  lines.push("Payment Clearing: " + normalizeText(safeStr(t.payment, "â€”")));
+  lines.push("Payment: " + normalizeText(safeStr(t.payment, "â€”")));
   lines.push("");
   lines.push("Thank you for riding with JRide.");
   return lines.join("\n");
@@ -141,16 +166,13 @@ async function copyToClipboard(text: string) {
 function normalizeTrips(payload: any): TripSummary[] {
   const arr: any[] =
     (Array.isArray(payload) ? payload : null) ||
-    (payload && Array.isArray(payload.rides) ? payload.rides : null) ||
     (payload && Array.isArray(payload.data) ? payload.data : null) ||
     (payload && Array.isArray(payload.items) ? payload.items : null) ||
+    (payload && Array.isArray(payload.rides) ? payload.rides : null) ||
     [];
 
   const out: TripSummary[] = arr.map((r) => {
-    const ref = safeStr(
-      pickFirst(r, ["booking_code", "code", "ref", "reference", "bookingCode", "trip_code", "id"]),
-      "â€”"
-    );
+    const ref = safeStr(pickFirst(r, ["booking_code", "code", "ref", "reference", "id"]), "â€”");
 
     const pickup = safeStr(
       pickFirst(r, ["from_label", "pickup_address", "pickup", "from_address", "from", "origin"]),
@@ -166,16 +188,13 @@ function normalizeTrips(payload: any): TripSummary[] {
       safeNum(pickFirst(r, ["verified_fare"])) ??
       safeNum(pickFirst(r, ["passenger_fare_response"])) ??
       safeNum(pickFirst(r, ["proposed_fare"])) ??
-      safeNum(pickFirst(r, ["fare", "fare_php", "farePhp", "amount", "total_fare", "total"]));
+      safeNum(pickFirst(r, ["fare", "total_fare", "total"]));
 
     const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm", "distance", "km"]));
 
     const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
 
-    const payment = safeStr(
-      pickFirst(r, ["payment_method", "payment", "paymentMethod", "paid_via", "payment_mode"]),
-      "â€”"
-    );
+    const payment = safeStr(pickFirst(r, ["payment_method", "payment", "payment_mode", "paid_via"]), "â€”");
 
     const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at"]);
     const dateLabel = fmtDateLabel(created);
@@ -227,7 +246,7 @@ export default function HistoryPage() {
         const j = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-          const msg = normalizeText(safeStr(j?.error, "")) || ("HTTP " + res.status);
+          const msg = normalizeText(safeStr((j as any)?.error, "")) || ("HTTP " + res.status);
           throw new Error(msg);
         }
 
@@ -305,13 +324,13 @@ export default function HistoryPage() {
 
         {loading && (
           <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm text-sm opacity-70">
-            Loading tripsâ€¦
+            {normalizeText("Loading tripsâ€¦")}
           </div>
         )}
 
         {!loading && loadErr && (
           <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm text-sm text-red-700">
-            Failed to load trips: {loadErr}
+            Failed to load trips: {normalizeText(loadErr)}
           </div>
         )}
 
@@ -442,7 +461,7 @@ export default function HistoryPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">Layout unchanged â€” mojibake cleaned at render.</div>
+                  <div className="mt-4 text-xs opacity-60">Layout unchanged â€” mojibake decoded at render.</div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>
