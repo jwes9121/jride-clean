@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import BottomNavigation from "@/components/BottomNavigation";
 
 type TripStatus = "completed" | "cancelled" | "pending" | string;
@@ -11,15 +12,24 @@ type TripSummary = {
   service: "Ride";
   pickup: string;
   dropoff: string;
-  payment?: string; // optional; hide card if missing
+  payment?: string;
   farePhp?: number;
   distanceKm?: number;
   status: TripStatus;
-  sortTs?: number; // for newest-first sorting
+  sortTs?: number;
   _raw?: any;
 };
 
+type FavRoute = {
+  id: string;
+  label: string; // Home/Work/Market/Custom text
+  from: string;
+  to: string;
+  createdAt: number;
+};
+
 const EMPTY = "--";
+const FAV_KEY = "JRIDE_FAVORITE_ROUTES_V1";
 
 function normalizeText(v: any): string {
   if (v === null || typeof v === "undefined") return EMPTY;
@@ -40,7 +50,6 @@ function normalizeText(v: any): string {
 
 function peso(n?: number) {
   if (typeof n !== "number" || !isFinite(n)) return EMPTY;
-  // ASCII-only currency to avoid mojibake
   return "PHP " + n.toFixed(2);
 }
 
@@ -326,7 +335,39 @@ function normalizeTrips(payload: any): TripSummary[] {
   return out;
 }
 
+function loadFavs(): FavRoute[] {
+  try {
+    const raw = localStorage.getItem(FAV_KEY) || "";
+    const j = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(j)) return [];
+    return j
+      .map((x: any) => ({
+        id: normalizeText(x?.id),
+        label: normalizeText(x?.label),
+        from: normalizeText(x?.from),
+        to: normalizeText(x?.to),
+        createdAt: typeof x?.createdAt === "number" ? x.createdAt : Date.now(),
+      }))
+      .filter((x: FavRoute) => x.id && x.from !== EMPTY && x.to !== EMPTY);
+  } catch {
+    return [];
+  }
+}
+
+function saveFavs(items: FavRoute[]) {
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify(items));
+  } catch {}
+}
+
+function makeFavId(from: string, to: string) {
+  const f = normalizeText(from).toLowerCase();
+  const t = normalizeText(to).toLowerCase();
+  return "fav_" + btoa(unescape(encodeURIComponent(f + "||" + t))).replace(/=+$/g, "");
+}
+
 export default function HistoryPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("history");
 
   const [loading, setLoading] = useState(true);
@@ -336,6 +377,13 @@ export default function HistoryPage() {
 
   const [toast, setToast] = useState<string>("");
   const [q, setQ] = useState<string>("");
+
+  const [favs, setFavs] = useState<FavRoute[]>([]);
+
+  useEffect(() => {
+    // Load favorites once (UI-only)
+    setFavs(loadFavs());
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -379,7 +427,7 @@ export default function HistoryPage() {
 
   const sortedTrips = useMemo(() => {
     const cp = [...trips];
-    cp.sort((a, b) => (b.sortTs || 0) - (a.sortTs || 0)); // newest-first
+    cp.sort((a, b) => (b.sortTs || 0) - (a.sortTs || 0));
     return cp;
   }, [trips]);
 
@@ -393,6 +441,45 @@ export default function HistoryPage() {
     if (!selectedRef) return null;
     return filteredTrips.find((t) => t.ref === selectedRef) || trips.find((t) => t.ref === selectedRef) || null;
   }, [filteredTrips, trips, selectedRef]);
+
+  function goRide(from: string, to: string) {
+    const f = normalizeText(from);
+    const t = normalizeText(to);
+    const url = "/ride?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t);
+    router.push(url);
+  }
+
+  function addFavorite(label: string, from: string, to: string) {
+    const f = normalizeText(from);
+    const t = normalizeText(to);
+    if (f === EMPTY || t === EMPTY) {
+      setToast("Cannot save favorite with empty locations.");
+      window.setTimeout(() => setToast(""), 1800);
+      return;
+    }
+
+    const id = makeFavId(f, t);
+    const item: FavRoute = { id, label: normalizeText(label), from: f, to: t, createdAt: Date.now() };
+
+    setFavs((prev) => {
+      const next = [item, ...prev.filter((x) => x.id !== id)];
+      saveFavs(next);
+      return next;
+    });
+
+    setToast("Saved favorite.");
+    window.setTimeout(() => setToast(""), 1800);
+  }
+
+  function removeFavorite(id: string) {
+    setFavs((prev) => {
+      const next = prev.filter((x) => x.id !== id);
+      saveFavs(next);
+      return next;
+    });
+    setToast("Removed favorite.");
+    window.setTimeout(() => setToast(""), 1800);
+  }
 
   async function onCopy(trip: TripSummary) {
     const ok = await copyToClipboard(buildReceiptText(trip));
@@ -432,6 +519,18 @@ export default function HistoryPage() {
     const ok = printReceipt(title, text);
     setToast(ok ? "Print opened." : "Print popup blocked.");
     window.setTimeout(() => setToast(""), 1800);
+  }
+
+  function onSaveFavPreset(label: string) {
+    if (!selectedTrip) return;
+    addFavorite(label, selectedTrip.pickup, selectedTrip.dropoff);
+  }
+
+  function onSaveFavCustom() {
+    if (!selectedTrip) return;
+    const cur = "Trip " + normalizeText(selectedTrip.ref);
+    const label = normalizeText(window.prompt("Favorite label (ex: Home, Work, Market):", cur) || cur);
+    addFavorite(label, selectedTrip.pickup, selectedTrip.dropoff);
   }
 
   return (
@@ -485,7 +584,39 @@ export default function HistoryPage() {
         {!loading && !loadErr && trips.length > 0 && (
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
-              <div className="font-semibold mb-2">Trips</div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="font-semibold mb-2">Trips</div>
+                <div className="text-xs opacity-60 mt-1">Newest first</div>
+              </div>
+
+              {favs.length > 0 ? (
+                <div className="mb-3 rounded-xl border border-black/10 bg-gray-50 p-3">
+                  <div className="text-xs font-semibold mb-2">Favorites</div>
+                  <div className="space-y-2">
+                    {favs.slice(0, 6).map((f) => (
+                      <div key={f.id} className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => goRide(f.from, f.to)}
+                          className="flex-1 text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-3 py-2 text-sm"
+                        >
+                          <div className="font-semibold">{normalizeText(f.label)}</div>
+                          <div className="text-xs opacity-70 truncate">From: {normalizeText(f.from)}</div>
+                          <div className="text-xs opacity-70 truncate">To: {normalizeText(f.to)}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeFavorite(f.id)}
+                          className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[11px] opacity-60 mt-2">Favorites are stored on this device only.</div>
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 {filteredTrips.map((t) => {
@@ -533,7 +664,7 @@ export default function HistoryPage() {
                 })}
               </div>
 
-              <div className="mt-3 text-xs opacity-60">Newest first. Data from /api/rides/list.</div>
+              <div className="mt-3 text-xs opacity-60">Data from /api/rides/list.</div>
             </div>
 
             <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
@@ -543,8 +674,16 @@ export default function HistoryPage() {
                   <div className="text-xs opacity-60">Passenger-side receipt (wired)</div>
                 </div>
 
-                {selectedTrip && (
+                {selectedTrip ? (
                   <div className="flex flex-wrap gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => goRide(selectedTrip.pickup, selectedTrip.dropoff)}
+                      className="rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 text-sm font-semibold"
+                    >
+                      Ride Again
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => onCopy(selectedTrip)}
@@ -574,7 +713,7 @@ export default function HistoryPage() {
                       Print
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {selectedTrip ? (
@@ -583,6 +722,38 @@ export default function HistoryPage() {
                     <div className="text-xs opacity-70">Trip Reference</div>
                     <div className="text-2xl font-extrabold tracking-tight">{normalizeText(selectedTrip.ref)}</div>
                     <div className="text-xs opacity-60 mt-1">{normalizeText(selectedTrip.dateLabel)}</div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="text-xs opacity-70 mr-1">Save favorite:</div>
+                    <button
+                      type="button"
+                      onClick={() => onSaveFavPreset("Home")}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Home
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSaveFavPreset("Work")}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Work
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSaveFavPreset("Market")}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Market
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSaveFavCustom()}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Custom
+                    </button>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -622,7 +793,13 @@ export default function HistoryPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">P2F+P2G: Download/Print + newest-first + free ride label + search.</div>
+                  <div className="mt-4 text-xs opacity-60">
+                    P3A+P3B: Ride Again + Favorites stored locally (device only).
+                  </div>
+
+                  <div className="mt-2 text-xs opacity-60">
+                    Note: Booking page prefill requires /ride to read ?from=&to= (next step once you upload app/ride/page.tsx).
+                  </div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>
