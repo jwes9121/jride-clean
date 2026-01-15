@@ -11,7 +11,7 @@ type TripSummary = {
   service: "Ride";
   pickup: string;
   dropoff: string;
-  payment: "Cash" | "Wallet" | string;
+  payment?: string; // now optional; hide card if missing
   farePhp?: number;
   distanceKm?: number;
   status: TripStatus;
@@ -25,7 +25,6 @@ function normalizeText(v: any): string {
   let s = typeof v === "string" ? v : String(v);
 
   // Strip known mojibake markers + any remaining non-ASCII chars.
-  // This guarantees clean UI even if upstream strings are messy.
   s = s
     .replace(/Ã‚/g, "")
     .replace(/Ãƒ/g, "")
@@ -87,7 +86,6 @@ function fmtDateLabel(v: any): string {
   const s = safeStr(v, "");
   const d = s ? new Date(s) : null;
   if (d && !isNaN(d.getTime())) {
-    // Locale string should be ASCII-safe enough; normalize anyway.
     return normalizeText(
       d.toLocaleString(undefined, {
         year: "numeric",
@@ -114,7 +112,7 @@ function buildReceiptText(t: TripSummary) {
   lines.push("");
   if (typeof t.distanceKm === "number") lines.push("Distance: " + km(t.distanceKm));
   if (typeof t.farePhp === "number") lines.push("Fare: " + peso(t.farePhp));
-  lines.push("Payment: " + normalizeText(safeStr(t.payment, EMPTY)));
+  if (t.payment && normalizeText(t.payment) !== EMPTY) lines.push("Payment: " + normalizeText(t.payment));
   lines.push("");
   lines.push("Thank you for riding with JRide.");
   return lines.join("\n");
@@ -145,6 +143,40 @@ async function copyToClipboard(text: string) {
   }
 }
 
+function computeFareFromComponents(r: any): number | undefined {
+  // Only compute if at least one component exists.
+  const base = safeNum(pickFirst(r, ["base_fee"])) ?? 0;
+  const dist = safeNum(pickFirst(r, ["distance_fare"])) ?? 0;
+  const extraStop = safeNum(pickFirst(r, ["extra_stop_fee"])) ?? 0;
+  const waiting = safeNum(pickFirst(r, ["waiting_fee"])) ?? 0;
+  const errand = safeNum(pickFirst(r, ["total_errand_fee"])) ?? 0;
+
+  const hasAny =
+    typeof pickFirst(r, ["base_fee"]) !== "undefined" ||
+    typeof pickFirst(r, ["distance_fare"]) !== "undefined" ||
+    typeof pickFirst(r, ["extra_stop_fee"]) !== "undefined" ||
+    typeof pickFirst(r, ["waiting_fee"]) !== "undefined" ||
+    typeof pickFirst(r, ["total_errand_fee"]) !== "undefined";
+
+  if (!hasAny) return undefined;
+
+  const sum = base + dist + extraStop + waiting + errand;
+  if (!isFinite(sum)) return undefined;
+  return sum;
+}
+
+function computePayment(r: any): string | undefined {
+  // If errand_cash_mode exists and is truthy, show Cash
+  const cashMode = pickFirst(r, ["errand_cash_mode"]);
+  if (cashMode === true || cashMode === "true" || cashMode === 1 || cashMode === "1") return "Cash";
+
+  const pm = safeStr(pickFirst(r, ["payment_method", "payment_mode", "payment", "paid_via"]), "");
+  const s = normalizeText(pm);
+  if (s && s !== EMPTY) return s;
+
+  return undefined;
+}
+
 function normalizeTrips(payload: any): TripSummary[] {
   const arr: any[] =
     (Array.isArray(payload) ? payload : null) ||
@@ -166,17 +198,24 @@ function normalizeTrips(payload: any): TripSummary[] {
       EMPTY
     );
 
+    // Fare priority:
+    // 1) verified_fare
+    // 2) passenger_fare_response
+    // 3) proposed_fare
+    // 4) computed components
     const farePhp =
       safeNum(pickFirst(r, ["verified_fare"])) ??
       safeNum(pickFirst(r, ["passenger_fare_response"])) ??
       safeNum(pickFirst(r, ["proposed_fare"])) ??
-      safeNum(pickFirst(r, ["fare", "total_fare", "total"]));
+      safeNum(pickFirst(r, ["fare", "total_fare", "total"])) ??
+      computeFareFromComponents(r);
 
-    const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm", "distance", "km"]));
+    // Distance: show only if distance_km exists
+    const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm"]));
 
     const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
 
-    const payment = safeStr(pickFirst(r, ["payment_method", "payment", "payment_mode", "paid_via"]), EMPTY);
+    const payment = computePayment(r);
 
     const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at"]);
     const dateLabel = fmtDateLabel(created);
@@ -187,7 +226,7 @@ function normalizeTrips(payload: any): TripSummary[] {
       service: "Ride",
       pickup: normalizeText(pickup),
       dropoff: normalizeText(dropoff),
-      payment: normalizeText(payment),
+      payment,
       farePhp,
       distanceKm,
       status: normalizeText(status),
@@ -422,26 +461,37 @@ export default function HistoryPage() {
                       <div className="font-semibold">{normalizeText(selectedTrip.dropoff)}</div>
                     </div>
 
-                    <div className="rounded-xl border border-black/10 p-3">
-                      <div className="text-xs opacity-60">Fare</div>
-                      <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
-                    </div>
-                    <div className="rounded-xl border border-black/10 p-3">
-                      <div className="text-xs opacity-60">Distance</div>
-                      <div className="font-semibold">{km(selectedTrip.distanceKm)}</div>
-                    </div>
+                    {/* Fare: show only if we have a number (0 is valid) */}
+                    {typeof selectedTrip.farePhp === "number" ? (
+                      <div className="rounded-xl border border-black/10 p-3">
+                        <div className="text-xs opacity-60">Fare</div>
+                        <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
+                      </div>
+                    ) : null}
 
-                    <div className="rounded-xl border border-black/10 p-3">
-                      <div className="text-xs opacity-60">Payment</div>
-                      <div className="font-semibold">{normalizeText(selectedTrip.payment)}</div>
-                    </div>
+                    {/* Distance: show only if we have distance_km */}
+                    {typeof selectedTrip.distanceKm === "number" ? (
+                      <div className="rounded-xl border border-black/10 p-3">
+                        <div className="text-xs opacity-60">Distance</div>
+                        <div className="font-semibold">{km(selectedTrip.distanceKm)}</div>
+                      </div>
+                    ) : null}
+
+                    {/* Payment: show only if known */}
+                    {selectedTrip.payment ? (
+                      <div className="rounded-xl border border-black/10 p-3">
+                        <div className="text-xs opacity-60">Payment</div>
+                        <div className="font-semibold">{normalizeText(selectedTrip.payment)}</div>
+                      </div>
+                    ) : null}
+
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Status</div>
                       <div className="font-semibold">{normalizeText(selectedTrip.status)}</div>
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">ASCII-only placeholders to prevent mojibake.</div>
+                  <div className="mt-4 text-xs opacity-60">P2D: Fare/Distance/Payment now driven by bookings fields.</div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>
