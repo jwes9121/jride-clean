@@ -18,53 +18,34 @@ type TripSummary = {
   _raw?: any;
 };
 
-function tryDecodeMojibake(s: string): string {
-  // If the string looks like UTF-8 bytes that were incorrectly decoded as latin1,
-  // re-decode it properly using TextDecoder.
-  // Common mojibake markers: Ã¢, Ãƒ, Ã‚
-  if (!s) return s;
-  if (!(s.includes("Ã¢") || s.includes("Ãƒ") || s.includes("Ã‚"))) return s;
-
-  try {
-    // Interpret each JS charCode as a byte (0-255) and decode as UTF-8
-    const bytes = new Uint8Array(s.length);
-    for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i) & 0xff;
-    const dec = new TextDecoder("utf-8", { fatal: false });
-    return dec.decode(bytes);
-  } catch {
-    return s;
-  }
-}
+const EMPTY = "--";
 
 function normalizeText(v: any): string {
-  if (v === null || typeof v === "undefined") return "â€”";
+  if (v === null || typeof v === "undefined") return EMPTY;
   let s = typeof v === "string" ? v : String(v);
 
-  // First pass: generic decoder
-  s = tryDecodeMojibake(s);
-
-  // Second pass: targeted cleanup for stragglers
+  // Strip known mojibake markers + any remaining non-ASCII chars.
+  // This guarantees clean UI even if upstream strings are messy.
   s = s
-    .replace(/\u00A0/g, " ") // nbsp
-    .replace(/Ã‚/g, "")       // stray marker
-    .replace(/Ã¢â‚¬Â¦/g, "â€¦")
-    .replace(/Ã¢â‚¬â€/g, "â€”")
-    .replace(/Ã¢â‚¬â€œ/g, "â€“")
-    .replace(/Ã¢â‚¬Ëœ|Ã¢â‚¬â„¢/g, "'")
-    .replace(/Ã¢â‚¬Å“|Ã¢â‚¬ /g, '"')
-    .replace(/Ã¢â€šÂ±/g, "â‚±")
+    .replace(/Ã‚/g, "")
+    .replace(/Ãƒ/g, "")
+    .replace(/Ã¢/g, "")
     .trim();
 
-  return s || "â€”";
+  // Remove non-ASCII (last resort)
+  s = s.replace(/[^\x20-\x7E]/g, "").trim();
+
+  return s || EMPTY;
 }
 
 function peso(n?: number) {
-  if (typeof n !== "number" || !isFinite(n)) return "â€”";
-  return "â‚±" + n.toFixed(2);
+  if (typeof n !== "number" || !isFinite(n)) return EMPTY;
+  // ASCII-only currency to avoid mojibake
+  return "PHP " + n.toFixed(2);
 }
 
 function km(n?: number) {
-  if (typeof n !== "number" || !isFinite(n)) return "â€”";
+  if (typeof n !== "number" || !isFinite(n)) return EMPTY;
   return n.toFixed(1) + " km";
 }
 
@@ -106,15 +87,18 @@ function fmtDateLabel(v: any): string {
   const s = safeStr(v, "");
   const d = s ? new Date(s) : null;
   if (d && !isNaN(d.getTime())) {
-    return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    // Locale string should be ASCII-safe enough; normalize anyway.
+    return normalizeText(
+      d.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    );
   }
-  return s || "â€”";
+  return normalizeText(s) || EMPTY;
 }
 
 function buildReceiptText(t: TripSummary) {
@@ -128,9 +112,9 @@ function buildReceiptText(t: TripSummary) {
   lines.push("Pickup: " + normalizeText(t.pickup));
   lines.push("Dropoff: " + normalizeText(t.dropoff));
   lines.push("");
-  if (typeof t.distanceKm === "number") lines.push("Distance: " + normalizeText(km(t.distanceKm)));
-  if (typeof t.farePhp === "number") lines.push("Fare: " + normalizeText(peso(t.farePhp)));
-  lines.push("Payment: " + normalizeText(safeStr(t.payment, "â€”")));
+  if (typeof t.distanceKm === "number") lines.push("Distance: " + km(t.distanceKm));
+  if (typeof t.farePhp === "number") lines.push("Fare: " + peso(t.farePhp));
+  lines.push("Payment: " + normalizeText(safeStr(t.payment, EMPTY)));
   lines.push("");
   lines.push("Thank you for riding with JRide.");
   return lines.join("\n");
@@ -142,9 +126,7 @@ async function copyToClipboard(text: string) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch {
-    // fall through
-  }
+  } catch {}
 
   try {
     const ta = document.createElement("textarea");
@@ -172,16 +154,16 @@ function normalizeTrips(payload: any): TripSummary[] {
     [];
 
   const out: TripSummary[] = arr.map((r) => {
-    const ref = safeStr(pickFirst(r, ["booking_code", "code", "ref", "reference", "id"]), "â€”");
+    const ref = safeStr(pickFirst(r, ["booking_code", "code", "ref", "reference", "id"]), EMPTY);
 
     const pickup = safeStr(
       pickFirst(r, ["from_label", "pickup_address", "pickup", "from_address", "from", "origin"]),
-      "â€”"
+      EMPTY
     );
 
     const dropoff = safeStr(
       pickFirst(r, ["to_label", "dropoff_address", "dropoff", "to_address", "to", "destination"]),
-      "â€”"
+      EMPTY
     );
 
     const farePhp =
@@ -194,7 +176,7 @@ function normalizeTrips(payload: any): TripSummary[] {
 
     const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
 
-    const payment = safeStr(pickFirst(r, ["payment_method", "payment", "payment_mode", "paid_via"]), "â€”");
+    const payment = safeStr(pickFirst(r, ["payment_method", "payment", "payment_mode", "paid_via"]), EMPTY);
 
     const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at"]);
     const dateLabel = fmtDateLabel(created);
@@ -297,12 +279,10 @@ export default function HistoryPage() {
         window.setTimeout(() => setToast(""), 1800);
         return;
       }
-    } catch {
-      // fall back
-    }
+    } catch {}
 
     const ok = await copyToClipboard(text);
-    setToast(ok ? "Share not available â€” copied instead." : "Share/copy failed.");
+    setToast(ok ? "Share not available - copied instead." : "Share/copy failed.");
     window.setTimeout(() => setToast(""), 1800);
   }
 
@@ -324,7 +304,7 @@ export default function HistoryPage() {
 
         {loading && (
           <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm text-sm opacity-70">
-            {normalizeText("Loading tripsâ€¦")}
+            Loading trips...
           </div>
         )}
 
@@ -364,7 +344,7 @@ export default function HistoryPage() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="font-semibold">
                           {normalizeText(t.ref)}{" "}
-                          <span className="text-xs opacity-60 font-normal">Â· {t.service}</span>
+                          <span className="text-xs opacity-60 font-normal">- {t.service}</span>
                         </div>
                         <span
                           className={
@@ -444,11 +424,11 @@ export default function HistoryPage() {
 
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Fare</div>
-                      <div className="font-semibold">{normalizeText(peso(selectedTrip.farePhp))}</div>
+                      <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
                     </div>
                     <div className="rounded-xl border border-black/10 p-3">
                       <div className="text-xs opacity-60">Distance</div>
-                      <div className="font-semibold">{normalizeText(km(selectedTrip.distanceKm))}</div>
+                      <div className="font-semibold">{km(selectedTrip.distanceKm)}</div>
                     </div>
 
                     <div className="rounded-xl border border-black/10 p-3">
@@ -461,7 +441,7 @@ export default function HistoryPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">Layout unchanged â€” mojibake decoded at render.</div>
+                  <div className="mt-4 text-xs opacity-60">ASCII-only placeholders to prevent mojibake.</div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>
