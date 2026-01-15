@@ -11,10 +11,11 @@ type TripSummary = {
   service: "Ride";
   pickup: string;
   dropoff: string;
-  payment?: string; // now optional; hide card if missing
+  payment?: string; // optional; hide card if missing
   farePhp?: number;
   distanceKm?: number;
   status: TripStatus;
+  sortTs?: number; // for newest-first sorting
   _raw?: any;
 };
 
@@ -41,6 +42,12 @@ function peso(n?: number) {
   if (typeof n !== "number" || !isFinite(n)) return EMPTY;
   // ASCII-only currency to avoid mojibake
   return "PHP " + n.toFixed(2);
+}
+
+function fareLabel(n?: number) {
+  if (typeof n !== "number" || !isFinite(n)) return EMPTY;
+  if (Math.abs(n) < 0.000001) return "Free ride";
+  return peso(n);
 }
 
 function km(n?: number) {
@@ -82,6 +89,14 @@ function pickFirst(obj: any, keys: string[]): any {
   return undefined;
 }
 
+function parseTs(v: any): number | undefined {
+  const s = safeStr(v, "");
+  if (!s) return undefined;
+  const d = new Date(s);
+  const t = d.getTime();
+  return isFinite(t) ? t : undefined;
+}
+
 function fmtDateLabel(v: any): string {
   const s = safeStr(v, "");
   const d = s ? new Date(s) : null;
@@ -111,7 +126,7 @@ function buildReceiptText(t: TripSummary) {
   lines.push("Dropoff: " + normalizeText(t.dropoff));
   lines.push("");
   if (typeof t.distanceKm === "number") lines.push("Distance: " + km(t.distanceKm));
-  if (typeof t.farePhp === "number") lines.push("Fare: " + peso(t.farePhp));
+  if (typeof t.farePhp === "number") lines.push("Fare: " + fareLabel(t.farePhp));
   if (t.payment && normalizeText(t.payment) !== EMPTY) lines.push("Payment: " + normalizeText(t.payment));
   lines.push("");
   lines.push("Thank you for riding with JRide.");
@@ -143,8 +158,73 @@ async function copyToClipboard(text: string) {
   }
 }
 
+function downloadTextFile(filename: string, text: string) {
+  try {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function printReceipt(title: string, text: string) {
+  try {
+    const w = window.open("", "_blank", "noopener,noreferrer");
+    if (!w) return false;
+
+    const esc = (s: string) =>
+      s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>${esc(title)}</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; padding: 24px; }
+  .card { border: 1px solid #ddd; border-radius: 12px; padding: 18px; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  pre { white-space: pre-wrap; font-size: 13px; line-height: 1.4; margin: 0; }
+  .hint { opacity: 0.6; font-size: 12px; margin-top: 10px; }
+  @media print { .hint { display: none; } body { padding: 0; } .card { border: none; } }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>${esc(title)}</h1>
+    <pre>${esc(text)}</pre>
+    <div class="hint">Print dialog should open automatically.</div>
+  </div>
+  <script>
+    window.focus();
+    window.print();
+  </script>
+</body>
+</html>`;
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function computeFareFromComponents(r: any): number | undefined {
-  // Only compute if at least one component exists.
   const base = safeNum(pickFirst(r, ["base_fee"])) ?? 0;
   const dist = safeNum(pickFirst(r, ["distance_fare"])) ?? 0;
   const extraStop = safeNum(pickFirst(r, ["extra_stop_fee"])) ?? 0;
@@ -166,7 +246,6 @@ function computeFareFromComponents(r: any): number | undefined {
 }
 
 function computePayment(r: any): string | undefined {
-  // If errand_cash_mode exists and is truthy, show Cash
   const cashMode = pickFirst(r, ["errand_cash_mode"]);
   if (cashMode === true || cashMode === "true" || cashMode === 1 || cashMode === "1") return "Cash";
 
@@ -198,11 +277,6 @@ function normalizeTrips(payload: any): TripSummary[] {
       EMPTY
     );
 
-    // Fare priority:
-    // 1) verified_fare
-    // 2) passenger_fare_response
-    // 3) proposed_fare
-    // 4) computed components
     const farePhp =
       safeNum(pickFirst(r, ["verified_fare"])) ??
       safeNum(pickFirst(r, ["passenger_fare_response"])) ??
@@ -210,15 +284,20 @@ function normalizeTrips(payload: any): TripSummary[] {
       safeNum(pickFirst(r, ["fare", "total_fare", "total"])) ??
       computeFareFromComponents(r);
 
-    // Distance: show only if distance_km exists
     const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm"]));
 
     const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
-
     const payment = computePayment(r);
 
     const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at"]);
     const dateLabel = fmtDateLabel(created);
+
+    const sortTs =
+      parseTs(pickFirst(r, ["updated_at"])) ??
+      parseTs(pickFirst(r, ["completed_at"])) ??
+      parseTs(pickFirst(r, ["created_at"])) ??
+      parseTs(created) ??
+      0;
 
     return {
       ref: normalizeText(ref),
@@ -230,6 +309,7 @@ function normalizeTrips(payload: any): TripSummary[] {
       farePhp,
       distanceKm,
       status: normalizeText(status),
+      sortTs,
       _raw: r,
     };
   });
@@ -255,6 +335,7 @@ export default function HistoryPage() {
   const [selectedRef, setSelectedRef] = useState<string>("");
 
   const [toast, setToast] = useState<string>("");
+  const [q, setQ] = useState<string>("");
 
   useEffect(() => {
     let alive = true;
@@ -296,10 +377,22 @@ export default function HistoryPage() {
     };
   }, []);
 
+  const sortedTrips = useMemo(() => {
+    const cp = [...trips];
+    cp.sort((a, b) => (b.sortTs || 0) - (a.sortTs || 0)); // newest-first
+    return cp;
+  }, [trips]);
+
+  const filteredTrips = useMemo(() => {
+    const needle = normalizeText(q).toLowerCase();
+    if (!needle || needle === EMPTY.toLowerCase()) return sortedTrips;
+    return sortedTrips.filter((t) => normalizeText(t.ref).toLowerCase().includes(needle));
+  }, [sortedTrips, q]);
+
   const selectedTrip = useMemo(() => {
     if (!selectedRef) return null;
-    return trips.find((t) => t.ref === selectedRef) || null;
-  }, [trips, selectedRef]);
+    return filteredTrips.find((t) => t.ref === selectedRef) || trips.find((t) => t.ref === selectedRef) || null;
+  }, [filteredTrips, trips, selectedRef]);
 
   async function onCopy(trip: TripSummary) {
     const ok = await copyToClipboard(buildReceiptText(trip));
@@ -325,6 +418,22 @@ export default function HistoryPage() {
     window.setTimeout(() => setToast(""), 1800);
   }
 
+  function onDownload(trip: TripSummary) {
+    const text = buildReceiptText(trip);
+    const fn = "JRIDE_RECEIPT_" + normalizeText(trip.ref).replace(/[^A-Za-z0-9_-]/g, "_") + ".txt";
+    const ok = downloadTextFile(fn, text);
+    setToast(ok ? "Downloaded receipt." : "Download failed.");
+    window.setTimeout(() => setToast(""), 1800);
+  }
+
+  function onPrint(trip: TripSummary) {
+    const text = buildReceiptText(trip);
+    const title = "JRide Receipt - " + normalizeText(trip.ref);
+    const ok = printReceipt(title, text);
+    setToast(ok ? "Print opened." : "Print popup blocked.");
+    window.setTimeout(() => setToast(""), 1800);
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="p-4">
@@ -340,6 +449,17 @@ export default function HistoryPage() {
             </div>
           )}
         </div>
+
+        {!loading && !loadErr && trips.length > 0 && (
+          <div className="mt-3">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search Trip Reference..."
+              className="w-full max-w-md rounded-xl border border-black/10 bg-white px-3 py-2 text-sm shadow-sm"
+            />
+          </div>
+        )}
 
         {loading && (
           <div className="mt-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm text-sm opacity-70">
@@ -368,7 +488,7 @@ export default function HistoryPage() {
               <div className="font-semibold mb-2">Trips</div>
 
               <div className="space-y-2">
-                {trips.map((t) => {
+                {filteredTrips.map((t) => {
                   const active = t.ref === selectedRef;
                   return (
                     <button
@@ -413,7 +533,7 @@ export default function HistoryPage() {
                 })}
               </div>
 
-              <div className="mt-3 text-xs opacity-60">Showing trips from /api/rides/list.</div>
+              <div className="mt-3 text-xs opacity-60">Newest first. Data from /api/rides/list.</div>
             </div>
 
             <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
@@ -424,7 +544,7 @@ export default function HistoryPage() {
                 </div>
 
                 {selectedTrip && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 justify-end">
                     <button
                       type="button"
                       onClick={() => onCopy(selectedTrip)}
@@ -438,6 +558,20 @@ export default function HistoryPage() {
                       className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 text-sm font-semibold"
                     >
                       Share
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDownload(selectedTrip)}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Download
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onPrint(selectedTrip)}
+                      className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-2 text-sm font-semibold"
+                    >
+                      Print
                     </button>
                   </div>
                 )}
@@ -461,15 +595,13 @@ export default function HistoryPage() {
                       <div className="font-semibold">{normalizeText(selectedTrip.dropoff)}</div>
                     </div>
 
-                    {/* Fare: show only if we have a number (0 is valid) */}
                     {typeof selectedTrip.farePhp === "number" ? (
                       <div className="rounded-xl border border-black/10 p-3">
                         <div className="text-xs opacity-60">Fare</div>
-                        <div className="font-semibold">{peso(selectedTrip.farePhp)}</div>
+                        <div className="font-semibold">{fareLabel(selectedTrip.farePhp)}</div>
                       </div>
                     ) : null}
 
-                    {/* Distance: show only if we have distance_km */}
                     {typeof selectedTrip.distanceKm === "number" ? (
                       <div className="rounded-xl border border-black/10 p-3">
                         <div className="text-xs opacity-60">Distance</div>
@@ -477,7 +609,6 @@ export default function HistoryPage() {
                       </div>
                     ) : null}
 
-                    {/* Payment: show only if known */}
                     {selectedTrip.payment ? (
                       <div className="rounded-xl border border-black/10 p-3">
                         <div className="text-xs opacity-60">Payment</div>
@@ -491,7 +622,7 @@ export default function HistoryPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">P2D: Fare/Distance/Payment now driven by bookings fields.</div>
+                  <div className="mt-4 text-xs opacity-60">P2F+P2G: Download/Print + newest-first + free ride label + search.</div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>
