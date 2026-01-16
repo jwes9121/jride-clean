@@ -35,18 +35,16 @@ export async function POST(req: Request) {
     if (!booking_code) return bad("MISSING_BOOKING_CODE", 400);
     if (!Number.isFinite(fare) || fare <= 0) return bad("INVALID_FARE", 400);
 
-    // Apply fare: prefer verified_fare, fallback to proposed_fare (best-effort)
-    let appliedField: "verified_fare" | "proposed_fare" = "verified_fare";
+    // Apply fare: prefer verified_fare, fallback proposed_fare (best-effort)
+    let applied_field: "verified_fare" | "proposed_fare" = "verified_fare";
     const u1 = await supabase.from("bookings").update({ verified_fare: fare }).eq("booking_code", booking_code);
     if (u1.error) {
       const u2 = await supabase.from("bookings").update({ proposed_fare: fare }).eq("booking_code", booking_code);
-      if (u2.error) {
-        return bad("UPDATE_FAILED", 500, u2.error.message);
-      }
-      appliedField = "proposed_fare";
+      if (u2.error) return bad("UPDATE_FAILED", 500, u2.error.message);
+      applied_field = "proposed_fare";
     }
 
-    // Fetch booking to compute passenger totals / payouts (no schema assumptions)
+    // Fetch bits used to compute passenger totals/cut/payout (best-effort)
     const { data: b, error: bErr } = await supabase
       .from("bookings")
       .select("booking_code, trip_type, pickup_distance_fee, platform_service_fee")
@@ -54,63 +52,51 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (bErr) {
-      // Fare already applied; return ok but include warning
-      return ok({ ok: true, applied_field: appliedField, warning: "BOOKING_FETCH_FAILED", details: bErr.message });
+      // Fare already applied; return OK with warning
+      return ok({ ok: true, applied_field, warning: "BOOKING_FETCH_FAILED", details: bErr.message });
     }
 
     const tripType = String((b as any)?.trip_type ?? "").trim().toLowerCase();
     const isTakeout = tripType === "takeout";
 
-    // For non-takeout rides: recompute passenger total + (best-effort) company cut & driver payout.
-    // Conservative rule:
-    // - company_cut = platform_service_fee
-    // - driver_payout = base_fare + pickup_distance_fee
-    // - total_to_pay = base_fare + pickup_distance_fee + platform_service_fee
     const pickupFee = asNum((b as any)?.pickup_distance_fee) ?? 0;
     const platformFee = asNum((b as any)?.platform_service_fee) ?? 0;
 
+    // Conservative compute rule (rides only):
+    // total_to_pay = base_fare + pickup_distance_fee + platform_service_fee
+    // company_cut = platform_service_fee
+    // driver_payout = base_fare + pickup_distance_fee
     const computed = {
       total_to_pay: Math.round((fare + pickupFee + platformFee) * 100) / 100,
       company_cut: Math.round(platformFee * 100) / 100,
       driver_payout: Math.round((fare + pickupFee) * 100) / 100,
     };
 
-    if (!isTakeout) {
-      // Best-effort updates: try all fields, then subsets, without failing the request.
-      const tryUpdates: Array<Record<string, any>> = [
-        { total_to_pay: computed.total_to_pay, company_cut: computed.company_cut, driver_payout: computed.driver_payout },
-        { total_to_pay: computed.total_to_pay },
-        { company_cut: computed.company_cut },
-        { driver_payout: computed.driver_payout },
-      ];
-
-      const applied: string[] = [];
-      for (const patch of tryUpdates) {
-        try {
-          const r = await supabase.from("bookings").update(patch).eq("booking_code", booking_code);
-          if (!r.error) {
-            for (const k of Object.keys(patch)) if (!applied.includes(k)) applied.push(k);
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      return ok({
-        ok: true,
-        applied_field: appliedField,
-        computed,
-        applied_computed_fields: applied,
-      });
+    if (isTakeout) {
+      // Do not write payout/cut/total for takeout yet; informational only
+      return ok({ ok: true, applied_field, computed, note: "TAKEOUT_SKIPPED_PAYOUT_RECOMPUTE" });
     }
 
-    // Takeout: keep computed values informational only (do not write payout/cut/total unless you decide later)
-    return ok({
-      ok: true,
-      applied_field: appliedField,
-      computed,
-      note: "TAKEOUT_SKIPPED_PAYOUT_RECOMPUTE",
-    });
+    // Best-effort updates: never hard-fail if some columns don't exist
+    const applied_computed_fields: string[] = [];
+
+    async function tryUpdate(patch: Record<string, any>) {
+      try {
+        const r = await supabase.from("bookings").update(patch).eq("booking_code", booking_code);
+        if (!r.error) {
+          for (const k of Object.keys(patch)) {
+            if (!applied_computed_fields.includes(k)) applied_computed_fields.push(k);
+          }
+        }
+      } catch {}
+    }
+
+    await tryUpdate({ total_to_pay: computed.total_to_pay, company_cut: computed.company_cut, driver_payout: computed.driver_payout });
+    await tryUpdate({ total_to_pay: computed.total_to_pay });
+    await tryUpdate({ company_cut: computed.company_cut });
+    await tryUpdate({ driver_payout: computed.driver_payout });
+
+    return ok({ ok: true, applied_field, computed, applied_computed_fields });
   } catch (e: any) {
     return bad("SERVER_ERROR", 500, String(e?.message || e));
   }
