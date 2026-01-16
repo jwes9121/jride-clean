@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -41,6 +41,17 @@ function norm(v: any): string {
 }
 
 function jsonOk(body: any, status = 200) {
+                    // ===== JRIDE_P5C_RPC_UPSERT_HOOK (best-effort, non-fatal) =====
+    // NO-OP SAFE BLOCK (P5C hook disabled due to scope/anchor mismatch)
+    // This keeps build GREEN. We will re-inject a proper hook later at the real booking/body scope.
+    let fare_signature: string | null = null;
+    void fare_signature;
+    // ===== END JRIDE_P5C_RPC_UPSERT_HOOK =====
+    try {
+      if (typeof body === "object" && body) {
+        (body as any).fare_signature = fare_signature;
+      }
+    } catch {}
   return NextResponse.json(body, { status });
 }
 
