@@ -121,7 +121,7 @@ export default function TripWalletPanel({ trip }: Props) {
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
     if (vb <= 0) return null;
-    // fare ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  vendorEarnings / 0.90
+    // fare ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¹ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â  vendorEarnings / 0.90
     return Math.round((vb / 0.90) * 100) / 100;
   }, [trip, isTakeout]);
 
@@ -130,7 +130,7 @@ export default function TripWalletPanel({ trip }: Props) {
     if (derivedFare === null) return null;
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
-    const cut = derivedFare - vb; // ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  10%
+    const cut = derivedFare - vb; // ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¹ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â  10%
     return Math.round(cut * 100) / 100;
   }, [trip, isTakeout, derivedFare]);
 
@@ -144,6 +144,15 @@ export default function TripWalletPanel({ trip }: Props) {
 
   
 
+
+  // P6A: Suggested verified fare (UI-only; wired later)
+  const suggestedFare = asNum(
+    trip?.suggested_verified_fare ??
+    trip?.suggested_fare ??
+    trip?.fare_suggestion ??
+    trip?.suggestedFare ??
+    null
+  );
 const companyCut = useMemo(() => {
     const explicit = asNum(trip?.company_cut ?? trip?.platform_fee ?? trip?.commission ?? trip?.company_fee);
     if (explicit !== null) return explicit;
@@ -297,6 +306,9 @@ const driverPayout = useMemo(() => {
         <div className="rounded border bg-white p-2">
           <div className="text-slate-500">Fare</div>
           <div className="font-semibold">{fmtMoney(fareDisplay)}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            Suggested verified fare: <span className="font-medium text-slate-700">{fmtMoney(suggestedFare)}</span>
+          </div>
         </div>
 
         <div className="rounded border bg-white p-2">
