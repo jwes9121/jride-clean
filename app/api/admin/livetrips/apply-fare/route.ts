@@ -1,49 +1,117 @@
 ﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+function bad(code: string, status = 400, message?: string, extra: any = {}) {
+  return NextResponse.json(
+    { ok: false, code, message, ...extra },
+    { status, headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+function ok(payload: any, status = 200) {
+  return NextResponse.json(payload, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
+function asNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const supabase = supabaseAdmin();
+
+    const body = await req.json().catch(() => null);
     const booking_code = String(body?.booking_code || "").trim();
     const fare = Number(body?.fare);
 
-    if (!booking_code) {
-      return NextResponse.json({ ok: false, code: "MISSING_BOOKING_CODE" }, { status: 400 });
-    }
-    if (!Number.isFinite(fare) || fare <= 0) {
-      return NextResponse.json({ ok: false, code: "INVALID_FARE" }, { status: 400 });
-    }
+    if (!booking_code) return bad("MISSING_BOOKING_CODE", 400);
+    if (!Number.isFinite(fare) || fare <= 0) return bad("INVALID_FARE", 400);
 
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // Try verified_fare first, fallback to proposed_fare
-    let { error } = await supabase
-      .from("bookings")
-      .update({ verified_fare: fare })
-      .eq("booking_code", booking_code);
-
-    if (error) {
-      const retry = await supabase
-        .from("bookings")
-        .update({ proposed_fare: fare })
-        .eq("booking_code", booking_code);
-
-      if (retry.error) {
-        return NextResponse.json(
-          { ok: false, code: "UPDATE_FAILED", message: retry.error.message },
-          { status: 500 }
-        );
+    // Apply fare: prefer verified_fare, fallback to proposed_fare (best-effort)
+    let appliedField: "verified_fare" | "proposed_fare" = "verified_fare";
+    const u1 = await supabase.from("bookings").update({ verified_fare: fare }).eq("booking_code", booking_code);
+    if (u1.error) {
+      const u2 = await supabase.from("bookings").update({ proposed_fare: fare }).eq("booking_code", booking_code);
+      if (u2.error) {
+        return bad("UPDATE_FAILED", 500, u2.error.message);
       }
+      appliedField = "proposed_fare";
     }
 
-    return NextResponse.json({ ok: true });
+    // Fetch booking to compute passenger totals / payouts (no schema assumptions)
+    const { data: b, error: bErr } = await supabase
+      .from("bookings")
+      .select("booking_code, trip_type, pickup_distance_fee, platform_service_fee")
+      .eq("booking_code", booking_code)
+      .maybeSingle();
+
+    if (bErr) {
+      // Fare already applied; return ok but include warning
+      return ok({ ok: true, applied_field: appliedField, warning: "BOOKING_FETCH_FAILED", details: bErr.message });
+    }
+
+    const tripType = String((b as any)?.trip_type ?? "").trim().toLowerCase();
+    const isTakeout = tripType === "takeout";
+
+    // For non-takeout rides: recompute passenger total + (best-effort) company cut & driver payout.
+    // Conservative rule:
+    // - company_cut = platform_service_fee
+    // - driver_payout = base_fare + pickup_distance_fee
+    // - total_to_pay = base_fare + pickup_distance_fee + platform_service_fee
+    const pickupFee = asNum((b as any)?.pickup_distance_fee) ?? 0;
+    const platformFee = asNum((b as any)?.platform_service_fee) ?? 0;
+
+    const computed = {
+      total_to_pay: Math.round((fare + pickupFee + platformFee) * 100) / 100,
+      company_cut: Math.round(platformFee * 100) / 100,
+      driver_payout: Math.round((fare + pickupFee) * 100) / 100,
+    };
+
+    if (!isTakeout) {
+      // Best-effort updates: try all fields, then subsets, without failing the request.
+      const tryUpdates: Array<Record<string, any>> = [
+        { total_to_pay: computed.total_to_pay, company_cut: computed.company_cut, driver_payout: computed.driver_payout },
+        { total_to_pay: computed.total_to_pay },
+        { company_cut: computed.company_cut },
+        { driver_payout: computed.driver_payout },
+      ];
+
+      const applied: string[] = [];
+      for (const patch of tryUpdates) {
+        try {
+          const r = await supabase.from("bookings").update(patch).eq("booking_code", booking_code);
+          if (!r.error) {
+            for (const k of Object.keys(patch)) if (!applied.includes(k)) applied.push(k);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      return ok({
+        ok: true,
+        applied_field: appliedField,
+        computed,
+        applied_computed_fields: applied,
+      });
+    }
+
+    // Takeout: keep computed values informational only (do not write payout/cut/total unless you decide later)
+    return ok({
+      ok: true,
+      applied_field: appliedField,
+      computed,
+      note: "TAKEOUT_SKIPPED_PAYOUT_RECOMPUTE",
+    });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, code: "SERVER_ERROR", message: String(e?.message || e) },
-      { status: 500 }
-    );
+    return bad("SERVER_ERROR", 500, String(e?.message || e));
   }
 }
