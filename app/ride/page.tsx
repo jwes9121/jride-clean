@@ -64,15 +64,15 @@ function p4Num(v: any): number | null {
 
 function p4Money(n: any): string {
   const x = p4Num(n);
-  if (x == null) return "â€”";
-  try { return "â‚±" + x.toFixed(0); } catch { return "â‚±" + String(x); }
+  if (x == null) return "Ã¢â‚¬â€";
+  try { return "Ã¢â€šÂ±" + x.toFixed(0); } catch { return "Ã¢â€šÂ±" + String(x); }
 }
 
 // Pickup Distance Fee rule (FINAL):
 // Free pickup: up to 1.5 km
 // If driver->pickup distance > 1.5 km:
-// Base pickup fee: â‚±20
-// â‚±10 per additional 0.5 km, rounded up
+// Base pickup fee: Ã¢â€šÂ±20
+// Ã¢â€šÂ±10 per additional 0.5 km, rounded up
 function p4PickupDistanceFee(driverToPickupKmAny: any): number {
   const km = p4Num(driverToPickupKmAny);
   if (km == null) return 0;
@@ -303,7 +303,7 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
 
   function p1IsNonCancellable(stRaw: any): boolean {
     const st = p1NormStatus(stRaw);
-    // UI-only guardrail: no ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“cancel/clearÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â once driver is already on the way or later
+    // UI-only guardrail: no ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œcancel/clearÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â once driver is already on the way or later
     return st === "on_the_way" || st === "arrived" || st === "on_trip";
   }
 
