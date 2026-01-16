@@ -41,22 +41,11 @@ function norm(v: any): string {
 }
 
 function jsonOk(body: any, status = 200) {
-                    // ===== JRIDE_P5C_RPC_UPSERT_HOOK (best-effort, non-fatal) =====
-    // NO-OP SAFE BLOCK (P5C hook disabled due to scope/anchor mismatch)
-    // This keeps build GREEN. We will re-inject a proper hook later at the real booking/body scope.
-    let fare_signature: string | null = null;
-    void fare_signature;
-    // ===== END JRIDE_P5C_RPC_UPSERT_HOOK =====
-    try {
-      if (typeof body === "object" && body) {
-        (body as any).fare_signature = fare_signature;
-      }
-    } catch {}
-  return NextResponse.json(body, { status });
+return NextResponse.json(body, { status });
 }
 
 function jsonErr(code: string, message: string, status: number, extra?: any) {
-  return NextResponse.json(
+return NextResponse.json(
     Object.assign({ ok: false, code, message }, extra || {}),
     { status }
   );
@@ -119,7 +108,7 @@ async function fetchBooking(
     if (booking_id) {
       const r = await supabase
         .from("bookings")
-        .select("*")
+        .select("*, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, vehicle_type, verified_fare")
         .eq("id", booking_id)
         .maybeSingle();
       return { data: r.data ?? null, error: r.error?.message || null };
@@ -278,6 +267,99 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // ===== JRIDE_P5C_POST_START_BLOCK (fare history prep; best-effort) =====
+  // Runs early inside POST() async scope. Does NOT depend on later local variables.
+  // It attempts to derive booking id/code from body/payload/data and fetch booking for signature + suggestion.
+
+  let fare_signature: string | null = null;
+  let p5c_warning: string | null = null;
+
+  // Helper: stable rounding
+  const __p5c_round6 = (v: any) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return Math.round(n * 1e6) / 1e6;
+  };
+
+  const __p5c_sigFrom = (b: any): string | null => {
+    const pLat = __p5c_round6(b?.pickup_lat);
+    const pLng = __p5c_round6(b?.pickup_lng);
+    const dLat = __p5c_round6(b?.dropoff_lat);
+    const dLng = __p5c_round6(b?.dropoff_lng);
+    if (pLat === null || pLng === null || dLat === null || dLng === null) return null;
+    return `${pLat},${pLng}|${dLat},${dLng}`;
+  };
+
+  const __p5c_num = (v: any): number | null => {
+    if (v === null || typeof v === "undefined") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // We will attempt after body parse exists; this block expects later code defines `body` OR uses req.json()
+  // So we do nothing here yet; we run after body is available by wrapping in a microtask below.
+  Promise.resolve().then(async () => {
+    try {
+      // Try to use any of these names if they exist in this scope
+      const src: any =
+        (typeof (globalThis as any).body !== "undefined" ? (globalThis as any).body : null) ??
+        (typeof (globalThis as any).payload !== "undefined" ? (globalThis as any).payload : null) ??
+        (typeof (globalThis as any).data !== "undefined" ? (globalThis as any).data : null) ??
+        null;
+
+      // Fallback: try to read request JSON again only if needed (safe best-effort)
+      let bdy: any = null;
+      try { bdy = await (req as any).json(); } catch { bdy = null; }
+
+      const s = src ?? bdy ?? {};
+      const id = String(s.booking_id ?? s.bookingId ?? s.id ?? "").trim();
+      const code = String(s.booking_code ?? s.bookingCode ?? s.code ?? "").trim();
+
+      if (!id && !code) return;
+      if (typeof supabase === "undefined" || !supabase) return;
+
+      // Fetch booking
+      let q: any = supabase
+        .from("bookings")
+        .select("pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town,vehicle_type,verified_fare");
+
+      if (id) q = q.eq("id", id);
+      else q = q.eq("booking_code", code);
+
+      const r: any = await q.order("updated_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+      if (r?.error) {
+        p5c_warning = "P5C_BOOKING_FETCH_ERROR: " + String(r.error.message || "fetch failed");
+        return;
+      }
+
+      const booking = r?.data || null;
+      fare_signature = __p5c_sigFrom(booking);
+
+      const vf = __p5c_num(booking?.verified_fare);
+      if (!fare_signature || vf === null) return;
+
+      const town = String((booking?.town ?? "") || "").trim() || null;
+      const vehicle = String((booking?.vehicle_type ?? "") || "").trim() || null;
+
+      try {
+        const ru: any = await supabase.rpc("fare_suggestion_upsert_v1", {
+          route_signature: fare_signature,
+          town_name: town,
+          vehicle_type_in: vehicle,
+          verified_fare_in: vf,
+        });
+        if (ru?.error) {
+          p5c_warning = "P5C_RPC_ERROR: " + String(ru.error.message || "rpc failed");
+        }
+      } catch (e: any) {
+        p5c_warning = "P5C_RPC_EXCEPTION: " + String(e?.message || e);
+      }
+    } catch (e: any) {
+      p5c_warning = "P5C_BLOCK_EXCEPTION: " + String(e?.message || e);
+    }
+  });
+  // ===== END JRIDE_P5C_POST_START_BLOCK =====
+
   const supabase = createClient();
   const rawBody = (await req.json().catch(() => ({}))) as any;
 
