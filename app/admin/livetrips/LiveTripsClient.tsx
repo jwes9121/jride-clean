@@ -917,8 +917,37 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
       <button
         type="button"
         className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
-        onClick={() => setLastAction("Apply Draft is disabled until backend wiring is added.")}
-        disabled={true}
+        onClick={async () => {
+  if (!selectedTrip) {
+    setLastAction("Select a trip first.");
+    return;
+  }
+  const raw = String(proposedFareDraft ?? "").trim();
+  const fare = Number(raw);
+  if (!raw || !Number.isFinite(fare) || fare <= 0) {
+    setLastAction("Invalid draft fare.");
+    return;
+  }
+
+  try {
+    setLastAction("Applying draft fare...");
+    const r = await fetch("/api/admin/livetrips/apply-fare", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        booking_code: (selectedTrip as any)?.booking_code,
+        fare,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j?.ok) throw new Error(j?.code || "FAILED");
+    setLastAction("Draft fare applied.");
+    await loadPage();
+  } catch (e:any) {
+    setLastAction("Apply failed: " + String(e?.message || e));
+  }
+}}
+disabled={false}
         title="Backend apply is not wired yet (UI-only draft)."
       >
         Apply Draft
@@ -1164,6 +1193,7 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
     </div>
   );
 }
+
 
 
 
