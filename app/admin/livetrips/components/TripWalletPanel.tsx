@@ -121,7 +121,7 @@ export default function TripWalletPanel({ trip }: Props) {
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
     if (vb <= 0) return null;
-    // fare Ã¢â€°Ë† vendorEarnings / 0.90
+    // fare ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  vendorEarnings / 0.90
     return Math.round((vb / 0.90) * 100) / 100;
   }, [trip, isTakeout]);
 
@@ -130,7 +130,7 @@ export default function TripWalletPanel({ trip }: Props) {
     if (derivedFare === null) return null;
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
-    const cut = derivedFare - vb; // Ã¢â€°Ë† 10%
+    const cut = derivedFare - vb; // ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  10%
     return Math.round(cut * 100) / 100;
   }, [trip, isTakeout, derivedFare]);
 
@@ -156,6 +156,49 @@ const driverPayout = useMemo(() => {
     if (explicit !== null) return explicit;
     return null;
   }, [trip]);
+  // ===== JRIDE_P5B_PASSENGER_CHARGES_BLOCK (computed, read-only) =====
+  // Passenger-facing fees (if present on trip row)
+  const passengerPickupFee = useMemo(() => {
+    return asNum(trip?.pickup_distance_fee ?? trip?.pickupDistanceFee ?? trip?.pickup_fee ?? null);
+  }, [trip]);
+
+  const passengerPlatformFee = useMemo(() => {
+    // Keep separate from company_cut; passenger platform fee should be explicit (e.g., platform_service_fee)
+    return asNum(trip?.platform_service_fee ?? trip?.platformServiceFee ?? trip?.platform_service ?? null);
+  }, [trip]);
+
+  const passengerBaseFare = useMemo(() => {
+    const v = asNum(trip?.verified_fare);
+    if (v !== null) return v;
+    const p = asNum(trip?.proposed_fare);
+    if (p !== null) return p;
+    // fallback to fareDisplay (already computed above)
+    return asNum(fareDisplay);
+  }, [trip, fareDisplay]);
+
+  const passengerTotalToPay = useMemo(() => {
+    const explicit =
+      asNum(trip?.total_to_pay ?? trip?.totalToPay ?? trip?.passenger_total ?? trip?.passengerTotal ?? null);
+    if (explicit !== null) return explicit;
+
+    if (passengerBaseFare === null) return null;
+    const pu = passengerPickupFee ?? 0;
+    const pf = passengerPlatformFee ?? 0;
+    return Math.round((passengerBaseFare + pu + pf) * 100) / 100;
+  }, [trip, passengerBaseFare, passengerPickupFee, passengerPlatformFee]);
+
+  const showPassengerCharges = useMemo(() => {
+    if (isTakeout) return false;
+    const hasAny =
+      asNum(trip?.verified_fare) !== null ||
+      asNum(trip?.proposed_fare) !== null ||
+      passengerPickupFee !== null ||
+      passengerPlatformFee !== null ||
+      asNum(trip?.total_to_pay ?? trip?.totalToPay ?? null) !== null;
+    return !!hasAny;
+  }, [trip, isTakeout, passengerPickupFee, passengerPlatformFee]);
+  // ===== END JRIDE_P5B_PASSENGER_CHARGES_BLOCK =====
+
 
   // Wallet balances: show if API provides computed fields
   const driverWallet = useMemo(
@@ -280,7 +323,41 @@ const driverPayout = useMemo(() => {
           </button>
         </div>
 
-        <div className="rounded border bg-white p-2 col-span-2">
+                {showPassengerCharges && (
+          <div className="rounded border bg-white p-2 col-span-2">
+            <div className="flex items-center justify-between">
+              <div className="text-slate-500">Passenger charges (read-only)</div>
+              <div className="text-[11px] text-slate-400">P5B</div>
+            </div>
+
+            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600">Fare (offer/verified)</div>
+                <div className="font-semibold">{fmtMoney(passengerBaseFare)}</div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600">Pickup Distance Fee</div>
+                <div className={"font-semibold " + ((passengerPickupFee ?? 0) > 0 ? "text-amber-700" : "")}>
+                  {fmtMoney(passengerPickupFee)}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-slate-600">Platform Service Fee</div>
+                <div className="font-semibold">{fmtMoney(passengerPlatformFee)}</div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-slate-900 font-semibold">Total to Pay</div>
+                <div className="text-slate-900 font-bold">{fmtMoney(passengerTotalToPay)}</div>
+              </div>
+            </div>
+
+            <div className="mt-2 text-[11px] text-slate-500">
+              This section mirrors passenger-facing line items when those fields are present on the booking.
+            </div>
+          </div>
+        )}
+<div className="rounded border bg-white p-2 col-span-2">
           <div className="text-slate-500">Vendor wallet</div>
           <div className="font-semibold">{fmtMoney(vendorWallet)}</div>
           <button

@@ -116,7 +116,7 @@ export async function GET(req: Request) {
     try {
       const { data: activeRows, error: activeErr } = await supabase
         .from("bookings")
-        .select("*")
+        .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
         .in("status", ACTIVE_STATUSES)
         .order("created_at", { ascending: false })
         .limit(250);
