@@ -53,6 +53,37 @@ function p1FriendlyError(raw: any): string {
   return "";
 }
 
+
+/* ===== JRIDE P4A+P4B: Fare Offer + Pickup Distance Fee (UI-only helpers) ===== */
+const P4_PLATFORM_SERVICE_FEE = 15;
+
+function p4Num(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function p4Money(n: any): string {
+  const x = p4Num(n);
+  if (x == null) return "â€”";
+  try { return "â‚±" + x.toFixed(0); } catch { return "â‚±" + String(x); }
+}
+
+// Pickup Distance Fee rule (FINAL):
+// Free pickup: up to 1.5 km
+// If driver->pickup distance > 1.5 km:
+// Base pickup fee: â‚±20
+// â‚±10 per additional 0.5 km, rounded up
+function p4PickupDistanceFee(driverToPickupKmAny: any): number {
+  const km = p4Num(driverToPickupKmAny);
+  if (km == null) return 0;
+  if (km <= 1.5) return 0;
+  const base = 20;
+  const extraKm = Math.max(0, km - 1.5);
+  const blocks = Math.ceil(extraKm / 0.5);
+  return base + Math.max(0, blocks - 1) * 10;
+}
+/* ===== END JRIDE P4A+P4B HELPERS ===== */
+
 function p1RenderStepper(stRaw: any) {
 /* ===== PHASE P3: Booking block reason clarity (UI-only) ===== */
 function p3ExplainBlock(resultText: any): null | { title: string; body: string; next: string } {
@@ -272,7 +303,7 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
 
   function p1IsNonCancellable(stRaw: any): boolean {
     const st = p1NormStatus(stRaw);
-    // UI-only guardrail: no ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œcancel/clearÃƒÂ¢Ã¢â€šÂ¬Ã‚Â once driver is already on the way or later
+    // UI-only guardrail: no ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“cancel/clearÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â once driver is already on the way or later
     return st === "on_the_way" || st === "arrived" || st === "on_trip";
   }
 
@@ -536,6 +567,8 @@ const [passengerName, setPassengerName] = React.useState("Test Passenger A");
   const [liveDriverId, setLiveDriverId] = React.useState<string>("");
   const [liveUpdatedAt, setLiveUpdatedAt] = React.useState<number | null>(null);
   const [liveErr, setLiveErr] = React.useState<string>("");
+  const [liveBooking, setLiveBooking] = React.useState<any | null>(null); // P4A/P4B
+  const [fareBusy, setFareBusy] = React.useState<boolean>(false); // P4A/P4B
   const pollRef = React.useRef<any>(null);
 
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
@@ -1487,6 +1520,7 @@ React.useEffect(() => {
 const j = resp.json || {};
         const b = (j.booking || (j.data && j.data.booking) || (j.payload && j.payload.booking) || j) as any;
 
+        try { setLiveBooking(b); } catch {}
         const st = String((b && b.status) ? b.status : (j.status || "")) || "";
         const did = String((b && b.driver_id) ? b.driver_id : (j.driver_id || "")) || "";
 
@@ -2431,7 +2465,9 @@ if (!can.ok) {
               setLiveDriverId("");
               setLiveUpdatedAt(null);
               setLiveErr("");
-            }}
+            
+              try { setLiveBooking(null); } catch {}
+}}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
           >
             Clear
@@ -2481,7 +2517,9 @@ if (!can.ok) {
                   setLiveDriverId("");
                   setLiveUpdatedAt(null);
                   setLiveErr("");
-                }}
+                
+              try { setLiveBooking(null); } catch {}
+}}
               >
                 Clear
               </button>
@@ -2758,7 +2796,9 @@ if (!can.ok) {
                             setLiveDriverId("");
                             setLiveUpdatedAt(null);
                             setLiveErr("");
-                            setResult("");
+                            
+              try { setLiveBooking(null); } catch {}
+setResult("");
                           }}
                           title="Clear receipt and start a new booking"
                         >
