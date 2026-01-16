@@ -44,9 +44,9 @@ function normalizeText(v: any): string {
 
   // Strip known mojibake markers + any remaining non-ASCII chars.
   s = s
-    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡/g, "")
-    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢/g, "")
-    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÂ¢ÃƒÆ’Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÂ¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÂ¡/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Â ÃƒÆ’Â¢ÃƒÂ¢Ã¢â‚¬Å¡Â¬ÃƒÂ¢Ã¢â‚¬Å¾Â¢/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÂ¢/g, "")
     .trim();
 
   // Remove non-ASCII (last resort)
@@ -465,7 +465,7 @@ export default function HistoryPage() {
     if (!trip) { setFavToast("Select a trip first."); return; }
     const from = String((trip as any).pickup || "").trim();
     const to = String((trip as any).dropoff || "").trim();
-    const def = (from && to) ? ("Fav: " + from + " ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ " + to) : "Favorite";
+    const def = (from && to) ? ("Fav: " + from + " ÃƒÆ’Ã†â€™Ãƒâ€šÂ¢ÃƒÆ’Â¢ÃƒÂ¢Ã¢â‚¬Å¡Â¬Ãƒâ€šÂ ÃƒÆ’Â¢ÃƒÂ¢Ã¢â‚¬Å¡Â¬ÃƒÂ¢Ã¢â‚¬Å¾Â¢ " + to) : "Favorite";
     const lab = (typeof window !== "undefined" && (window as any).prompt)
       ? (window as any).prompt("Favorite label (e.g., Home, Work, Market):", def)
       : def;

@@ -166,15 +166,15 @@ export default function BookingForm({ onBookingCreated }: BookingFormProps) {
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-blue-700">Base fare:</span>
-                  <span className="font-medium">â‚±{fareCalculation.baseFare}</span>
+                  <span className="font-medium">PHP {fareCalculation.baseFare}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-blue-700">Distance fare:</span>
-                  <span className="font-medium">â‚±{fareCalculation.distanceFare}</span>
+                  <span className="font-medium">PHP {fareCalculation.distanceFare}</span>
                 </div>
                 <div className="border-t border-blue-200 pt-1 flex justify-between font-semibold">
                   <span className="text-blue-900">Total:</span>
-                  <span className="text-blue-900">â‚±{fareCalculation.total}</span>
+                  <span className="text-blue-900">PHP {fareCalculation.total}</span>
                 </div>
               </div>
             </div>
@@ -197,7 +197,7 @@ export default function BookingForm({ onBookingCreated }: BookingFormProps) {
               </button>
             </div>
             <div className="relative">
-              <span className="absolute left-3 top-3 text-gray-500">â‚±</span>
+              <span className="absolute left-3 top-3 text-gray-500">PHP </span>
               <input
                 type="number"
                 value={formData.fare}
