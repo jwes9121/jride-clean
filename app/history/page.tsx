@@ -37,9 +37,9 @@ function normalizeText(v: any): string {
 
   // Strip known mojibake markers + any remaining non-ASCII chars.
   s = s
-    .replace(/Ã‚/g, "")
-    .replace(/Ãƒ/g, "")
-    .replace(/Ã¢/g, "")
+    .replace(/ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢/g, "")
     .trim();
 
   // Remove non-ASCII (last resort)
@@ -368,6 +368,105 @@ function makeFavId(from: string, to: string) {
 
 export default function HistoryPage() {
   const router = useRouter();
+  /* ================= JRIDE_P3A_P3B_HISTORY_FAV_BEGIN =================
+     P3A: Ride Again (go to /ride?from=&to=)
+     P3B: Favorites (localStorage)
+     UI-only. No backend. No schema. No Mapbox changes.
+  ==================================================================== */
+
+  const [favOpen, setFavOpen] = useState<boolean>(true);
+  const [favRoutes, setFavRoutes] = useState<FavRoute[]>([]);
+  const [favToast, setFavToast] = useState<string>("");
+
+  function loadFavRoutes(): FavRoute[] {
+    try {
+      const raw = (typeof window !== "undefined") ? window.localStorage.getItem(FAV_KEY) : null;
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      // sanitize shape
+      return arr
+        .map((x: any) => ({
+          id: String(x?.id || ""),
+          label: String(x?.label || "Favorite"),
+          from: String(x?.from || ""),
+          to: String(x?.to || ""),
+          createdAt: Number(x?.createdAt || 0),
+        }))
+        .filter((x: any) => x.id && x.from && x.to);
+    } catch {
+      return [];
+    }
+  }
+
+  function saveFavRoutes(next: FavRoute[]) {
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(FAV_KEY, JSON.stringify(next));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    const loaded = loadFavRoutes();
+    // newest-first
+    loaded.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    setFavRoutes(loaded);
+  }, []);
+
+  useEffect(() => {
+    if (!favToast) return;
+    const t = setTimeout(() => setFavToast(""), 2500);
+    return () => clearTimeout(t as any);
+  }, [favToast]);
+
+  function rideAgain(from: string, to: string) {
+    const f = String(from || "").trim();
+    const t = String(to || "").trim();
+    if (!f || !t) { setFavToast("Missing pickup/dropoff."); return; }
+    router.push("/ride?from=" + encodeURIComponent(f) + "&to=" + encodeURIComponent(t));
+  }
+
+  function addFavorite(label: string, from: string, to: string) {
+    const lab = String(label || "Favorite").trim() || "Favorite";
+    const f = String(from || "").trim();
+    const t = String(to || "").trim();
+    if (!f || !t) { setFavToast("Missing pickup/dropoff."); return; }
+
+    const now = Date.now();
+    const id = "fav_" + now.toString(36) + "_" + Math.random().toString(36).slice(2);
+
+    // de-dup by from/to (keep newest)
+    const filtered = (favRoutes || []).filter(x => !(String(x.from||"") === f && String(x.to||"") === t));
+    const next: FavRoute[] = [{ id, label: lab, from: f, to: t, createdAt: now }, ...filtered];
+
+    setFavRoutes(next);
+    saveFavRoutes(next);
+    setFavToast("Saved to favorites.");
+  }
+
+  function removeFavorite(id: string) {
+    const next = (favRoutes || []).filter(x => String(x.id) !== String(id));
+    setFavRoutes(next);
+    saveFavRoutes(next);
+    setFavToast("Removed favorite.");
+  }
+
+  function saveSelectedAsFavorite(trip: TripSummary | null) {
+    if (!trip) { setFavToast("Select a trip first."); return; }
+    const from = String((trip as any).pickup || "").trim();
+    const to = String((trip as any).dropoff || "").trim();
+    const def = (from && to) ? ("Fav: " + from + " ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ " + to) : "Favorite";
+    const lab = (typeof window !== "undefined" && (window as any).prompt)
+      ? (window as any).prompt("Favorite label (e.g., Home, Work, Market):", def)
+      : def;
+    if (lab === null) return; // cancelled
+    addFavorite(String(lab || "Favorite"), from, to);
+  }
+
+  /* ================== JRIDE_P3A_P3B_HISTORY_FAV_END ================== */
   const [activeTab, setActiveTab] = useState("history");
 
   const [loading, setLoading] = useState(true);
@@ -449,38 +548,6 @@ export default function HistoryPage() {
     router.push(url);
   }
 
-  function addFavorite(label: string, from: string, to: string) {
-    const f = normalizeText(from);
-    const t = normalizeText(to);
-    if (f === EMPTY || t === EMPTY) {
-      setToast("Cannot save favorite with empty locations.");
-      window.setTimeout(() => setToast(""), 1800);
-      return;
-    }
-
-    const id = makeFavId(f, t);
-    const item: FavRoute = { id, label: normalizeText(label), from: f, to: t, createdAt: Date.now() };
-
-    setFavs((prev) => {
-      const next = [item, ...prev.filter((x) => x.id !== id)];
-      saveFavs(next);
-      return next;
-    });
-
-    setToast("Saved favorite.");
-    window.setTimeout(() => setToast(""), 1800);
-  }
-
-  function removeFavorite(id: string) {
-    setFavs((prev) => {
-      const next = prev.filter((x) => x.id !== id);
-      saveFavs(next);
-      return next;
-    });
-    setToast("Removed favorite.");
-    window.setTimeout(() => setToast(""), 1800);
-  }
-
   async function onCopy(trip: TripSummary) {
     const ok = await copyToClipboard(buildReceiptText(trip));
     setToast(ok ? "Copied receipt text." : "Copy failed on this browser.");
@@ -555,8 +622,73 @@ export default function HistoryPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search Trip Reference..."
+            
+
               className="w-full max-w-md rounded-xl border border-black/10 bg-white px-3 py-2 text-sm shadow-sm"
             />
+            {/* ================= JRIDE_P3A_P3B Favorites panel (UI-only) ================= */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold">Favorites</div>
+                <button
+                  type="button"
+                  onClick={() => setFavOpen(!favOpen)}
+                  className="rounded-lg border border-black/10 px-2 py-1 text-xs font-semibold hover:bg-black/5"
+                >
+                  {favOpen ? "Hide" : "Show"}
+                </button>
+              </div>
+
+              {favToast ? (
+                <div className="mt-2 text-xs rounded-lg border border-black/10 bg-white px-3 py-2">
+                  {favToast}
+                </div>
+              ) : null}
+
+              {favOpen ? (
+                <div className="mt-2 rounded-xl border border-black/10 bg-white p-3">
+                  {(!favRoutes || favRoutes.length === 0) ? (
+                    <div className="text-xs opacity-70">
+                      No favorites yet. Select a trip on the left, then press <b>Save favorite</b>.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {favRoutes.map((f) => (
+                        <div key={f.id} className="rounded-lg border border-black/10 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold truncate">{normalizeText(f.label)}</div>
+                              <div className="text-xs opacity-70 mt-1">
+                                <div className="truncate">From: {normalizeText(f.from)}</div>
+                                <div className="truncate">To: {normalizeText(f.to)}</div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => rideAgain(f.from, f.to)}
+                                className="rounded-lg border border-black/10 px-3 py-2 text-xs font-semibold hover:bg-black/5"
+                              >
+                                Ride again
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeFavorite(f.id)}
+                                className="rounded-lg border border-black/10 px-3 py-2 text-xs font-semibold hover:bg-black/5"
+                                title="Remove"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {/* ================= END Favorites panel ================= */}
           </div>
         )}
 
@@ -712,6 +844,31 @@ export default function HistoryPage() {
                     >
                       Print
                     </button>
+                      <button
+                        type="button"
+                        onClick={() => rideAgain((selectedTrip as any)?.pickup, (selectedTrip as any)?.dropoff)}
+                        disabled={!selectedTrip}
+                        className={
+                          "rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " +
+                          (!selectedTrip ? "opacity-50" : "hover:bg-black/5")
+                        }
+                        title="Go to Ride page with the same pickup/dropoff"
+                      >
+                        Ride again
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => saveSelectedAsFavorite(selectedTrip)}
+                        disabled={!selectedTrip}
+                        className={
+                          "rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " +
+                          (!selectedTrip ? "opacity-50" : "hover:bg-black/5")
+                        }
+                        title="Save this pickup/dropoff as a favorite route"
+                      >
+                        Save favorite
+                      </button>
                   </div>
                 ) : null}
               </div>

@@ -272,7 +272,7 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
 
   function p1IsNonCancellable(stRaw: any): boolean {
     const st = p1NormStatus(stRaw);
-    // UI-only guardrail: no â€œcancel/clearâ€ once driver is already on the way or later
+    // UI-only guardrail: no Ã¢â‚¬Å“cancel/clearÃ¢â‚¬Â once driver is already on the way or later
     return st === "on_the_way" || st === "arrived" || st === "on_trip";
   }
 
@@ -483,6 +483,26 @@ const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
   const [fromLabel, setFromLabel] = React.useState("Lagawe Public Market");
   const [toLabel, setToLabel] = React.useState("Lagawe Town Plaza");
+
+  // ===== P3A: Prefill from History (UI-only) =====
+  // Accepts: /ride?from=<pickup>&to=<dropoff>
+  // Reads once on mount. Does NOT auto-submit. No Mapbox changes.
+  React.useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const sp = new URLSearchParams(String(window.location.search || ""));
+      const f = String(sp.get("from") || "").trim();
+      const t = String(sp.get("to") || "").trim();
+      if (f) setFromLabel(f);
+      if (t) setToLabel(t);
+
+      // optional: clear any open suggestion lists if present
+      try { setGeoFrom([] as any); } catch {}
+      try { setGeoTo([] as any); } catch {}
+      try { setActiveGeoField(null as any); } catch {}
+    } catch {}
+  }, []);
+  // ===== END P3A =====
 
   const [pickupLat, setPickupLat] = React.useState("16.7999");
   const [pickupLng, setPickupLng] = React.useState("121.1175");
