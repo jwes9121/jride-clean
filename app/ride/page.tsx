@@ -272,7 +272,7 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
 
   function p1IsNonCancellable(stRaw: any): boolean {
     const st = p1NormStatus(stRaw);
-    // UI-only guardrail: no Ã¢â‚¬Å“cancel/clearÃ¢â‚¬Â once driver is already on the way or later
+    // UI-only guardrail: no ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œcancel/clearÃƒÂ¢Ã¢â€šÂ¬Ã‚Â once driver is already on the way or later
     return st === "on_the_way" || st === "arrived" || st === "on_trip";
   }
 
@@ -483,6 +483,25 @@ const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
   const [fromLabel, setFromLabel] = React.useState("Lagawe Public Market");
   const [toLabel, setToLabel] = React.useState("Lagawe Town Plaza");
+  /* ================= JRIDE_P3C_RIDE_PREFILL_BEGIN =================
+     UI-only: Prefill pickup/dropoff labels from /ride?from=&to=
+     No backend. No schema. No Mapbox edits.
+  ================================================================== */
+  React.useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      const sp = new URLSearchParams(window.location.search || "");
+      const f = String(sp.get("from") || "").trim();
+      const t = String(sp.get("to") || "").trim();
+      // Only set if provided (do not overwrite user typing)
+      if (f) setFromLabel(f);
+      if (t) setToLabel(t);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /* ================== JRIDE_P3C_RIDE_PREFILL_END ================== */
 
   // ===== P3A: Prefill from History (UI-only) =====
   // Accepts: /ride?from=<pickup>&to=<dropoff>

@@ -30,6 +30,13 @@ type FavRoute = {
 
 const EMPTY = "--";
 const FAV_KEY = "JRIDE_FAVORITE_ROUTES_V1";
+const LAST_TRIPS_KEY = "JRIDE_LAST_TRIPS_V1";
+/* ================= JRIDE_P3C_A_PLUS_C_BEGIN =================
+   UI-only:
+   - Cache last loaded trips (for /history/[ref])
+   - Add "Open details" button
+   No backend. No schema. No Mapbox changes.
+============================================================== */
 
 function normalizeText(v: any): string {
   if (v === null || typeof v === "undefined") return EMPTY;
@@ -37,9 +44,9 @@ function normalizeText(v: any): string {
 
   // Strip known mojibake markers + any remaining non-ASCII chars.
   s = s
-    .replace(/ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡/g, "")
-    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢/g, "")
-    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢/g, "")
+    .replace(/ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢/g, "")
     .trim();
 
   // Remove non-ASCII (last resort)
@@ -458,7 +465,7 @@ export default function HistoryPage() {
     if (!trip) { setFavToast("Select a trip first."); return; }
     const from = String((trip as any).pickup || "").trim();
     const to = String((trip as any).dropoff || "").trim();
-    const def = (from && to) ? ("Fav: " + from + " ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ " + to) : "Favorite";
+    const def = (from && to) ? ("Fav: " + from + " ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ " + to) : "Favorite";
     const lab = (typeof window !== "undefined" && (window as any).prompt)
       ? (window as any).prompt("Favorite label (e.g., Home, Work, Market):", def)
       : def;
@@ -472,6 +479,18 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string>("");
   const [trips, setTrips] = useState<TripSummary[]>([]);
+  // P3C: cache last loaded trips for /history/[ref] (UI-only)
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      // Keep it small + safe: only cache arrays
+      // @ts-ignore
+      if (Array.isArray(trips)) window.localStorage.setItem(LAST_TRIPS_KEY, JSON.stringify(trips));
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips]);
   const [selectedRef, setSelectedRef] = useState<string>("");
 
   const [toast, setToast] = useState<string>("");
@@ -844,6 +863,28 @@ export default function HistoryPage() {
                     >
                       Print
                     </button>
+                      <button
+                        type="button"
+                        disabled={!selectedTrip}
+                        onClick={() => {
+                          if (!selectedTrip) return;
+                          try {
+                            if (typeof window !== "undefined") {
+                              // cache once more to improve reliability
+                              // @ts-ignore
+                              if (Array.isArray(trips)) window.localStorage.setItem(LAST_TRIPS_KEY, JSON.stringify(trips));
+                            }
+                          } catch {}
+                          router.push("/history/" + encodeURIComponent(String((selectedTrip as any).ref || "")));
+                        }}
+                        className={
+                          "rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " +
+                          (!selectedTrip ? "opacity-50" : "hover:bg-black/5")
+                        }
+                        title="Open trip details page"
+                      >
+                        Open details
+                      </button>
                       <button
                         type="button"
                         onClick={() => rideAgain((selectedTrip as any)?.pickup, (selectedTrip as any)?.dropoff)}
