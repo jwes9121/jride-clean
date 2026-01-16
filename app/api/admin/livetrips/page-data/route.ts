@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -163,11 +163,22 @@ export async function GET(req: Request) {
     } catch (e: any) {
       console.error("LIVETRIPS_FALLBACK_ACTIVE_EXCEPTION", e?.message || e);
     }
+  const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
+    ...t,
+    suggested_verified_fare:
+      (t as any)?.suggested_verified_fare ??
+      (t as any)?.suggestedVerifiedFare ??
+      (t as any)?.verified_suggested_fare ??
+      (t as any)?.fare_suggested_verified ??
+      (t as any)?.suggested_fare_verified ??
+      (t as any)?.suggested_fare ??
+      null,
+  }));
 
-    const payload =
+  const payload =
       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
-        ? { ...(rpcData as any), trips, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined }
-        : { trips, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+        ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined }
+        : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
 
     return ok(payload);
   } catch (err: any) {
