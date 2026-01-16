@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -237,6 +237,33 @@ export default function LiveTripsClient() {
   }, [selectedTripId, allTrips]);
 
   const [lastAction, setLastAction] = useState<string>("");
+
+  // P6C: UI-only proposed fare draft (no backend mutation)
+  const [proposedFareDraft, setProposedFareDraft] = useState<string>("");
+
+  useEffect(() => {
+    // Keep draft in sync when selecting a trip (best-effort)
+    if (!selectedTrip) {
+      setProposedFareDraft("");
+      return;
+    }
+    const v =
+      (selectedTrip as any)?.proposed_fare ??
+      (selectedTrip as any)?.proposedFare ??
+      (selectedTrip as any)?.verified_fare ??
+      (selectedTrip as any)?.verifiedFare ??
+      null;
+
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) setProposedFareDraft(String(n));
+    else setProposedFareDraft("");
+  }, [selectedTripId]);
+
+  const handleUseSuggestedFare = (v: number) => {
+    if (!Number.isFinite(v) || v <= 0) return;
+    setProposedFareDraft(String(v));
+    setLastAction("Copied suggested fare to Proposed Fare (draft).");
+  };
   const [nudgedAt, setNudgedAt] = useState<Record<string, number>>({});
   // ===== PHASE B: UI-only escalation (flagging) =====
   // Flagged trips are UI-only (no backend). Used for dispatcher follow-up.
@@ -819,7 +846,19 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded border bg-white p-3">
                 <div className="font-semibold">Fare</div>
-                <div className="text-sm text-gray-600">--</div>
+                <div className="mt-1">
+                  <div className="text-xs text-gray-500 mb-1">Proposed fare (draft)</div>
+                  <input
+                    value={proposedFareDraft}
+                    onChange={(e) => setProposedFareDraft(e.target.value)}
+                    placeholder="--"
+                    className="w-full rounded border px-2 py-1 text-sm"
+                    inputMode="decimal"
+                  />
+                  <div className="mt-1 text-[11px] text-gray-500">
+                    UI-only draft. No backend update yet.
+                  </div>
+                </div>
               </div>
               <div className="rounded border bg-white p-3">
                 <div className="font-semibold">Company cut</div>
@@ -874,7 +913,7 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
             {/* Optional richer panels if your project has them */}
             {TripWalletPanel && selectedTrip ? (
               <div className="mt-3">
-                <TripWalletPanel selectedTrip={selectedTrip} />
+                <TripWalletPanel selectedTrip={selectedTrip} onUseSuggestedFare={handleUseSuggestedFare} />
               </div>
             ) : null}
             {TripLifecycleActions && selectedTrip ? (
@@ -1029,6 +1068,7 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
     </div>
   );
 }
+
 
 
 

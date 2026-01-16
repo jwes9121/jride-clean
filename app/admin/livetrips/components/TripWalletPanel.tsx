@@ -1,9 +1,14 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
 type Props = {
-  trip: any | null;
+  // Accept both prop names (LiveTripsClient passes selectedTrip)
+  trip?: any | null;
+  selectedTrip?: any | null;
+
+  // P6C: UI-only copy suggested fare into a draft field upstream
+  onUseSuggestedFare?: (v: number) => void;
 };
 
 function asNum(v: any): number | null {
@@ -112,7 +117,9 @@ function pickBalanceAfter(row: any): any {
   return row?.balance_after ?? row?.balanceAfter ?? row?.balance ?? null;
 }
 
-export default function TripWalletPanel({ trip }: Props) {
+export default function TripWalletPanel(props: Props) {
+  const trip = (props && (props as any).trip !== undefined) ? (props as any).trip : ((props as any).selectedTrip ?? null);
+  const onUseSuggestedFare = (props as any)?.onUseSuggestedFare as ((v: number) => void) | undefined;
   const fare = useMemo(() => computeFareFromBooking(trip), [trip]);
   const isTakeout = useMemo(() => isTakeoutTrip(trip), [trip]);
   // TAKEOUT display-only estimate (based on your business rule: vendor earns 90%)
@@ -308,6 +315,28 @@ const driverPayout = useMemo(() => {
           <div className="font-semibold">{fmtMoney(fareDisplay)}</div>
           <div className="mt-1 text-xs text-slate-500">
             Suggested verified fare: <span className="font-medium text-slate-700">{fmtMoney(suggestedFare)}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                const n = asNum(suggestedFare);
+                if (n === null) return;
+
+                // UI-only: copy into upstream draft (preferred)
+                if (onUseSuggestedFare) onUseSuggestedFare(n);
+
+                // Bonus: clipboard copy (best-effort)
+                try {
+                  if (navigator && (navigator as any).clipboard && (navigator as any).clipboard.writeText) {
+                    await (navigator as any).clipboard.writeText(String(n));
+                  }
+                } catch {}
+              }}
+              disabled={!(asNum(suggestedFare) !== null && (asNum(suggestedFare) as any) > 0)}
+              className="ml-2 rounded border px-2 py-0.5 text-[11px] hover:bg-black/5 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Copy suggested fare into Proposed Fare (draft)"
+            >
+              Use Suggested Fare
+            </button>
           </div>
         </div>
 
@@ -487,6 +516,7 @@ const driverPayout = useMemo(() => {
     </>
   );
 }
+
 
 
 
