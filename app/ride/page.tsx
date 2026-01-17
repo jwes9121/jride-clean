@@ -57,33 +57,32 @@ function p1FriendlyError(raw: any): string {
 /* ===== JRIDE P4A+P4B: Fare Offer + Pickup Distance Fee (UI-only helpers) ===== */
 const P4_PLATFORM_SERVICE_FEE = 15;
 
-function p4Num(v: any): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
 function p4Money(n: any): string {
-  const x = p4Num(n);
-  if (x == null) return "Ã¢â‚¬â€";
-  try { return "Ã¢â€šÂ±" + x.toFixed(0); } catch { return "Ã¢â€šÂ±" + String(x); }
+  const x0 = (typeof n === "number") ? n : Number(n);
+  const x = Number.isFinite(x0) ? x0 : null;
+  if (x == null) return "--";
+  try { return "PHP " + x.toFixed(0); } catch { return "PHP " + String(x); }
 }
-
 // Pickup Distance Fee rule (FINAL):
 // Free pickup: up to 1.5 km
 // If driver->pickup distance > 1.5 km:
-// Base pickup fee: Ã¢â€šÂ±20
-// Ã¢â€šÂ±10 per additional 0.5 km, rounded up
+// Base pickup fee: PHP 20
+// PHP 10 per additional 0.5 km, rounded up
 function p4PickupDistanceFee(driverToPickupKmAny: any): number {
-  const km = p4Num(driverToPickupKmAny);
+  const km0 = (typeof driverToPickupKmAny === "number") ? driverToPickupKmAny : Number(driverToPickupKmAny);
+  const km = Number.isFinite(km0) ? km0 : null;
+
   if (km == null) return 0;
   if (km <= 1.5) return 0;
-  const base = 20;
-  const extraKm = Math.max(0, km - 1.5);
-  const blocks = Math.ceil(extraKm / 0.5);
-  return base + Math.max(0, blocks - 1) * 10;
-}
-/* ===== END JRIDE P4A+P4B HELPERS ===== */
 
+  const base = 20;
+  const perHalfKm = 10;
+
+  const over = km - 1.5;
+  const steps = Math.ceil(over / 0.5);
+
+  return base + steps * perHalfKm;
+}
 function p1RenderStepper(stRaw: any) {
 /* ===== PHASE P3: Booking block reason clarity (UI-only) ===== */
 function p3ExplainBlock(resultText: any): null | { title: string; body: string; next: string } {
@@ -2527,6 +2526,56 @@ if (!can.ok) {
 
             <div className="mt-1 text-xs font-mono">
               code: <span className="font-semibold">{activeCode}</span>
+            </div>
+            <div className="mt-3 rounded-2xl border border-black/10 bg-white p-3">
+              {/* ===== JRIDE_P7C_DRIVER_MINICARD_BEGIN (UI-only, insert-only) ===== */}
+              {(() => {
+                const b: any = (typeof liveBooking !== "undefined") ? (liveBooking as any) : null;
+
+                const dName: any = b ? (b.driver_name ?? b.driverName ?? b.driver?.name ?? null) : null;
+                const plate: any = b ? (b.plate_no ?? b.plate ?? b.plateNumber ?? null) : null;
+                const vehicle: any = b ? (b.vehicle_type ?? b.vehicleType ?? b.vehicle_label ?? b.vehicle ?? null) : null;
+
+                const rel = liveUpdatedAt ? (Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago") : "--";
+                const abs = liveUpdatedAt
+                  ? (() => { try { return new Date(liveUpdatedAt as any).toLocaleString(); } catch { return String(liveUpdatedAt); } })()
+                  : "--";
+
+                return (
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Driver details</div>
+                        <div className="text-xs opacity-70">Best-effort from live booking data</div>
+                      </div>
+                      <div className="text-xs rounded-full bg-black/5 px-3 py-1 font-semibold">
+                        LIVE
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Name</div>
+                        <div className="text-xs font-mono">{dName ? String(dName) : "--"}</div>
+                      </div>
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Plate</div>
+                        <div className="text-xs font-mono">{plate ? String(plate) : "--"}</div>
+                      </div>
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Vehicle</div>
+                        <div className="text-xs font-mono">{vehicle ? String(vehicle) : "--"}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-xs opacity-70">
+                      Last updated: <span className="font-mono">{rel}</span>
+                      <span className="opacity-50">{" "}({abs})</span>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ===== JRIDE_P7C_DRIVER_MINICARD_END ===== */}
             </div>
             <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
               {/* ===== JRIDE_P7B_FARE_BREAKDOWN_BEGIN (UI-only) ===== */}
