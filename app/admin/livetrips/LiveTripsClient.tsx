@@ -238,10 +238,19 @@ export default function LiveTripsClient() {
 
   const [lastAction, setLastAction] = useState<string>("");
 
+  // P6I_APPLY_OK: transient UI confirmation after Apply Draft
+  const [justApplied, setJustApplied] = useState(false);
+
   // P6C: UI-only proposed fare draft (no backend mutation)
   const [proposedFareDraft, setProposedFareDraft] = useState<string>("");
 
   useEffect(() => {
+    if (!justApplied) return;
+    const t = setTimeout(() => setJustApplied(false), 2500);
+    return () => clearTimeout(t);
+  }, [justApplied]);
+
+useEffect(() => {
     // Keep draft in sync when selecting a trip (best-effort)
     if (!selectedTrip) {
       setProposedFareDraft("");
@@ -844,7 +853,13 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
           {/* Bottom panels + actions (classic layout) */}
           <div className="border-t bg-gray-50 p-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded border bg-white p-3">
+              <div className={`rounded border bg-white p-3 transition-shadow ${justApplied ? "ring-2 ring-green-500/60 shadow-md" : ""}`}>
+  {justApplied && (
+    <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-green-700">
+      <span>OK</span>
+      <span>Applied</span>
+    </div>
+  )}
   <div className="flex items-start justify-between gap-2">
     <div>
       <div className="font-semibold">Fare</div>
@@ -942,7 +957,8 @@ if (_id) setPendingAutoAssignById((p) => ({ ...p, [_id]: false }));
     const j = await r.json();
     if (!r.ok || !j?.ok) throw new Error(j?.code || "FAILED");
     setLastAction("Draft fare applied.");
-    await loadPage();
+    setJustApplied(true);
+            await loadPage();
   } catch (e:any) {
     setLastAction("Apply failed: " + String(e?.message || e));
   }
@@ -1193,6 +1209,7 @@ disabled={false}
     </div>
   );
 }
+
 
 
 
