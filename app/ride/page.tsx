@@ -303,7 +303,7 @@ function jridePhase2dNormalizeItems(items: any[]): any[] {
 
   function p1IsNonCancellable(stRaw: any): boolean {
     const st = p1NormStatus(stRaw);
-    // UI-only guardrail: no ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œcancel/clearÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â once driver is already on the way or later
+    // UI-only guardrail: no cancel/clear once driver is already on the way or later
     return st === "on_the_way" || st === "arrived" || st === "on_trip";
   }
 
@@ -2527,6 +2527,103 @@ if (!can.ok) {
 
             <div className="mt-1 text-xs font-mono">
               code: <span className="font-semibold">{activeCode}</span>
+            </div>
+            <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
+              {/* ===== JRIDE_P7B_FARE_BREAKDOWN_BEGIN (UI-only) ===== */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Fare breakdown</div>
+                  <div className="text-xs opacity-70">
+                    Driver offer + pickup distance fee + platform fee.
+                  </div>
+                </div>
+                <div className="text-xs rounded-full bg-black/5 px-3 py-1 font-semibold">
+                  ESTIMATE
+                </div>
+              </div>
+
+              {(() => {
+                // UI-only. Best-effort field picks. No backend assumptions.
+                const b: any = (typeof liveBooking !== "undefined") ? (liveBooking as any) : null;
+
+                const offerAny: any = b ? (
+                  b.driver_fare_offer ??
+                  b.fare_offer ??
+                  b.driver_offer_fare ??
+                  b.driver_fare ??
+                  b.fare ??
+                  b.quoted_fare ??
+                  b.proposed_fare ??
+                  b.fare_amount ??
+                  b.amount ??
+                  null
+                ) : null;
+
+                const kmAny: any = b ? (
+                  b.driver_to_pickup_km ??
+                  b.driver_pickup_km ??
+                  b.pickup_distance_km ??
+                  b.pickup_km ??
+                  b.driver_distance_km ??
+                  b.distance_driver_to_pickup_km ??
+                  null
+                ) : null;
+
+                const offerNum = Number(offerAny);
+                const hasOffer = Number.isFinite(offerNum) && offerNum >= 0;
+
+                const pickupFee = p4PickupDistanceFee(kmAny);
+                const platformFee = Number(P4_PLATFORM_SERVICE_FEE) || 0;
+
+                const total =
+                  (hasOffer ? offerNum : 0) +
+                  (Number.isFinite(Number(pickupFee)) ? Number(pickupFee) : 0) +
+                  platformFee;
+
+                const showPickupFee = Number(pickupFee || 0) > 0;
+
+                return (
+                  <div className="mt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Driver offer</div>
+                        <div className="font-mono text-sm">
+                          {hasOffer ? p4Money(offerNum) : "--"}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Pickup distance fee</div>
+                        <div className="font-mono text-sm">
+                          {showPickupFee ? p4Money(pickupFee) : "PHP 0"}
+                        </div>
+                        <div className="mt-1 text-[11px] opacity-70">
+                          Free up to 1.5 km. Base PHP 20 then PHP 10 per additional 0.5 km (rounded up).
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Platform fee</div>
+                        <div className="font-mono text-sm">{p4Money(platformFee)}</div>
+                        <div className="mt-1 text-[11px] opacity-70">
+                          Convenience / service fee
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2 bg-black/5">
+                        <div className="text-xs opacity-70">Estimated total</div>
+                        <div className="font-mono text-sm font-semibold">
+                          {hasOffer ? p4Money(total) : "--"}
+                        </div>
+                        <div className="mt-1 text-[11px] opacity-70">
+                          Total updates once a driver quote exists.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ===== JRIDE_P7B_FARE_BREAKDOWN_END ===== */}
             </div>
 
             <div className="mt-2">
