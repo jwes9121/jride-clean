@@ -62,18 +62,18 @@ function p4Num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function p4Money(n: any): string {
-  const x = p4Num(n);
-  if (x == null) return "Ã¢â‚¬â€";
-  try { return "Ã¢â€šÂ±" + x.toFixed(0); } catch { return "Ã¢â€šÂ±" + String(x); }
+function\ p4Money\(n:\ any\):\ string\ \{
+\ \ const\ x\ =\ p4Num\(n\);
+\ \ if\ \(x\ ==\ null\)\ return\ "--";
+\ \ try\ \{\ return\ "PHP\ "\ \+\ x\.toFixed\(0\);\ }\ catch\ \{\ return\ "PHP\ "\ \+\ String\(x\);\ }
 }
 
-// Pickup Distance Fee rule (FINAL):
-// Free pickup: up to 1.5 km
-// If driver->pickup distance > 1.5 km:
-// Base pickup fee: Ã¢â€šÂ±20
-// Ã¢â€šÂ±10 per additional 0.5 km, rounded up
-function p4PickupDistanceFee(driverToPickupKmAny: any): number {
+//\ Pickup\ Distance\ Fee\ rule\ \(FINAL\):
+//\ Free\ pickup:\ up\ to\ 1\.5\ km
+//\ If\ driver->pickup\ distance\ >\ 1\.5\ km:
+//\ Base\ pickup\ fee:\ PHP\ 20
+//\ PHP\ 10\ per\ additional\ 0\.5\ km,\ rounded\ up
+function\ p4PickupDistanceFee(driverToPickupKmAny: any): number {
   const km = p4Num(driverToPickupKmAny);
   if (km == null) return 0;
   if (km <= 1.5) return 0;
@@ -1639,7 +1639,8 @@ function blockTitle(): string {
     lines.push("Requested at: " + now.toISOString());
     lines.push("Reason: Please verify my passenger account so I can book rides.");
     lines.push("Notes: " + (nightGate ? "Night gate is ON and booking is blocked while unverified." : "Booking is blocked while unverified."));
-    return lines.join("\n");
+    return lines.join("
+");
   }
 
   async function copyVerifyRequest() {
@@ -1833,7 +1834,8 @@ if (!can.ok) {
       } catch {
         lines.push("vehicle_type/passenger_count: (probe error)");
       }
-      setResult(lines.join("\n"));
+      setResult(lines.join("
+"));
 
       // 3) Start live polling after booking (if we have a booking_code)
       const code = norm((bj.booking && bj.booking.booking_code) ? bj.booking.booking_code : (bj.booking_code || ""));
@@ -1872,10 +1874,14 @@ if (!can.ok) {
 
             const statusLabel = eff ? (eff.charAt(0).toUpperCase() + eff.slice(1)) : "Unknown";
             const receiptText =
-              "JRIDE TRIP RECEIPT\n" +
-              ("Code: " + receiptCode + "\n") +
-              ("Status: " + statusLabel + "\n") +
-              ("Debug: " + dbg + "\n");
+              "JRIDE TRIP RECEIPT
+" +
+              ("Code: " + receiptCode + "
+") +
+              ("Status: " + statusLabel + "
+") +
+              ("Debug: " + dbg + "
+");
 
             return (
               <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-3">
@@ -2678,12 +2684,18 @@ if (!can.ok) {
                 const dbg = (typeof p5GetDebugStatus === "function") ? p5GetDebugStatus() : "";
 
                 const receiptText =
-                  "JRIDE TRIP RECEIPT\n" +
-                  ("Code: " + receiptCode + "\n") +
-                  ("Status: " + statusLabel + "\n") +
-                  (driver ? ("Driver: " + driver + "\n") : "") +
-                  (updated ? ("Last update: " + updated + "\n") : "") +
-                  (dbg ? ("Debug: " + dbg + "\n") : "");
+                  "JRIDE TRIP RECEIPT
+" +
+                  ("Code: " + receiptCode + "
+") +
+                  ("Status: " + statusLabel + "
+") +
+                  (driver ? ("Driver: " + driver + "
+") : "") +
+                  (updated ? ("Last update: " + updated + "
+") : "") +
+                  (dbg ? ("Debug: " + dbg + "
+") : "");
 
                 return (
                   <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
@@ -2835,119 +2847,73 @@ if (!can.ok) {
                 );
               })()}
               {/* ===== END PHASE P3 ===== */}
-              {/* ===== PHASE P2: Trip receipt (terminal-only, UI-only) ===== */}
-              {(() => {
-                const st = String(liveStatus || "").trim().toLowerCase();
-                const isTerminal = st === "completed" || st === "cancelled";
-                if (!isTerminal) return null;
+              
 
-                const code = String(activeCode || "").trim();
-                const driver = String(liveDriverId || "").trim();
-                const updated = liveUpdatedAt ? new Date(liveUpdatedAt).toLocaleString() : "";
+              \ \ \ \ \ \ \ \ \ \ \ \ \ \ \{/\*\ =====\ JRIDE_P7C_STATUS_DRIVER_POLISH_BEGIN\ \(UI-only\)\ =====\ \*/}
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \{\(\(\)\ =>\ \{
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ b:\ any\ =\ \(typeof\ liveBooking\ !==\ "undefined"\)\ \?\ \(liveBooking\ as\ any\)\ :\ null;
 
-                const receiptText =
-                  "JRIDE TRIP RECEIPT\n" +
-                  (code ? ("Code: " + code + "\n") : "") +
-                  ("Status: " + (st ? (st.charAt(0).toUpperCase() + st.slice(1)) : "Unknown") + "\n") +
-                  (driver ? ("Driver: " + driver + "\n") : "") +
-                  (updated ? ("Last update: " + updated + "\n") : "");
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ dName:\ any\ =\ b\ \?\ \(b\.driver_name\ \?\?\ b\.driver\?\.name\ \?\?\ b\.driverName\ \?\?\ b\.name\ \?\?\ null\)\ :\ null;
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ plate:\ any\ =\ b\ \?\ \(b\.plate_no\ \?\?\ b\.plate\ \?\?\ b\.plateNumber\ \?\?\ b\.plate_no_text\ \?\?\ null\)\ :\ null;
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ vehicle:\ any\ =\ b\ \?\ \(b\.vehicle_type\ \?\?\ b\.vehicle\ \?\?\ b\.vehicleType\ \?\?\ b\.vehicle_label\ \?\?\ null\)\ :\ null;
 
-                return (
-                  <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">Trip receipt</div>
-                        <div className="text-xs opacity-70">
-                          {st === "completed" ? "Completed trip summary" : "Cancelled trip summary"}
-                        </div>
-                      </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ rel\ =\ liveUpdatedAt\ \?\ \(Math\.max\(0,\ Math\.floor\(\(Date\.now\(\)\ -\ liveUpdatedAt\)\ /\ 1000\)\)\ \+\ "s\ ago"\)\ :\ "--";
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ abs\ =\ liveUpdatedAt
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \?\ \(\(\)\ =>\ \{\ try\ \{\ return\ new\ Date\(liveUpdatedAt\ as\ any\)\.toLocaleString\(\);\ }\ catch\ \{\ return\ String\(liveUpdatedAt\);\ }\ }\)\(\)
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ :\ "--";
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                          onClick={async () => {
-                            try {
-                              if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
-                                await navigator.clipboard.writeText(receiptText);
-                                setResult("Receipt copied to clipboard.");
-                              } else {
-                                setResult("Copy not supported on this device/browser.");
-                              }
-                            } catch {
-                              setResult("Copy failed. Please try again.");
-                            }
-                          }}
-                          title="Copy receipt text"
-                        >
-                          Copy receipt
-                        </button>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ prettyStatus\ =\ String\(liveStatus\ \|\|\ ""\)\.trim\(\)\ \|\|\ "\(loading\)";
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ const\ prettyDriverId\ =\ String\(liveDriverId\ \|\|\ ""\)\.trim\(\)\ \|\|\ "\(none\)";
 
-                        <button
-                          type="button"
-                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                          onClick={() => {
-                            // UI-only reset (no backend calls)
-                            setActiveCode("");
-                            setLiveStatus("");
-                            setLiveDriverId("");
-                            setLiveUpdatedAt(null);
-                            setLiveErr("");
-                            
-              try { setLiveBooking(null); } catch {}
-setResult("");
-                          }}
-                          title="Clear receipt and start a new booking"
-                        >
-                          Book again
-                        </button>
-                      </div>
-                    </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ return\ \(
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="mt-3">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="grid\ grid-cols-1\ sm:grid-cols-2\ gap-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="rounded-xl\ border\ border-black/10\ p-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ opacity-70">Status</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="font-mono\ text-xs">\{prettyStatus}</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
 
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-black/10 p-2">
-                        <div className="text-xs opacity-70">Code</div>
-                        <div className="font-mono text-xs">{code || "(none)"}</div>
-                      </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="rounded-xl\ border\ border-black/10\ p-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ opacity-70">Driver\ ID</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="font-mono\ text-xs">\{prettyDriverId}</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
 
-                      <div className="rounded-xl border border-black/10 p-2">
-                        <div className="text-xs opacity-70">Status</div>
-                        <div className="font-mono text-xs">{st || "(unknown)"}</div>
-                      </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="mt-2\ rounded-2xl\ border\ border-black/10\ bg-white\ p-3">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="flex\ items-start\ justify-between\ gap-3">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-sm\ font-semibold">Driver\ details</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ opacity-70">Best-effort\ from\ live\ booking\ data</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ rounded-full\ bg-black/5\ px-3\ py-1\ font-semibold">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ LIVE
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
 
-                      <div className="rounded-xl border border-black/10 p-2">
-                        <div className="text-xs opacity-70">Driver</div>
-                        <div className="font-mono text-xs">{driver || "(none)"}</div>
-                      </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="mt-3\ grid\ grid-cols-1\ sm:grid-cols-3\ gap-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="rounded-xl\ border\ border-black/10\ p-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ opacity-70">Name</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ font-mono">\{dName\ \?\ String\(dName\)\ :\ "--"}</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="rounded-xl\ border\ border-black/10\ p-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ opacity-70">Plate</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ font-mono">\{plate\ \?\ String\(plate\)\ :\ "--"}</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="rounded-xl\ border\ border-black/10\ p-2">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ opacity-70">Vehicle</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="text-xs\ font-mono">\{vehicle\ \?\ String\(vehicle\)\ :\ "--"}</div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
 
-                      <div className="rounded-xl border border-black/10 p-2">
-                        <div className="text-xs opacity-70">Last update</div>
-                        <div className="font-mono text-xs">{updated || "--"}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 text-xs opacity-70">
-                      Tip: Keep this receipt for reference when reporting issues.
-                    </div>
-                  </div>
-                );
-              })()}
-              {/* ===== END PHASE P2 ===== */}
-
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="rounded-xl border border-black/10 p-2">
-                  <div className="text-xs opacity-70">Status</div>
-                  <div className="font-mono text-xs">{liveStatus || "(loading)"}</div>
-                </div>
-                <div className="rounded-xl border border-black/10 p-2">
-                  <div className="text-xs opacity-70">Driver</div>
-                  <div className="font-mono text-xs">{liveDriverId || "(none)"}</div>
-                </div>
-              </div>
-
-              <div className="mt-2 text-xs opacity-70">
-                Last update: {liveUpdatedAt ? Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago" : "--"}
-              </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <div\ className="mt-3\ text-xs\ opacity-70">
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ Last\ updated:\ <span\ className="font-mono">\{rel}</span>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ <span\ className="opacity-50">\{"\ "}\(\{abs}\)</span>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ </div>
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \);
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ }\)\(\)}
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \{/\*\ =====\ JRIDE_P7C_STATUS_DRIVER_POLISH_END\ =====\ \*/}
 
               {liveErr ? (
                 <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2">
