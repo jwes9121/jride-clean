@@ -1,29 +1,4 @@
-import { NextResponse } from "next/server";
-function asNum(v: any): number | null {
-  const n = typeof v === "number" ? v : (typeof v === "string" ? Number(v) : NaN);
-  return Number.isFinite(n) ? n : null;
-}
-
-// Ifugao bounding box (server-side hard gate).
-const IFUGAO_LAT_MIN = 16.60;
-const IFUGAO_LAT_MAX = 17.25;
-const IFUGAO_LNG_MIN = 120.70;
-const IFUGAO_LNG_MAX = 121.35;
-
-function insideIfugao(latAny: any, lngAny: any): boolean {
-  const lat = asNum(latAny);
-  const lng = asNum(lngAny);
-  if (lat == null || lng == null) return false;
-  return lat >= IFUGAO_LAT_MIN && lat <= IFUGAO_LAT_MAX && lng >= IFUGAO_LNG_MIN && lng <= IFUGAO_LNG_MAX;
-}
-
-function json403(code: string, message: string) {
-  return new Response(JSON.stringify({ ok: false, code, message }), {
-    status: 403,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
@@ -34,15 +9,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-  // ===== JRIDE_GEO_ENFORCE_IFUGAO_BEGIN =====
-  // Server-authoritative: block ride creation outside Ifugao.
-  const __latAny = (body as any)?.pickup_lat ?? (body as any)?.pickupLat;
-  const __lngAny = (body as any)?.pickup_lng ?? (body as any)?.pickupLng;
-  if (!insideIfugao(__latAny, __lngAny)) {
-    return json403("OUTSIDE_IFUGAO", "Booking is only available inside Ifugao.");
-  }
-  // ===== JRIDE_GEO_ENFORCE_IFUGAO_END =====
-
     const {
       passenger_id = null,
       pickup_lat,
