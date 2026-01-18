@@ -567,7 +567,8 @@ const [passengerName, setPassengerName] = React.useState("Test Passenger A");
   const [liveUpdatedAt, setLiveUpdatedAt] = React.useState<number | null>(null);
   const [liveErr, setLiveErr] = React.useState<string>("");
   const [liveBooking, setLiveBooking] = React.useState<any | null>(null); // P4A/P4B
-  const [fareBusy, setFareBusy] = React.useState<boolean>(false); // P4A/P4B
+  const [fareBusy, setFareBusy] = React.useState<boolean>(false);
+const [p9FeesAck, setP9FeesAck] = React.useState<boolean>(false); // P9 fees acknowledgement (UI-only) // P4A/P4B
   const pollRef = React.useRef<any>(null);
 
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
@@ -1600,7 +1601,7 @@ const j = resp.json || {};
     !walletBlocked &&
     !bookingSubmitted &&
     pilotTownAllowed &&
-    geoOrLocalOk && !["requested","assigned","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase());
+    geoOrLocalOk && p9FeesAck && !["requested","assigned","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase());
 function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
@@ -2441,6 +2442,30 @@ if (!can.ok) {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3 items-center">
+  {/* ===== JRIDE_P9_FEES_ACK_BEGIN (UI-only) ===== */}
+  <div className="w-full -mt-2 mb-1 rounded-2xl border border-black/10 bg-white p-3">
+    <div className="flex items-start gap-3">
+      <input
+        type="checkbox"
+        className="mt-1 h-4 w-4"
+        checked={!!p9FeesAck}
+        onChange={(e) => { try { setP9FeesAck(!!e.target.checked); } catch {} }}
+        disabled={busy || bookingSubmitted}
+      />
+      <div className="text-sm">
+        <div className="font-semibold">Fees acknowledgement</div>
+        <div className="mt-1 text-xs opacity-80">
+          I understand there is a platform fee (PHP {String(P4_PLATFORM_SERVICE_FEE)}) and that an extra pickup distance fee may apply if the assigned driver is farther than 1.5 km from the pickup point.
+        </div>
+        {!p9FeesAck ? (
+          <div className="mt-2 text-xs rounded-lg border border-amber-200 bg-amber-50 p-2">
+            Please tick the box to enable "Submit booking".
+          </div>
+        ) : null}
+      </div>
+    </div>
+  </div>
+  {/* ===== JRIDE_P9_FEES_ACK_END ===== */}
           <button
             type="button"
           disabled={!allowSubmit}
@@ -2650,7 +2675,7 @@ if (!can.ok) {
           </div>
           <div className="mt-1 text-amber-900/80">
             Driver to pickup distance: <span className="font-mono">{kmDisp} km</span>
-            {" "}â€¢ Extra fee: <span className="font-mono font-semibold">{p4Money(fee)}</span>
+            {" "}Ã¢â‚¬Â¢ Extra fee: <span className="font-mono font-semibold">{p4Money(fee)}</span>
           </div>
           <div className="mt-1 text-[11px] text-amber-900/70">
             Free up to 1.5 km. Base PHP 20 then PHP 10 per additional 0.5 km (rounded up).
@@ -2659,6 +2684,8 @@ if (!can.ok) {
       );
     })()}
     {/* ===== JRIDE_P8_PICKUP_FEE_DISCLOSURE_END ===== */}<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {
+}
                       <div className="rounded-xl border border-black/10 p-2">
                         <div className="text-xs opacity-70">Driver offer</div>
                         <div className="font-mono text-sm">
