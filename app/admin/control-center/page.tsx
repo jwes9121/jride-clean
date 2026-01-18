@@ -258,7 +258,7 @@ export default function AdminControlCenterPage() {
         <span style={badge}>
           Role: <b>{role}</b>{" "}
           <span style={{ opacity: 0.7 }}>
-            {debug ? "(debug)" : ""} {roleSource ? `Ãƒâ€šÂ· ${roleSource}` : ""}
+            {debug ? "(debug)" : ""} {roleSource ? `Ãƒâ€šÂ -  ${roleSource}` : ""}
           </span>
         </span>
 
