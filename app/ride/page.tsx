@@ -72,6 +72,11 @@ function p4PickupDistanceFee(driverToPickupKmAny: any): number {
   const km0 = (typeof driverToPickupKmAny === "number") ? driverToPickupKmAny : Number(driverToPickupKmAny);
   const km = Number.isFinite(km0) ? km0 : null;
 
+  // Pickup Distance Fee rule (FINAL):
+  // Free pickup: up to 1.5 km
+  // If driver->pickup distance > 1.5 km:
+  // Base pickup fee: PHP 20
+  // PHP 10 per additional 0.5 km, rounded up
   if (km == null) return 0;
   if (km <= 1.5) return 0;
 
@@ -84,42 +89,8 @@ function p4PickupDistanceFee(driverToPickupKmAny: any): number {
   return base + steps * perHalfKm;
 }
 function p1RenderStepper(stRaw: any) {
-/* ===== PHASE P3: Booking block reason clarity (UI-only) ===== */
-function p3ExplainBlock(resultText: any): null | { title: string; body: string; next: string } {
-  const t = String(resultText || "").toUpperCase();
-  if (!t) return null;
 
-  if (t.includes("VERIFY") || t.includes("VERIFICATION")) {
-    return {
-      title: "Account verification required",
-      body: "Please verify your account before booking a ride.",
-      next: "Verify your account to continue."
-    };
-  }
-  if (t.includes("NIGHT")) {
-    return {
-      title: "Booking unavailable at this time",
-      body: "Bookings are limited during night hours.",
-      next: "Please try again after service hours resume."
-    };
-  }
-  if (t.includes("GEO") || t.includes("AREA") || t.includes("OUTSIDE")) {
-    return {
-      title: "Service not available in your area",
-      body: "This service is currently limited to supported locations.",
-      next: "Move to a supported area and try again."
-    };
-  }
-  if (t.includes("BLOCK") || t.includes("UNAVAILABLE")) {
-    return {
-      title: "Booking temporarily unavailable",
-      body: "We're unable to process bookings right now.",
-      next: "Please try again later."
-    };
-  }
-  return null;
-}
-/* ===== END PHASE P3 HELPERS ===== */  const st = p1NormStatus(stRaw);
+const st = p1NormStatus(stRaw);
   const idx = p1StatusIndex(st);
 
   if (st === "cancelled") {
@@ -266,117 +237,6 @@ function jridePhase2dVendorIdFromAny(anyScope: any): string {
   return String(v || "").trim();
 }
 function jridePhase2dNormalizeItems(items: any[]): any[] {
-  // ===== PHASE P1: Passenger status & clarity improvements (UI-only) =====
-  const P1_STATUS_STEPS = ["requested", "assigned", "on_the_way", "arrived", "on_trip", "completed"] as const;
-
-  function p1NormStatus(s: any): string {
-    return String(s || "").trim().toLowerCase();
-  }
-
-  function p1StatusIndex(st: string): number {
-    const s = p1NormStatus(st);
-    // cancelled is terminal but not part of the linear stepper
-    if (s === "cancelled") return -2;
-    const idx = (P1_STATUS_STEPS as any).indexOf(s);
-    return idx; // -1 for unknown
-  }
-
-  function p1NowMessage(stRaw: any): string {
-    const st = p1NormStatus(stRaw);
-    if (st === "requested") return "We're looking for a nearby driver.";
-    if (st === "assigned") return "A driver has accepted your request.";
-    if (st === "on_the_way") return "Driver is heading to your pickup point.";
-    if (st === "arrived") return "Driver has arrived. Please proceed.";
-    if (st === "on_trip") return "You're on the way to your destination.";
-    if (st === "completed") return "Trip completed. Thank you for riding!";
-    if (st === "cancelled") return "This trip was cancelled.";
-    return "We're updating your trip status. Please wait.";
-  }
-
-  function p1WaitHint(stRaw: any): string {
-    const st = p1NormStatus(stRaw);
-    if (!st || st === "requested") return "Most pickups take a few minutes. Please wait while we assign a driver.";
-    if (st === "assigned") return "Driver assignment is confirmed. Please prepare at your pickup point.";
-    return "";
-  }
-
-  function p1IsNonCancellable(stRaw: any): boolean {
-    const st = p1NormStatus(stRaw);
-    // UI-only guardrail: no cancel/clear once driver is already on the way or later
-    return st === "on_the_way" || st === "arrived" || st === "on_trip";
-  }
-
-  function p1FriendlyError(raw: any): string {
-    const t = String(raw || "").trim();
-    const u = t.toUpperCase();
-    if (!t) return "";
-    if (u.indexOf("CAN_BOOK_BLOCKED") >= 0) return "Booking is temporarily unavailable.";
-    if (u.indexOf("GEO_BLOCKED") >= 0) return "Booking is restricted outside the service area.";
-    if (u.indexOf("BOOKING_POLL_FAILED") >= 0 || u.indexOf("BOOKING_POLL_ERROR") >= 0) return "We're having trouble updating trip status.";
-    if (u.indexOf("CAN_BOOK_INFO_FAILED") >= 0 || u.indexOf("CAN_BOOK_INFO_ERROR") >= 0) return "We're having trouble loading booking eligibility.";
-    if (u.indexOf("BOOK_FAILED") >= 0) return "Booking failed. Please try again.";
-    return "";
-  }
-
-  function p1RenderStepper(stRaw: any) {
-    const st = p1NormStatus(stRaw);
-    const idx = p1StatusIndex(st);
-
-    // Cancelled: show a simple pill, not the linear stepper.
-    if (st === "cancelled") {
-      return (
-        <div className="mt-3">
-          <span className="inline-flex items-center rounded-full bg-red-600 text-white px-3 py-1 text-xs font-semibold">
-            Cancelled
-          </span>
-        </div>
-      );
-    }
-
-    const cur = idx; // -1 unknown, >=0 known
-
-    return (
-      <div className="mt-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {P1_STATUS_STEPS.map((s, i) => {
-            const done = cur >= 0 && i < cur;
-            const now = cur >= 0 && i === cur;
-            const future = cur >= 0 && i > cur;
-
-            const bubble =
-              "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold " +
-              (now ? "bg-blue-600 text-white" : done ? "bg-black/70 text-white" : "bg-slate-200 text-slate-700");
-
-            const label =
-              "text-[11px] " +
-              (now ? "font-semibold" : done ? "opacity-80" : future ? "opacity-50" : "opacity-70");
-
-            const pretty =
-              s === "on_the_way" ? "On the way" :
-              s === "on_trip" ? "On trip" :
-              (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, " ");
-
-            return (
-              <div key={s} className="flex items-center gap-2">
-                <div className={bubble}>{i + 1}</div>
-                <div className={label}>{pretty}</div>
-                {i < P1_STATUS_STEPS.length - 1 ? (
-                  <div className={"w-6 h-[2px] " + (done ? "bg-black/40" : "bg-black/10")} />
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-
-        {cur < 0 ? (
-          <div className="mt-2 text-xs opacity-70">
-            Status: <span className="font-mono">{st || "(loading)"}</span>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-  // ===== END PHASE P1 =====
   return (items || [])
     .map((it: any) => {
       const menu_item_id = String(it?.menu_item_id || it?.menuItemId || it?.id || it?.item_id || it?.itemId || "").trim();
