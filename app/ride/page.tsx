@@ -2140,14 +2140,24 @@ if (!can.ok) {
   })()}
 </div>
 <div className="mt-2 text-sm">
+  {(() => {
+    const resp = String(((liveBooking as any)?.passenger_fare_response ?? "")).toLowerCase();
+    if (resp === "accepted" || resp === "rejected") {
+      return (
+        <div className="mt-2 inline-flex items-center rounded-full border border-black/10 px-2 py-0.5 text-xs">
+          Saved: <span className="ml-1 font-medium">{resp}</span>
+        </div>
+      );
+    }
+    return null;
+  })()}
   <div>
     Passenger response: <span className="font-medium">{(liveBooking as any)?.passenger_fare_response ?? "pending"}</span>
   </div>
   <div className="mt-2 flex flex-wrap gap-2">
     {(() => {
       const resp = String(((liveBooking as any)?.passenger_fare_response ?? "")).toLowerCase();
-      const pending = !resp || resp === "pending";
-      const canAct = pending && (liveBooking as any)?.verified_fare != null;
+      const pending = (!resp || resp === "pending"); const canAct = pending && (liveBooking as any)?.verified_fare != null;
 
       if (!canAct) return null;
 

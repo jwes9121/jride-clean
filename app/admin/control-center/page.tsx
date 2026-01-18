@@ -248,6 +248,34 @@ export default function AdminControlCenterPage() {
 
   return (
     <div style={{ padding: 16 }}>
+      {/* ===== ADMIN CONTROL CENTER: VERIFICATION LINKS ===== */}
+      <section className="mt-4 mb-4 rounded-2xl border border-black/10 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Verification</div>
+            <div className="text-xs opacity-70">Review passenger verification queue</div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link
+            href="/admin/verification"
+            className="rounded-xl border border-black/10 p-3 hover:bg-black/5 transition"
+          >
+            <div className="text-sm font-semibold">Admin Verification</div>
+            <div className="mt-1 text-xs opacity-70">Approve or reject pending + dispatcher pre-approved</div>
+          </Link>
+
+          <Link
+            href="/admin/dispatcher-verifications"
+            className="rounded-xl border border-black/10 p-3 hover:bg-black/5 transition"
+          >
+            <div className="text-sm font-semibold">Dispatcher Verification</div>
+            <div className="mt-1 text-xs opacity-70">Pre-approve or reject new verification requests</div>
+          </Link>
+        </div>
+      </section>
+      {/* ===== END VERIFICATION LINKS ===== */}
       <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Admin Control Center</h1>
 
       <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
