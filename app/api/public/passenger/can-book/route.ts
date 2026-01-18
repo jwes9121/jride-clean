@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 /* JRIDE_ENV_ECHO */
@@ -281,26 +281,34 @@ export async function POST(req: Request) {
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
   const w = await resolvePassengerWallet(supabase);
+  // Authoritative verification gate:
+  // - If not verified, booking is blocked at all times.
+  // - Night gate just changes the message/code (still blocked when unverified).
+  if (!v.verified) {
+    const code = nightGate ? "NIGHT_GATE_UNVERIFIED" : "VERIFICATION_REQUIRED";
+    const message = nightGate
+      ? "Booking is restricted from 8PM to 5AM unless verified."
+      : "Please verify your passenger account before booking.";
 
-  if (nightGate && !v.verified) {
-    return NextResponse.json({
-  env: jrideEnvEcho(),
+    return NextResponse.json(
+      {
+        env: jrideEnvEcho(),
         ok: false,
-        code: "NIGHT_GATE_UNVERIFIED",
-        message: "Booking is restricted from 8PM to 5AM unless verified.",
-        nightGate: true,
+        allowed: false,
+        code,
+        message,
+        nightGate: !!nightGate,
         window: "20:00-05:00 Asia/Manila",
         verified: false,
         verification_source: v.source,
         verification_note: v.note,
-      
-      verification_status: v.status,
-      verification_raw_status: v.raw_status,},
+        verification_status: v.status,
+        verification_raw_status: v.raw_status
+      },
       { status: 403 }
     );
   }
-
-  if (!w.ok) {
+if (!w.ok) {
     return NextResponse.json({
   env: jrideEnvEcho(),
         ok: false,
