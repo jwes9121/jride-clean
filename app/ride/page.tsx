@@ -2103,6 +2103,42 @@ if (!can.ok) {
 
             <div className="mt-2 text-xs opacity-70">
               Fare is proposed by drivers.
+<div className="mt-3 rounded-xl border border-black/10 p-3">
+  <div className="text-xs font-semibold opacity-70">Driver offer status</div>
+
+  {(() => {
+    const lb: any = (liveBooking as any) || null;
+    const hasOffer = lb && lb.proposed_fare != null;
+    const hasVerified = lb && lb.verified_fare != null;
+
+    if (!hasOffer) {
+      return <div className="mt-1 text-sm">Waiting for driver offer...</div>;
+    }
+
+    if (hasOffer && !hasVerified) {
+      return (
+        <div className="mt-1 text-sm">
+          <div>Offer received â€“ waiting verification</div>
+          <div className="mt-1">
+            Driver offer: <span className="font-medium">PHP {Number(lb.proposed_fare).toFixed(0)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-1 text-sm">
+        <div>Verified fare ready</div>
+        <div className="mt-1">
+          Driver offer: <span className="font-medium">PHP {Number(lb.proposed_fare).toFixed(0)}</span>
+        </div>
+        <div className="mt-1">
+          Verified fare: <span className="font-medium">PHP {Number(lb.verified_fare).toFixed(0)}</span>
+        </div>
+      </div>
+    );
+  })()}
+</div>
 <div className="mt-2 text-sm">
   <div>
     Passenger response: <span className="font-medium">{(liveBooking as any)?.passenger_fare_response ?? "pending"}</span>
