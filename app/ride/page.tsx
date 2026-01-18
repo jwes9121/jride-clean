@@ -2632,8 +2632,33 @@ if (!can.ok) {
                 const showPickupFee = Number(pickupFee || 0) > 0;
 
                 return (
-                  <div className="mt-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+  <div className="mt-3">
+    {/* ===== JRIDE_P8_PICKUP_FEE_DISCLOSURE_BEGIN (UI-only) ===== */}
+    {(() => {
+      // Use existing vars in this closure: kmAny, pickupFee, showPickupFee, p4Money
+      const kmNum = Number(kmAny);
+      const kmOk = Number.isFinite(kmNum);
+      const kmDisp = kmOk ? (Math.round(kmNum * 100) / 100).toFixed(2) : "--";
+      const fee = Number(pickupFee || 0);
+
+      if (!showPickupFee || !(fee > 0)) return null;
+
+      return (
+        <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs">
+          <div className="font-semibold text-amber-900">
+            Pickup is far. Extra pickup distance fee applies.
+          </div>
+          <div className="mt-1 text-amber-900/80">
+            Driver to pickup distance: <span className="font-mono">{kmDisp} km</span>
+            {" "}â€¢ Extra fee: <span className="font-mono font-semibold">{p4Money(fee)}</span>
+          </div>
+          <div className="mt-1 text-[11px] text-amber-900/70">
+            Free up to 1.5 km. Base PHP 20 then PHP 10 per additional 0.5 km (rounded up).
+          </div>
+        </div>
+      );
+    })()}
+    {/* ===== JRIDE_P8_PICKUP_FEE_DISCLOSURE_END ===== */}<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div className="rounded-xl border border-black/10 p-2">
                         <div className="text-xs opacity-70">Driver offer</div>
                         <div className="font-mono text-sm">
