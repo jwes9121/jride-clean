@@ -714,31 +714,12 @@ const ua = String((navigator as any)?.userAgent || "");
             setGeoCheckedAt(Date.now());
             return;
           }
-
-  async function fareAccept() {
-  const b: any = (typeof (liveBooking as any) !== "undefined" ? (liveBooking as any) : null);
-  const bookingId = String((b && (b.id || b.booking_id)) ? (b.id || b.booking_id) : "");
-  if (!bookingId) return;
-
-  const res = await fetch("/api/public/passenger/fare/accept", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ booking_id: bookingId }),
-  });
-  await res.json().catch(() => ({}));
-}
-  async function fareReject() {
-  const b: any = (typeof (liveBooking as any) !== "undefined" ? (liveBooking as any) : null);
-  const bookingId = String((b && (b.id || b.booking_id)) ? (b.id || b.booking_id) : "");
-  if (!bookingId) return;
-
-  const res = await fetch("/api/public/passenger/fare/reject", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ booking_id: bookingId }),
-  });
-  await res.json().catch(() => ({}));
-}
+        } else {
+          // No permissions API; do not force prompt unless user asked
+          if (!prompt) {
+            setGeoCheckedAt(Date.now());
+            return;
+          }
         }
       } catch {
         // ignore permission query failures
@@ -2242,17 +2223,7 @@ if (!can.ok) {
             />
 
             <div className="mt-2 text-xs opacity-70">
-              Fare is proposed by drivers.
-<div className="mt-2 text-sm">
-  <div>
-    Passenger response: <span className="font-medium">{(liveBooking as any)?.passenger_fare_response ?? "pending"}</span>
-  </div>
-  {(liveBooking as any)?.verified_fare != null && (
-    <div>
-      Locked fare: <span className="font-medium">PHP {Number((liveBooking as any).verified_fare).toFixed(0)}</span>
-    </div>
-  )}
-</div> You can accept to proceed or reject to request another driver quote.
+              Fare is proposed by drivers. You can accept to proceed or reject to request another driver quote.
             </div>
           </div>
 
