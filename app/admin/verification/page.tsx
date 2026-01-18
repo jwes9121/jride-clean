@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -133,20 +133,25 @@ export default function AdminVerificationPage() {
             <div className="mt-3 flex gap-2">
               <button
                 className="px-3 py-1 bg-green-600 text-white rounded text-xs"
-                onClick={() => approve(r.id)}
+                disabled={r.status !== "pending"} onClick={() => approve(r.id)}
               >
                 Approve
               </button>
 
               <button
                 className="px-3 py-1 bg-red-600 text-white rounded text-xs"
-                onClick={() => reject(r.id)}
+                disabled={r.status !== "pending"} onClick={() => reject(r.id)}
               >
                 Reject
               </button>
 
               <span className="ml-auto text-xs">
-                Status: <b>{r.status}</b>
+                Status: <span className={`inline-block rounded-full px-2 py-0.5 text-xs border ${
+  r.status === "pending" ? "bg-yellow-50" :
+  r.status === "pre_approved_dispatcher" ? "bg-blue-50" :
+  r.status === "approved_admin" ? "bg-green-50" :
+  "bg-red-50"
+}`}>{r.status}</span>
               </span>
             </div>
           </div>

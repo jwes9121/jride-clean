@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { supabase } from "@/lib/supabaseClient";
 type Item = {
   title: string;
   desc: string;
@@ -246,7 +247,34 @@ export default function AdminControlCenterPage() {
     opacity: 0.85,
   };
 
-  return (
+    const [verificationCounts, setVerificationCounts] = useState<{ admin: number; dispatcher: number }>({
+    admin: 0,
+    dispatcher: 0,
+  });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const a = await supabase
+          .from("passenger_verifications")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["pending", "pre_approved_dispatcher"]);
+
+        const d = await supabase
+          .from("passenger_verifications")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending");
+
+        setVerificationCounts({
+          admin: (a as any)?.count ?? 0,
+          dispatcher: (d as any)?.count ?? 0,
+        });
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+return (
     <div style={{ padding: 16 }}>
       {/* ===== ADMIN CONTROL CENTER: VERIFICATION LINKS ===== */}
       <section className="mt-4 mb-4 rounded-2xl border border-black/10 p-4">
@@ -262,7 +290,7 @@ export default function AdminControlCenterPage() {
             href="/admin/verification"
             className="rounded-xl border border-black/10 p-3 hover:bg-black/5 transition"
           >
-            <div className="text-sm font-semibold">Admin Verification</div>
+            <div className="text-sm font-semibold">Admin Verification {verificationCounts.admin > 0 ? <span className="ml-2 inline-block rounded-full border border-black/10 px-2 py-0.5 text-xs">{verificationCounts.admin}</span> : null}</div>
             <div className="mt-1 text-xs opacity-70">Approve or reject pending + dispatcher pre-approved</div>
           </Link>
 
@@ -270,7 +298,7 @@ export default function AdminControlCenterPage() {
             href="/admin/dispatcher-verifications"
             className="rounded-xl border border-black/10 p-3 hover:bg-black/5 transition"
           >
-            <div className="text-sm font-semibold">Dispatcher Verification</div>
+            <div className="text-sm font-semibold">Dispatcher Verification {verificationCounts.dispatcher > 0 ? <span className="ml-2 inline-block rounded-full border border-black/10 px-2 py-0.5 text-xs">{verificationCounts.dispatcher}</span> : null}</div>
             <div className="mt-1 text-xs opacity-70">Pre-approve or reject new verification requests</div>
           </Link>
         </div>
