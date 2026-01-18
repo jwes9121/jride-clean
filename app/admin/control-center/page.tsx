@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -304,6 +304,40 @@ return (
         </div>
       </section>
       {/* ===== END VERIFICATION LINKS ===== */}
+      {/* ===== OPS SNAPSHOT (PHASE C / UI ONLY) ===== */}
+      <section className="mb-4 rounded-2xl border border-black/10 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Ops Snapshot</div>
+            <div className="text-xs opacity-70">At-a-glance queue counts (read-only)</div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-black/10 p-3">
+            <div className="text-xs opacity-70">Pending passenger verifications</div>
+            <div className="mt-1 text-lg font-bold">{verificationCounts.admin}</div>
+            <div className="mt-1 text-[11px] opacity-70">Admin queue: pending + dispatcher pre-approved</div>
+          </div>
+
+          <div className="rounded-xl border border-black/10 p-3">
+            <div className="text-xs opacity-70">Pending dispatcher queue</div>
+            <div className="mt-1 text-lg font-bold">{verificationCounts.dispatcher}</div>
+            <div className="mt-1 text-[11px] opacity-70">Dispatcher queue: pending only</div>
+          </div>
+
+          <div className="rounded-xl border border-black/10 p-3">
+            <div className="text-xs opacity-70">Total pending</div>
+            <div className="mt-1 text-lg font-bold">{verificationCounts.admin + verificationCounts.dispatcher}</div>
+            <div className="mt-1 text-[11px] opacity-70">Combined queues (display-only)</div>
+          </div>
+        </div>
+
+        <div className="mt-2 text-[11px] opacity-70">
+          UI-only dashboard. No new API routes. No business logic. Read-only counters only.
+        </div>
+      </section>
+      {/* ===== END OPS SNAPSHOT ===== */}
       <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Admin Control Center</h1>
 
       <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
@@ -367,3 +401,4 @@ return (
     </div>
   );
 }
+
