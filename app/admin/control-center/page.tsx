@@ -276,6 +276,45 @@ export default function AdminControlCenterPage() {
   }, []);
 return (
     <div style={{ padding: 16 }}>
+      {/* ===== ADMIN CONTROL CENTER: TOP HEADER (D1 UI ONLY) ===== */}
+      <div className="mb-4 rounded-2xl border border-black/10 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-extrabold m-0">Admin Control Center</h1>
+            <div className="mt-1 text-xs opacity-70">
+              Centralized navigation hub. Read-only. No actions are executed here.
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span style={badge}>
+              Role: <b>{role}</b>{" "}
+              <span style={{ opacity: 0.7 }}>
+                {debug ? "(debug)" : ""} {roleSource ? " - " + roleSource : ""}
+              </span>
+            </span>
+
+            {debug ? (
+              <>
+                <button type="button" style={miniBtn} onClick={() => setRoleHint("admin")}>
+                  Set role: admin
+                </button>
+                <button type="button" style={miniBtn} onClick={() => setRoleHint("dispatcher")}>
+                  Set role: dispatcher
+                </button>
+              </>
+            ) : null}
+
+            <a href="/admin" style={btn}>
+              /admin
+            </a>
+            <a href="/admin/control-center" style={btn}>
+              /admin/control-center
+            </a>
+          </div>
+        </div>
+      </div>
+      {/* ===== END TOP HEADER ===== */}
       {/* ===== ADMIN CONTROL CENTER: VERIFICATION LINKS ===== */}
       <section className="mt-4 mb-4 rounded-2xl border border-black/10 p-4">
         <div className="flex items-center justify-between gap-3">
@@ -338,38 +377,7 @@ return (
         </div>
       </section>
       {/* ===== END OPS SNAPSHOT ===== */}
-      <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Admin Control Center</h1>
-
-      <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
-        Centralized navigation hub. Read-only. No actions are executed here.
-      </div>
-
-      <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={badge}>
-          Role: <b>{role}</b>{" "}
-          <span style={{ opacity: 0.7 }}>
-            {debug ? "(debug)" : ""} {roleSource ? " - " + roleSource : ""}
-          </span>
-        </span>
-
-        {debug ? (
-          <>
-            <button type="button" style={miniBtn} onClick={() => setRoleHint("admin")}>
-              Set role: admin
-            </button>
-            <button type="button" style={miniBtn} onClick={() => setRoleHint("dispatcher")}>
-              Set role: dispatcher
-            </button>
-          </>
-        ) : null}
-
-        <a href="/admin" style={btn}>
-          /admin
-        </a>
-        <a href="/admin/control-center" style={btn}>
-          /admin/control-center
-        </a>
-      </div>
+      
 
       <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
         {visibleSections.map((section) => (
@@ -401,4 +409,5 @@ return (
     </div>
   );
 }
+
 
