@@ -2247,6 +2247,67 @@ if (!can.ok) {
   <div>
     Passenger response: <span className="font-medium">{(liveBooking as any)?.passenger_fare_response ?? "pending"}</span>
   </div>
+  <div className="mt-2 flex flex-wrap gap-2">
+    {(() => {
+      const resp = String(((liveBooking as any)?.passenger_fare_response ?? "")).toLowerCase();
+      const pending = !resp || resp === "pending";
+      const canAct = pending && (liveBooking as any)?.verified_fare != null;
+
+      if (!canAct) return null;
+
+      return (
+        <>
+          <button
+            type="button"
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-black/10 hover:bg-black/5"
+            onClick={async () => {
+  const id = (liveBooking as any)?.id;
+  if (!id) return;
+  const res = await fetch("/api/public/passenger/fare/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ booking_id: id }),
+  });
+  const j = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (j && (j.message || j.error)) ? String(j.message || j.error) : ("HTTP " + String(res.status));
+    try { window.alert("Accept failed: " + msg); } catch {}
+    return;
+  }
+  try { window.alert("Fare accepted."); } catch {}
+}}
+            title="Accept the verified fare"
+          >
+            Accept fare
+          </button>
+
+          <button
+            type="button"
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-black/10 hover:bg-black/5"
+            onClick={async () => {
+  const id = (liveBooking as any)?.id;
+  if (!id) return;
+  const res = await fetch("/api/public/passenger/fare/reject", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ booking_id: id }),
+  });
+  const j = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const msg = (j && (j.message || j.error)) ? String(j.message || j.error) : ("HTTP " + String(res.status));
+    try { window.alert("Reject failed: " + msg); } catch {}
+    return;
+  }
+  try { window.alert("Fare rejected."); } catch {}
+}}
+            title="Reject and request another quote"
+          >
+            Reject / new quote
+          </button>
+        </>
+      );
+    })()}
+  </div>
   {(liveBooking as any)?.verified_fare != null && (
     <div>
       Locked fare: <span className="font-medium">PHP {Number((liveBooking as any).verified_fare).toFixed(0)}</span>
@@ -2704,7 +2765,7 @@ if (!can.ok) {
           </div>
           <div className="mt-1 text-amber-900/80">
             Driver to pickup distance: <span className="font-mono">{kmDisp} km</span>
-            {" "}Ã¢â‚¬Â¢ Extra fee: <span className="font-mono font-semibold">{p4Money(fee)}</span>
+            {" "}- Extra fee: <span className="font-mono font-semibold">{p4Money(fee)}</span>
           </div>
           <div className="mt-1 text-[11px] text-amber-900/70">
             Free up to 1.5 km. Base PHP 20 then PHP 10 per additional 0.5 km (rounded up).
