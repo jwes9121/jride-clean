@@ -63,6 +63,17 @@ export default function AdminControlCenterPage() {
         heading: "Core Admin",
         items: [
           {
+            title: "Passenger Verification (Admin)",
+            desc: "Approve or reject passenger verification requests.",
+            href: "/admin/verification",
+          },
+          {
+            title: "Passenger Verification (Dispatcher)",
+            desc: "Pre-approve and forward to Admin queue.",
+            href: "/admin/dispatcher-verifications",
+          },
+
+          {
             title: "Live Trips",
             desc: "Real-time dispatch and tracking view (navigation only).",
             href: "/admin/livetrips",
