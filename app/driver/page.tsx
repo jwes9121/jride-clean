@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -122,6 +122,8 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
   const [paxReason, setPaxReason] = useState<string>("added_passengers");
   const [paxLastNote, setPaxLastNote] = useState<string>("");
   const [paxPersistError, setPaxPersistError] = useState<string>("");
+  const [paxLatest, setPaxLatest] = useState<any>(null);
+  const [paxLatestErr, setPaxLatestErr] = useState<string>("");
 
   useEffect(() => {
     if (!driverId) return;
@@ -313,6 +315,28 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
     // Continue existing flow (status update remains unchanged)
     await setStatus("in_progress");
   }
+  // P3: load latest persisted pax confirmation for this ride (read-only)
+  useEffect(() => {
+    (async () => {
+      try {
+        setPaxLatestErr("");
+        const rideId = (assigned as any)?.id;
+        if (!rideId) { setPaxLatest(null); return; }
+
+        const res = await fetch(`/api/driver/pax-confirm/latest?ride_id=${encodeURIComponent(String(rideId))}`);
+        const j = await res.json().catch(() => ({} as any));
+        if (!res.ok || !j?.ok) {
+          setPaxLatest(null);
+          setPaxLatestErr(String(j?.error || "PAX_LATEST_LOAD_FAILED"));
+          return;
+        }
+        setPaxLatest(j.row || null);
+      } catch (e: any) {
+        setPaxLatest(null);
+        setPaxLatestErr(String(e?.message || "PAX_LATEST_LOAD_FAILED"));
+      }
+    })();
+  }, [(assigned as any)?.id]);
 function formatDate(value: string | null) {
     if (!value) return "";
     const d = new Date(value);
@@ -322,6 +346,38 @@ function formatDate(value: string | null) {
 
   return (
     <div className="p-6 max-w-xl space-y-4">
+      {/* P3 PAX badge (read-only) */}
+      {assigned ? (
+        <div className="mb-3 rounded-2xl border border-black/10 bg-white p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs opacity-70">
+              Booked pax: <span className="font-mono">{getBookedPax(assigned as any)}</span>
+            </div>
+
+            {paxLatest ? (
+              <div className="flex items-center gap-2">
+                {paxLatest.matches === false ? (
+                  <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
+                    PAX mismatch reported
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                    PAX confirmed
+                  </span>
+                )}
+                <span className="text-[11px] opacity-60">
+                  {paxLatest.created_at ? String(paxLatest.created_at) : ""}
+                </span>
+              </div>
+            ) : paxLatestErr ? (
+              <div className="text-[11px] text-rose-700">PAX status unavailable</div>
+            ) : (
+              <div className="text-[11px] opacity-60">No confirmation yet</div>
+            )}
+          </div>
+        </div>
+      ) : null}
+      {/* END P3 PAX badge */}
       <h1 className="text-xl font-semibold">JRide • Driver</h1>
       {/* PHASE13-D_DRIVER_GEO_GATE_UI_PANEL */}
       <div className="mt-3 border rounded-2xl p-3 bg-amber-50 border-amber-300 space-y-2">
