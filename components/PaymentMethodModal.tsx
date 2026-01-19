@@ -44,7 +44,7 @@ export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmo
   const totalGCashCharge = rideAmount + gCashFees.total;
 
   const handleGCashSelect = () => {
-    setSelectedMethod('gcash_xendit');
+    xenditEnabled && setSelectedMethod('gcash_xendit');
     setShowGCashConfirmation(true);
   };
 
@@ -59,7 +59,11 @@ export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmo
   };
 
   const handlePaymentConfirm = () => {
-    if (selectedMethod === 'gcash_xendit') {
+    if (((selectedMethod as any) === 'gcash_xendit')) {
+      if (!xenditEnabled) {
+        alert('GCash via Xendit is coming soon (under verification). Please use Cash or Wallet for now.');
+        return;
+      }
       handleGCashSelect();
     } else {
       if (((selectedMethod as any) === 'gcash_xendit') && !(process.env.NEXT_PUBLIC_XENDIT_ENABLED === '1')) {
@@ -191,20 +195,27 @@ onConfirm(selectedMethod);
 
           {/* GCash/Xendit Payment */}
           <button
-            onClick={() => setSelectedMethod('gcash_xendit')}
+            onClick={() => xenditEnabled && setSelectedMethod('gcash_xendit')}
             className={`w-full p-4 rounded-xl border-2 transition-colors ${
               selectedMethod === 'gcash_xendit'
                 ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 hover:border-gray-300'
             }`}
-          >
+           disabled={!xenditEnabled}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
                   <i className="ri-smartphone-line text-xl text-blue-600"></i>
                 </div>
                 <div className="text-left">
-                  <div className="font-semibold">GCash Payment</div>
+                  <div className="font-semibold flex items-center space-x-2">
+  <span>GCash Payment</span>
+  {!xenditEnabled && (
+    <span className="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full">
+      Coming soon
+    </span>
+  )}
+</div>
                   <div className="text-sm text-gray-600">Online payment with fees</div>
                 </div>
               </div>
@@ -339,6 +350,7 @@ onConfirm(selectedMethod);
     </div>
   );
 }
+
 
 
 
