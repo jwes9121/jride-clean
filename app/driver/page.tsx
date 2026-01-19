@@ -115,140 +115,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
   const [wallet, setWallet] = useState<WalletStatus | null>(null);
   const [payouts, setPayouts] = useState<Payout[]>([]);
 
-  // DRIVER_PAX_CONFIRM_P1_UI_ONLY
-  const [showPaxConfirm, setShowPaxConfirm] = useState(false);
-  const [paxMismatch, setPaxMismatch] = useState(false);
-  const [paxActual, setPaxActual] = useState<string>("1");
-  const [paxReason, setPaxReason] = useState<string>("added_passengers");
-  const [paxLastNote, setPaxLastNote] = useState<string>("");
-  const [paxPersistError, setPaxPersistError] = useState<string>("");
-  const [paxSaving, setPaxSaving] = useState<boolean>(false);
-  const [paxLatest, setPaxLatest] = useState<any>(null);
-  const [paxLatestErr, setPaxLatestErr] = useState<string>("");
-
-  useEffect(() => {
-    if (!driverId) return;
-
-    async function loadAssignedAndWallet() {
-      // Current active ride
-      const { data: ridesData } = await sb
-        .from("rides")
-        .select("*")
-        .eq("driver_id", driverId)
-        .in("status", ["assigned", "in_progress"])
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      setAssigned((ridesData || [])[0] as Ride | null);
-
-      // Wallet status
-      const { data: walletData } = await sb
-        .from("driver_wallet_status_view")
-        .select("*")
-        .eq("driver_id", driverId)
-        .limit(1);
-
-      const ws = (walletData || [])[0] as WalletStatus | undefined;
-      setWallet(ws || null);
-
-      // Payout history for this driver
-      const { data: payoutData } = await sb
-        .from("driver_payout_requests")
-        .select(
-          "id, amount, status, requested_at, processed_at, payout_method, payout_reference"
-        )
-        .eq("driver_id", driverId)
-        .order("requested_at", { ascending: false })
-        .limit(10);
-
-      setPayouts((payoutData || []) as Payout[]);
-    }
-
-    loadAssignedAndWallet();
-
-    const ch = sb
-      .channel("driver_rides_" + driverId)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "rides",
-          filter: `driver_id=eq.${driverId}`,
-        },
-        (p) => {
-          const r = p.new as Ride;
-          if (["assigned", "in_progress"].includes(r.status)) setAssigned(r);
-          if (
-            r.status === "completed" &&
-            assigned &&
-            r.id === assigned.id
-          )
-            setAssigned(null);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      sb.removeChannel(ch);
-    };
-  }, [driverId]); // keep dependency minimal
-
-  const locked =
-    wallet && wallet.can_accept_new_jobs === false ? true : false;
-
-  async function startSharing() {
-    if (!driverId) {
-      alert("Set driver UUID first.");
-      return;
-    }
-
-    if (locked) {
-      alert(
-        "Your JRide wallet is below the minimum required load. Please top up before going online."
-      );
-      return;
-    }
-
-    const id = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const lat = Number(pos.coords.latitude.toFixed(6));
-        const lng = Number(pos.coords.longitude.toFixed(6));
-        await fetch("/api/driver/heartbeat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driver_id: driverId,
-            lat,
-            lng,
-            is_available: available && !locked,
-          }),
-        });
-      },
-      (err) => alert(err.message),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-    );
-    setWatchId(id);
-  }
-
-  function stopSharing() {
-    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    setWatchId(null);
-  }
-
-  async function setStatus(status: "in_progress" | "completed") {
-    if (!assigned) return;
-    const res = await fetch("/api/rides/status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rideId: assigned.id, status }),
-    });
-    const js = await res.json();
-    if (!res.ok) return alert(js?.error || "Failed");
-    alert(`Ride ${status.replace("_", " ").toUpperCase()}`);
-  }
-
-    // DRIVER_PAX_CONFIRM_P2_PERSIST helpers (safe rewrite)
+    // DRIVER_PAX_CONFIRM_P3_P6 block (safe rewrite)
   function getBookedPax(r: any): string {
     const v =
       (r && (r.passenger_count ?? r.passengers ?? r.pax ?? r.pax_count ?? r.seats ?? r.num_passengers)) as any;
@@ -264,61 +131,11 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
     setPaxActual("1");
     setPaxReason("added_passengers");
     try { setPaxPersistError(""); } catch {}
+    try { setPaxSaving(false); } catch {}
     setShowPaxConfirm(true);
   }
 
-  async function confirmAndStartTrip() {
-    setPaxSaving(true);
-    if (!assigned) return;
-
-    const booked = getBookedPax(assigned as any);
-    const matches = paxMismatch ? false : true;
-
-    const note = matches
-      ? `PAX_MATCH booked=${booked}`
-      : `PAX_MISMATCH booked=${booked} actual=${paxActual} reason=${paxReason}`;
-
-    // Non-blocking persist (P2)
-    try {
-      setPaxPersistError("");
-
-      const rideId = (assigned as any)?.id ?? null;
-      const driverId =
-        (assigned as any)?.driver_id ??
-        (assigned as any)?.driverId ??
-        null;
-
-      const res = await fetch("/api/driver/pax-confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ride_id: rideId,
-          driver_id: driverId,
-          matches,
-          booked_pax: booked,
-          actual_pax: matches ? null : paxActual,
-          reason: matches ? null : paxReason,
-          note,
-        }),
-      });
-
-      const j = await res.json().catch(() => ({} as any));
-      if (!res.ok || !j?.ok) {
-        const msg = String(j?.error || "PAX_CONFIRM_SAVE_FAILED");
-        setPaxPersistError(msg);
-      }
-    } catch (e: any) {
-      try { setPaxPersistError(String(e?.message || "PAX_CONFIRM_SAVE_FAILED")); } catch {}
-    }
-
-    try { setPaxLastNote(note); } catch {}
-    setShowPaxConfirm(false);
-
-    // Continue existing flow (status update remains unchanged)
-    await setStatus("in_progress");
-    setPaxSaving(false);
-  }
-  // P3: load latest persisted pax confirmation for this ride (read-only)
+  // P3: load latest persisted pax confirmation (read-only)
   useEffect(() => {
     (async () => {
       try {
@@ -340,6 +157,63 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
       }
     })();
   }, [(assigned as any)?.id]);
+
+  // P6: confirm and start with saving state + try/finally
+  async function confirmAndStartTrip() {
+    if (!assigned) return;
+
+    setPaxSaving(true);
+
+    const booked = getBookedPax(assigned as any);
+    const matches = paxMismatch ? false : true;
+
+    const note = matches
+      ? `PAX_MATCH booked=${booked}`
+      : `PAX_MISMATCH booked=${booked} actual=${paxActual} reason=${paxReason}`;
+
+    try {
+      // Non-blocking persist (P2)
+      try {
+        setPaxPersistError("");
+
+        const rideId = (assigned as any)?.id ?? null;
+        const driverId =
+          (assigned as any)?.driver_id ??
+          (assigned as any)?.driverId ??
+          null;
+
+        const res = await fetch("/api/driver/pax-confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ride_id: rideId,
+            driver_id: driverId,
+            matches,
+            booked_pax: booked,
+            actual_pax: matches ? null : paxActual,
+            reason: matches ? null : paxReason,
+            note,
+          }),
+        });
+
+        const j = await res.json().catch(() => ({} as any));
+        if (!res.ok || !j?.ok) {
+          const msg = String(j?.error || "PAX_CONFIRM_SAVE_FAILED");
+          setPaxPersistError(msg);
+        }
+      } catch (e: any) {
+        try { setPaxPersistError(String(e?.message || "PAX_CONFIRM_SAVE_FAILED")); } catch {}
+      }
+
+      try { setPaxLastNote(note); } catch {}
+      setShowPaxConfirm(false);
+
+      // Continue existing flow (status update remains unchanged)
+      await setStatus("in_progress");
+    } finally {
+      setPaxSaving(false);
+    }
+  }
 function formatDate(value: string | null) {
     if (!value) return "";
     const d = new Date(value);
@@ -536,8 +410,7 @@ function formatDate(value: string | null) {
 
                     <button
                       type="button"
-                      className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
-                      disabled={paxSaving} onClick={() => setPaxMismatch(true)}
+                      className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5" onClick={() => setPaxMismatch(true)}
                     >
                       Does not match
                     </button>
