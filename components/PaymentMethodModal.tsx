@@ -11,6 +11,8 @@ interface PaymentMethodModalProps {
 }
 
 export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmount }: PaymentMethodModalProps) {
+  const xenditEnabled = process.env.NEXT_PUBLIC_XENDIT_ENABLED === '1';
+
   const [selectedMethod, setSelectedMethod] = useState<'wallet' | 'cash' | 'points' | 'gcash_xendit'>('cash');
   const [walletBalance, setWalletBalance] = useState(0);
   const [rewardPoints, setRewardPoints] = useState(0);
@@ -60,7 +62,11 @@ export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmo
     if (selectedMethod === 'gcash_xendit') {
       handleGCashSelect();
     } else {
-      onConfirm(selectedMethod);
+      if (((selectedMethod as any) === 'gcash_xendit') && !(process.env.NEXT_PUBLIC_XENDIT_ENABLED === '1')) {
+        alert('GCash via Xendit is coming soon (under verification). Please use Cash/Wallet for now.');
+        return; // PAYMENTS_TEMP_DISABLED_UI
+      }
+onConfirm(selectedMethod);
     }
   };
 
@@ -333,6 +339,8 @@ export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmo
     </div>
   );
 }
+
+
 
 
 
