@@ -1,0 +1,18 @@
+﻿---- app\api\takeout\vendor-wallet\route.ts : L131 ----
+
+    const vendorId = await resolveVendorIdFromSession();
+
+    // Call settle_vendor_wallet to clear the balance via a payout transaction
+    const { error: settleError } = await supabase.rpc(
+      "settle_vendor_wallet",
+      {
+
+---- app\api\takeout\vendor-wallet\route.ts : L136 ----
+      "settle_vendor_wallet",
+      {
+        v_vendor_id: vendorId,
+        v_note: "Cash payout settlement triggered from vendor dashboard",
+      }
+    );
+
+

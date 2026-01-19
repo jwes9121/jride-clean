@@ -1,0 +1,99 @@
+﻿---- app\wallet\page.tsx : L16 ----
+
+interface Transaction {
+  id: string;
+  type: 'credit' | 'debit' | 'topup' | 'payout' | 'ride' | 'errand' | 'vendor_order';
+  amount: number;
+  description: string;
+  status: 'completed' | 'pending' | 'failed';
+
+---- app\wallet\page.tsx : L75 ----
+        
+        // Load transaction history
+        const token = localStorage.getItem('j-ride-token');
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/wallet-service`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+
+---- app\wallet\page.tsx : L100 ----
+  const getTransactionIcon = (type: string) => {
+    switch (type) {
+      case 'credit':
+      case 'topup':
+        return 'ri-add-circle-line';
+      case 'referral_bonus':
+        return 'ri-user-add-line';
+
+---- app\wallet\page.tsx : L105 ----
+      case 'referral_bonus':
+        return 'ri-user-add-line';
+      case 'debit':
+      case 'payout':
+        return 'ri-subtract-line';
+      case 'ride':
+        return 'ri-taxi-line';
+
+---- app\wallet\page.tsx : L121 ----
+  const getTransactionColor = (type: string) => {
+    switch (type) {
+      case 'credit':
+      case 'topup':
+        return 'text-green-600';
+      case 'referral_bonus':
+        return 'text-purple-600';
+
+---- app\wallet\page.tsx : L126 ----
+      case 'referral_bonus':
+        return 'text-purple-600';
+      case 'debit':
+      case 'payout':
+        return 'text-red-600';
+      default:
+        return 'text-blue-600';
+
+---- app\wallet\page.tsx : L134 ----
+  };
+
+  const formatAmount = (amount: number, type: string) => {
+    const prefix = ['credit', 'topup'].includes(type) ? '+' : '-';
+    return `${prefix}Ã¢â€šÂ±${Math.abs(amount).toFixed(2)}`;
+  };
+
+
+---- app\wallet\page.tsx : L218 ----
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Link href="/wallet/topup">
+            <button className="bg-white/20 backdrop-blur-sm p-4 rounded-xl text-center">
+              <i className="ri-add-circle-line text-2xl mb-2"></i>
+              <div className="text-sm font-medium">Top Up</div>
+
+---- app\wallet\page.tsx : L225 ----
+            </button>
+          </Link>
+          {(user.user_type === 'driver' || user.user_type === 'vendor') && (
+            <Link href="/wallet/cashout">
+              <button className="bg-white/20 backdrop-blur-sm p-4 rounded-xl text-center">
+                <i className="ri-bank-line text-2xl mb-2"></i>
+                <div className="text-sm font-medium">Cash Out</div>
+
+---- app\wallet\page.tsx : L273 ----
+                  <div className="text-green-600 text-sm font-medium">Total Income</div>
+                  <div className="text-xl font-bold text-green-700">
+                    Ã¢â€šÂ±{transactions
+                      .filter(t => ['credit', 'topup', 'referral_bonus'].includes(t.type) && t.status === 'completed')
+                      .reduce((sum, t) => sum + t.amount, 0)
+                      .toFixed(2)}
+                  </div>
+
+---- app\wallet\page.tsx : L282 ----
+                  <div className="text-red-600 text-sm font-medium">Total Spent</div>
+                  <div className="text-xl font-bold text-red-700">
+                    Ã¢â€šÂ±{transactions
+                      .filter(t => ['debit', 'payout', 'ride', 'errand', 'vendor_order'].includes(t.type) && t.status === 'completed')
+                      .reduce((sum, t) => sum + t.amount, 0)
+                      .toFixed(2)}
+                  </div>
+

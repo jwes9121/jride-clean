@@ -1,0 +1,99 @@
+﻿---- components\PaymentMethodModal.tsx : L29 ----
+      setWalletBalance(userData.wallet_balance || 0);
+      setRewardPoints(userData.reward_points || 0);
+
+      // Calculate GCash fees (2.9% + Ã¢â€šÂ±15)
+      const percentageFee = rideAmount * 0.029;
+      const fixedFee = 15;
+      setGCashFees({
+
+---- components\PaymentMethodModal.tsx : L64 ----
+  const handlePaymentConfirm = () => {
+    if (((selectedMethod as any) === 'gcash_xendit')) {
+      if (!xenditEnabled) {
+        alert('GCash via Xendit is coming soon (under verification). Please use Cash or Wallet for now.');
+        return;
+      }
+      handleGCashSelect();
+
+---- components\PaymentMethodModal.tsx : L70 ----
+      handleGCashSelect();
+    } else {
+      if (((selectedMethod as any) === 'gcash_xendit') && !(process.env.NEXT_PUBLIC_XENDIT_ENABLED === '1')) {
+        alert('GCash via Xendit is coming soon (under verification). Please use Cash/Wallet for now.');
+        return; // PAYMENTS_TEMP_DISABLED_UI
+      }
+onConfirm(selectedMethod);
+
+---- components\PaymentMethodModal.tsx : L77 ----
+    }
+  };
+
+  // GCash Confirmation Screen
+  if (showGCashConfirmation) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+
+---- components\PaymentMethodModal.tsx : L86 ----
+            <div className="w-16 h-16 bg-blue-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <i className="ri-smartphone-line text-2xl text-blue-600"></i>
+            </div>
+            <h3 className="text-xl font-bold">GCash Payment Confirmation</h3>
+            <p className="text-sm text-gray-600 mt-2">Review your payment details before proceeding</p>
+          </div>
+
+
+---- components\PaymentMethodModal.tsx : L125 ----
+              <i className="ri-alert-line text-yellow-600 mt-0.5"></i>
+              <div>
+                <p className="text-sm font-medium text-yellow-800 mb-1">
+                  Ã¢Å¡Â Ã¯Â¸Â Note: Paying via GCash includes processing fees charged by our payment partner.
+                </p>
+                <p className="text-xs text-yellow-700">
+                  To avoid this, you may pay cash directly to your driver.
+
+---- components\PaymentMethodModal.tsx : L140 ----
+              onClick={handleGCashConfirm}
+              className="w-full bg-blue-500 text-white py-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors"
+            >
+              Proceed with GCash Payment - Ã¢â€šÂ±{totalGCashCharge.toFixed(2)}
+            </button>
+            
+            <button
+
+---- components\PaymentMethodModal.tsx : L196 ----
+            </div>
+          </button>
+
+          {/* GCash/Xendit Payment */}
+          <button
+            onClick={() => xenditEnabled && setSelectedMethod('gcash_xendit')}
+            className={`w-full p-4 rounded-xl border-2 transition-colors ${
+
+---- components\PaymentMethodModal.tsx : L212 ----
+                </div>
+                <div className="text-left">
+                  <div className="font-semibold flex items-center space-x-2">
+  <span>GCash Payment</span>
+  {!xenditEnabled && (
+    <span className="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full">
+      Coming soon
+
+---- components\PaymentMethodModal.tsx : L317 ----
+              <span className="font-medium">Ã¢â€šÂ±{rideAmount.toFixed(2)} (No fees)</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-blue-600">Ã°Å¸â€œÂ± GCash:</span>
+              <span className="font-medium">Ã¢â€šÂ±{totalGCashCharge.toFixed(2)} (Includes fees)</span>
+            </div>
+            <div className="flex justify-between">
+
+---- components\PaymentMethodModal.tsx : L337 ----
+            className="w-full bg-orange-500 text-white py-4 rounded-xl font-semibold hover:bg-orange-600 transition-colors"
+          >
+            {selectedMethod === 'cash' ? 'Confirm Cash Payment' :
+             selectedMethod === 'gcash_xendit' ? 'Review GCash Payment' :
+             selectedMethod === 'wallet' ? 'Pay with Wallet' :
+             'Use Reward Points'}
+          </button>
+

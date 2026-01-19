@@ -1,0 +1,54 @@
+﻿---- app\api\takeout\vendor\request-payout\route.ts : L16 ----
+export async function POST() {
+  try {
+    if (!supabase) {
+      console.error("❌ Supabase env vars missing for vendor request-payout API");
+      return NextResponse.json(
+        { error: "Supabase not configured" },
+        { status: 500 }
+
+---- app\api\takeout\vendor\request-payout\route.ts : L78 ----
+
+    if (!summary || walletBalance <= 0.009) {
+      return NextResponse.json(
+        { error: "No wallet balance available for payout." },
+        { status: 400 }
+      );
+    }
+
+---- app\api\takeout\vendor\request-payout\route.ts : L93 ----
+      .limit(1);
+
+    if (existingError) {
+      console.error("❌ Error checking existing payout requests:", existingError);
+      return NextResponse.json(
+        { error: existingError.message },
+        { status: 500 }
+
+---- app\api\takeout\vendor\request-payout\route.ts : L102 ----
+
+    if (existingRows && existingRows.length > 0) {
+      return NextResponse.json(
+        { error: "You already have a pending payout request." },
+        { status: 400 }
+      );
+    }
+
+---- app\api\takeout\vendor\request-payout\route.ts : L107 ----
+      );
+    }
+
+    // 4) Insert new payout request for full wallet balance
+    const { data: insertedRows, error: insertError } = await supabase
+      .from("vendor_payout_requests")
+      .insert({
+
+---- app\api\takeout\vendor\request-payout\route.ts : L131 ----
+
+    return NextResponse.json({ request });
+  } catch (err: any) {
+    console.error("❌ vendor request-payout API error:", err);
+    return NextResponse.json(
+      { error: err?.message ?? "Unknown server error" },
+      { status: 500 }
+

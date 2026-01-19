@@ -1,0 +1,18 @@
+﻿---- components\DriverWalletLedger.tsx : L71 ----
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('j-ride-token');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/wallet-service`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+
+---- components\DriverWalletLedger.tsx : L354 ----
+                        </div>
+                      )}
+
+                      {/* Cashout details */}
+                      {(transaction.type === 'driver_cashout' || transaction.type === 'emergency_payout') && transaction.fee_amount && (
+                        <div className="bg-white rounded-lg p-3 mt-3">
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+

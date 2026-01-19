@@ -1,0 +1,9 @@
+﻿---- app\api\driver\payout-request\route.ts : L29 ----
+  const { searchParams } = new URL(req.url);
+  return json(200, {
+    ok: true,
+    route: "/api/driver/payout-request",
+    methods: ["GET", "POST"],
+    hint_get: "GET ?driver_id=UUID&limit=20",
+    hint_post: "POST { driver_id, amount, note? }",
+

@@ -1,0 +1,54 @@
+﻿---- app\driver\wallet\page.tsx : L65 ----
+      const wj = await w.json().catch(() => ({} as any));
+      if (!w.ok || !wj.ok) throw new Error(wj?.message || "Failed to load wallet");
+
+      const p = await fetch(`/api/driver/payout-requests?driver_id=${encodeURIComponent(d)}&status=${encodeURIComponent(status)}&limit=50`, { cache: "no-store" });
+      const pj = await p.json().catch(() => ({} as any));
+      if (!p.ok || !pj.ok) throw new Error(pj?.message || "Failed to load payout history");
+
+
+---- app\driver\wallet\page.tsx : L67 ----
+
+      const p = await fetch(`/api/driver/payout-requests?driver_id=${encodeURIComponent(d)}&status=${encodeURIComponent(status)}&limit=50`, { cache: "no-store" });
+      const pj = await p.json().catch(() => ({} as any));
+      if (!p.ok || !pj.ok) throw new Error(pj?.message || "Failed to load payout history");
+
+      setBal(n(wj.balance));
+      setTx(Array.isArray(wj.transactions) ? wj.transactions : []);
+
+---- app\driver\wallet\page.tsx : L105 ----
+        />
+
+        <select value={status} onChange={(e) => setStatus(e.target.value as any)} style={btn}>
+          <option value="all">payout status: all</option>
+          <option value="pending">pending</option>
+          <option value="approved">approved</option>
+          <option value="paid">paid</option>
+
+---- app\driver\wallet\page.tsx : L169 ----
+        </div>
+
+        <div style={card}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Payout Request History</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+              <thead>
+
+---- app\driver\wallet\page.tsx : L193 ----
+                  </tr>
+                ))}
+                {reqs.length === 0 ? (
+                  <tr><td colSpan={8} style={{ padding: 10, opacity: 0.7 }}>No payout requests.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+
+---- app\driver\wallet\page.tsx : L203 ----
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+        Locked rule: this page is read-only and intended for driver self-service. It does not mutate wallet or payout state.
+      </div>
+    </div>
+  );
+

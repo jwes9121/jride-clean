@@ -1,0 +1,54 @@
+﻿---- app\api\takeout\admin\vendor-payout\settle-request\route.ts : L39 ----
+      );
+    }
+
+    // 1) Load payout request
+    const { data: requestRows, error: requestError } = await supabase
+      .from("vendor_payout_requests")
+      .select(
+
+---- app\api\takeout\admin\vendor-payout\settle-request\route.ts : L59 ----
+    const request = requestRows && requestRows[0];
+    if (!request) {
+      return NextResponse.json(
+        { error: "Payout request not found" },
+        { status: 404 }
+      );
+    }
+
+---- app\api\takeout\admin\vendor-payout\settle-request\route.ts : L66 ----
+
+    if (request.status !== "pending") {
+      return NextResponse.json(
+        { error: "Payout request is not pending" },
+        { status: 400 }
+      );
+    }
+
+---- app\api\takeout\admin\vendor-payout\settle-request\route.ts : L81 ----
+      );
+    }
+
+    // 2) Insert wallet transaction as payout (cash paid)
+    const payoutNote =
+      request.note ??
+      "Cash payout settlement approved from admin takeout dashboard";
+
+---- app\api\takeout\admin\vendor-payout\settle-request\route.ts : L84 ----
+    // 2) Insert wallet transaction as payout (cash paid)
+    const payoutNote =
+      request.note ??
+      "Cash payout settlement approved from admin takeout dashboard";
+
+    const { error: walletInsertError } = await supabase
+      .from("vendor_wallet_transactions")
+
+---- app\api\takeout\admin\vendor-payout\settle-request\route.ts : L92 ----
+        vendor_id: vendorId,
+        booking_code: null,
+        amount: amount,
+        kind: "payout",
+        note: payoutNote,
+      });
+
+

@@ -1,0 +1,167 @@
+﻿[
+    {
+        "file":  "components\\PaymentMethodModal.tsx",
+        "exists":  true,
+        "has_xendit":  true,
+        "has_gcash":  true,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  true,
+        "has_payout":  false,
+        "env_xendit_enabled":  true
+    },
+    {
+        "file":  "components\\components\\PaymentMethodModal.tsx",
+        "exists":  true,
+        "has_xendit":  true,
+        "has_gcash":  true,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  true,
+        "has_payout":  false,
+        "env_xendit_enabled":  true
+    },
+    {
+        "file":  "components\\DriverWalletLedger.tsx",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  true,
+        "has_webhook":  false,
+        "has_checkout":  true,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "components\\components\\DriverWalletLedger.tsx",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  true,
+        "has_webhook":  false,
+        "has_checkout":  true,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\wallet\\page.tsx",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  true,
+        "has_webhook":  false,
+        "has_checkout":  true,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\wallet\\topup\\page.tsx",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  false,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\driver\\wallet\\page.tsx",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\driver\\wallet\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  false,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\driver\\payout-request\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\admin\\driver-payouts\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\admin\\wallet\\adjust\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  false,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\admin\\vendor\\settle-wallet\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\takeout\\vendor-wallet\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\takeout\\vendor\\request-payout\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    },
+    {
+        "file":  "app\\api\\takeout\\admin\\vendor-payout\\settle-request\\route.ts",
+        "exists":  true,
+        "has_xendit":  false,
+        "has_gcash":  false,
+        "has_wallet_service":  false,
+        "has_webhook":  false,
+        "has_checkout":  false,
+        "has_payout":  true,
+        "env_xendit_enabled":  false
+    }
+]
