@@ -121,6 +121,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
   const [paxActual, setPaxActual] = useState<string>("1");
   const [paxReason, setPaxReason] = useState<string>("added_passengers");
   const [paxLastNote, setPaxLastNote] = useState<string>("");
+  const [paxPersistError, setPaxPersistError] = useState<string>("");
 
   useEffect(() => {
     if (!driverId) return;
@@ -244,7 +245,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
     alert(`Ride ${status.replace("_", " ").toUpperCase()}`);
   }
 
-  // DRIVER_PAX_CONFIRM_P1_UI_ONLY helpers (UI-only; no backend writes)
+    // DRIVER_PAX_CONFIRM_P2_PERSIST helpers (safe rewrite)
   function getBookedPax(r: any): string {
     const v =
       (r && (r.passenger_count ?? r.passengers ?? r.pax ?? r.pax_count ?? r.seats ?? r.num_passengers)) as any;
@@ -259,27 +260,60 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
     setPaxMismatch(false);
     setPaxActual("1");
     setPaxReason("added_passengers");
+    try { setPaxPersistError(""); } catch {}
     setShowPaxConfirm(true);
   }
 
   async function confirmAndStartTrip() {
     if (!assigned) return;
+
     const booked = getBookedPax(assigned as any);
-    const note = paxMismatch
-      ? `PAX_MISMATCH booked=${booked} actual=${paxActual} reason=${paxReason}`
-      : `PAX_MATCH booked=${booked}`;
+    const matches = paxMismatch ? false : true;
 
+    const note = matches
+      ? `PAX_MATCH booked=${booked}`
+      : `PAX_MISMATCH booked=${booked} actual=${paxActual} reason=${paxReason}`;
+
+    // Non-blocking persist (P2)
     try {
-      console.log("[JRide] driver pax confirm", { rideId: assigned.id, note });
-    } catch {}
+      setPaxPersistError("");
 
-    setPaxLastNote(note);
+      const rideId = (assigned as any)?.id ?? null;
+      const driverId =
+        (assigned as any)?.driver_id ??
+        (assigned as any)?.driverId ??
+        null;
+
+      const res = await fetch("/api/driver/pax-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ride_id: rideId,
+          driver_id: driverId,
+          matches,
+          booked_pax: booked,
+          actual_pax: matches ? null : paxActual,
+          reason: matches ? null : paxReason,
+          note,
+        }),
+      });
+
+      const j = await res.json().catch(() => ({} as any));
+      if (!res.ok || !j?.ok) {
+        const msg = String(j?.error || "PAX_CONFIRM_SAVE_FAILED");
+        setPaxPersistError(msg);
+      }
+    } catch (e: any) {
+      try { setPaxPersistError(String(e?.message || "PAX_CONFIRM_SAVE_FAILED")); } catch {}
+    }
+
+    try { setPaxLastNote(note); } catch {}
     setShowPaxConfirm(false);
 
-    // Continue existing flow (no API changes)
+    // Continue existing flow (status update remains unchanged)
     await setStatus("in_progress");
   }
-  function formatDate(value: string | null) {
+function formatDate(value: string | null) {
     if (!value) return "";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
@@ -485,6 +519,11 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
 
                         <div className="text-[11px] opacity-70">
                           UI-only flag for admin review later. Does not change pricing yet.
+                          {paxPersistError ? (
+                            <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
+                              Save failed (non-blocking): <span className="font-mono">{paxPersistError}</span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
@@ -548,6 +587,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
     </div>
   );
 }
+
 
 
 
