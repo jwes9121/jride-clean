@@ -122,6 +122,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
   const [paxReason, setPaxReason] = useState<string>("added_passengers");
   const [paxLastNote, setPaxLastNote] = useState<string>("");
   const [paxPersistError, setPaxPersistError] = useState<string>("");
+  const [paxSaving, setPaxSaving] = useState<boolean>(false);
   const [paxLatest, setPaxLatest] = useState<any>(null);
   const [paxLatestErr, setPaxLatestErr] = useState<string>("");
 
@@ -267,6 +268,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
   }
 
   async function confirmAndStartTrip() {
+    setPaxSaving(true);
     if (!assigned) return;
 
     const booked = getBookedPax(assigned as any);
@@ -314,6 +316,7 @@ const [assigned, setAssigned] = useState<Ride | null>(null);
 
     // Continue existing flow (status update remains unchanged)
     await setStatus("in_progress");
+    setPaxSaving(false);
   }
   // P3: load latest persisted pax confirmation for this ride (read-only)
   useEffect(() => {
@@ -505,7 +508,7 @@ function formatDate(value: string | null) {
                 <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl border border-black/10">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold">Passenger count confirmation</div>
+                      <div className="text-sm font-semibold">Confirm passenger count</div>
                       <div className="mt-1 text-xs opacity-70">
                         Booked passengers: <span className="font-mono">{assigned ? getBookedPax(assigned as any) : "--"}</span>
                       </div>
@@ -523,18 +526,18 @@ function formatDate(value: string | null) {
                     <button
                       type="button"
                       className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm font-semibold hover:bg-black/5"
-                      onClick={() => {
+                      disabled={paxSaving} onClick={() => {
                         setPaxMismatch(false);
                         void confirmAndStartTrip();
                       }}
                     >
-                      Confirm matches
+                      {paxSaving ? "Starting..." : "Confirm matches"}
                     </button>
 
                     <button
                       type="button"
                       className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
-                      onClick={() => setPaxMismatch(true)}
+                      disabled={paxSaving} onClick={() => setPaxMismatch(true)}
                     >
                       Does not match
                     </button>
@@ -568,9 +571,9 @@ function formatDate(value: string | null) {
                         <button
                           type="button"
                           className="mt-2 w-full rounded-xl bg-black text-white px-3 py-2 text-sm font-semibold disabled:opacity-50"
-                          onClick={() => void confirmAndStartTrip()}
+                          disabled={paxSaving} onClick={() => void confirmAndStartTrip()}
                         >
-                          Continue and start trip
+                          {paxSaving ? "Starting..." : "Continue and start trip"}
                         </button>
 
                         <div className="text-[11px] opacity-70">
