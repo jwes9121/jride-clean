@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -49,16 +49,36 @@ function getRoleFromClient(): { role: Role; debug: boolean; source: string } {
 export default function AdminControlCenterPage() {
   const [role, setRole] = useState<Role>("admin");
   const [debug, setDebug] = useState(false);
-  const [roleSource, setRoleSource] = useState<string>("default");
+  // P5: Ops Snapshot - PAX mismatch count (read-only)
+  const [paxMismatchCount, setPaxMismatchCount] = useState<number>(0);
+  const [paxMismatchErr, setPaxMismatchErr] = useState<string>("");  const [roleSource, setRoleSource] = useState<string>("default");
 
   useEffect(() => {
     const r = getRoleFromClient();
-    setRole(r.role);
+      setRole(r.role);
     setDebug(r.debug);
     setRoleSource(r.source);
   }, []);
 
-  const sections: Section[] = useMemo(
+    // P5: load PAX mismatch count (matches = false)
+  useEffect(() => {
+    (async () => {
+      try {
+        setPaxMismatchErr("");
+        const { count, error } = await supabase
+          .from("ride_pax_confirmations")
+          .select("id", { count: "exact", head: true })
+          .eq("matches", false);
+
+        if (error) throw error;
+        setPaxMismatchCount(typeof count === "number" ? count : 0);
+      } catch (e: any) {
+        setPaxMismatchErr(String(e?.message || "PAX_MISMATCH_COUNT_FAILED"));
+        setPaxMismatchCount(0);
+      }
+    })();
+  }, []);
+const sections: Section[] = useMemo(
     () => [
       {
         heading: "Core Admin",
@@ -354,7 +374,17 @@ return (
           <div>
             <div className="text-sm font-semibold">Ops Snapshot</div>
             <div className="text-xs opacity-70">At-a-glance queue counts (read-only)</div>
-          </div>
+  
+          <div className="rounded-xl border border-black/10 p-3">
+            <div className="text-xs opacity-70">PAX mismatches</div>
+            <div className="mt-1 text-lg font-bold">{paxMismatchCount}</div>
+            <div className="mt-1 text-[11px] opacity-70">
+              Driver-reported passenger count mismatches
+              {paxMismatchErr ? (
+                <span className="ml-2 text-rose-700">Unavailable</span>
+              ) : null}
+            </div>
+          </div>        </div>
         </div>
 
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
