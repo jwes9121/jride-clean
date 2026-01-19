@@ -10,6 +10,56 @@ function toNum(v: any) {
 }
 
 export default function AdminWalletAdjustPage() {
+  // ===== JRIDE_ADMIN_WALLET_LOOKUP_STATE_START =====
+  const [lookup, setLookup] = useState<any>(null);
+  const [lookupBusy, setLookupBusy] = useState(false);
+
+  async function runDriverLookup(driver_id: string) {
+    setLookupBusy(true); setLookup(null);
+    try {
+      const headers: Record<string, string> = {};
+      // Optional admin key support if your page has an adminKey state
+      // @ts-ignore
+      if (typeof adminKey !== "undefined" && String(adminKey || "").trim()) {
+        headers["x-admin-key"] = String(adminKey || "").trim();
+      }
+
+      const res = await fetch(
+        `/api/admin/wallet/driver-summary?driver_id=${encodeURIComponent(driver_id)}`,
+        { headers }
+      );
+      const data = await res.json();
+      setLookup(data);
+    } catch (e: any) {
+      setLookup({ ok: false, error: e?.message || String(e) });
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  async function runVendorLookup(vendor_id: string) {
+    setLookupBusy(true); setLookup(null);
+    try {
+      const headers: Record<string, string> = {};
+      // @ts-ignore
+      if (typeof adminKey !== "undefined" && String(adminKey || "").trim()) {
+        headers["x-admin-key"] = String(adminKey || "").trim();
+      }
+
+      const res = await fetch(
+        `/api/admin/wallet/vendor-summary?vendor_id=${encodeURIComponent(vendor_id)}`,
+        { headers }
+      );
+      const data = await res.json();
+      setLookup(data);
+    } catch (e: any) {
+      setLookup({ ok: false, error: e?.message || String(e) });
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+  // ===== JRIDE_ADMIN_WALLET_LOOKUP_STATE_END =====
+
   const [tab, setTab] = useState<"driver" | "vendor_adjust" | "vendor_settle">("driver");
 
   // Admin-key is optional (only needed if ADMIN_API_KEY is set on server)
@@ -218,10 +268,17 @@ export default function AdminWalletAdjustPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-black/10 p-4">
+            <div className="rounded-xl border border-black/10 p-4 space-y-2">
+        <div className="font-semibold">Lookup</div>
+        <div className="text-xs text-slate-500">Balance + last 20 transactions.</div>
+        <pre className="text-xs whitespace-pre-wrap max-h-64 overflow-auto">{lookup ? JSON.stringify(lookup, null, 2) : "(no lookup yet)"}</pre>
+      </div>
+<div className="rounded-xl border border-black/10 p-4">
         <div className="font-semibold mb-2">Response</div>
         <pre className="text-xs whitespace-pre-wrap">{outText || "(no output yet)"}</pre>
       </div>
     </div>
   );
 }
+
+
