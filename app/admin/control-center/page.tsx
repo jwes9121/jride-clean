@@ -60,7 +60,7 @@ export default function AdminControlCenterPage() {
     setRoleSource(r.source);
   }, []);
 
-    // P5: load PAX mismatch count (matches = false)
+      // P5: load PAX mismatch count (matches = false)
   useEffect(() => {
     (async () => {
       try {
