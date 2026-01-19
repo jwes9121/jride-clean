@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -145,6 +145,11 @@ export default function AdminControlCenterPage() {
             title: "Incident Log (Read-only)",
             desc: "Operational issues board: stuck, unassigned, at-risk, cancelled (derived).",
             href: "/admin/ops/incidents",
+          },
+          {
+            title: "PAX Mismatches",
+            desc: "Read-only list of driver-reported passenger count mismatches.",
+            href: "/admin/ops/pax-mismatches",
           },{
             title: "Ops Health Dashboard",
             desc: "High-level operational health indicators (read-only).",
@@ -409,5 +414,6 @@ return (
     </div>
   );
 }
+
 
 
