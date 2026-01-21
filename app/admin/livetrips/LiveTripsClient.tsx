@@ -1133,7 +1133,7 @@ disabled={false}
         {/* Right: map (unchanged) */}
         <div className="rounded-lg border bg-white overflow-hidden">
           <div className="h-[720px]">
-            <LiveTripsMap
+            <LiveTripsMap drivers={drivers as any}
               trips={
   [...(visibleTrips as any)].sort((a: any, b: any) => {
     const ap = isProblemTrip(a) ? 1 : 0;
@@ -1212,6 +1212,7 @@ disabled={false}
     </div>
   );
 }
+
 
 
 

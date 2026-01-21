@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
@@ -10,6 +10,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 export interface LiveTripsMapProps {
   trips: LiveTrip[];
+  drivers: any[]; // fleet driver locations from /api/admin/driver_locations
   selectedTripId: string | null;
   stuckTripIds: Set<string>; // external optional stuck set
 }
@@ -50,6 +51,48 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+type FleetDriverRow = {
+  driver_id?: string | null;
+  name?: string | null;
+  town?: string | null;
+  status?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  updated_at?: string | null;
+};
+
+function norm(s: any): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function getFleetLngLat(d: any): LngLatTuple | null {
+  const lat = num(d?.lat);
+  const lng = num(d?.lng);
+  if (lat != null && lng != null) return [lng, lat];
+  return null;
+}
+
+function fleetMarkerColor(statusRaw: any): { bg: string; ring: string; show: boolean } {
+  const s = norm(statusRaw);
+
+  // Hidden: offline / disabled
+  if (!s || s === "offline" || s.includes("offline")) {
+    return { bg: "#94a3b8", ring: "#ffffff", show: false };
+  }
+
+  // Available => GREEN
+  if (s === "available" || s === "online" || s === "idle" || s.includes("waiting")) {
+    return { bg: "#22c55e", ring: "#ffffff", show: true };
+  }
+
+  // Busy / moving / on-trip => non-green
+  if (s === "on_trip" || s === "on_the_way" || s.includes("busy")) {
+    return { bg: "#f59e0b", ring: "#ffffff", show: true };
+  }
+
+  // Default visible but neutral
+  return { bg: "#3b82f6", ring: "#ffffff", show: true };
+}
 // ---------- Coordinate helpers ----------
 
 function getPickup(trip: any): LngLatTuple | null {
@@ -292,7 +335,11 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+    // Trip markers (per booking)
   const driverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
+
+  // Fleet driver markers (from /api/admin/driver_locations)
+  const fleetDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const routeIdsRef = useRef<Set<string>>(new Set());
@@ -1040,7 +1087,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  · {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Â· {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1072,7 +1119,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  ·  STUCK" : ""}
+                  {selectedOverview.isStuck ? "  Â·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1176,6 +1223,9 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
+
+
 
 
 
