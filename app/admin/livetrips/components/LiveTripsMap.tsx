@@ -66,8 +66,22 @@ function norm(s: any): string {
 }
 
 function getFleetLngLat(d: any): LngLatTuple | null {
-  const lat = num(d?.lat);
-  const lng = num(d?.lng);
+  // driver_locations may return different key names depending on route/version
+  const lat =
+    num(d?.lat) ??
+    num(d?.latitude) ??
+    num(d?.driver_lat) ??
+    num(d?.driverLat) ??
+    null;
+
+  const lng =
+    num(d?.lng) ??
+    num(d?.lon) ??
+    num(d?.longitude) ??
+    num(d?.driver_lng) ??
+    num(d?.driverLng) ??
+    null;
+
   if (lat != null && lng != null) return [lng, lat];
   return null;
 }
@@ -327,11 +341,8 @@ interface AutoAssignSuggestion {
 
 // ---------- Main component ----------
 
-export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
-  trips,
-  selectedTripId,
-  stuckTripIds,
-}) => {
+export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
+  const { trips, drivers, selectedTripId, stuckTripIds } = (props as any);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -414,7 +425,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     }
 
     const idsNow = new Set(
-      trips.map((t: any, idx) =>
+      trips.map((t: any, idx: number) =>
         String((t as any).id ?? (t as any).bookingCode ?? idx)
       )
     );
@@ -687,7 +698,58 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     };
   }, []);
 
-  // ===== MARKERS + ROUTES =====
+  // ===== FLEET DRIVER MARKERS (from drivers prop) =====
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const next: Record<string, mapboxgl.Marker> = {};
+    const list = Array.isArray(drivers) ? (drivers as any[]) : [];
+
+    for (const d of list) {
+      const id = String(d?.driver_id ?? d?.id ?? "");
+      if (!id) continue;
+
+      const pos = getFleetLngLat(d);
+      if (!pos) continue;
+
+      const color = fleetMarkerColor(d?.status);
+      if (!color.show) {
+        const prev = fleetDriverMarkersRef.current[id];
+        if (prev) prev.remove();
+        continue;
+      }
+
+      let marker = fleetDriverMarkersRef.current[id];
+      if (!marker) {
+        const el = document.createElement("div");
+        el.style.width = "14px";
+        el.style.height = "14px";
+        el.style.borderRadius = "9999px";
+        el.style.backgroundColor = color.bg;
+        el.style.border = `2px solid ${color.ring}`;
+        el.style.boxShadow = "0 0 0 1px rgba(0,0,0,0.10)";
+        el.style.transform = "translate(-50%, -50%)";
+        el.style.zIndex = "30"; // keep above polylines
+        el.title = `${d?.name ?? "Driver"}${d?.town ? " â€” " + d.town : ""}${d?.status ? " â€” " + d.status : ""}`;
+        marker = new mapboxgl.Marker(el).setLngLat(pos).addTo(map);
+      } else {
+        marker.setLngLat(pos);
+        const el = marker.getElement() as HTMLElement;
+        el.style.backgroundColor = color.bg;
+        el.title = `${d?.name ?? "Driver"}${d?.town ? " â€” " + d.town : ""}${d?.status ? " â€” " + d.status : ""}`;
+      }
+
+      next[id] = marker;
+    }
+
+    // cleanup removed drivers
+    for (const [id, marker] of Object.entries(fleetDriverMarkersRef.current)) {
+      if (!next[id]) marker.remove();
+    }
+    fleetDriverMarkersRef.current = next;
+  }, [drivers]);
+// ===== MARKERS + ROUTES =====
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -1223,6 +1285,9 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
+
+
 
 
 
