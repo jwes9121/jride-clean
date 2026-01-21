@@ -66,7 +66,6 @@ function norm(s: any): string {
 }
 
 function getFleetLngLat(d: any): LngLatTuple | null {
-  // driver_locations may return different key names depending on route/version
   const lat =
     num(d?.lat) ??
     num(d?.latitude) ??
@@ -919,7 +918,67 @@ if (isStuck || isProblem) el.classList.add("jride-marker-blink");marker = new ma
     routeIdsRef.current = validRouteIds;
   }, [visibleTrips, activeStuckIds]);
 
-  // ===== AUTO-FOLLOW =====
+  // ===== FLEET AUTO-FIT (when no selected trip) =====
+  const lastFleetFitKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!(map as any).loaded || !(map as any).loaded()) return;
+
+    // Do NOT override trip-follow behavior
+    if (selectedTripId) return;
+
+    const list = Array.isArray(drivers) ? (drivers as any[]) : [];
+    const points: LngLatTuple[] = [];
+
+    for (const d of list) {
+      const color = fleetMarkerColor(d?.status);
+      if (!color.show) continue; // hide offline
+      const pos = getFleetLngLat(d);
+      if (!pos) continue;
+      points.push(pos);
+    }
+
+    if (points.length === 0) return;
+
+    // Avoid repeated fitBounds spam for the same fleet set
+    const key =
+      String(points.length) + ":" +
+      points.slice(0, 6).map(p => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join("|");
+    if (lastFleetFitKeyRef.current === key) return;
+    lastFleetFitKeyRef.current = key;
+
+    // Build bounds
+    let minLng = points[0][0], maxLng = points[0][0];
+    let minLat = points[0][1], maxLat = points[0][1];
+
+    for (let i = 1; i < points.length; i++) {
+      const lng = points[i][0];
+      const lat = points[i][1];
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+
+    // If only one point, pad it a bit
+    const padLng = (maxLng - minLng) < 0.001 ? 0.01 : 0;
+    const padLat = (maxLat - minLat) < 0.001 ? 0.01 : 0;
+
+    const bounds: [[number, number], [number, number]] = [
+      [minLng - padLng, minLat - padLat],
+      [maxLng + padLng, maxLat + padLat],
+    ];
+
+    map.fitBounds(bounds, {
+      padding: 80,
+      duration: 700,
+      essential: true,
+      maxZoom: 14,
+    });
+  }, [drivers, selectedTripId]);
+// ===== AUTO-FOLLOW =====
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedTripId) return;
@@ -1285,6 +1344,8 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
+
+
 
 
 
