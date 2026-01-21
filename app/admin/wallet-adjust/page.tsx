@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -163,6 +163,12 @@ export default function AdminWalletAdjustPage() {
   async function runDriverAdjust() {
     setBusy(true); setOut(null);
     try {
+      if (!receiptRef || !driverReason || driverReason === "manual_adjust") {
+        const nextRef = receiptRef || genReceiptRef();
+        const built = buildReason();
+        setReceiptRef(nextRef);
+        setDriverReason(built.reason);
+      }
       const amt = toNum(driverAmount);
       const data = await postJson("/api/admin/wallet/adjust", {
         kind: "driver_adjust",
@@ -282,8 +288,8 @@ export default function AdminWalletAdjustPage() {
     <input
       className="w-full rounded-lg border border-black/10 px-3 py-2"
       placeholder="driver_id (uuid)"
-      value={driverId}
-      onChange={(e) => { setDriverId(e.target.value); setDriverPick(""); }}
+      value={vendorId}
+      onChange={(e) => { setVendorId(e.target.value); setDriverPick(""); }}
     />
   </div>
 
@@ -292,8 +298,8 @@ export default function AdminWalletAdjustPage() {
     <input
       className="w-full rounded-lg border border-black/10 px-3 py-2"
       placeholder="amount (e.g. 250 or -100)"
-      value={driverAmount}
-      onChange={(e) => setDriverAmount(e.target.value)}
+      value={vendorAmount}
+      onChange={(e) => setVendorAmount(e.target.value)}
     />
   </div>
 
@@ -315,8 +321,8 @@ export default function AdminWalletAdjustPage() {
     <input
       className="w-full rounded-lg border border-black/10 px-3 py-2"
       placeholder="reason"
-      value={driverReason}
-      onChange={(e) => setDriverReason(e.target.value)}
+      value={vendorNote}
+      onChange={(e) => setVendorNote(e.target.value)}
     />
   </div>
 
@@ -356,7 +362,7 @@ export default function AdminWalletAdjustPage() {
   </div>
 </div>
 
-<button<button
+<button
             disabled={busy}
             onClick={runDriverAdjust}
             className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-50"
@@ -369,233 +375,129 @@ export default function AdminWalletAdjustPage() {
         </div>
       )}
 
-      {tab === "vendor_adjust" && (
+            {tab === "vendor_adjust" && (
         <div className="rounded-xl border border-black/10 p-4 space-y-3">
           <div className="font-semibold">Vendor wallet adjustment entry</div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Select Driver (recommended)</div>
-    <select
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      value={driverPick}
-      onChange={(e) => setDriverPick(e.target.value)}
-    >
-      <option value="">-- choose driver id --</option>
-      {driverIds.map((id) => (
-        <option key={id} value={id}>
-          {shortId(id)} ({id})
-        </option>
-      ))}
-    </select>
-    <div className="text-[11px] text-slate-500">If list is empty, your API key/env may block listing. You can still paste UUID below.</div>
-  </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-slate-600">Vendor ID (UUID)</div>
+              <input
+                className="w-full rounded-lg border border-black/10 px-3 py-2"
+                placeholder="vendor_id (uuid)"
+                value={vendorId}
+                onChange={(e) => setVendorId(e.target.value)}
+              />
+            </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Driver ID (UUID)</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="driver_id (uuid)"
-      value={driverId}
-      onChange={(e) => { setDriverId(e.target.value); setDriverPick(""); }}
-    />
-  </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-slate-600">Amount</div>
+              <input
+                className="w-full rounded-lg border border-black/10 px-3 py-2"
+                placeholder="amount (e.g. 250 or -100)"
+                value={vendorAmount}
+                onChange={(e) => setVendorAmount(e.target.value)}
+              />
+            </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Amount</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="amount (e.g. 250 or -100)"
-      value={driverAmount}
-      onChange={(e) => setDriverAmount(e.target.value)}
-    />
-  </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-slate-600">Kind</div>
+              <input
+                className="w-full rounded-lg border border-black/10 px-3 py-2"
+                placeholder="adjustment | earning | payout | etc"
+                value={vendorKind}
+                onChange={(e) => setVendorKind(e.target.value)}
+              />
+            </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Reason Mode</div>
-    <select
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      value={reasonMode}
-      onChange={(e) => setReasonMode(e.target.value)}
-    >
-      <option value="manual_topup">Manual Topup</option>
-      <option value="promo_free_ride">Promo: Free Ride Credit</option>
-      <option value="correction">Correction</option>
-    </select>
-  </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-slate-600">Note</div>
+              <input
+                className="w-full rounded-lg border border-black/10 px-3 py-2"
+                placeholder="manual_adjust"
+                value={vendorNote}
+                onChange={(e) => setVendorNote(e.target.value)}
+              />
+            </div>
+          </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Reason (auto or manual)</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="reason"
-      value={driverReason}
-      onChange={(e) => setDriverReason(e.target.value)}
-    />
-  </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => runVendorLookup(vendorId.trim())}
+              className="rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5 disabled:opacity-50"
+              title="Shows balance + last 20 vendor transactions in the Lookup panel"
+            >
+              Lookup Vendor
+            </button>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Receipt Reference (read-only)</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2 bg-slate-50"
-      value={receiptRef || "(auto-generated when you click Generate)"}
-      readOnly
-    />
-  </div>
+            <button
+              disabled={busy}
+              onClick={runVendorAdjust}
+              className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-50"
+            >
+              {busy ? "Working..." : "Insert Vendor Adjustment"}
+            </button>
+          </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Created By</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="created_by"
-      value={createdBy}
-      onChange={(e) => setCreatedBy(e.target.value)}
-    />
-  </div>
-
-  <div className="space-y-1 flex items-end">
-    <button
-      type="button"
-      className="w-full rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5"
-      onClick={() => {
-        const nextRef = receiptRef || genReceiptRef();
-        if (!receiptRef) setReceiptRef(nextRef);
-        const built = buildReason();
-        setDriverReason(built.reason);
-        setReceiptRef(built.ref);
-      }}
-    >
-      Generate Reason + Receipt Ref
-    </button>
-  </div>
-</div>
-
-<button<button
-            disabled={busy}
-            onClick={runVendorAdjust}
-            className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-50"
-          >
-            {busy ? "Working..." : "Insert Vendor Adjustment"}
-          </button>
           <div className="text-xs text-slate-500">
-            Inserts row into <code>vendor_wallet_transactions</code> with booking_code null.
+            Inserts a row into <code>vendor_wallet_transactions</code> (booking_code null). Does not require Xendit/GCash.
           </div>
         </div>
       )}
-
       {tab === "vendor_settle" && (
         <div className="rounded-xl border border-black/10 p-4 space-y-3">
           <div className="font-semibold">Vendor settle full balance (payout)</div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Select Driver (recommended)</div>
-    <select
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      value={driverPick}
-      onChange={(e) => setDriverPick(e.target.value)}
-    >
-      <option value="">-- choose driver id --</option>
-      {driverIds.map((id) => (
-        <option key={id} value={id}>
-          {shortId(id)} ({id})
-        </option>
-      ))}
-    </select>
-    <div className="text-[11px] text-slate-500">If list is empty, your API key/env may block listing. You can still paste UUID below.</div>
-  </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-slate-600">Vendor ID (UUID)</div>
+              <input
+                className="w-full rounded-lg border border-black/10 px-3 py-2"
+                placeholder="vendor_id (uuid)"
+                value={settleVendorId}
+                onChange={(e) => setSettleVendorId(e.target.value)}
+              />
+            </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Driver ID (UUID)</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="driver_id (uuid)"
-      value={driverId}
-      onChange={(e) => { setDriverId(e.target.value); setDriverPick(""); }}
-    />
-  </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-slate-600">Note</div>
+              <input
+                className="w-full rounded-lg border border-black/10 px-3 py-2"
+                placeholder="Cash payout settlement"
+                value={settleNote}
+                onChange={(e) => setSettleNote(e.target.value)}
+              />
+            </div>
+          </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Amount</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="amount (e.g. 250 or -100)"
-      value={driverAmount}
-      onChange={(e) => setDriverAmount(e.target.value)}
-    />
-  </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => runVendorLookup(settleVendorId.trim())}
+              className="rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5 disabled:opacity-50"
+              title="Shows balance + last 20 vendor transactions in the Lookup panel"
+            >
+              Lookup Vendor
+            </button>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Reason Mode</div>
-    <select
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      value={reasonMode}
-      onChange={(e) => setReasonMode(e.target.value)}
-    >
-      <option value="manual_topup">Manual Topup</option>
-      <option value="promo_free_ride">Promo: Free Ride Credit</option>
-      <option value="correction">Correction</option>
-    </select>
-  </div>
+            <button
+              disabled={busy}
+              onClick={runVendorSettle}
+              className="rounded-xl bg-amber-600 text-white px-4 py-2 disabled:opacity-50"
+            >
+              {busy ? "Working..." : "Settle Vendor Wallet (Full Payout)"}
+            </button>
+          </div>
 
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Reason (auto or manual)</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="reason"
-      value={driverReason}
-      onChange={(e) => setDriverReason(e.target.value)}
-    />
-  </div>
-
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Receipt Reference (read-only)</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2 bg-slate-50"
-      value={receiptRef || "(auto-generated when you click Generate)"}
-      readOnly
-    />
-  </div>
-
-  <div className="space-y-1">
-    <div className="text-xs font-semibold text-slate-600">Created By</div>
-    <input
-      className="w-full rounded-lg border border-black/10 px-3 py-2"
-      placeholder="created_by"
-      value={createdBy}
-      onChange={(e) => setCreatedBy(e.target.value)}
-    />
-  </div>
-
-  <div className="space-y-1 flex items-end">
-    <button
-      type="button"
-      className="w-full rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5"
-      onClick={() => {
-        const nextRef = receiptRef || genReceiptRef();
-        if (!receiptRef) setReceiptRef(nextRef);
-        const built = buildReason();
-        setDriverReason(built.reason);
-        setReceiptRef(built.ref);
-      }}
-    >
-      Generate Reason + Receipt Ref
-    </button>
-  </div>
-</div>
-
-<button<button
-            disabled={busy}
-            onClick={runVendorSettle}
-            className="rounded-xl bg-amber-600 text-white px-4 py-2 disabled:opacity-50"
-          >
-            {busy ? "Working..." : "Settle Vendor Wallet (Full Payout)"}
-          </button>
           <div className="text-xs text-slate-500">
-            Uses <code>settle_vendor_wallet</code> which inserts a negative payout row and resets vendor_wallet.balance.
+            Uses <code>settle_vendor_wallet</code> (inserts negative payout row and resets vendor_wallet.balance).
           </div>
         </div>
       )}
-
-            <div className="rounded-xl border border-black/10 p-4 space-y-2">
+<div className="rounded-xl border border-black/10 p-4 space-y-2">
         <div className="font-semibold">Lookup</div>
         <div className="text-xs text-slate-500">Balance + last 20 transactions.</div>
         <pre className="text-xs whitespace-pre-wrap max-h-64 overflow-auto">{lookup ? JSON.stringify(lookup, null, 2) : "(no lookup yet)"}</pre>
@@ -607,5 +509,7 @@ export default function AdminWalletAdjustPage() {
     </div>
   );
 }
+
+
 
 
