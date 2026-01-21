@@ -1,4 +1,4 @@
-// app/api/admin/driver-locations/route.ts
+﻿// app/api/admin/driver-locations/route.ts
 // Admin view of driver_locations table in Supabase
 
 import { NextResponse } from "next/server";
@@ -42,6 +42,29 @@ export async function GET(request: Request) {
 
     if (!res.ok) {
       console.error("Supabase driver_locations GET error:", data);
+          // Normalize for Admin UI: treat "online" as "available"
+          // (Does NOT change DB; only the API response used by LiveTrips.)
+          try {
+            // If the handler uses variables named "drivers" / "driver_locations", normalize them.
+            // If not defined, this safely throws and is ignored.
+            // @ts-ignore
+            if (typeof drivers !== "undefined") {
+              // @ts-ignore
+              drivers = (drivers || []).map((r: any) => {
+                const s = String((r as any)?.status || "").trim().toLowerCase();
+                return s === "online" ? { ...r, status: "available" } : r;
+              });
+            }
+            // @ts-ignore
+            if (typeof driver_locations !== "undefined") {
+              // @ts-ignore
+              driver_locations = (driver_locations || []).map((r: any) => {
+                const s = String((r as any)?.status || "").trim().toLowerCase();
+                return s === "online" ? { ...r, status: "available" } : r;
+              });
+            }
+          } catch { /* ignore */ }
+
       return NextResponse.json(
         {
           ok: false,
@@ -72,3 +95,4 @@ export async function GET(request: Request) {
     );
   }
 }
+
