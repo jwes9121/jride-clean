@@ -198,6 +198,10 @@ const sections: Section[] = useMemo(
             title: "Wallet Reconciliation",
             desc: "Read-only reconciliation status dashboard placeholder.",
             href: "/admin/ops/wallet-reconciliation",
+          },{
+            title: "Wallet Adjustments (Admin)",
+            desc: "Manual driver credit/debit + vendor wallet adjustments and full settle.",
+            href: "/admin/wallet-adjust",
           },
         ],
       },
