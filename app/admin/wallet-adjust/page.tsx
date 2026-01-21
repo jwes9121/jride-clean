@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type DriverResult = any;
 
@@ -70,6 +70,68 @@ export default function AdminWalletAdjustPage() {
   const [driverAmount, setDriverAmount] = useState<string>("");
   const [driverReason, setDriverReason] = useState<string>("manual_adjust");
   const [createdBy, setCreatedBy] = useState<string>("admin");
+  // Driver dropdown + receipt reference helpers
+  const [driverIds, setDriverIds] = useState<string[]>([]);
+  const [driverPick, setDriverPick] = useState<string>("");
+  const [receiptRef, setReceiptRef] = useState<string>("");
+  const [reasonMode, setReasonMode] = useState<string>("manual_topup"); // manual_topup | promo_free_ride | correction
+
+  function shortId(id: string) {
+    const s = String(id || "");
+    if (s.length <= 10) return s;
+    return s.slice(0, 8) + "..." + s.slice(-4);
+  }
+
+  function genReceiptRef() {
+    // Example: WALLET-20260122-064900-AB12
+    const d = new Date();
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    const rnd = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return "WALLET-" + y + mo + da + "-" + hh + mm + ss + "-" + rnd;
+  }
+
+  function buildReason() {
+    const id = driverId.trim();
+    const amt = toNum(driverAmount);
+    const ref = receiptRef || genReceiptRef();
+
+    let reason = "manual_adjust";
+    if (reasonMode === "manual_topup") {
+      reason = "topup_manual:" + shortId(id) + ":" + ref + ":" + amt;
+    } else if (reasonMode === "promo_free_ride") {
+      // Use for launch promo: crediting driver for free rides
+      reason = "promo_free_ride_credit:" + shortId(id) + ":" + ref + ":" + amt;
+    } else if (reasonMode === "correction") {
+      reason = "correction:" + shortId(id) + ":" + ref + ":" + amt;
+    }
+    return { reason, ref };
+  }
+
+  async function loadDriverIds() {
+    try {
+      const res = await fetch("/api/admin/wallet/drivers");
+      const j = await res.json();
+      if (j && j.ok && Array.isArray(j.drivers)) setDriverIds(j.drivers);
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    loadDriverIds();
+  }, []);
+
+  useEffect(() => {
+    // Keep driverId in sync with dropdown if used
+    if (driverPick && driverPick.trim()) setDriverId(driverPick.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverPick]);
+
 
   // Vendor adjust
   const [vendorId, setVendorId] = useState("");
@@ -198,16 +260,103 @@ export default function AdminWalletAdjustPage() {
         <div className="rounded-xl border border-black/10 p-4 space-y-3">
           <div className="font-semibold">Driver wallet credit/debit</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="driver_id (uuid)"
-              value={driverId} onChange={(e) => setDriverId(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="amount (e.g. 250 or -100)"
-              value={driverAmount} onChange={(e) => setDriverAmount(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="reason"
-              value={driverReason} onChange={(e) => setDriverReason(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="created_by"
-              value={createdBy} onChange={(e) => setCreatedBy(e.target.value)} />
-          </div>
-          <button
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Select Driver (recommended)</div>
+    <select
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      value={driverPick}
+      onChange={(e) => setDriverPick(e.target.value)}
+    >
+      <option value="">-- choose driver id --</option>
+      {driverIds.map((id) => (
+        <option key={id} value={id}>
+          {shortId(id)} ({id})
+        </option>
+      ))}
+    </select>
+    <div className="text-[11px] text-slate-500">If list is empty, your API key/env may block listing. You can still paste UUID below.</div>
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Driver ID (UUID)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="driver_id (uuid)"
+      value={driverId}
+      onChange={(e) => { setDriverId(e.target.value); setDriverPick(""); }}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Amount</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="amount (e.g. 250 or -100)"
+      value={driverAmount}
+      onChange={(e) => setDriverAmount(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Reason Mode</div>
+    <select
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      value={reasonMode}
+      onChange={(e) => setReasonMode(e.target.value)}
+    >
+      <option value="manual_topup">Manual Topup</option>
+      <option value="promo_free_ride">Promo: Free Ride Credit</option>
+      <option value="correction">Correction</option>
+    </select>
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Reason (auto or manual)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="reason"
+      value={driverReason}
+      onChange={(e) => setDriverReason(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Receipt Reference (read-only)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2 bg-slate-50"
+      value={receiptRef || "(auto-generated when you click Generate)"}
+      readOnly
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Created By</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="created_by"
+      value={createdBy}
+      onChange={(e) => setCreatedBy(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1 flex items-end">
+    <button
+      type="button"
+      className="w-full rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5"
+      onClick={() => {
+        const nextRef = receiptRef || genReceiptRef();
+        if (!receiptRef) setReceiptRef(nextRef);
+        const built = buildReason();
+        setDriverReason(built.reason);
+        setReceiptRef(built.ref);
+      }}
+    >
+      Generate Reason + Receipt Ref
+    </button>
+  </div>
+</div>
+
+<button<button
             disabled={busy}
             onClick={runDriverAdjust}
             className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-50"
@@ -224,16 +373,103 @@ export default function AdminWalletAdjustPage() {
         <div className="rounded-xl border border-black/10 p-4 space-y-3">
           <div className="font-semibold">Vendor wallet adjustment entry</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="vendor_id (uuid)"
-              value={vendorId} onChange={(e) => setVendorId(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="amount (e.g. 500 or -200)"
-              value={vendorAmount} onChange={(e) => setVendorAmount(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="kind (e.g. adjustment)"
-              value={vendorKind} onChange={(e) => setVendorKind(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="note"
-              value={vendorNote} onChange={(e) => setVendorNote(e.target.value)} />
-          </div>
-          <button
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Select Driver (recommended)</div>
+    <select
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      value={driverPick}
+      onChange={(e) => setDriverPick(e.target.value)}
+    >
+      <option value="">-- choose driver id --</option>
+      {driverIds.map((id) => (
+        <option key={id} value={id}>
+          {shortId(id)} ({id})
+        </option>
+      ))}
+    </select>
+    <div className="text-[11px] text-slate-500">If list is empty, your API key/env may block listing. You can still paste UUID below.</div>
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Driver ID (UUID)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="driver_id (uuid)"
+      value={driverId}
+      onChange={(e) => { setDriverId(e.target.value); setDriverPick(""); }}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Amount</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="amount (e.g. 250 or -100)"
+      value={driverAmount}
+      onChange={(e) => setDriverAmount(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Reason Mode</div>
+    <select
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      value={reasonMode}
+      onChange={(e) => setReasonMode(e.target.value)}
+    >
+      <option value="manual_topup">Manual Topup</option>
+      <option value="promo_free_ride">Promo: Free Ride Credit</option>
+      <option value="correction">Correction</option>
+    </select>
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Reason (auto or manual)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="reason"
+      value={driverReason}
+      onChange={(e) => setDriverReason(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Receipt Reference (read-only)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2 bg-slate-50"
+      value={receiptRef || "(auto-generated when you click Generate)"}
+      readOnly
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Created By</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="created_by"
+      value={createdBy}
+      onChange={(e) => setCreatedBy(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1 flex items-end">
+    <button
+      type="button"
+      className="w-full rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5"
+      onClick={() => {
+        const nextRef = receiptRef || genReceiptRef();
+        if (!receiptRef) setReceiptRef(nextRef);
+        const built = buildReason();
+        setDriverReason(built.reason);
+        setReceiptRef(built.ref);
+      }}
+    >
+      Generate Reason + Receipt Ref
+    </button>
+  </div>
+</div>
+
+<button<button
             disabled={busy}
             onClick={runVendorAdjust}
             className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-50"
@@ -250,12 +486,103 @@ export default function AdminWalletAdjustPage() {
         <div className="rounded-xl border border-black/10 p-4 space-y-3">
           <div className="font-semibold">Vendor settle full balance (payout)</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="vendor_id (uuid)"
-              value={settleVendorId} onChange={(e) => setSettleVendorId(e.target.value)} />
-            <input className="rounded-lg border border-black/10 px-3 py-2" placeholder="note"
-              value={settleNote} onChange={(e) => setSettleNote(e.target.value)} />
-          </div>
-          <button
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Select Driver (recommended)</div>
+    <select
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      value={driverPick}
+      onChange={(e) => setDriverPick(e.target.value)}
+    >
+      <option value="">-- choose driver id --</option>
+      {driverIds.map((id) => (
+        <option key={id} value={id}>
+          {shortId(id)} ({id})
+        </option>
+      ))}
+    </select>
+    <div className="text-[11px] text-slate-500">If list is empty, your API key/env may block listing. You can still paste UUID below.</div>
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Driver ID (UUID)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="driver_id (uuid)"
+      value={driverId}
+      onChange={(e) => { setDriverId(e.target.value); setDriverPick(""); }}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Amount</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="amount (e.g. 250 or -100)"
+      value={driverAmount}
+      onChange={(e) => setDriverAmount(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Reason Mode</div>
+    <select
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      value={reasonMode}
+      onChange={(e) => setReasonMode(e.target.value)}
+    >
+      <option value="manual_topup">Manual Topup</option>
+      <option value="promo_free_ride">Promo: Free Ride Credit</option>
+      <option value="correction">Correction</option>
+    </select>
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Reason (auto or manual)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="reason"
+      value={driverReason}
+      onChange={(e) => setDriverReason(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Receipt Reference (read-only)</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2 bg-slate-50"
+      value={receiptRef || "(auto-generated when you click Generate)"}
+      readOnly
+    />
+  </div>
+
+  <div className="space-y-1">
+    <div className="text-xs font-semibold text-slate-600">Created By</div>
+    <input
+      className="w-full rounded-lg border border-black/10 px-3 py-2"
+      placeholder="created_by"
+      value={createdBy}
+      onChange={(e) => setCreatedBy(e.target.value)}
+    />
+  </div>
+
+  <div className="space-y-1 flex items-end">
+    <button
+      type="button"
+      className="w-full rounded-xl border border-black/10 px-4 py-2 hover:bg-black/5"
+      onClick={() => {
+        const nextRef = receiptRef || genReceiptRef();
+        if (!receiptRef) setReceiptRef(nextRef);
+        const built = buildReason();
+        setDriverReason(built.reason);
+        setReceiptRef(built.ref);
+      }}
+    >
+      Generate Reason + Receipt Ref
+    </button>
+  </div>
+</div>
+
+<button<button
             disabled={busy}
             onClick={runVendorSettle}
             className="rounded-xl bg-amber-600 text-white px-4 py-2 disabled:opacity-50"
