@@ -336,7 +336,10 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   // Available-first sorting
   const driversSorted = useMemo(() => {
     const arr = Array.isArray(drivers) ? [...drivers] : [];
-    const isAvail = (d: any) => { const s = String(d?.status ?? "").trim().toLowerCase(); return (s === "available" || s === "online" || s === "idle"); };
+    const isAvail = (d: any) => {
+      const s = String(d?.status ?? "").trim().toLowerCase();
+      return (s === "available" || s === "online" || s === "idle");
+    };
     arr.sort((a: any, b: any) => {
       const aa = isAvail(a) ? 0 : 1;
       const bb = isAvail(b) ? 0 : 1;
@@ -1209,6 +1212,7 @@ disabled={false}
     </div>
   );
 }
+
 
 
 
