@@ -1,59 +1,62 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { supabaseServer } from "@/lib/supabase-server";
 
-export async function POST(req: NextRequest) {
-  const supabase = supabaseAdmin();
-
-  try {
-    const body = await req.json();
-    const { driverId, lat, lng, status } = body;
-
-    if (!driverId || typeof lat !== "number" || typeof lng !== "number") {
-      console.error("LIVE_LOCATION_INVALID_PAYLOAD", body);
-      return NextResponse.json(
-        { error: "INVALID_PAYLOAD", body },
-        { status: 400 },
-      );
-    }
-
-    console.log("LIVE_LOCATION_UPDATE", {
-      driver_id: driverId,
-      lat,
-      lng,
-      status,
-    });
-
-    const { data, error } = await supabase
-      .from("driver_locations")
-      .upsert(
-        {
-          driver_id: driverId,
-          lat,
-          lng,
-          status: status ?? "online",
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "driver_id" },
-      );
-
-    if (error) {
-      console.error("LIVE_LOCATION_DB_ERROR", error);
-      return NextResponse.json(
-        { error: "DB_ERROR", details: error },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({ ok: true, data });
-  } catch (err) {
-    console.error("LIVE_LOCATION_UNEXPECTED_ERROR", err);
-    return NextResponse.json(
-      { error: "UNEXPECTED_ERROR", details: `${err}` },
-      { status: 500 },
-    );
-  }
+function asNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
-export async function GET() {
-  return NextResponse.json({ ok: true, route: "live-location" });
+function norm(s: any): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+// Very lightweight Ifugao town derivation (same bounds style you already use elsewhere)
+function deriveTownFromLatLng(lat: number, lng: number): string | null {
+  const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+    { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+    { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+    { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+    { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+    { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  ];
+  for (const b of BOXES) {
+    if (lat >= b.minLat && lat <= b.maxLat && lng >= b.minLng && lng <= b.maxLng) return b.name;
+  }
+  return null;
+}
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+
+    const driverId = String(body?.driverId ?? body?.driver_id ?? "").trim();
+    const lat = asNum(body?.lat);
+    const lng = asNum(body?.lng);
+
+    if (!driverId || lat == null || lng == null) {
+      return NextResponse.json(
+        { ok: false, error: "driverId/driver_id, lat, lng required", got: { driverId, lat, lng } },
+        { status: 400 }
+      );
+    }
+
+    const statusRaw = body?.status ?? body?.state ?? "online";
+    const status = norm(statusRaw) === "offline" ? "offline" : "online";
+
+    const townRaw = body?.town ?? null;
+    const town = townRaw ? String(townRaw) : deriveTownFromLatLng(lat, lng);
+
+    // Upsert to proven schema columns
+    const { error } = await supabaseServer
+      .from("driver_locations")
+      .upsert(
+        { driver_id: driverId, lat, lng, status, town },
+        { onConflict: "driver_id" }
+      );
+
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, data: true }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
+  }
 }
