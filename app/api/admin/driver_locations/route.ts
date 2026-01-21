@@ -1,68 +1,72 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+﻿import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-function supabase() {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.SUPABASE_URL ||
-    "";
+const supabase = supabaseAdmin();
 
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    "";
 
-  if (!url || !key) {
-    throw new Error("Supabase env missing: SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and a key (SERVICE_ROLE or ANON)");
-  }
-
-  return createClient(url, key, { auth: { persistSession: false } });
-}
-
-export async function GET() {
+/**
+ * GET /api/admin/driver_locations
+ * Optional: ?town=hingyon  (case-insensitive exact match)
+ *
+ * Returns:
+ *  { ok: true, drivers: [...latestPerDriver], driver_locations: [...latestPerDriver] }
+ *
+ * Notes:
+ * - Uses dispatch_driver_locations_view to keep shape consistent
+ * - Dedupe to latest row per driver_id in JS to avoid relying on DISTINCT ON
+ */
+export async function GET(req: Request) {
   try {
-    const sb = supabase();
+    const url = new URL(req.url);
+    
+    const town = url.searchParams.get("town");
+const townParam = (url.searchParams.get("town") || "").trim();
 
-    // Try common shapes:
-    // 1) table/view: driver_locations
-    // 2) fallback: drivers (if you store latest coords there)
-    let rows: any[] = [];
-
-    const a = await sb
-      .from("driver_locations")
+    let q = supabase.from("dispatch_driver_locations_view")
       .select("*")
+      .order("updated_at", { ascending: false })
       .limit(500);
 
-    if (!a.error && Array.isArray(a.data)) {
-      rows = a.data;
-    } else {
-      const b = await sb
-        .from("drivers")
-        .select("*")
-        .limit(500);
+    if (townParam) {
+      // match your data after initcap(): Hingyon/Lagawe/etc
+      // Use ilike for case-insensitive exact match
+      q = q.ilike("town", townParam);
+    }
 
-      if (!b.error && Array.isArray(b.data)) {
-        rows = b.data;
-      } else {
-        const msg = a.error?.message || b.error?.message || "Unknown Supabase error";
-        return NextResponse.json(
-          { ok: false, error: msg, drivers: [], driver_locations: [], data: [] },
-          { status: 500, headers: { "Cache-Control": "no-store" } }
-        );
-      }
+    const { data, error } = await q;
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+
+    // Latest per driver_id (rows are already sorted newest-first)
+    const seen = new Set<string>();
+    const latest: any[] = [];
+    for (const r of rows) {
+      const id = String((r as any)?.driver_id || "");
+      if (!id) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      latest.push(r);
     }
 
     return NextResponse.json(
-      { ok: true, drivers: rows, driver_locations: rows, data: rows },
-      { status: 200, headers: { "Cache-Control": "no-store" } }
+      {
+        ok: true,
+        drivers: latest,
+        driver_locations: latest,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
     );
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || String(e), drivers: [], driver_locations: [], data: [] },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "unknown error" }, { status: 500 });
   }
 }
+
+

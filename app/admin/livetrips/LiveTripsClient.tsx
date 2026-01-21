@@ -336,7 +336,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
   // Available-first sorting
   const driversSorted = useMemo(() => {
     const arr = Array.isArray(drivers) ? [...drivers] : [];
-    const isAvail = (d: any) => String((d?.status ?? "")).trim().toLowerCase() === "available";
+    const isAvail = (d: any) => { const s = String((d?.status ?? "")).trim().toLowerCase(); return (s === "available" || s === "online" || s === "idle"); };
     arr.sort((a: any, b: any) => {
       const aa = isAvail(a) ? 0 : 1;
       const bb = isAvail(b) ? 0 : 1;
@@ -356,7 +356,7 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
 
   const manualDriverIsAvailable = useMemo(() => {
     const s = String((manualDriverObj as any)?.status ?? "").trim().toLowerCase();
-    return s === "available";
+    return (s === "available" || s === "online" || s === "idle");
   }, [manualDriverObj]);
   async function postJson(url: string, body: any) {
     const r = await fetch(url, {
@@ -1080,7 +1080,7 @@ disabled={false}
                     const status = String((d as any)?.status ?? "");
                     const label = [name, town ? `(${town})` : "", status ? `- ${status}` : ""].filter(Boolean).join(" ");
                     return (
-                      <option key={id || idx} value={id} disabled={String(status || "").trim().toLowerCase() !== "available"}>
+                      <option key={id || idx} value={id} disabled={(() => { const s = String(status || "").trim().toLowerCase(); return !(s === "available" || s === "online" || s === "idle"); })()}>
                         {label}
                       </option>
                     );
@@ -1209,6 +1209,7 @@ disabled={false}
     </div>
   );
 }
+
 
 
 
