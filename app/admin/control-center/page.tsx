@@ -189,7 +189,12 @@ const sections: Section[] = useMemo(
             title: "Financial Summary (Read-only)",
             desc: "Snapshot-based totals and quick export (no wallet mutations).",
             href: "/admin/finance/summary",
-          },{
+          },  {
+    title: "Wallet Adjustments (Admin)",
+    desc: "Manual driver credit/debit and vendor wallet actions (admin only).",
+    href: "/admin/wallet-adjust",
+  },
+{
             title: "Wallet Reconciliation",
             desc: "Read-only reconciliation status dashboard placeholder.",
             href: "/admin/ops/wallet-reconciliation",

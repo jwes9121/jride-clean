@@ -1,54 +1,78 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
 function json(status: number, body: any) {
-  return NextResponse.json(body, { status });
+  return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-function envFirst(...keys: string[]) {
-  for (const k of keys) {
-    const v = process.env[k];
-    if (v && String(v).trim().length > 0) return String(v).trim();
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ""));
+}
+function isNumericId(v: string) {
+  return /^[0-9]+$/.test(String(v || "").trim());
+}
+function isIdOk(v: string) {
+  return isUuid(v) || isNumericId(v);
+}
+
+async function tryBalanceSources(driver_id: string) {
+  const sources = ["driver_wallet_balances_v1"];
+  for (const src of sources) {
+    const r = await supabase.from(src).select("*").eq("driver_id", driver_id).maybeSingle();
+    if (!r.error && r.data) return { source: src, row: r.data };
   }
-  return "";
+  return { source: null as any, row: null as any };
 }
 
-function requireAdminKey(req: Request) {
-  const need = envFirst("ADMIN_API_KEY");
-  if (!need) return { ok: true };
-  const got = req.headers.get("x-admin-key") || "";
-  if (got !== need) return { ok: false };
-  return { ok: true };
+async function fetchDriverTx(driver_id: string, limit: number) {
+  // driver_wallet_transactions has created_at (per your schema snapshot)
+  const r = await supabase
+    .from("driver_wallet_transactions")
+    .select("*")
+    .eq("driver_id", driver_id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (!r.error) return r.data || [];
+
+  // fallback: if ordering field differs, try id
+  const r2 = await supabase
+    .from("driver_wallet_transactions")
+    .select("*")
+    .eq("driver_id", driver_id)
+    .order("id", { ascending: false })
+    .limit(limit);
+
+  if (r2.error) throw r2.error;
+  return r2.data || [];
 }
 
 export async function GET(req: Request) {
   try {
-    const gate = requireAdminKey(req);
-    if (!gate.ok) return json(401, { ok: false, code: "UNAUTHORIZED" });
+    const url = new URL(req.url);
+    const driver_id = String(url.searchParams.get("driver_id") || "").trim();
+    if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID", message: "driver_id is required" });
+    if (!isIdOk(driver_id)) return json(400, { ok: false, code: "BAD_DRIVER_ID", message: "driver_id must be uuid or numeric id" });
 
-    const { searchParams } = new URL(req.url);
-    const driver_id = String(searchParams.get("driver_id") || "");
-    if (!driver_id) return json(400, { ok: false, code: "BAD_REQUEST", message: "driver_id is required" });
+    const bal = await tryBalanceSources(driver_id);
+    const last = await fetchDriverTx(driver_id, 20);
 
-    const SUPABASE_URL = envFirst("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
-    const SERVICE_KEY = envFirst(
-      "SUPABASE_SERVICE_ROLE_KEY",
-      "SUPABASE_SERVICE_KEY",
-      "SUPABASE_SERVICE_ROLE",
-      "SUPABASE_SERVICE_ROLE_SECRET"
-    );
-
-    if (!SUPABASE_URL || !SERVICE_KEY) return json(500, { ok: false, code: "ENV_MISSING" });
-
-    const balUrl = `${SUPABASE_URL}/rest/v1/driver_wallet_balances_v1?driver_id=eq.${driver_id}`;
-    const balRes = await fetch(balUrl, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
-    const bal = await balRes.json();
-
-    const txUrl = `${SUPABASE_URL}/rest/v1/driver_wallet_transactions?driver_id=eq.${driver_id}&order=created_at.desc&limit=20`;
-    const txRes = await fetch(txUrl, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
-    const tx = await txRes.json();
-
-    return json(200, { ok: true, balance: bal?.[0] || null, recent: tx || [] });
+    return json(200, {
+      ok: true,
+      driver_id,
+      balance_source: bal.source,
+      balance_row: bal.row,
+      last_tx: last,
+    });
   } catch (e: any) {
-    return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message || String(e) });
+    return json(500, { ok: false, code: "UNHANDLED", message: String(e?.message || e) });
   }
 }
