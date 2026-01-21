@@ -3,6 +3,23 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+/* JRIDE_DRIVER_LOC_TEST_GUARD_V1
+   This route can SPOOF driver locations (service role). It must never be open in production.
+   Allowed only if:
+   - NODE_ENV !== "production", OR
+   - header x-jride-test-secret matches DRIVER_LOC_TEST_SECRET
+*/
+function allowTestRoute(req: Request): boolean {
+  const isProd = String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  if (!isProd) return true;
+
+  const secret = String(process.env.DRIVER_LOC_TEST_SECRET ?? "").trim();
+  if (!secret) return false;
+
+  const got = String(req.headers.get("x-jride-test-secret") ?? "");
+  return got === secret;
+}
+
 function getClient() {
   const url =
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,6 +33,9 @@ function getClient() {
 // POST /api/driver_locations_test
 // very dumb: delete then insert
 export async function POST(req: Request) {
+  if (!allowTestRoute(req)) {
+    return NextResponse.json({ error: 'DISABLED_IN_PROD' }, { status: 404 });
+  }
   try {
     const supabase = getClient();
     const body = await req.json().catch(() => ({}));
@@ -86,7 +106,10 @@ export async function POST(req: Request) {
 }
 
 // GET /api/driver_locations_test
-export async function GET() {
+export async function GET(req: Request) {
+  if (!allowTestRoute(req)) {
+    return NextResponse.json({ error: 'DISABLED_IN_PROD' }, { status: 404 });
+  }
   try {
     const supabase = getClient();
     const { data, error } = await supabase
