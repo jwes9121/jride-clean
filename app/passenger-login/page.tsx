@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 export const dynamic = "force-static";
 
 export default function PassengerLoginPage() {
@@ -16,17 +17,12 @@ const [phone, setPhone] = React.useState("");
     setMsg(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/public/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, password }),
+      await signIn("passenger-credentials", {
+        phone,
+        password,
+        callbackUrl: "/passenger",
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok || !j?.ok) return setMsg(j?.error || "Login failed.");
-      setMsg("Login OK. Redirecting...");
-      setTimeout(() => { window.location.href = "/passenger"; }, 600);
-      setTimeout(() => router.push("/passenger"), 600);
-} catch (err: any) {
+    } catch (err: any) {
       setMsg(err?.message || "Login failed.");
     } finally {
       setLoading(false);
@@ -88,3 +84,4 @@ const [phone, setPhone] = React.useState("");
     </main>
   );
 }
+
