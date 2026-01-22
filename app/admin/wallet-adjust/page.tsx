@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type AnyObj = any;
 
@@ -14,102 +14,26 @@ function shortId(id: string) {
   return s.length > 12 ? `${s.slice(0, 6)}...${s.slice(-4)}` : s;
 }
 
-type DriverOption = {
-  id: string;
-  name?: string;
-  town?: string;
-  label: string;
-};
-
 function extractUuid(s: string) {
-  const m = String(s || "").match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  const m = String(s || "").match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+  );
   return m ? m[0] : "";
 }
 
+type DriverSuggest = {
+  id: string;
+  driver_name: string;
+  label: string; // "Name (uuid)"
+};
+
 export default function AdminWalletAdjustPage() {
-  // ===== JRIDE_ADMIN_WALLET_LOOKUP_STATE_START =====
-  const [lookup, setLookup] = useState<any>(null);
-  const [lookupBusy, setLookupBusy] = useState(false);
+  const [tab, setTab] = useState<"driver" | "vendor_adjust" | "vendor_settle">(
+    "driver"
+  );
 
-  async function runDriverLookup(driver_id: string) {
-    setLookupBusy(true); setLookup(null);
-    try {
-      const headers: Record<string, string> = {};
-      // Optional admin key support if your page has an adminKey state
-      // @ts-ignore
-      if (typeof adminKey !== "undefined" && String(adminKey || "").trim()) {
-        headers["x-admin-key"] = String(adminKey || "").trim();
-      }
-
-      const res = await fetch(
-        `/api/admin/wallet/driver-summary?driver_id=${encodeURIComponent(driver_id)}`,
-        { headers }
-      );
-      const data = await res.json();
-      setLookup(data);
-    } catch (e: any) {
-      setLookup({ ok: false, error: e?.message || String(e) });
-    } finally {
-      setLookupBusy(false);
-    }
-  }
-
-  async function runVendorLookup(vendor_id: string) {
-    setLookupBusy(true); setLookup(null);
-    try {
-      const headers: Record<string, string> = {};
-      // @ts-ignore
-      if (typeof adminKey !== "undefined" && String(adminKey || "").trim()) {
-        headers["x-admin-key"] = String(adminKey || "").trim();
-      }
-
-      const res = await fetch(
-        `/api/admin/wallet/vendor-summary?vendor_id=${encodeURIComponent(vendor_id)}`,
-        { headers }
-      );
-      const data = await res.json();
-      setLookup(data);
-    } catch (e: any) {
-      setLookup({ ok: false, error: e?.message || String(e) });
-    } finally {
-      setLookupBusy(false);
-    }
-  }
-  // ===== JRIDE_ADMIN_WALLET_LOOKUP_STATE_END =====
-
-  const [tab, setTab] = useState<"driver" | "vendor_adjust" | "vendor_settle">("driver");
-
-  // Admin-key is optional (only needed if ADMIN_API_KEY is set on server)
+  // Optional admin key
   const [adminKey, setAdminKey] = useState<string>("");
-
-  // Driver options for dropdown/search
-  const [drivers, setDrivers] = useState<DriverOption[]>([]);
-  const [driverSearch, setDriverSearch] = useState<string>("");
-
-  async function loadDrivers(q?: string) {
-    try {
-      const headers: Record<string, string> = {};
-      if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
-
-      const url = q ? `/api/admin/wallet/drivers?q=${encodeURIComponent(q)}` : `/api/admin/wallet/drivers`;
-      const res = await fetch(url, { headers });
-      const data = await res.json();
-      if (data?.ok && Array.isArray(data?.drivers)) {
-        setDrivers(data.drivers);
-      } else {
-        // keep old list if endpoint fails
-        // console.warn("drivers endpoint failed", data);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  useEffect(() => {
-    // Initial load once page is opened (driver tab)
-    loadDrivers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Driver adjust
   const [driverId, setDriverId] = useState("");
@@ -151,27 +75,51 @@ export default function AdminWalletAdjustPage() {
 
   // Vendor settle
   const [settleVendorId, setSettleVendorId] = useState("");
-  const [settleNote, setSettleNote] = useState<string>("Cash payout settlement");
+  const [settleNote, setSettleNote] = useState<string>(
+    "Cash payout settlement"
+  );
 
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<any>(null);
-  const outText = useMemo(() => (out ? JSON.stringify(out, null, 2) : ""), [out]);
+
+  const outText = useMemo(
+    () => (out ? JSON.stringify(out, null, 2) : ""),
+    [out]
+  );
 
   async function postJson(url: string, body: AnyObj) {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
     if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
 
-    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
     const text = await res.text();
     let data: any = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
 
-    if (!res.ok) throw new Error((data && (data.message || data.error)) ? (data.message || data.error) : `HTTP ${res.status}`);
+    if (!res.ok) {
+      throw new Error(
+        data && (data.message || data.error)
+          ? data.message || data.error
+          : `HTTP ${res.status}`
+      );
+    }
     return data;
   }
 
   async function runDriverAdjust() {
-    setBusy(true); setOut(null);
+    setBusy(true);
+    setOut(null);
     try {
       const amt = toNum(driverAmount);
       const data = await postJson("/api/admin/wallet/adjust", {
@@ -180,7 +128,6 @@ export default function AdminWalletAdjustPage() {
         amount: amt,
         reason: driverReason,
         created_by: createdBy,
-        // keep receipt for audit trails if you later store it server-side
         receipt_ref: receiptRef || null,
         reason_mode: reasonMode || null,
       });
@@ -193,7 +140,8 @@ export default function AdminWalletAdjustPage() {
   }
 
   async function runVendorAdjust() {
-    setBusy(true); setOut(null);
+    setBusy(true);
+    setOut(null);
     try {
       const amt = toNum(vendorAmount);
       const data = await postJson("/api/admin/wallet/adjust", {
@@ -212,7 +160,8 @@ export default function AdminWalletAdjustPage() {
   }
 
   async function runVendorSettle() {
-    setBusy(true); setOut(null);
+    setBusy(true);
+    setOut(null);
     try {
       const data = await postJson("/api/admin/vendor/settle-wallet", {
         vendor_id: settleVendorId.trim(),
@@ -226,22 +175,136 @@ export default function AdminWalletAdjustPage() {
     }
   }
 
-  // When user types/selects something in driverSearch:
-  // - If it contains UUID, we extract it
-  // - Otherwise, we try to match label prefix
-  useEffect(() => {
-    const uuid = extractUuid(driverSearch);
-    if (uuid) {
-      setDriverId(uuid);
+  // ===== Lookup panel (driver/vendor) =====
+  const [lookup, setLookup] = useState<any>(null);
+  const [lookupBusy, setLookupBusy] = useState(false);
+
+  async function runDriverLookup(driver_id: string) {
+    setLookupBusy(true);
+    setLookup(null);
+    try {
+      const headers: Record<string, string> = {};
+      if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
+
+      const res = await fetch(
+        `/api/admin/wallet/driver-summary?driver_id=${encodeURIComponent(
+          driver_id
+        )}`,
+        { headers }
+      );
+      const data = await res.json();
+      setLookup(data);
+    } catch (e: any) {
+      setLookup({ ok: false, error: e?.message || String(e) });
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  async function runVendorLookup(vendor_id: string) {
+    setLookupBusy(true);
+    setLookup(null);
+    try {
+      const headers: Record<string, string> = {};
+      if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
+
+      const res = await fetch(
+        `/api/admin/wallet/vendor-summary?vendor_id=${encodeURIComponent(
+          vendor_id
+        )}`,
+        { headers }
+      );
+      const data = await res.json();
+      setLookup(data);
+    } catch (e: any) {
+      setLookup({ ok: false, error: e?.message || String(e) });
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  // ===== Driver autosuggest (single, stable) =====
+  const [driverQuery, setDriverQuery] = useState<string>("");
+  const [driverSuggestions, setDriverSuggestions] = useState<DriverSuggest[]>(
+    []
+  );
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const suggestTimer = useRef<any>(null);
+  const queryInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function fetchDriverSuggestions(q: string) {
+    const qq = String(q || "").trim();
+    if (qq.length < 2) {
+      setDriverSuggestions([]);
+      setSuggestOpen(false);
       return;
     }
 
-    const t = driverSearch.trim().toLowerCase();
-    if (!t) return;
+    setSuggestBusy(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
 
-    const hit = drivers.find((d) => String(d.label).toLowerCase() === t);
-    if (hit?.id) setDriverId(hit.id);
-  }, [driverSearch, drivers]);
+      const res = await fetch(
+        `/api/admin/wallet/driver-summary?q=${encodeURIComponent(qq)}`,
+        { headers, cache: "no-store" }
+      );
+      const data = await res.json().catch(() => null);
+
+      if (data?.ok && Array.isArray(data?.drivers)) {
+        setDriverSuggestions(data.drivers);
+        setSuggestOpen(true);
+      } else {
+        setDriverSuggestions([]);
+        setSuggestOpen(false);
+      }
+    } catch {
+      setDriverSuggestions([]);
+      setSuggestOpen(false);
+    } finally {
+      setSuggestBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    // If user typed/pasted a UUID, accept immediately
+    const uuid = extractUuid(driverQuery);
+    if (uuid) {
+      setDriverId(uuid);
+      setSuggestOpen(false);
+      return;
+    }
+
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+
+    const q = driverQuery.trim();
+    if (q.length < 2) {
+      setDriverSuggestions([]);
+      setSuggestOpen(false);
+      return;
+    }
+
+    suggestTimer.current = setTimeout(() => {
+      fetchDriverSuggestions(q);
+    }, 250);
+
+    return () => {
+      if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverQuery, adminKey]);
+
+  function pickDriver(d: DriverSuggest) {
+    setDriverId(String(d.id));
+    setDriverQuery(d.label);
+    setSuggestOpen(false);
+  }
+
+  function closeSuggestSoon() {
+    // Allow click selection before close
+    setTimeout(() => setSuggestOpen(false), 120);
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -260,33 +323,35 @@ export default function AdminWalletAdjustPage() {
           placeholder="x-admin-key (only needed if ADMIN_API_KEY is set)"
           className="w-full rounded-lg border border-black/10 px-3 py-2"
         />
-        <div className="text-xs text-slate-500 flex items-center gap-2">
-          <span>If your API is open (no ADMIN_API_KEY set), you can leave this blank.</span>
-          <button
-            type="button"
-            className="text-xs underline text-slate-600 hover:text-slate-900"
-            onClick={() => loadDrivers()}
-          >
-            Refresh driver list
-          </button>
+        <div className="text-xs text-slate-500">
+          If your API is open (no ADMIN_API_KEY set), you can leave this blank.
         </div>
       </div>
 
       <div className="flex gap-2">
         <button
-          className={"rounded-xl px-4 py-2 border border-black/10 " + (tab === "driver" ? "bg-black text-white" : "bg-white")}
+          className={
+            "rounded-xl px-4 py-2 border border-black/10 " +
+            (tab === "driver" ? "bg-black text-white" : "bg-white")
+          }
           onClick={() => setTab("driver")}
         >
           Driver Adjust
         </button>
         <button
-          className={"rounded-xl px-4 py-2 border border-black/10 " + (tab === "vendor_adjust" ? "bg-black text-white" : "bg-white")}
+          className={
+            "rounded-xl px-4 py-2 border border-black/10 " +
+            (tab === "vendor_adjust" ? "bg-black text-white" : "bg-white")
+          }
           onClick={() => setTab("vendor_adjust")}
         >
           Vendor Adjust
         </button>
         <button
-          className={"rounded-xl px-4 py-2 border border-black/10 " + (tab === "vendor_settle" ? "bg-black text-white" : "bg-white")}
+          className={
+            "rounded-xl px-4 py-2 border border-black/10 " +
+            (tab === "vendor_settle" ? "bg-black text-white" : "bg-white")
+          }
           onClick={() => setTab("vendor_settle")}
         >
           Vendor Settle (Full)
@@ -298,28 +363,65 @@ export default function AdminWalletAdjustPage() {
           <div className="font-semibold">Driver wallet credit/debit</div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <div className="text-xs text-slate-600">Select Driver (type to search)</div>
+            <div className="space-y-2 relative">
+              <div className="text-xs text-slate-600">
+                Select Driver (type name or UUID)
+              </div>
+
               <input
-                value={driverSearch}
-                onChange={(e) => {
-                  setDriverSearch(e.target.value);
-                  // lightweight typeahead: refresh list when typing (optional)
-                  const t = e.target.value.trim();
-                  if (t.length >= 2) loadDrivers(t);
+                ref={queryInputRef}
+                value={driverQuery}
+                onChange={(e) => setDriverQuery(e.target.value)}
+                onFocus={() => {
+                  if (driverSuggestions.length > 0) setSuggestOpen(true);
                 }}
-                list="jride-driver-list"
-                placeholder='Type name or townâ€¦ e.g. "Juan" or "Lagawe"'
+                onBlur={closeSuggestSoon}
+                placeholder='Type driver name... e.g. "Juan"'
                 className="w-full rounded-lg border border-black/10 px-3 py-2"
               />
-              <datalist id="jride-driver-list">
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.label} />
-                ))}
-              </datalist>
+
+              {suggestOpen && (
+                <div className="absolute z-20 mt-1 w-full rounded-xl border border-black/10 bg-white shadow-sm max-h-64 overflow-auto">
+                  <div className="px-3 py-2 text-xs text-slate-500 border-b border-black/5 flex items-center justify-between">
+                    <span>
+                      {suggestBusy
+                        ? "Searching..."
+                        : driverSuggestions.length
+                        ? "Select a driver"
+                        : "No matches"}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSuggestOpen(false);
+                        queryInputRef.current?.focus();
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  {driverSuggestions.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-black/5"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickDriver(d)}
+                    >
+                      <div className="text-sm">{d.label}</div>
+                      <div className="text-xs text-slate-500">
+                        {shortId(d.id)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="text-xs text-slate-500">
-                Tip: pick an entry from suggestions â€” the UUID will auto-fill on the right.
+                Tip: click a suggestion to auto-fill the Driver ID (UUID).
               </div>
             </div>
 
@@ -341,17 +443,23 @@ export default function AdminWalletAdjustPage() {
                     className="w-full rounded-lg border border-black/10 px-3 py-2"
                   >
                     <option value="manual_topup">Manual Topup</option>
-                    <option value="promo_free_ride_credit">Promo Free Ride Credit</option>
+                    <option value="promo_free_ride_credit">
+                      Promo Free Ride Credit
+                    </option>
                     <option value="correction">Correction</option>
                     <option value="payout_adjustment">Payout Adjustment</option>
                   </select>
                 </div>
 
                 <div>
-                  <div className="text-xs text-slate-600">Receipt Reference (read-only)</div>
+                  <div className="text-xs text-slate-600">
+                    Receipt Reference (read-only)
+                  </div>
                   <input
                     className="w-full rounded-lg border border-black/10 px-3 py-2 bg-slate-50"
-                    value={receiptRef || "(auto-generated when you click Generate)"}
+                    value={
+                      receiptRef || "(auto-generated when you click Generate)"
+                    }
                     readOnly
                   />
                 </div>
@@ -408,7 +516,8 @@ export default function AdminWalletAdjustPage() {
           </div>
 
           <div className="text-xs text-slate-500">
-            Uses <code>admin_adjust_driver_wallet</code> (non-negative safety enforced).
+            Uses <code>admin_adjust_driver_wallet</code> (non-negative safety
+            enforced).
           </div>
         </div>
       )}
@@ -463,7 +572,8 @@ export default function AdminWalletAdjustPage() {
           </div>
 
           <div className="text-xs text-slate-500">
-            Inserts row into <code>vendor_wallet_transactions</code> with booking_code null.
+            Inserts row into <code>vendor_wallet_transactions</code> with
+            booking_code null.
           </div>
         </div>
       )}
@@ -506,14 +616,17 @@ export default function AdminWalletAdjustPage() {
           </div>
 
           <div className="text-xs text-slate-500">
-            Uses <code>settle_vendor_wallet</code> which inserts a negative payout row and resets vendor_wallet.balance.
+            Uses <code>settle_vendor_wallet</code> which inserts a negative payout
+            row and resets vendor_wallet.balance.
           </div>
         </div>
       )}
 
       <div className="rounded-xl border border-black/10 p-4 space-y-2">
         <div className="font-semibold">Lookup</div>
-        <div className="text-xs text-slate-500">Balance + last 20 transactions.</div>
+        <div className="text-xs text-slate-500">
+          Balance + last 20 transactions.
+        </div>
         <pre className="text-xs whitespace-pre-wrap max-h-64 overflow-auto">
           {lookup ? JSON.stringify(lookup, null, 2) : "(no lookup yet)"}
         </pre>
@@ -521,7 +634,9 @@ export default function AdminWalletAdjustPage() {
 
       <div className="rounded-xl border border-black/10 p-4">
         <div className="font-semibold mb-2">Response</div>
-        <pre className="text-xs whitespace-pre-wrap">{outText || "(no output yet)"}</pre>
+        <pre className="text-xs whitespace-pre-wrap">
+          {outText || "(no output yet)"}
+        </pre>
       </div>
     </div>
   );
