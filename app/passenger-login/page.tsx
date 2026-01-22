@@ -82,7 +82,7 @@ export default function PassengerLoginPage() {
           </button>
 
           <div className="text-sm opacity-80 text-center">
-            Don&apos;t have an account yet?{" "}
+            Don't have an account yet?{" "}
             <a className="text-blue-600 underline" href="/passenger-signup">
               Register here
             </a>

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -69,35 +69,46 @@ export async function POST(req: NextRequest) {
 
     if (error) return bad(error.message || "Login failed.", 401);
 
-    return NextResponse.json({
+    const access_token = data?.session?.access_token || "";
+    const refresh_token = data?.session?.refresh_token || "";
+    const expires_in = Number(data?.session?.expires_in || 3600);
+
+    if (!access_token || !refresh_token) {
+      return bad("Login failed (missing session tokens).", 401);
+    }
+
+    const res = NextResponse.json({
       ok: true,
       user_id: data?.user?.id ?? null,
       phone,
       verified: (data?.user?.user_metadata as any)?.verified ?? null,
       night_allowed: (data?.user?.user_metadata as any)?.night_allowed ?? null,
-      isNightPH: (() => {
-        try {
-          const dtf = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12:false, hour:"2-digit" });
-          const hh = parseInt(dtf.format(new Date()) || "0", 10);
-          return (hh >= 20) || (hh < 5);
-        } catch {
-          return null;
-        }
-      })(),
-      nightRestrictedNow: (() => {
-        try {
-          const md: any = (data?.user?.user_metadata as any) || {};
-          const v = md?.verified === true || ["1","true","yes","y","on"].includes(String(md?.verified ?? "").trim().toLowerCase());
-          const na = md?.night_allowed === true || ["1","true","yes","y","on"].includes(String(md?.night_allowed ?? "").trim().toLowerCase()) || v;
-          const dtf = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12:false, hour:"2-digit" });
-          const hh = parseInt(dtf.format(new Date()) || "0", 10);
-          const night = (hh >= 20) || (hh < 5);
-          return night && !na;
-        } catch {
-          return null;
-        }
-      })(),
     });
+
+    // IMPORTANT: Set passenger session cookies (httpOnly) so /passenger can recognize login.
+    // Use Secure on HTTPS (Vercel prod).
+    res.cookies.set({
+      name: "jride_pax_at",
+      value: access_token,
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: expires_in,
+    });
+
+    // Refresh token cookie (longer). Adjust maxAge if you want.
+    res.cookies.set({
+      name: "jride_pax_rt",
+      value: refresh_token,
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+
+    return res;
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Login failed." },
@@ -105,4 +116,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
