@@ -56,7 +56,12 @@ export default function PassengerDashboardPage() {
 
   function Card(props: { id: Choice; title: string; desc: string }) {
     const active = choice === props.id;
-    return (
+  const dbg = {
+    note: "TEMP DEBUG",
+    time: new Date().toISOString(),
+  };
+
+  return (
       <button
         type="button"
         onClick={() => setChoice(props.id)}
@@ -74,6 +79,10 @@ export default function PassengerDashboardPage() {
   }
 
   const verified = !!sess?.verified;
+  const dbg = {
+    note: "TEMP DEBUG",
+    time: new Date().toISOString(),
+  };
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-white">
@@ -86,7 +95,7 @@ export default function PassengerDashboardPage() {
 
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
             <span className="font-semibold">{authed ? "Signed in" : "Guest"}</span>
-            <span className="opacity-70">{" Â· "}{loading ? "loading" : authed ? "session" : "no session"}</span>
+            <span className="opacity-70">{" Ãƒâ€šÃ‚Â· "}{loading ? "loading" : authed ? "session" : "no session"}</span>
           </div>
         </div>
 
@@ -99,9 +108,9 @@ export default function PassengerDashboardPage() {
 
         {authed && !verified ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800">
-            <div className="font-semibold">Verification may be required (8PMâ€“5AM)</div>
+            <div className="font-semibold">Verification may be required (8PMÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“5AM)</div>
             <div className="opacity-80 text-xs mt-1">
-              If booking is blocked at night, your account likely needs approval. Next: add a â€œComplete Profile / Verifyâ€ flow.
+              If booking is blocked at night, your account likely needs approval. Next: add a ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œComplete Profile / VerifyÃƒÂ¢Ã¢â€šÂ¬Ã‚Â flow.
             </div>
           </div>
         ) : null}
@@ -169,7 +178,12 @@ export default function PassengerDashboardPage() {
         </div>
 
         <div className="mt-4 text-xs opacity-70">
-          Note: Next step is to connect verification + night rules (8PMâ€“5AM).
+          Note: Next step is to connect verification + night rules (8PMÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“5AM).
+        </div>
+
+        <div className="mt-4 rounded-xl border border-black/10 bg-black/5 p-3 text-xs">
+          <div className="font-semibold mb-1">DEBUG: /api/public/auth/session</div>
+          <pre className="whitespace-pre-wrap break-words">{JSON.stringify(dbg, null, 2)}</pre>
         </div>
       </div>
     </main>
