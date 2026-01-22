@@ -187,9 +187,7 @@ export default function AdminWalletAdjustPage() {
       if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
 
       const res = await fetch(
-        `/api/admin/wallet/driver-summary?driver_id=${encodeURIComponent(
-          driver_id
-        )}`,
+        "/api/admin/wallet/driver-summary?driver_id=" + encodeURIComponent(driver_id),
         { headers }
       );
       const data = await res.json();
@@ -209,9 +207,7 @@ export default function AdminWalletAdjustPage() {
       if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
 
       const res = await fetch(
-        `/api/admin/wallet/vendor-summary?vendor_id=${encodeURIComponent(
-          vendor_id
-        )}`,
+        "/api/admin/wallet/vendor-summary?vendor_id=" + encodeURIComponent(vendor_id),
         { headers }
       );
       const data = await res.json();
@@ -247,7 +243,7 @@ export default function AdminWalletAdjustPage() {
       if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
 
       const res = await fetch(
-        `/api/admin/wallet/driver-summary?q=${encodeURIComponent(qq)}`,
+        "/api/admin/wallet/driver-summary?q=" + encodeURIComponent(qq),
         { headers, cache: "no-store" }
       );
       const data = await res.json().catch(() => null);
