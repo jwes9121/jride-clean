@@ -1,3 +1,25 @@
+# FIX-JRIDE_PASSENGER_LOGIN_PAGE_HARD_RESET_V4.ps1
+# Hard-resets app/passenger-login/page.tsx to a clean NextAuth Credentials sign-in implementation.
+# Creates a backup first. Writes UTF-8 no BOM.
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ throw $m }
+function Backup($p){
+  if (!(Test-Path $p)) { Fail "Missing file: $p" }
+  $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+  $bak = "$p.bak.$ts"
+  Copy-Item $p $bak -Force
+  Write-Host "[OK] Backup: $bak"
+}
+
+$root = (Get-Location).Path
+$f = Join-Path $root "app\passenger-login\page.tsx"
+if (!(Test-Path $f)) { Fail "Missing file: $f" }
+
+Backup $f
+
+$clean = @'
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -94,3 +116,9 @@ export default function PassengerLoginPage() {
     </main>
   );
 }
+'@
+
+$enc = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($f, $clean, $enc)
+
+Write-Host "[OK] Hard reset applied: $f"
