@@ -20,7 +20,7 @@ export default function PassengerDashboardPage() {
     // Safe gating: ONLY redirect on action (no JSX guard blocks)
     if (!authed) {
       const cb = encodeURIComponent("/passenger");
-      window.location.href = "/passenger-login" + cb;
+      window.location.href = "/passenger-login?next=%2Fpassenger";
       return;
     }
 
@@ -59,7 +59,7 @@ export default function PassengerDashboardPage() {
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
                         <span className="font-semibold">{authed ? "Signed in" : "Guest"}</span>
                                     <span className="opacity-70">
-              {" · "}
+              {" Â· "}
               {status === "authenticated" ? "authenticated" : status === "unauthenticated" ? "unauthenticated" : "loading"}
             </span>          </div>
         </div>
@@ -117,7 +117,7 @@ export default function PassengerDashboardPage() {
             disabled={status === "loading"}
             title={
               status === "loading"
-                ? "Loading sessionâ€¦"
+                ? "Loading sessionÃ¢â‚¬Â¦"
                 : authed
                 ? "Continue"
                 : "Sign in to continue"
@@ -129,12 +129,12 @@ export default function PassengerDashboardPage() {
                 : "bg-blue-600 hover:bg-blue-500")
             }
           >
-            {status === "loading" ? "Loadingâ€¦" : authed ? "Continue" : "Sign in to continue"}
+            {status === "loading" ? "LoadingÃ¢â‚¬Â¦" : authed ? "Continue" : "Sign in to continue"}
           </button>
 
           <button
             type="button"
-            onClick={() => router.push("/passenger-login")}
+            onClick={() => router.push("/passenger-login?next=%2Fpassenger")}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
             title="Use this if you want to switch accounts"
           >
