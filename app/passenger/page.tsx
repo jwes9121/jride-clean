@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 export const dynamic = "force-dynamic";
 import * as React from "react";
@@ -20,7 +20,7 @@ export default function PassengerDashboardPage() {
     // Safe gating: ONLY redirect on action (no JSX guard blocks)
     if (!authed) {
       const cb = encodeURIComponent("/passenger");
-      window.location.href = "/api/auth/signin?callbackUrl=" + cb;
+      window.location.href = "/passenger-login" + cb;
       return;
     }
 
@@ -136,7 +136,8 @@ export default function PassengerDashboardPage() {
             type="button"
             onClick={() => router.push("/passenger-login")}
             className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
-            title="Use this if you want to switch accounts"
+            title="Use this if you want to switch account
+<a className="ml-3 text-sm text-blue-600 underline" href="/passenger-signup">Create account</a>s"
           >
             Switch Account
           </button>
