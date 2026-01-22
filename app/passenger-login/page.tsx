@@ -1,13 +1,12 @@
 "use client";
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
 export const dynamic = "force-static";
 
 export default function PassengerLoginPage() {
   const router = useRouter();
-  const sp = useSearchParams();
 
   const [phone, setPhone] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -19,14 +18,12 @@ export default function PassengerLoginPage() {
     setMsg(null);
     setLoading(true);
 
-    const next = sp?.get("next") || "/passenger";
-
     try {
       const r: any = await signIn("credentials", {
         phone,
         password,
         redirect: false,
-        callbackUrl: next,
+        callbackUrl: "/passenger",
       });
 
       if (r?.error) {
@@ -34,7 +31,7 @@ export default function PassengerLoginPage() {
         return;
       }
 
-      const url = String(r?.url || next);
+      const url = String(r?.url || "/passenger");
       router.push(url);
     } catch (err: any) {
       setMsg(err?.message || "Login failed.");
