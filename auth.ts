@@ -26,9 +26,7 @@ function roleFromEmail(email?: string | null): "admin" | "dispatcher" {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
-    Credentials({
-      id: "passenger-credentials",
-      name: "Passenger Login",
+    Credentials({name: "Passenger Login",
       credentials: {
         phone: { label: "Phone", type: "text", placeholder: "09XXXXXXXXX or +639XXXXXXXXX" },
         password: { label: "Password", type: "password" },

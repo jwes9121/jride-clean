@@ -1,3 +1,22 @@
+# FIX-JRIDE_PASSENGER_LOGIN_PAGE_NEXTAUTH_CREDENTIALS_V5.ps1
+# Hard resets app/passenger-login/page.tsx to a known-good NextAuth signIn("credentials") flow.
+# Uses ?next=... to redirect after login. Backup + UTF-8 no BOM.
+
+$ErrorActionPreference = "Stop"
+function Fail($m){ throw $m }
+function Backup($p){
+  $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+  Copy-Item $p "$p.bak.$ts" -Force
+  Write-Host "[OK] Backup: $p.bak.$ts"
+}
+
+$root = (Get-Location).Path
+$f = Join-Path $root "app\passenger-login\page.tsx"
+if (!(Test-Path $f)) { Fail "Missing file: $f" }
+
+Backup $f
+
+$clean = @'
 "use client";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -98,3 +117,9 @@ export default function PassengerLoginPage() {
     </main>
   );
 }
+'@
+
+$enc = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($f, $clean, $enc)
+
+Write-Host "[OK] Passenger login now uses signIn('credentials') + next= redirect."
