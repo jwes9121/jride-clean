@@ -1,3 +1,23 @@
+# FIX-JRIDE_PASSENGER_LOGIN_PRERENDER_NO_SEARCHPARAMS_V7.ps1
+# Hard-resets app/passenger-login/page.tsx to avoid useSearchParams (fixes Vercel prerender error).
+# Uses custom /api/public/auth/login and redirects to /passenger. Backup + UTF-8 no BOM.
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ throw $m }
+function Backup($p){
+  $ts = Get-Date -Format "yyyyMMdd_HHmmss"
+  Copy-Item $p "$p.bak.$ts" -Force
+  Write-Host "[OK] Backup: $p.bak.$ts"
+}
+
+$root = (Get-Location).Path
+$f = Join-Path $root "app\passenger-login\page.tsx"
+if (!(Test-Path $f)) { Fail "Missing file: $f" }
+
+Backup $f
+
+$clean = @'
 "use client";
 
 export const dynamic = "force-static";
@@ -92,3 +112,10 @@ export default function PassengerLoginPage() {
     </main>
   );
 }
+'@
+
+$enc = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($f, $clean, $enc)
+
+Write-Host "[OK] passenger-login reset without useSearchParams (Vercel-safe)."
+Write-Host "[OK] File: $f"
