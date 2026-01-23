@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import { useRouter } from "next/navigation";
@@ -21,7 +21,25 @@ export default function VerificationPage() {
   const [reqRow, setReqRow] = React.useState<VReq | null>(null);
 
   const [fullName, setFullName] = React.useState("");
-  const [town, setTown] = React.useState("");
+  const [idFrontPath, setIdFrontPath] = React.useState<string>("");
+  const [selfiePath, setSelfiePath] = React.useState<string>("");
+  const [uploading, setUploading] = React.useState<string>("");
+
+  async function uploadOne(kind: "id_front" | "selfie", file: File) {
+    setUploading(kind);
+    try {
+      const fd = new FormData();
+      fd.set("kind", kind);
+      fd.set("file", file);
+      const r = await fetch("/api/public/passenger/verification/upload", { method: "POST", body: fd });
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Upload failed");
+      if (kind === "id_front") setIdFrontPath(String(j.path || ""));
+      else setSelfiePath(String(j.path || ""));
+    } finally {
+      setUploading("");
+    }
+  }  const [town, setTown] = React.useState("");
 
   async function load() {
     setLoading(true);

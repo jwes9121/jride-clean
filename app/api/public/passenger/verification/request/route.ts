@@ -35,6 +35,8 @@ export async function POST(req: Request) {
   const body: any = await req.json().catch(() => ({}));
   const full_name = String(body.full_name || "").trim();
   const town = String(body.town || "").trim();
+  const id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
+  const selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
 
   if (!full_name) {
     return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
