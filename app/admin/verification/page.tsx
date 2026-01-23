@@ -10,41 +10,26 @@ type Row = {
   submitted_at: string | null;
 };
 
-type ApiResult = {
-  ok?: boolean;
-  rows?: any[];
-  request?: any;
-  error?: string;
-  warning?: string;
-};
-
 export default function AdminVerificationPage() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Row[]>([]);
   const [msg, setMsg] = React.useState<string>("");
-  const [lastStatus, setLastStatus] = React.useState<string>("");
   const [notes, setNotes] = React.useState<Record<string, string>>({});
   const [busyId, setBusyId] = React.useState<string>("");
 
   async function load() {
     setLoading(true);
-    setMsg("");
-    setLastStatus("");
     try {
       const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
-      const j: ApiResult = await r.json().catch(() => ({}));
-      setLastStatus("pending: HTTP " + r.status);
-
+      const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) {
         setMsg(j?.error || "Failed to load pending verifications.");
         setRows([]);
         return;
       }
-
-      setRows(Array.isArray(j.rows) ? (j.rows as any) : []);
+      setRows(Array.isArray(j.rows) ? j.rows : []);
     } catch (e: any) {
       setMsg(e?.message || "Failed to load pending verifications.");
-      setLastStatus("pending: fetch failed");
       setRows([]);
     } finally {
       setLoading(false);
@@ -54,7 +39,6 @@ export default function AdminVerificationPage() {
   async function decide(passenger_id: string, decision: "approve" | "reject") {
     setBusyId(passenger_id);
     setMsg("");
-    setLastStatus("");
     try {
       const r = await fetch("/api/admin/verification/decide", {
         method: "POST",
@@ -66,21 +50,22 @@ export default function AdminVerificationPage() {
         }),
       });
 
-      const j: ApiResult = await r.json().catch(() => ({}));
-      setLastStatus("decide: HTTP " + r.status);
-
+      const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) {
         setMsg(j?.error || "Action failed.");
         return;
       }
 
-      if (j?.warning) setMsg(String(j.warning));
-      else setMsg("OK: " + decision);
+      // optimistic remove so it never "feels stuck"
+      setRows((prev) => prev.filter((x) => String(x.passenger_id) !== String(passenger_id)));
 
-      await load();
+      if (j?.warning) setMsg(String(j.warning));
+      else setMsg("OK: " + decision + " for " + passenger_id.slice(0, 8) + "...");
+
+      // reload shortly to confirm server state (avoids cache/stale)
+      setTimeout(() => { load(); }, 350);
     } catch (e: any) {
       setMsg(e?.message || "Action failed.");
-      setLastStatus("decide: fetch failed");
     } finally {
       setBusyId("");
     }
@@ -107,10 +92,9 @@ export default function AdminVerificationPage() {
           </button>
         </div>
 
-        {(msg || lastStatus) ? (
+        {msg ? (
           <div className="mt-3 rounded-xl border border-black/10 bg-black/5 p-3 text-sm">
-            {lastStatus ? <div className="opacity-70">Last: {lastStatus}</div> : null}
-            {msg ? <div className="text-amber-700 mt-1">{msg}</div> : null}
+            <div className="text-emerald-700">{msg}</div>
           </div>
         ) : null}
 

@@ -40,7 +40,7 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: q.error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, rows: q.data || [] }, { status: 200 });
+    return NextResponse.json({ ok: true, rows: q.data || [] }, { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: String(e?.message || e || "error") },
