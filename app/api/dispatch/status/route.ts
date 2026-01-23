@@ -230,6 +230,85 @@ async function bestEffortWalletSyncOnComplete(
   return warnings.length ? { warning: warnings.join("; ") } : {};
 }
 
+
+/* FREE_RIDE_DRIVER_CREDIT_BEGIN */
+async function freeRideCreditDriverOnComplete(supabase:any, booking:any): Promise<{ warning?: string }> {
+  try {
+    const bookingId = booking?.id ? String(booking.id) : "";
+    const driverId = booking?.driver_id ? String(booking.driver_id) : "";
+    if (!bookingId || !driverId) return {};
+
+    // Only if this booking is the promo trip
+    const ar = await supabase
+      .from("passenger_free_ride_audit")
+      .select("*")
+      .eq("trip_id", bookingId)
+      .maybeSingle();
+
+    if (ar?.error || !ar?.data) return {};
+    if (String(ar.data.status || "") !== "used") return {};
+
+    // Prevent double-credit: check reason unique by booking
+    const reason = "free_ride_credit:" + bookingId;
+    const ex = await supabase
+      .from("driver_wallet_transactions")
+      .select("id")
+      .eq("reason", reason)
+      .limit(1);
+
+    if (!ex?.error && Array.isArray(ex.data) && ex.data.length) {
+      return {};
+    }
+
+    // Compute next balance_after from last known entry
+    let prevBal = 0;
+    try {
+      const last = await supabase
+        .from("driver_wallet_transactions")
+        .select("balance_after")
+        .eq("driver_id", driverId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (!last?.error && Array.isArray(last.data) && last.data.length) {
+        const v = Number(last.data[0]?.balance_after);
+        if (Number.isFinite(v)) prevBal = v;
+      }
+    } catch {}
+
+    const credit = Number(ar.data.driver_credit_php ?? 20);
+    const nextBal = prevBal + (Number.isFinite(credit) ? credit : 20);
+
+    // Insert credit row
+    const ins = await supabase.from("driver_wallet_transactions").insert({
+      driver_id: driverId,
+      amount: credit,
+      balance_after: nextBal,
+      reason: reason,
+      booking_id: bookingId,
+      created_at: new Date().toISOString(),
+    });
+
+    if (ins?.error) {
+      return { warning: "FREE_RIDE_CREDIT_INSERT_ERROR: " + String(ins.error.message || "insert failed") };
+    }
+
+    // Backfill audit with driver_id if missing (best-effort)
+    try {
+      if (!ar.data.driver_id) {
+        await supabase
+          .from("passenger_free_ride_audit")
+          .update({ driver_id: driverId, used_at: ar.data.used_at || new Date().toISOString() })
+          .eq("passenger_id", String(ar.data.passenger_id));
+      }
+    } catch {}
+
+    return {};
+  } catch (e:any) {
+    return { warning: "FREE_RIDE_CREDIT_EXCEPTION: " + String(e?.message || e) };
+  }
+}
+/* FREE_RIDE_DRIVER_CREDIT_END */
 export async function GET(req: Request) {
   const supabase = createClient();
   try {
@@ -515,6 +594,10 @@ export async function POST(req: Request) {
   if (target === "completed") {
     const w = await bestEffortWalletSyncOnComplete(supabase, updatedBooking);
     walletWarn = w.warning ?? null;
+
+    // FREE_RIDE_CREDIT_CALL (promo ride only)
+    const fr = await freeRideCreditDriverOnComplete(supabase as any, updatedBooking);
+    if (fr.warning) walletWarn = walletWarn ? (String(walletWarn) + "; " + String(fr.warning)) : String(fr.warning);
   }
 
   const warn =

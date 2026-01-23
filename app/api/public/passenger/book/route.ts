@@ -326,6 +326,87 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
   return true;
 }
 
+/* FREE_RIDE_PROMO_HELPERS_BEGIN */
+function frTruthy(v:any): boolean {
+  if (v === true) return true;
+  if (typeof v === "number") return v > 0;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s !== "" && s !== "false" && s !== "0" && s !== "no";
+  }
+  return false;
+}
+
+async function frGetUserAndVerified(supabase:any): Promise<{ user:any|null; verified:boolean }> {
+  const { data: userRes } = await supabase.auth.getUser();
+  const user = userRes?.user || null;
+  if (!user) return { user: null, verified: false };
+
+  const meta:any = user.user_metadata || {};
+  const verified =
+    frTruthy(meta?.verified) ||
+    frTruthy(meta?.is_verified) ||
+    frTruthy(meta?.verification_tier) ||
+    frTruthy(meta?.night_allowed);
+
+  return { user, verified };
+}
+
+async function frForfeitIfNeeded(supabase:any, passengerId:string, reason:string) {
+  if (!passengerId) return;
+  // Only set forfeited if no row exists yet
+  const ex = await supabase.from("passenger_free_ride_audit").select("status").eq("passenger_id", passengerId).maybeSingle();
+  if (!ex.error && ex.data) return;
+
+  await supabase.from("passenger_free_ride_audit").insert({
+    passenger_id: passengerId,
+    status: "forfeited",
+    reason: reason,
+    discount_php: 35,
+    driver_credit_php: 20,
+    platform_cost_php: 15,
+    forfeited_at: new Date().toISOString(),
+  });
+}
+
+async function frMarkUsedIfEligible(supabase:any, passengerId:string, bookingId:string) {
+  if (!passengerId || !bookingId) return;
+
+  const ex = await supabase
+    .from("passenger_free_ride_audit")
+    .select("*")
+    .eq("passenger_id", passengerId)
+    .maybeSingle();
+
+  if (!ex.error && ex.data) {
+    const st = String(ex.data.status || "");
+    if (st === "used" || st === "forfeited") return;
+    // eligible -> used
+    await supabase.from("passenger_free_ride_audit").update({
+      status: "used",
+      trip_id: bookingId,
+      used_at: new Date().toISOString(),
+      reason: ex.data.reason || "verified_first_booking",
+      discount_php: ex.data.discount_php ?? 35,
+      driver_credit_php: ex.data.driver_credit_php ?? 20,
+      platform_cost_php: ex.data.platform_cost_php ?? 15,
+    }).eq("passenger_id", passengerId);
+    return;
+  }
+
+  // No row yet -> create used now (burn on first verified booking to avoid abuse)
+  await supabase.from("passenger_free_ride_audit").insert({
+    passenger_id: passengerId,
+    status: "used",
+    reason: "verified_first_booking",
+    trip_id: bookingId,
+    discount_php: 35,
+    driver_credit_php: 20,
+    platform_cost_php: 15,
+    used_at: new Date().toISOString(),
+  });
+}
+/* FREE_RIDE_PROMO_HELPERS_END */
 async function getBaseUrlFromHeaders(req: Request) {
   const h = req.headers;
   const proto = h.get("x-forwarded-proto") || "https";
@@ -340,6 +421,24 @@ export async function POST(req: Request) {
   
 
   const isTakeout = isTakeoutReq(body as any);
+
+  /* FREE_RIDE_PROMO_APPLY_BEGIN */
+  const uv = await frGetUserAndVerified(supabase as any);
+  const user = uv.user;
+  const isVerified = uv.verified;
+
+  // Always attach creator (bookings has created_by_user_id in your schema)
+  // If insert fails due to column mismatch, fallback logic already exists below.
+  const createdByUserId = user?.id ? String(user.id) : null;
+
+  // TAKEOUT REQUIRES VERIFIED (always, per business rule)
+  if (isTakeout && !isVerified) {
+    return NextResponse.json(
+      { ok: false, code: "TAKEOUT_REQUIRES_VERIFIED", message: "Verify your account to order takeout during pilot." },
+      { status: 403 }
+    );
+  }
+  /* FREE_RIDE_PROMO_APPLY_END */
 // PHASE13-E2_BACKEND_PILOT_TOWN_GATE
   // Enforce pilot pickup towns (UI + backend parity)
   const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
@@ -465,10 +564,41 @@ export async function POST(req: Request) {
       } catch (e: any) {
         takeoutSnapshot = { ok: false, note: "Snapshot threw: " + String(e?.message || e) };
       }
-    }return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign, takeoutSnapshot }, { status: 200 });
+    }
+
+    // FREE_RIDE_PROMO_INS2_MARK
+    try {
+      const takeout = isTakeout;
+      const bid = booking?.id ? String(booking.id) : "";
+      if (createdByUserId && bid && !takeout) {
+        if (!isVerified) {
+          await frForfeitIfNeeded(supabase as any, createdByUserId, "booked_unverified");
+        } else {
+          await frMarkUsedIfEligible(supabase as any, createdByUserId, bid);
+        }
+      }
+    } catch {}
+
+    return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign, takeoutSnapshot }, { status: 200 });
   }
 
   let booking: any = ins.data;
+
+  // FREE RIDE PROMO RULES (RIDES ONLY)
+  // - If unverified and tries to book a ride: forfeit promo immediately (even if later verified)
+  // - If verified and promo not yet used/forfeited: mark used on this booking to prevent abuse
+  try {
+    const svc = String((payload as any)?.service_type ?? (payload as any)?.serviceType ?? (payload as any)?.service ?? "").toLowerCase();
+    const takeout = svc.includes("takeout") || !!(payload as any)?.vendor_id;
+    const bid = booking?.id ? String(booking.id) : "";
+    if (createdByUserId && bid && !takeout) {
+      if (!isVerified) {
+        await frForfeitIfNeeded(supabase as any, createdByUserId, "booked_unverified");
+      } else {
+        await frMarkUsedIfEligible(supabase as any, createdByUserId, bid);
+      }
+    }
+  } catch {}
   // PHASE 2D: ORDER SNAPSHOT LOCK (TAKEOUT)
   // Freeze items + compute subtotal + store on booking. Menu edits won't affect history.
   try {
