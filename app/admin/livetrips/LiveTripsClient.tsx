@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -25,6 +25,12 @@ type TripRow = {
 
   booking_code?: string | null;
   status?: string | null;
+  // ===== STEP5D_TRIPROW_EMERGENCY =====
+  is_emergency?: boolean | null;
+  pickup_distance_km?: number | null;
+  emergency_pickup_fee_php?: number | null;
+  // ===== END STEP5D_TRIPROW_EMERGENCY =====
+
   town?: string | null;
   zone?: string | null;
 
@@ -382,7 +388,29 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     const r = await fetch("/api/admin/livetrips/page-data", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
     setZones(j.zones || []);
-    setAllTrips((j.trips || j.bookings || j.data || []) as any[]);
+    // ===== STEP5D_LOADPAGE_EMERGENCY =====
+    const __rawTrips = (j.trips || j.bookings || j.data || []) as any[];
+    const __normTrips = Array.isArray(__rawTrips)
+      ? __rawTrips.map((t: any) => ({
+          ...t,
+          is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false),
+          pickup_distance_km:
+            t?.pickup_distance_km ??
+            t?.pickupDistanceKm ??
+            t?.pickup_distance ??
+            t?.pickupDistance ??
+            t?.driver_to_pickup_km ??
+            null,
+          emergency_pickup_fee_php:
+            t?.emergency_pickup_fee_php ??
+            t?.emergencyPickupFeePhp ??
+            t?.pickup_distance_fee ??
+            t?.pickup_distance_fee_php ??
+            null,
+        }))
+      : [];
+    setAllTrips(__normTrips as any[]);
+    // ===== END STEP5D_LOADPAGE_EMERGENCY =====
   }
 
   async function loadDrivers() {
@@ -679,7 +707,26 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                         {reason ? (
                           <div className="mt-1 text-xs text-gray-600">{reason}</div>
                         ) : null}
-                      </td>
+                      
+                          {/* ===== JRIDE_STEP5D_EMERGENCY_BADGE ===== */}
+                          {(Boolean((t as any).is_emergency)) ? (
+                            <span className="ml-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                              ðŸš¨ EMERGENCY
+                            </span>
+                          ) : null}
+
+                          {(Number((t as any).emergency_pickup_fee_php) > 0) ? (
+                            <span className="ml-2 text-xs text-amber-800">
+                              +â‚±{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
+                              {Number.isFinite(Number((t as any).pickup_distance_km)) ? ` (${Number((t as any).pickup_distance_km).toFixed(2)} km)` : ""}
+                            </span>
+                          ) : (Number.isFinite(Number((t as any).pickup_distance_km)) ? (
+                            <span className="ml-2 text-xs text-gray-500">
+                              ({Number((t as any).pickup_distance_km).toFixed(2)} km)
+                            </span>
+                          ) : null)}
+                          {/* ===== END JRIDE_STEP5D_EMERGENCY_BADGE ===== */}
+</td>
 
                       <td className="p-2 align-top">{tripLabelPassenger(t)}</td>
 

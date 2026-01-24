@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -153,6 +153,21 @@ export async function GET(req: Request) {
             trip_type: b?.trip_type ?? null,
             vendor_id: b?.vendor_id ?? null,
 
+            // ===== STEP5D_FALLBACK_EMERGENCY =====
+            is_emergency: (b as any)?.is_emergency ?? (b as any)?.isEmergency ?? null,
+            pickup_distance_km:
+              (b as any)?.pickup_distance_km ??
+              (b as any)?.pickupDistanceKm ??
+              (b as any)?.pickup_distance ??
+              (b as any)?.pickupDistance ??
+              null,
+            emergency_pickup_fee_php:
+              (b as any)?.emergency_pickup_fee_php ??
+              (b as any)?.emergencyPickupFeePhp ??
+              (b as any)?.pickup_distance_fee ??
+              (b as any)?.pickup_distance_fee_php ??
+              null,
+            // ===== END STEP5D_FALLBACK_EMERGENCY =====
             __fallback_injected: true,
           });
 
@@ -164,6 +179,27 @@ export async function GET(req: Request) {
       console.error("LIVETRIPS_FALLBACK_ACTIVE_EXCEPTION", e?.message || e);
     }
   const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
+    // ===== STEP5D_TRIPSOUT_EMERGENCY =====
+    is_emergency: Boolean(
+      (t as any)?.is_emergency ??
+      (t as any)?.isEmergency ??
+      false
+    ),
+    pickup_distance_km:
+      (t as any)?.pickup_distance_km ??
+      (t as any)?.pickupDistanceKm ??
+      (t as any)?.pickup_distance ??
+      (t as any)?.pickupDistance ??
+      (t as any)?.driver_to_pickup_km ??
+      null,
+    emergency_pickup_fee_php:
+      (t as any)?.emergency_pickup_fee_php ??
+      (t as any)?.emergencyPickupFeePhp ??
+      (t as any)?.pickup_distance_fee ??
+      (t as any)?.pickup_distance_fee_php ??
+      null,
+    // ===== END STEP5D_TRIPSOUT_EMERGENCY =====
+
     ...t,
     suggested_verified_fare:
       (t as any)?.suggested_verified_fare ??
