@@ -51,6 +51,12 @@ export async function POST(req: Request) {
     // 2) Candidates: any driver with coordinates, not explicitly on_trip
     const candidates = driverRows.filter((row: any) => {
       if (row.lat == null || row.lng == null) return false;
+    // ===== STEP 5B: filteredCandidates (loop-visible) =====
+    let filteredCandidates = candidates;
+// ===== END STEP 5B: filteredCandidates =====
+
+    
+
 
       const statusText = String(row.status ?? "").toLowerCase();
 
@@ -70,8 +76,12 @@ export async function POST(req: Request) {
     // 3) Find nearest by haversine distance
     let best: any = null;
     let bestDistance = Infinity;
+    // ===== STEP 5B: ensure filteredCandidates exists in loop scope =====
+    let filteredCandidates = candidates;
+    // ===== END STEP 5B =====
 
-    for (const d of candidates) {
+
+    for (const d of filteredCandidates) {
       const distKm = haversine(
         pickupLat,
         pickupLng,
