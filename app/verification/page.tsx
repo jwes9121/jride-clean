@@ -1,6 +1,5 @@
 "use client";
-
-import React from "react";
+import * as React from "react";
 import { useRouter } from "next/navigation";
 
 type VReq = {
@@ -70,7 +69,7 @@ export default function VerificationPage() {
       const r = await fetch("/api/public/passenger/verification/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: fullName, town }),
+        body: JSON.stringify({ full_name: fullName, town , id_front_path: idFrontPath || null, selfie_with_id_path: selfiePath || null}),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) {
@@ -161,7 +160,38 @@ export default function VerificationPage() {
             </select>
           </label>
 
-          <button
+          <div className="mt-3 grid grid-cols-1 gap-3">
+  <div>
+    <div className="text-sm font-semibold mb-1">Upload valid ID (front)</div>
+    <input
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      onChange={(e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) uploadOne("id_front", f);
+      }}
+    />
+    <div className="text-xs opacity-70 mt-1">
+      {uploading === "id_front" ? "Uploading..." : (idFrontPath ? ("Saved: " + idFrontPath) : "No file yet")}
+    </div>
+  </div>
+
+  <div>
+    <div className="text-sm font-semibold mb-1">Selfie holding the ID</div>
+    <input
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      onChange={(e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) uploadOne("selfie", f);
+      }}
+    />
+    <div className="text-xs opacity-70 mt-1">
+      {uploading === "selfie" ? "Uploading..." : (selfiePath ? ("Saved: " + selfiePath) : "No file yet")}
+    </div>
+  </div>
+</div>
+<button
             type="button"
             disabled={saving}
             onClick={submit}
