@@ -1,458 +1,81 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import * as React from "react";
 
-import { supabase } from "@/lib/supabaseClient";
-type Item = {
-  title: string;
-  desc: string;
-  href: string;
-};
+type Row = { passenger_id: string };
 
-type Section = {
-  heading: string;
-  items: Item[];
-};
+export default function AdminControlCenter() {
+  const [loading, setLoading] = React.useState(true);
+  const [pending, setPending] = React.useState<number>(0);
+  const [msg, setMsg] = React.useState<string>("");
 
-type Role = "admin" | "dispatcher";
-
-function safeNormRole(v: any): Role | null {
-  const s = String(v || "").toLowerCase().trim();
-  if (s === "admin") return "admin";
-  if (s === "dispatcher") return "dispatcher";
-  return null;
-}
-
-function getRoleFromClient(): { role: Role; debug: boolean; source: string } {
-  if (typeof window === "undefined") return { role: "admin", debug: false, source: "default" };
-
-  const sp = new URLSearchParams(window.location.search);
-  const debug = sp.get("debug") === "1";
-
-  // 1) Explicit query param override
-  const qpRole = safeNormRole(sp.get("role"));
-  if (qpRole) return { role: qpRole, debug, source: "query" };
-
-  // 2) Local storage hint
-  try {
-    const ls = safeNormRole(window.localStorage.getItem("jride_role"));
-    if (ls) return { role: ls, debug, source: "localStorage" };
-  } catch {
-    // ignore
-  }
-
-  // 3) Default: admin
-  return { role: "admin", debug: false, source: "default" };
-}
-
-export default function AdminControlCenterPage() {
-  const [role, setRole] = useState<Role>("admin");
-  const [debug, setDebug] = useState(false);
-  // P5: Ops Snapshot - PAX mismatch count (read-only)
-  const [paxMismatchCount, setPaxMismatchCount] = useState<number>(0);
-  const [paxMismatchErr, setPaxMismatchErr] = useState<string>("");  const [roleSource, setRoleSource] = useState<string>("default");
-
-  useEffect(() => {
-    const r = getRoleFromClient();
-      setRole(r.role);
-    setDebug(r.debug);
-    setRoleSource(r.source);
-  }, []);
-
-      // P5: load PAX mismatch count (matches = false)
-  useEffect(() => {
-    (async () => {
-      try {
-        setPaxMismatchErr("");
-        const { count, error } = await supabase
-          .from("ride_pax_confirmations")
-          .select("id", { count: "exact", head: true })
-          .eq("matches", false);
-
-        if (error) throw error;
-        setPaxMismatchCount(typeof count === "number" ? count : 0);
-      } catch (e: any) {
-        setPaxMismatchErr(String(e?.message || "PAX_MISMATCH_COUNT_FAILED"));
-        setPaxMismatchCount(0);
-      }
-    })();
-  }, []);
-const sections: Section[] = useMemo(
-    () => [
-      {
-        heading: "Core Admin",
-        items: [
-          {
-            title: "Passenger Verification (Admin)",
-            desc: "Approve or reject passenger verification requests.",
-            href: "/admin/verification",
-          },
-          {
-            title: "Passenger Verification (Dispatcher)",
-            desc: "Pre-approve and forward to Admin queue.",
-            href: "/admin/dispatcher-verifications",
-          },
-
-          {
-            title: "Live Trips",
-            desc: "Real-time dispatch and tracking view (navigation only).",
-            href: "/admin/livetrips",
-          },
-          {
-            title: "At-Risk Trips (SLA)",
-            desc: "Trips nearing or breaching SLA thresholds (read-only).",
-            href: "/admin/trips/at-risk",
-          },
-          {
-            title: "Driver Payouts",
-            desc: "Driver payout records and status overview.",
-            href: "/admin/driver-payouts",
-          },
-          {
-            title: "Vendor Payouts",
-            desc: "Vendor payout records and request list.",
-            href: "/admin/vendor-payouts",
-          },
-          {
-            title: "Vendor Payout Summary",
-            desc: "Read-only payout summaries per vendor.",
-            href: "/admin/vendor-payouts-summary",
-          },
-        ],
-      },
-
-      {
-        heading: "Reports",
-        items: [
-          {
-            title: "LGU / Accounting Exports",
-            desc: "Accounting and LGU export views (CSV-ready, read-only).",
-            href: "/admin/reports/lgu",
-          },
-          {
-            title: "Vendor Monthly Report",
-            desc: "Monthly vendor performance and revenue summary.",
-            href: "/admin/reports/vendor-monthly",
-          },
-          {
-            title: "Vendor Summary Report",
-            desc: "Overall vendor statistics and aggregates.",
-            href: "/admin/reports/vendor-summary",
-          },
-          {
-            title: "Driver Payout Requests (LGU View)",
-            desc: "LGU-safe view of driver payout requests.",
-            href: "/admin/reports/driver-payout-requests",
-          },
-        ],
-      },
-
-      {
-        heading: "Quality / Operations",
-        items: [
-          {
-            title: "Stuck Drivers",
-            desc: "Drivers flagged for inactivity or stalled trips.",
-            href: "/admin/ops/stuck-drivers",
-          },
-          {
-            title: "Auto-Assign Monitor",
-            desc: "Read-only monitoring of auto-assign behavior.",
-            href: "/admin/ops/auto-assign-monitor",
-          },
-                              {
-            title: "Incident Log (Read-only)",
-            desc: "Operational issues board: stuck, unassigned, at-risk, cancelled (derived).",
-            href: "/admin/ops/incidents",
-          },
-          {
-            title: "PAX Mismatches",
-            desc: "Read-only list of driver-reported passenger count mismatches.",
-            href: "/admin/ops/pax-mismatches",
-          },{
-            title: "Ops Health Dashboard",
-            desc: "High-level operational health indicators (read-only).",
-            href: "/admin/ops/health",
-          },{
-            title: "Audit Trail (Read-only)",
-            desc: "Snapshot audit helper (UI-only). No backend mutations.",
-            href: "/admin/audit",
-          },
-        ],
-      },
-
-      {
-        heading: "Accounting (Read-only)",
-        items: [
-                    {
-            title: "Financial Summary (Read-only)",
-            desc: "Snapshot-based totals and quick export (no wallet mutations).",
-            href: "/admin/finance/summary",
-          },  {
-    title: "Wallet Adjustments (Admin)",
-    desc: "Manual driver credit/debit and vendor wallet actions (admin only).",
-    href: "/admin/wallet-adjust",
-  },
-{
-            title: "Wallet Reconciliation",
-            desc: "Read-only reconciliation status dashboard placeholder.",
-            href: "/admin/ops/wallet-reconciliation",
-          },{
-            title: "Wallet Adjustments (Admin)",
-            desc: "Manual driver credit/debit + vendor wallet adjustments and full settle.",
-            href: "/admin/wallet-adjust",
-          },
-        ],
-      },
-    ],
-    []
-  );
-
-  // Dispatcher allowed links: ops-only + live + at-risk + audit helper
-  const dispatcherAllow = useMemo(
-    () =>
-      new Set<string>([
-        "/admin/livetrips",
-        "/admin/trips/at-risk",
-        "/admin/ops/stuck-drivers",
-        "/admin/ops/auto-assign-monitor",
-        "/admin/audit",
-      ]),
-    []
-  );
-
-  const visibleSections = useMemo(() => {
-    if (role === "admin") return sections;
-
-    // dispatcher: filter down to allowed hrefs and drop empty sections
-    const filtered: Section[] = [];
-    for (const s of sections) {
-      const allowedItems = s.items.filter((it) => dispatcherAllow.has(it.href));
-      if (allowedItems.length > 0) filtered.push({ ...s, items: allowedItems });
-    }
-    return filtered;
-  }, [role, sections, dispatcherAllow]);
-
-  function setRoleHint(nextRole: Role) {
-    setRole(nextRole);
-    setRoleSource("localStorage");
+  async function load() {
+    setLoading(true);
+    setMsg("");
     try {
-      window.localStorage.setItem("jride_role", nextRole);
-    } catch {
-      // ignore
+      const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Failed to load verification counts");
+      const rows: Row[] = Array.isArray(j.rows) ? j.rows : [];
+      setPending(rows.length);
+    } catch (e: any) {
+      setMsg(e?.message || "Failed to load.");
+      setPending(0);
+    } finally {
+      setLoading(false);
     }
   }
 
-  const card: any = {
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: 14,
-    background: "white",
-  };
+  React.useEffect(() => { load(); }, []);
 
-  const btn: any = {
-    display: "inline-block",
-    padding: "8px 12px",
-    border: "1px solid #d1d5db",
-    borderRadius: 10,
-    background: "white",
-    fontSize: 13,
-    textDecoration: "none",
-  };
-
-  const miniBtn: any = {
-    display: "inline-block",
-    padding: "6px 10px",
-    border: "1px solid #d1d5db",
-    borderRadius: 10,
-    background: "white",
-    fontSize: 12,
-    textDecoration: "none",
-    cursor: "pointer",
-  };
-
-  const badge: any = {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 999,
-    border: "1px solid #eee",
-    fontSize: 12,
-    opacity: 0.85,
-  };
-
-    const [verificationCounts, setVerificationCounts] = useState<{ admin: number; dispatcher: number }>({
-    admin: 0,
-    dispatcher: 0,
-  });
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const a = await supabase
-          .from("passenger_verifications")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["pending", "pre_approved_dispatcher"]);
-
-        const d = await supabase
-          .from("passenger_verifications")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending");
-
-        setVerificationCounts({
-          admin: (a as any)?.count ?? 0,
-          dispatcher: (d as any)?.count ?? 0,
-        });
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
-return (
-    <div style={{ padding: 16 }}>
-      {/* ===== ADMIN CONTROL CENTER: TOP HEADER (D1 UI ONLY) ===== */}
-      <div className="mb-4 rounded-2xl border border-black/10 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+  return (
+    <main className="min-h-screen p-6 bg-white">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-extrabold m-0">Admin Control Center</h1>
-            <div className="mt-1 text-xs opacity-70">
-              Centralized navigation hub. Read-only. No actions are executed here.
-            </div>
+            <div className="text-2xl font-bold">Admin Control Center</div>
+            <div className="text-sm opacity-70 mt-1">Centralized navigation hub (counts are live).</div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span style={badge}>
-              Role: <b>{role}</b>{" "}
-              <span style={{ opacity: 0.7 }}>
-                {debug ? "(debug)" : ""} {roleSource ? " - " + roleSource : ""}
-              </span>
-            </span>
-
-            {debug ? (
-              <>
-                <button type="button" style={miniBtn} onClick={() => setRoleHint("admin")}>
-                  Set role: admin
-                </button>
-                <button type="button" style={miniBtn} onClick={() => setRoleHint("dispatcher")}>
-                  Set role: dispatcher
-                </button>
-              </>
-            ) : null}
-
-            <a href="/admin" style={btn}>
-              /admin
-            </a>
-            <a href="/admin/control-center" style={btn}>
-              /admin/control-center
-            </a>
-          </div>
-        </div>
-      </div>
-      {/* ===== END TOP HEADER ===== */}
-      {/* ===== ADMIN CONTROL CENTER: VERIFICATION LINKS ===== */}
-      <section className="mt-4 mb-4 rounded-2xl border border-black/10 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Verification</div>
-            <div className="text-xs opacity-70">Review passenger verification queue</div>
-          </div>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link
-            href="/admin/verification"
-            className="rounded-xl border border-black/10 p-3 hover:bg-black/5 transition"
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
           >
-            <div className="text-sm font-semibold">Admin Verification {verificationCounts.admin > 0 ? <span className="ml-2 inline-block rounded-full border border-black/10 px-2 py-0.5 text-xs">{verificationCounts.admin}</span> : null}</div>
-            <div className="mt-1 text-xs opacity-70">Approve or reject pending + dispatcher pre-approved</div>
-          </Link>
-
-          <Link
-            href="/admin/dispatcher-verifications"
-            className="rounded-xl border border-black/10 p-3 hover:bg-black/5 transition"
-          >
-            <div className="text-sm font-semibold">Dispatcher Verification {verificationCounts.dispatcher > 0 ? <span className="ml-2 inline-block rounded-full border border-black/10 px-2 py-0.5 text-xs">{verificationCounts.dispatcher}</span> : null}</div>
-            <div className="mt-1 text-xs opacity-70">Pre-approve or reject new verification requests</div>
-          </Link>
-        </div>
-      </section>
-      {/* ===== END VERIFICATION LINKS ===== */}
-      {/* ===== OPS SNAPSHOT (PHASE C / UI ONLY) ===== */}
-      <section className="mb-4 rounded-2xl border border-black/10 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Ops Snapshot</div>
-            <div className="text-xs opacity-70">At-a-glance queue counts (read-only)</div>
-  
-          <div className="rounded-xl border border-black/10 p-3">
-            <div className="text-xs opacity-70">PAX mismatches</div>
-            <div className="mt-1 text-lg font-bold">{paxMismatchCount}</div>
-            <div className="mt-1 text-[11px] opacity-70">
-              Driver-reported passenger count mismatches
-              {paxMismatchErr ? (
-                <span className="ml-2 text-rose-700">Unavailable</span>
-              ) : null}
-            </div>
-          </div>        </div>
+            Refresh
+          </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-xl border border-black/10 p-3">
-            <div className="text-xs opacity-70">Pending passenger verifications</div>
-            <div className="mt-1 text-lg font-bold">{verificationCounts.admin}</div>
-            <div className="mt-1 text-[11px] opacity-70">Admin queue: pending + dispatcher pre-approved</div>
-          </div>
+        {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
 
-          <div className="rounded-xl border border-black/10 p-3">
-            <div className="text-xs opacity-70">Pending dispatcher queue</div>
-            <div className="mt-1 text-lg font-bold">{verificationCounts.dispatcher}</div>
-            <div className="mt-1 text-[11px] opacity-70">Dispatcher queue: pending only</div>
-          </div>
-
-          <div className="rounded-xl border border-black/10 p-3">
-            <div className="text-xs opacity-70">Total pending</div>
-            <div className="mt-1 text-lg font-bold">{verificationCounts.admin + verificationCounts.dispatcher}</div>
-            <div className="mt-1 text-[11px] opacity-70">Combined queues (display-only)</div>
-          </div>
-        </div>
-
-        <div className="mt-2 text-[11px] opacity-70">
-          UI-only dashboard. No new API routes. No business logic. Read-only counters only.
-        </div>
-      </section>
-      {/* ===== END OPS SNAPSHOT ===== */}
-      
-
-      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-        {visibleSections.map((section) => (
-          <div key={section.heading} style={card}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>{section.heading}</div>
-            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-              {section.items.map((it) => (
-                <div key={it.href} style={{ borderTop: "1px solid #f0f0f0", paddingTop: 10 }}>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                    <div style={{ fontWeight: 800 }}>{it.title}</div>
-                    <span style={{ fontFamily: "monospace", fontSize: 12, opacity: 0.65 }}>{it.href}</span>
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 13, opacity: 0.8 }}>{it.desc}</div>
-                  <div style={{ marginTop: 10 }}>
-                    <Link href={it.href} style={btn}>
-                      Open
-                    </Link>
-                  </div>
-                </div>
-              ))}
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="text-sm font-semibold">Pending passenger verifications</div>
+            <div className="text-3xl font-bold mt-2">{loading ? "-" : pending}</div>
+            <div className="text-xs opacity-70 mt-1">Admin queue (pending)</div>
+            <div className="mt-3 flex gap-2">
+              <a className="rounded-xl bg-black text-white px-4 py-2 font-semibold" href="/admin/verification">Open</a>
+              <a className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold" href="/admin/dispatcher-verifications">Dispatcher</a>
             </div>
           </div>
-        ))}
-      </div>
 
-      <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-        Locked rule: this page is navigation only (Link/push only). No wallet mutations. No Mapbox changes. No LiveTrips logic changes.
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="text-sm font-semibold">Verification pages</div>
+            <div className="text-xs opacity-70 mt-2">Use Admin Verification to approve/reject. Dispatcher is read-only for now.</div>
+            <div className="mt-3 grid gap-2">
+              <a className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold" href="/admin/verification">Passenger Verification (Admin)</a>
+              <a className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold" href="/admin/dispatcher-verifications">Passenger Verification (Dispatcher)</a>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="text-sm font-semibold">Notes</div>
+            <div className="text-xs opacity-70 mt-2">
+              If counts show 0 but Admin Verification shows rows, the old page was cached/server-rendered.
+              This page forces live no-store fetch.
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
-
-
-
