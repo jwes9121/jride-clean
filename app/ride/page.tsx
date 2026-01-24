@@ -341,6 +341,31 @@ function verificationStatusLabel(info: any): string {
 }
 
 export default function RidePage() {
+/* ===== JRIDE_STEP5A_EMERGENCY_STATE ===== */
+const [isEmergency, setIsEmergency] = React.useState(false);
+
+/**
+ * STEP 5A: Emergency cross-town dispatch (UI + flag only)
+ * Show Emergency button when there are NO available drivers in passenger's town.
+ * If your ride page uses different variables, update detection inside this helper.
+ */
+const noDriversInTown = (() => {
+  try {
+    // @ts-ignore
+    if (typeof hasAvailableDriverInTown === "boolean") return !hasAvailableDriverInTown;
+  } catch {}
+  try {
+    // @ts-ignore
+    if (Array.isArray(availableDriversInTown)) return availableDriversInTown.length === 0;
+  } catch {}
+  try {
+    // @ts-ignore
+    if (Array.isArray(driversInTown)) return driversInTown.length === 0;
+  } catch {}
+  return false;
+})();
+/* ===== END JRIDE_STEP5A_EMERGENCY_STATE ===== */
+
   const router = useRouter();
 
   const [town, setTown] = React.useState("Lagawe");
@@ -2119,7 +2144,7 @@ if (!can.ok) {
     if (hasOffer && !hasVerified) {
       return (
         <div className="mt-1 text-sm">
-          <div>Offer received Ã¢â‚¬â€œ waiting verification</div>
+          <div>Offer received ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ waiting verification</div>
           <div className="mt-1">
             Driver offer: <span className="font-medium">PHP {Number(lb.proposed_fare).toFixed(0)}</span>
           </div>
