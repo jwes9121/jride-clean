@@ -12,14 +12,24 @@ function env(name: string) {
 function parseCsv(v: string) {
   return String(v || "")
     .split(",")
-    .map(s => s.trim().toLowerCase())
+    .map(s => s.trim())
     .filter(Boolean);
 }
 
-function isEmailInList(email: string | null | undefined, list: string[]) {
+function toLowerList(xs: string[]) {
+  return xs.map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
+function isInList(val: string | null | undefined, list: string[]) {
+  const v = String(val || "").trim();
+  if (!v) return false;
+  return list.includes(v);
+}
+
+function isEmailInList(email: string | null | undefined, listLower: string[]) {
   const e = String(email || "").trim().toLowerCase();
   if (!e) return false;
-  return list.includes(e);
+  return listLower.includes(e);
 }
 
 async function getRoleFromMetadata(supabase: any, userId: string) {
@@ -29,9 +39,9 @@ async function getRoleFromMetadata(supabase: any, userId: string) {
     const role = String(md?.role || "").toLowerCase();
     const isAdmin = md?.is_admin === true || role === "admin";
     const isDispatcher = role === "dispatcher";
-    return { isAdmin, isDispatcher, role, hasMetadata: true };
+    return { isAdmin, isDispatcher };
   } catch {
-    return { isAdmin: false, isDispatcher: false, role: "", hasMetadata: false };
+    return { isAdmin: false, isDispatcher: false };
   }
 }
 
@@ -51,55 +61,32 @@ export async function GET() {
     env("SUPABASE_SERVICE_ROLE") ||
     "";
 
-  if (!url) {
-    return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
-  }
+  if (!url) return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
   if (!service) {
     return NextResponse.json({ ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY (required for private signed URLs)" }, { status: 500 });
   }
 
   const supabase = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // Allowlists (support legacy env names)
-  const adminListRaw = env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS");
-  const dispatcherListRaw = env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS");
+  // Allowlists: IDs first (strongest), then email, then metadata fallback
+  const adminIds = parseCsv(env("ADMIN_USER_IDS") || env("JRIDE_ADMIN_USER_IDS"));
+  const dispatcherIds = parseCsv(env("DISPATCHER_USER_IDS") || env("JRIDE_DISPATCHER_USER_IDS"));
 
-  const adminEmails = parseCsv(adminListRaw);
-  const dispatcherEmails = parseCsv(dispatcherListRaw);
+  const adminEmailsLower = toLowerList(parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS")));
+  const dispatcherEmailsLower = toLowerList(parseCsv(env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS")));
 
-  const emailMatchedAdmin = isEmailInList(requesterEmail, adminEmails);
-  const emailMatchedDispatcher = isEmailInList(requesterEmail, dispatcherEmails);
+  let isAdmin = isInList(requesterId, adminIds) || isEmailInList(requesterEmail, adminEmailsLower);
+  let isDispatcher = isInList(requesterId, dispatcherIds) || isEmailInList(requesterEmail, dispatcherEmailsLower);
 
-  let isAdmin = emailMatchedAdmin;
-  let isDispatcher = emailMatchedDispatcher;
-
-  // Fallback: metadata role
-  const mdRole = (!isAdmin && !isDispatcher) ? await getRoleFromMetadata(supabase, requesterId) : { isAdmin: false, isDispatcher: false, role: "", hasMetadata: false };
   if (!isAdmin && !isDispatcher) {
-    isAdmin = mdRole.isAdmin;
-    isDispatcher = mdRole.isDispatcher;
+    const md = await getRoleFromMetadata(supabase, requesterId);
+    isAdmin = md.isAdmin;
+    isDispatcher = md.isDispatcher;
   }
 
   if (!isAdmin && !isDispatcher) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Forbidden (requires admin/dispatcher). Set JRIDE_ADMIN_EMAILS or ADMIN_EMAILS; JRIDE_DISPATCHER_EMAILS or DISPATCHER_EMAILS; or user_metadata.role",
-        debug: {
-          requesterEmail: requesterEmail || null,
-          adminListVarUsed: adminListRaw ? (env("JRIDE_ADMIN_EMAILS") ? "JRIDE_ADMIN_EMAILS" : "ADMIN_EMAILS") : null,
-          dispatcherListVarUsed: dispatcherListRaw ? (env("JRIDE_DISPATCHER_EMAILS") ? "JRIDE_DISPATCHER_EMAILS" : "DISPATCHER_EMAILS") : null,
-          adminListCount: adminEmails.length,
-          dispatcherListCount: dispatcherEmails.length,
-          emailMatchedAdmin,
-          emailMatchedDispatcher,
-          metadataChecked: (!emailMatchedAdmin && !emailMatchedDispatcher),
-          metadataHasData: (mdRole as any)?.hasMetadata ?? false,
-          metadataRole: (mdRole as any)?.role ?? "",
-          metadataIsAdmin: (mdRole as any)?.isAdmin ?? false,
-          metadataIsDispatcher: (mdRole as any)?.isDispatcher ?? false,
-        },
-      },
+      { ok: false, error: "Forbidden (requires admin/dispatcher)." },
       { status: 403 }
     );
   }
@@ -110,9 +97,7 @@ export async function GET() {
     .eq("status", "pending")
     .order("submitted_at", { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   const rows = Array.isArray(data) ? data : [];
 

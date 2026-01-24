@@ -5,21 +5,28 @@ import { createClient } from "@supabase/supabase-js";
 function parseCsv(v: string) {
   return String(v || "")
     .split(",")
-    .map(s => s.trim().toLowerCase())
+    .map(s => s.trim())
     .filter(Boolean);
 }
 
-function isEmailInList(email: string | null | undefined, list: string[]) {
+function toLowerList(xs: string[]) {
+  return xs.map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
+function isInList(val: string | null | undefined, list: string[]) {
+  const v = String(val || "").trim();
+  if (!v) return false;
+  return list.includes(v);
+}
+
+function isEmailInList(email: string | null | undefined, listLower: string[]) {
   const e = String(email || "").trim().toLowerCase();
   if (!e) return false;
-  return list.includes(e);
+  return listLower.includes(e);
 }
 
 function adminSupabase() {
-  const url =
-    process.env.SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "";
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_ROLE ||
@@ -29,17 +36,16 @@ function adminSupabase() {
   if (!url) throw new Error("Missing env: SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
   if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY");
 
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 async function isRequesterAdmin(supabase: any, userId: string, email: string) {
-  // Allowlist (support legacy env ADMIN_EMAILS too)
-  const adminEmails = parseCsv(process.env.JRIDE_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "");
-  if (isEmailInList(email, adminEmails)) return true;
+  const adminIds = parseCsv(process.env.ADMIN_USER_IDS || process.env.JRIDE_ADMIN_USER_IDS || "");
+  const adminEmailsLower = toLowerList(parseCsv(process.env.JRIDE_ADMIN_EMAILS || process.env.ADMIN_EMAILS || ""));
 
-  // Fallback: Supabase Auth metadata role
+  if (isInList(userId, adminIds)) return true;
+  if (isEmailInList(email, adminEmailsLower)) return true;
+
   try {
     const u = await supabase.auth.admin.getUserById(userId);
     const md: any = u?.data?.user?.user_metadata || {};
@@ -53,35 +59,23 @@ async function isRequesterAdmin(supabase: any, userId: string, email: string) {
 
 export async function POST(req: Request) {
   try {
-    // Require signed in
     const session = await auth();
     const requesterId = session?.user?.id ? String(session.user.id) : "";
     const requesterEmail = session?.user?.email ? String(session.user.email) : "";
 
-    if (!requesterId) {
-      return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
-    }
+    if (!requesterId) return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
 
     const supabase = adminSupabase();
 
-    // Admin-only enforcement
     const okAdmin = await isRequesterAdmin(supabase, requesterId, requesterEmail);
-    if (!okAdmin) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden (admin only). Set JRIDE_ADMIN_EMAILS or ADMIN_EMAILS; or user_metadata.role/is_admin." },
-        { status: 403 }
-      );
-    }
+    if (!okAdmin) return NextResponse.json({ ok: false, error: "Forbidden (admin only)." }, { status: 403 });
 
     const body: any = await req.json().catch(() => ({}));
-
     const passenger_id = String(body?.passenger_id || "").trim();
     const decision = String(body?.decision || "").trim().toLowerCase();
     const admin_notes = String(body?.admin_notes || "").trim();
 
-    if (!passenger_id) {
-      return NextResponse.json({ ok: false, error: "passenger_id required" }, { status: 400 });
-    }
+    if (!passenger_id) return NextResponse.json({ ok: false, error: "passenger_id required" }, { status: 400 });
     if (decision !== "approve" && decision !== "reject") {
       return NextResponse.json({ ok: false, error: "decision must be approve or reject" }, { status: 400 });
     }
@@ -101,9 +95,7 @@ export async function POST(req: Request) {
       .select("*")
       .maybeSingle();
 
-    if (up.error) {
-      return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
-    }
+    if (up.error) return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
 
     if (decision === "approve") {
       const u = await supabase.auth.admin.updateUserById(passenger_id, {
