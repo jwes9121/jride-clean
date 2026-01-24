@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -191,6 +191,116 @@ async function bestEffortUpdateDriverLocation(
  * - apply platform cut via process_booking_wallet_cut(p_booking_id uuid)
  * - for takeout: sync vendor wallet via sync_vendor_takeout_wallet(v_vendor_id uuid)
  */
+/* ===== JRIDE STEP 5E: EMERGENCY WALLET SPLIT ===== */
+const STEP5E_DRIVER_CREDIT = 20;
+const STEP5E_COMPANY_FEE = 15;
+
+async function step5eHasDriverCredit(supabase: any, bookingId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("driver_wallet_transactions")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .eq("reason", "emergency_pickup_fee_driver")
+      .limit(1);
+
+    if (error) return false;
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function step5eNextDriverBalanceAfter(supabase: any, driverId: string, delta: number): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from("driver_wallet_transactions")
+      .select("balance_after")
+      .eq("driver_id", driverId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) return delta;
+    const last = Array.isArray(data) && data.length > 0 ? Number(data[0]?.balance_after ?? 0) : 0;
+    const next = last + Number(delta);
+    return Number.isFinite(next) ? next : Number(delta);
+  } catch {
+    return Number(delta);
+  }
+}
+
+async function step5eHasCompanyFee(supabase: any, bookingCode: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("vendor_wallet_transactions")
+      .select("id")
+      .eq("booking_code", bookingCode)
+      .eq("kind", "company_convenience_fee")
+      .eq("amount", STEP5E_COMPANY_FEE)
+      .limit(1);
+
+    if (error) return false;
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function step5eBestEffortEmergencyWalletSplit(
+  supabase: any,
+  booking: any,
+  warnings: string[]
+): Promise<void> {
+  try {
+    const isEmergency = Boolean(booking?.is_emergency);
+    if (!isEmergency) return;
+
+    const bookingId = String(booking?.id ?? "").trim();
+    const bookingCode = String(booking?.booking_code ?? "").trim();
+    const driverId = String(booking?.driver_id ?? "").trim();
+
+    if (!bookingId || !driverId) {
+      warnings.push("STEP5E_MISSING_BOOKING_OR_DRIVER");
+      return;
+    }
+
+    // ---- Driver +20 (idempotent by booking_id + reason) ----
+    const alreadyDriver = await step5eHasDriverCredit(supabase, bookingId);
+    if (!alreadyDriver) {
+      const balanceAfter = await step5eNextDriverBalanceAfter(supabase, driverId, STEP5E_DRIVER_CREDIT);
+      const { error } = await supabase.from("driver_wallet_transactions").insert({
+        driver_id: driverId,
+        amount: STEP5E_DRIVER_CREDIT,
+        balance_after: balanceAfter,
+        reason: "emergency_pickup_fee_driver",
+        booking_id: bookingId,
+      });
+      if (error) warnings.push("STEP5E_DRIVER_LEDGER_INSERT_FAILED: " + error.message);
+    }
+
+    // ---- Company +15 (idempotent by booking_code + kind + amount) ----
+    if (!bookingCode) {
+      warnings.push("STEP5E_MISSING_BOOKING_CODE_FOR_COMPANY_LEDGER");
+      return;
+    }
+
+    const alreadyCompany = await step5eHasCompanyFee(supabase, bookingCode);
+    if (!alreadyCompany) {
+      const { error } = await supabase.from("vendor_wallet_transactions").insert({
+        vendor_id: null,
+        booking_code: bookingCode,
+        amount: STEP5E_COMPANY_FEE,
+        kind: "company_convenience_fee",
+        note: "Emergency convenience fee",
+      });
+
+      if (error) warnings.push("STEP5E_COMPANY_LEDGER_INSERT_FAILED: " + error.message);
+    }
+  } catch (e: any) {
+    warnings.push("STEP5E_UNEXPECTED: " + String(e?.message ?? e ?? "Unknown"));
+  }
+}
+/* ===== END JRIDE STEP 5E ===== */
 async function bestEffortWalletSyncOnComplete(
   supabase: ReturnType<typeof createClient>,
   booking: any
@@ -199,7 +309,11 @@ async function bestEffortWalletSyncOnComplete(
   const serviceType = String(booking?.service_type ?? booking?.serviceType ?? "").toLowerCase();
   const vendorId = booking?.vendor_id ? String(booking.vendor_id) : null;
 
-  const warnings: string[] = [];
+  
+
+  // STEP5E_CALL_SITE: Emergency fee wallet split (idempotent, completion-only)
+  await step5eBestEffortEmergencyWalletSplit(supabase, booking, warnings);
+
 
   // 1) Apply platform/company cut (driver wallet deduction)
   if (bookingId) {
@@ -621,3 +735,4 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
