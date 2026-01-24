@@ -343,6 +343,11 @@ function verificationStatusLabel(info: any): string {
 export default function RidePage() {
 /* ===== JRIDE_STEP5A_EMERGENCY_STATE ===== */
 const [isEmergency, setIsEmergency] = React.useState(false);
+  // ===== JRIDE STEP5C: Emergency pickup fee state =====
+  const [pickupDistanceKm, setPickupDistanceKm] = React.useState<number | null>(null);
+  const [emergencyPickupFeePhp, setEmergencyPickupFeePhp] = React.useState<number | null>(null);
+  // ===== END JRIDE STEP5C =====
+
 
 /**
  * STEP 5A: Emergency cross-town dispatch (UI + flag only)
@@ -1762,6 +1767,28 @@ if (!can.ok) {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">Book a Ride</h1>
+          {/* ===== JRIDE_STEP5C_PICKUP_FEE_UI ===== */}
+          {(isEmergency && (pickupDistanceKm != null || emergencyPickupFeePhp != null)) ? (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+              {pickupDistanceKm != null ? (
+                <div>
+                  Pickup distance: <strong>{pickupDistanceKm.toFixed(2)} km</strong>
+                </div>
+              ) : null}
+
+              {(emergencyPickupFeePhp != null && emergencyPickupFeePhp > 0) ? (
+                <div>
+                  Extra pickup fee (beyond 1.5km): <strong>ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±{Math.round(emergencyPickupFeePhp)}</strong>
+                </div>
+              ) : (pickupDistanceKm != null ? (
+                <div>
+                  Extra pickup fee: <strong>ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±0</strong> (within 1.5km free)
+                </div>
+              ) : null)}
+            </div>
+          ) : null}
+          {/* ===== END JRIDE_STEP5C_PICKUP_FEE_UI ===== */}
+
           {/* ===== PHASE P5B: Always-visible debug preview panel (UI-only) ===== */}
           {(() => {
             const dbg = (typeof p5GetDebugStatus === "function") ? p5GetDebugStatus() : "";
@@ -2144,7 +2171,7 @@ if (!can.ok) {
     if (hasOffer && !hasVerified) {
       return (
         <div className="mt-1 text-sm">
-          <div>Offer received ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ waiting verification</div>
+          <div>Offer received ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ waiting verification</div>
           <div className="mt-1">
             Driver offer: <span className="font-medium">PHP {Number(lb.proposed_fare).toFixed(0)}</span>
           </div>
