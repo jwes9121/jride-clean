@@ -1,5 +1,19 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
+
+function parseCsv(v: string) {
+  return String(v || "")
+    .split(",")
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isEmailInList(email: string | null | undefined, list: string[]) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return false;
+  return list.includes(e);
+}
 
 function adminSupabase() {
   const url =
@@ -20,9 +34,45 @@ function adminSupabase() {
   });
 }
 
+async function isRequesterAdmin(supabase: any, userId: string, email: string) {
+  // 1) Allowlist (recommended)
+  const adminEmails = parseCsv(process.env.JRIDE_ADMIN_EMAILS || "");
+  if (isEmailInList(email, adminEmails)) return true;
+
+  // 2) Fallback: Supabase Auth metadata role
+  try {
+    const u = await supabase.auth.admin.getUserById(userId);
+    const md: any = u?.data?.user?.user_metadata || {};
+    const role = String(md?.role || "").toLowerCase();
+    if (md?.is_admin === true) return true;
+    if (role === "admin") return true;
+  } catch {}
+
+  return false;
+}
+
 export async function POST(req: Request) {
   try {
+    // Require signed in
+    const session = await auth();
+    const requesterId = session?.user?.id ? String(session.user.id) : "";
+    const requesterEmail = session?.user?.email ? String(session.user.email) : "";
+
+    if (!requesterId) {
+      return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
+    }
+
     const supabase = adminSupabase();
+
+    // Admin-only enforcement
+    const okAdmin = await isRequesterAdmin(supabase, requesterId, requesterEmail);
+    if (!okAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden (admin only). Set JRIDE_ADMIN_EMAILS or user_metadata.role/is_admin." },
+        { status: 403 }
+      );
+    }
+
     const body: any = await req.json().catch(() => ({}));
 
     const passenger_id = String(body?.passenger_id || "").trim();
