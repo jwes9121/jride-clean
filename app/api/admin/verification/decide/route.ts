@@ -35,11 +35,11 @@ function adminSupabase() {
 }
 
 async function isRequesterAdmin(supabase: any, userId: string, email: string) {
-  // 1) Allowlist (recommended)
-  const adminEmails = parseCsv(process.env.JRIDE_ADMIN_EMAILS || "");
+  // Allowlist (support legacy env ADMIN_EMAILS too)
+  const adminEmails = parseCsv(process.env.JRIDE_ADMIN_EMAILS || process.env.ADMIN_EMAILS || "");
   if (isEmailInList(email, adminEmails)) return true;
 
-  // 2) Fallback: Supabase Auth metadata role
+  // Fallback: Supabase Auth metadata role
   try {
     const u = await supabase.auth.admin.getUserById(userId);
     const md: any = u?.data?.user?.user_metadata || {};
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     const okAdmin = await isRequesterAdmin(supabase, requesterId, requesterEmail);
     if (!okAdmin) {
       return NextResponse.json(
-        { ok: false, error: "Forbidden (admin only). Set JRIDE_ADMIN_EMAILS or user_metadata.role/is_admin." },
+        { ok: false, error: "Forbidden (admin only). Set JRIDE_ADMIN_EMAILS or ADMIN_EMAILS; or user_metadata.role/is_admin." },
         { status: 403 }
       );
     }
@@ -89,7 +89,6 @@ export async function POST(req: Request) {
     const now = new Date().toISOString();
     const newStatus = decision === "approve" ? "approved" : "rejected";
 
-    // Update verification request row
     const up = await supabase
       .from("passenger_verification_requests")
       .update({
@@ -106,7 +105,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
     }
 
-    // On approve: unlock passenger by updating auth metadata
     if (decision === "approve") {
       const u = await supabase.auth.admin.updateUserById(passenger_id, {
         user_metadata: { verified: true, night_allowed: true },

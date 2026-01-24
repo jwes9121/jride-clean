@@ -62,9 +62,9 @@ export async function GET() {
 
   const supabase = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // 3) Role allowlists (recommended)
-  const adminEmails = parseCsv(env("JRIDE_ADMIN_EMAILS"));
-  const dispatcherEmails = parseCsv(env("JRIDE_DISPATCHER_EMAILS"));
+  // 3) Role allowlists (support legacy env names too)
+  const adminEmails = parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS"));
+  const dispatcherEmails = parseCsv(env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS"));
 
   let isAdmin = isEmailInList(requesterEmail, adminEmails);
   let isDispatcher = isEmailInList(requesterEmail, dispatcherEmails);
@@ -81,7 +81,7 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: false,
-        error: "Forbidden (requires admin/dispatcher). Set JRIDE_ADMIN_EMAILS / JRIDE_DISPATCHER_EMAILS or user_metadata.role",
+        error: "Forbidden (requires admin/dispatcher). Set JRIDE_ADMIN_EMAILS or ADMIN_EMAILS; JRIDE_DISPATCHER_EMAILS or DISPATCHER_EMAILS; or user_metadata.role",
       },
       { status: 403 }
     );
