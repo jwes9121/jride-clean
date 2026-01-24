@@ -9,8 +9,14 @@ type Row = {
   status: string | null;
   submitted_at: string | null;
   admin_notes: string | null;
+
   id_front_path?: string | null;
   selfie_with_id_path?: string | null;
+
+  id_front_signed_url?: string | null;
+  selfie_signed_url?: string | null;
+
+  signed_url_note?: string | null;
 };
 
 function fmt(s: any) {
@@ -31,6 +37,8 @@ export default function AdminVerificationPage() {
       const j: any = await r.json().catch(() => ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.error || ("Failed to load pending (HTTP " + r.status + ")"));
       setRows(Array.isArray(j.rows) ? j.rows : []);
+      const note = (j.rows && j.rows[0] && j.rows[0].signed_url_note) ? String(j.rows[0].signed_url_note) : "";
+      if (note) setMsg(note);
     } catch (e: any) {
       setMsg(e?.message || "Failed to load.");
       setRows([]);
@@ -68,7 +76,7 @@ export default function AdminVerificationPage() {
 
   return (
     <main className="min-h-screen p-6 bg-white">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-2xl font-bold">Passenger Verification (Admin)</div>
@@ -121,6 +129,28 @@ export default function AdminVerificationPage() {
   );
 }
 
+function Thumb({ url, label }: { url: string | null | undefined; label: string }) {
+  if (!url) {
+    return <div className="text-xs opacity-60">{label}: (no preview)</div>;
+  }
+  return (
+    <div className="mt-2">
+      <div className="text-xs opacity-80">{label}:</div>
+      <a href={url} target="_blank" rel="noreferrer" className="inline-block mt-1">
+        <img
+          src={url}
+          alt={label}
+          className="rounded-lg border border-black/10"
+          style={{ width: 160, height: 110, objectFit: "cover" }}
+        />
+      </a>
+      <div className="text-xs mt-1">
+        <a href={url} target="_blank" rel="noreferrer" className="underline">Open</a>
+      </div>
+    </div>
+  );
+}
+
 function RowItem({
   row,
   busy,
@@ -133,7 +163,7 @@ function RowItem({
   const [notes, setNotes] = React.useState<string>(row.admin_notes || "");
 
   return (
-    <tr className="border-t border-black/10">
+    <tr className="border-t border-black/10 align-top">
       <td className="p-3">
         <div className="font-semibold">{row.full_name || "(no name)"}</div>
         <div className="text-xs opacity-70">{row.passenger_id}</div>
@@ -149,9 +179,11 @@ function RowItem({
         />
       </td>
       <td className="p-3">
-        <div className="text-xs opacity-80">id: {String(row.id_front_path || "")}</div>
-        <div className="text-xs opacity-80 mt-1">selfie: {String(row.selfie_with_id_path || "")}</div>
-        <div className="text-xs opacity-60 mt-1">Paths only. Add signed previews next.</div>
+        <Thumb url={row.id_front_signed_url} label="Valid ID" />
+        <Thumb url={row.selfie_signed_url} label="Selfie with ID" />
+        <div className="text-xs opacity-60 mt-2">
+          Paths: id={String(row.id_front_path || "")} selfie={String(row.selfie_with_id_path || "")}
+        </div>
       </td>
       <td className="p-3">
         <div className="flex gap-2">
