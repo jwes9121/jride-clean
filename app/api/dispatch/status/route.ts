@@ -260,7 +260,9 @@ async function step5eBestEffortEmergencyWalletSplit(
     const driverId = String(booking?.driver_id ?? "").trim();
 
     if (!bookingId || !driverId) {
-      warnings.push("STEP5E_MISSING_BOOKING_OR_DRIVER");
+  const warnings: string[] = [];
+
+      ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_MISSING_BOOKING_OR_DRIVER");
       return;
     }
 
@@ -275,12 +277,12 @@ async function step5eBestEffortEmergencyWalletSplit(
         reason: "emergency_pickup_fee_driver",
         booking_id: bookingId,
       });
-      if (error) warnings.push("STEP5E_DRIVER_LEDGER_INSERT_FAILED: " + error.message);
+      if (error) ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_DRIVER_LEDGER_INSERT_FAILED: " + error.message);
     }
 
     // ---- Company +15 (idempotent by booking_code + kind + amount) ----
     if (!bookingCode) {
-      warnings.push("STEP5E_MISSING_BOOKING_CODE_FOR_COMPANY_LEDGER");
+      ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_MISSING_BOOKING_CODE_FOR_COMPANY_LEDGER");
       return;
     }
 
@@ -294,10 +296,10 @@ async function step5eBestEffortEmergencyWalletSplit(
         note: "Emergency convenience fee",
       });
 
-      if (error) warnings.push("STEP5E_COMPANY_LEDGER_INSERT_FAILED: " + error.message);
+      if (error) ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_COMPANY_LEDGER_INSERT_FAILED: " + error.message);
     }
   } catch (e: any) {
-    warnings.push("STEP5E_UNEXPECTED: " + String(e?.message ?? e ?? "Unknown"));
+    ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_UNEXPECTED: " + String(e?.message ?? e ?? "Unknown"));
   }
 }
 /* ===== END JRIDE STEP 5E ===== */
@@ -317,16 +319,16 @@ async function bestEffortWalletSyncOnComplete(
 
   // 1) Apply platform/company cut (driver wallet deduction)
   if (bookingId) {
-    try {
+  const warnings: string[] = [];    try {
       const r: any = await supabase.rpc("process_booking_wallet_cut", {
         p_booking_id: bookingId,
       });
-      if (r?.error) warnings.push("WALLET_CUT_RPC_ERROR: " + r.error.message);
+      if (r?.error) ((globalThis as any).__jrideWarnings ??= []).push("WALLET_CUT_RPC_ERROR: " + r.error.message);
     } catch (e: any) {
-      warnings.push("WALLET_CUT_RPC_ERROR: " + String(e?.message || e));
+      ((globalThis as any).__jrideWarnings ??= []).push("WALLET_CUT_RPC_ERROR: " + String(e?.message || e));
     }
   } else {
-    warnings.push("WALLET_CUT_SKIPPED_NO_BOOKING_ID");
+    ((globalThis as any).__jrideWarnings ??= []).push("WALLET_CUT_SKIPPED_NO_BOOKING_ID");
   }
 
   // 2) Vendor wallet for takeout only
@@ -335,13 +337,13 @@ async function bestEffortWalletSyncOnComplete(
       const r: any = await supabase.rpc("sync_vendor_takeout_wallet", {
         v_vendor_id: vendorId,
       });
-      if (r?.error) warnings.push("VENDOR_SYNC_RPC_ERROR: " + r.error.message);
+      if (r?.error) ((globalThis as any).__jrideWarnings ??= []).push("VENDOR_SYNC_RPC_ERROR: " + r.error.message);
     } catch (e: any) {
-      warnings.push("VENDOR_SYNC_RPC_ERROR: " + String(e?.message || e));
+      ((globalThis as any).__jrideWarnings ??= []).push("VENDOR_SYNC_RPC_ERROR: " + String(e?.message || e));
     }
   }
 
-  return warnings.length ? { warning: warnings.join("; ") } : {};
+  return ((globalThis as any).__jrideWarnings ?? []).length ? { warning: ((globalThis as any).__jrideWarnings ?? []).join("; ") } : {};
 }
 
 
@@ -460,7 +462,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  // ===== JRIDE_P5C_POST_START_BLOCK (fare history prep; best-effort) =====
+    // ===== JRIDE_WARNINGS_STABILIZE (AUTO) =====
+  let warnings: string[] = [];
+  (globalThis as any).__jrideWarnings = warnings;
+// ===== JRIDE_P5C_POST_START_BLOCK (fare history prep; best-effort) =====
   // Runs early inside POST() async scope. Does NOT depend on later local variables.
   // It attempts to derive booking id/code from body/payload/data and fetch booking for signature + suggestion.
 
@@ -735,5 +740,16 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
