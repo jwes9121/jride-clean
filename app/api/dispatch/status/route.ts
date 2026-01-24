@@ -312,7 +312,7 @@ async function bestEffortWalletSyncOnComplete(
   
 
   // STEP5E_CALL_SITE: Emergency fee wallet split (idempotent, completion-only)
-  await step5eBestEffortEmergencyWalletSplit(supabase, booking, warnings);
+  await step5eBestEffortEmergencyWalletSplit(supabase, booking, []);
 
 
   // 1) Apply platform/company cut (driver wallet deduction)
@@ -735,4 +735,5 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
 
