@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 
@@ -47,6 +47,22 @@ export default function AdminVerificationPage() {
     }
   }
 
+  function notifyPendingChanged() {
+    // Cross-tab / cross-page sync for Control Center counts
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        const bc = new BroadcastChannel("jride_verification");
+        bc.postMessage({ type: "pending_changed", at: Date.now() });
+        bc.close();
+      }
+    } catch {}
+    // Fallback for older browsers
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jride_verification_pending_changed", String(Date.now()));
+      }
+    } catch {}
+  }
   async function decide(passenger_id: string, decision: "approve" | "reject", admin_notes: string) {
     setMsg("Submitting decision...");
     setBusyId(passenger_id);
@@ -63,6 +79,7 @@ export default function AdminVerificationPage() {
       }
       setMsg("OK: " + decision + " saved. Refreshing...");
       await load();
+      notifyPendingChanged();
       setMsg("Done.");
       setTimeout(() => setMsg(""), 1200);
     } catch (e: any) {

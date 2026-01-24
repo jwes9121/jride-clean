@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 
@@ -39,7 +39,49 @@ export default function AdminControlCenter() {
     }
   }
 
-  React.useEffect(() => { load(); }, []);
+  React.useEffect(() => {
+    let alive = true;
+
+    const safeLoad = () => {
+      if (!alive) return;
+      load();
+    };
+
+    // Initial load
+    safeLoad();
+
+    // Reload when tab becomes visible / user refocuses window
+    const onFocus = () => safeLoad();
+    const onVis = () => { if (document.visibilityState === "visible") safeLoad(); };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+
+    // BroadcastChannel (modern)
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        bc = new BroadcastChannel("jride_verification");
+        bc.onmessage = (ev: any) => {
+          if (ev?.data?.type === "pending_changed") safeLoad();
+        };
+      }
+    } catch {}
+
+    // localStorage fallback (cross-tab)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "jride_verification_pending_changed") safeLoad();
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("storage", onStorage);
+      try { bc?.close(); } catch {}
+    };
+  }, []);
 
   return (
     <main className="min-h-screen p-6 bg-white">
