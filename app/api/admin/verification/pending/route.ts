@@ -29,14 +29,13 @@ async function getRoleFromMetadata(supabase: any, userId: string) {
     const role = String(md?.role || "").toLowerCase();
     const isAdmin = md?.is_admin === true || role === "admin";
     const isDispatcher = role === "dispatcher";
-    return { isAdmin, isDispatcher, role };
+    return { isAdmin, isDispatcher, role, hasMetadata: true };
   } catch {
-    return { isAdmin: false, isDispatcher: false, role: "" };
+    return { isAdmin: false, isDispatcher: false, role: "", hasMetadata: false };
   }
 }
 
 export async function GET() {
-  // 1) Require signed-in user (NextAuth)
   const session = await auth();
   const requesterId = session?.user?.id ? String(session.user.id) : "";
   const requesterEmail = session?.user?.email ? String(session.user.email) : "";
@@ -45,7 +44,6 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
   }
 
-  // 2) Build admin supabase client (needed for signed URLs + metadata role check)
   const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
   const service =
     env("SUPABASE_SERVICE_ROLE_KEY") ||
@@ -62,32 +60,50 @@ export async function GET() {
 
   const supabase = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  // 3) Role allowlists (support legacy env names too)
-  const adminEmails = parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS"));
-  const dispatcherEmails = parseCsv(env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS"));
+  // Allowlists (support legacy env names)
+  const adminListRaw = env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS");
+  const dispatcherListRaw = env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS");
 
-  let isAdmin = isEmailInList(requesterEmail, adminEmails);
-  let isDispatcher = isEmailInList(requesterEmail, dispatcherEmails);
+  const adminEmails = parseCsv(adminListRaw);
+  const dispatcherEmails = parseCsv(dispatcherListRaw);
 
-  // 4) Fallback to auth metadata role (if allowlists not used)
+  const emailMatchedAdmin = isEmailInList(requesterEmail, adminEmails);
+  const emailMatchedDispatcher = isEmailInList(requesterEmail, dispatcherEmails);
+
+  let isAdmin = emailMatchedAdmin;
+  let isDispatcher = emailMatchedDispatcher;
+
+  // Fallback: metadata role
+  const mdRole = (!isAdmin && !isDispatcher) ? await getRoleFromMetadata(supabase, requesterId) : { isAdmin: false, isDispatcher: false, role: "", hasMetadata: false };
   if (!isAdmin && !isDispatcher) {
-    const r = await getRoleFromMetadata(supabase, requesterId);
-    isAdmin = r.isAdmin;
-    isDispatcher = r.isDispatcher;
+    isAdmin = mdRole.isAdmin;
+    isDispatcher = mdRole.isDispatcher;
   }
 
-  // 5) Enforce: admin OR dispatcher can view pending
   if (!isAdmin && !isDispatcher) {
     return NextResponse.json(
       {
         ok: false,
         error: "Forbidden (requires admin/dispatcher). Set JRIDE_ADMIN_EMAILS or ADMIN_EMAILS; JRIDE_DISPATCHER_EMAILS or DISPATCHER_EMAILS; or user_metadata.role",
+        debug: {
+          requesterEmail: requesterEmail || null,
+          adminListVarUsed: adminListRaw ? (env("JRIDE_ADMIN_EMAILS") ? "JRIDE_ADMIN_EMAILS" : "ADMIN_EMAILS") : null,
+          dispatcherListVarUsed: dispatcherListRaw ? (env("JRIDE_DISPATCHER_EMAILS") ? "JRIDE_DISPATCHER_EMAILS" : "DISPATCHER_EMAILS") : null,
+          adminListCount: adminEmails.length,
+          dispatcherListCount: dispatcherEmails.length,
+          emailMatchedAdmin,
+          emailMatchedDispatcher,
+          metadataChecked: (!emailMatchedAdmin && !emailMatchedDispatcher),
+          metadataHasData: (mdRole as any)?.hasMetadata ?? false,
+          metadataRole: (mdRole as any)?.role ?? "",
+          metadataIsAdmin: (mdRole as any)?.isAdmin ?? false,
+          metadataIsDispatcher: (mdRole as any)?.isDispatcher ?? false,
+        },
       },
       { status: 403 }
     );
   }
 
-  // 6) Pull pending rows
   const { data, error } = await supabase
     .from("passenger_verification_requests")
     .select("passenger_id, full_name, town, status, submitted_at, admin_notes, id_front_path, selfie_with_id_path")
@@ -100,10 +116,9 @@ export async function GET() {
 
   const rows = Array.isArray(data) ? data : [];
 
-  // 7) Create signed urls (private buckets)
   const ID_BUCKET = "passenger-ids";
   const SELFIE_BUCKET = "passenger-selfies";
-  const EXPIRES = 60 * 10; // 10 minutes
+  const EXPIRES = 60 * 10;
 
   const out: any[] = [];
   for (const r of rows) {
