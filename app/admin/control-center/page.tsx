@@ -8,6 +8,19 @@ export default function AdminControlCenter() {
   const [loading, setLoading] = React.useState(true);
   const [pending, setPending] = React.useState<number>(0);
   const [msg, setMsg] = React.useState<string>("");
+  const [role, setRole] = React.useState<string>("admin");
+
+  React.useEffect(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const r = (qs.get("role") || "admin").toLowerCase();
+      setRole(r);
+    } catch {
+      setRole("admin");
+    }
+  }, []);
+
+  const isDispatcher = role === "dispatcher";
 
   async function load() {
     setLoading(true);
@@ -34,7 +47,7 @@ export default function AdminControlCenter() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-2xl font-bold">Admin Control Center</div>
-            <div className="text-sm opacity-70 mt-1">Centralized navigation hub (counts are live).</div>
+            <div className="text-sm opacity-70 mt-1">Centralized navigation hub (counts are live). Role: {role}</div>
           </div>
           <button
             type="button"
@@ -51,27 +64,55 @@ export default function AdminControlCenter() {
           <div className="rounded-2xl border border-black/10 p-4">
             <div className="text-sm font-semibold">Pending passenger verifications</div>
             <div className="text-3xl font-bold mt-2">{loading ? "-" : pending}</div>
-            <div className="text-xs opacity-70 mt-1">Admin queue (pending)</div>
+            <div className="text-xs opacity-70 mt-1">Queue count</div>
+
             <div className="mt-3 flex gap-2">
-              <a className="rounded-xl bg-black text-white px-4 py-2 font-semibold" href="/admin/verification">Open</a>
-              <a className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold" href="/admin/dispatcher-verifications">Dispatcher</a>
+              <a
+                href="/admin/verification"
+                className={"rounded-xl px-4 py-2 font-semibold " + (isDispatcher ? "bg-slate-200 text-slate-500 cursor-not-allowed pointer-events-none" : "bg-black text-white")}
+              >
+                Open Admin
+              </a>
+              <a
+                href="/admin/dispatcher-verifications"
+                className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
+              >
+                Dispatcher
+              </a>
             </div>
+
+            {isDispatcher ? (
+              <div className="text-xs text-slate-600 mt-2">
+                Dispatcher mode: Admin approve/reject is disabled here.
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-black/10 p-4">
             <div className="text-sm font-semibold">Verification pages</div>
-            <div className="text-xs opacity-70 mt-2">Use Admin Verification to approve/reject. Dispatcher is read-only for now.</div>
+            <div className="text-xs opacity-70 mt-2">
+              Admin: approve/reject. Dispatcher: read-only queue view.
+            </div>
             <div className="mt-3 grid gap-2">
-              <a className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold" href="/admin/verification">Passenger Verification (Admin)</a>
-              <a className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold" href="/admin/dispatcher-verifications">Passenger Verification (Dispatcher)</a>
+              <a
+                href="/admin/verification"
+                className={"rounded-xl border border-black/10 px-4 py-2 font-semibold " + (isDispatcher ? "bg-slate-100 text-slate-500 pointer-events-none" : "hover:bg-black/5")}
+              >
+                Passenger Verification (Admin)
+              </a>
+              <a
+                href="/admin/dispatcher-verifications"
+                className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
+              >
+                Passenger Verification (Dispatcher)
+              </a>
             </div>
           </div>
 
           <div className="rounded-2xl border border-black/10 p-4">
             <div className="text-sm font-semibold">Notes</div>
             <div className="text-xs opacity-70 mt-2">
-              If counts show 0 but Admin Verification shows rows, the old page was cached/server-rendered.
-              This page forces live no-store fetch.
+              Role gating is UI-only right now. We will also enforce server checks in the decide route next.
             </div>
           </div>
         </div>

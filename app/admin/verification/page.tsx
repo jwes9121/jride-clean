@@ -21,6 +21,7 @@ export default function AdminVerificationPage() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Row[]>([]);
   const [msg, setMsg] = React.useState<string>("");
+  const [busyId, setBusyId] = React.useState<string>("");
 
   async function load() {
     setLoading(true);
@@ -28,7 +29,7 @@ export default function AdminVerificationPage() {
     try {
       const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
       const j: any = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Failed to load pending");
+      if (!r.ok || !j?.ok) throw new Error(j?.error || ("Failed to load pending (HTTP " + r.status + ")"));
       setRows(Array.isArray(j.rows) ? j.rows : []);
     } catch (e: any) {
       setMsg(e?.message || "Failed to load.");
@@ -39,7 +40,8 @@ export default function AdminVerificationPage() {
   }
 
   async function decide(passenger_id: string, decision: "approve" | "reject", admin_notes: string) {
-    setMsg("");
+    setMsg("Submitting decision...");
+    setBusyId(passenger_id);
     try {
       const r = await fetch("/api/admin/verification/decide", {
         method: "POST",
@@ -47,10 +49,18 @@ export default function AdminVerificationPage() {
         body: JSON.stringify({ passenger_id, decision, admin_notes }),
       });
       const j: any = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Decision failed");
+      if (!r.ok || !j?.ok) {
+        const err = j?.error || ("Decision failed (HTTP " + r.status + ")");
+        throw new Error(err);
+      }
+      setMsg("OK: " + decision + " saved. Refreshing...");
       await load();
+      setMsg("Done.");
+      setTimeout(() => setMsg(""), 1200);
     } catch (e: any) {
-      setMsg(e?.message || "Decision failed");
+      setMsg("ERROR: " + (e?.message || "Decision failed"));
+    } finally {
+      setBusyId("");
     }
   }
 
@@ -73,7 +83,9 @@ export default function AdminVerificationPage() {
           </button>
         </div>
 
-        {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
+        {msg ? (
+          <div className="mt-4 text-sm rounded-xl border border-black/10 bg-black/5 p-3">{msg}</div>
+        ) : null}
 
         <div className="mt-6 rounded-2xl border border-black/10 overflow-hidden">
           <div className="px-4 py-3 bg-black/5 text-sm font-semibold">
@@ -98,7 +110,7 @@ export default function AdminVerificationPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <RowItem key={r.passenger_id} row={r} onDecide={decide} />
+                  <RowItem key={r.passenger_id} row={r} busy={busyId === r.passenger_id} onDecide={decide} />
                 ))}
               </tbody>
             </table>
@@ -109,7 +121,15 @@ export default function AdminVerificationPage() {
   );
 }
 
-function RowItem({ row, onDecide }: { row: Row; onDecide: (id: string, d: "approve" | "reject", n: string) => void }) {
+function RowItem({
+  row,
+  busy,
+  onDecide,
+}: {
+  row: Row;
+  busy: boolean;
+  onDecide: (id: string, d: "approve" | "reject", n: string) => void;
+}) {
   const [notes, setNotes] = React.useState<string>(row.admin_notes || "");
 
   return (
@@ -131,25 +151,25 @@ function RowItem({ row, onDecide }: { row: Row; onDecide: (id: string, d: "appro
       <td className="p-3">
         <div className="text-xs opacity-80">id: {String(row.id_front_path || "")}</div>
         <div className="text-xs opacity-80 mt-1">selfie: {String(row.selfie_with_id_path || "")}</div>
-        <div className="text-xs opacity-60 mt-1">
-          Note: show paths only (private bucket). We can add signed preview next.
-        </div>
+        <div className="text-xs opacity-60 mt-1">Paths only. Add signed previews next.</div>
       </td>
       <td className="p-3">
         <div className="flex gap-2">
           <button
             type="button"
+            disabled={busy}
             onClick={() => onDecide(row.passenger_id, "approve", notes)}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 font-semibold"
+            className={"rounded-xl text-white px-4 py-2 font-semibold " + (busy ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500")}
           >
-            Approve
+            {busy ? "Working..." : "Approve"}
           </button>
           <button
             type="button"
+            disabled={busy}
             onClick={() => onDecide(row.passenger_id, "reject", notes)}
-            className="rounded-xl bg-red-600 hover:bg-red-500 text-white px-4 py-2 font-semibold"
+            className={"rounded-xl text-white px-4 py-2 font-semibold " + (busy ? "bg-red-300 cursor-not-allowed" : "bg-red-600 hover:bg-red-500")}
           >
-            Reject
+            {busy ? "Working..." : "Reject"}
           </button>
         </div>
       </td>
