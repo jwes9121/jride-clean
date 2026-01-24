@@ -583,7 +583,8 @@ const ua = String((navigator as any)?.userAgent || "");
   const res = await fetch("/api/public/passenger/fare/accept", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ booking_id: bookingId }),
+    body: JSON.stringify({
+      is_emergency: isEmergency, booking_id: bookingId }),
   });
   await res.json().catch(() => ({}));
 }
@@ -2118,7 +2119,7 @@ if (!can.ok) {
     if (hasOffer && !hasVerified) {
       return (
         <div className="mt-1 text-sm">
-          <div>Offer received â€“ waiting verification</div>
+          <div>Offer received Ã¢â‚¬â€œ waiting verification</div>
           <div className="mt-1">
             Driver offer: <span className="font-medium">PHP {Number(lb.proposed_fare).toFixed(0)}</span>
           </div>
