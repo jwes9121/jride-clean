@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import * as React from "react";
 
 type Row = {
   passenger_id: string;
@@ -8,72 +8,53 @@ type Row = {
   town: string | null;
   status: string | null;
   submitted_at: string | null;
+  admin_notes: string | null;
+  id_front_path?: string | null;
+  selfie_with_id_path?: string | null;
 };
+
+function fmt(s: any) {
+  try { return new Date(String(s)).toLocaleString(); } catch { return String(s || ""); }
+}
 
 export default function AdminVerificationPage() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Row[]>([]);
   const [msg, setMsg] = React.useState<string>("");
-  const [notes, setNotes] = React.useState<Record<string, string>>({});
-  const [busyId, setBusyId] = React.useState<string>("");
 
   async function load() {
     setLoading(true);
+    setMsg("");
     try {
       const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) {
-        setMsg(j?.error || "Failed to load pending verifications.");
-        setRows([]);
-        return;
-      }
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Failed to load pending");
       setRows(Array.isArray(j.rows) ? j.rows : []);
     } catch (e: any) {
-      setMsg(e?.message || "Failed to load pending verifications.");
+      setMsg(e?.message || "Failed to load.");
       setRows([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function decide(passenger_id: string, decision: "approve" | "reject") {
-    setBusyId(passenger_id);
+  async function decide(passenger_id: string, decision: "approve" | "reject", admin_notes: string) {
     setMsg("");
     try {
       const r = await fetch("/api/admin/verification/decide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          passenger_id,
-          decision,
-          admin_notes: notes[passenger_id] || "",
-        }),
+        body: JSON.stringify({ passenger_id, decision, admin_notes }),
       });
-
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) {
-        setMsg(j?.error || "Action failed.");
-        return;
-      }
-
-      // optimistic remove so it never "feels stuck"
-      setRows((prev) => prev.filter((x) => String(x.passenger_id) !== String(passenger_id)));
-
-      if (j?.warning) setMsg(String(j.warning));
-      else setMsg("OK: " + decision + " for " + passenger_id.slice(0, 8) + "...");
-
-      // reload shortly to confirm server state (avoids cache/stale)
-      setTimeout(() => { load(); }, 350);
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || "Decision failed");
+      await load();
     } catch (e: any) {
-      setMsg(e?.message || "Action failed.");
-    } finally {
-      setBusyId("");
+      setMsg(e?.message || "Decision failed");
     }
   }
 
-  React.useEffect(() => {
-    load();
-  }, []);
+  React.useEffect(() => { load(); }, []);
 
   return (
     <main className="min-h-screen p-6 bg-white">
@@ -92,87 +73,86 @@ export default function AdminVerificationPage() {
           </button>
         </div>
 
-        {msg ? (
-          <div className="mt-3 rounded-xl border border-black/10 bg-black/5 p-3 text-sm">
-            <div className="text-emerald-700">{msg}</div>
-          </div>
-        ) : null}
+        {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
 
-        <div className="mt-5 rounded-2xl border border-black/10 overflow-hidden">
-          {loading ? (
-            <div className="p-4">Loading...</div>
-          ) : rows.length === 0 ? (
-            <div className="p-4">No pending verifications.</div>
-          ) : (
-            <div className="w-full overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-black/5">
-                  <tr>
-                    <th className="text-left p-3">Passenger</th>
-                    <th className="text-left p-3">Town</th>
-                    <th className="text-left p-3">Submitted</th>
-                    <th className="text-left p-3">Admin notes</th>
-                    <th className="text-left p-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const pid = String(r.passenger_id);
-                    return (
-                      <tr key={pid} className="border-t border-black/10">
-                        <td className="p-3">
-                          <div className="font-semibold">{r.full_name || "(no name)"}</div>
-                          <div className="opacity-70 text-xs break-all">{pid}</div>
-                        </td>
-                        <td className="p-3">{r.town || "-"}</td>
-                        <td className="p-3">
-                          <div className="opacity-80">
-                            {r.submitted_at ? new Date(r.submitted_at).toLocaleString() : "-"}
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <input
-                            value={notes[pid] || ""}
-                            onChange={(e) => setNotes((prev) => ({ ...prev, [pid]: e.target.value }))}
-                            placeholder="Optional notes"
-                            className="w-full rounded-xl border border-black/10 px-3 py-2"
-                          />
-                        </td>
-                        <td className="p-3">
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              disabled={busyId === pid}
-                              onClick={() => decide(pid, "approve")}
-                              className={
-                                "rounded-xl px-4 py-2 font-semibold text-white " +
-                                (busyId === pid ? "bg-emerald-600/60 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500")
-                              }
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busyId === pid}
-                              onClick={() => decide(pid, "reject")}
-                              className={
-                                "rounded-xl px-4 py-2 font-semibold text-white " +
-                                (busyId === pid ? "bg-rose-600/60 cursor-not-allowed" : "bg-rose-600 hover:bg-rose-500")
-                              }
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div className="mt-6 rounded-2xl border border-black/10 overflow-hidden">
+          <div className="px-4 py-3 bg-black/5 text-sm font-semibold">
+            {loading ? "Loading..." : ("Pending: " + rows.length)}
+          </div>
+
+          {!loading && rows.length === 0 ? (
+            <div className="p-4 text-sm">No pending verifications.</div>
+          ) : null}
+
+          {rows.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-black/5">
+                <tr>
+                  <th className="text-left p-3">Passenger</th>
+                  <th className="text-left p-3">Town</th>
+                  <th className="text-left p-3">Submitted</th>
+                  <th className="text-left p-3">Admin notes</th>
+                  <th className="text-left p-3">Uploads</th>
+                  <th className="text-left p-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <RowItem key={r.passenger_id} row={r} onDecide={decide} />
+                ))}
+              </tbody>
+            </table>
+          ) : null}
         </div>
       </div>
     </main>
+  );
+}
+
+function RowItem({ row, onDecide }: { row: Row; onDecide: (id: string, d: "approve" | "reject", n: string) => void }) {
+  const [notes, setNotes] = React.useState<string>(row.admin_notes || "");
+
+  return (
+    <tr className="border-t border-black/10">
+      <td className="p-3">
+        <div className="font-semibold">{row.full_name || "(no name)"}</div>
+        <div className="text-xs opacity-70">{row.passenger_id}</div>
+      </td>
+      <td className="p-3">{row.town || ""}</td>
+      <td className="p-3">{fmt(row.submitted_at)}</td>
+      <td className="p-3">
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes"
+          className="w-full rounded-xl border border-black/10 px-3 py-2"
+        />
+      </td>
+      <td className="p-3">
+        <div className="text-xs opacity-80">id: {String(row.id_front_path || "")}</div>
+        <div className="text-xs opacity-80 mt-1">selfie: {String(row.selfie_with_id_path || "")}</div>
+        <div className="text-xs opacity-60 mt-1">
+          Note: show paths only (private bucket). We can add signed preview next.
+        </div>
+      </td>
+      <td className="p-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onDecide(row.passenger_id, "approve", notes)}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 font-semibold"
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecide(row.passenger_id, "reject", notes)}
+            className="rounded-xl bg-red-600 hover:bg-red-500 text-white px-4 py-2 font-semibold"
+          >
+            Reject
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
