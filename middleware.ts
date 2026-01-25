@@ -83,7 +83,4 @@ export default auth((req: NextRequest & { auth?: any }) => {
   return NextResponse.next();
 });
 
-export const config = {
-  // Keep your safe matcher: never touch /api/*, next assets, favicon, or files
-  matcher: ["/((?!api/|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
-};
+export const config = { matcher: ["/((?!api/auth|api/driver|api/live-location|_next/static|_next/image|favicon\.ico|.*\..*).*)"] };

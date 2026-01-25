@@ -1,60 +1,73 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-function json(status: number, payload: any) {
-  return NextResponse.json(payload, { status });
-}
-function s(v: any) { return String(v ?? "").trim(); }
-function n(v: any) { const x = Number(v); return Number.isFinite(x) ? x : 0; }
-
-function getAdmin() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!url || !key) return null;
-  return createAdminClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-// READ-ONLY driver wallet snapshot
-// GET /api/driver/wallet?driver_id=UUID&tx_limit=30
 export async function GET(req: NextRequest) {
   try {
-    const admin = getAdmin();
-    if (!admin) return json(500, { ok: false, code: "SERVER_MISCONFIG", message: "Missing env: SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY" });
-
     const { searchParams } = new URL(req.url);
-    const driver_id = s(searchParams.get("driver_id"));
-    const tx_limit = Math.min(n(searchParams.get("tx_limit") || 30), 200) || 30;
+    const driverId = searchParams.get("driver_id");
 
-    if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
+    if (!driverId) {
+      return NextResponse.json(
+        { ok: false, error: "driver_id is required" },
+        { status: 400 }
+      );
+    }
 
-    // Balance
-    const { data: balRow, error: balErr } = await admin
-      .from("driver_wallet_balances_v1")
-      .select("driver_id,balance")
-      .eq("driver_id", driver_id)
-      .maybeSingle();
+    // 1) Fetch driver wallet state (SOURCE OF TRUTH)
+    const { data: driver, error: dErr } = await supabase
+      .from("drivers")
+      .select("id, wallet_balance, min_wallet_required, wallet_locked")
+      .eq("id", driverId)
+      .single();
 
-    if (balErr) return json(500, { ok: false, code: "DB_ERROR", stage: "balance", message: balErr.message });
+    if (dErr || !driver) {
+      return NextResponse.json(
+        { ok: false, error: "Driver not found" },
+        { status: 404 }
+      );
+    }
 
-    // Recent transactions (READ-ONLY)
-    const { data: txRows, error: txErr } = await admin
+    const balance = Number(driver.wallet_balance ?? 0);
+    const minRequired = Number(driver.min_wallet_required ?? 0);
+    const walletLocked = !!driver.wallet_locked;
+
+    let walletStatus = "OK";
+    if (walletLocked) walletStatus = "LOCKED";
+    else if (balance < minRequired) walletStatus = "LOW";
+
+    // 2) Fetch last 20 ledger rows (HISTORY ONLY)
+    const { data: txs, error: tErr } = await supabase
       .from("driver_wallet_transactions")
-      .select("id,driver_id,amount,balance_after,reason,booking_id,created_at")
-      .eq("driver_id", driver_id)
-      .order("id", { ascending: false })
-      .limit(tx_limit);
+      .select("id, amount, balance_after, reason, booking_id, created_at")
+      .eq("driver_id", driverId)
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-    if (txErr) return json(500, { ok: false, code: "DB_ERROR", stage: "tx", message: txErr.message });
+    if (tErr) {
+      return NextResponse.json(
+        { ok: false, error: "Failed to fetch transactions" },
+        { status: 500 }
+      );
+    }
 
-    return json(200, {
+    return NextResponse.json({
       ok: true,
-      driver_id,
-      balance: n((balRow as any)?.balance),
-      transactions: Array.isArray(txRows) ? txRows : [],
+      driver_id: driverId,
+      balance,
+      min_wallet_required: minRequired,
+      wallet_locked: walletLocked,
+      wallet_status: walletStatus,
+      transactions: txs ?? []
     });
   } catch (e: any) {
-    return json(500, { ok: false, code: "UNHANDLED", message: String(e?.message || e) });
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Unexpected error" },
+      { status: 500 }
+    );
   }
 }
