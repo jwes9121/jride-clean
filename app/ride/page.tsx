@@ -1511,7 +1511,7 @@ const j = resp.json || {};
     !walletBlocked &&
     !bookingSubmitted &&
     pilotTownAllowed &&
-    geoOrLocalOk && p9FeesAck && !["requested","assigned","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase());
+    geoOrLocalOk && p9FeesAck && !["requested","assigned","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase()) && !!String(toLabel || "").trim() && (numOrNull(dropLat) !== null) && (numOrNull(dropLng) !== null);
 function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
@@ -2394,7 +2394,12 @@ if (!can.ok) {
                 }
               }}
             />
-            {renderGeoList("to")}
+            
+            {!String(toLabel || "").trim() ? (
+              <div className="mt-1 text-[11px] text-amber-900/70">
+                Set a destination (drop-off) to enable Submit booking.
+              </div>
+            ) : null}{renderGeoList("to")}
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
