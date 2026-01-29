@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -16,35 +16,32 @@ function json(status: number, obj: any) {
   return NextResponse.json(obj, { status });
 }
 
-function num(v: any): number | null {
-  if (v == null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function str(v: any): string | null {
-  if (v == null) return null;
-  const s = String(v).trim();
-  return s ? s : null;
-}
-
-/* JRIDE_DEVICE_LOCK_PING_V1
-   - Enforce single active device per driver_id for this writer route
-   - OFFLINE-only takeover (force_takeover=true only if driver_locations.status == 'offline')
+/*
+  Driver Location Ping Route
+  - Enforces per-driver device lock via public.driver_device_locks
+  - Writes public.driver_locations as source of truth
+  - Supports:
+    - Device lock takeover when stale OR when force_takeover=true AND current driver_locations.status == 'offline'
 */
 function norm(s: any): string {
   return String(s ?? "").trim().toLowerCase();
 }
 
-function pickDeviceId(req: Request, body: any): string {
-  const fromBody = String(body?.device_id ?? body?.deviceId ?? "").trim();
-  if (fromBody) return fromBody;
+function normDeviceId(s: any): string {
+  // Device IDs are opaque strings but must compare deterministically.
+  // This prevents false DEVICE_LOCKED when a stored value contains casing/whitespace differences.
+  return String(s ?? "").trim().toLowerCase();
+}
 
-  // Backward-compatible fallback
+function pickDeviceId(req: Request, body: any): string {
+  const fromBody = String(body?.device_id ?? body?.deviceId ?? "");
+  if (fromBody && fromBody.trim()) return normDeviceId(fromBody);
+
+  // Backward-compatible fallback (deterministic but clearly marked)
   const ua = String(req.headers.get("user-agent") ?? "").slice(0, 160);
   const xff = String(req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   const seed = (ua + "|" + xff).trim();
-  return seed ? ("fallback:" + seed) : "fallback:unknown";
+  return normDeviceId(seed ? "fallback:" + seed : "fallback:unknown");
 }
 
 async function enforceDeviceLockPing(opts: {
@@ -57,6 +54,8 @@ async function enforceDeviceLockPing(opts: {
 }) {
   const { supabase, driverId, deviceId, nowIso, staleSeconds, forceTakeover } = opts;
 
+  const reqDevice = normDeviceId(deviceId);
+
   const { data: lock, error: lockErr } = await supabase
     .from("driver_device_locks")
     .select("driver_id, device_id, last_seen")
@@ -68,18 +67,31 @@ async function enforceDeviceLockPing(opts: {
   if (!lock) {
     const { error: insErr } = await supabase
       .from("driver_device_locks")
-      .insert({ driver_id: driverId, device_id: deviceId, last_seen: nowIso });
+      .insert({ driver_id: driverId, device_id: reqDevice, last_seen: nowIso });
 
     if (insErr) throw new Error("driver_device_locks insert failed: " + insErr.message);
-    return { ok: true, claimed: true, active_device_id: deviceId };
+    return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: 0 };
   }
 
-  const active = String(lock.device_id ?? "");
+  const active = normDeviceId(lock.device_id ?? "");
   const lastSeen = lock.last_seen ? new Date(lock.last_seen as any).getTime() : 0;
   const nowMs = new Date(nowIso).getTime();
   const ageSec = lastSeen ? Math.floor((nowMs - lastSeen) / 1000) : 999999;
 
-  const same = active === deviceId;
+  const same = active === reqDevice;
+
+  // ✅ SAME device: ALWAYS refresh heartbeat.
+  // This prevents being stuck in "DEVICE_LOCKED" while active_device_id already matches.
+  if (same) {
+    const { error: hbErr } = await supabase
+      .from("driver_device_locks")
+      .update({ last_seen: nowIso })
+      .eq("driver_id", driverId);
+
+    if (hbErr) throw new Error("driver_device_locks heartbeat update failed: " + hbErr.message);
+
+    return { ok: true, claimed: false, active_device_id: active, last_seen_age_seconds: ageSec };
+  }
 
   // OFFLINE-only takeover enforcement (server truth)
   if (!same && forceTakeover) {
@@ -103,74 +115,50 @@ async function enforceDeviceLockPing(opts: {
     }
   }
 
-  if (!same && !forceTakeover && ageSec < staleSeconds) {
+  // Different device and NOT forcing takeover: block only while lock is "fresh"
+  if (!forceTakeover && ageSec < staleSeconds) {
     return { ok: false, conflict: true, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
+  // Lock is stale OR force takeover allowed (offline enforced above if forceTakeover true)
   const { error: upErr } = await supabase
     .from("driver_device_locks")
-    .update({ device_id: deviceId, last_seen: nowIso })
+    .update({ device_id: reqDevice, last_seen: nowIso })
     .eq("driver_id", driverId);
 
   if (upErr) throw new Error("driver_device_locks update failed: " + upErr.message);
 
-  return { ok: true, claimed: !same, active_device_id: deviceId, last_seen_age_seconds: ageSec };
-}
-
-// Optional shared secret (recommended in prod)
-// If DRIVER_PING_SECRET is set, request must include header: x-jride-ping-secret: <secret>
-function checkSecret(req: Request) {
-  const secret = envAny(["DRIVER_PING_SECRET"]);
-  if (!secret) return true; // no secret configured -> allow (dev-friendly)
-  const got = req.headers.get("x-jride-ping-secret") || "";
-  return got === secret;
-}
-
-export async function GET() {
-  return json(200, { ok: true, route: "driver/location/ping" });
+  return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
 }
 
 export async function POST(req: Request) {
   try {
-    if (!checkSecret(req)) {
-      return json(401, { ok: false, code: "UNAUTHORIZED", message: "Missing/invalid x-jride-ping-secret" });
+    const body = await req.json().catch(() => ({}));
+    const driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
+
+    if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
+
+    const lat = Number(body?.lat);
+    const lng = Number(body?.lng);
+
+    const status = norm(body?.status ?? "online");
+    const town = String(body?.town ?? "").trim();
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return json(400, { ok: false, code: "MISSING_LAT_LNG" });
     }
 
     const SUPABASE_URL = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
-    const SERVICE_KEY = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_ROLE"]);
+    const SUPABASE_SERVICE_ROLE = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
 
-    if (!SUPABASE_URL || !SERVICE_KEY) {
-      return json(500, { ok: false, code: "MISSING_ENV", message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" });
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
+      return json(500, { ok: false, code: "SUPABASE_ENV_MISSING" });
     }
 
-    const body = await req.json().catch(() => ({} as any));
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
+      auth: { persistSession: false },
+    });
 
-    const driver_id = str(body.driver_id ?? body.driverId ?? body.driver_uuid ?? body.driverUuid);
-    const lat = num(body.lat ?? body.latitude);
-    const lng = num(body.lng ?? body.longitude);
-    const status = str(body.status ?? body.driver_status ?? body.driverStatus);
-    const town = str(body.town ?? body.zone);
-
-    if (!driver_id) {
-      return json(400, { ok: false, code: "BAD_REQUEST", message: "driver_id is required" });
-    }
-
-    const patch: any = { updated_at: new Date().toISOString() };
-    if (lat != null) patch.lat = lat;
-    if (lng != null) patch.lng = lng;
-    if (status) patch.status = status;
-    if (town) patch.town = town;
-
-    const vehicle_type = str(body.vehicle_type ?? body.vehicleType);
-    const capacity = body.capacity != null ? Number(body.capacity) : null;
-    const home_town = str(body.home_town ?? body.homeTown);
-    if (vehicle_type) patch.vehicle_type = vehicle_type;
-    if (Number.isFinite(capacity as any)) patch.capacity = capacity;
-    if (home_town) patch.home_town = home_town;
-
-    const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-
-    // Device lock enforcement for this writer route
     const nowIso = new Date().toISOString();
     const deviceId = pickDeviceId(req, body);
     const forceTakeover = !!(body?.force_takeover ?? body?.forceTakeover ?? false);
@@ -203,75 +191,49 @@ export async function POST(req: Request) {
       });
     }
 
-    // 1) Try UPSERT by driver_id (best when driver_id has unique constraint)
+    const patch: any = {
+      lat,
+      lng,
+      status: status || "online",
+      town: town || null,
+      updated_at: nowIso,
+      device_id: normDeviceId(deviceId),
+    };
+
+    // 1) Try UPSERT by driver_id
     const upsertPayload = { driver_id, ...patch };
 
     let upsertErr: any = null;
     try {
       const { error } = await supabase
         .from("driver_locations")
-        .upsert(upsertPayload, { onConflict: "driver_id" });
-      if (error) upsertErr = error;
+        .upsert(upsertPayload, {
+          onConflict: "driver_id",
+          ignoreDuplicates: false,
+        });
+      upsertErr = error;
     } catch (e: any) {
       upsertErr = e;
     }
 
-    if (!upsertErr) {
-      return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "upsert(driver_id)" });
-    }
-
-    // 2) Fallback: update existing row by driver_id, else insert with generated id
-    const { data: existing, error: selErr } = await supabase
-      .from("driver_locations")
-      .select("id, driver_id")
-      .eq("driver_id", driver_id)
-      .limit(1);
-
-    if (!selErr && Array.isArray(existing) && existing.length > 0 && existing[0]?.id) {
-      const id = existing[0].id;
-      const { error: updErr } = await supabase
-        .from("driver_locations")
-        .update(patch)
-        .eq("id", id);
-
-      if (updErr) {
-        return json(500, {
-          ok: false,
-          code: "UPDATE_FAILED",
-          message: updErr.message || "Update failed",
-          detail: { upsert_error: (upsertErr as any)?.message || String(upsertErr) },
-        });
-      }
-
-      return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "update(id)" });
-    }
-
-    // Insert new row (INSERT-SAFE): generate UUID for id in case DB has no default
-    const id = (globalThis.crypto && "randomUUID" in globalThis.crypto)
-      ? (globalThis.crypto as any).randomUUID()
-      : `${Date.now()}-${Math.random()}`; // should never happen on Node 18+, but safe
-
-    const insertPayload = { id, driver_id, ...patch };
-
-    const { error: insErr } = await supabase
-      .from("driver_locations")
-      .insert(insertPayload);
-
-    if (insErr) {
+    if (upsertErr) {
       return json(500, {
         ok: false,
         code: "INSERT_FAILED",
-        message: insErr.message || "Insert failed",
-        detail: {
-          generated_id: id,
-          upsert_error: (upsertErr as any)?.message || String(upsertErr),
-          select_error: selErr?.message || null,
-        },
+        message: upsertErr?.message ?? String(upsertErr),
+        detail: { upsert_error: upsertErr?.message ?? String(upsertErr) },
       });
     }
 
-    return json(200, { ok: true, driver_id, updated_at: patch.updated_at, mode: "insert(id+driver_id)" });
+    return json(200, {
+      ok: true,
+      driver_id,
+      device_id: normDeviceId(deviceId),
+      status: patch.status,
+      town: patch.town,
+      claimed: !!(lock as any).claimed,
+    });
   } catch (e: any) {
-    return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message || "ping failed" });
+    return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
   }
 }
