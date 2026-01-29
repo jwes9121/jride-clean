@@ -16,20 +16,11 @@ function json(status: number, obj: any) {
   return NextResponse.json(obj, { status });
 }
 
-/*
-  Driver Location Ping Route
-  - Enforces per-driver device lock via public.driver_device_locks
-  - Writes public.driver_locations as source of truth
-  - Supports:
-    - Device lock takeover when stale OR when force_takeover=true AND current driver_locations.status == 'offline'
-*/
 function norm(s: any): string {
   return String(s ?? "").trim().toLowerCase();
 }
 
 function normDeviceId(s: any): string {
-  // Device IDs are opaque strings but must compare deterministically.
-  // This prevents false DEVICE_LOCKED when a stored value contains casing/whitespace differences.
   return String(s ?? "").trim().toLowerCase();
 }
 
@@ -37,7 +28,7 @@ function pickDeviceId(req: Request, body: any): string {
   const fromBody = String(body?.device_id ?? body?.deviceId ?? "");
   if (fromBody && fromBody.trim()) return normDeviceId(fromBody);
 
-  // Backward-compatible fallback (deterministic but clearly marked)
+  // fallback (not ideal, but deterministic)
   const ua = String(req.headers.get("user-agent") ?? "").slice(0, 160);
   const xff = String(req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   const seed = (ua + "|" + xff).trim();
@@ -70,6 +61,7 @@ async function enforceDeviceLockPing(opts: {
       .insert({ driver_id: driverId, device_id: reqDevice, last_seen: nowIso });
 
     if (insErr) throw new Error("driver_device_locks insert failed: " + insErr.message);
+
     return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: 0 };
   }
 
@@ -80,8 +72,7 @@ async function enforceDeviceLockPing(opts: {
 
   const same = active === reqDevice;
 
-  // ✅ SAME device: ALWAYS refresh heartbeat.
-  // This prevents being stuck in "DEVICE_LOCKED" while active_device_id already matches.
+  // ✅ SAME device: always refresh heartbeat so it never deadlocks
   if (same) {
     const { error: hbErr } = await supabase
       .from("driver_device_locks")
@@ -93,7 +84,7 @@ async function enforceDeviceLockPing(opts: {
     return { ok: true, claimed: false, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
-  // OFFLINE-only takeover enforcement (server truth)
+  // If forcing takeover, require driver to be OFFLINE in driver_locations
   if (!same && forceTakeover) {
     const { data: loc, error: locErr } = await supabase
       .from("driver_locations")
@@ -115,12 +106,12 @@ async function enforceDeviceLockPing(opts: {
     }
   }
 
-  // Different device and NOT forcing takeover: block only while lock is "fresh"
+  // Different device and NOT forcing takeover: block while lock is "fresh"
   if (!forceTakeover && ageSec < staleSeconds) {
     return { ok: false, conflict: true, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
-  // Lock is stale OR force takeover allowed (offline enforced above if forceTakeover true)
+  // Lock is stale OR takeover allowed
   const { error: upErr } = await supabase
     .from("driver_device_locks")
     .update({ device_id: reqDevice, last_seen: nowIso })
@@ -134,19 +125,19 @@ async function enforceDeviceLockPing(opts: {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
 
+    const driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
     if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
 
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
-
-    const status = norm(body?.status ?? "online");
-    const town = String(body?.town ?? "").trim();
-
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return json(400, { ok: false, code: "MISSING_LAT_LNG" });
     }
+
+    const status = norm(body?.status ?? "online") || "online";
+    const town = String(body?.town ?? "").trim();
+    const forceTakeover = !!(body?.force_takeover ?? body?.forceTakeover ?? false);
 
     const SUPABASE_URL = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
     const SUPABASE_SERVICE_ROLE = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
@@ -161,11 +152,10 @@ export async function POST(req: Request) {
 
     const nowIso = new Date().toISOString();
     const deviceId = pickDeviceId(req, body);
-    const forceTakeover = !!(body?.force_takeover ?? body?.forceTakeover ?? false);
 
     const lock = await enforceDeviceLockPing({
       supabase,
-      driverId: driver_id!,
+      driverId: driver_id,
       deviceId,
       nowIso,
       staleSeconds: 120,
@@ -191,47 +181,37 @@ export async function POST(req: Request) {
       });
     }
 
-    const patch: any = {
+    // ✅ IMPORTANT: driver_locations schema does NOT include device_id.
+    // Only write columns that exist: driver_id, lat, lng, status, town, updated_at.
+    const upsertPayload: any = {
+      driver_id,
       lat,
       lng,
-      status: status || "online",
+      status,
       town: town || null,
       updated_at: nowIso,
-      device_id: normDeviceId(deviceId),
     };
 
-    // 1) Try UPSERT by driver_id
-    const upsertPayload = { driver_id, ...patch };
+    const { error: upErr } = await supabase
+      .from("driver_locations")
+      .upsert(upsertPayload, { onConflict: "driver_id", ignoreDuplicates: false });
 
-    let upsertErr: any = null;
-    try {
-      const { error } = await supabase
-        .from("driver_locations")
-        .upsert(upsertPayload, {
-          onConflict: "driver_id",
-          ignoreDuplicates: false,
-        });
-      upsertErr = error;
-    } catch (e: any) {
-      upsertErr = e;
-    }
-
-    if (upsertErr) {
+    if (upErr) {
       return json(500, {
         ok: false,
         code: "INSERT_FAILED",
-        message: upsertErr?.message ?? String(upsertErr),
-        detail: { upsert_error: upsertErr?.message ?? String(upsertErr) },
+        message: upErr.message,
+        detail: { upsert_error: upErr.message },
       });
     }
 
     return json(200, {
       ok: true,
       driver_id,
-      device_id: normDeviceId(deviceId),
-      status: patch.status,
-      town: patch.town,
+      status,
+      town: town || null,
       claimed: !!(lock as any).claimed,
+      active_device_id: (lock as any).active_device_id,
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
