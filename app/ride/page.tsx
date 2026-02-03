@@ -448,6 +448,26 @@ const [passengerName, setPassengerName] = React.useState("Test Passenger A");
   const [dropLat, setDropLat] = React.useState("16.8016");
   const [dropLng, setDropLng] = React.useState("121.1222");
 
+
+  // JRIDE ISSUE#2 (UI-only): stop default Lagawe snapping / recenter loops
+  const DEFAULT_PICKUP_LAT = "16.7999";
+  const DEFAULT_PICKUP_LNG = "121.1175";
+
+  // Marks that pickup was changed away from defaults (manual OR auto once from geolocation)
+  const pickupTouchedRef = React.useRef<boolean>(false);
+
+  // Track map user interaction to avoid forced recenter during drag/zoom/tap flows
+  const mapUserMovedRef = React.useRef<boolean>(false);
+  const mapLastRecenterKeyRef = React.useRef<string>("");
+  const showMapPrevRef = React.useRef<boolean>(false);
+
+  React.useEffect(() => {
+    const isDefault =
+      String(pickupLat) === DEFAULT_PICKUP_LAT &&
+      String(pickupLng) === DEFAULT_PICKUP_LNG;
+
+    if (!isDefault) pickupTouchedRef.current = true;
+  }, [pickupLat, pickupLng]);
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<string>("");
 
@@ -475,6 +495,29 @@ const [p9FeesAck, setP9FeesAck] = React.useState<boolean>(false); // P9 fees ack
   const [geoLng, setGeoLng] = React.useState<number | null>(null);
   const [geoGateErr, setGeoGateErr] = React.useState<string>("");
   const [geoCheckedAt, setGeoCheckedAt] = React.useState<number | null>(null);
+
+  // JRIDE ISSUE#2 (UI-only): Use device geolocation as initial pickup ONCE
+  // - Only applies if pickup is still the default Lagawe coordinates
+  // - Never overrides a user-selected pickup
+  React.useEffect(() => {
+    try {
+      if (!Number.isFinite(geoLat as any) || !Number.isFinite(geoLng as any)) return;
+      if (pickupTouchedRef.current) return;
+
+      const isDefault =
+        String(pickupLat) === DEFAULT_PICKUP_LAT &&
+        String(pickupLng) === DEFAULT_PICKUP_LNG;
+
+      if (isDefault) {
+        setPickupLat(String(geoLat));
+        setPickupLng(String(geoLng));
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoLat, geoLng]);
+
 
   // ===== Phase 13-C2: Local verification code (UI-only) =====
   // Allows booking if (geo ok) OR (local code present). Backend validates the code.
@@ -1224,6 +1267,14 @@ if (!mbRef.current) {
       const centerLng = toNum(pickupLng, 121.1175);
       const centerLat = toNum(pickupLat, 16.7999);
 
+      // JRIDE ISSUE#2: when opening the map picker, allow one recenter; after that do not fight the user.
+      const openedNow = showMapPicker && !showMapPrevRef.current;
+      if (openedNow) {
+        mapUserMovedRef.current = false;
+        mapLastRecenterKeyRef.current = "";
+      }
+      showMapPrevRef.current = showMapPicker;
+
       if (!mapRef.current) {
         mapRef.current = new MapboxGL.Map({
           container: mapDivRef.current,
@@ -1233,6 +1284,18 @@ if (!mbRef.current) {
         });
 
         mapRef.current.addControl(new MapboxGL.NavigationControl(), "top-right");
+
+        // JRIDE ISSUE#2: mark user interaction so we don't force-recenter after taps/drags
+        try {
+          mapUserMovedRef.current = false;
+
+          mapRef.current.on("dragstart", () => { mapUserMovedRef.current = true; });
+          mapRef.current.on("zoomstart", () => { mapUserMovedRef.current = true; });
+          mapRef.current.on("rotatestart", () => { mapUserMovedRef.current = true; });
+          mapRef.current.on("pitchstart", () => { mapUserMovedRef.current = true; });
+        } catch {
+          // ignore
+        }
 
         mapRef.current.on("load", () => {
           try {
@@ -1265,10 +1328,17 @@ if (!mbRef.current) {
             // ignore
           }
         });
-      } else {
-        // Recenter map when toggled
+            } else {
+        // JRIDE ISSUE#2: do NOT recenter on every state change (prevents snap-back to Lagawe)
+        // Only recenter when opening picker or switching mode, AND only if user hasn't moved the map.
         try {
-          mapRef.current.setCenter([centerLng, centerLat]);
+          const key = String(showMapPicker) + ":" + String(pickMode || "");
+          const allowRecenter = !mapUserMovedRef.current && (mapLastRecenterKeyRef.current !== key);
+
+          if (allowRecenter) {
+            mapLastRecenterKeyRef.current = key;
+            mapRef.current.setCenter([centerLng, centerLat]);
+          }
         } catch {
           // ignore
         }
@@ -1792,11 +1862,11 @@ if (pax > maxPax) {
 
               {(emergencyPickupFeePhp != null && emergencyPickupFeePhp > 0) ? (
                 <div>
-                  Extra pickup fee (beyond 1.5km): <strong>ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±{Math.round(emergencyPickupFeePhp)}</strong>
+                  Extra pickup fee (beyond 1.5km): <strong>ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â±{Math.round(emergencyPickupFeePhp)}</strong>
                 </div>
               ) : (pickupDistanceKm != null ? (
                 <div>
-                  Extra pickup fee: <strong>ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â±0</strong> (within 1.5km free)
+                  Extra pickup fee: <strong>ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â±0</strong> (within 1.5km free)
                 </div>
               ) : null)}
             </div>
@@ -2185,7 +2255,7 @@ if (pax > maxPax) {
     if (hasOffer && !hasVerified) {
       return (
         <div className="mt-1 text-sm">
-          <div>Offer received ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ waiting verification</div>
+          <div>Offer received ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ waiting verification</div>
           <div className="mt-1">
             Driver offer: <span className="font-medium">PHP {Number(lb.proposed_fare).toFixed(0)}</span>
           </div>
