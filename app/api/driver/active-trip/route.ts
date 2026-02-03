@@ -50,9 +50,7 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("bookings")
-      .select(
-        "id, created_at, town, status, assigned_driver_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, pickup_label, dropoff_label, passengers, vehicle_type"
-      )
+      .select("id, created_at, town, status, assigned_driver_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng")
       .eq("assigned_driver_id", driverId)
       .in("status", activeStatuses)
       .order("created_at", { ascending: false })
