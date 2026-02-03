@@ -1360,7 +1360,16 @@ if (!mbRef.current) {
   async function refreshCanBook() {
     setCanInfoErr("");
     try {
-      const r = await getJson("/api/public/passenger/can-book");
+            const qTown = encodeURIComponent(String(town || "").trim());
+      const qLat = encodeURIComponent(String((geoLat ?? pickupLat ?? "")).trim());
+      const qLng = encodeURIComponent(String((geoLng ?? pickupLng ?? "")).trim());
+      const qCode = hasLocalVerify() ? encodeURIComponent(String(localVerify || "").trim()) : "";
+      const url =
+        "/api/public/passenger/can-book?town=" + qTown +
+        (qLat ? ("&pickup_lat=" + qLat) : "") +
+        (qLng ? ("&pickup_lng=" + qLng) : "") +
+        (qCode ? ("&local_verification_code=" + qCode) : "");
+      const r = await getJson(url);
       if (!r.ok) {
         setCanInfoErr("CAN_BOOK_INFO_FAILED: HTTP " + r.status);
         setCanInfo(null);
@@ -1613,11 +1622,16 @@ if (pax > maxPax) {
       }
 
       // 1) Gate check (server-authoritative)
-      const can = await postJson("/api/public/passenger/can-book", {
-        town,
-        service: "ride",
-      });
-if (!can.ok) {
+            const qTown = encodeURIComponent(String(town || "").trim());
+      const qLat = encodeURIComponent(String((pickupLat ?? "")).trim());
+      const qLng = encodeURIComponent(String((pickupLng ?? "")).trim());
+      const qCode = hasLocalVerify() ? encodeURIComponent(String(localVerify || "").trim()) : "";
+      const canUrl =
+        "/api/public/passenger/can-book?town=" + qTown +
+        (qLat ? ("&pickup_lat=" + qLat) : "") +
+        (qLng ? ("&pickup_lng=" + qLng) : "") +
+        (qCode ? ("&local_verification_code=" + qCode) : "");
+      const can = await getJson(canUrl);if (!can.ok) {
         const cj = (can.json || {}) as CanBookInfo;
         const code = normUpper((cj as any).code || (cj as any).error_code);
         const msg = norm((cj as any).message) || "Not allowed";
