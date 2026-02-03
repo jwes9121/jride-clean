@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 /* JRIDE_ENV_ECHO */
@@ -250,6 +250,46 @@ export async function GET() {
 
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
+  // JRIDE_UNVERIFIED_ONE_DAY_RIDE_V1D
+  // Policy:
+  // - Unverified: allow ONE daytime ride
+  // - Unverified: block at night
+  // - After first ride: verification required
+  if (!v.verified) {
+    const night = isNightGateNow();
+
+    if (night) {
+      return NextResponse.json(
+        { allowed: false, reason: "UNVERIFIED_NIGHT_BLOCKED", message: "Night bookings require passenger verification." },
+        { status: 200 }
+      );
+    }
+
+    const firstRide = await resolvePassengerFirstRideUsage(supabase);
+
+    if (firstRide.used) {
+      return NextResponse.json(
+        {
+          allowed: false,
+          reason: "UNVERIFIED_LIMIT_REACHED",
+          message: "You have already used your one daytime ride. Please complete verification to book again.",
+          meta: { firstRide }
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        allowed: true,
+        reason: "UNVERIFIED_ONE_DAY_RIDE_ALLOWED",
+        message: "You may book one daytime ride. Verification will be required for your next booking.",
+        meta: { firstRide }
+      },
+      { status: 200 }
+    );
+  }
+
   const w = await resolvePassengerWallet(supabase);
 
   return NextResponse.json({
@@ -274,6 +314,71 @@ export async function GET() {
   );
 }
 
+async function resolvePassengerFirstRideUsage(supabase: any) {
+  // Determine if passenger already used their 1 daytime ride.
+  // We do NOT assume schema, so we try multiple possible passenger linkage columns.
+  const out = {
+    ok: true,
+    used: false,
+    count: null as number | null,
+    note: "",
+    source: "none" as "none" | "bookings"
+  };
+
+  let userId: string | null = null;
+  let email: string | null = null;
+
+  try {
+    const { data } = await supabase.auth.getUser();
+    userId = data?.user?.id ?? null;
+    email = data?.user?.email ?? null;
+  } catch {
+    // ignore
+  }
+
+  if (!userId && !email) {
+    out.note = "No auth user; default allow one daytime ride.";
+    return out;
+  }
+
+  const statuses = ["pending","assigned","on_the_way","on_trip","completed"];
+
+  const candidates: Array<{ col: string; val: string | null; label: string }> = [
+    { col: "passenger_id", val: userId, label: "bookings.passenger_id" },
+    { col: "rider_id", val: userId, label: "bookings.rider_id" },
+    { col: "user_id", val: userId, label: "bookings.user_id" },
+    { col: "auth_user_id", val: userId, label: "bookings.auth_user_id" },
+    { col: "passenger_user_id", val: userId, label: "bookings.passenger_user_id" },
+    { col: "email", val: email, label: "bookings.email" },
+    { col: "passenger_email", val: email, label: "bookings.passenger_email" }
+  ];
+
+  for (const c of candidates) {
+    if (!c.val) continue;
+    try {
+      const resp = await supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq(c.col, c.val)
+        .in("status", statuses);
+
+      if (!resp?.error) {
+        const cnt = (typeof resp.count === "number") ? resp.count : null;
+        out.source = "bookings";
+        out.count = cnt;
+        out.used = (typeof cnt === "number") ? (cnt >= 1) : false;
+        out.note = "Matched " + c.label;
+        return out;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  out.note = "Could not probe bookings (schema/RLS); default allow one daytime ride.";
+  out.used = false;
+  return out;
+}
 export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as CanBookReq;
@@ -288,6 +393,46 @@ export async function POST(req: Request) {
 
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
+  // JRIDE_UNVERIFIED_ONE_DAY_RIDE_V1D
+  // Policy:
+  // - Unverified: allow ONE daytime ride
+  // - Unverified: block at night
+  // - After first ride: verification required
+  if (!v.verified) {
+    const night = isNightGateNow();
+
+    if (night) {
+      return NextResponse.json(
+        { allowed: false, reason: "UNVERIFIED_NIGHT_BLOCKED", message: "Night bookings require passenger verification." },
+        { status: 200 }
+      );
+    }
+
+    const firstRide = await resolvePassengerFirstRideUsage(supabase);
+
+    if (firstRide.used) {
+      return NextResponse.json(
+        {
+          allowed: false,
+          reason: "UNVERIFIED_LIMIT_REACHED",
+          message: "You have already used your one daytime ride. Please complete verification to book again.",
+          meta: { firstRide }
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        allowed: true,
+        reason: "UNVERIFIED_ONE_DAY_RIDE_ALLOWED",
+        message: "You may book one daytime ride. Verification will be required for your next booking.",
+        meta: { firstRide }
+      },
+      { status: 200 }
+    );
+  }
+
   const w = await resolvePassengerWallet(supabase);
   // Authoritative verification gate:
   // - If not verified, booking is blocked at all times.
@@ -359,3 +504,4 @@ if (!w.ok) {
     { status: 200 }
   );
 }
+
