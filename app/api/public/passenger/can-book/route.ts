@@ -278,13 +278,21 @@ export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as CanBookReq;
 
+  // ---- JRIDE local verification bypass (can-book only) ----
+  // If local_verification_code matches JRIDE_LOCAL_VERIFY_CODE, bypass the verification gate in this endpoint only.
+  const expectedLocal = String(process.env.JRIDE_LOCAL_VERIFY_CODE || "").trim();
+  const providedLocal = String((body as any)?.local_verification_code || (body as any)?.local_verify || "").trim();
+  const localOk = !!expectedLocal && !!providedLocal && (providedLocal === expectedLocal);
+  // --------------------------------------------------------
+
+
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
   const w = await resolvePassengerWallet(supabase);
   // Authoritative verification gate:
   // - If not verified, booking is blocked at all times.
   // - Night gate just changes the message/code (still blocked when unverified).
-  if (!v.verified) {
+  if (!v.verified && !localOk) {
     const code = nightGate ? "NIGHT_GATE_UNVERIFIED" : "VERIFICATION_REQUIRED";
     const message = nightGate
       ? "Booking is restricted from 8PM to 5AM unless verified."
@@ -294,6 +302,7 @@ export async function POST(req: Request) {
       {
         env: jrideEnvEcho(),
         ok: false,
+        local_bypass_used: localOk,
         allowed: false,
         code,
         message,
@@ -328,6 +337,7 @@ if (!w.ok) {
   return NextResponse.json({
   env: jrideEnvEcho(),
       ok: true,
+      local_bypass_used: localOk,
       nightGate,
       allowed: true,
       town: body.town ?? null,
