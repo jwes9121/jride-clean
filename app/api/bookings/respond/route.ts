@@ -1,4 +1,4 @@
-﻿export const dynamic = "force-dynamic"; // never pre-render or collect page data here
+export const dynamic = "force-dynamic"; // never pre-render or collect page data here
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
