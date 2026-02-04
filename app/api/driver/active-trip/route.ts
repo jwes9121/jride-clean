@@ -24,7 +24,6 @@ export async function GET(req: Request) {
     const urlObj = new URL(req.url);
     const driverId = String(urlObj.searchParams.get("driver_id") || "").trim();
 
-    console.log("[ACTIVE_TRIP_DEBUG] driver var=driverId value=", driverId);
 
     if (!driverId || !isUuidLike(driverId)) {
       return NextResponse.json(
@@ -53,7 +52,6 @@ export async function GET(req: Request) {
     const { data, error } = await supabase
       .from("bookings")
       .select("id, created_at, town, status, assigned_driver_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng")
-      .eq("driver_id", driverId)
       .in("status", ["assigned","accepted","on_the_way","arrived","on_trip"])
       .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
       .in("status", activeStatuses)
