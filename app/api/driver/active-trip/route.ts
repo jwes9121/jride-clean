@@ -24,6 +24,8 @@ export async function GET(req: Request) {
     const urlObj = new URL(req.url);
     const driverId = String(urlObj.searchParams.get("driver_id") || "").trim();
 
+    console.log("[ACTIVE_TRIP_DEBUG] driver var=driverId value=", driverId);
+
     if (!driverId || !isUuidLike(driverId)) {
       return NextResponse.json(
         { ok: false, error: "INVALID_DRIVER_ID", message: "driver_id is required (uuid)." },
