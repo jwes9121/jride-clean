@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const { data: txs, error: tErr } = await supabase
       .from("driver_wallet_transactions")
       .select("id, amount, balance_after, reason, booking_id, created_at")
-      .eq("driver_id", driverId)
+      .eq("id", driverId)
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -71,3 +71,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
