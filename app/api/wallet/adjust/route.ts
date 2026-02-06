@@ -1,88 +1,122 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-function bad(message: string, code: string, status = 400, extra: any = {}) {
-  return NextResponse.json(
-    { ok: false, code, message, ...extra },
-    { status, headers: { "Cache-Control": "no-store" } }
-  );
-}
-function ok(data: any = {}) {
-  return NextResponse.json(
-    { ok: true, ...data },
-    { headers: { "Cache-Control": "no-store" } }
-  );
-}
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-}
 function requireAdminKey(req: Request) {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected) return true;
-  const got = req.headers.get("x-admin-key") || "";
-  return got === expected;
+  const required = process.env.ADMIN_API_KEY || "";
+  if (!required) return { ok: true as const };
+  const got = (req.headers.get("x-admin-key") || "").trim();
+  if (!got || got !== required) {
+    return { ok: false as const, res: NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 }) };
+  }
+  return { ok: true as const };
 }
+
+type Body =
+  | {
+      kind: "driver_adjust";
+      driver_id: string;
+      amount: number;
+      reason: string;
+      created_by?: string | null;
+      method?: string | null;
+      external_ref?: string | null;
+      request_id?: string | null;
+    }
+  | {
+      kind: "vendor_adjust";
+      vendor_id: string;
+      amount: number;
+      kind2?: string | null;
+      note?: string | null;
+    };
 
 export async function POST(req: Request) {
   try {
-    if (!requireAdminKey(req)) return bad("Invalid admin key", "BAD_ADMIN_KEY", 401);
+    const auth = requireAdminKey(req);
+    if (!auth.ok) return auth.res;
 
-    const body = await req.json().catch(() => ({} as any));
-    const mode = String(body?.mode || "topup").toLowerCase(); // topup | cashout
-    const driver_id = String(body?.driver_id || "").trim();
-    const amount = Number(body?.amount || 0);
+    const supabase = supabaseAdmin();
+    const body = (await req.json().catch(() => ({}))) as any as Body;
 
-    const created_by = String(body?.created_by || "admin").trim() || "admin";
-    const method = body?.method == null ? null : String(body.method).trim();
-    const external_ref = body?.external_ref == null ? null : String(body.external_ref).trim();
-    const request_id = body?.request_id ? String(body.request_id).trim() : null;
+    if (!body || !("kind" in body)) {
+      return NextResponse.json({ ok: false, error: "BAD_REQUEST" }, { status: 400 });
+    }
 
-    const reason =
-      String(body?.reason || "").trim() ||
-      (mode === "cashout" ? "Driver Load Wallet Cashout (Manual Payout)" : "Manual Topup");
+    if (body.kind === "vendor_adjust") {
+      const vendorId = String((body as any).vendor_id || "").trim();
+      const amount = Number((body as any).amount || 0);
+      const kind2 = String((body as any).kind2 || "adjustment");
+      const note = String((body as any).note || "manual_adjust");
 
-    if (!isUuid(driver_id)) return bad("Invalid driver_id UUID", "BAD_DRIVER_ID");
-    if (!Number.isFinite(amount) || amount <= 0) return bad("amount must be > 0", "BAD_AMOUNT");
+      if (!vendorId) return NextResponse.json({ ok: false, error: "MISSING_VENDOR_ID" }, { status: 400 });
+      if (!Number.isFinite(amount) || amount === 0) {
+        return NextResponse.json({ ok: false, error: "INVALID_AMOUNT" }, { status: 400 });
+      }
 
-    if (mode === "topup") {
-      const { data, error } = await supabase.rpc("admin_adjust_driver_wallet_audited" as any, {
-        p_driver_id: driver_id,
+      const { data, error } = await supabase
+        .from("vendor_wallet_transactions")
+        .insert({
+          vendor_id: vendorId,
+          amount,
+          kind: kind2,
+          note,
+          booking_code: null,
+        })
+        .select("*")
+        .limit(1);
+
+      if (error) {
+        return NextResponse.json({ ok: false, error: "VENDOR_ADJUST_FAILED", message: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ ok: true, kind: "vendor_adjust", row: (data || [])[0] || null });
+    }
+
+    const driverId = String((body as any).driver_id || "").trim();
+    const amount = Number((body as any).amount || 0);
+    const reason = String((body as any).reason || "").trim();
+    const createdBy = String((body as any).created_by || "admin").trim();
+
+    const method = String((body as any).method || "admin").trim();
+    const externalRef = ((body as any).external_ref ?? null) ? String((body as any).external_ref).trim() : null;
+    const requestId = ((body as any).request_id ?? null) ? String((body as any).request_id).trim() : (globalThis.crypto?.randomUUID?.() ?? null);
+
+    if (!driverId) return NextResponse.json({ ok: false, error: "MISSING_DRIVER_ID" }, { status: 400 });
+    if (!Number.isFinite(amount) || amount === 0) return NextResponse.json({ ok: false, error: "INVALID_AMOUNT" }, { status: 400 });
+    if (!reason) return NextResponse.json({ ok: false, error: "MISSING_REASON" }, { status: 400 });
+
+    try {
+      const { data, error } = await supabase.rpc("admin_adjust_driver_wallet_audited", {
+        p_driver_id: driverId,
         p_amount: amount,
         p_reason: reason,
-        p_created_by: created_by,
+        p_created_by: createdBy,
         p_method: method,
-        p_external_ref: external_ref,
-        p_request_id: request_id
-      } as any);
+        p_external_ref: externalRef,
+        p_request_id: requestId,
+      });
 
-      if (error) return bad("RPC failed", "RPC_FAILED", 500, { details: error.message });
-      return ok({ mode: "topup", result: data });
+      if (error) {
+        const msg = (error.message || "").toLowerCase();
+        if (msg.includes("does not exist") || msg.includes("function")) throw error;
+        return NextResponse.json({ ok: false, error: "DRIVER_ADJUST_FAILED", message: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json(data ?? { ok: true });
+    } catch {
+      const { data, error } = await supabase.rpc("admin_adjust_driver_wallet", {
+        p_driver_id: driverId,
+        p_amount: amount,
+        p_reason: reason,
+        p_created_by: createdBy,
+      });
+
+      if (error) return NextResponse.json({ ok: false, error: "DRIVER_ADJUST_FAILED", message: error.message }, { status: 500 });
+      return NextResponse.json(data ?? { ok: true });
     }
-
-    if (mode === "cashout") {
-      const { data, error } = await supabase.rpc("admin_driver_cashout_load_wallet" as any, {
-        p_driver_id: driver_id,
-        p_cashout_amount: amount,
-        p_created_by: created_by,
-        p_method: method,
-        p_external_ref: external_ref,
-        p_request_id: request_id
-      } as any);
-
-      if (error) return bad("RPC failed", "RPC_FAILED", 500, { details: error.message });
-      return ok({ mode: "cashout", result: data });
-    }
-
-    return bad("Invalid mode. Use topup|cashout", "BAD_MODE");
   } catch (e: any) {
-    return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
+    return NextResponse.json({ ok: false, error: "UNEXPECTED", message: e?.message || String(e) }, { status: 500 });
   }
 }

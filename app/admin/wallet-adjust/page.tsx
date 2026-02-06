@@ -121,8 +121,12 @@ export default function AdminWalletAdjustPage() {
     setBusy(true);
     setOut(null);
     try {
-      const amt = toNum(driverAmount);
-      const data = await postJson("/api/admin/wallet/adjust", {
+      const rawAmt = toNum(driverAmount);
+const amt =
+  String(reasonMode || "") === "manual_cashout"
+    ? -Math.abs(rawAmt || 0)
+    : Math.abs(rawAmt || 0);
+const data = await postJson("/api/wallet/adjust", {
         kind: "driver_adjust",
         driver_id: driverId.trim(),
         amount: amt,
@@ -144,7 +148,7 @@ export default function AdminWalletAdjustPage() {
     setOut(null);
     try {
       const amt = toNum(vendorAmount);
-      const data = await postJson("/api/admin/wallet/adjust", {
+      const data = await postJson("/api/wallet/adjust", {
         kind: "vendor_adjust",
         vendor_id: vendorId.trim(),
         amount: amt,
@@ -179,7 +183,29 @@ export default function AdminWalletAdjustPage() {
   const [lookup, setLookup] = useState<any>(null);
   const [lookupBusy, setLookupBusy] = useState(false);
 
-  async function runDriverLookup(driver_id: string) {
+// ===== Wallet Admin Audit (confirmation / accountability) =====
+const [auditRows, setAuditRows] = useState<any>(null);
+const [auditBusy, setAuditBusy] = useState(false);
+
+async function runDriverAudit(driver_id: string) {
+  setAuditBusy(true);
+  setAuditRows(null);
+  try {
+    const headers: Record<string, string> = {};
+    if (adminKey.trim()) headers["x-admin-key"] = adminKey.trim();
+    const res = await fetch(
+      "/api/wallet/audit?driver_id=" + encodeURIComponent(driver_id),
+      { headers, cache: "no-store" }
+    );
+    const data = await res.json();
+    setAuditRows(data);
+  } catch (e: any) {
+    setAuditRows({ ok: false, error: e?.message || String(e) });
+  } finally {
+    setAuditBusy(false);
+  }
+}
+async function runDriverLookup(driver_id: string) {
     setLookupBusy(true);
     setLookup(null);
     try {
@@ -434,17 +460,16 @@ export default function AdminWalletAdjustPage() {
                 <div>
                   <div className="text-xs text-slate-600">Reason Mode</div>
                   <select
-                    value={reasonMode}
-                    onChange={(e) => setReasonMode(e.target.value)}
-                    className="w-full rounded-lg border border-black/10 px-3 py-2"
-                  >
-                    <option value="manual_topup">Manual Topup</option>
-                    <option value="promo_free_ride_credit">
-                      Promo Free Ride Credit
-                    </option>
-                    <option value="correction">Correction</option>
-                    <option value="payout_adjustment">Payout Adjustment</option>
-                  </select>
+  value={reasonMode}
+  onChange={(e) => setReasonMode(e.target.value)}
+  className="w-full rounded-lg border border-black/10 px-3 py-2"
+>
+  <option value="manual_topup">Manual Topup (Admin Credit)</option>
+  <option value="manual_cashout">Manual Cashout (GCash payout - deduct load wallet)</option>
+  <option value="promo_free_ride_credit">Promo Free Ride Credit</option>
+  <option value="correction">Correction</option>
+  <option value="payout_adjustment">Payout Adjustment</option>
+</select>
                 </div>
 
                 <div>
@@ -508,8 +533,17 @@ export default function AdminWalletAdjustPage() {
               className="rounded-xl border border-black/10 px-4 py-2 disabled:opacity-50"
             >
               {lookupBusy ? "Looking up..." : "Lookup Driver Wallet"}
-            </button>
-          </div>
+</button>
+
+<button
+  type="button"
+  disabled={auditBusy || !driverId.trim()}
+  onClick={() => runDriverAudit(driverId.trim())}
+  className="rounded-xl border border-black/10 px-4 py-2 disabled:opacity-50"
+>
+  {auditBusy ? "Loading audit..." : "Load Wallet Audit"}
+</button>
+</div>
 
           <div className="text-xs text-slate-500">
             Uses <code>admin_adjust_driver_wallet</code> (non-negative safety
@@ -629,7 +663,16 @@ export default function AdminWalletAdjustPage() {
       </div>
 
       <div className="rounded-xl border border-black/10 p-4">
-        <div className="font-semibold mb-2">Response</div>
+        <div className="mt-4 rounded-xl border border-black/10 p-4 bg-slate-50">
+  <div className="font-semibold">Wallet Admin Audit (confirmation / accountability)</div>
+  <div className="mt-1 text-xs opacity-60">
+    Shows receipt_ref, before/after balance, status, and error_message for topups/cashouts.
+  </div>
+  <pre className="mt-3 text-xs whitespace-pre-wrap max-h-64 overflow-auto rounded-lg border border-black/10 bg-white p-3">
+    {auditRows ? JSON.stringify(auditRows, null, 2) : "(no audit loaded yet)"}
+  </pre>
+</div>
+<div className="font-semibold mb-2">Response</div>
         <pre className="text-xs whitespace-pre-wrap">
           {outText || "(no output yet)"}
         </pre>

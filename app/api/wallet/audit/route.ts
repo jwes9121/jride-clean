@@ -1,57 +1,40 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-function bad(message: string, code: string, status = 400, extra: any = {}) {
-  return NextResponse.json(
-    { ok: false, code, message, ...extra },
-    { status, headers: { "Cache-Control": "no-store" } }
-  );
-}
-function ok(data: any = {}) {
-  return NextResponse.json(
-    { ok: true, ...data },
-    { headers: { "Cache-Control": "no-store" } }
-  );
-}
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-}
 function requireAdminKey(req: Request) {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected) return true;
-  const got = req.headers.get("x-admin-key") || "";
-  return got === expected;
+  const required = process.env.ADMIN_API_KEY || "";
+  if (!required) return { ok: true as const };
+  const got = (req.headers.get("x-admin-key") || "").trim();
+  if (!got || got !== required) {
+    return { ok: false as const, res: NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 }) };
+  }
+  return { ok: true as const };
 }
 
 export async function GET(req: Request) {
   try {
-    if (!requireAdminKey(req)) return bad("Invalid admin key", "BAD_ADMIN_KEY", 401);
+    const auth = requireAdminKey(req);
+    if (!auth.ok) return auth.res;
 
+    const supabase = supabaseAdmin();
     const url = new URL(req.url);
-    const driver_id = String(url.searchParams.get("driver_id") || "").trim();
-    const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 50)));
+    const driverId = (url.searchParams.get("driver_id") || "").trim();
 
-    if (!isUuid(driver_id)) return bad("Invalid driver_id UUID", "BAD_DRIVER_ID");
+    if (!driverId) return NextResponse.json({ ok: false, error: "MISSING_DRIVER_ID" }, { status: 400 });
 
     const { data, error } = await supabase
       .from("wallet_admin_audit")
-      .select("*")
-      .eq("driver_id", driver_id)
+      .select("created_at, driver_id, amount, reason, created_by, method, external_ref, receipt_ref, request_id, before_balance, after_balance, status, error_message")
+      .eq("driver_id", driverId)
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .limit(50);
 
-    if (error) return bad("Audit fetch failed", "AUDIT_FETCH_FAILED", 500, { details: error.message });
+    if (error) return NextResponse.json({ ok: false, error: "AUDIT_READ_FAILED", message: error.message }, { status: 500 });
 
-    return ok({ driver_id, rows: data ?? [] });
+    return NextResponse.json({ ok: true, rows: data || [] });
   } catch (e: any) {
-    return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
+    return NextResponse.json({ ok: false, error: "UNEXPECTED", message: e?.message || String(e) }, { status: 500 });
   }
 }
