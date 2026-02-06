@@ -21,7 +21,6 @@ export async function GET(req: Request) {
     const supabase = supabaseAdmin();
     const url = new URL(req.url);
     const driverId = (url.searchParams.get("driver_id") || "").trim();
-
     if (!driverId) return NextResponse.json({ ok: false, error: "MISSING_DRIVER_ID" }, { status: 400 });
 
     const { data, error } = await supabase

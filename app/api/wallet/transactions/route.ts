@@ -28,6 +28,7 @@ export async function GET(req: Request) {
     const q = (url.searchParams.get("q") || "").trim();
     const driverId = (url.searchParams.get("driver_id") || "").trim();
 
+    // suggestions by name
     if (q) {
       if (q.length < 2) return NextResponse.json({ ok: true, drivers: [] });
 
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: true, drivers });
     }
 
+    // lookup wallet transactions
     if (!driverId) return NextResponse.json({ ok: false, error: "MISSING_DRIVER_ID_OR_Q" }, { status: 400 });
 
     const { data: drow, error: derr } = await supabase
