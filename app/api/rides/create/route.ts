@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { pickup_lat, pickup_lng, town = "Lagawe", vehicle_type = "tricycle" } = await req.json();
+    const { pickup_lat, pickup_lng, town = "Lagawe" } = await req.json();
 
     if (typeof pickup_lat !== "number" || typeof pickup_lng !== "number") {
       return NextResponse.json({ error: "pickup_lat and pickup_lng required" }, { status: 400 });
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabaseServer
       .from("rides")
-      .insert({ pickup_lat, pickup_lng, town, vehicle_type, status: "pending" })
+      .insert({ pickup_lat, pickup_lng, town, status: "pending" })
       .select("id")
       .single();
 
@@ -21,3 +21,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }
+

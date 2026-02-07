@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -108,7 +108,7 @@ async function fetchBooking(
     if (booking_id) {
       const r = await supabase
         .from("bookings")
-        .select("*, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, vehicle_type, verified_fare")
+        .select("*, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, verified_fare")
         .eq("id", booking_id)
         .maybeSingle();
       return { data: r.data ?? null, error: r.error?.message || null };
@@ -519,7 +519,7 @@ export async function POST(req: Request) {
       // Fetch booking
       let q: any = supabase
         .from("bookings")
-        .select("pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town,vehicle_type,verified_fare");
+        .select("pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town, verified_fare");
 
       if (id) q = q.eq("id", id);
       else q = q.eq("booking_code", code);
@@ -740,6 +740,7 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
 
 
 
