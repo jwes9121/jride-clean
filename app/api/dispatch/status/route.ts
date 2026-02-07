@@ -149,7 +149,7 @@ async function tryUpdateBooking(
 // Best-effort: keep driver status roughly aligned (non-blocking)
 function driverStatusForBookingStatus(status: string): string | null {
   const s = norm(status);
-  if (s === "assigned") return "assigned";
+  // IMPORTANT: do NOT overwrite ONLINE/AVAILABLE with "assigned" (prevents UI showing OFFLINE).`n  if (s === "assigned") return null;
   if (s === "on_the_way" || s === "enroute") return "on_the_way";
   if (s === "arrived") return "arrived";
   if (s === "on_trip") return "on_trip";
@@ -163,8 +163,14 @@ async function bestEffortUpdateDriverLocation(
   driverId: string,
   bookingStatus: string
 ): Promise<{ warning?: string }> {
+  // Guard: this helper must return an object (never void) to satisfy Promise<{ warning?: string }>.
+  if (!driverId) return {};
+  if (!bookingStatus) return {};
+
   const mapped = driverStatusForBookingStatus(bookingStatus);
-  if (!driverId || !mapped) return {};
+  
+    if (!mapped) return {}; // do not overwrite driver_locations.status when mapping is null
+    if (!driverId || !mapped) return {};
 
   try {
     const r = await supabase
@@ -462,6 +468,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+
     // ===== JRIDE_WARNINGS_STABILIZE (AUTO) =====
   let warnings: string[] = [];
   (globalThis as any).__jrideWarnings = warnings;
@@ -740,6 +747,8 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
+
 
 
 
