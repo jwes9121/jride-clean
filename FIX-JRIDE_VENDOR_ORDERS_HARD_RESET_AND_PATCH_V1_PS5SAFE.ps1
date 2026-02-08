@@ -1,3 +1,42 @@
+# FIX-JRIDE_VENDOR_ORDERS_HARD_RESET_AND_PATCH_V1_PS5SAFE.ps1
+# One-pass deterministic fix:
+# 1) Hard overwrite app/vendor-orders/page.tsx with the known-good uploaded content (embedded here)
+# 2) Force canonical /vendor-samples/*.jpg paths (fix missing photos)
+# 3) Add "Testing Phase Notice" modal inside VendorOrdersInner
+# 4) Wire modal to CTA link(s): href="/vendor/compare" (must click OK to dismiss)
+# PS5-safe, backup-first, UTF-8 (no BOM)
+
+$ErrorActionPreference = "Stop"
+
+function Ok($m){ Write-Host $m -ForegroundColor Green }
+function Die($m){ Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
+
+function WriteUtf8NoBom($path, $text) {
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($path, $text, $utf8NoBom)
+}
+
+$RepoRoot = (Get-Location).Path
+$TargetRel = "app\vendor-orders\page.tsx"
+$Target = Join-Path $RepoRoot $TargetRel
+
+if (!(Test-Path $Target)) {
+  Die "Target not found: $TargetRel`nRun from repo root: C:\Users\jwes9\Desktop\jride-clean-fresh"
+}
+
+# Backup current file
+$bakDir = Join-Path $RepoRoot "_patch_bak"
+New-Item -ItemType Directory -Force -Path $bakDir | Out-Null
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$bak = Join-Path $bakDir "vendor-orders.page.tsx.bak.$stamp"
+Copy-Item -Force $Target $bak
+Ok "[OK] Backup: $bak"
+
+# -------------------------------------------------------------------
+# 1) Overwrite with known-good baseline (uploaded page.tsx content)
+# -------------------------------------------------------------------
+# NOTE: This is the exact clean file content that compiles, used as baseline.
+$BASE = @'
 "use client";
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
@@ -78,12 +117,6 @@ function isSameLocalDay(iso: string | null | undefined) {
 }
 
 function VendorOrdersInner() {
-  const [showTakeoutTestingNotice, setShowTakeoutTestingNotice] = useState(false);
-
-  const onVendorCtaClick = (e: any) => {
-    try { e?.preventDefault?.(); } catch {}
-    setShowTakeoutTestingNotice(true);
-  };
   const searchParams = useSearchParams();
   const vendorIdFromQuery = String(searchParams?.get("vendor_id") || "").trim();
 
@@ -319,7 +352,7 @@ function VendorOrdersInner() {
 
           <div className="flex items-center gap-2 text-xs">
             <a
-              href="/vendor/compare" onClick={onVendorCtaClick}
+              href="/vendor/compare"
               className="hidden sm:inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
             >
               Compare Plans
@@ -528,7 +561,7 @@ function VendorOrdersInner() {
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{normText(m.name)}</div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {money(m.price)} Â· {m.available ? "Available" : "Hidden"} Â· {m.sold_out ? "Sold out" : "In stock"}
+                            {money(m.price)} · {m.available ? "Available" : "Hidden"} · {m.sold_out ? "Sold out" : "In stock"}
                           </div>
                         </div>
 
@@ -624,3 +657,110 @@ export default function VendorOrdersPage() {
     </Suspense>
   );
 }
+'@
+
+# Overwrite the file cleanly
+WriteUtf8NoBom $Target $BASE
+Ok "[OK] Overwrote app/vendor-orders/page.tsx with clean baseline"
+
+$src = $BASE
+
+# -------------------------------------------------------------------
+# 2) Force canonical images again (safe idempotent)
+# -------------------------------------------------------------------
+$src = [regex]::Replace($src, '(?i)/vendor-samples/[^"''\s>]*dinakdakan[^"''\s>]*\.(png|jpg|jpeg)', '/vendor-samples/dinakdakan.jpg')
+$src = [regex]::Replace($src, '(?i)/vendor-samples/[^"''\s>]*hamburger[^"''\s>]*\.(png|jpg|jpeg)', '/vendor-samples/hamburger.jpg')
+$src = [regex]::Replace($src, '(?i)/vendor-samples/[^"''\s>]*milktea[^"''\s>]*\.(png|jpg|jpeg)', '/vendor-samples/milktea.jpg')
+$src = [regex]::Replace($src, '(?i)/vendor-samples/[^"''\s>]*native[^"''\s>]*chicken[^"''\s>]*(soup)?[^"''\s>]*\.(png|jpg|jpeg)', '/vendor-samples/native-chicken-soup.jpg')
+$src = [regex]::Replace($src, '(?i)/vendor-samples/[^"''\s>]*pinapaitan[^"''\s>]*\.(png|jpg|jpeg)', '/vendor-samples/pinapaitan.jpg')
+Ok "[OK] Canonical images enforced"
+
+# -------------------------------------------------------------------
+# 3) Add modal state inside VendorOrdersInner (ONLY)
+# -------------------------------------------------------------------
+if ($src -notmatch 'showTakeoutTestingNotice') {
+  $state = @'
+  const [showTakeoutTestingNotice, setShowTakeoutTestingNotice] = useState(false);
+
+  const onVendorCtaClick = (e: any) => {
+    try { e?.preventDefault?.(); } catch {}
+    setShowTakeoutTestingNotice(true);
+  };
+
+'@
+  $src = [regex]::Replace(
+    $src,
+    '(function\s+VendorOrdersInner\s*\(\)\s*\{\s*\r?\n)',
+    ('$1' + $state),
+    1
+  )
+  Ok "[OK] Modal state/handler injected into VendorOrdersInner"
+}
+
+# -------------------------------------------------------------------
+# 4) Wire ONLY href="/vendor/compare" links to open modal
+# -------------------------------------------------------------------
+# Adds onClick={onVendorCtaClick} to the <a ...> that has href="/vendor/compare"
+$src = [regex]::Replace(
+  $src,
+  '(<a\s*[\s\S]*?\s)href="/vendor/compare"([\s\S]*?>)',
+  '$1href="/vendor/compare" onClick={onVendorCtaClick}$2',
+  2
+)
+Ok "[OK] Wired /vendor/compare CTA links to modal"
+
+# -------------------------------------------------------------------
+# 5) Inject modal JSX inside VendorOrdersInner return (before final root </div>)
+# -------------------------------------------------------------------
+if ($src -notmatch 'Testing Phase Notice') {
+  $modal = @'
+      {showTakeoutTestingNotice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
+            <div className="text-sm font-semibold text-slate-900">
+              Testing Phase Notice
+            </div>
+
+            <div className="mt-2 text-sm text-slate-700 space-y-2">
+              <p>
+                The Takeout feature is still under pilot testing. Orders placed at this time will not be processed.
+              </p>
+              <p>
+                Please wait for the official launch announcement.
+              </p>
+              <p className="pt-1">
+                Food stall owners and vendors interested in joining may message us on Facebook or visit{" "}
+                <span className="font-semibold">jride.net</span>.
+              </p>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => setShowTakeoutTestingNotice(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+'@
+
+  # Insert before the last closing root </div> of VendorOrdersInner (right before "\n    </div>\n  );\n}")
+  $src = [regex]::Replace(
+    $src,
+    '(\r?\n\s*</div>\s*\r?\n\s*\);\s*\r?\n\}\s*\r?\n\s*\r?\nexport\s+default\s+function\s+VendorOrdersPage)',
+    ("`r`n" + $modal + '$1'),
+    1
+  )
+
+  Ok "[OK] Modal JSX injected"
+}
+
+# Write final output
+WriteUtf8NoBom $Target $src
+Ok "[DONE] Patched: $TargetRel"
+Ok "[DONE] Now run: npm.cmd run build"
