@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -437,50 +437,87 @@ const res = await fetch(
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-      {/* Action gating banner (page still accessible) */}
-      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {/* Unified Vendor Status Panel (replaces noisy banners) */}
+      <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-800 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <div className="font-medium">Vendor action location check</div>
-          <button
-            type="button"
-            className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100"
-            onClick={() => refreshVendorGeoGate({ prompt: true })}
+          <div>
+            <div className="font-semibold text-slate-900">Vendor Status</div>
+            <div className="mt-0.5 text-[11px] text-slate-500">
+              Start Free in pilot. Upgrade later to manage menu + photos yourself.
+            </div>
+          </div>
+          <a
+            href="/vendor/compare"
+            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800 hover:bg-emerald-100"
+            title="See Free vs Premium"
           >
-            Refresh location
-          </button>
+            Compare plans
+          </a>
         </div>
-        <div className="mt-1 opacity-90">
-          Permission: <span className="font-semibold">{vGeoPermission}</span> | Inside Ifugao:{" "}
-          <span className="font-semibold">{String(vGeoInsideIfugao)}</span>{" "}
-          {vGeoLast ? (
-            <span className="opacity-80">| Last: {vGeoLast.lat.toFixed(5)},{vGeoLast.lng.toFixed(5)}</span>
-          ) : (
-            <span className="opacity-80">| Last: n/a</span>
-          )}
-        </div>
-        {vendorActionBlocked ? (
-          <div className="mt-1 text-red-700">
-            Actions disabled until location permission is granted and you are inside Ifugao.
-            {vGeoErr ? <span className="opacity-90"> ({vGeoErr})</span> : null}
-          </div>
-        ) : (
-          <div className="mt-1 text-emerald-700">Actions enabled.</div>
-        )}
-      </div>
 
-      {/* Vendor context */}
-      {!vendorId ? (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-          <div className="font-medium">Vendor context not set</div>
-          <div className="mt-1 opacity-90">
-            Open the private vendor link once so this device remembers vendor_id.
+        <div className="mt-2 grid gap-2 md:grid-cols-3">
+          {/* Service area */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-[11px] opacity-70">Service area</div>
+            <div className="mt-0.5 font-semibold">
+              {DEV_VENDOR_GEO_BYPASS ? (
+                <span className="text-emerald-700">Bypass enabled (dev)</span>
+              ) : vGeoPermission !== "granted" ? (
+                <span className="text-rose-700">Location not granted</span>
+              ) : vGeoInsideIfugao ? (
+                <span className="text-emerald-700">Inside Ifugao âœ…</span>
+              ) : (
+                <span className="text-amber-700">Outside Ifugao âš ï¸</span>
+              )}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {vGeoLast ? `Last: ${vGeoLast.lat.toFixed(5)},${vGeoLast.lng.toFixed(5)}` : "Last: n/a"}
+            </div>
+            <button
+              type="button"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50"
+              onClick={() => refreshVendorGeoGate({ prompt: true })}
+            >
+              Refresh location
+            </button>
+          </div>
+
+          {/* Store link */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-[11px] opacity-70">Store link</div>
+            <div className="mt-0.5 font-semibold">
+              {vendorId ? (
+                <span className="text-emerald-700">Connected âœ…</span>
+              ) : (
+                <span className="text-amber-700">Not connected (pilot) âš ï¸</span>
+              )}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {vendorId ? "Vendor ID saved on this device." : "Open your private vendor link once to connect this device."}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
+            <div className="text-[11px] opacity-70">Actions</div>
+            <div className="mt-0.5 font-semibold">
+              {vendorActionBlocked ? (
+                <span className="text-rose-700">Temporarily disabled</span>
+              ) : (
+                <span className="text-emerald-700">Enabled âœ…</span>
+              )}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {vendorActionBlocked ? (
+                <>Enable location and stay inside Ifugao to update order status.</>
+              ) : (
+                <>You can update order status and menu today.</>
+              )}
+              {vGeoErr ? <span className="opacity-80"> ({vGeoErr})</span> : null}
+            </div>
           </div>
         </div>
-      ) : (
-        <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-          Vendor ID: <span className="font-semibold">{vendorId}</span>
-        </div>
-      )}
+      </div>
 
       <OfflineIndicator />
 
@@ -493,6 +530,13 @@ const res = await fetch(
           </div>
 
           <div className="flex items-center gap-2 text-xs">
+            <a
+              href="/vendor/compare"
+              className="hidden sm:inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
+              title="See Free vs Premium comparison"
+            >
+              Compare Free vs Premium
+            </a>
             <button
               type="button"
               onClick={() => setTab("orders")}
