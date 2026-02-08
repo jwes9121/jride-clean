@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -762,6 +762,14 @@ const res = await fetch(
 }
 
 function VendorPlanCompare() {
+  const SAMPLE_MENU = [
+    { label: "Dinakdakan",            price: "P180", img: "/vendor-samples/dinakdakan.jpg" },
+    { label: "Native Chicken Soup",   price: "P220", img: "/vendor-samples/native-chicken-soup.jpg" },
+    { label: "Pinapaitan",            price: "P160", img: "/vendor-samples/pinapaitan.jpg" },
+    { label: "Hamburger",             price: "P120", img: "/vendor-samples/hamburger.jpg" },
+    { label: "Milk Tea",              price: "P90",  img: "/vendor-samples/milktea.jpg" },
+  ];
+
   return (
     <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-800 shadow-sm">
       <div className="flex items-center justify-between gap-2">
@@ -786,26 +794,12 @@ function VendorPlanCompare() {
             <div className="text-[11px] text-slate-500">Text-only menu (max 5)</div>
 
             <div className="mt-2 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] text-slate-800">Dinakdakan</div>
-                <div className="text-[12px] font-semibold text-slate-900">P180</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] text-slate-800">Native Chicken Soup</div>
-                <div className="text-[12px] font-semibold text-slate-900">P220</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] text-slate-800">Pinapaitan</div>
-                <div className="text-[12px] font-semibold text-slate-900">P160</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] text-slate-800">Hamburger</div>
-                <div className="text-[12px] font-semibold text-slate-900">P120</div>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] text-slate-800">Milk Tea</div>
-                <div className="text-[12px] font-semibold text-slate-900">P90</div>
-              </div>
+              {SAMPLE_MENU.map((m) => (
+                <div key={"free-" + m.label} className="flex items-center justify-between gap-2">
+                  <div className="text-[12px] text-slate-800">{m.label}</div>
+                  <div className="text-[12px] font-semibold text-slate-900">{m.price}</div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -815,6 +809,12 @@ function VendorPlanCompare() {
               Customers see a simple text menu (fast and lightweight). Photos are not included.
             </div>
           </details>
+
+          <div className="mt-3">
+            <button className="w-full rounded-lg bg-slate-900 px-3 py-2 text-[12px] font-semibold text-white hover:bg-slate-800">
+              Start Free
+            </button>
+          </div>
         </div>
 
         {/* PREMIUM */}
@@ -826,54 +826,32 @@ function VendorPlanCompare() {
 
           <div className="mt-2 rounded-lg border border-emerald-200 bg-white px-2 py-2">
             <div className="text-[11px] text-emerald-900/80">
-              Tap store to zoom, then swipe menu photos
+              Tap photo to zoom - Swipe to browse
             </div>
 
             <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
-              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
-                <img src="/vendor-samples/dinakdakan.jpg" alt="Dinakdakan" className="h-28 w-full object-cover" loading="lazy" />
-                <div className="p-2">
-                  <div className="text-[12px] font-semibold text-slate-900">Dinakdakan</div>
-                  <div className="text-[12px] text-slate-800">P180</div>
-                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
+              {SAMPLE_MENU.map((m) => (
+                <div
+                  key={"prem-" + m.label}
+                  className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden"
+                >
+                  <img
+                    src={m.img}
+                    alt={m.label}
+                    className="h-28 w-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[12px] font-semibold text-slate-900">{m.label}</div>
+                      <div className="text-[12px] font-semibold text-slate-900">{m.price}</div>
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      Photo menu + swipeable gallery
+                    </div>
+                  </div>
                 </div>
-              </div>
-
-              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
-                <img src="/vendor-samples/native-chicken-soup.jpg" alt="Native Chicken Soup" className="h-28 w-full object-cover" loading="lazy" />
-                <div className="p-2">
-                  <div className="text-[12px] font-semibold text-slate-900">Native Chicken Soup</div>
-                  <div className="text-[12px] text-slate-800">P220</div>
-                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
-                </div>
-              </div>
-
-              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
-                <img src="/vendor-samples/pinapaitan.jpg" alt="Pinapaitan" className="h-28 w-full object-cover" loading="lazy" />
-                <div className="p-2">
-                  <div className="text-[12px] font-semibold text-slate-900">Pinapaitan</div>
-                  <div className="text-[12px] text-slate-800">P160</div>
-                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
-                </div>
-              </div>
-
-              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
-                <img src="/vendor-samples/hamburger.jpg" alt="Hamburger" className="h-28 w-full object-cover" loading="lazy" />
-                <div className="p-2">
-                  <div className="text-[12px] font-semibold text-slate-900">Hamburger</div>
-                  <div className="text-[12px] text-slate-800">P120</div>
-                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
-                </div>
-              </div>
-
-              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
-                <img src="/vendor-samples/milktea.jpg" alt="Milk Tea" className="h-28 w-full object-cover" loading="lazy" />
-                <div className="p-2">
-                  <div className="text-[12px] font-semibold text-slate-900">Milk Tea</div>
-                  <div className="text-[12px] text-slate-800">P90</div>
-                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
-                </div>
-              </div>
+              ))}
             </div>
 
             <div className="text-[11px] text-emerald-900/80">
@@ -887,6 +865,12 @@ function VendorPlanCompare() {
               Premium feels like a real food app: zoom into the store and swipe the photo menu.
             </div>
           </details>
+
+          <div className="mt-3">
+            <button className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-[12px] font-semibold text-white hover:bg-emerald-600">
+              Upgrade to Premium
+            </button>
+          </div>
         </div>
       </div>
     </div>
