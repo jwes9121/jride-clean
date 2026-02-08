@@ -1,338 +1,157 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-type AssignReq = {
-  booking_id?: string | null;
-  booking_code?: string | null;
-  town?: string | null;
-  pickup_lat?: number | null;
-  pickup_lng?: number | null;
-};
-
-const BUSY_STATUSES = ["assigned", "arrived", "on_the_way", "enroute", "on_trip"];
-
-function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-  const q = s1 * s1 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * s2 * s2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(q)));
+function isUuidLike(s: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || "").trim());
 }
 
-function pickCoord(row: any) {
-  const lat = typeof row.lat === "number" ? row.lat : typeof row.latitude === "number" ? row.latitude : null;
-  const lng = typeof row.lng === "number" ? row.lng : typeof row.longitude === "number" ? row.longitude : null;
-  return { lat, lng };
+function getSupabaseEnv() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    "";
+
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    "";
+
+  return { url, key };
 }
 
-function normStatus(v: any) {
-  return String(v ?? "").trim().toLowerCase();
-}
-
-async function fetchBookingByIdOrCode(
-  supabase: ReturnType<typeof createClient>,
-  booking_id?: string | null,
-  booking_code?: string | null
-) {
-  if (booking_id) {
-    const r = await supabase.from("bookings").select("*").eq("id", booking_id).maybeSingle();
-    return { data: r.data, error: r.error?.message || null };
+function pickFirst(body: any, keys: string[]) {
+  for (const k of keys) {
+    const v = body?.[k];
+    if (v !== undefined && v !== null && String(v).trim().length > 0) return String(v).trim();
   }
-  if (booking_code) {
-    const r = await supabase.from("bookings").select("*").eq("booking_code", booking_code).maybeSingle();
-    return { data: r.data, error: r.error?.message || null };
-  }
-  return { data: null, error: "Missing booking_id or booking_code" };
-}
-
-async function bestEffortUpdateBooking(
-  supabase: ReturnType<typeof createClient>,
-  bookingId: string,
-  patch: Record<string, any>
-) {
-  const r = await supabase.from("bookings").update(patch).eq("id", bookingId).select("*").maybeSingle();
-  if (r.error) return { ok: false, error: r.error.message, data: null as any };
-  return { ok: true, error: null as any, data: r.data };
-}
-
-async function fetchBusyDriverIdsInTown(
-  supabase: ReturnType<typeof createClient>,
-  town: string
-) {
-  // NOTE: we only need driver_id + status; keep select minimal but safe.
-  const r = await supabase
-    .from("bookings")
-    .select("driver_id,status,town")
-    .eq("town", town)
-    .in("status", BUSY_STATUSES)
-    .not("driver_id", "is", null)
-    .limit(500);
-
-  if (r.error) {
-    // Fail-open: no busy lock if query fails.
-    return { ok: false, note: "busy-check failed: " + r.error.message, busy: new Set<string>() };
-  }
-
-  const busy = new Set<string>();
-  const rows = Array.isArray(r.data) ? r.data : [];
-  for (const row of rows) {
-    const id = row && row.driver_id ? String(row.driver_id) : "";
-    if (id) busy.add(id);
-  }
-
-  return { ok: true, note: "busy drivers in town: " + busy.size, busy };
-}
-
-async function findNearestOnlineFreeDriverInTown(
-  supabase: ReturnType<typeof createClient>,
-  town: string,
-  pickup_lat: number,
-  pickup_lng: number
-) {
-  const busyRes = await fetchBusyDriverIdsInTown(supabase, town);
-  const busy = busyRes.busy;
-
-  const r = await supabase
-    .from("driver_locations")
-    .select("*")
-    .eq("town", town)
-    .eq("status", "online")
-    .limit(300);
-
-  if (r.error) {
-    return { driver_id: null as string | null, note: "driver_locations query failed: " + r.error.message };
-  }
-
-  const rows = Array.isArray(r.data) ? r.data : [];
-  let best: { driver_id: string; km: number } | null = null;
-  let skippedBusy = 0;
-  let coordSeen = 0;
-
-  for (const row of rows) {
-    const dId = row.driver_id ? String(row.driver_id) : "";
-    if (!dId) continue;
-
-    if (busy.has(dId)) {
-      skippedBusy++;
-      continue;
-    }
-
-    const c = pickCoord(row);
-    if (typeof c.lat !== "number" || typeof c.lng !== "number") continue;
-    coordSeen++;
-
-    const km = haversineKm(pickup_lat, pickup_lng, c.lat, c.lng);
-    if (!best || km < best.km) best = { driver_id: dId, km };
-  }
-
-  if (!best) {
-    let note = "No eligible ONLINE free drivers in town (online_rows=" + rows.length + ", coords=" + coordSeen + ", skipped_busy=" + skippedBusy + ").";
-    if (!busyRes.ok) note += " Note: " + busyRes.note;
-    return { driver_id: null as string | null, note };
-  }
-
-  let note = "Nearest ONLINE free driver selected (km=" + best.km.toFixed(3) + ").";
-  if (!busyRes.ok) note += " Note: " + busyRes.note;
-  return { driver_id: best.driver_id, note };
+  return "";
 }
 
 export async function POST(req: Request) {
-  const supabase = createClient();
-  const body = (await req.json().catch(() => ({}))) as AssignReq;
+  try {
+    const body = await req.json().catch(() => ({} as any));
 
-  const bookingRes = await fetchBookingByIdOrCode(supabase, body.booking_id ?? null, body.booking_code ?? null);
-  if (!bookingRes.data) {
-    return NextResponse.json(
-      { ok: false, code: "BOOKING_NOT_FOUND", message: bookingRes.error || "Booking not found" },
-      { status: 404 }
-    );
-  }
+    // Accept both camelCase and snake_case
+    const bookingCode = pickFirst(body, ["bookingCode", "booking_code"]);
+    const bookingId   = pickFirst(body, ["bookingId", "booking_id"]);
+    const driverId    = pickFirst(body, ["driverId", "driver_id"]);
 
-  const booking: any = bookingRes.data;
-
-  // PHASE 3L: lock completed / cancelled trips (no further assignment allowed)
-  const lockStatus = String(booking?.status ?? "").trim().toLowerCase();
-  if (lockStatus === "completed" || lockStatus === "cancelled") {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "TRIP_LOCKED",
-        message: "Trip already " + lockStatus + " (assignment disabled)",
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        status: booking.status ?? null,
-      },
-      { status: 409 }
-    );
-  }
-
-  // ----- 6G HARDENING: idempotent / no overwrite -----
-  const curStatus = normStatus(booking.status);
-  const alreadyHasDriver = !!booking.driver_id;
-
-  if (alreadyHasDriver && curStatus && curStatus !== "requested") {
-    return NextResponse.json(
-      {
-        ok: true,
-        assigned: false,
-        code: "ALREADY_ASSIGNED",
-        message: "Booking already has a driver and is not assignable.",
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        driver_id: String(booking.driver_id),
-        status: booking.status ?? null,
-        booking,
-      },
-      { status: 200 }
-    );
-  }
-
-  if (alreadyHasDriver) {
-    if (!curStatus || curStatus === "requested") {
-      await bestEffortUpdateBooking(supabase, String(booking.id), { status: "assigned" });
-      const reread = await fetchBookingByIdOrCode(supabase, String(booking.id), null);
-      const b2: any = reread.data ?? booking;
+    if (!bookingCode && !bookingId) {
       return NextResponse.json(
-        {
-          ok: true,
-          assigned: true,
-          code: "ALREADY_HAS_DRIVER",
-          message: "Booking already had driver_id; status normalized to assigned (best-effort).",
-          booking_id: String(b2.id),
-          booking_code: b2.booking_code ?? null,
-          driver_id: b2.driver_id ?? null,
-          status: b2.status ?? null,
-          booking: b2,
-        },
-        { status: 200 }
+        { ok: false, code: "BOOKING_NOT_FOUND", message: "Missing booking_id or booking_code" },
+        { status: 400 }
       );
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        assigned: true,
-        code: "ALREADY_HAS_DRIVER",
-        message: "Booking already has driver_id.",
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        driver_id: booking.driver_id ?? null,
-        status: booking.status ?? null,
-        booking,
-      },
-      { status: 200 }
-    );
-  }
-
-  if (curStatus && curStatus !== "requested") {
-    return NextResponse.json(
-      {
-        ok: true,
-        assigned: false,
-        code: "NOT_ASSIGNABLE",
-        message: "Booking status is not assignable: " + curStatus,
-        booking_id: String(booking.id),
-        booking_code: booking.booking_code ?? null,
-        status: booking.status ?? null,
-        booking,
-      },
-      { status: 200 }
-    );
-  }
-
-  const town = (body.town ?? booking.town ?? "").toString();
-  const pickup_lat = typeof body.pickup_lat === "number" ? body.pickup_lat : booking.pickup_lat;
-  const pickup_lng = typeof body.pickup_lng === "number" ? body.pickup_lng : booking.pickup_lng;
-
-  const manual_driver_id = (body as any)?.manual_driver_id ?? (body as any)?.driver_id ?? (body as any)?.driverId ?? null;
-
-  // ----- MANUAL_DRIVER_SELECTED -----
-  if (manual_driver_id) {
-    const dId = String(manual_driver_id);
-
-    const dr = await supabase
-      .from("driver_locations")
-      .select("driver_id,town,status,lat,lng")
-      .eq("driver_id", dId)
-      .maybeSingle();
-
-    if (!dr.data) {
+    if (!driverId || !isUuidLike(driverId)) {
       return NextResponse.json(
-        { ok: false, code: "DRIVER_NOT_FOUND", message: "Driver not found in driver_locations", driver_id: dId },
+        { ok: false, code: "INVALID_DRIVER_ID", message: "Missing or invalid driver_id/driverId (uuid)" },
+        { status: 400 }
+      );
+    }
+
+    const env = getSupabaseEnv();
+    if (!env.url || !env.key) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "MISSING_SUPABASE_ENV",
+          message:
+            "Missing SUPABASE env. Need NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_URL + SUPABASE_ANON_KEY).",
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(env.url, env.key);
+
+    // Fetch booking by id or code
+    let booking: any = null;
+
+    if (bookingId) {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("id, booking_code, status, town, assigned_driver_id, driver_id, created_at")
+        .eq("id", bookingId)
+        .limit(1);
+
+      if (error) {
+        return NextResponse.json({ ok: false, code: "DB_SELECT_ERROR", message: error.message }, { status: 500 });
+      }
+      booking = Array.isArray(data) && data.length ? data[0] : null;
+    } else {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("id, booking_code, status, town, assigned_driver_id, driver_id, created_at")
+        .eq("booking_code", bookingCode)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        return NextResponse.json({ ok: false, code: "DB_SELECT_ERROR", message: error.message }, { status: 500 });
+      }
+      booking = Array.isArray(data) && data.length ? data[0] : null;
+    }
+
+    if (!booking) {
+      return NextResponse.json(
+        { ok: false, code: "BOOKING_NOT_FOUND", message: "Booking not found", booking_id: bookingId || null, booking_code: bookingCode || null },
         { status: 404 }
       );
     }
 
-    const dStatus = String((dr.data as any)?.status ?? "").toLowerCase();
-    const eligible = (dStatus === "online" || dStatus === "available");
-    if (!eligible) {
+    const currentStatus = String(booking.status || "").trim();
+
+    // permissive assignable statuses
+    const allowedCurrent = ["requested", "booked_ok", "booked", "pending", "created", ""];
+    if (allowedCurrent.indexOf(currentStatus) === -1) {
       return NextResponse.json(
-        { ok: false, code: "DRIVER_NOT_ELIGIBLE", message: "Driver not eligible (must be online/available)", status: dStatus, driver_id: dId },
+        {
+          ok: false,
+          code: "CANNOT_ASSIGN_FROM_STATUS",
+          message: "Booking status is not assignable",
+          booking_id: booking.id,
+          booking_code: booking.booking_code,
+          current_status: currentStatus,
+        },
         { status: 409 }
       );
     }
 
-    const bTown = String((booking as any)?.town ?? "");
-    const dTown = String((dr.data as any)?.town ?? "");
-    if (bTown && dTown && bTown !== dTown) {
+    const patch: any = {
+      assigned_driver_id: driverId,
+      driver_id: driverId,
+      status: "assigned",
+    };
+
+    const { data: upd, error: updErr } = await supabase
+      .from("bookings")
+      .update(patch)
+      .eq("id", booking.id)
+      .select("id, booking_code, status, town, assigned_driver_id, driver_id, created_at")
+      .limit(1);
+
+    if (updErr) {
       return NextResponse.json(
-        { ok: false, code: "DRIVER_TOWN_MISMATCH", message: "Driver town mismatch", booking_town: bTown, driver_town: dTown, driver_id: dId },
-        { status: 409 }
+        { ok: false, code: "DB_UPDATE_ERROR", message: updErr.message, booking_id: booking.id, booking_code: booking.booking_code },
+        { status: 500 }
       );
     }
 
-    const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: dId, status: "assigned" });
-    const reread = await fetchBookingByIdOrCode(supabase, String(booking.id), null);
-    const b2: any = reread.data ?? booking;
+    const updated = Array.isArray(upd) && upd.length ? upd[0] : null;
 
-    return NextResponse.json(
-      {
-        ok: true,
-        assigned: true,
-        code: "MANUAL_ASSIGNED",
-        booking_id: String(b2.id),
-        booking_code: b2.booking_code ?? null,
-        driver_id: dId,
-        status: b2.status ?? null,
-        update_ok: upd.ok,
-        update_error: upd.error,
-        booking: b2,
-      },
-      { status: 200 }
-    );
-  }
-
-  if (!town) return NextResponse.json({ ok: false, code: "MISSING_TOWN", message: "Missing town for assignment" }, { status: 400 });
-  if (typeof pickup_lat !== "number" || typeof pickup_lng !== "number") {
-    return NextResponse.json({ ok: false, code: "MISSING_PICKUP_COORDS", message: "Missing pickup_lat/pickup_lng for assignment" }, { status: 400 });
-  }
-
-  // ----- 6H: busy lock applied here -----
-  const pick = await findNearestOnlineFreeDriverInTown(supabase, town, pickup_lat, pickup_lng);
-  if (!pick.driver_id) {
-    return NextResponse.json(
-      { ok: false, code: "NO_DRIVER_AVAILABLE", message: "No available driver", note: pick.note },
-      { status: 409 }
-    );
-  }
-
-  const upd = await bestEffortUpdateBooking(supabase, String(booking.id), { driver_id: pick.driver_id, status: "assigned" });
-
-  return NextResponse.json(
-    {
+    return NextResponse.json({
       ok: true,
-      assigned: true,
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      driver_id: pick.driver_id,
-      note: pick.note,
-      update_ok: upd.ok,
-      update_error: upd.error,
-      booking: upd.data ?? null,
-    },
-    { status: 200 }
-  );
+      note: "ASSIGNED_OK",
+      booking_id: updated?.id || booking.id,
+      booking_code: updated?.booking_code || booking.booking_code,
+      driver_id: driverId,
+      updated,
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, code: "SERVER_ERROR", message: String(e?.message || e) },
+      { status: 500 }
+    );
+  }
 }
