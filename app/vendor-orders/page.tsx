@@ -465,9 +465,9 @@ const res = await fetch(
               ) : vGeoPermission !== "granted" ? (
                 <span className="text-rose-700">Location not granted</span>
               ) : vGeoInsideIfugao ? (
-                <span className="text-emerald-700">Inside Ifugao âœ…</span>
+                <span className="text-emerald-700">Inside Ifugao (OK)</span>
               ) : (
-                <span className="text-amber-700">Outside Ifugao âš ï¸</span>
+                <span className="text-amber-700">Outside Ifugao (OUTSIDE)</span>
               )}
             </div>
             <div className="mt-1 text-[11px] text-slate-500">
@@ -487,9 +487,9 @@ const res = await fetch(
             <div className="text-[11px] opacity-70">Store link</div>
             <div className="mt-0.5 font-semibold">
               {vendorId ? (
-                <span className="text-emerald-700">Connected âœ…</span>
+                <span className="text-emerald-700">Connected (OK)</span>
               ) : (
-                <span className="text-amber-700">Not connected (pilot) âš ï¸</span>
+                <span className="text-amber-700">Not connected (pilot)</span>
               )}
             </div>
             <div className="mt-1 text-[11px] text-slate-500">
@@ -504,7 +504,7 @@ const res = await fetch(
               {vendorActionBlocked ? (
                 <span className="text-rose-700">Temporarily disabled</span>
               ) : (
-                <span className="text-emerald-700">Enabled âœ…</span>
+                <span className="text-emerald-700">Enabled (OK)</span>
               )}
             </div>
             <div className="mt-1 text-[11px] text-slate-500">
@@ -519,6 +519,49 @@ const res = await fetch(
         </div>
       </div>
 
+      <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-800 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-semibold text-slate-900">Free vs Premium (quick view)</div>
+          <a href="/vendor/compare" className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50">
+            Full comparison
+          </a>
+        </div>
+
+        <div className="mt-2 grid gap-2 md:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-slate-900">FREE (Pilot)</div>
+              <div className="text-[11px] text-slate-500">Vendor A</div>
+            </div>
+            <ul className="mt-2 space-y-1 text-[12px] text-slate-700">
+              <li>â€¢ Up to 5 menu items</li>
+              <li>â€¢ Admin encodes menu in pilot</li>
+              <li>â€¢ Text-only menu (fast)</li>
+              <li>â€¢ No item photos</li>
+            </ul>
+            <div className="mt-2 text-[11px] text-slate-500">
+              Best for starting. Upgrade later once you want photos and full control.
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-emerald-900">PREMIUM</div>
+              <div className="text-[11px] text-emerald-700">Vendor B</div>
+            </div>
+            <ul className="mt-2 space-y-1 text-[12px] text-emerald-900/80">
+              <li>â€¢ Unlimited menu items</li>
+              <li>â€¢ Vendor login (self-manage menu)</li>
+              <li>â€¢ Item photos (per item)</li>
+              <li>â€¢ Auto resize + compress uploads (no huge photos)</li>
+              <li>â€¢ Customer swipe photo menu (auto-zoom store view)</li>
+            </ul>
+            <div className="mt-2 text-[11px] text-emerald-800/80">
+              Best for growing stores. Better customer experience.
+            </div>
+          </div>
+        </div>
+      </div>
       <OfflineIndicator />
 
       {/* Header */}
@@ -848,3 +891,4 @@ export default function VendorOrdersPage() {
     </Suspense>
   );
 }
+
