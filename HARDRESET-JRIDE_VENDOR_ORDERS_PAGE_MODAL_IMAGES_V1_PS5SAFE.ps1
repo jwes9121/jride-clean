@@ -1,3 +1,39 @@
+# HARDRESET-JRIDE_VENDOR_ORDERS_PAGE_MODAL_IMAGES_V1_PS5SAFE.ps1
+# One-pass deterministic fix:
+# - Backup current app/vendor-orders/page.tsx
+# - Overwrite with a clean, build-safe version that includes:
+#   - Testing Phase Notice modal (OK closes)
+#   - CTAs open modal on mobile (Learn more / Compare Plans / Upgrade)
+#   - Canonical sample images (/vendor-samples/*.jpg)
+# - UTF-8 (no BOM), PS5-safe
+
+$ErrorActionPreference = "Stop"
+
+function Ok($m){ Write-Host $m -ForegroundColor Green }
+function Die($m){ Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
+
+function WriteUtf8NoBom($path, $text) {
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($path, $text, $utf8NoBom)
+}
+
+$RepoRoot = (Get-Location).Path
+$TargetRel = "app\vendor-orders\page.tsx"
+$Target = Join-Path $RepoRoot $TargetRel
+
+if (!(Test-Path $Target)) {
+  Die "Target not found: $TargetRel`nRun from repo root: C:\Users\jwes9\Desktop\jride-clean-fresh"
+}
+
+# Backup current file
+$bakDir = Join-Path $RepoRoot "_patch_bak"
+New-Item -ItemType Directory -Force -Path $bakDir | Out-Null
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$bak = Join-Path $bakDir "vendor-orders.page.tsx.bak.$stamp"
+Copy-Item -Force $Target $bak
+Ok "[OK] Backup: $bak"
+
+$BASE = @'
 "use client";
 
 import React, { useEffect, useMemo, useState, Suspense } from "react";
@@ -546,7 +582,7 @@ function VendorOrdersInner() {
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{normText(m.name)}</div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {money(m.price)} Â· {m.available ? "Available" : "Hidden"} Â· {m.sold_out ? "Sold out" : "In stock"}
+                            {money(m.price)} · {m.available ? "Available" : "Hidden"} · {m.sold_out ? "Sold out" : "In stock"}
                           </div>
                         </div>
 
@@ -637,3 +673,8 @@ export default function VendorOrdersPage() {
     </Suspense>
   );
 }
+'@
+
+WriteUtf8NoBom $Target $BASE
+Ok "[OK] Wrote clean Vendor Orders page: $TargetRel"
+Ok "[DONE] Now run: npm.cmd run build"
