@@ -80,8 +80,8 @@ function isSameLocalDay(iso: string | null | undefined) {
 function VendorOrdersInner() {
   const [showTakeoutTestingNotice, setShowTakeoutTestingNotice] = useState(false);
 
-  const onVendorCtaClick = (e: any) => {
-    try { e?.preventDefault?.(); } catch {}
+  const openTakeoutTestingNotice = (e: any) => {
+    try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
     setShowTakeoutTestingNotice(true);
   };
   const searchParams = useSearchParams();
@@ -292,8 +292,7 @@ function VendorOrdersInner() {
               </div>
             </div>
             <a
-              href="/vendor/compare"
-              className="hidden sm:inline-flex rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-200"
+              href="/vendor/compare" onClick={openTakeoutTestingNotice} className="sm:inline-flex rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-200"
             >
               Learn more
             </a>
@@ -319,7 +318,7 @@ function VendorOrdersInner() {
 
           <div className="flex items-center gap-2 text-xs">
             <a
-              href="/vendor/compare" onClick={onVendorCtaClick}
+              href="/vendor/compare" onClick={openTakeoutTestingNotice}
               className="hidden sm:inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800 hover:bg-emerald-100"
             >
               Compare Plans
@@ -528,7 +527,7 @@ function VendorOrdersInner() {
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{normText(m.name)}</div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {money(m.price)} Â· {m.available ? "Available" : "Hidden"} Â· {m.sold_out ? "Sold out" : "In stock"}
+                            {money(m.price)} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {m.available ? "Available" : "Hidden"} ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {m.sold_out ? "Sold out" : "In stock"}
                           </div>
                         </div>
 
@@ -606,7 +605,7 @@ function VendorOrdersInner() {
             </details>
 
             <div className="mt-3">
-              <button className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-[12px] font-semibold text-white hover:bg-emerald-600">
+              <button onClick={openTakeoutTestingNotice} className="w-full rounded-lg bg-emerald-700 px-3 py-2 text-[12px] font-semibold text-white hover:bg-emerald-600">
                 Upgrade to Premium
               </button>
             </div>
