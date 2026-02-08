@@ -438,131 +438,8 @@ const res = await fetch(
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
             {/* Unified Vendor Status Panel (replaces noisy banners) */}
-      <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-800 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="font-semibold text-slate-900">Vendor Status</div>
-            <div className="mt-0.5 text-[11px] text-slate-500">
-              Start Free in pilot. Upgrade later to manage menu + photos yourself.
-            </div>
-          </div>
-          <a
-            href="/vendor/compare"
-            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800 hover:bg-emerald-100"
-            title="See Free vs Premium"
-          >
-            Compare plans
-          </a>
-        </div>
-
-        <div className="mt-2 grid gap-2 md:grid-cols-3">
-          {/* Service area */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
-            <div className="text-[11px] opacity-70">Service area</div>
-            <div className="mt-0.5 font-semibold">
-              {DEV_VENDOR_GEO_BYPASS ? (
-                <span className="text-emerald-700">Bypass enabled (dev)</span>
-              ) : vGeoPermission !== "granted" ? (
-                <span className="text-rose-700">Location not granted</span>
-              ) : vGeoInsideIfugao ? (
-                <span className="text-emerald-700">Inside Ifugao (OK)</span>
-              ) : (
-                <span className="text-amber-700">Outside Ifugao (OUTSIDE)</span>
-              )}
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              {vGeoLast ? `Last: ${vGeoLast.lat.toFixed(5)},${vGeoLast.lng.toFixed(5)}` : "Last: n/a"}
-            </div>
-            <button
-              type="button"
-              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50"
-              onClick={() => refreshVendorGeoGate({ prompt: true })}
-            >
-              Refresh location
-            </button>
-          </div>
-
-          {/* Store link */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
-            <div className="text-[11px] opacity-70">Store link</div>
-            <div className="mt-0.5 font-semibold">
-              {vendorId ? (
-                <span className="text-emerald-700">Connected (OK)</span>
-              ) : (
-                <span className="text-amber-700">Not connected (pilot)</span>
-              )}
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              {vendorId ? "Vendor ID saved on this device." : "Open your private vendor link once to connect this device."}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2">
-            <div className="text-[11px] opacity-70">Actions</div>
-            <div className="mt-0.5 font-semibold">
-              {vendorActionBlocked ? (
-                <span className="text-rose-700">Temporarily disabled</span>
-              ) : (
-                <span className="text-emerald-700">Enabled (OK)</span>
-              )}
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              {vendorActionBlocked ? (
-                <>Enable location and stay inside Ifugao to update order status.</>
-              ) : (
-                <>You can update order status and menu today.</>
-              )}
-              {vGeoErr ? <span className="opacity-80"> ({vGeoErr})</span> : null}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-800 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-semibold text-slate-900">Free vs Premium (quick view)</div>
-          <a href="/vendor/compare" className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50">
-            Full comparison
-          </a>
-        </div>
-
-        <div className="mt-2 grid gap-2 md:grid-cols-2">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="flex items-center justify-between">
-              <div className="font-semibold text-slate-900">FREE (Pilot)</div>
-              <div className="text-[11px] text-slate-500">Vendor A</div>
-            </div>
-            <ul className="mt-2 space-y-1 text-[12px] text-slate-700">
-              <li>â€¢ Up to 5 menu items</li>
-              <li>â€¢ Admin encodes menu in pilot</li>
-              <li>â€¢ Text-only menu (fast)</li>
-              <li>â€¢ No item photos</li>
-            </ul>
-            <div className="mt-2 text-[11px] text-slate-500">
-              Best for starting. Upgrade later once you want photos and full control.
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
-            <div className="flex items-center justify-between">
-              <div className="font-semibold text-emerald-900">PREMIUM</div>
-              <div className="text-[11px] text-emerald-700">Vendor B</div>
-            </div>
-            <ul className="mt-2 space-y-1 text-[12px] text-emerald-900/80">
-              <li>â€¢ Unlimited menu items</li>
-              <li>â€¢ Vendor login (self-manage menu)</li>
-              <li>â€¢ Item photos (per item)</li>
-              <li>â€¢ Auto resize + compress uploads (no huge photos)</li>
-              <li>â€¢ Customer swipe photo menu (auto-zoom store view)</li>
-            </ul>
-            <div className="mt-2 text-[11px] text-emerald-800/80">
-              Best for growing stores. Better customer experience.
-            </div>
-          </div>
-        </div>
-      </div>
-      <OfflineIndicator />
+      <VendorPlanCompare />
+<OfflineIndicator />
 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white shadow-sm border-b">
@@ -884,6 +761,138 @@ const res = await fetch(
   );
 }
 
+function VendorPlanCompare() {
+  return (
+    <div className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-800 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-semibold text-slate-900">Free vs Premium (quick view)</div>
+        <a
+          href="/vendor/compare"
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] hover:bg-slate-50"
+        >
+          Full comparison
+        </a>
+      </div>
+
+      <div className="mt-2 grid gap-2 md:grid-cols-2">
+        {/* FREE */}
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold text-slate-900">FREE (Pilot)</div>
+            <div className="text-[11px] text-slate-500">Vendor A</div>
+          </div>
+
+          <div className="mt-2 rounded-lg border border-slate-200 bg-white px-2 py-2">
+            <div className="text-[11px] text-slate-500">Text-only menu (max 5)</div>
+
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[12px] text-slate-800">Dinakdakan</div>
+                <div className="text-[12px] font-semibold text-slate-900">P180</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[12px] text-slate-800">Native Chicken Soup</div>
+                <div className="text-[12px] font-semibold text-slate-900">P220</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[12px] text-slate-800">Pinapaitan</div>
+                <div className="text-[12px] font-semibold text-slate-900">P160</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[12px] text-slate-800">Hamburger</div>
+                <div className="text-[12px] font-semibold text-slate-900">P120</div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[12px] text-slate-800">Milk Tea</div>
+                <div className="text-[12px] font-semibold text-slate-900">P90</div>
+              </div>
+            </div>
+          </div>
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[11px] text-slate-700 underline">See sample</summary>
+            <div className="mt-2 text-[11px] text-slate-600">
+              Customers see a simple text menu (fast and lightweight). Photos are not included.
+            </div>
+          </details>
+        </div>
+
+        {/* PREMIUM */}
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold text-emerald-900">PREMIUM</div>
+            <div className="text-[11px] text-emerald-700">Vendor B</div>
+          </div>
+
+          <div className="mt-2 rounded-lg border border-emerald-200 bg-white px-2 py-2">
+            <div className="text-[11px] text-emerald-900/80">
+              Tap store to zoom, then swipe menu photos
+            </div>
+
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
+              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
+                <img src="/vendor-samples/dinakdakan.jpg" alt="Dinakdakan" className="h-28 w-full object-cover" loading="lazy" />
+                <div className="p-2">
+                  <div className="text-[12px] font-semibold text-slate-900">Dinakdakan</div>
+                  <div className="text-[12px] text-slate-800">P180</div>
+                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
+                </div>
+              </div>
+
+              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
+                <img src="/vendor-samples/native-chicken-soup.jpg" alt="Native Chicken Soup" className="h-28 w-full object-cover" loading="lazy" />
+                <div className="p-2">
+                  <div className="text-[12px] font-semibold text-slate-900">Native Chicken Soup</div>
+                  <div className="text-[12px] text-slate-800">P220</div>
+                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
+                </div>
+              </div>
+
+              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
+                <img src="/vendor-samples/pinapaitan.jpg" alt="Pinapaitan" className="h-28 w-full object-cover" loading="lazy" />
+                <div className="p-2">
+                  <div className="text-[12px] font-semibold text-slate-900">Pinapaitan</div>
+                  <div className="text-[12px] text-slate-800">P160</div>
+                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
+                </div>
+              </div>
+
+              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
+                <img src="/vendor-samples/hamburger.jpg" alt="Hamburger" className="h-28 w-full object-cover" loading="lazy" />
+                <div className="p-2">
+                  <div className="text-[12px] font-semibold text-slate-900">Hamburger</div>
+                  <div className="text-[12px] text-slate-800">P120</div>
+                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
+                </div>
+              </div>
+
+              <div className="min-w-[200px] max-w-[200px] rounded-lg border border-emerald-200 bg-white overflow-hidden">
+                <img src="/vendor-samples/milktea.jpg" alt="Milk Tea" className="h-28 w-full object-cover" loading="lazy" />
+                <div className="p-2">
+                  <div className="text-[12px] font-semibold text-slate-900">Milk Tea</div>
+                  <div className="text-[12px] text-slate-800">P90</div>
+                  <button className="mt-1 w-full rounded-md bg-slate-900 py-1 text-[11px] text-white">Add</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-emerald-900/80">
+              Photos are auto-resized to save data and avoid large uploads.
+            </div>
+          </div>
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[11px] text-emerald-900 underline">See sample</summary>
+            <div className="mt-2 text-[11px] text-emerald-800/80">
+              Premium feels like a real food app: zoom into the store and swipe the photo menu.
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function VendorOrdersPage() {
   return (
     <Suspense fallback={<div className="p-4 text-xs text-slate-500">Loading vendor...</div>}>
@@ -891,4 +900,9 @@ export default function VendorOrdersPage() {
     </Suspense>
   );
 }
+
+
+
+
+
 
