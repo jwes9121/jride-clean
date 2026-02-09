@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function isUuidLike(s: string) {
@@ -48,7 +48,21 @@ export async function GET(req: Request) {
     const supabase = createClient(env.url, env.key);
 
     // Include assigned so the driver can see fresh dispatches.
-    const activeStatuses = ["assigned", "accepted", "on_the_way", "arrived", "on_trip"];
+    const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip"];    
+    // Fare-evidence guard:
+    // If a trip claims it's already in movement states but has no fare data at all,
+    // treat it as stale/invalid so it doesn't haunt the driver forever.
+    function hasFareEvidence(r: any): boolean {
+      const pf = (r as any)?.proposed_fare;
+      const vf = (r as any)?.verified_fare;
+      const pr = (r as any)?.passenger_fare_response;
+      return pf != null || vf != null || pr != null;
+    }
+
+    function isMovementState(st: string): boolean {
+      return st === "on_the_way" || st === "arrived" || st === "on_trip";
+    }
+
 
     // NOTE: select("*") avoids build/runtime failures if certain columns don't exist.
     const { data, error } = await supabase
@@ -84,13 +98,17 @@ export async function GET(req: Request) {
 
     let picked: any = null;
 
-    // 1) Prefer non-assigned active states first
+    // 1) Prefer non-assigned active states first (guard invalid movement states without fare)
     for (const r of rows) {
       const st = String((r as any)?.status ?? "");
-      if (st && st !== "assigned") {
-        picked = r;
-        break;
-      }
+      if (!st || st === "assigned") continue;
+
+      // If status claims movement but no fare was ever proposed/verified/responded to,
+      // ignore it (prevents "stuck on_the_way" ghosts).
+      if (isMovementState(st) && !hasFareEvidence(r)) continue;
+
+      picked = r;
+      break;
     }
 
     // 2) Else allow recent assigned
