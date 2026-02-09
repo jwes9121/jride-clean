@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -12,6 +12,8 @@ type StatusReq = {
 const ALLOWED = [
   "requested",
   "assigned",
+  "accepted",
+  "fare_proposed",
   "on_the_way",
   "arrived",
   "enroute",
@@ -22,7 +24,9 @@ const ALLOWED = [
 
 const NEXT: Record<string, string[]> = {
   requested: ["assigned", "cancelled"],
-  assigned: ["on_the_way", "arrived", "enroute", "cancelled"],
+  assigned: ["accepted", "on_the_way", "arrived", "enroute", "cancelled"],
+  accepted: ["fare_proposed", "cancelled"],
+  fare_proposed: ["on_the_way", "arrived", "enroute", "cancelled"],
   on_the_way: ["arrived", "enroute", "cancelled"],
   arrived: ["on_trip", "completed", "cancelled"],
   enroute: ["arrived", "on_trip", "completed", "cancelled"],
@@ -747,6 +751,7 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
 
 
 
