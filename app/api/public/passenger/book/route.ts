@@ -562,7 +562,11 @@ export async function POST(req: Request) {
           body: JSON.stringify({ booking_id: String(booking.id) }),
         });
         const j = await resp.json().catch(() => ({}));
-        assign = j;
+if (j && (j as any).code === "INVALID_DRIVER_ID") {
+  assign = { ok: true, skipped: true, reason: "no_driver_id" };
+} else {
+  assign = j;
+}
       } catch (err: any) {
         assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };
       }
@@ -657,7 +661,11 @@ export async function POST(req: Request) {
       body: JSON.stringify({ booking_id: String(booking.id) }),
     });
     const j = await resp.json().catch(() => ({}));
-    assign = j;
+if (j && (j as any).code === "INVALID_DRIVER_ID") {
+  assign = { ok: true, skipped: true, reason: "no_driver_id" };
+} else {
+  assign = j;
+}
   } catch (err: any) {
     assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };
   }
@@ -668,6 +676,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign, takeoutSnapshot }, { status: 200 });
 }
+
 
 
 
