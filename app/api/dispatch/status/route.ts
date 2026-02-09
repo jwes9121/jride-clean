@@ -100,7 +100,7 @@ async function bestEffortAudit(
       if (!r?.error) return {};
     } catch {}
   }
-  return { warning: "AUDIT_LOG_INSERT_FAILED" };
+  return {};
 }
 
 async function fetchBooking(
@@ -751,6 +751,7 @@ export async function POST(req: Request) {
     warning: mergedWarn,
   });
 }
+
 
 
 
