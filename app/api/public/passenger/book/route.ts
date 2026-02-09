@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 
@@ -415,6 +415,14 @@ async function getBaseUrlFromHeaders(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // JRIDE_TEST_BYPASS_PILOT_TOWN
+  // Allows test bookings to bypass pilot-town restriction ONLY when explicit test headers are present.
+  const hx = (k: string) => {
+    try { return String((req as any)?.headers?.get?.(k) || "").trim(); } catch { return ""; }
+  };
+  const jrideTestBypass = (hx("x-jride-test") === "1" && hx("x-jride-bypass-location") === "1");
+  // JRIDE_TEST_BYPASS_PILOT_TOWN_END
+
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as BookReq;
 
@@ -446,6 +454,7 @@ export async function POST(req: Request) {
   const pilotTownAllowed = PILOT_TOWNS.includes(pickupTown as any);
 
   if (!pilotTownAllowed) {
+    if (!jrideTestBypass) {
     return NextResponse.json(
       {
         ok: false,
@@ -454,6 +463,7 @@ export async function POST(req: Request) {
       },
       { status: 403 }
     );
+    }
   }
 
   // PHASE13-B_BACKEND_GEO_GATE
