@@ -282,7 +282,7 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
             )}
 
             <div className="mt-2 text-xs opacity-60">
-              Markers: A=pickup, B=dropoff, car=driver
+              Markers: A=pickup, B=dropoff, JRider=driver
 
         {/* JRIDE_MAPBOX_CONTAINER_BEGIN */}
         {token ? (
