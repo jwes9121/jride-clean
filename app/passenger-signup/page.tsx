@@ -8,7 +8,8 @@ export default function PassengerSignupPage() {
   const [contactEmail, setContactEmail] = React.useState("");
   const [address, setAddress] = React.useState("");
   const [town, setTown] = React.useState("");
-  const [password, setPassword] = React.useState("");
+  const [townOrigin, setTownOrigin] = React.useState("");
+  const [barangayOrigin, setBarangayOrigin] = React.useState("");const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
@@ -27,6 +28,8 @@ export default function PassengerSignupPage() {
           contact_email: contactEmail,
           address,
           town,
+          town_origin: townOrigin,
+          barangay_origin: barangayOrigin,
           password,
         }),
       });
@@ -91,17 +94,35 @@ export default function PassengerSignupPage() {
             />
           </div>
 
-          <div>
-            <label className="text-sm opacity-80">Town (optional)</label>
-            <input
+                    <div>
+            <label className="text-sm opacity-80">Town of origin (optional)</label>
+            <select
               className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
-              value={town}
-              onChange={(e) => setTown(e.target.value)}
-              placeholder="Lagawe / Kiangan / Banaue..."
-            />
+              value={townOrigin}
+              onChange={(e) => setTownOrigin(e.target.value)}
+            >
+              <option value="">Select town (optional)</option>
+              <option value="Lagawe">Lagawe</option>
+              <option value="Hingyon">Hingyon</option>
+              <option value="Banaue">Banaue</option>
+              <option value="Kiangan">Kiangan</option>
+              <option value="Lamut">Lamut</option>
+              <option value="Other">Other</option>
+            </select>
+            <div className="mt-1 text-xs opacity-70">
+              This is your origin/home town for your profile. It does NOT restrict where you can book.
+            </div>
           </div>
 
           <div>
+            <label className="text-sm opacity-80">Barangay of origin (optional)</label>
+            <input
+              className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
+              value={barangayOrigin}
+              onChange={(e) => setBarangayOrigin(e.target.value)}
+              placeholder="Barangay (optional)"
+            />
+          </div><div>
             <label className="text-sm opacity-80">Password</label>
             <input
               className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
@@ -138,3 +159,4 @@ export default function PassengerSignupPage() {
     </main>
   );
 }
+
