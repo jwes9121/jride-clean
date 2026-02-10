@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
@@ -7,6 +7,9 @@ import type { LiveTrip } from "./ProblemTripAlertSounds";
 import DispatchActionPanel from "./DispatchActionPanel";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+const JRIDER_MARKER_SRC = "https://app.jride.net/markers/jrider-trike-72-pop.png?v=72";
+const JRIDER_MARKER_SIZE_PX = 42;
 
 export interface LiveTripsMapProps {
   trips: LiveTrip[];
@@ -787,7 +790,7 @@ el.style.width = "44px";
 el.style.height = "44px";
 el.style.borderRadius = "50%";
 el.style.overflow = "hidden";
-el.style.background = "white";
+el.style.background = "url(" + JRIDER_MARKER_SRC + ")";
 el.style.boxShadow = "0 0 0 2px rgba(255,255,255,0.95)";
 el.style.transform = "translate(-50%, -50%)";
 
