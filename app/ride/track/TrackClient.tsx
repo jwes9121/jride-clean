@@ -29,7 +29,7 @@ pickup?: { lat: number; lng: number };
     // Works on production domains; localhost will fallback to default pin.
     const isLocal = (baseUrl || "").includes("localhost") || (baseUrl || "").includes("127.0.0.1");
     if (baseUrl && !isLocal) {
-      const iconUrl = `${baseUrl}/markers/jrider-trike.png`;
+      const iconUrl = `${baseUrl}/markers/jrider-trike-32.png`;
       // Mapbox Static overlay supports url-<ENCODED_URL>(lon,lat)
       pins.push(`url-${encodeURIComponent(iconUrl)}(${driver.lng},${driver.lat})`);
     } else {
