@@ -9,46 +9,39 @@ function money(n: any) {
   if (!Number.isFinite(x)) return "-";
   return "PHP " + x.toFixed(0);
 }
+type LngLat = { lng: number; lat: number };
 
 function buildStaticMapUrl(args: {
   token: string;
-  
-  baseUrl?: string;
-pickup?: { lat: number; lng: number };
-  dropoff?: { lat: number; lng: number };
-  driver?: { lat: number; lng: number };
+  pickup?: LngLat;
+  dropoff?: LngLat;
+  driver?: LngLat;
 }) {
-  const { token, pickup, dropoff, driver, baseUrl } = args;
-const pins: string[] = [];
+  const { token, pickup, dropoff, driver } = args;
 
-// JRIDE_JRIDER_ICON_BEGIN
-// Mapbox Static "url-" markers must be publicly reachable.
-// For local dev, force production host so Mapbox can fetch the icon.
-const iconHost =
-  (process.env.NEXT_PUBLIC_APP_ORIGIN ||
-    (typeof window !== "undefined" ? window.location.origin : "")) as string;
-const publicHost =
-  iconHost && !iconHost.includes("localhost") ? iconHost : "https://app.jride.net";
-const jriderIconUrl = publicHost + "/markers/jrider-trike-72-pop.png?v=72";
-const jriderIconEnc = encodeURIComponent(jriderIconUrl);
-// JRIDE_JRIDER_ICON_END
-  // Mapbox pin formats: pin-s / pin-l (size), +color, label
-  if (pickup) pins.push(`pin-s-a+2ecc71(${pickup.lng},${pickup.lat})`);
-  if (dropoff) pins.push(`pin-s-b+e74c3c(${dropoff.lng},${dropoff.lat})`);
-  if (driver) {
-    // Custom JRide marker icon for driver (requires PUBLIC URL reachable by Mapbox static API servers)
-    // Works on production domains; localhost will fallback to default pin.
-    const isLocal = (baseUrl || "").includes("localhost") || (baseUrl || "").includes("127.0.0.1");
-    if (baseUrl && !isLocal) {
-      const iconUrl = `${baseUrl}/markers/jrider-trike-72-pop.png?v=72
-      // Mapbox Static overlay supports url-<ENCODED_URL>(lon,lat)
-      pins.push(`url-${encodeURIComponent(iconUrl)}(${driver.lng},${driver.lat})`);
-    } else {
-      // Local fallback (Mapbox cannot fetch localhost assets)
-      pins.push(`url-${jriderIconEnc}(${driver.lng},${driver.lat})`);
-    }
-  }
+  const pins: string[] = [];
+
+  // Pickup/Dropoff markers (A/B)
+  if (pickup) pins.push(`pin-s-a+16a34a(${pickup.lng},${pickup.lat})`);
+  if (dropoff) pins.push(`pin-s-b+dc2626(${dropoff.lng},${dropoff.lat})`);
+
+  // JRIDE_JRIDER_ICON_BEGIN
+  // Mapbox Static "url-" markers must be publicly reachable.
+  // For local dev, force production host so Mapbox can fetch the icon.
+  const iconHost =
+    (process.env.NEXT_PUBLIC_APP_ORIGIN ||
+      (typeof window !== "undefined" ? window.location.origin : "")) as string;
+  const publicHost =
+    iconHost && !iconHost.includes("localhost") ? iconHost : "https://app.jride.net";
+  const jriderIconUrl = publicHost + "/markers/jrider-trike-72-pop.png?v=72";
+  const jriderIconEnc = encodeURIComponent(jriderIconUrl);
+  // JRIDE_JRIDER_ICON_END
+
+  // Driver marker (JRider)
+  if (driver) pins.push(`url-${jriderIconEnc}(${driver.lng},${driver.lat})`);
+
   const overlay = pins.join(",");
+
   const base = "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/";
   const geo = overlay ? overlay + "/auto" : "auto";
   const size = "900x520";
@@ -155,7 +148,7 @@ async function refresh() {
 
   const mapUrl = useMemo(() => {
     if (!token) return "";
-    return buildStaticMapUrl({ token: token, pickup: pickup || undefined, dropoff: dropoff || undefined, driver: driver || undefined, baseUrl: (typeof window !== "undefined" ? window.location.origin : "") });
+    return buildStaticMapUrl({ token: token, pickup: pickup || undefined, dropoff: dropoff || undefined, driver: driver || undefined});
   }, [token, pickup, dropoff, driver]);
 
   function getPhase(): "to_pickup" | "to_dropoff" {
