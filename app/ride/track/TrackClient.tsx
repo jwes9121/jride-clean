@@ -19,8 +19,19 @@ pickup?: { lat: number; lng: number };
   driver?: { lat: number; lng: number };
 }) {
   const { token, pickup, dropoff, driver, baseUrl } = args;
-  const pins: string[] = [];
+const pins: string[] = [];
 
+// JRIDE_JRIDER_ICON_BEGIN
+// Mapbox Static "url-" markers must be publicly reachable.
+// For local dev, force production host so Mapbox can fetch the icon.
+const iconHost =
+  (process.env.NEXT_PUBLIC_APP_ORIGIN ||
+    (typeof window !== "undefined" ? window.location.origin : "")) as string;
+const publicHost =
+  iconHost && !iconHost.includes("localhost") ? iconHost : "https://app.jride.net";
+const jriderIconUrl = publicHost + "/markers/jrider-trike-64-pop.png";
+const jriderIconEnc = encodeURIComponent(jriderIconUrl);
+// JRIDE_JRIDER_ICON_END
   // Mapbox pin formats: pin-s / pin-l (size), +color, label
   if (pickup) pins.push(`pin-s-a+2ecc71(${pickup.lng},${pickup.lat})`);
   if (dropoff) pins.push(`pin-s-b+e74c3c(${dropoff.lng},${dropoff.lat})`);
@@ -34,14 +45,14 @@ pickup?: { lat: number; lng: number };
       pins.push(`url-${encodeURIComponent(iconUrl)}(${driver.lng},${driver.lat})`);
     } else {
       // Local fallback (Mapbox cannot fetch localhost assets)
-      pins.push(`pin-l-car+3b82f6(${driver.lng},${driver.lat})`);
+      pins.push(`url-${jriderIconEnc}(${driver.lng},${driver.lat})`);
     }
   }
   const overlay = pins.join(",");
   const base = "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/";
   const geo = overlay ? overlay + "/auto" : "auto";
   const size = "900x520";
-  return `${base}${geo}/${size}?padding=80&access_token=${encodeURIComponent(token)}`;
+  return `${base}${geo}/${size}?padding=50&access_token=${encodeURIComponent(token)}`;
 }
 
 export default function TrackClient({ code }: { code: string }) {
@@ -56,9 +67,16 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
   const [data, setData] = useState<AnyRec | null>(null);
-  const [last, setLast] = useState<string>("");
-
-  async function refresh() {
+const [last, setLast] = useState<string>("");
+const [lastRef, setLastRef] = useState<string>("");
+const [cooldown, setCooldown] = useState(false);
+async function refresh() {
+    // JRIDE_REFRESH_COOLDOWN_BEGIN
+    // Prevent spam-tapping refresh (mobile)
+    if (cooldown) return;
+    setCooldown(true);
+    setTimeout(() => setCooldown(false), 1200);
+    // JRIDE_REFRESH_COOLDOWN_END
     if (!code) return;
     setLoading(true);
     setErr("");
@@ -68,7 +86,8 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || "TRACK_FAILED");
       setData(j);
       setLast(new Date().toLocaleTimeString());
-    } catch (e: any) {
+      setLastRef(new Date().toLocaleTimeString());
+} catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
       setLoading(false);
@@ -230,11 +249,13 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
           <button
             className="rounded-xl border border-black/10 px-3 py-2 text-sm hover:bg-black/5"
             onClick={refresh}
-            disabled={!code || loading}
+            disabled={!code || loading || cooldown}
           >
-            {loading ? "Refreshing..." : "Refresh"}
+            {loading ? "Refreshing..." : (cooldown ? "Wait..." : "Refresh")}
           </button>
-        </div>
+        
+          <div className="mt-1 text-right text-[11px] opacity-60">Refreshed: {lastRef || "-"}</div>
+</div>
 
         {err ? (
           <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">Error: {err}</div>
@@ -261,7 +282,9 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
                 {smartNavLabel()}
               </button>
 
-              <div className="grid grid-cols-2 gap-2">
+              
+          <div className="mt-1 text-right text-[11px] opacity-60">Refreshed: {lastRef || "-"}</div>
+<div className="grid grid-cols-2 gap-2">
                 <button
                   className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm font-semibold hover:bg-black/5 disabled:opacity-50"
                   onClick={openSmartWaze}
@@ -270,14 +293,18 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
                   Open in Waze
                 </button>
 
-                <button
+                
+          <div className="mt-1 text-right text-[11px] opacity-60">Refreshed: {lastRef || "-"}</div>
+<button
                   className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm font-semibold hover:bg-black/5 disabled:opacity-50"
                   onClick={copyRouteLink}
                   disabled={!pickup || !dropoff}
                 >
                   Copy route link
                 </button>
-              </div>
+              
+          <div className="mt-1 text-right text-[11px] opacity-60">Refreshed: {lastRef || "-"}</div>
+</div>
             </div>
           </div>
 
@@ -329,14 +356,18 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
               >
                 OK / Proceed
               </button>
-              <button
+              
+          <div className="mt-1 text-right text-[11px] opacity-60">Refreshed: {lastRef || "-"}</div>
+<button
                 className="flex-1 rounded-xl border border-black/10 px-3 py-2 text-sm font-semibold disabled:opacity-50"
                 onClick={() => sendFareResponse("declined")}
                 disabled={loading}
               >
                 Decline / Re-route
               </button>
-            </div>
+            
+          <div className="mt-1 text-right text-[11px] opacity-60">Refreshed: {lastRef || "-"}</div>
+</div>
 
             <div className="mt-2 text-xs opacity-60">
               Accept keeps status at <span className="font-mono">ready</span>. Decline clears fare so driver can propose again.
