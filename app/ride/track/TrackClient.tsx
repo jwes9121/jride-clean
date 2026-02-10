@@ -29,7 +29,7 @@ const iconHost =
     (typeof window !== "undefined" ? window.location.origin : "")) as string;
 const publicHost =
   iconHost && !iconHost.includes("localhost") ? iconHost : "https://app.jride.net";
-const jriderIconUrl = publicHost + "/markers/jrider-trike-64-pop.png";
+const jriderIconUrl = publicHost + "/markers/jrider-trike-72-pop.png?v=72";
 const jriderIconEnc = encodeURIComponent(jriderIconUrl);
 // JRIDE_JRIDER_ICON_END
   // Mapbox pin formats: pin-s / pin-l (size), +color, label
@@ -40,7 +40,7 @@ const jriderIconEnc = encodeURIComponent(jriderIconUrl);
     // Works on production domains; localhost will fallback to default pin.
     const isLocal = (baseUrl || "").includes("localhost") || (baseUrl || "").includes("127.0.0.1");
     if (baseUrl && !isLocal) {
-      const iconUrl = `${baseUrl}/markers/jrider-trike-60.png`;
+      const iconUrl = `${baseUrl}/markers/jrider-trike-72-pop.png?v=72
       // Mapbox Static overlay supports url-<ENCODED_URL>(lon,lat)
       pins.push(`url-${encodeURIComponent(iconUrl)}(${driver.lng},${driver.lat})`);
     } else {
