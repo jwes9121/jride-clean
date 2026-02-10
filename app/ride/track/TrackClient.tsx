@@ -12,18 +12,31 @@ function money(n: any) {
 
 function buildStaticMapUrl(args: {
   token: string;
-  pickup?: { lat: number; lng: number };
+  
+  baseUrl?: string;
+pickup?: { lat: number; lng: number };
   dropoff?: { lat: number; lng: number };
   driver?: { lat: number; lng: number };
 }) {
-  const { token, pickup, dropoff, driver } = args;
+  const { token, pickup, dropoff, driver, baseUrl } = args;
   const pins: string[] = [];
 
   // Mapbox pin formats: pin-s / pin-l (size), +color, label
   if (pickup) pins.push(`pin-s-a+2ecc71(${pickup.lng},${pickup.lat})`);
   if (dropoff) pins.push(`pin-s-b+e74c3c(${dropoff.lng},${dropoff.lat})`);
-  if (driver) pins.push(`pin-l-car+3b82f6(${driver.lng},${driver.lat})`);
-
+  if (driver) {
+    // Custom JRide marker icon for driver (requires PUBLIC URL reachable by Mapbox static API servers)
+    // Works on production domains; localhost will fallback to default pin.
+    const isLocal = (baseUrl || "").includes("localhost") || (baseUrl || "").includes("127.0.0.1");
+    if (baseUrl && !isLocal) {
+      const iconUrl = `${baseUrl}/markers/jrider-trike.png`;
+      // Mapbox Static overlay supports url-<ENCODED_URL>(lon,lat)
+      pins.push(`url-${encodeURIComponent(iconUrl)}(${driver.lng},${driver.lat})`);
+    } else {
+      // Local fallback (Mapbox cannot fetch localhost assets)
+      pins.push(`pin-l-car+3b82f6(${driver.lng},${driver.lat})`);
+    }
+  }
   const overlay = pins.join(",");
   const base = "https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/";
   const geo = overlay ? overlay + "/auto" : "auto";
@@ -123,7 +136,7 @@ const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   const mapUrl = useMemo(() => {
     if (!token) return "";
-    return buildStaticMapUrl({ token: token, pickup: pickup || undefined, dropoff: dropoff || undefined, driver: driver || undefined });
+    return buildStaticMapUrl({ token: token, pickup: pickup || undefined, dropoff: dropoff || undefined, driver: driver || undefined, baseUrl: (typeof window !== "undefined" ? window.location.origin : "") });
   }, [token, pickup, dropoff, driver]);
 
   function getPhase(): "to_pickup" | "to_dropoff" {
