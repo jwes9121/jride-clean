@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 /* JRIDE_ENV_ECHO */
@@ -348,7 +348,7 @@ async function resolvePassengerFirstRideUsage(supabase: any) {
     { col: "rider_id", val: userId, label: "bookings.rider_id" },
     { col: "user_id", val: userId, label: "bookings.user_id" },
     { col: "auth_user_id", val: userId, label: "bookings.auth_user_id" },
-    { col: "passenger_user_id", val: userId, label: "bookings.passenger_user_id" },
+    { col: "user_id", val: userId, label: "bookings.user_id" },
     { col: "email", val: email, label: "bookings.email" },
     { col: "passenger_email", val: email, label: "bookings.passenger_email" }
   ];
@@ -504,4 +504,5 @@ if (!w.ok) {
     { status: 200 }
   );
 }
+
 
