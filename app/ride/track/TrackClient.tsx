@@ -241,7 +241,7 @@ export default function TrackClient({ code }: { code: string }) {
                 className="w-full rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={openSmartGoogleMaps}
                 disabled={!pickup || !dropoff}
-                title="Smart route: driver Ã¢â€ â€™ pickup (before pickup), pickup Ã¢â€ â€™ dropoff (after start)"
+                title="Smart route: driver ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ pickup (before pickup), pickup ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ dropoff (after start)"
               >
                 {smartNavLabel()}
               </button>
@@ -280,7 +280,17 @@ export default function TrackClient({ code }: { code: string }) {
             )}
 
             <div className="mt-2 text-xs opacity-60">
-              Markers: A=pickup, B=dropoff, car=driver (updates every 3s).
+              Markers: A=pickup, B=dropoff, car=driver
+
+        {/* JRIDE_MAPBOX_CONTAINER_BEGIN */}
+        {token ? (
+          <div
+            ref={mapContainerRef}
+            style={{ width: "100%", height: 240, borderRadius: 12, overflow: "hidden" }}
+          />
+        ) : null}
+        {/* JRIDE_MAPBOX_CONTAINER_END */}
+ (updates every 3s).
             </div>
           </div>
         </div>

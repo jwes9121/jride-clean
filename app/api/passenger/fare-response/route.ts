@@ -15,12 +15,19 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({} as any));
     const booking_id = String(body?.booking_id || "").trim();
     const booking_code = String(body?.booking_code || "").trim();
-    const response = String(body?.response || "").trim().toLowerCase(); // accepted | rejected
+    const raw = String(body?.response || "").trim().toLowerCase(); // accepted | declined | rejected
 
     if ((!booking_id || !isUuidLike(booking_id)) && !booking_code) {
       return NextResponse.json({ ok: false, code: "MISSING_BOOKING" }, { status: 400 });
     }
-    if (response !== "accepted" && response !== "rejected") {
+
+    // accept synonyms
+    const response =
+      raw === "accepted" ? "accepted" :
+      (raw === "declined" || raw === "rejected") ? "declined" :
+      "";
+
+    if (!response) {
       return NextResponse.json({ ok: false, code: "INVALID_RESPONSE" }, { status: 400 });
     }
 
@@ -32,19 +39,13 @@ export async function POST(req: Request) {
 
     const match = booking_id ? { id: booking_id } : { booking_code };
 
-    // If accepted => move to on_the_way (driver can proceed)
-    // If rejected => clear fare and move back to pending (your auto-assign can re-pick)
+    // OPTION 2 (your choice):
+    // - accepted => keep status="ready" so dispatch/driver lifecycle can proceed cleanly
+    // - declined => keep driver accepted, clear fare so driver can propose again
     const patch =
       response === "accepted"
-        ? { passenger_fare_response: "accepted", status: "on_the_way", updated_at: new Date().toISOString() }
-        : {
-            passenger_fare_response: "rejected",
-            status: "pending",
-            proposed_fare: null,
-            assigned_driver_id: null,
-            driver_id: null,
-            updated_at: new Date().toISOString(),
-          };
+        ? { passenger_fare_response: "accepted", status: "ready", updated_at: new Date().toISOString() }
+        : { passenger_fare_response: "declined", status: "accepted", proposed_fare: null, updated_at: new Date().toISOString() };
 
     const { data, error } = await supabase
       .from("bookings")

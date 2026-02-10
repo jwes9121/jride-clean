@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function isUuidLike(s: string) {
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
     const supabase = createClient(env.url, env.key);
 
     // Include assigned so the driver can see fresh dispatches.
-    const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip"];    
+    const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip", "ready"];    
     // Fare-evidence guard:
     // If a trip claims it's already in movement states but has no fare data at all,
     // treat it as stale/invalid so it doesn't haunt the driver forever.
@@ -64,7 +64,15 @@ export async function GET(req: Request) {
     }
 
 
-    // NOTE: select("*") avoids build/runtime failures if certain columns don't exist.
+    
+
+    function isReadyButNotAccepted(r: any): boolean {
+      const st = String((r as any)?.status ?? "");
+      if (st !== "ready") return false;
+      const pr = String((r as any)?.passenger_fare_response ?? "").toLowerCase();
+      return pr !== "accepted";
+    }
+// NOTE: select("*") avoids build/runtime failures if certain columns don't exist.
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
@@ -105,7 +113,7 @@ export async function GET(req: Request) {
 
       // If status claims movement but no fare was ever proposed/verified/responded to,
       // ignore it (prevents "stuck on_the_way" ghosts).
-      if (isMovementState(st) && !hasFareEvidence(r)) continue;
+      if (isMovementState(st) && !hasFareEvidence(r)) continue;`r`n      if (isReadyButNotAccepted(r)) continue;
 
       picked = r;
       break;
