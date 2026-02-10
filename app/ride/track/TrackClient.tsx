@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState , useRef } from "react";
 
@@ -38,13 +38,7 @@ export default function TrackClient({ code }: { code: string }) {
       process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
       "") as string;
   // JRIDE_TOKEN_DECL_END
-
-  const MAPBOX_TOKEN =
-    (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
-      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-      "") as string;
-
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -128,9 +122,9 @@ export default function TrackClient({ code }: { code: string }) {
   const paxTotal = Number(proposedFare ?? 0) + (Number.isFinite(fee) ? fee : 15);
 
   const mapUrl = useMemo(() => {
-    if (!MAPBOX_TOKEN) return "";
-    return buildStaticMapUrl({ token: MAPBOX_TOKEN, pickup: pickup || undefined, dropoff: dropoff || undefined, driver: driver || undefined });
-  }, [MAPBOX_TOKEN, pickup, dropoff, driver]);
+    if (!token) return "";
+    return buildStaticMapUrl({ token: token, pickup: pickup || undefined, dropoff: dropoff || undefined, driver: driver || undefined });
+  }, [token, pickup, dropoff, driver]);
 
   function getPhase(): "to_pickup" | "to_dropoff" {
     const st = String(booking?.status || "").toLowerCase();
@@ -249,8 +243,7 @@ export default function TrackClient({ code }: { code: string }) {
               <button
                 className="w-full rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={openSmartGoogleMaps}
-                disabled={!pickup || !dropoff}
-                title="Smart route: driver ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ pickup (before pickup), pickup ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ dropoff (after start)"
+                disabled={!pickup || !dropoff} title="Open navigation in Maps"
               >
                 {smartNavLabel()}
               </button>
@@ -277,7 +270,7 @@ export default function TrackClient({ code }: { code: string }) {
 
           <div className="rounded-xl border border-black/10 p-3">
             <div className="text-sm font-semibold">Map</div>
-            {!MAPBOX_TOKEN ? (
+            {!token ? (
               <div className="mt-2 rounded-xl bg-yellow-50 p-3 text-sm text-yellow-800">
                 Mapbox token missing. Set <span className="font-mono">NEXT_PUBLIC_MAPBOX_TOKEN</span> (or <span className="font-mono">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</span>).
               </div>
@@ -341,4 +334,6 @@ export default function TrackClient({ code }: { code: string }) {
     </div>
   );
 }
+
+
 
