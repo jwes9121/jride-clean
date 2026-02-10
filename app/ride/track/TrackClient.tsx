@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState , useRef } from "react";
 
 type AnyRec = Record<string, any>;
 
@@ -32,10 +32,19 @@ function buildStaticMapUrl(args: {
 }
 
 export default function TrackClient({ code }: { code: string }) {
+  // JRIDE_TOKEN_DECL_BEGIN
+  const token =
+    (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+      "") as string;
+  // JRIDE_TOKEN_DECL_END
+
   const MAPBOX_TOKEN =
     (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
       process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
       "") as string;
+
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -241,7 +250,7 @@ export default function TrackClient({ code }: { code: string }) {
                 className="w-full rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={openSmartGoogleMaps}
                 disabled={!pickup || !dropoff}
-                title="Smart route: driver ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ pickup (before pickup), pickup ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ dropoff (after start)"
+                title="Smart route: driver ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ pickup (before pickup), pickup ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ dropoff (after start)"
               >
                 {smartNavLabel()}
               </button>
@@ -332,3 +341,4 @@ export default function TrackClient({ code }: { code: string }) {
     </div>
   );
 }
+

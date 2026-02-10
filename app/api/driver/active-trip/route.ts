@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function isUuidLike(s: string) {
@@ -63,7 +63,6 @@ export async function GET(req: Request) {
       return st === "on_the_way" || st === "arrived" || st === "on_trip";
     }
 
-
     
 
     function isReadyButNotAccepted(r: any): boolean {
@@ -113,7 +112,8 @@ export async function GET(req: Request) {
 
       // If status claims movement but no fare was ever proposed/verified/responded to,
       // ignore it (prevents "stuck on_the_way" ghosts).
-      if (isMovementState(st) && !hasFareEvidence(r)) continue;`r`n      if (isReadyButNotAccepted(r)) continue;
+      if (isMovementState(st) && !hasFareEvidence(r)) continue;
+      if (isReadyButNotAccepted(r)) continue;
 
       picked = r;
       break;
@@ -150,3 +150,4 @@ export async function GET(req: Request) {
     );
   }
 }
+
