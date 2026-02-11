@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +40,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
 
+  // JRIDE_TOWN_ORIGIN_REQUIRED_V1
+  const town_origin = String((body as any)?.town_origin ?? "").trim();
+  const barangay_origin = String((body as any)?.barangay_origin ?? "").trim();
+  if (!town_origin) {
+    return NextResponse.json(
+      { ok: false, error: "TOWN_ORIGIN_REQUIRED", message: "Town of origin is required during signup." },
+      { status: 400 }
+    );
+  }
     const full_name = String(body?.full_name ?? "").trim();
     const phone_raw = String(body?.phone ?? "").trim();
     const password = String(body?.password ?? "").trim();
@@ -119,3 +128,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
