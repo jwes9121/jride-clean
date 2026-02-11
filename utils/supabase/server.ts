@@ -1,32 +1,31 @@
-﻿import { createClient as supabaseCreateClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-/**
- * Server-side Supabase client using SERVICE ROLE key.
- * Never import this into client components.
- */
+export function createClient() {
+  const cookieStore = cookies();
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  throw new Error(
-    "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables"
-  );
-}
+  if (!url || !anon) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  }
 
-/**
- * Low-level factory if you want the raw Supabase client.
- */
-export function supabaseServerClient() {
-  return supabaseCreateClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      persistSession: false,
+  return createServerClient(url, anon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // In some contexts (e.g., Server Components) cookie mutation may be disallowed.
+          // Route Handlers should still work and will set cookies successfully.
+        }
+      },
     },
   });
 }
-
-/**
- * Some routes expect `createClient` from "@/utils/supabase/server".
- * Re-export with that name so those imports keep working.
- */
-export const createClient = supabaseServerClient;
