@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,94 +25,57 @@ function phoneToInternalEmail(phoneE164: string): string {
   return `p_${digits}@phone.jride.local`;
 }
 
-function bad(msg: string, status = 400) {
-  return NextResponse.json({ ok: false, error: msg }, { status });
+function isEmail(s: string): boolean {
+  const v = String(s || "").trim();
+  if (!v) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function bad(error: string, status = 400, message?: string) {
+  return NextResponse.json({ ok: false, error, message: message ?? error }, { status });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
+
     const phone_raw = String(body?.phone ?? "").trim();
+    const email_raw = String(body?.email ?? "").trim();
     const password = String(body?.password ?? "").trim();
 
-    if (!phone_raw) return bad("Phone number is required.");
-    if (!password) return bad("Password is required.");
+    if (!password) return bad("PASSWORD_REQUIRED", 400, "Password is required.");
 
-    const phone = normPhone(phone_raw);
-    if (!/^\+63\d{10}$/.test(phone)) {
-      return bad("Phone must be a valid PH number (e.g., 09xxxxxxxxx or +639xxxxxxxxx).");
+    // We support either phone or email login.
+    // Passenger signup uses internal email derived from phone, so phone login maps to that internal email.
+    let email = "";
+    if (phone_raw) {
+      const phone = normPhone(phone_raw);
+      if (!/^\+63\d{10}$/.test(phone)) {
+        return bad("PHONE_INVALID", 400, "Phone must be a valid PH number (e.g., 09xxxxxxxxx or +639xxxxxxxxx).");
+      }
+      email = phoneToInternalEmail(phone);
+    } else if (isEmail(email_raw)) {
+      email = email_raw;
+    } else {
+      return bad("PHONE_OR_EMAIL_REQUIRED", 400, "Phone (recommended) or email is required.");
     }
 
-    const SUPABASE_URL =
-      process.env.SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      "";
-    const ANON_KEY =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.SUPABASE_ANON_KEY ||
-      "";
+    const supabase = createClient();
 
-    if (!SUPABASE_URL || !ANON_KEY) {
-      return bad("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.", 500);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error || !data?.user) {
+      return bad("LOGIN_FAILED", 401, error?.message || "Login failed.");
     }
 
-    const supabase = createClient(SUPABASE_URL, ANON_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    const email = phoneToInternalEmail(phone);
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) return bad(error.message || "Login failed.", 401);
-
-    const access_token = data?.session?.access_token || "";
-    const refresh_token = data?.session?.refresh_token || "";
-    const expires_in = Number(data?.session?.expires_in || 3600);
-
-    if (!access_token || !refresh_token) {
-      return bad("Login failed (missing session tokens).", 401);
-    }
-
-    const res = NextResponse.json({
+    // IMPORTANT: createClient() must be the cookie-enabled server client.
+    // If it is, Supabase auth cookies are set automatically on this response.
+    return NextResponse.json({
       ok: true,
-      user_id: data?.user?.id ?? null,
-      phone,
-      verified: (data?.user?.user_metadata as any)?.verified ?? null,
-      night_allowed: (data?.user?.user_metadata as any)?.night_allowed ?? null,
+      user_id: data.user.id,
+      email: data.user.email,
     });
-
-    // IMPORTANT: Set passenger session cookies (httpOnly) so /passenger can recognize login.
-    // Use Secure on HTTPS (Vercel prod).
-    res.cookies.set({
-      name: "jride_pax_at",
-      value: access_token,
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: expires_in,
-    });
-
-    // Refresh token cookie (longer). Adjust maxAge if you want.
-    res.cookies.set({
-      name: "jride_pax_rt",
-      value: refresh_token,
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
-
-    return res;
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Login failed." },
-      { status: 500 }
-    );
+    return bad("LOGIN_ERROR", 500, e?.message || "Login error.");
   }
 }
