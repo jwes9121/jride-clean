@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -25,14 +25,8 @@ function phoneToInternalEmail(phoneE164: string): string {
   return `p_${digits}@phone.jride.local`;
 }
 
-function isEmail(s: string): boolean {
-  const v = String(s || "").trim();
-  if (!v) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
-
-function bad(error: string, status = 400, message?: string) {
-  return NextResponse.json({ ok: false, error, message: message ?? error }, { status });
+function bad(msg: string, status = 400) {
+  return NextResponse.json({ ok: false, error: msg }, { status });
 }
 
 export async function POST(req: NextRequest) {
@@ -43,39 +37,52 @@ export async function POST(req: NextRequest) {
     const email_raw = String(body?.email ?? "").trim();
     const password = String(body?.password ?? "").trim();
 
-    if (!password) return bad("PASSWORD_REQUIRED", 400, "Password is required.");
+    if (!password || password.length < 6) return bad("Password must be at least 6 characters.");
 
-    // We support either phone or email login.
-    // Passenger signup uses internal email derived from phone, so phone login maps to that internal email.
     let email = "";
+    let phone = "";
+
     if (phone_raw) {
-      const phone = normPhone(phone_raw);
+      phone = normPhone(phone_raw);
       if (!/^\+63\d{10}$/.test(phone)) {
-        return bad("PHONE_INVALID", 400, "Phone must be a valid PH number (e.g., 09xxxxxxxxx or +639xxxxxxxxx).");
+        return bad("Phone must be a valid PH number (e.g., 09xxxxxxxxx or +639xxxxxxxxx).");
       }
       email = phoneToInternalEmail(phone);
-    } else if (isEmail(email_raw)) {
+    } else if (email_raw) {
       email = email_raw;
     } else {
-      return bad("PHONE_OR_EMAIL_REQUIRED", 400, "Phone (recommended) or email is required.");
+      return bad("Phone or email is required.");
     }
 
+    // IMPORTANT: SSR cookie-aware client (writes auth cookies)
     const supabase = createClient();
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (error || !data?.user) {
-      return bad("LOGIN_FAILED", 401, error?.message || "Login failed.");
+    if (error) {
+      const msg = String(error.message || "Login failed.");
+      const low = msg.toLowerCase();
+      if (low.includes("invalid") || low.includes("credentials")) {
+        return bad("Invalid phone/email or password.", 401);
+      }
+      return bad(msg, 401);
     }
 
-    // IMPORTANT: createClient() must be the cookie-enabled server client.
-    // If it is, Supabase auth cookies are set automatically on this response.
+    const userId = data?.user?.id ?? null;
+
     return NextResponse.json({
       ok: true,
-      user_id: data.user.id,
-      email: data.user.email,
+      user_id: userId,
+      phone: phone || null,
+      email_used: email,
     });
   } catch (e: any) {
-    return bad("LOGIN_ERROR", 500, e?.message || "Login error.");
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Login failed." },
+      { status: 500 }
+    );
   }
 }
