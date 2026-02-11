@@ -286,8 +286,8 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
     );
   }
   // === END JRIDE_VERIFICATION_ALIGNMENT_PATCH_V1 ===
-let verified = pvVerified;
-  if (!verified && user) {
+let verified = false;
+  if (user) {
     const email = user.email ?? null;
     const userId = user.id;
     const selV = "is_verified,verified,verification_tier";
@@ -319,7 +319,7 @@ if (nightGate && !verified && !jrideNightGateBypass()) {
     throw out;
   }
 
-  if (!verified && user) {
+  if (user) {
     const email = user.email ?? null;
     const userId = user.id;
     const selW = "wallet_balance,min_wallet_required,wallet_locked";
@@ -461,33 +461,6 @@ export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as BookReq;
 
-  // JRIDE_GEO_NORMALIZE_V1
-  // Accept either flat pickup_lat/pickup_lng/dropoff_lat/dropoff_lng + from_label/to_label
-  // OR objects: pickup{lat,lng,label} dropoff{lat,lng,label}
-  // Normalize into flat fields used by GEO gate + insert.
-  const _b: any = body as any;
-  try {
-    if (_b) {
-      if ((_b.pickup_lat == null || _b.pickup_lng == null) && _b.pickup && typeof _b.pickup === "object") {
-        if (_b.pickup_lat == null && _b.pickup.lat != null) _b.pickup_lat = _b.pickup.lat;
-        if (_b.pickup_lng == null && _b.pickup.lng != null) _b.pickup_lng = _b.pickup.lng;
-        if ((_b.from_label == null || String(_b.from_label).trim() === "") && _b.pickup.label != null) _b.from_label = _b.pickup.label;
-      }
-
-      if ((_b.dropoff_lat == null || _b.dropoff_lng == null) && _b.dropoff && typeof _b.dropoff === "object") {
-        if (_b.dropoff_lat == null && _b.dropoff.lat != null) _b.dropoff_lat = _b.dropoff.lat;
-        if (_b.dropoff_lng == null && _b.dropoff.lng != null) _b.dropoff_lng = _b.dropoff.lng;
-        if ((_b.to_label == null || String(_b.to_label).trim() === "") && _b.dropoff.label != null) _b.to_label = _b.dropoff.label;
-      }
-
-      if (_b.pickup_lat == null && _b.pickupLat != null) _b.pickup_lat = _b.pickupLat;
-      if (_b.pickup_lng == null && _b.pickupLng != null) _b.pickup_lng = _b.pickupLng;
-      if (_b.dropoff_lat == null && _b.dropoffLat != null) _b.dropoff_lat = _b.dropoffLat;
-      if (_b.dropoff_lng == null && _b.dropoffLng != null) _b.dropoff_lng = _b.dropoffLng;
-    }
-  } catch {}
-  // JRIDE_GEO_NORMALIZE_V1_END
-
   
 
   const isTakeout = isTakeoutReq(body as any);
@@ -500,10 +473,6 @@ export async function POST(req: Request) {
   // Always attach creator (bookings has created_by_user_id in your schema)
   // If insert fails due to column mismatch, fallback logic already exists below.
   const createdByUserId = user?.id ? String(user.id) : null;
-
-  if (!createdByUserId) {
-    return NextResponse.json({ ok: false, code: "NOT_AUTHED", message: "Not signed in." }, { status: 401 });
-  }
 
   // TAKEOUT REQUIRES VERIFIED (always, per business rule)
   if (isTakeout && !isVerified) {
@@ -575,7 +544,6 @@ export async function POST(req: Request) {
     dropoff_lat: body.dropoff_lat ?? null,
     dropoff_lng: body.dropoff_lng ?? null,
     status: "requested",
-    created_by_user_id: createdByUserId,
   };
 
   /* PHASE2D_PAYLOAD_TAKEOUT_FIELDS */
@@ -734,7 +702,6 @@ if (j && (j as any).code === "INVALID_DRIVER_ID") {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign, takeoutSnapshot }, { status: 200 });
 }
-
 
 
 

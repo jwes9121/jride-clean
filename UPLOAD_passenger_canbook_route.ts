@@ -1,6 +1,6 @@
 ﻿import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { createClient } from "@/utils/supabase/server";
+import { createClient } from "../../../../../utils/supabase/server";
 
 /* JRIDE_ENV_ECHO */
 function jrideEnvEcho() {
@@ -524,7 +524,6 @@ if (!w.ok) {
     { status: 200 }
   );
 }
-
 
 
 
