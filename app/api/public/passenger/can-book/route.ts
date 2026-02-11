@@ -1,4 +1,5 @@
 ﻿import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 
 /* JRIDE_ENV_ECHO */
@@ -334,8 +335,19 @@ async function resolvePassengerFirstRideUsage(supabase: any) {
 
   try {
     const { data } = await supabase.auth.getUser();
-    userId = data?.user?.id ?? null;
-    email = data?.user?.email ?? null;
+userId = data?.user?.id ?? null;
+email = data?.user?.email ?? null;
+
+// JRIDE_PAX_COOKIE_UID_FALLBACK_V1
+// If your passenger login uses custom cookies (not Supabase SSR cookies),
+// then supabase.auth.getUser() will be null.
+// We fall back to jride_pax_uid to treat the request as authenticated.
+if (!userId) {
+  const cookieUid = cookies().get("jride_pax_uid")?.value || "";
+  if (cookieUid) {
+    userId = cookieUid;
+  }
+}
   } catch {
     // ignore
   }
@@ -512,6 +524,8 @@ if (!w.ok) {
     { status: 200 }
   );
 }
+
+
 
 
 
