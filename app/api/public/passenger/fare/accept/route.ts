@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export async function POST(req: Request) {
@@ -32,6 +32,9 @@ export async function POST(req: Request) {
       .from("bookings")
       .update({
         passenger_fare_response: "accepted",
+      status: "ready",
+      driver_status: "ready",
+      customer_status: "ready",
         verified_fare: (b.verified_fare ?? b.proposed_fare) ?? null,
       })
       .eq("id", booking_id)
