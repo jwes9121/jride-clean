@@ -66,8 +66,8 @@ async function resolvePassengerVerification(supabase: ReturnType<typeof createCl
 
   const email = user.email ?? null;
   const userId = user.id;
-
-  function mapRawStatus(raw: any): "not_submitted" | "submitted" | "pending_admin" | "verified" | "rejected" {
+  (out as any).user_id = userId;
+function mapRawStatus(raw: any): "not_submitted" | "submitted" | "pending_admin" | "verified" | "rejected" {
     const s = String(raw || "").trim();
     const u = s.toLowerCase();
     if (!u) return "not_submitted";
@@ -185,8 +185,8 @@ async function resolvePassengerWallet(supabase: ReturnType<typeof createClient>)
 
   const email = user.email ?? null;
   const userId = user.id;
-
-  const selectors = "wallet_balance,min_wallet_required,wallet_locked";
+  (out as any).user_id = userId;
+const selectors = "wallet_balance,min_wallet_required,wallet_locked";
 
   async function tryQuery(filterCol: "auth_user_id" | "user_id" | "email", filterVal: string) {
     return await (supabase as any).from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
@@ -273,7 +273,9 @@ export async function GET() {
           allowed: false,
           reason: "UNVERIFIED_LIMIT_REACHED",
           message: "You have already used your one daytime ride. Please complete verification to book again.",
-          meta: { firstRide }
+          meta: {
+      debug_has_user: !!(v as any).user_id,
+      debug_user_id: (v as any).user_id ?? null, firstRide }
         },
         { status: 200 }
       );
@@ -284,7 +286,9 @@ export async function GET() {
         allowed: true,
         reason: "UNVERIFIED_ONE_DAY_RIDE_ALLOWED",
         message: "You may book one daytime ride. Verification will be required for your next booking.",
-        meta: { firstRide }
+        meta: {
+      debug_has_user: !!(v as any).user_id,
+      debug_user_id: (v as any).user_id ?? null, firstRide }
       },
       { status: 200 }
     );
@@ -416,7 +420,9 @@ export async function POST(req: Request) {
           allowed: false,
           reason: "UNVERIFIED_LIMIT_REACHED",
           message: "You have already used your one daytime ride. Please complete verification to book again.",
-          meta: { firstRide }
+          meta: {
+      debug_has_user: !!(v as any).user_id,
+      debug_user_id: (v as any).user_id ?? null, firstRide }
         },
         { status: 200 }
       );
@@ -427,7 +433,9 @@ export async function POST(req: Request) {
         allowed: true,
         reason: "UNVERIFIED_ONE_DAY_RIDE_ALLOWED",
         message: "You may book one daytime ride. Verification will be required for your next booking.",
-        meta: { firstRide }
+        meta: {
+      debug_has_user: !!(v as any).user_id,
+      debug_user_id: (v as any).user_id ?? null, firstRide }
       },
       { status: 200 }
     );
@@ -504,5 +512,6 @@ if (!w.ok) {
     { status: 200 }
   );
 }
+
 
 
