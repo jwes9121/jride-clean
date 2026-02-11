@@ -96,6 +96,8 @@ export async function POST(req: NextRequest) {
       password,
       email_confirm: true,
       user_metadata: {
+        town_origin,
+        barangay_origin: barangay_origin || null,
         role,
         full_name,
         phone,
@@ -128,4 +130,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
 
