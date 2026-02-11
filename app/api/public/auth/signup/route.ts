@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -46,9 +46,8 @@ export async function POST(req: NextRequest) {
     const role = String(body?.role ?? "passenger").trim() || "passenger";
     const address = String(body?.address ?? "").trim();
     const town = String(body?.town ?? "").trim();
-    const town_origin = String(body?.town_origin ?? "").trim();
-    const barangay_origin = String(body?.barangay_origin ?? "").trim();
-const contact_email_raw = String(body?.contact_email ?? "").trim();
+
+    const contact_email_raw = String(body?.contact_email ?? "").trim();
     const contact_email = isEmail(contact_email_raw) ? contact_email_raw : "";
 
     if (!full_name) return bad("Full name is required.");
@@ -94,8 +93,6 @@ const contact_email_raw = String(body?.contact_email ?? "").trim();
         address,
         town,
         contact_email: contact_email || null,
-        town_origin: town_origin || null,
-        barangay_origin: barangay_origin || null,
         signup_source: "web",
       },
     });
@@ -106,21 +103,6 @@ const contact_email_raw = String(body?.contact_email ?? "").trim();
         return bad("This phone is already registered. Please login instead.", 409);
       }
       return bad(msg || "Signup failed.", 500);
-    }
-
-    // Save passenger origin profile (metadata only; does NOT restrict booking)
-    try {
-      const uid = data?.user?.id ?? null;
-      if (uid) {
-        await supabase
-          .from("passenger_profiles")
-          .upsert(
-            { user_id: uid, town_origin: town_origin || null, barangay_origin: barangay_origin || null },
-            { onConflict: "user_id" }
-          );
-      }
-    } catch (e: any) {
-      // non-fatal: do not block signup if profile write fails
     }
 
     return NextResponse.json({
@@ -137,4 +119,3 @@ const contact_email_raw = String(body?.contact_email ?? "").trim();
     );
   }
 }
-
