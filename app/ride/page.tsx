@@ -372,6 +372,33 @@ const noDriversInTown = (() => {
 /* ===== END JRIDE_STEP5A_EMERGENCY_STATE ===== */
 
   const router = useRouter();
+  const [activeBookingCode, setActiveBookingCode] = React.useState<string>(() => jrideGetActiveBookingCode());
+
+  // JRIDE_CLEAR_STALE_ACTIVE_BOOKING_V1
+  const JRIDE_ACTIVE_BOOKING_KEY = "jride_active_booking_code";
+
+  function jrideGetActiveBookingCode(): string {
+    try {
+      if (typeof window === "undefined") return "";
+      return String(window.localStorage.getItem(JRIDE_ACTIVE_BOOKING_KEY) || "").trim();
+    } catch { return ""; }
+  }
+
+  function jrideSetActiveBookingCode(code: string) {
+    try {
+      if (typeof window === "undefined") return;
+      const c = String(code || "").trim();
+      if (!c) return;
+      window.localStorage.setItem(JRIDE_ACTIVE_BOOKING_KEY, c);
+    } catch {}
+  }
+
+  function jrideClearActiveBookingCode() {
+    try {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(JRIDE_ACTIVE_BOOKING_KEY);
+    } catch {}
+  }
 
   // JRIDE_AUTH_GATE_FIX_V1: ride page must use Supabase session, not window.status
   const [authed, setAuthed] = React.useState(false);
@@ -2010,6 +2037,14 @@ if (pax > maxPax) {
 
       lines.push("BOOKED_OK");
       if (bj.booking_code) lines.push("booking_code: " + bj.booking_code);
+        // JRIDE_CLEAR_STALE_ACTIVE_BOOKING_V1: always switch polling to the latest booking
+        if (bj?.booking_code) {
+          const newCode = String(bj.booking_code).trim();
+          if (newCode) {
+            setActiveBookingCode(newCode);
+            jrideSetActiveBookingCode(newCode);
+          }
+        }
       if (bj.booking && bj.booking.id) lines.push("booking_id: " + String(bj.booking.id));
       if (bj.booking && bj.booking.status) lines.push("status: " + String(bj.booking.status));
       if (bj.booking && bj.booking.driver_id) lines.push("driver_id: " + String(bj.booking.driver_id));
