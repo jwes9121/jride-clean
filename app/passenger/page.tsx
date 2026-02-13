@@ -22,7 +22,7 @@ export default function PassengerDashboardPage() {
   }, []);
   // JRIDE_BFCACHE_GUARD_END
 
-  const router = useRouter();
+const router = useRouter();
 
   const [loading, setLoading] = React.useState(true);
   const [authed, setAuthed] = React.useState(false);
@@ -120,8 +120,9 @@ return () => { alive = false; };
   type="button"
   className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
   onClick={async () => {
+    // Hard logout + hard redirect (prevents bfcache/back restoring the old page)
     await signOut({ redirect: false });
-    window.location.href = "/auth/signin";
+    window.location.replace("/auth/signin");
   }}
 >
   Sign out
@@ -146,7 +147,7 @@ return () => { alive = false; };
                   Verified: {String(verified)} | Night allowed: {String(nightAllowed)}
                 </div>
                 <div className="opacity-80 text-xs mt-2">
-                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“5AM) requires verification.")}
+                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ5AM) requires verification.")}
                 </div>
               </div>
               <button
