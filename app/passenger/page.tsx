@@ -7,17 +7,7 @@ import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 export default function PassengerDashboardPage() {
-  const router = useRouter();
-
-  const [loading, setLoading] = React.useState(true);
-  const [authed, setAuthed] = React.useState(false);
-  const [verified, setVerified] = React.useState(false);
-  const [nightAllowed, setNightAllowed] = React.useState(false);
-
-  const [freeRideStatus, setFreeRideStatus] = React.useState<string>("unknown");
-  const [freeRideMsg, setFreeRideMsg] = React.useState<string>("");
-
-    // JRIDE_BFCACHE_GUARD_BEGIN
+  // JRIDE_BFCACHE_GUARD_BEGIN
   React.useEffect(() => {
     const onShow = () => {
       fetch("/api/auth/session", { cache: "no-store" })
@@ -31,6 +21,16 @@ export default function PassengerDashboardPage() {
     return () => window.removeEventListener("pageshow", onShow);
   }, []);
   // JRIDE_BFCACHE_GUARD_END
+
+  const router = useRouter();
+
+  const [loading, setLoading] = React.useState(true);
+  const [authed, setAuthed] = React.useState(false);
+  const [verified, setVerified] = React.useState(false);
+  const [nightAllowed, setNightAllowed] = React.useState(false);
+
+  const [freeRideStatus, setFreeRideStatus] = React.useState<string>("unknown");
+  const [freeRideMsg, setFreeRideMsg] = React.useState<string>("");
 React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -87,7 +87,7 @@ React.useEffect(() => {
         setLoading(false);
       }
     })();
-    return () => { alive = false; };
+return () => { alive = false; };
   }, []);
 
   function gotoLogin() {
@@ -120,9 +120,9 @@ React.useEffect(() => {
   type="button"
   className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
   onClick={async () => {
-  await signOut({ redirect: false });
-  window.location.href = "/auth/signin";
-}})}
+    await signOut({ redirect: false });
+    window.location.href = "/auth/signin";
+  }}
 >
   Sign out
 </button>
@@ -146,7 +146,7 @@ React.useEffect(() => {
                   Verified: {String(verified)} | Night allowed: {String(nightAllowed)}
                 </div>
                 <div className="opacity-80 text-xs mt-2">
-                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“5AM) requires verification.")}
+                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“5AM) requires verification.")}
                 </div>
               </div>
               <button
