@@ -271,9 +271,10 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
     .eq("user_id", user?.id ?? "00000000-0000-0000-0000-000000000000")
     .maybeSingle();
 
-  const pvVerified = !!user?.id &&
+  const pvVerified = !!user?.id && (
     pv?.verification_status === "verified" ||
-    pv?.verification_status === "approved_admin";
+    pv?.verification_status === "approved_admin"
+  );
 
   if (nightGate && !pvVerified) {
     return NextResponse.json(
@@ -450,10 +451,6 @@ async function getBaseUrlFromHeaders(req: Request) {
 }
 
 
-/* JRIDE_TEST_BYPASS_GEO_BEGIN */
-// TEST MODE: bypass geofence checks entirely
-const JRIDE_TEST_BYPASS_GEO = true;
-/* JRIDE_TEST_BYPASS_GEO_END */
 export async function POST(req: Request) {
   // JRIDE_TEST_BYPASS_PILOT_TOWN
   // Allows test bookings to bypass pilot-town restriction ONLY when explicit test headers are present.
@@ -522,10 +519,17 @@ export async function POST(req: Request) {
   // Enforce pilot pickup towns (UI + backend parity)
   const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
   const pickupTown = String((body as any)?.town || "").trim();
+
+  /* JRIDE_TEST_BYPASS_3600_BEGIN */
+  // TEST ONLY: local_verification_code=3600 bypasses pilot-town and geo gates for end-to-end testing.
+  const jrideLocalCode = String(((body as any)?.local_verification_code || (body as any)?.local_verify || "")).trim();
+  const jrideTestBypass3600 = (jrideLocalCode === "3600");
+  /* JRIDE_TEST_BYPASS_3600_END */
+
   const pilotTownAllowed = PILOT_TOWNS.includes(pickupTown as any);
 
   if (!pilotTownAllowed) {
-    if (!jrideTestBypass) {
+    if (!jrideTestBypass && !jrideTestBypass3600) {
     return NextResponse.json(
       {
         ok: false,
@@ -542,11 +546,16 @@ export async function POST(req: Request) {
   // Phase 13-C1: allow a local verification code fallback (QR/referral/admin code).
   const expectedLocal = String(process.env.JRIDE_LOCAL_VERIFY_CODE || "").trim();
   const providedLocal = String(((body as any)?.local_verification_code || (body as any)?.local_verify || "")).trim();
-  /* JRIDE_LOCAL_VERIFY_3600_BYPASS_BEGIN */
-  // TEST ONLY: allow local_verification_code=3600 to bypass Ifugao bbox geo gate in booking.
-  // Remove after testing. Prefer JRIDE_LOCAL_VERIFY_CODE env in production.
-  const localOk = (!!expectedLocal && !!providedLocal && (providedLocal === expectedLocal)) || (providedLocal === "3600");
-  /* JRIDE_LOCAL_VERIFY_3600_BYPASS_END */
+
+  // Local verify fallback:
+  // - env JRIDE_LOCAL_VERIFY_CODE matches providedLocal, OR
+  // - TEST bypass code "3600", OR
+  // - explicit test header bypass already computed earlier (jrideTestBypass)
+  const localOk =
+    ((!!expectedLocal && !!providedLocal && (providedLocal === expectedLocal)) ||
+     (providedLocal === "3600") ||
+     !!jrideTestBypass ||
+     !!jrideTestBypass3600);
 
   const lat = Number((body as any)?.pickup_lat);
   const lng = Number((body as any)?.pickup_lng);
@@ -563,7 +572,11 @@ export async function POST(req: Request) {
     );
   }
   try {
-    await canBookOrThrow(supabase);
+    const canRes: any = await canBookOrThrow(supabase as any);
+    // Some legacy paths return a NextResponse instead of throwing; respect it.
+    if (canRes && typeof (canRes as any).headers?.get === "function") {
+      return canRes;
+    }
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, code: e.code || "CAN_BOOK_FAILED", message: e.message || "Not allowed" },
