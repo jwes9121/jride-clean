@@ -17,7 +17,21 @@ export default function PassengerDashboardPage() {
   const [freeRideStatus, setFreeRideStatus] = React.useState<string>("unknown");
   const [freeRideMsg, setFreeRideMsg] = React.useState<string>("");
 
+    // JRIDE_BFCACHE_GUARD_BEGIN
   React.useEffect(() => {
+    const onShow = () => {
+      fetch("/api/auth/session", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => {
+          if (!j) window.location.reload();
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+  // JRIDE_BFCACHE_GUARD_END
+React.useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -105,7 +119,10 @@ export default function PassengerDashboardPage() {
 <button
   type="button"
   className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
-  onClick={() => signOut({ callbackUrl: "/" })}
+  onClick={async () => {
+  await signOut({ redirect: false });
+  window.location.href = "/auth/signin";
+}})}
 >
   Sign out
 </button>
@@ -129,7 +146,7 @@ export default function PassengerDashboardPage() {
                   Verified: {String(verified)} | Night allowed: {String(nightAllowed)}
                 </div>
                 <div className="opacity-80 text-xs mt-2">
-                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMâ€“5AM) requires verification.")}
+                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“5AM) requires verification.")}
                 </div>
               </div>
               <button
