@@ -1,4 +1,4 @@
-﻿export const TOWN_COLORS: Record<string, string> = {
+export const TOWN_COLORS: Record<string, string> = {
   Lagawe: "#7B1E2D",
   Kiangan: "#2E7D32",
   Banaue: "#1565C0",

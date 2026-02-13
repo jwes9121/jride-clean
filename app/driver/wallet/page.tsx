@@ -119,7 +119,7 @@ export default function DriverWalletPage() {
           <div style={{ fontSize: 12, opacity: 0.7 }}>Current Balance</div>
           <div style={{ fontSize: 26, fontWeight: 900 }}>{fmtMoney(bal)}</div>
           <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-            Recent totals (last 30 tx): credits {fmtMoney(totalCredits)} Â· debits {fmtMoney(totalDebits)}
+            Recent totals (last 30 tx): credits {fmtMoney(totalCredits)} · debits {fmtMoney(totalDebits)}
           </div>
         </div>
 

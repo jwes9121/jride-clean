@@ -1,4 +1,4 @@
-﻿# VEHICLE_TYPE REFERENCES REPORT
+# VEHICLE_TYPE REFERENCES REPORT
 
 Repo: C:\Users\jwes9\Desktop\jride-clean-fresh
 Generated: 2026-02-07 15:55:48

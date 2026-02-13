@@ -1,11 +1,11 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $root = (Get-Location).Path
 Write-Host ("Repo: " + $root)
 
 # Unicode pattern for mojibake lead bytes:
-# U+00C3 (Ã) and U+00C2 (Â)
+# U+00C3 (Ã) and U+00C2 ()
 $pattern = "[\u00C2\u00C3]"
 
 # Collect TS/TSX files (exclude node_modules/.next/etc)

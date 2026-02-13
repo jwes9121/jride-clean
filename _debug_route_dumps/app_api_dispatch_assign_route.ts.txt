@@ -1,4 +1,4 @@
-﻿----- app\api\dispatch\assign\route.ts -----
+----- app\api\dispatch\assign\route.ts -----
 // app/api/dispatch/assign/route.ts
 // Assign a booking to a driver using SUPABASE REST (service role)
 

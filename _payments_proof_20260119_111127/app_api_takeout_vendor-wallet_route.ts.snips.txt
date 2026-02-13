@@ -1,4 +1,4 @@
-﻿---- app\api\takeout\vendor-wallet\route.ts : L131 ----
+---- app\api\takeout\vendor-wallet\route.ts : L131 ----
 
     const vendorId = await resolveVendorIdFromSession();
 

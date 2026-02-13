@@ -36,7 +36,7 @@ export default function BookingDashboard({ title = "Bookings" }: Props) {
           {bookings.length === 0 && <li className="py-2 text-gray-500">No bookings yet.</li>}
           {bookings.map(b => (
             <li key={b.id} className="py-2">
-              <span className="font-medium">{b.passenger ?? "â€”"}</span>
+              <span className="font-medium">{b.passenger ?? "-"}</span>
               <span className="mx-2">â€¢</span>
               <span>{b.status ?? "unknown"}</span>
             </li>

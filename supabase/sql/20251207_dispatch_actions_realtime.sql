@@ -1,4 +1,4 @@
-﻿-- Enable realtime streaming for dispatch_actions
+-- Enable realtime streaming for dispatch_actions
 do $$
 begin
   begin

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import type { LiveTrip } from "./ZoneCapacityView";

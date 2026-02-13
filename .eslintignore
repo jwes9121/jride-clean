@@ -1,0 +1,4 @@
+_patch_bak/
+**/_patch_bak/**
+.next/
+node_modules/

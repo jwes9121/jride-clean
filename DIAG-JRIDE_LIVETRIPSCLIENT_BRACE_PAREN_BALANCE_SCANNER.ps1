@@ -1,4 +1,4 @@
-﻿# DIAG-JRIDE_LIVETRIPSCLIENT_BRACE_PAREN_BALANCE_SCANNER.ps1
+# DIAG-JRIDE_LIVETRIPSCLIENT_BRACE_PAREN_BALANCE_SCANNER.ps1
 # Diagnostic: scans LiveTripsClient.tsx and finds the first mismatch/unclosed brace/paren/bracket.
 # Outputs exact line/column + context.
 # HARD RULES: DO_NOT_TOUCH_DISPATCH_STATUS

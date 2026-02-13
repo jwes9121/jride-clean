@@ -1,4 +1,4 @@
-﻿# FIX-JRIDE_PHASE3D_VENDORORDERS_HELPERS_SCOPE_V16.ps1
+# FIX-JRIDE_PHASE3D_VENDORORDERS_HELPERS_SCOPE_V16.ps1
 # Fix helpers accidentally placed inside toNum().
 # Moves PHASE_3D helpers to module scope.
 # Backup before patch. UTF-8 no BOM.

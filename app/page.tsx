@@ -1,4 +1,4 @@
-﻿// app/page.tsx
+// app/page.tsx
 import { auth } from "@/configs/nextauth";
 
 export default async function HomePage() {

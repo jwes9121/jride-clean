@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 function Backup-File([string]$path) {
   if (!(Test-Path $path)) { throw "Missing file: $path" }

@@ -1,4 +1,4 @@
-﻿import dynamic from "next/dynamic";
+import dynamic from "next/dynamic";
 
 const BookingMapClient = dynamic(() => import("./BookingMapClient"), {
   ssr: false,

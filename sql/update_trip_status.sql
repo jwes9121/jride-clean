@@ -1,4 +1,4 @@
-﻿-- ###############################
+-- ###############################
 -- TRIP STATUS UPDATE FUNCTION
 -- ###############################
 create or replace function public.update_trip_status(

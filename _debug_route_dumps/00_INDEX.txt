@@ -1,4 +1,4 @@
-﻿=== FILE DUMPS ===
+=== FILE DUMPS ===
 OK  app\api\admin\livetrips\page-data\route.ts
 OK  app\api\dispatch\status\route.ts
 OK  app\api\dispatch\assign\route.ts

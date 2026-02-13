@@ -1,4 +1,4 @@
-﻿-- Dispatch actions log + RPCs
+-- Dispatch actions log + RPCs
 
 create table if not exists public.dispatch_actions (
   id bigserial primary key,

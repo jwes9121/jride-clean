@@ -63,8 +63,8 @@ $after  = $txt.Substring($end)
 $txt = $before + $fn + $after
 
 # Safe mojibake cleanup tokens (in case any exist elsewhere)
-$txt = $txt.Replace("Ã¢â‚¬â€", "--")
-$txt = $txt.Replace("Ã¢â€šÂ±", "PHP ")
+$txt = $txt.Replace("Ã¢â‚¬"", "--")
+$txt = $txt.Replace("Ã¢â€š±", "PHP ")
 $txt = $txt.Replace("â€¦", "...")
 
 if($txt -eq $orig){

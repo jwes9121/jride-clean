@@ -1,4 +1,4 @@
-﻿-- CREATE TEST BOOKING WITH REAL DRIVER
+-- CREATE TEST BOOKING WITH REAL DRIVER
 -- Picks the first driver id from public.drivers
 insert into public.bookings (
   booking_code,

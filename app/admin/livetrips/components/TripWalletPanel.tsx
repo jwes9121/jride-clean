@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -128,7 +128,7 @@ export default function TripWalletPanel(props: Props) {
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
     if (vb <= 0) return null;
-    // fare ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¹ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â  vendorEarnings / 0.90
+    // fare ÃƒÆ’Ã†'Ãƒâ€šÃ‚¢ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â‚¬Å¡Ã‚¬Ãƒâ€šÃ‚°ÃƒÆ’Ã¢â‚¬¹Ãƒ¢Ã¢â€š¬Ã‚  vendorEarnings / 0.90
     return Math.round((vb / 0.90) * 100) / 100;
   }, [trip, isTakeout]);
 
@@ -137,7 +137,7 @@ export default function TripWalletPanel(props: Props) {
     if (derivedFare === null) return null;
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
-    const cut = derivedFare - vb; // ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¹ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â  10%
+    const cut = derivedFare - vb; // ÃƒÆ’Ã†'Ãƒâ€šÃ‚¢ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â‚¬Å¡Ã‚¬Ãƒâ€šÃ‚°ÃƒÆ’Ã¢â‚¬¹Ãƒ¢Ã¢â€š¬Ã‚  10%
     return Math.round(cut * 100) / 100;
   }, [trip, isTakeout, derivedFare]);
 

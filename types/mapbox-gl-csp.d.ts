@@ -1,4 +1,4 @@
-﻿declare module "mapbox-gl/dist/mapbox-gl-csp" {
+declare module "mapbox-gl/dist/mapbox-gl-csp" {
   import mapboxgl from "mapbox-gl";
   export = mapboxgl;
 }

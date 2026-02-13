@@ -546,7 +546,7 @@ function VendorOrdersInner() {
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{normText(m.name)}</div>
                           <div className="mt-0.5 text-xs text-slate-500">
-                            {money(m.price)} Â· {m.available ? "Available" : "Hidden"} Â· {m.sold_out ? "Sold out" : "In stock"}
+                            {money(m.price)} · {m.available ? "Available" : "Hidden"} · {m.sold_out ? "Sold out" : "In stock"}
                           </div>
                         </div>
 

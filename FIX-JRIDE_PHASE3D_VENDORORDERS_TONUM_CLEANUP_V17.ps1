@@ -1,4 +1,4 @@
-﻿# FIX-JRIDE_PHASE3D_VENDORORDERS_TONUM_CLEANUP_V17.ps1
+# FIX-JRIDE_PHASE3D_VENDORORDERS_TONUM_CLEANUP_V17.ps1
 # Cleans corrupted toNum() function containing literal \r\n text.
 # Backup before patch. UTF-8 no BOM.
 

@@ -1,4 +1,4 @@
-﻿// app/request/confirm-fare/page.tsx
+// app/request/confirm-fare/page.tsx
 "use client";
 import { useSearchParams, useRouter } from "next/navigation";
 

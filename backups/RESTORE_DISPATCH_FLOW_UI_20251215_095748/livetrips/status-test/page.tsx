@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import { TripStatusButtons } from "../_components/TripStatusButtons";

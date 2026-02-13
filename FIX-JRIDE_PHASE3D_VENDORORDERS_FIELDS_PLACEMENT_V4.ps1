@@ -1,4 +1,4 @@
-﻿# FIX-JRIDE_PHASE3D_VENDORORDERS_FIELDS_PLACEMENT_V4.ps1
+# FIX-JRIDE_PHASE3D_VENDORORDERS_FIELDS_PLACEMENT_V4.ps1
 # PHASE_3D_TAKEOUT_COORDS_FIX
 # Fix: remove misplaced coord fields inside schema-safe insert retry block, then insert into createPayload object.
 # Backup before patch. UTF-8 no BOM. No auth/wallet/schema edits.

@@ -1,4 +1,4 @@
-﻿---- app\api\admin\vendor\settle-wallet\route.ts : L65 ----
+---- app\api\admin\vendor\settle-wallet\route.ts : L65 ----
 
     const body = await req.json().catch(() => ({}));
     const vendor_id = String(body?.vendor_id || "");

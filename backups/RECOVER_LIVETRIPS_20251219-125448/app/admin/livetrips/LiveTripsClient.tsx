@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 function tripKey(t: any): string {
  if (!t) return "";
@@ -558,10 +558,10 @@ try {
  <div key={z.zone_id} className="rounded-lg border p-3">
  <div className="flex items-center justify-between">
  <div className="font-semibold">{z.zone_name}</div>
- <div className="text-xs text-gray-600">{z.status || "â€”"}</div>
+ <div className="text-xs text-gray-600">{z.status || "-"}</div>
  </div>
  <div className="text-xs text-gray-600">
- Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "â€”"}
+ Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "-"}
  </div>
  </div>
  ))}
@@ -615,22 +615,22 @@ try {
  onClick={() => setSelectedTripId(id)}
  >
  <td className="p-2 font-medium">
- {t.booking_code || "â€”"}
+ {t.booking_code || "-"}
  {isProblem ? (
  <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">
  PROBLEM
  </span>
  ) : null}
  </td>
- <td className="p-2">{t.passenger_name || "â€”"}</td>
- <td className="p-2">{t.pickup_label || "â€”"}</td>
- <td className="p-2">{t.dropoff_label || "â€”"}</td>
+ <td className="p-2">{t.passenger_name || "-"}</td>
+ <td className="p-2">{t.pickup_label || "-"}</td>
+ <td className="p-2">{t.dropoff_label || "-"}</td>
  <td className="p-2">
  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
- {s || "â€”"}
+ {s || "-"}
  </span>
  </td>
- <td className="p-2">{t.zone || t.town || "â€”"}</td>
+ <td className="p-2">{t.zone || t.town || "-"}</td>
  <td className="p-2">
  {/* Minimal inline status actions */}
  <div className="flex flex-wrap gap-2 items-center">
@@ -717,7 +717,7 @@ try {
  <option value="">Select driver</option>
  {drivers.map((d, idx) => {
  const id = String(d.driver_id || "");
- const label = `${d.name || "Driver"} ${d.town ? `â€” ${d.town}` : ""} ${d.status ? `â€” ${d.status}` : ""}`.trim();
+ const label = `${d.name || "Driver"} ${d.town ? `- ${d.town}` : ""} ${d.status ? `- ${d.status}` : ""}`.trim();
  return (
  <option key={id || idx} value={id}>
  {label}

@@ -1,8 +1,8 @@
-﻿---- components\components\PaymentMethodModal.tsx : L29 ----
+---- components\components\PaymentMethodModal.tsx : L29 ----
       setWalletBalance(userData.wallet_balance || 0);
       setRewardPoints(userData.reward_points || 0);
 
-      // Calculate GCash fees (2.9% + Ã¢â€šÂ±15)
+      // Calculate GCash fees (2.9% + Ã¢â€š±15)
       const percentageFee = rideAmount * 0.029;
       const fixedFee = 15;
       setGCashFees({
@@ -47,7 +47,7 @@ onConfirm(selectedMethod);
               <i className="ri-alert-line text-yellow-600 mt-0.5"></i>
               <div>
                 <p className="text-sm font-medium text-yellow-800 mb-1">
-                  Ã¢Å¡Â Ã¯Â¸Â Note: Paying via GCash includes processing fees charged by our payment partner.
+                  Ã¢Å¡ Ã¯¸ Note: Paying via GCash includes processing fees charged by our payment partner.
                 </p>
                 <p className="text-xs text-yellow-700">
                   To avoid this, you may pay cash directly to your driver.
@@ -56,7 +56,7 @@ onConfirm(selectedMethod);
               onClick={handleGCashConfirm}
               className="w-full bg-blue-500 text-white py-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors"
             >
-              Proceed with GCash Payment - Ã¢â€šÂ±{totalGCashCharge.toFixed(2)}
+              Proceed with GCash Payment - Ã¢â€š±{totalGCashCharge.toFixed(2)}
             </button>
             
             <button
@@ -80,11 +80,11 @@ onConfirm(selectedMethod);
       Coming soon
 
 ---- components\components\PaymentMethodModal.tsx : L317 ----
-              <span className="font-medium">Ã¢â€šÂ±{rideAmount.toFixed(2)} (No fees)</span>
+              <span className="font-medium">Ã¢â€š±{rideAmount.toFixed(2)} (No fees)</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-blue-600">Ã°Å¸â€œÂ± GCash:</span>
-              <span className="font-medium">Ã¢â€šÂ±{totalGCashCharge.toFixed(2)} (Includes fees)</span>
+              <span className="text-blue-600">Ã°Å¸"± GCash:</span>
+              <span className="font-medium">Ã¢â€š±{totalGCashCharge.toFixed(2)} (Includes fees)</span>
             </div>
             <div className="flex justify-between">
 

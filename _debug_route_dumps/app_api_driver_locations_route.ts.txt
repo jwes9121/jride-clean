@@ -1,4 +1,4 @@
-﻿----- app\api\driver_locations\route.ts -----
+----- app\api\driver_locations\route.ts -----
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 

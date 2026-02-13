@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { createContext, useContext, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 type Toast = { id: number; title?: string; message: string; type?: "success"|"error"|"info" };

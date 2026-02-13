@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Minimal Supabase Database typings placeholder.
  * Replace with generated types when ready, but this unblocks TypeScript.
  */

@@ -1,4 +1,4 @@
-﻿import LiveTripsClient from "./LiveTripsClient";
+import LiveTripsClient from "./LiveTripsClient";
 
 // ✅ ADMIN PC OPS WRAPPER
 // LEFT  = OPS (Zone load, KPIs, trip table inside LiveTripsClient)

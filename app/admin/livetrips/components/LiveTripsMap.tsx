@@ -733,13 +733,13 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
         el.style.boxShadow = "0 0 0 1px rgba(0,0,0,0.10)";
         el.style.transform = "translate(-50%, -50%)";
         el.style.zIndex = "30"; // keep above polylines
-        el.title = `${d?.name ?? "Driver"}${d?.town ? " â€” " + d.town : ""}${d?.status ? " â€” " + d.status : ""}`;
+        el.title = `${d?.name ?? "Driver"}${d?.town ? " - " + d.town : ""}${d?.status ? " - " + d.status : ""}`;
         marker = new mapboxgl.Marker(el).setLngLat(pos).addTo(map);
       } else {
         marker.setLngLat(pos);
         const el = marker.getElement() as HTMLElement;
         el.style.backgroundColor = color.bg;
-        el.title = `${d?.name ?? "Driver"}${d?.town ? " â€” " + d.town : ""}${d?.status ? " â€” " + d.status : ""}`;
+        el.title = `${d?.name ?? "Driver"}${d?.town ? " - " + d.town : ""}${d?.status ? " - " + d.status : ""}`;
       }
 
       next[id] = marker;
@@ -1211,7 +1211,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Â· {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  · {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1243,7 +1243,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  Â·  STUCK" : ""}
+                  {selectedOverview.isStuck ? "  ·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">

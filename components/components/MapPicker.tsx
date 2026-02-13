@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -246,9 +246,9 @@ export default function MapPicker({
 
           {/* Instructions */}
           <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white p-3 rounded-lg text-xs max-w-48">
-            <p className="mb-1">Ã°Å¸â€œÂ Drag to move around Ifugao</p>
-            <p className="mb-1">Ã°Å¸â€˜â€  Tap to pin {isSignupMode ? 'home' : (pinColor === 'green' ? 'pickup' : 'destination')} location</p>
-            <p>Ã°Å¸â€Â Use controls to zoom</p>
+            <p className="mb-1">Ã°Å¸" Drag to move around Ifugao</p>
+            <p className="mb-1">Ã°Å¸'â€  Tap to pin {isSignupMode ? 'home' : (pinColor === 'green' ? 'pickup' : 'destination')} location</p>
+            <p>Ã°Å¸" Use controls to zoom</p>
           </div>
         </div>
 
@@ -266,7 +266,7 @@ export default function MapPicker({
                   </p>
                   <p className="text-xs text-gray-600 mt-1">{selectedLocation.address}</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    Ã°Å¸â€œÂ {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
+                    Ã°Å¸" {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
                   </p>
                 </div>
               </div>

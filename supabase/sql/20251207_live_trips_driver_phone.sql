@@ -1,4 +1,4 @@
-﻿-- Extend admin_get_live_trips_page_data with driver_name + driver_phone
+-- Extend admin_get_live_trips_page_data with driver_name + driver_phone
 -- Assumes:
 --   public.bookings (id, booking_code, passenger_name, town, status,
 --                    pickup_lat, pickup_lng, dropoff_lat, dropoff_lng,

@@ -1,4 +1,4 @@
-﻿// auth.config.ts
+// auth.config.ts
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 

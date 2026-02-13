@@ -707,7 +707,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       zoom: 13,
     });
 
-    mapRef.current = map;
+    mapRef.current = map;
     // FOLLOW_DRIVER_ONLY_PATCH_ROBUST: stop following if user manually moves the map
     const stopFollow = () => { userInteractingRef.current = true; followRef.current = false; };
     map.on("dragstart", stopFollow);
@@ -1078,7 +1078,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â·{" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚·{" "}
                       {s.reason}
                     </div>
                   )}
@@ -1110,7 +1110,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? " ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· STUCK" : ""}
+                  {selectedOverview.isStuck ? " ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚· STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1140,7 +1140,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                 <span className="font-medium">
                   {selectedOverview.lastUpdate
                     ? String(selectedOverview.lastUpdate)
-                    : "ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â"}
+                    : "ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â‚¬Å¡Ã‚¬Ãƒ¢Ã¢â€š¬Ã‚"}
                 </span>
               </div>
             </div>

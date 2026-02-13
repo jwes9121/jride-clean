@@ -1,4 +1,4 @@
-﻿import ReassignAuditClient from "./ui/ReassignAuditClient";
+import ReassignAuditClient from "./ui/ReassignAuditClient";
 
 export const dynamic = "force-dynamic";
 

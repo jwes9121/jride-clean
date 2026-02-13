@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$BaseUrl = "https://app.jride.net",
   [Parameter(Mandatory=$true)][string]$BookingCode
 )

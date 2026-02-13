@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React from "react";
 type Props = { onRefresh: () => void; ridesCount: number; driversOnline: number; driversTotal: number; };
 export default function LiveTripsHeader({ onRefresh, ridesCount, driversOnline, driversTotal }: Props) {

@@ -1,4 +1,4 @@
-﻿param()
+param()
 
 # --------- Load Supabase env from .env.local (no manual edits) ----------
 $envFile = Join-Path (Get-Location) ".env.local"

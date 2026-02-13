@@ -219,7 +219,7 @@ export async function POST(req: Request) {
   const limit = Math.max(1, Math.min(300, Number(body?.limit ?? 80) || 80));
   const dryRun = !!body?.dry_run;
 
-  // Only touch active bookings (donâ€™t mutate completed/cancelled history)
+  // Only touch active bookings (don't mutate completed/cancelled history)
   const ACTIVE = ["pending", "assigned", "on_the_way", "arrived", "enroute", "on_trip", "requested"];
 
   // Target likely-takeout rows:

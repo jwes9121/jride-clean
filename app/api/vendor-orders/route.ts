@@ -588,7 +588,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
 
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
-    // bookings has 'town' column (no 'zone' column) â€” keep town only
+    // bookings has 'town' column (no 'zone' column) - keep town only
 
     // Likely required / core
 

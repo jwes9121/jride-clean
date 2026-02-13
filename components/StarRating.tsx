@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo } from "react";
 import type { RatingKey } from "@/types/survey";
@@ -6,7 +6,7 @@ import type { RatingKey } from "@/types/survey";
 export type StarRatingProps = {
   /** Which category this rating is for (kept so parent knows what changed) */
   category: RatingKey;
-  /** Current value 0Ã¢â‚¬â€œ5 */
+  /** Current value 0Ã¢â‚¬"5 */
   value: number;
   /** Notify parent when the value changes */
   onChange: (next: number) => void;

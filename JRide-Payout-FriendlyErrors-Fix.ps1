@@ -1,4 +1,4 @@
-﻿param()
+param()
 
 function Fail($msg) { throw $msg }
 

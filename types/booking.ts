@@ -1,4 +1,4 @@
-﻿// types/booking.ts
+// types/booking.ts
 export type Booking = {
   id: string;
   passenger?: string;

@@ -1,1 +1,1 @@
-﻿export { supabaseAdmin } from "./supabaseAdmin";
+export { supabaseAdmin } from "./supabaseAdmin";

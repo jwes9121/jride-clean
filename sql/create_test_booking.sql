@@ -1,4 +1,4 @@
-﻿-- CREATE TEST BOOKING (NO passenger_phone COLUMN)
+-- CREATE TEST BOOKING (NO passenger_phone COLUMN)
 insert into public.bookings (
   booking_code,
   status,

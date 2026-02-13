@@ -364,7 +364,7 @@ export default function LiveTripsClient() {
     await loadPage();
   }
 
-  const showThresholds = `Stuck watcher thresholds: on_the_way Ã¢â€°Â¥ ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip Ã¢â€°Â¥ ${STUCK_THRESHOLDS_MIN.on_trip} min`;
+  const showThresholds = `Stuck watcher thresholds: on_the_way Ã¢â€°¥ ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip Ã¢â€°¥ ${STUCK_THRESHOLDS_MIN.on_trip} min`;
 
   return (
     <div className="p-4">
@@ -376,7 +376,7 @@ export default function LiveTripsClient() {
         <div className="text-xs text-gray-600 text-right">
           <div className="font-medium">Stuck watcher thresholds</div>
           <div>
-            on_the_way Ã¢â€°Â¥ {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip Ã¢â€°Â¥ {STUCK_THRESHOLDS_MIN.on_trip} min
+            on_the_way Ã¢â€°¥ {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip Ã¢â€°¥ {STUCK_THRESHOLDS_MIN.on_trip} min
           </div>
         </div>
       </div>
@@ -421,10 +421,10 @@ export default function LiveTripsClient() {
           <div key={z.zone_id} className="rounded-lg border p-3">
             <div className="flex items-center justify-between">
               <div className="font-semibold">{z.zone_name}</div>
-              <div className="text-xs text-gray-600">{z.status || "Ã¢â‚¬â€"}</div>
+              <div className="text-xs text-gray-600">{z.status || "Ã¢â‚¬""}</div>
             </div>
             <div className="text-xs text-gray-600">
-              Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "Ã¢â‚¬â€"}
+              Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "Ã¢â‚¬""}
             </div>
           </div>
         ))}
@@ -469,18 +469,18 @@ export default function LiveTripsClient() {
                         onClick={() => setSelectedTripId(id)}
                       >
                         <td className="p-2 font-medium">
-                          {t.booking_code || "Ã¢â‚¬â€"}
+                          {t.booking_code || "Ã¢â‚¬""}
                           {isProblem ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">PROBLEM</span>
                           ) : null}
                         </td>
-                        <td className="p-2">{t.passenger_name || "Ã¢â‚¬â€"}</td>
-                        <td className="p-2">{t.pickup_label || "Ã¢â‚¬â€"}</td>
-                        <td className="p-2">{t.dropoff_label || "Ã¢â‚¬â€"}</td>
+                        <td className="p-2">{t.passenger_name || "Ã¢â‚¬""}</td>
+                        <td className="p-2">{t.pickup_label || "Ã¢â‚¬""}</td>
+                        <td className="p-2">{t.dropoff_label || "Ã¢â‚¬""}</td>
                         <td className="p-2">
-                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{s || "Ã¢â‚¬â€"}</span>
+                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{s || "Ã¢â‚¬""}</span>
                         </td>
-                        <td className="p-2">{t.zone || t.town || "Ã¢â‚¬â€"}</td>
+                        <td className="p-2">{t.zone || t.town || "Ã¢â‚¬""}</td>
                         <td className="p-2">
                           <div className="flex flex-wrap gap-2 items-center">
                             <button
@@ -538,7 +538,7 @@ export default function LiveTripsClient() {
                   <option value="">Select driver</option>
                   {drivers.map((d, idx) => {
                     const did = String(d.driver_id || "");
-                    const label = `${d.name || "Driver"} ${d.town ? `Ã¢â‚¬â€ ${d.town}` : ""} ${d.status ? `Ã‚Â· ${d.status}` : ""}`.trim();
+                    const label = `${d.name || "Driver"} ${d.town ? `Ã¢â‚¬" ${d.town}` : ""} ${d.status ? `Ã‚· ${d.status}` : ""}`.trim();
                     return <option key={did || idx} value={did}>{label}</option>;
                   })}
                 </select>

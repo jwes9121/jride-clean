@@ -1,4 +1,4 @@
-﻿import StuckTripsClient from "./ui/StuckTripsClient";
+import StuckTripsClient from "./ui/StuckTripsClient";
 export const dynamic = "force-dynamic";
 
 export default function Page() {

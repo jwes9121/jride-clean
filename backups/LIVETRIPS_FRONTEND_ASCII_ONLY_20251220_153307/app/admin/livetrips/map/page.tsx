@@ -1,4 +1,4 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import BookingMapClient from "./BookingMapClient";
 
 const supabaseUrl = process.env.SUPABASE_URL!;

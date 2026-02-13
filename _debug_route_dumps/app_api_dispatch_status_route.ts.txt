@@ -1,4 +1,4 @@
-﻿----- app\api\dispatch\status\route.ts -----
+----- app\api\dispatch\status\route.ts -----
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "../../../../auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";

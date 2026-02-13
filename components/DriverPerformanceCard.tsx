@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -14,7 +14,7 @@ const DriverPerformanceCard: React.FC<DriverPerformanceCardProps> = ({
   useEffect(() => {
     if (!driverId) return;
 
-    // Example fetch Ã¢â‚¬â€ replace with your actual Supabase/Backend call
+    // Example fetch Ã¢â‚¬" replace with your actual Supabase/Backend call
     const fetchPerformance = async () => {
       try {
         const response = await fetch(

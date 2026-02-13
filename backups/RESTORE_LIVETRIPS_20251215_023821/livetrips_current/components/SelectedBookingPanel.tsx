@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import type { LiveTrip } from "../actions/getLiveTrips";
 import LiveTripMapClient from "../map/LiveTripMapClient";

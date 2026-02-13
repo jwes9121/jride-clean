@@ -1,4 +1,4 @@
-﻿param()
+param()
 
 function Fail($m){ throw $m }
 function EnsureDir($p){ if(-not (Test-Path $p)){ New-Item -ItemType Directory -Force -Path $p | Out-Null } }

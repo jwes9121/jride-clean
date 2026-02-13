@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 // Wrapper that adapts whatever LiveTripsClient sends
 // into the `booking` object expected by BookingMapClient.

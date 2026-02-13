@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 interface FareDispatcherReviewProps {
   isOpen: boolean;
@@ -57,7 +57,7 @@ export default function FareDispatcherReview({
             </div>
             <div className="col-span-2">
               <span className="text-gray-600">Route:</span>
-              <p className="font-medium">{fareData.pickupLocation} Ã¢â€ â€™ {fareData.destinationLocation}</p>
+              <p className="font-medium">{fareData.pickupLocation} Ã¢â€ ' {fareData.destinationLocation}</p>
             </div>
           </div>
         </div>
@@ -74,12 +74,12 @@ export default function FareDispatcherReview({
               
               <div className="flex justify-between">
                 <span className="text-gray-600">Base {fareData.serviceType} fare:</span>
-                <span className="font-medium">Ã¢â€šÂ±{fareData.originalFare}</span>
+                <span className="font-medium">Ã¢â€š±{fareData.originalFare}</span>
               </div>
               
               <div className="flex justify-between">
                 <span className="text-gray-600">System recommended:</span>
-                <span className="font-medium text-blue-600">Ã¢â€šÂ±{recommendedFare}</span>
+                <span className="font-medium text-blue-600">Ã¢â€š±{recommendedFare}</span>
               </div>
               
               <div className="flex justify-between">
@@ -88,7 +88,7 @@ export default function FareDispatcherReview({
                   Math.abs(fareVariance) <= 20 ? 'text-green-600' : 
                   Math.abs(fareVariance) <= 40 ? 'text-orange-600' : 'text-red-600'
                 }`}>
-                  Ã¢â€šÂ±{fareData.proposedFare}
+                  Ã¢â€š±{fareData.proposedFare}
                 </span>
               </div>
               
@@ -144,7 +144,7 @@ export default function FareDispatcherReview({
             onClick={() => onApprove(true)}
             className="w-full bg-green-500 text-white py-4 rounded-xl font-semibold hover:bg-green-600 transition-colors"
           >
-            Approve Ã¢â€šÂ±{fareData.proposedFare}
+            Approve Ã¢â€š±{fareData.proposedFare}
           </button>
           
           <div className="grid grid-cols-2 gap-3">
@@ -152,7 +152,7 @@ export default function FareDispatcherReview({
               onClick={() => onApprove(true, recommendedFare)}
               className="bg-blue-500 text-white py-3 rounded-xl font-semibold hover:bg-blue-600 transition-colors text-sm"
             >
-              Adjust to Ã¢â€šÂ±{recommendedFare}
+              Adjust to Ã¢â€š±{recommendedFare}
             </button>
             
             <button

@@ -1,4 +1,4 @@
-﻿export type TripEtaPhase = "to_pickup" | "on_trip";
+export type TripEtaPhase = "to_pickup" | "on_trip";
 
 export interface LatLng {
   lat: number;

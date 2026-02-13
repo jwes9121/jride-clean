@@ -1,4 +1,4 @@
-﻿# JRIDE LiveTrips - wire actions to API + refresh page-data + fix trip key mismatch
+# JRIDE LiveTrips - wire actions to API + refresh page-data + fix trip key mismatch
 # - NO UI layout changes
 # - PowerShell only
 # - Creates timestamped backups before edits

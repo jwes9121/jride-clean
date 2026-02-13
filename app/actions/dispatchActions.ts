@@ -1,4 +1,4 @@
-﻿// app/actions/dispatchActions.ts
+// app/actions/dispatchActions.ts
 //
 // Simple client-safe helper used by /admin/livetripss/page.tsx
 // It fetches the latest active booking + driver locations from Supabase

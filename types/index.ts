@@ -1,4 +1,4 @@
-﻿export type TownKey =
+export type TownKey =
   | "Lagawe"
   | "Kiangan"
   | "Banaue"

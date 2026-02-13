@@ -1,4 +1,4 @@
-﻿-- =========================================================
+-- =========================================================
 -- JRide: Zone Capacity View + Refresh Function + Trigger
 -- Creates public.zone_capacity_view used by admin/livetrips
 -- =========================================================

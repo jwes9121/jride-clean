@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -109,7 +109,7 @@ function PlanCard(props: {
               ))}
             </div>
             <div className="mt-2 text-xs opacity-70">
-              Photos are automatically resized & compressed so uploads wonâ€™t slow phones.
+              Photos are automatically resized & compressed so uploads won't slow phones.
             </div>
           </div>
         )}
@@ -206,7 +206,7 @@ export default function VendorComparePage() {
           <div>
             <div className="text-3xl md:text-4xl font-semibold">JRide Vendor</div>
             <div className="mt-2 text-sm md:text-base opacity-75">
-              Start free. Upgrade when youâ€™re ready to manage your menu & photos yourself.
+              Start free. Upgrade when you're ready to manage your menu & photos yourself.
             </div>
           </div>
           <Link
@@ -219,7 +219,7 @@ export default function VendorComparePage() {
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <PlanCard
-            title="Vendor A â€” Free"
+            title="Vendor A - Free"
             plan="FREE"
             badge="Pilot / Starter"
             subtitle="Best for listing your best sellers fast"
@@ -232,7 +232,7 @@ export default function VendorComparePage() {
             menu={freeMenu}
           />
           <PlanCard
-            title="Vendor B â€” Premium"
+            title="Vendor B - Premium"
             plan="PREMIUM"
             badge="Recommended â­"
             subtitle="Best for growing stores"

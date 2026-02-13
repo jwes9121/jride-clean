@@ -1,4 +1,4 @@
-﻿-- Run this in Supabase SQL editor (for BOTH local and prod as needed)
+-- Run this in Supabase SQL editor (for BOTH local and prod as needed)
 -- This keeps only the latest location per driver_id
 
 CREATE OR REPLACE VIEW public.driver_locations_latest AS

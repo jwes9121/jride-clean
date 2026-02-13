@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "../../../../auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 

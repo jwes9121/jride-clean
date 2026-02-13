@@ -94,7 +94,7 @@ export async function GET(req: Request) {
 
         const label =
           (name ? name : shortId(id)) +
-          (town ? ` â€” ${town}` : "") +
+          (town ? ` - ${town}` : "") +
           ` (${id})`;
 
         const nameLower = name.toLowerCase();

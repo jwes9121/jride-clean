@@ -12,17 +12,17 @@ function sanitizeText(v: any) {
     .replace(/Ã¢â‚¬â€�/g, '"')
     .replace(/Ã¢â‚¬Å“/g, '"')
     .replace(/Ã¢â‚¬â„¢/g, "'")
-    .replace(/Ã¢â‚¬â€œ/g, "-")
+    .replace(/Ã¢â‚¬"/g, "-")
     .replace(/Ã¢â‚¬â€�/g, "-")
-    .replace(/Ã¢â‚¬Â¦/g, "...")
+    .replace(/Ã¢â‚¬¦/g, "...")
     .replace(/Ã¢â‚¬â€?/g, "-");
 
   // Single-layer mojibake
   s = s
-    .replace(/â€”/g, "-")
-    .replace(/â€“/g, "-")
-    .replace(/â€™/g, "'")
-    .replace(/â€œ/g, '"')
+    .replace(/-/g, "-")
+    .replace(/-/g, "-")
+    .replace(/'/g, "'")
+    .replace(/"/g, '"')
     .replace(/â€�/g, '"')
     .replace(/â€¦/g, "...");
 

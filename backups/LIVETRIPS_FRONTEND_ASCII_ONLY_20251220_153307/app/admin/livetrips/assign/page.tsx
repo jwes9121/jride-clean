@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +84,7 @@ export default function AdminLiveTripsAssignPage() {
  <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
  <div>
  <h1 className="text-xl md:text-2xl font-semibold">
- Admin â€“ Live Trips (Pending & Assign)
+ Admin - Live Trips (Pending & Assign)
  </h1>
  <p className="text-sm text-gray-600">
  View pending bookings and assign the nearest online driver using{" "}

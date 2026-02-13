@@ -354,9 +354,9 @@ export default function FinancialSummaryPage() {
           Current: <b>{range.label}</b>
           {raw ? (
             <>
-              {" "}Â· Filtered rows: <b>{filtered.trips.length}</b> / {tripsAll.length}
-              {" "}Â· Date field: <b>{filtered.dateField || "N/A"}</b>
-              {filtered.missingDates ? <> Â· Missing dates: <b>{filtered.missingDates}</b></> : null}
+              {" "}· Filtered rows: <b>{filtered.trips.length}</b> / {tripsAll.length}
+              {" "}· Date field: <b>{filtered.dateField || "N/A"}</b>
+              {filtered.missingDates ? <> · Missing dates: <b>{filtered.missingDates}</b></> : null}
             </>
           ) : null}
         </div>

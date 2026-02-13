@@ -46,7 +46,7 @@ export default function TownsAdminPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Admin Â· Towns</h1>
+      <h1 className="text-2xl font-bold">Admin · Towns</h1>
 
       <div className="flex gap-2 items-end">
         <label className="text-sm">

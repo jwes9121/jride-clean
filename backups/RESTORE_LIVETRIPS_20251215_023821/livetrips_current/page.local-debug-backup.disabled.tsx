@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import BookingMapClient from "./map/BookingMapClient";
 
 export default function LiveTripsPage() {

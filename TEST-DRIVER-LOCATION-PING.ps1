@@ -1,4 +1,4 @@
-﻿# TEST-DRIVER-LOCATION-PING.ps1
+# TEST-DRIVER-LOCATION-PING.ps1
 # Sends a heartbeat ping to your local server (npm run dev must be running)
 
 param(

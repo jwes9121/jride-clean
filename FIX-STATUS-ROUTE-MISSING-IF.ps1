@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 $root = "C:\Users\jwes9\Desktop\jride-clean-fresh"
 $path = Join-Path $root "app\api\dispatch\status\route.ts"

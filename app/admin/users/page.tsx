@@ -1,4 +1,4 @@
-﻿import * as React from "react";
+import * as React from "react";
 import UsersManager from "./users-manager";
 export const dynamic = "force-dynamic";
 export default function AdminUsersPage(): JSX.Element {

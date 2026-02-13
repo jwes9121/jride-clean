@@ -1,4 +1,4 @@
-﻿---- app\api\admin\driver-payouts\route.ts : L126 ----
+---- app\api\admin\driver-payouts\route.ts : L126 ----
     const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
 
     const cur = await restGetOneById(SUPABASE_URL, SERVICE_ROLE, id);

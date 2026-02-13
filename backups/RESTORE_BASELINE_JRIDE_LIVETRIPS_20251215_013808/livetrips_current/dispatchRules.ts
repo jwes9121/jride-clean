@@ -1,4 +1,4 @@
-﻿export type BookingStatus =
+export type BookingStatus =
   | "pending"
   | "assigned"
   | "accepted"

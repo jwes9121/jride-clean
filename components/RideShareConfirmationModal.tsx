@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 
@@ -74,7 +74,7 @@ export default function RideShareConfirmationModal({
             <li>Pickup: <span className="text-gray-800">{pickup}</span></li>
             <li>Dropoff: <span className="text-gray-800">{dropoff}</span></li>
             {price !== undefined ? (
-              <li>Fare: <span className="text-gray-800">Ã¢â€šÂ±{price}</span></li>
+              <li>Fare: <span className="text-gray-800">Ã¢â€š±{price}</span></li>
             ) : null}
           </ul>
           {ride?.id ? (

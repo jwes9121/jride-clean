@@ -1,4 +1,4 @@
-﻿----- app\api\admin\driver-locations\route.ts -----
+----- app\api\admin\driver-locations\route.ts -----
 // app/api/admin/driver-locations/route.ts
 // Admin view of driver_locations table in Supabase
 

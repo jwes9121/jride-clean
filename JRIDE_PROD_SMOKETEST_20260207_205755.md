@@ -1,4 +1,4 @@
-﻿# JRIDE PROD SMOKETEST
+# JRIDE PROD SMOKETEST
 
 Generated: 2026-02-07 20:58:04
 Base: https://app.jride.net

@@ -158,7 +158,7 @@ export async function POST(req: Request) {
         q = q.eq("zone_id", bookingRow.zone_id);
       }
 
-      // We canâ€™t reliably know whether drivers primary key is `id` or `driver_id`,
+      // We can't reliably know whether drivers primary key is `id` or `driver_id`,
       // so we query both columns and match against recentIds.
       const { data: drsZone, error: drErrZone } = await q;
       if (drErrZone) {

@@ -1,4 +1,4 @@
-﻿---- app\wallet\page.tsx : L16 ----
+---- app\wallet\page.tsx : L16 ----
 
 interface Transaction {
   id: string;
@@ -57,7 +57,7 @@ interface Transaction {
 
   const formatAmount = (amount: number, type: string) => {
     const prefix = ['credit', 'topup'].includes(type) ? '+' : '-';
-    return `${prefix}Ã¢â€šÂ±${Math.abs(amount).toFixed(2)}`;
+    return `${prefix}Ã¢â€š±${Math.abs(amount).toFixed(2)}`;
   };
 
 
@@ -82,7 +82,7 @@ interface Transaction {
 ---- app\wallet\page.tsx : L273 ----
                   <div className="text-green-600 text-sm font-medium">Total Income</div>
                   <div className="text-xl font-bold text-green-700">
-                    Ã¢â€šÂ±{transactions
+                    Ã¢â€š±{transactions
                       .filter(t => ['credit', 'topup', 'referral_bonus'].includes(t.type) && t.status === 'completed')
                       .reduce((sum, t) => sum + t.amount, 0)
                       .toFixed(2)}
@@ -91,7 +91,7 @@ interface Transaction {
 ---- app\wallet\page.tsx : L282 ----
                   <div className="text-red-600 text-sm font-medium">Total Spent</div>
                   <div className="text-xl font-bold text-red-700">
-                    Ã¢â€šÂ±{transactions
+                    Ã¢â€š±{transactions
                       .filter(t => ['debit', 'payout', 'ride', 'errand', 'vendor_order'].includes(t.type) && t.status === 'completed')
                       .reduce((sum, t) => sum + t.amount, 0)
                       .toFixed(2)}

@@ -1,4 +1,4 @@
-﻿import LiveTripsClient from "./LiveTripsClient";
+import LiveTripsClient from "./LiveTripsClient";
 
 export default function LiveTripsPage() {
   // All data is fetched client-side via /api/admin/livetrips/page-data

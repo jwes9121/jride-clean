@@ -1,4 +1,4 @@
-﻿export type TownName = "Lagawe" | "Kiangan" | "Banaue" | "Lamut" | "Hingyon";
+export type TownName = "Lagawe" | "Kiangan" | "Banaue" | "Lamut" | "Hingyon";
 
 /**
  * Official town colors (hex) – synced with your getZoneMeta Tailwind classes:

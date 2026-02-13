@@ -298,8 +298,8 @@ export default function OpsIncidentLogPage() {
 
         {raw ? (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-            Snapshot rows: <b>{trips.length}</b> Â· Date field used (best-effort): <b>{buckets.usedDateField || "N/A"}</b>
-            {buckets.missingDates ? <> Â· Rows missing dates: <b>{buckets.missingDates}</b></> : null}
+            Snapshot rows: <b>{trips.length}</b> · Date field used (best-effort): <b>{buckets.usedDateField || "N/A"}</b>
+            {buckets.missingDates ? <> · Rows missing dates: <b>{buckets.missingDates}</b></> : null}
           </div>
         ) : (
           <div style={{ marginTop: 10, fontSize: 13, opacity: 0.7 }}>

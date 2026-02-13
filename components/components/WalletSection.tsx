@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useState } from 'react';
@@ -15,7 +15,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
   // Ensure values are numbers and handle undefined/null cases
   const safeWalletBalance = typeof walletBalance === 'number' ? walletBalance : 0;
   const safeRewardPoints = typeof rewardPoints === 'number' ? rewardPoints : 0;
-  const pointsValue = safeRewardPoints; // 1 point = Ã¢â€šÂ±1
+  const pointsValue = safeRewardPoints; // 1 point = Ã¢â€š±1
 
   return (
     <div className="bg-gradient-to-br from-orange-400 to-green-400 rounded-2xl p-6 text-white relative overflow-hidden">
@@ -31,7 +31,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
           <div>
             <h3 className="text-lg font-semibold opacity-90">J-Ride Wallet</h3>
             <div className="flex items-baseline space-x-1">
-              <span className="text-3xl font-bold">Ã¢â€šÂ±{safeWalletBalance.toFixed(2)}</span>
+              <span className="text-3xl font-bold">Ã¢â€š±{safeWalletBalance.toFixed(2)}</span>
             </div>
           </div>
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
@@ -54,7 +54,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
             </div>
             <div className="text-right">
               <div className="text-xl font-bold">{safeRewardPoints}</div>
-              <div className="text-xs opacity-80">Ã¢â€°Ë† Ã¢â€šÂ±{pointsValue.toFixed(2)} credit</div>
+              <div className="text-xs opacity-80">Ã¢â€°Ë† Ã¢â€š±{pointsValue.toFixed(2)} credit</div>
             </div>
           </div>
 
@@ -62,11 +62,11 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
             <div className="bg-white/10 rounded-lg p-3 mt-3">
               <h4 className="font-semibold text-sm mb-2">How Reward Points Work:</h4>
               <ul className="text-xs space-y-1 opacity-90">
-                <li>Ã¢â‚¬Â¢ Earn 1 point per Ã¢â€šÂ±30 spent</li>
-                <li>Ã¢â‚¬Â¢ 1 point = Ã¢â€šÂ±1 ride credit</li>
-                <li>Ã¢â‚¬Â¢ Use points for free rides when balance is equal or more than fare</li>
-                <li>Ã¢â‚¬Â¢ Redeem only if points Ã¢â€°Â¥ full fare amount</li>
-                <li>Ã¢â‚¬Â¢ No partial payments allowed</li>
+                <li>Ã¢â‚¬¢ Earn 1 point per Ã¢â€š±30 spent</li>
+                <li>Ã¢â‚¬¢ 1 point = Ã¢â€š±1 ride credit</li>
+                <li>Ã¢â‚¬¢ Use points for free rides when balance is equal or more than fare</li>
+                <li>Ã¢â‚¬¢ Redeem only if points Ã¢â€°¥ full fare amount</li>
+                <li>Ã¢â‚¬¢ No partial payments allowed</li>
               </ul>
             </div>
           )}
@@ -78,7 +78,7 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
                 <span className="text-sm font-medium">You can get FREE rides!</span>
               </div>
               <p className="text-xs opacity-80 mt-1">
-                Use {Math.floor(safeRewardPoints / 30)} Ãƒâ€” Ã¢â€šÂ±30 trips with points
+                Use {Math.floor(safeRewardPoints / 30)} Ãƒ- Ã¢â€š±30 trips with points
               </p>
             </div>
           )}
@@ -113,11 +113,11 @@ export default function WalletSection({ walletBalance = 0, rewardPoints = 0 }: W
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-lg font-bold">{Math.floor(safeRewardPoints / 30)}</div>
-                <div className="text-xs opacity-80">Ã¢â€šÂ±30 Trips</div>
+                <div className="text-xs opacity-80">Ã¢â€š±30 Trips</div>
               </div>
               <div>
                 <div className="text-lg font-bold">{Math.floor((safeRewardPoints % 30) / 15)}</div>
-                <div className="text-xs opacity-80">Ã¢â€šÂ±15 Trips</div>
+                <div className="text-xs opacity-80">Ã¢â€š±15 Trips</div>
               </div>
               <div>
                 <div className="text-lg font-bold">{safeRewardPoints % 15}</div>

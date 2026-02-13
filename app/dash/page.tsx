@@ -1,4 +1,4 @@
-﻿// app/dash/page.tsx
+// app/dash/page.tsx
 import { auth } from "@/configs/nextauth";
 
 export default async function DashPage() {

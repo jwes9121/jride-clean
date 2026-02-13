@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 
@@ -127,13 +127,13 @@ export default function PassengerCountVerificationModal({
                     <div className="bg-white/70 p-2 rounded">
                       <div className="flex justify-between">
                         <span>Additional fare:</span>
-                        <span className="font-bold text-orange-700">+Ã¢â€šÂ±{additionalFare}</span>
+                        <span className="font-bold text-orange-700">+Ã¢â€š±{additionalFare}</span>
                       </div>
                     </div>
                   </>
                 ) : (
                   <p className="text-green-800">
-                    Fewer passengers than declared. Fare will be reduced by Ã¢â€šÂ±{Math.abs(additionalFare)}.
+                    Fewer passengers than declared. Fare will be reduced by Ã¢â€š±{Math.abs(additionalFare)}.
                   </p>
                 )}
               </div>

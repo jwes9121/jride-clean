@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import MapClient from "../../components/MapClient"; // app/tricycle-rideshare -> ../../components
 
-export const metadata: Metadata = { title: "Tricycle Rideshare Â· JRide" };
+export const metadata: Metadata = { title: "Tricycle Rideshare · JRide" };
 
 export default function RidesharePage() {
   return (

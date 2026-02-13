@@ -1,4 +1,4 @@
-﻿export type LiveDriver = {
+export type LiveDriver = {
   driver_id: string;
   lat: number;
   lng: number;

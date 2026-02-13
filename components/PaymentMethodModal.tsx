@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -26,7 +26,7 @@ export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmo
       setWalletBalance(userData.wallet_balance || 0);
       setRewardPoints(userData.reward_points || 0);
 
-      // Calculate GCash fees (2.9% + Ã¢â€šÂ±15)
+      // Calculate GCash fees (2.9% + Ã¢â€š±15)
       const percentageFee = rideAmount * 0.029;
       const fixedFee = 15;
       setGCashFees({
@@ -40,7 +40,7 @@ export default function PaymentMethodModal({ isOpen, onClose, onConfirm, rideAmo
   if (!isOpen) return null;
 
   const canUseWallet = walletBalance >= rideAmount;
-  const canUsePoints = rewardPoints >= (rideAmount * 10); // 10 points = Ã¢â€šÂ±1
+  const canUsePoints = rewardPoints >= (rideAmount * 10); // 10 points = Ã¢â€š±1
   const totalGCashCharge = rideAmount + gCashFees.total;
 
   const handleGCashSelect = () => {
@@ -92,25 +92,25 @@ onConfirm(selectedMethod);
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Ride Fare:</span>
-                <span className="font-semibold">Ã¢â€šÂ±{rideAmount.toFixed(2)}</span>
+                <span className="font-semibold">Ã¢â€š±{rideAmount.toFixed(2)}</span>
               </div>
               
               <div className="border-t border-gray-200 pt-3">
                 <div className="text-sm font-medium text-gray-700 mb-2">Processing Fees:</div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-gray-500">2.9% fee:</span>
-                  <span>Ã¢â€šÂ±{gCashFees.percentage.toFixed(2)}</span>
+                  <span>Ã¢â€š±{gCashFees.percentage.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-gray-500">Fixed fee:</span>
-                  <span>Ã¢â€šÂ±{gCashFees.fixed.toFixed(2)}</span>
+                  <span>Ã¢â€š±{gCashFees.fixed.toFixed(2)}</span>
                 </div>
               </div>
               
               <div className="border-t border-gray-200 pt-3">
                 <div className="flex justify-between items-center text-lg font-bold">
                   <span>Total Charge:</span>
-                  <span className="text-blue-600">Ã¢â€šÂ±{totalGCashCharge.toFixed(2)}</span>
+                  <span className="text-blue-600">Ã¢â€š±{totalGCashCharge.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -122,7 +122,7 @@ onConfirm(selectedMethod);
               <i className="ri-alert-line text-yellow-600 mt-0.5"></i>
               <div>
                 <p className="text-sm font-medium text-yellow-800 mb-1">
-                  Ã¢Å¡Â Ã¯Â¸Â Note: Paying via GCash includes processing fees charged by our payment partner.
+                  Ã¢Å¡ Ã¯¸ Note: Paying via GCash includes processing fees charged by our payment partner.
                 </p>
                 <p className="text-xs text-yellow-700">
                   To avoid this, you may pay cash directly to your driver.
@@ -137,7 +137,7 @@ onConfirm(selectedMethod);
               onClick={handleGCashConfirm}
               className="w-full bg-blue-500 text-white py-4 rounded-xl font-semibold hover:bg-blue-600 transition-colors"
             >
-              Proceed with GCash Payment - Ã¢â€šÂ±{totalGCashCharge.toFixed(2)}
+              Proceed with GCash Payment - Ã¢â€š±{totalGCashCharge.toFixed(2)}
             </button>
             
             <button
@@ -160,7 +160,7 @@ onConfirm(selectedMethod);
             <i className="ri-wallet-3-line text-2xl text-green-600"></i>
           </div>
           <h3 className="text-xl font-bold">Choose Payment Method</h3>
-          <p className="text-sm text-gray-600 mt-2">Fare Amount: Ã¢â€šÂ±{rideAmount.toFixed(2)}</p>
+          <p className="text-sm text-gray-600 mt-2">Fare Amount: Ã¢â€š±{rideAmount.toFixed(2)}</p>
         </div>
 
         <div className="space-y-3 mb-6">
@@ -187,7 +187,7 @@ onConfirm(selectedMethod);
                 </div>
               </div>
               <div className="text-right">
-                <div className="font-semibold text-green-600">Ã¢â€šÂ±{rideAmount.toFixed(2)}</div>
+                <div className="font-semibold text-green-600">Ã¢â€š±{rideAmount.toFixed(2)}</div>
                 <div className="text-xs text-gray-600">Final amount</div>
               </div>
             </div>
@@ -220,8 +220,8 @@ onConfirm(selectedMethod);
                 </div>
               </div>
               <div className="text-right">
-                <div className="font-semibold text-blue-600">Ã¢â€šÂ±{totalGCashCharge.toFixed(2)}</div>
-                <div className="text-xs text-gray-600">+Ã¢â€šÂ±{gCashFees.total.toFixed(2)} fees</div>
+                <div className="font-semibold text-blue-600">Ã¢â€š±{totalGCashCharge.toFixed(2)}</div>
+                <div className="text-xs text-gray-600">+Ã¢â€š±{gCashFees.total.toFixed(2)} fees</div>
               </div>
             </div>
           </button>
@@ -250,13 +250,13 @@ onConfirm(selectedMethod);
                     J-Ride Wallet
                   </div>
                   <div className={`text-sm ${canUseWallet ? 'text-gray-600' : 'text-gray-400'}`}>
-                    Balance: Ã¢â€šÂ±{walletBalance.toFixed(2)}
+                    Balance: Ã¢â€š±{walletBalance.toFixed(2)}
                   </div>
                 </div>
               </div>
               <div className="text-right">
                 <div className={`font-semibold ${canUseWallet ? 'text-orange-600' : 'text-gray-400'}`}>
-                  Ã¢â€šÂ±{rideAmount.toFixed(2)}
+                  Ã¢â€š±{rideAmount.toFixed(2)}
                 </div>
                 {!canUseWallet && (
                   <div className="text-xs text-red-500">Insufficient balance</div>
@@ -310,19 +310,19 @@ onConfirm(selectedMethod);
           <div className="text-sm font-medium text-gray-700 mb-3">Payment Method Comparison:</div>
           <div className="space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-green-600">Ã°Å¸â€™Â° Cash:</span>
-              <span className="font-medium">Ã¢â€šÂ±{rideAmount.toFixed(2)} (No fees)</span>
+              <span className="text-green-600">Ã°Å¸'° Cash:</span>
+              <span className="font-medium">Ã¢â€š±{rideAmount.toFixed(2)} (No fees)</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-blue-600">Ã°Å¸â€œÂ± GCash:</span>
-              <span className="font-medium">Ã¢â€šÂ±{totalGCashCharge.toFixed(2)} (Includes fees)</span>
+              <span className="text-blue-600">Ã°Å¸"± GCash:</span>
+              <span className="font-medium">Ã¢â€š±{totalGCashCharge.toFixed(2)} (Includes fees)</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-orange-600">Ã°Å¸â€™Â³ Wallet:</span>
-              <span className="font-medium">Ã¢â€šÂ±{rideAmount.toFixed(2)} (No fees)</span>
+              <span className="text-orange-600">Ã°Å¸'³ Wallet:</span>
+              <span className="font-medium">Ã¢â€š±{rideAmount.toFixed(2)} (No fees)</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-purple-600">Ã°Å¸Å½Â Points:</span>
+              <span className="text-purple-600">Ã°Å¸Å½ Points:</span>
               <span className="font-medium">FREE ({rideAmount * 10} points)</span>
             </div>
           </div>

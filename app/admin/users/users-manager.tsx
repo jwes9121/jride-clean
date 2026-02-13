@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import * as React from "react";
 
 type Row = { email: string; role: "admin" | "dispatcher" | "user"; updated_at: string };

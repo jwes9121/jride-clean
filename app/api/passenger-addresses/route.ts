@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     is_active: true,
   };
 
-  // Insert new address (MVP). (We can add â€œupdate existingâ€ later.)
+  // Insert new address (MVP). (We can add "update existing" later.)
   const { data, error } = await admin
     .from("passenger_addresses")
     .insert(insertRow)

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useMemo } from "react";
 import type { LiveTrip } from "./ProblemTripAlertSounds";

@@ -1,4 +1,4 @@
-﻿// lib/fare.ts
+// lib/fare.ts
 
 export type FareBreakdown = {
   total: number;

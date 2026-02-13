@@ -1,4 +1,4 @@
-﻿# JRIDE Wallet Routes Scan Report
+# JRIDE Wallet Routes Scan Report
 
 Generated: 2026-02-07 06:12:03
 Repo: C:\Users\jwes9\Desktop\jride-clean-fresh

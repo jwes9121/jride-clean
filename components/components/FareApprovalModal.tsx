@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 
@@ -178,7 +178,7 @@ export default function FareApprovalModal({
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-1">
                             <h4 className="font-semibold text-gray-800">
-                              {fare.route_from} Ã¢â€ â€™ {fare.route_to}
+                              {fare.route_from} Ã¢â€ ' {fare.route_to}
                             </h4>
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
                               {getStatusText(status)}
@@ -188,12 +188,12 @@ export default function FareApprovalModal({
                           <div className="grid grid-cols-2 gap-4 mb-2">
                             <div>
                               <span className="text-xs text-gray-500">Proposed Fare</span>
-                              <div className="text-lg font-bold text-purple-600">Ã¢â€šÂ±{fare.driver_proposed_fare}</div>
+                              <div className="text-lg font-bold text-purple-600">Ã¢â€š±{fare.driver_proposed_fare}</div>
                             </div>
                             {fare.current_standard_fare && (
                               <div>
                                 <span className="text-xs text-gray-500">Current Standard</span>
-                                <div className="text-lg font-bold text-gray-600">Ã¢â€šÂ±{fare.current_standard_fare}</div>
+                                <div className="text-lg font-bold text-gray-600">Ã¢â€š±{fare.current_standard_fare}</div>
                               </div>
                             )}
                           </div>
@@ -205,7 +205,7 @@ export default function FareApprovalModal({
                             </div>
                             <div className="flex items-center space-x-1">
                               <i className="ri-user-line"></i>
-                              <span>{fare.driver_name} Ã¢â‚¬Â¢ {formatDate(fare.created_at)}</span>
+                              <span>{fare.driver_name} Ã¢â‚¬¢ {formatDate(fare.created_at)}</span>
                             </div>
                             {fare.distance_km && (
                               <div className="flex items-center space-x-1">
@@ -303,12 +303,12 @@ export default function FareApprovalModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <span className="text-xs text-gray-500">Proposed</span>
-                    <div className="text-lg font-bold text-purple-600">Ã¢â€šÂ±{selectedFare.driver_proposed_fare}</div>
+                    <div className="text-lg font-bold text-purple-600">Ã¢â€š±{selectedFare.driver_proposed_fare}</div>
                   </div>
                   {selectedFare.current_standard_fare && (
                     <div>
                       <span className="text-xs text-gray-500">Current</span>
-                      <div className="text-lg font-bold text-gray-600">Ã¢â€šÂ±{selectedFare.current_standard_fare}</div>
+                      <div className="text-lg font-bold text-gray-600">Ã¢â€š±{selectedFare.current_standard_fare}</div>
                     </div>
                   )}
                 </div>
@@ -324,7 +324,7 @@ export default function FareApprovalModal({
                         : 'text-gray-600'
                     }>
                       {selectedFare.driver_proposed_fare > selectedFare.current_standard_fare ? '+' : ''}
-                      Ã¢â€šÂ±{selectedFare.driver_proposed_fare - selectedFare.current_standard_fare}
+                      Ã¢â€š±{selectedFare.driver_proposed_fare - selectedFare.current_standard_fare}
                     </span>
                   </div>
                 )}
@@ -347,7 +347,7 @@ export default function FareApprovalModal({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Approved Fare Amount</label>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-500">Ã¢â€šÂ±</span>
+                  <span className="text-sm text-gray-500">Ã¢â€š±</span>
                   <input
                     type="number"
                     value={adjustedFare}
@@ -369,10 +369,10 @@ export default function FareApprovalModal({
                   <div>
                     <p className="text-sm font-medium text-green-800 mb-1">Pricing Guidelines</p>
                     <ul className="text-xs text-green-700 space-y-1">
-                      <li>Ã¢â‚¬Â¢ Base fare: Ã¢â€šÂ±30 for local trips</li>
-                      <li>Ã¢â‚¬Â¢ Long distance: Ã¢â€šÂ±5-10 per km</li>
-                      <li>Ã¢â‚¬Â¢ Difficult terrain: +Ã¢â€šÂ±10-20</li>
-                      <li>Ã¢â‚¬Â¢ Peak hours: +Ã¢â€šÂ±5-15</li>
+                      <li>Ã¢â‚¬¢ Base fare: Ã¢â€š±30 for local trips</li>
+                      <li>Ã¢â‚¬¢ Long distance: Ã¢â€š±5-10 per km</li>
+                      <li>Ã¢â‚¬¢ Difficult terrain: +Ã¢â€š±10-20</li>
+                      <li>Ã¢â‚¬¢ Peak hours: +Ã¢â€š±5-15</li>
                     </ul>
                   </div>
                 </div>
@@ -391,7 +391,7 @@ export default function FareApprovalModal({
                   disabled={loading || adjustedFare <= 0}
                   className="flex-1 bg-green-500 text-white py-3 rounded-xl font-semibold hover:bg-green-600 transition-colors disabled:bg-gray-300"
                 >
-                  {loading ? 'Approving...' : `Approve Ã¢â€šÂ±${adjustedFare}`}
+                  {loading ? 'Approving...' : `Approve Ã¢â€š±${adjustedFare}`}
                 </button>
               </div>
             </div>

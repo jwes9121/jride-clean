@@ -1,4 +1,4 @@
-﻿JRIDE PAYMENTS IMPLEMENTATION SCAN REPORT
+JRIDE PAYMENTS IMPLEMENTATION SCAN REPORT
 Generated: 2026-01-19 03:52:59
 Repo root:  C:\Users\jwes9\Desktop\jride-clean-fresh
 
@@ -1146,7 +1146,7 @@ Repo root:  C:\Users\jwes9\Desktop\jride-clean-fresh
 - components\components\PenaltyNotificationModal.tsx  (hits=2)
   terms: wallet, top-up
   L107: <i className="ri-wallet-line text-orange-600 mt-0.5 mr-2 flex-shrink-0"></i>
-  L110: <p>Amount deducted from wallet Ã¢â€ â€™ points Ã¢â€ â€™ next top-up. Continue following guidelines to avoid suspension.</p>
+  L110: <p>Amount deducted from wallet Ã¢â€ ' points Ã¢â€ ' next top-up. Continue following guidelines to avoid suspension.</p>
 
 - backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\status-test\page.tsx  (hits=2)
   terms: callback
@@ -1236,7 +1236,7 @@ Repo root:  C:\Users\jwes9\Desktop\jride-clean-fresh
 - components\PenaltyNotificationModal.tsx  (hits=2)
   terms: wallet, top-up
   L107: <i className="ri-wallet-line text-orange-600 mt-0.5 mr-2 flex-shrink-0"></i>
-  L110: <p>Amount deducted from wallet Ã¢â€ â€™ points Ã¢â€ â€™ next top-up. Continue following guidelines to avoid suspension.</p>
+  L110: <p>Amount deducted from wallet Ã¢â€ ' points Ã¢â€ ' next top-up. Continue following guidelines to avoid suspension.</p>
 
 - components\components\QuickActions.tsx  (hits=2)
   terms: topup, wallet
@@ -1267,11 +1267,11 @@ Repo root:  C:\Users\jwes9\Desktop\jride-clean-fresh
 
 - components\components\ReferralSection.tsx  (hits=1)
   terms: checkout
-  L221: <li>Ã¢â‚¬Â¢ 1 point = Ã¢â€šÂ±1 ride credit (auto-applied at checkout)</li>
+  L221: <li>Ã¢â‚¬¢ 1 point = Ã¢â€š±1 ride credit (auto-applied at checkout)</li>
 
 - components\ReferralSection.tsx  (hits=1)
   terms: checkout
-  L221: <li>Ã¢â‚¬Â¢ 1 point = Ã¢â€šÂ±1 ride credit (auto-applied at checkout)</li>
+  L221: <li>Ã¢â‚¬¢ 1 point = Ã¢â€š±1 ride credit (auto-applied at checkout)</li>
 
 - configs\nextauth.ts  (hits=1)
   terms: callback

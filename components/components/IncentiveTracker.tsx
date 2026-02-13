@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState } from "react";
 
@@ -41,7 +41,7 @@ const IncentiveTracker: React.FC<IncentiveTrackerProps> = ({ driverId }) => {
             {incentives.completed}
           </div>
           <div>
-            <span className="font-medium">Bonus Earned:</span> Ã¢â€šÂ±
+            <span className="font-medium">Bonus Earned:</span> Ã¢â€š±
             {incentives.bonus || 0}
           </div>
         </div>

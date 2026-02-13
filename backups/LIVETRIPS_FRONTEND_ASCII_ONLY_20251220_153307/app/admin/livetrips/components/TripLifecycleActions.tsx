@@ -71,10 +71,10 @@ export default function TripLifecycleActions({ trip, onAfterAction }: Props) {
         <div>
           <div className="font-semibold">Trip actions</div>
           <div className="text-xs text-gray-600">
-            Code: <span className="font-mono">{bookingCode || "ÃƒÂ¢Ã‚â‚¬Ã‚â€"}</span>
+            Code: <span className="font-mono">{bookingCode || "Ãƒ¢Ã‚â‚¬Ã‚""}</span>
           </div>
           <div className="text-xs text-gray-600">
-            Status: <span className="font-mono">{status || "ÃƒÂ¢Ã‚â‚¬Ã‚â€"}</span>
+            Status: <span className="font-mono">{status || "Ãƒ¢Ã‚â‚¬Ã‚""}</span>
           </div>
         </div>
         <div className="text-xs text-gray-600 text-right">

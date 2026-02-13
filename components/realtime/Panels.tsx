@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React from "react";
 import type { DriverLocation, Ride } from "@/types";
 import { townColor } from "./townColors";

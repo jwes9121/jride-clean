@@ -1,4 +1,4 @@
-﻿-- Phase 3.2: Stable realtime driver locations view (schema-flex)
+-- Phase 3.2: Stable realtime driver locations view (schema-flex)
 -- Creates: public.dispatch_driver_locations_view
 -- Strategy: pick first existing relation among known candidates, then create/replace view as SELECT * FROM that relation.
 -- Reversible: DOWN drops the view.

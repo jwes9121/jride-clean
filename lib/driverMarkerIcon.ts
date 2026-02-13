@@ -1,4 +1,4 @@
-﻿/**
+/**
  * JRide official town colors for driver ring.
  */
 export const TOWN_COLORS: Record<string, string> = {

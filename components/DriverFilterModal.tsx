@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -119,7 +119,7 @@ export default function DriverFilterModal({ isOpen, onClose, onSave }: DriverFil
                   </div>
                 </div>
                 <p className="text-xs text-blue-600 mt-1">
-                  {isNightTime() ? 'Ã°Å¸Å’â„¢ Night time active - Enhanced safety mode' : 'Ã¢Ëœâ‚¬Ã¯Â¸Â Day time - Standard mode'}
+                  {isNightTime() ? 'Ã°Å¸Å’â„¢ Night time active - Enhanced safety mode' : 'Ã¢Ëœâ‚¬Ã¯¸ Day time - Standard mode'}
                 </p>
               </div>
 

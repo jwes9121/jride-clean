@@ -1,4 +1,4 @@
-﻿---- components\DriverWalletLedger.tsx : L71 ----
+---- components\DriverWalletLedger.tsx : L71 ----
     setLoading(true);
     try {
       const token = localStorage.getItem('j-ride-token');

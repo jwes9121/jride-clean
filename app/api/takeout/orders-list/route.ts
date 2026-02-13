@@ -65,7 +65,7 @@ export async function GET() {
       .limit(100);
 
     if (error) {
-      console.error("Ã¢ÂÅ’ orders-list error:", error);
+      console.error("Ã¢Å’ orders-list error:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
@@ -79,7 +79,7 @@ export async function GET() {
 
     return NextResponse.json({ orders });
   } catch (err: any) {
-    console.error("Ã¢ÂÅ’ orders-list server error:", err);
+    console.error("Ã¢Å’ orders-list server error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }

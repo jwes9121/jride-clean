@@ -1,4 +1,4 @@
-﻿---- app\driver\wallet\page.tsx : L65 ----
+---- app\driver\wallet\page.tsx : L65 ----
       const wj = await w.json().catch(() => ({} as any));
       if (!w.ok || !wj.ok) throw new Error(wj?.message || "Failed to load wallet");
 

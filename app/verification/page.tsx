@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -70,7 +70,7 @@ export default function PassengerVerificationPage() {
         </div>
 
         <div className="mt-4 text-sm opacity-70">
-          This patch only fixes session detection on this page (so it stops saying youâ€™re not signed in).
+          This patch only fixes session detection on this page (so it stops saying you're not signed in).
           Your existing verification upload logic can remain as-is.
         </div>
       </div>

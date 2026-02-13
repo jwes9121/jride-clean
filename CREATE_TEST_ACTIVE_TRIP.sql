@@ -1,4 +1,4 @@
-﻿-- CREATE_TEST_ACTIVE_TRIP.sql
+-- CREATE_TEST_ACTIVE_TRIP.sql
 -- Run this in Supabase SQL Editor.
 -- Creates 1 ACTIVE booking row (status = 'assigned') with a generated booking_code.
 -- Does NOT assume columns exist; builds insert dynamically.
@@ -118,7 +118,7 @@ BEGIN
             ELSIF has_uuid_v4 THEN
               v_expr := 'uuid_generate_v4()';
             ELSE
-              -- last resort: hope the table has its own default; if not, insert will fail and youâ€™ll see the column name
+              -- last resort: hope the table has its own default; if not, insert will fail and you'll see the column name
               v_expr := 'null';
             END IF;
 
