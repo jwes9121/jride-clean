@@ -1,6 +1,0 @@
-=== API CHECKS ===
-FAIL http://localhost:3000/api/admin/livetrips/page-data?debug=1  -> Unable to connect to the remote server
-FAIL http://localhost:3000/api/driver_locations  -> Unable to connect to the remote server
-FAIL http://localhost:3000/api/driver-locations  -> Unable to connect to the remote server
-FAIL http://localhost:3000/api/admin/driver_locations  -> Unable to connect to the remote server
-FAIL http://localhost:3000/api/admin/driver-locations  -> Unable to connect to the remote server

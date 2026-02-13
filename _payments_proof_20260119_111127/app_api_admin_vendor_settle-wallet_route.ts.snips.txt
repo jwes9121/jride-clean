@@ -1,9 +1,0 @@
----- app\api\admin\vendor\settle-wallet\route.ts : L65 ----
-
-    const body = await req.json().catch(() => ({}));
-    const vendor_id = String(body?.vendor_id || "");
-    const note = body?.note != null ? String(body.note) : "Cash payout settlement";
-
-    if (!vendor_id) return json(400, { ok: false, code: "BAD_REQUEST", message: "vendor_id is required." });
-
-
