@@ -1,0 +1,20 @@
+JRIDE Passenger/Auth Debug Bundle
+Timestamp: 20260214_040121
+RepoRoot: C:\Users\jwes9\Desktop\jride-clean-fresh
+
+FILES:
+OK  app\passenger\page.tsx
+OK  app\ride\page.tsx
+OK  app\api\public\passenger\can-book\route.ts
+OK  app\api\public\passenger\free-ride\route.ts
+OK  app\api\public\passenger\book\route.ts
+MISS app\api\public\passenger\me\route.ts
+OK  auth.ts
+OK  app\api\auth\[...nextauth]\route.ts
+OK  middleware.ts
+OK  app\components\Header.tsx
+OK  next.config.js
+OK  next.config.mjs
+OK  package.json
+
+NOTE: .env* files are intentionally NOT included.
