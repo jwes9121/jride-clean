@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import * as React from "react";
+import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 export default function PassengerDashboardPage() {
@@ -89,6 +90,15 @@ export default function PassengerDashboardPage() {
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
             <span className="font-semibold">{authed ? "Signed in" : "Guest"}</span>
             <span className="opacity-70">{" - "}{loading ? "loading" : authed ? "session ok" : "no session"}</span>
+{/* JRIDE_SIGNOUT_BUTTON_BEGIN */}
+<button
+  type="button"
+  className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
+  onClick={() => signOut({ callbackUrl: "/" })}
+>
+  Sign out
+</button>
+{/* JRIDE_SIGNOUT_BUTTON_END */}
           </div>
         </div>
 

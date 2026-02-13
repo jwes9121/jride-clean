@@ -2,6 +2,14 @@ import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 
+// JRIDE_VERIFIED_FROM_STATUS_BEGIN
+function jrideIsPassengerVerifiedFromStatus(status: any): boolean {
+  const s = (status ?? "").toString().trim().toLowerCase();
+  return s === "approved" || s === "approved_admin";
+}
+// JRIDE_VERIFIED_FROM_STATUS_END
+
+
 /* JRIDE_ENV_ECHO */
 function jrideEnvEcho() {
   const u = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -107,7 +115,7 @@ const { data, error } = await query;
             out.status = mapRawStatus(raw);
             out.source = "passenger_verifications";
             out.note = "Matched passenger_verifications." + key;
-            out.verified = (out.status === "verified");
+            out.verified = jrideIsPassengerVerifiedFromStatus(row?.status);
             return true;
           }
         } catch {
@@ -126,7 +134,7 @@ const { data, error } = await query;
 
   async function tryQuery(col: string, val: any) {
     try {
-      const { data, error } = await (supabase as any).from("passengers")
+      const { data, error } = await (supabase as any).from("passenger_verifications")
         .select(selectors)
         .eq(col as any, val)
         .limit(1)
@@ -140,7 +148,7 @@ const { data, error } = await query;
   const rId = await tryQuery("id", userId);
   if (!rId.error && rId.data) {
     const row: any = rId.data;
-    out.verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
+    out.verified = jrideIsPassengerVerifiedFromStatus(row?.status);
     out.source = "passengers";
     out.note = "Matched passengers.id";
     out.status = out.verified ? "verified" : "not_submitted";
@@ -151,7 +159,7 @@ const { data, error } = await query;
     const r = await tryQuery("email", email);
     if (!r.error && r.data) {
       const row: any = r.data;
-      out.verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
+      out.verified = jrideIsPassengerVerifiedFromStatus(row?.status);
       out.source = "passengers";
       out.note = "Matched passengers.email";
       out.status = out.verified ? "verified" : "not_submitted";
@@ -190,7 +198,7 @@ async function resolvePassengerWallet(supabase: ReturnType<typeof createClient>)
 const selectors = "wallet_balance,min_wallet_required,wallet_locked";
 
   async function tryQuery(filterCol: "auth_user_id" | "user_id" | "email", filterVal: string) {
-    return await (supabase as any).from("passengers").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
+    return await (supabase as any).from("passenger_verifications").select(selectors).eq(filterCol, filterVal).limit(1).maybeSingle();
   }
 
   // Try auth_user_id, then user_id, then email
