@@ -1,0 +1,379 @@
+"use client";
+
+import React, { useState } from "react";
+
+export type DispatchActionTrip = {
+  id: string;
+  booking_code: string | null;
+  status: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
+  driver_phone: string | null;
+  passenger_name: string | null;
+  town: string | null;
+  is_emergency: boolean | null;
+};
+
+type DispatchActionPanelProps = {
+  selectedTrip: DispatchActionTrip | null;
+  dispatcherName?: string | null;
+  onActionCompleted?: () => void;
+};
+
+type ApiResult = {
+  ok: boolean;
+  message: string;
+};
+async function postTripStatus(bookingCode: string, status: string): Promise<ApiResult> {
+  try {
+    const res = await fetch("/api/dispatch/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingCode, status, source: "dispatch-panel" }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, message: json?.message || "Status update failed." };
+    }
+    return { ok: true, message: "Status updated." };
+  } catch {
+    return { ok: false, message: "Network error updating status." };
+  }
+}
+
+async function postDispatchAction(body: any): Promise<ApiResult> {
+  try {
+    const res = await fetch("/api/admin/livetrips/dispatch-actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: (json && (json.error as string)) || "Dispatch action failed.",
+      };
+    }
+
+    return {
+      ok: true,
+      message:
+        (json && (json.message as string)) ||
+        "Dispatch action completed successfully.",
+    };
+  } catch (err) {
+    console.error("Dispatch action fetch error:", err);
+    return { ok: false, message: "Network error calling dispatch API." };
+  }
+}
+
+export function DispatchActionPanel(props: DispatchActionPanelProps) {
+  const { selectedTrip, dispatcherName, onActionCompleted } = props;
+
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [localEmergency, setLocalEmergency] = useState<boolean>(
+    !!selectedTrip?.is_emergency
+  );
+
+  if (!selectedTrip || !selectedTrip.id) {
+    return (
+      <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px] text-slate-500">
+        No active trip selected.
+      </div>
+    );
+  }
+
+  const bookingCode = selectedTrip.booking_code ?? selectedTrip.id;
+  const passenger = selectedTrip.passenger_name ?? "Unknown passenger";
+  const town = selectedTrip.town ?? "Unknown zone";
+  const driverName = selectedTrip.driver_name ?? "Unknown driver";
+  const hasPhone = !!selectedTrip.driver_phone;
+  const isEmergency = localEmergency;
+
+  function resetMessages() {
+    setStatusText(null);
+    setErrorText(null);
+  }
+
+  const handleCall = () => {
+    if (!hasPhone || !selectedTrip.driver_phone) return;
+    resetMessages();
+
+    const tel = `tel:${selectedTrip.driver_phone}`;
+    try {
+      window.open(tel, "_self");
+    } catch {
+      window.location.href = tel;
+    }
+  };
+
+  const handleNudge = async () => {
+    if (!selectedTrip.driver_id || !selectedTrip.id) return;
+    resetMessages();
+    setLoadingAction("nudge");
+
+    const result = await postDispatchAction({
+      action: "nudge",
+      tripId: selectedTrip.id,
+      driverId: selectedTrip.driver_id,
+      note: `Nudge sent by ${
+        dispatcherName || "dispatcher"
+      } from LiveTrips map.`,
+    });
+
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setStatusText("Nudge sent to driver.");
+    onActionCompleted?.();
+  };
+
+  const handleReassign = async () => {
+    if (!selectedTrip.driver_id || !selectedTrip.id) return;
+    resetMessages();
+
+    const toDriverId = window.prompt(
+      "Enter the NEW driver ID (UUID) for this trip:",
+      ""
+    );
+    if (!toDriverId) return;
+
+    setLoadingAction("reassign");
+
+    const result = await postDispatchAction({
+      action: "reassign",
+      tripId: selectedTrip.id,
+      fromDriverId: selectedTrip.driver_id,
+      toDriverId,
+      note: `Reassign requested by ${
+        dispatcherName || "dispatcher"
+      } from LiveTrips map.`,
+    });
+
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setStatusText("Reassign request stored. Trip driver will refresh on next data update.");
+    onActionCompleted?.();
+  };
+
+  const handleEmergency = async () => {
+    if (!selectedTrip.id) return;
+    resetMessages();
+
+    const target = !isEmergency;
+    setLoadingAction("emergency");
+
+    const result = await postDispatchAction({
+      action: "emergency",
+      tripId: selectedTrip.id,
+      isEmergency: target,
+    });
+
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setLocalEmergency(target);
+    setStatusText(
+      target
+        ? "Trip marked as EMERGENCY."
+        : "Emergency flag cleared for this trip."
+    );
+    onActionCompleted?.();
+  };
+
+  const baseBtn =
+    "flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[10px] font-medium border transition";
+  const disabledClasses =
+    "border-slate-700 bg-slate-900/60 text-slate-500 cursor-not-allowed";
+  const enabledClasses =
+    "border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400";
+
+  const isLoading = (k: string) => loadingAction === k;
+
+  const canNudge = !!selectedTrip.driver_id;
+  const canReassign = !!selectedTrip.driver_id;
+  const canEmergency = true;
+
+  const handleStatus = async (nextStatus: string) => {
+    if (!bookingCode) return;
+    resetMessages();
+    setLoadingAction(nextStatus);
+
+    const result = await postTripStatus(bookingCode, nextStatus);
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setStatusText("Trip status updated.");
+    onActionCompleted?.();
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-100 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-wide text-slate-400">
+            Dispatch actions
+          </span>
+          <span className="text-[11px] font-semibold text-slate-100">
+            Trip {bookingCode}
+          </span>
+          <span className="text-[10px] text-slate-400">
+            Passenger: {passenger} · {town}
+          </span>
+        </div>
+        <span
+          className={
+            "rounded-full px-2 py-1 text-[10px] font-semibold " +
+            (isEmergency
+              ? "bg-red-600 text-white"
+              : "bg-slate-800 text-slate-100")
+          }
+        >
+          {isEmergency ? "EMERGENCY" : selectedTrip.status ?? "status ?"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5 mt-1">
+        {/* Call */}
+        <button
+          type="button"
+          onClick={handleCall}
+          disabled={!hasPhone || isLoading("call")}
+          className={[
+            baseBtn,
+            !hasPhone ? disabledClasses : enabledClasses,
+          ].join(" ")}
+        >
+          <span className="text-lg leading-none">📞</span>
+          <span>Call</span>
+          <span className="text-[9px] text-slate-400">
+            {hasPhone ? "mobile" : "no number"}
+          </span>
+        </button>
+
+        {/* Nudge */}
+        <button
+          type="button"
+          onClick={handleNudge}
+          disabled={!canNudge || isLoading("nudge")}
+          className={[
+            baseBtn,
+            !canNudge ? disabledClasses : enabledClasses,
+          ].join(" ")}
+        >
+          <span className="text-lg leading-none">👉</span>
+          <span>{isLoading("nudge") ? "Nudging..." : "Nudge"}</span>
+          <span className="text-[9px] text-slate-400">slow / stuck</span>
+        </button>
+
+        {/* Reassign */}
+        <button
+          type="button"
+          onClick={handleReassign}
+          disabled={!canReassign || isLoading("reassign")}
+          className={[
+            baseBtn,
+            !canReassign ? disabledClasses : enabledClasses,
+          ].join(" ")}
+        >
+          <span className="text-lg leading-none">🔁</span>
+          <span>{isLoading("reassign") ? "Saving..." : "Reassign"}</span>
+          <span className="text-[9px] text-slate-400">change driver</span>
+        </button>
+
+        {/* Emergency */}
+        <button
+          type="button"
+          onClick={handleEmergency}
+          disabled={!canEmergency || isLoading("emergency")}
+          className={[
+            baseBtn,
+            !canEmergency
+              ? disabledClasses
+              : isEmergency
+              ? "border-red-500 bg-red-700/90 text-white hover:bg-red-600"
+              : enabledClasses,
+          ].join(" ")}
+        >
+          <span className="text-lg leading-none">🚨</span>
+          <span>{isEmergency ? "Clear" : "Emergency"}</span>
+          <span className="text-[9px] text-slate-400">
+            priority alerts
+          </span>
+        </button>
+      </div>
+
+      {(statusText || errorText) && (
+        <div className="mt-1 text-[10px]">
+          {statusText && (
+            <div className="text-emerald-400">{statusText}</div>
+      {/* Trip status actions */}
+      <div className="grid grid-cols-3 gap-1.5 mt-2 pt-2 border-t border-slate-800">
+        <button
+          type="button"
+          onClick={() => handleStatus("on_the_way")}
+          disabled={selectedTrip.status !== "assigned"}
+          className={[baseBtn, selectedTrip.status !== "assigned" ? disabledClasses : enabledClasses].join(" ")}
+        >
+          🚗
+          <span>On the way</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleStatus("on_trip")}
+          disabled={selectedTrip.status !== "on_the_way"}
+          className={[baseBtn, selectedTrip.status !== "on_the_way" ? disabledClasses : enabledClasses].join(" ")}
+        >
+          ▶️
+          <span>Start trip</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleStatus("completed")}
+          disabled={selectedTrip.status !== "on_trip"}
+          className={[baseBtn, selectedTrip.status !== "on_trip" ? disabledClasses : enabledClasses].join(" ")}
+        >
+          🏁
+          <span>Drop off</span>
+        </button>
+      </div>
+          )}
+          {errorText && <div className="text-red-400">{errorText}</div>}
+        </div>
+      )}
+
+      <div className="mt-1 flex justify-between text-[9px] text-slate-500">
+        <span>Driver: {driverName}</span>
+        {dispatcherName && <span>Dispatcher: {dispatcherName}</span>}
+      </div>
+    </div>
+  );
+}
+
+export default DispatchActionPanel;
+

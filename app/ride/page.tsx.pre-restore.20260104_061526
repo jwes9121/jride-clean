@@ -1,0 +1,873 @@
+﻿"use client";
+
+async function getJson(url: string, init?: RequestInit): Promise<any> {
+  const res = await fetch(url, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    // ignore
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function postJson(url: string, body: any, init?: RequestInit): Promise<any> {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+    ...init,
+  });
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    // ignore
+  }
+  return { ok: res.ok, status: res.status, json: data };
+}
+import * as React from "react";
+import { useRouter } from "next/navigation";
+
+type CanBookInfo = {
+  ok?: boolean;
+  nightGate?: boolean;
+  verified?: boolean;
+
+  wallet_ok?: boolean;
+  wallet_locked?: boolean;
+
+  code?: string;
+  message?: string;
+};
+
+type AssignInfo = {
+  ok?: boolean;
+  driver_id?: string | null;
+  note?: string | null;
+  update_ok?: boolean;
+  update_error?: string | null;
+};
+
+type BookingRow = {
+  id?: string | null;
+  booking_code?: string | null;
+  driver_id?: string | null;
+  status?: string | null;
+};
+
+type BookResp = {
+  ok?: boolean;
+  booking_code?: string;
+  code?: string;
+  message?: string;
+  booking?: BookingRow | null;
+  assign?: AssignInfo | null;
+};
+
+type GeoFeature = {
+  id?: string;
+  place_name?: string;
+  text?: string;
+  center?: [number, number]; // [lng, lat]
+  place_type?: string[];
+};
+
+type SearchboxSuggest = {
+  kind: "searchbox";
+  mapbox_id: string;
+  name: string;
+  full_address: string;
+  feature_type: string;
+};
+
+type LocalPOI = {
+  id: string;
+  name: string;
+  aliases: string[]; // keywords like: ["igh","hospital"]
+  town?: string | null; // optional filter
+  lat: number;
+  lng: number;
+  updatedAt: number;
+};
+
+type LocalSuggest = {
+  kind: "local";
+  poi: LocalPOI;
+};
+
+type SuggestItem =
+  | { kind: "geocode"; f: GeoFeature }
+  | SearchboxSuggest
+  | LocalSuggest;
+
+const LOCAL_POI_KEY = "jr_local_pois_v1";
+
+function safeJsonParse(s: string): any {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function loadLocalPOIs(): LocalPOI[] {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_POI_KEY);
+    if (!raw) return [];
+    const j = safeJsonParse(raw);
+    if (!Array.isArray(j)) return [];
+    const out: LocalPOI[] = [];
+    for (const it of j) {
+      const lat = Number(it && it.lat);
+      const lng = Number(it && it.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      out.push({
+        id: String(it.id || ""),
+        name: String(it.name || ""),
+        aliases: Array.isArray(it.aliases) ? it.aliases.map((x: any) => String(x || "").toLowerCase()).filter(Boolean) : [],
+        town: (it.town === null || it.town === undefined) ? null : String(it.town),
+        lat: lat,
+        lng: lng,
+        updatedAt: Number(it.updatedAt || Date.now()),
+      });
+    }
+    return out.filter((p) => p.id && p.name);} catch {
+    return [];
+  }
+}
+
+function saveLocalPOIs(list: LocalPOI[]) {
+  try {
+    window.localStorage.setItem(LOCAL_POI_KEY, JSON.stringify(list || []));
+  } catch {}
+}
+
+function normTokens(s: string): string[] {
+  const t = String(s || "").toLowerCase();
+  return t
+    .replace(/[^a-z0-9\s,]/g, " ")
+    .split(/[\s,]+/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function matchScore(query: string, poi: LocalPOI): number {
+  const q = normTokens(query);
+  if (!q.length) return 0;
+
+  const name = String(poi.name || "").toLowerCase();
+  const aliases = (poi.aliases || []).map((x) => String(x || "").toLowerCase());
+  const hay = [name].concat(aliases);
+
+  let hits = 0;
+  for (const tok of q) {
+    let found = false;
+    for (const h of hay) {
+      if (h.indexOf(tok) >= 0) { found = true; break; }
+    }
+    if (found) hits++;
+  }
+  // favor more hits; small bias for shorter names
+  return hits * 100 - Math.min(30, name.length);
+}
+function numOrNull(s: string): number | null {
+  const t = String(s || "").trim();
+  if (!t) return null;
+  const n = parseFloat(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function norm(s: any): string {
+  return String(s || "").trim();
+}
+
+function normLower(s: any): string {
+  return norm(s).toLowerCase();
+}
+
+function normUpper(s: any): string {
+  return norm(s).toUpperCase();
+}
+
+export default function RidePage() {
+  const router = useRouter();
+
+  // Suggest list renderer (restored). Defensive: supports multiple suggestion state names.
+  function renderSugList(field: "from" | "to") {
+    return null;
+  }
+  }
+
+  async function refreshCanBook() {
+    setCanInfoErr("");
+    try {
+      const r = await getJson("/api/public/passenger/can-book");
+      if (!r.ok) {
+        setCanInfo(null);
+        setCanInfoErr("CAN_BOOK_INFO_FAILED: HTTP " + String(r.status));
+        return;
+      }
+      setCanInfo((r.json || null) as any);
+
+      // Best-effort: if verified, close verify panel (if this state exists)
+      try {
+        const st = String((r.json as any)?.verification_status || "").toLowerCase();
+        if (st === "verified" || (r.json as any)?.verified === true) {
+        }
+      } catch {
+        // ignore
+      }
+    } catch (e: any) {
+      setCanInfo(null);
+      setCanInfoErr("CAN_BOOK_INFO_ERROR: " + String(e?.message || e));
+    }
+  }
+
+  // Defaults
+  const [town, setTown] = React.useState<string>("Lagawe");
+  const [passengerName, setPassengerName] = React.useState("Test Passenger A");
+  const [fromLabel, setFromLabel] = React.useState<string>("");
+  const [toLabel, setToLabel] = React.useState<string>("");
+  const [pickupLat, setPickupLat] = React.useState<string>("");
+  const [pickupLng, setPickupLng] = React.useState<string>("");
+  const [dropLat, setDropLat] = React.useState<string>("");
+  const [dropLng, setDropLng] = React.useState<string>("");
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<string>("");
+
+  const [activeCode, setActiveCode] = React.useState<string>("");
+  const [liveStatus, setLiveStatus] = React.useState<string>("");
+  const [liveDriverId, setLiveDriverId] = React.useState<string>("");
+  const [liveUpdatedAt, setLiveUpdatedAt] = React.useState<number | null>(null);
+  const [liveErr, setLiveErr] = React.useState<string>("");
+  const pollRef = React.useRef<any>(null);
+
+  const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
+  const [canInfoErr, setCanInfoErr] = React.useState<string>("");
+
+  // Mapbox
+  const MAPBOX_TOKEN =
+    (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+      "") as string;
+
+  const [geoErr, setGeoErr] = React.useState<string>("");
+
+  const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
+  const [fromSug, setFromSug] = React.useState<SuggestItem[]>([]);
+  const [toSug, setToSug] = React.useState<SuggestItem[]>([]);
+
+  const fromDebounceRef = React.useRef<any>(null);
+  const toDebounceRef = React.useRef<any>(null);
+
+  // Map picker (kept simple)
+  const [showMapPicker, setShowMapPicker] = React.useState(false);
+  const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
+  const mapDivRef = React.useRef<HTMLDivElement | null>(null);
+  const mapRef = React.useRef<any>(null);
+  const mbRef = React.useRef<any>(null);
+  const pickupMarkerRef = React.useRef<any>(null);
+  const dropoffMarkerRef = React.useRef<any>(null);
+
+  // Route preview
+  const [routePreviewGeo, setRoutePreviewGeo] = React.useState<any>(null);
+  const [routePreviewErr, setRoutePreviewErr] = React.useState<string>("");
+
+  const [localPOIs, setLocalPOIs] = React.useState<LocalPOI[]>([]);
+  const localLoadedRef = React.useRef(false);
+
+  function persistLocalPOIs(next: LocalPOI[]) {
+    setLocalPOIs(next);
+    saveLocalPOIs(next);
+  }
+  function seedDefaultPOIsIfEmpty(current: LocalPOI[]) {
+    try {
+      const hasAny = Array.isArray(current) && current.length > 0;
+      if (hasAny) return current;
+
+      const now = Date.now();
+
+      const mkLat = numOrNull(pickupLat ?? "");
+      const mkLng = numOrNull(pickupLng ?? "");
+      const plLat = numOrNull(dropLat ?? "");
+      const plLng = numOrNull(dropLng ?? "");
+
+      const seeded: LocalPOI[] = [];
+
+      if (mkLat !== null && mkLng !== null) {
+        seeded.push({
+          id: "seed_market_" + String(now),
+          name: String(fromLabel || "Lagawe Public Market"),
+          aliases: ["market", "public", "public market", "palengke", "lagawe market"],
+          town: String(town || "Lagawe"),
+          lat: Number(mkLat),
+          lng: Number(mkLng),
+          updatedAt: now,
+        });
+      }
+
+      if (plLat !== null && plLng !== null) {
+        seeded.push({
+          id: "seed_plaza_" + String(now + 1),
+          name: String(toLabel || "Lagawe Town Plaza"),
+          aliases: ["plaza", "town plaza", "lagawe plaza", "poblacion", "center"],
+          town: String(town || "Lagawe"),
+          lat: Number(plLat),
+          lng: Number(plLng),
+          updatedAt: now,
+        });
+      }
+
+      return seeded;
+    } catch {
+      return current || [];
+    }
+  }
+
+  React.useEffect(() => {
+    if (localLoadedRef.current) return;
+    localLoadedRef.current = true;
+
+    try {
+      const list = loadLocalPOIs();
+      const seeded = seedDefaultPOIsIfEmpty(list);
+      persistLocalPOIs(seeded);
+    } catch {
+      const seeded = seedDefaultPOIsIfEmpty([]);
+      persistLocalPOIs(seeded);
+    }
+  }, []);
+
+  // Live polling
+  React.useEffect(() => {
+    if (!activeCode) return;
+
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      try {
+        setLiveErr("");
+        const url = "/api/public/passenger/booking?code=" + encodeURIComponent(activeCode);
+        const resp = await getJson(url);
+
+        if (!resp.ok) {
+          const msg =
+            (resp.json && (resp.json.message || resp.json.error))
+              ? String(resp.json.message || resp.json.error)
+              : "HTTP " + String(resp.status);
+          setLiveErr("BOOKING_POLL_FAILED: " + msg);
+          return;
+        }
+
+        const j = resp.json || {};
+        const b = (j.booking || (j.data && j.data.booking) || (j.payload && j.payload.booking) || j) as any;
+
+        const st = String((b && b.status) ? b.status : (j.status || "")) || "";
+        const did = String((b && b.driver_id) ? b.driver_id : (j.driver_id || "")) || "";
+
+        setLiveStatus(st);
+        setLiveDriverId(did);
+        setLiveUpdatedAt(Date.now());
+
+        const terminal = st === "completed" || st === "cancelled";
+        if (terminal && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } catch (e: any) {
+        setLiveErr("BOOKING_POLL_ERROR: " + String(e?.message || e));
+      }
+    }
+
+    tick();
+    pollRef.current = setInterval(() => { tick(); }, 3000);
+
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [activeCode]);
+
+  const verified = !!canInfo?.verified;
+  const nightGate = !!canInfo?.nightGate;
+
+  const walletOk = canInfo?.wallet_ok;
+  const walletLocked = !!canInfo?.wallet_locked;
+
+  const canCode = normUpper(canInfo?.code);
+  const canMsg = norm(canInfo?.message);
+
+  const unverifiedBlocked =
+    !verified &&
+    (nightGate ||
+      canCode.indexOf("UNVERIFIED") >= 0 ||
+      canCode.indexOf("VERIFY") >= 0 ||
+      (canMsg && canMsg.toLowerCase().indexOf("verify") >= 0));
+
+  const walletBlocked = walletOk === false || walletLocked === true;
+  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked;
+
+  function pill(text: string, good: boolean) {
+    return (
+      <span
+        className={
+          "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold " +
+          (good ? "bg-green-600 text-white" : "bg-slate-200 text-slate-800")
+        }
+      >
+        {text}
+      </span>
+    );
+  }
+
+  const walletPillText =
+    walletOk === undefined ? "Wallet: (no data)" : walletOk ? "Wallet: OK" : walletLocked ? "Wallet: LOCKED" : "Wallet: LOW";
+  const walletPillGood = walletOk === true;
+
+  async function submit() {
+    setResult("");
+    setBusy(true);
+
+    try {
+      const can = await postJson("/api/public/passenger/can-book", { town, service: "ride" });
+      if (!can.ok) {
+        const cj = (can.json || {}) as any;
+        const code = normUpper(cj.code || cj.error_code);
+        const msg = norm(cj.message) || "Not allowed";
+        setResult("CAN_BOOK_BLOCKED: " + (code || "BLOCKED") + " - " + msg);
+        await refreshCanBook();
+        return;
+      }
+
+      const book = await postJson("/api/public/passenger/book", {
+        passenger_name: passengerName,
+        town,
+        from_label: fromLabel,
+        to_label: toLabel,
+        pickup_lat: numOrNull(pickupLat ?? ""),
+        pickup_lng: numOrNull(pickupLng ?? ""),
+        dropoff_lat: numOrNull(dropLat ?? ""),
+        dropoff_lng: numOrNull(dropLng ?? ""),
+        service: "ride",
+      });
+
+      if (!book.ok) {
+        const bj = (book.json || {}) as BookResp;
+        setResult("BOOK_FAILED: " + (bj.code || "FAILED") + " - " + (bj.message || "Insert failed"));
+        return;
+      }
+
+      const bj = (book.json || {}) as BookResp;
+      const lines: string[] = [];
+
+      lines.push("BOOKED_OK");
+      if (bj.booking_code) lines.push("booking_code: " + bj.booking_code);
+      if (bj.booking && bj.booking.id) lines.push("booking_id: " + String(bj.booking.id));
+      if (bj.booking && bj.booking.status) lines.push("status: " + String(bj.booking.status));
+      if (bj.booking && bj.booking.driver_id) lines.push("driver_id: " + String(bj.booking.driver_id));
+
+      if (bj.assign) {
+        lines.push("assign.ok: " + String(!!bj.assign.ok));
+        if (bj.assign.driver_id) lines.push("assign.driver_id: " + String(bj.assign.driver_id));
+        if (bj.assign.note) lines.push("assign.note: " + String(bj.assign.note));
+      } else {
+        lines.push("assign: (none)");
+      }
+
+      setResult(lines.join("\n"));
+
+      const code = norm((bj.booking && bj.booking.booking_code) ? bj.booking.booking_code : (bj.booking_code || ""));
+      if (code) {
+        setActiveCode(code);
+        setLiveStatus(String((bj.booking && bj.booking.status) ? bj.booking.status : ""));
+        setLiveDriverId(String((bj.booking && bj.booking.driver_id) ? bj.booking.driver_id : ""));
+        setLiveUpdatedAt(Date.now());
+      }
+
+      await refreshCanBook();
+    } catch (e: any) {
+      setResult("ERROR: " + String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clearAll() {
+    setResult("");
+    setGeoErr("");
+    setFromSug([]);
+    setToSug([]);
+    setActiveGeoField(null);
+    setShowMapPicker(false);
+    setPickMode("pickup");
+
+    setFromLabel("");
+    setToLabel("");
+    setPickupLat("");
+    setPickupLng("");
+    setDropLat("");
+    setDropLng("");
+
+    setActiveCode("");
+    setLiveStatus("");
+    setLiveDriverId("");
+    setLiveUpdatedAt(null);
+    setLiveErr("");
+  }
+
+  return (
+    <main className="min-h-screen p-6 bg-white">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold">Book a Ride</h1>
+          <button
+            type="button"
+            onClick={() => router.push("/passenger")}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
+          >
+            Back
+          </button>
+        </div>
+
+        <p className="mt-2 text-sm opacity-70">Phase 11B: unverified UX + verification request (UI-only).</p>
+
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          {pill("Verified: " + (verified ? "YES" : "NO"), verified)}
+          {pill("Night gate now: " + (nightGate ? "ON" : "OFF"), !nightGate)}
+          {pill(walletPillText, walletPillGood)}
+          <button
+            type="button"
+            onClick={refreshCanBook}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+          >
+            Refresh status
+          </button>
+          {!verified ? (
+            <button
+              type="button"
+              onClick={() => router.push("/verify")}
+              className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+            >
+              Verify account
+            </button>
+          ) : null}
+        </div>
+
+        {geoErr ? (
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-amber-300 bg-amber-50 p-3">
+            {geoErr}
+          </div>
+        ) : null}
+
+        {routePreviewErr ? (
+          <div className="mt-2 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
+            {routePreviewErr}
+          </div>
+        ) : null}
+
+        {!MAPBOX_TOKEN ? (
+          <div className="mt-3 text-xs rounded-xl border border-amber-300 bg-amber-50 p-3">
+            Mapbox token missing. Autocomplete and map tap picker are disabled. Set <b>NEXT_PUBLIC_MAPBOX_TOKEN</b> (or <b>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</b>).
+          </div>
+        ) : null}
+
+        {canInfoErr ? (
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
+            {canInfoErr}
+          </div>
+        ) : null}
+
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="font-semibold mb-3">Passenger</div>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1">Passenger name</label>
+            <input
+              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              value={passengerName}
+              onChange={(e) => setPassengerName(e.target.value)}
+            />
+
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Town</label>
+            <select
+              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              value={town}
+              onChange={(e) => setTown(e.target.value)}
+            >
+              <option value="Lagawe">Lagawe</option>
+              <option value="Kiangan">Kiangan</option>
+              <option value="Lamut">Lamut</option>
+              <option value="Hingyon">Hingyon</option>
+              <option value="Banaue">Banaue</option>
+            </select>
+          </div>
+
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="font-semibold mb-3">Route</div>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1">Pickup label</label>
+            <input
+              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              value={fromLabel}
+              onFocus={() => { setActiveGeoField("from"); }}
+              onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); }}
+            />
+            {renderSugList("from")}
+
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lat</label>
+                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={pickupLat} onChange={(e) => setPickupLat(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lng</label>
+                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={pickupLng} onChange={(e) => setPickupLng(e.target.value)} />
+              </div>
+            </div>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Dropoff label</label>
+            <input
+              className="w-full rounded-xl border border-black/10 px-3 py-2"
+              value={toLabel}
+              onFocus={() => { setActiveGeoField("to"); }}
+              onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); }}
+            />
+            {renderSugList("to")}
+
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lat</label>
+                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={dropLat} onChange={(e) => setDropLat(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lng</label>
+                <input className="w-full rounded-xl border border-black/10 px-3 py-2" value={dropLng} onChange={(e) => setDropLng(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => { setShowMapPicker((v) => !v); }}
+              >
+                {showMapPicker ? "Hide map picker" : "Pick on map"}
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN || !showMapPicker}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => setPickMode("dropoff")}
+              >
+                Pick dropoff
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => {
+                  const lat = numOrNull(pickupLat ?? "");
+                  const lng = numOrNull(pickupLng ?? "");
+                  if (lat === null || lng === null) return;
+                  const name = window.prompt("Save pickup as place name:", fromLabel || "");
+                  if (!name) return;
+                  const aliases = window.prompt("Aliases (comma separated), e.g. IGH,hospital:", "") || "";
+                  upsertLocalPOI(String(name), String(aliases), Number(lat), Number(lng));
+                }}
+              >
+                Save pickup
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => {
+                  const lat = numOrNull(dropLat ?? "");
+                  const lng = numOrNull(dropLng ?? "");
+                  if (lat === null || lng === null) return;
+                  const name = window.prompt("Save dropoff as place name:", toLabel || "");
+                  if (!name) return;
+                  const aliases = window.prompt("Aliases (comma separated), e.g. plaza,terminal:", "") || "";
+                  upsertLocalPOI(String(name), String(aliases), Number(lat), Number(lng));
+                }}
+              >
+                Save dropoff
+              </button>
+
+              <button
+                type="button"
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold hover:bg-black/5"}
+                onClick={() => {
+                  if (!localPOIs || !localPOIs.length) return;
+                  const ok = window.confirm("Clear ALL saved places on this device?");
+                  if (ok) clearAllLocalPOIs();
+                }}
+              >
+                Clear saved
+              </button><span className="text-xs opacity-70">
+                Mode: <b>{pickMode === "pickup" ? "Pickup" : "Dropoff"}</b> (tap map to set)
+              </span>
+            </div>
+
+            {showMapPicker ? (
+              <div className="mt-3 rounded-2xl border border-black/10 overflow-hidden">
+                <div className="px-3 py-2 text-xs opacity-70 border-b border-black/10 bg-white">
+                  Tap the map to set {pickMode}. Markers: green pickup, red dropoff. Route preview: blue line.
+                </div>
+                <div ref={mapDivRef} style={{ height: 260, width: "100%" }} />
+
+                {localPOIs && localPOIs.length ? (
+                  <div className="px-3 py-2 text-xs border-t border-black/10 bg-white">
+                    <div className="font-semibold mb-1">Saved places (this device)</div>
+                    <div className="space-y-1">
+                      {localPOIs.slice(0, 8).map((p) => (
+                        <div key={p.id} className="flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="inline-flex text-[10px] px-2 py-0.5 rounded-full bg-black/5 mr-2">SAVED</span>
+                            {p.name}
+                            <span className="opacity-60 ml-2">{p.aliases && p.aliases.length ? "(" + p.aliases.join(",") + ")" : ""}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="text-[10px] rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                            onClick={() => deleteLocalPOI(p.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}</div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3 items-center">
+          <button
+            type="button"
+            disabled={!allowSubmit}
+            onClick={submit}
+            className={"rounded-xl px-5 py-2 font-semibold text-white " + (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")}
+          >
+            {busy ? "Booking..." : "Submit booking"}
+          </button>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={clearAll}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
+          >
+            Clear
+          </button>
+
+          {!verified ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => router.push("/verify")}
+              className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
+            >
+              Go to verification
+            </button>
+          ) : null}
+        </div>
+
+        {result ? (
+          <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 text-sm">
+            <div className="font-semibold">Result</div>
+            <div className="mt-1 font-mono text-xs whitespace-pre-wrap">{result}</div>
+          </div>
+        ) : null}
+
+        {activeCode ? (
+          <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold">Trip status (live)</div>
+              <button
+                className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5"
+                onClick={() => {
+                  setActiveCode("");
+                  setLiveStatus("");
+                  setLiveDriverId("");
+                  setLiveUpdatedAt(null);
+                  setLiveErr("");
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="mt-1 text-xs font-mono">
+              code: <span className="font-semibold">{activeCode}</span>
+            </div>
+
+            <div className="mt-2">
+              <span className="text-xs opacity-70">status:</span>{" "}
+              <span className="font-mono text-xs">{liveStatus || "(loading)"}</span>
+            </div>
+
+            <div className="mt-1">
+              <span className="text-xs opacity-70">driver_id:</span>{" "}
+              <span className="font-mono text-xs">{liveDriverId || "(none)"}</span>
+            </div>
+
+            <div className="mt-1 text-xs opacity-70">
+              last update: {liveUpdatedAt ? Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago" : "--"}
+            </div>
+
+            {liveErr ? (
+              <div className="mt-2 rounded-lg border border-red-500/20 bg-red-50 p-2 text-xs font-mono">
+                {liveErr}
+              </div>
+            ) : null}
+
+            <div className="mt-2 text-xs opacity-70">
+              Polling: /api/public/passenger/booking?code=...
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-6 text-xs opacity-70">Next: connect request-verification API (Phase 11C).</div>
+      </div>
+    </main>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

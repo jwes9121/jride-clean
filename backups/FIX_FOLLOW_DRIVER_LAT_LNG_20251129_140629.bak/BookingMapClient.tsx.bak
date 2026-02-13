@@ -1,0 +1,372 @@
+﻿"use client";
+
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { createClient } from "@supabase/supabase-js";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+
+// Browser Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase =
+  typeof window !== "undefined" && supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
+
+type Props = {
+  bookingId: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+  dropoffLat: number | null;
+  dropoffLng: number | null;
+};
+
+type Coords = {
+  lat: number;
+  lng: number;
+};
+
+const DEFAULT_CENTER: Coords = {
+  lat: 16.81,
+  lng: 121.11,
+};
+const DEFAULT_ZOOM = 12;
+
+export default function BookingMapClient({
+  bookingId,
+  pickupLat,
+  pickupLng,
+  dropoffLat,
+  dropoffLng,
+}: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+
+  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const driverMarkerRef = useRef<mapboxgl.Marker | null>(null);
+
+  const [driverId, setDriverId] = useState<string | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isLoadingDriver, setIsLoadingDriver] = useState(false);
+
+  // 1) Initialize map
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
+      zoom: DEFAULT_ZOOM,
+    });
+
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // 2) Pickup / dropoff markers + blue route
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Pickup marker (green)
+    if (pickupLat != null && pickupLng != null) {
+      const lngLat: [number, number] = [pickupLng, pickupLat];
+
+      if (!pickupMarkerRef.current) {
+        pickupMarkerRef.current = new mapboxgl.Marker({ color: "#00aa00" })
+          .setLngLat(lngLat)
+          .addTo(map);
+      } else {
+        pickupMarkerRef.current.setLngLat(lngLat);
+      }
+    } else if (pickupMarkerRef.current) {
+      pickupMarkerRef.current.remove();
+      pickupMarkerRef.current = null;
+    }
+
+    // Dropoff marker (blue)
+    if (dropoffLat != null && dropoffLng != null) {
+      const lngLat: [number, number] = [dropoffLng, dropoffLat];
+
+      if (!dropoffMarkerRef.current) {
+        dropoffMarkerRef.current = new mapboxgl.Marker({ color: "#0000ff" })
+          .setLngLat(lngLat)
+          .addTo(map);
+      } else {
+        dropoffMarkerRef.current.setLngLat(lngLat);
+      }
+    } else if (dropoffMarkerRef.current) {
+      dropoffMarkerRef.current.remove();
+      dropoffMarkerRef.current = null;
+    }
+
+    // Route line between pickup & dropoff
+    const hasPickup = pickupLat != null && pickupLng != null;
+    const hasDropoff = dropoffLat != null && dropoffLng != null;
+    const routeSourceId = "booking-route";
+
+    if (hasPickup && hasDropoff) {
+      const fitBounds = () => {
+        const bounds = new mapboxgl.LngLatBounds();
+        bounds.extend([pickupLng as number, pickupLat as number]);
+        bounds.extend([dropoffLng as number, dropoffLat as number]);
+        map.fitBounds(bounds, { padding: 80, duration: 700 });
+      };
+
+      fitBounds();
+
+      const fetchRoute = async () => {
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${pickupLng},${pickupLat};${dropoffLng},${dropoffLat}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+
+          const routeGeometry = data?.routes?.[0]?.geometry;
+          if (!routeGeometry) return;
+
+          if (map.getLayer(routeSourceId)) {
+            map.removeLayer(routeSourceId);
+          }
+          if (map.getSource(routeSourceId)) {
+            map.removeSource(routeSourceId);
+          }
+
+          map.addSource(routeSourceId, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              properties: {},
+              geometry: routeGeometry,
+            },
+          });
+
+          map.addLayer({
+            id: routeSourceId,
+            type: "line",
+            source: routeSourceId,
+            layout: {
+              "line-join": "round",
+              "line-cap": "round",
+            },
+            paint: {
+              "line-color": "#1d4ed8",
+              "line-width": 4,
+            },
+          });
+        } catch (error) {
+          console.error("Error getting route from Mapbox Directions:", error);
+        }
+      };
+
+      fetchRoute();
+    } else {
+      if (map.getLayer(routeSourceId)) {
+        map.removeLayer(routeSourceId);
+      }
+      if (map.getSource(routeSourceId)) {
+        map.removeSource(routeSourceId);
+      }
+    }
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  // 3) Always pick the most recently-updated driver from driver_locations
+  //    This is independent of booking status / assigned_driver_id.
+  useEffect(() => {
+    if (!supabase) return;
+
+    let isCancelled = false;
+
+    const loadLatestDriver = async () => {
+      try {
+        setIsLoadingDriver(true);
+
+        const { data, error } = await supabase
+          .from("driver_locations")
+          .select("driver_id, updated_at")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        if (isCancelled) return;
+
+        if (error) {
+          console.error("Error fetching latest driver:", error);
+          setDriverId(null);
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          setDriverId(null);
+          return;
+        }
+
+        setDriverId(data[0].driver_id as string);
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingDriver(false);
+        }
+      }
+    };
+
+    loadLatestDriver();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  // 4) Follow that driver in realtime while isFollowing = true
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !supabase || !driverId || !isFollowing) return;
+
+    let isCancelled = false;
+    let activeChannel: any = null;
+
+    const setup = async () => {
+      // Initial position
+      const { data: initialRows, error: initialError } = await supabase
+        .from("driver_locations")
+        .select("latitude, longitude")
+        .eq("driver_id", driverId)
+        .limit(1);
+
+      if (!isCancelled) {
+        if (initialError) {
+          console.error("Error fetching initial driver location:", initialError);
+        } else if (initialRows && initialRows.length > 0) {
+          const { latitude, longitude } = initialRows[0] as {
+            latitude: number;
+            longitude: number;
+          };
+
+          const lngLat: [number, number] = [longitude, latitude];
+
+          if (!driverMarkerRef.current) {
+            driverMarkerRef.current = new mapboxgl.Marker({ color: "#ff0000" })
+              .setLngLat(lngLat)
+              .addTo(map);
+          } else {
+            driverMarkerRef.current.setLngLat(lngLat);
+          }
+
+          map.flyTo({
+            center: lngLat,
+            zoom: 15,
+            speed: 1.4,
+            curve: 1.1,
+          });
+        }
+      }
+
+      // Realtime updates
+      activeChannel = supabase
+        .channel(`driver_locations_follow_${driverId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "driver_locations",
+            filter: `driver_id=eq.${driverId}`,
+          },
+          (payload) => {
+            if (isCancelled) return;
+
+            const { latitude, longitude } = payload.new as {
+              latitude: number;
+              longitude: number;
+            };
+
+            const lngLat: [number, number] = [longitude, latitude];
+
+            if (!driverMarkerRef.current) {
+              driverMarkerRef.current = new mapboxgl.Marker({ color: "#ff0000" })
+                .setLngLat(lngLat)
+                .addTo(map);
+            } else {
+              driverMarkerRef.current.setLngLat(lngLat);
+            }
+
+            map.flyTo({
+              center: lngLat,
+              zoom: 15,
+              speed: 1.4,
+              curve: 1.1,
+            });
+          }
+        )
+        .subscribe();
+    };
+
+    setup();
+
+    return () => {
+      isCancelled = true;
+      if (activeChannel && supabase) {
+        supabase.removeChannel(activeChannel);
+      }
+    };
+  }, [driverId, isFollowing]);
+
+  const handleStartFollow = () => {
+    if (!driverId) return;
+    setIsFollowing(true);
+  };
+
+  const handleStopFollow = () => {
+    setIsFollowing(false);
+  };
+
+  return (
+    <div className="relative h-full w-full">
+      <div
+        ref={containerRef}
+        className="h-full w-full rounded-md overflow-hidden"
+      />
+      <div className="absolute top-2 left-2 z-10 flex flex-col gap-2">
+        <div className="rounded-md bg-white/90 px-3 py-2 text-xs shadow">
+          <div className="font-semibold mb-1">Map info</div>
+          <div>Booking: {bookingId ?? "None selected"}</div>
+          <div>Driver: {driverId ?? "Unassigned"}</div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleStartFollow}
+            disabled={!driverId || isFollowing || isLoadingDriver}
+            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow disabled:cursor-not-allowed disabled:bg-gray-300"
+          >
+            {isLoadingDriver
+              ? "Loading driver..."
+              : !driverId
+              ? "No driver found"
+              : isFollowing
+              ? "Following..."
+              : "Follow driver"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleStopFollow}
+            disabled={!isFollowing}
+            className="rounded-md bg-gray-600 px-3 py-1 text-xs font-medium text-white shadow disabled:cursor-not-allowed disabled:bg-gray-300"
+          >
+            Stop follow
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

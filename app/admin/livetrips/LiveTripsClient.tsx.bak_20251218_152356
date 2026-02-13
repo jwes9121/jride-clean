@@ -1,0 +1,350 @@
+﻿"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import LiveTripsMap from "./components/LiveTripsMap";
+import Link from "next/link";
+import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
+import TripWalletPanel from "./components/TripWalletPanel";
+import TripLifecycleActions from "./components/TripLifecycleActions";
+import AdminOpsPanel from "./components/AdminOpsPanel";
+
+type Zone = {
+  zone_id: string;
+  zone_name: string;
+  color_hex?: string | null;
+  capacity_limit?: number | null;
+  active_drivers?: number | null;
+  available_slots?: number | null;
+  status?: string | null;
+};
+
+type Trip = any;
+
+type PageData = {
+  trips?: Trip[];
+  bookings?: Trip[];
+  data?: Trip[];
+  "0"?: Trip[]; // legacy weird shape
+  zones?: Zone[];
+  driverWalletBalances?: any;
+  vendorWalletBalances?: any;
+  [k: string]: any;
+};
+
+type TripFilter =
+  | "dispatch"
+  | "pending"
+  | "assigned"
+  | "on_the_way"
+  | "on_trip"
+  | "completed"
+  | "cancelled"
+  | "problem";
+
+const FILTERS: { key: TripFilter; label: string }[] = [
+  { key: "dispatch", label: "Dispatch" },
+  { key: "pending", label: "Pending" },
+  { key: "assigned", label: "Assigned" },
+  { key: "on_the_way", label: "On the way" },
+  { key: "on_trip", label: "On trip" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
+  { key: "problem", label: "Problem trips" },
+];
+
+// Expert-recommended starting thresholds (tweak later if you want):
+// - "on_the_way" stuck if no update for >= 15 minutes
+// - "on_trip" stuck if no update for >= 25 minutes
+const STUCK_ON_THE_WAY_MIN = 15;
+const STUCK_ON_TRIP_MIN = 25;
+
+function normStatus(s: any) {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function parseTs(v: any): number | null {
+  if (!v) return null;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : null;
+}
+
+function pickTripId(t: any): string {
+  return String(t?.id ?? t?.uuid ?? t?.booking_id ?? t?.bookingId ?? "").trim();
+}
+
+function inFilter(filter: TripFilter, t: any, stuckIds: Set<string>) {
+  const st = normStatus(t?.status);
+
+  if (filter === "dispatch") return st === "pending" || st === "assigned" || st === "on_the_way";
+  if (filter === "problem") return stuckIds.has(pickTripId(t));
+
+  return st === filter;
+}
+
+function pillClass(active: boolean) {
+  return [
+    "px-3 py-1 rounded-full text-sm border transition",
+    active
+      ? "bg-black text-white border-black"
+      : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50",
+  ].join(" ");
+}
+
+export default function LiveTripsClient() {
+  const [page, setPage] = useState<PageData | null>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+  // IMPORTANT: this is the pill state that was missing/broken
+  const [tripFilter, setTripFilter] = useState<TripFilter>("dispatch");
+
+  const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
+  const [manualDriverId, setManualDriverId] = useState<string>("");
+
+  const [lastAction, setLastAction] = useState<string>("");
+  const loadAbortRef = useRef<AbortController | null>(null);
+
+  async function loadPage() {
+    try {
+      // cancel any in-flight request
+      try {
+        loadAbortRef.current?.abort();
+      } catch {}
+      const ac = new AbortController();
+      loadAbortRef.current = ac;
+
+      const r = await fetch("/api/admin/livetrips/page-data?debug=1", {
+        cache: "no-store",
+        signal: ac.signal,
+      });
+      const j = (await r.json().catch(() => ({}))) as PageData;
+
+      if (!r.ok) throw new Error(j?.error || j?.message || "PAGE_DATA_FAILED");
+
+      setPage(j);
+
+      const extracted: Trip[] =
+        (Array.isArray(j?.trips) ? j.trips : null) ??
+        (Array.isArray(j?.bookings) ? j.bookings : null) ??
+        (Array.isArray(j?.data) ? j.data : null) ??
+        (Array.isArray((j as any)?.["0"]) ? (j as any)["0"] : null) ??
+        [];
+
+      setTrips(extracted);
+      setZones(Array.isArray(j?.zones) ? (j.zones as Zone[]) : []);
+    } catch (e: any) {
+      console.error("loadPage failed", e);
+      setLastAction("Trips load failed: " + (e?.message ?? "unknown error"));
+    }
+  }
+
+  // Auto-refresh every 5s (baseline-safe; no fragile regex patching)
+  useEffect(() => {
+    loadPage();
+    const t = setInterval(() => {
+      loadPage();
+    }, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // "Stuck trip watcher" derived purely from trips.updated_at
+  const stuckTripIds = useMemo(() => {
+    const out = new Set<string>();
+    const now = Date.now();
+
+    for (const t of trips || []) {
+      const id = pickTripId(t);
+      if (!id) continue;
+
+      const st = normStatus(t?.status);
+      if (st !== "on_the_way" && st !== "on_trip") continue;
+
+      const ts =
+        parseTs(t?.updated_at) ??
+        parseTs(t?.updatedAt) ??
+        parseTs(t?.created_at) ??
+        parseTs(t?.createdAt);
+
+      if (!ts) continue;
+
+      const ageMin = (now - ts) / 60000;
+
+      if (st === "on_the_way" && ageMin >= STUCK_ON_THE_WAY_MIN) out.add(id);
+      if (st === "on_trip" && ageMin >= STUCK_ON_TRIP_MIN) out.add(id);
+    }
+
+    return out;
+  }, [trips]);
+
+  // Counts per pill (so the numbers are NOT "decoration")
+  const counts = useMemo(() => {
+    const c: Record<TripFilter, number> = {
+      dispatch: 0,
+      pending: 0,
+      assigned: 0,
+      on_the_way: 0,
+      on_trip: 0,
+      completed: 0,
+      cancelled: 0,
+      problem: stuckTripIds.size,
+    };
+
+    for (const t of trips || []) {
+      const st = normStatus(t?.status);
+      if (st === "pending") c.pending++;
+      if (st === "assigned") c.assigned++;
+      if (st === "on_the_way") c.on_the_way++;
+      if (st === "on_trip") c.on_trip++;
+      if (st === "completed") c.completed++;
+      if (st === "cancelled") c.cancelled++;
+
+      if (st === "pending" || st === "assigned" || st === "on_the_way") c.dispatch++;
+    }
+
+    return c;
+  }, [trips, stuckTripIds]);
+
+  // The list should actually change when you click pills
+  const visibleTrips = useMemo(() => {
+    const out = (trips || []).filter((t) => inFilter(tripFilter, t, stuckTripIds));
+
+    // keep selection valid
+    if (selectedTripId) {
+      const stillThere = out.some((t) => pickTripId(t) === selectedTripId);
+      if (!stillThere) {
+        // do not set state inside memo; handled in effect below
+      }
+    }
+    return out;
+  }, [trips, tripFilter, stuckTripIds, selectedTripId]);
+
+  // If current selection disappears due to filter change, clear it
+  useEffect(() => {
+    if (!selectedTripId) return;
+    const stillThere = (visibleTrips || []).some((t) => pickTripId(t) === selectedTripId);
+    if (!stillThere) setSelectedTripId(null);
+  }, [visibleTrips, selectedTripId]);
+
+  // Ensure the pill click is obviously active/disabled look
+  const onPickFilter = (f: TripFilter) => {
+    setTripFilter(f);
+    setLastAction("");
+  };
+
+  return (
+    <div className="w-full">
+      <div className="px-4 pt-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-2xl font-semibold">Live Trips</div>
+            <div className="text-sm text-gray-600">
+              Monitor active bookings on the left and follow them on the map on the right.
+            </div>
+          </div>
+
+          <div className="text-right text-xs text-gray-600">
+            <div>Stuck watcher thresholds:</div>
+            <div>
+              on_the_way ≥ {STUCK_ON_THE_WAY_MIN} min, on_trip ≥ {STUCK_ON_TRIP_MIN} min
+            </div>
+          </div>
+        </div>
+
+        {/* STATUS PILLS (FIXED) */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => onPickFilter(f.key)}
+              className={pillClass(tripFilter === f.key)}
+              aria-pressed={tripFilter === f.key}
+              title={f.label}
+            >
+              {f.label}{" "}
+              <span className={tripFilter === f.key ? "opacity-90" : "opacity-70"}>
+                {counts[f.key] ?? 0}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Zones workload cards (kept) */}
+        <div className="mt-4">
+          <div className="text-sm font-semibold mb-2">Zones workload</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {(zones || []).map((z) => (
+              <div
+                key={z.zone_id}
+                className="border rounded-lg p-3 bg-white"
+                style={{ borderLeft: `6px solid ${z.color_hex || "#e5e7eb"}` }}
+              >
+                <div className="font-semibold">{z.zone_name}</div>
+                <div className="text-xs text-gray-600">
+                  {String(z.status || "AVAILABLE").toUpperCase()}
+                </div>
+                <div className="text-xs text-gray-700 mt-1">
+                  Active: {Number(z.active_drivers ?? 0)} / Limit: {Number(z.capacity_limit ?? 0)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Main split */}
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3 px-4 pb-4">
+        <div className="min-h-[520px]">
+          {/* IMPORTANT: pass visibleTrips so the list actually changes with pills */}
+          <AdminOpsPanel
+            trips={visibleTrips}
+            selectedTripId={selectedTripId}
+            onSelectTrip={setSelectedTripId}
+          />
+
+          {/* Smart suggestions (kept) */}
+          <div className="mt-3">
+            <SmartAutoAssignSuggestions
+              trips={visibleTrips}
+              selectedTripId={selectedTripId}
+              onSelectTrip={setSelectedTripId}
+            />
+          </div>
+
+          {/* Wallet + lifecycle panel (kept; selection-driven) */}
+          <div className="mt-3">
+            <TripWalletPanel trips={trips} selectedTripId={selectedTripId} />
+          </div>
+          <div className="mt-3">
+            <TripLifecycleActions trips={trips} selectedTripId={selectedTripId} />
+          </div>
+
+          {lastAction ? (
+            <div className="mt-3 text-sm text-red-600">{lastAction}</div>
+          ) : null}
+        </div>
+
+        <div className="min-h-[520px]">
+          <LiveTripsMap trips={visibleTrips} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds} />
+        </div>
+      </div>
+
+      {/* Debug footer (kept minimal) */}
+      <div className="px-4 pb-6 text-xs text-gray-500">
+        <div>
+          Data shape keys:{" "}
+          {page ? Object.keys(page).slice(0, 12).join(", ") : "(not loaded yet)"}
+        </div>
+        <div>Visible trips: {visibleTrips.length} / All trips: {trips.length}</div>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+

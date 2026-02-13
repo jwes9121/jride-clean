@@ -1,0 +1,11 @@
+﻿import fs from "node:fs";
+const p = JSON.parse(fs.readFileSync("package.json","utf8"));
+p.scripts = p.scripts || {};
+p.scripts.prebuild = 'rimraf "backup_*" "jride-app_patch" "app/app" || exit 0';
+p.scripts.build = p.scripts.build || 'next build --no-lint';
+p.scripts.dev = p.scripts.dev || 'next dev';
+p.scripts.start = p.scripts.start || 'next start -p 3000';
+p.devDependencies = p.devDependencies || {};
+p.devDependencies.rimraf = p.devDependencies.rimraf || "^5.0.0";
+fs.writeFileSync("package.json", JSON.stringify(p,null,2));
+console.log("package.json scripts updated");

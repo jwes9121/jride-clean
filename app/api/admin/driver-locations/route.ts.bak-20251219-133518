@@ -1,0 +1,50 @@
+﻿import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
+
+function labelFromId(id: string) {
+  const s = String(id || "").trim();
+  if (!s) return "Driver";
+  // stable label even without driver_name column
+  return "Driver " + s.slice(0, 4);
+}
+
+export async function GET() {
+  try {
+    const supabase = supabaseAdmin();
+
+    const { data, error } = await supabase
+      .from("driver_locations")
+      .select("driver_id, lat, lng, town, status, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(200);
+
+    if (error) {
+      console.error("ADMIN_DRIVER_LOCATIONS_ERROR", error);
+      return NextResponse.json(
+        { error: "ADMIN_DRIVER_LOCATIONS_ERROR", message: error.message, drivers: [] },
+        { status: 500 }
+      );
+    }
+
+    const drivers = (data ?? []).map((d: any) => ({
+      id: String(d.driver_id),
+      name: labelFromId(d.driver_id),
+      lat: Number(d.lat ?? 0),
+      lng: Number(d.lng ?? 0),
+      zone: String(d.town ?? "Unknown"),
+      homeTown: String(d.town ?? "Unknown"),
+      status: String(d.status ?? "unknown"),
+      updated_at: d.updated_at ?? null,
+    }));
+
+    return NextResponse.json({ drivers }, { status: 200 });
+  } catch (err: any) {
+    console.error("ADMIN_DRIVER_LOCATIONS_UNEXPECTED", err);
+    return NextResponse.json(
+      { error: "ADMIN_DRIVER_LOCATIONS_UNEXPECTED", message: err?.message ?? "Unexpected error", drivers: [] },
+      { status: 500 }
+    );
+  }
+}

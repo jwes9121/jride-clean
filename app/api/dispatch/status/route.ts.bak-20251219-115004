@@ -1,0 +1,136 @@
+﻿import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+type Body = {
+  bookingCode?: string;
+  booking_code?: string;
+  status?: string;
+  toStatus?: string;
+  override?: boolean;
+};
+
+const ALLOWED = new Set([
+  "pending",
+  "assigned",
+  "on_the_way",
+  "on_trip",
+  "completed",
+  "cancelled",
+  "canceled",
+]);
+
+function normStatus(s: any): string {
+  const v = String(s || "").trim().toLowerCase();
+  if (v === "canceled") return "cancelled";
+  return v;
+}
+
+function pickBookingCode(b: Body): string {
+  const code = String(b.bookingCode || b.booking_code || "").trim();
+  return code;
+}
+
+function isMissingColumn(err: any): boolean {
+  const msg = String(err?.message || err || "");
+  // Supabase/Postgres commonly: 'column "<name>" of relation "<table>" does not exist'
+  return msg.toLowerCase().includes("column") && msg.toLowerCase().includes("does not exist");
+}
+
+async function tryUpdateBooking(code: string, patch: Record<string, any>) {
+  const { error } = await supabaseAdmin
+    .from("bookings")
+    .update(patch)
+    .eq("booking_code", code);
+
+  if (error) throw error;
+}
+
+async function tryClearProblemStuckFields(code: string) {
+  // We DO NOT assume columns exist. We try common names one by one and ignore missing-column errors.
+
+  const attempts: Record<string, any>[] = [
+    { is_problem: false },
+    { problem: false },
+    { has_problem: false },
+    { problem_reason: null },
+    { problem_notes: null },
+    { problem_at: null },
+
+    { is_stuck: false },
+    { stuck: false },
+    { stuck_reason: null },
+    { stuck_notes: null },
+    { stuck_at: null },
+
+    { dispatcher_flag: null },
+    { dispatch_flag: null },
+  ];
+
+  for (const patch of attempts) {
+    try {
+      await tryUpdateBooking(code, patch);
+    } catch (e: any) {
+      if (isMissingColumn(e)) continue;
+      // If it's any other error, stop so we don't hide real issues
+      throw e;
+    }
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as Body;
+
+    const bookingCode = pickBookingCode(body);
+    const toStatus = normStatus(body.toStatus || body.status);
+    const override = Boolean(body.override);
+
+    if (!bookingCode) {
+      return NextResponse.json(
+        { error: "MISSING_BOOKING_CODE" },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    if (!ALLOWED.has(toStatus)) {
+      return NextResponse.json(
+        { error: "INVALID_STATUS", message: `Status '${toStatus}' not allowed.` },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    // Basic update: status (and optionally timestamps if they exist)
+    try {
+      await tryUpdateBooking(bookingCode, { status: toStatus });
+    } catch (e: any) {
+      // If status column somehow doesn't exist (unlikely), surface it.
+      return NextResponse.json(
+        { error: "UPDATE_FAILED", message: String(e?.message || e) },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    // If completing/cancelling, clear problem/stuck flags (best-effort)
+    if (toStatus === "completed" || toStatus === "cancelled") {
+      try {
+        await tryClearProblemStuckFields(bookingCode);
+      } catch (e: any) {
+        // Still return success for status update, but include warning so UI can show it.
+        return NextResponse.json(
+          { ok: true, booking_code: bookingCode, status: toStatus, override, warning: String(e?.message || e) },
+          { status: 200, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+    }
+
+    return NextResponse.json(
+      { ok: true, booking_code: bookingCode, status: toStatus, override },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "SERVER_ERROR", message: String(e?.message || e) },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+}

@@ -1,0 +1,474 @@
+# PATCH-DISPATCH-PAGE-FORCEASSIGN-DROPDOWN-FULL.ps1
+# Fixes: row undefined, adds driver dropdown + force-assign, removes mojibake, adds per-row pending state + button disabling
+# Repo root expected: C:\Users\jwes9\Desktop\jride-clean-fresh
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ throw $m }
+
+$root = "C:\Users\jwes9\Desktop\jride-clean-fresh"
+$file = Join-Path $root "app\dispatch\page.tsx"
+if (!(Test-Path $file)) { Fail "File not found: $file" }
+
+$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+$bak = "$file.bak.$ts"
+Copy-Item $file $bak -Force
+Write-Host "[OK] Backup: $bak" -ForegroundColor Green
+
+# Hard replace the file with a known-good implementation.
+# NOTE: Keep layout roughly the same; add Force Assign toggle + dropdown in Actions.
+$NEW = @'
+"use client";
+
+import * as React from "react";
+
+type Booking = {
+  id: string;
+
+  rider_name?: string | null;
+  rider_phone?: string | null;
+
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+
+  town?: string | null;
+  distance_km?: number | null;
+  fare?: number | null;
+
+  status?: string | null; // keep flexible (your DB/API uses multiple status vocabularies)
+  driver_id?: string | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+
+  service_type?: string | null;
+  trip_type?: string | null;
+  vendor_id?: string | null;
+  takeout_service_level?: "regular" | "express" | null;
+};
+
+type DriverRow = {
+  id: string;
+  town?: string | null;
+  status?: string | null; // "online" | "busy" | etc
+  lat?: number | null;
+  lng?: number | null;
+  last_seen?: string | null;
+};
+
+function normTown(v: any) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function isShortId(v: any) {
+  const s = String(v ?? "");
+  // UUIDs are 36 chars; "short" table IDs are usually 6-12 chars
+  return s.length > 0 && s.length < 20;
+}
+
+export default function DispatchPage(): JSX.Element {
+  const [rows, setRows] = React.useState<Booking[]>([]);
+  const [loading, setLoading] = React.useState<boolean>(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // create form
+  const [serviceType, setServiceType] = React.useState<"dispatch" | "takeout">("dispatch");
+
+  // dispatch/local fields
+  const [riderName, setRiderName] = React.useState<string>("");
+  const [riderPhone, setRiderPhone] = React.useState<string>("");
+  const [town, setTown] = React.useState<string>("");
+  const [pickupLat, setPickupLat] = React.useState<string>("");
+  const [pickupLng, setPickupLng] = React.useState<string>("");
+
+  // takeout fields
+  const [vendorId, setVendorId] = React.useState<string>("");
+  const [takeoutLevel, setTakeoutLevel] = React.useState<"regular" | "express">("regular");
+  const [pickupLabel, setPickupLabel] = React.useState<string>("");
+  const [dropoffLabel, setDropoffLabel] = React.useState<string>("");
+
+  // drivers + per-row selection
+  const [drivers, setDrivers] = React.useState<DriverRow[]>([]);
+  const [driversError, setDriversError] = React.useState<string | null>(null);
+  const [selectedDriverByBookingId, setSelectedDriverByBookingId] = React.useState<Record<string, string>>({});
+  const [forceAssign, setForceAssign] = React.useState<boolean>(false);
+
+  // per-row pending flags (visual confirmation + disable spam clicking)
+  const [pendingByBookingId, setPendingByBookingId] = React.useState<Record<string, boolean>>({});
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dispatch/bookings", { cache: "no-store" as any });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to load");
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshDrivers() {
+    setDriversError(null);
+    try {
+      const res = await fetch("/api/dispatch/drivers", { cache: "no-store" as any });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
+      const list = Array.isArray(data?.drivers) ? data.drivers : [];
+      setDrivers(list);
+    } catch (e: any) {
+      setDrivers([]);
+      setDriversError(e?.message || "Failed to load drivers");
+    }
+  }
+
+  async function createBooking() {
+    setError(null);
+    try {
+      const payload: any = {};
+
+      if (serviceType === "takeout") {
+        payload.service_type = "takeout";
+        payload.takeout_service_level = takeoutLevel;
+        payload.vendor_id = vendorId || null;
+        payload.pickup_label = pickupLabel || null;
+        payload.dropoff_label = dropoffLabel || null;
+        payload.town = town || "";
+      } else {
+        payload.rider_name = riderName;
+        payload.rider_phone = riderPhone;
+        payload.town = town;
+        payload.pickup_lat = Number(pickupLat);
+        payload.pickup_lng = Number(pickupLng);
+      }
+
+      const res = await fetch("/api/dispatch/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to create");
+
+      setRows((prev) => [data.row, ...prev]);
+
+      // reset fields (keep serviceType selection)
+      setRiderName("");
+      setRiderPhone("");
+      setTown("");
+      setPickupLat("");
+      setPickupLng("");
+      setVendorId("");
+      setTakeoutLevel("regular");
+      setPickupLabel("");
+      setDropoffLabel("");
+    } catch (e: any) {
+      setError(e?.message || "Failed to create");
+    }
+  }
+
+  function setPending(bookingId: string, v: boolean) {
+    setPendingByBookingId((prev) => ({ ...prev, [bookingId]: v }));
+  }
+
+  async function assign(booking_id: string) {
+    const driver_id = selectedDriverByBookingId[booking_id] || "";
+    if (!driver_id) return;
+
+    setError(null);
+    setPending(booking_id, true);
+    try {
+      const res = await fetch("/api/dispatch/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id, driver_id, force: !!forceAssign }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Assign failed");
+
+      setRows((prev) => prev.map((b) => (b.id === booking_id ? data.row : b)));
+
+      // clear selection for that row only
+      setSelectedDriverByBookingId((prev) => {
+        const next = { ...prev };
+        delete next[booking_id];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Assign failed");
+    } finally {
+      setPending(booking_id, false);
+    }
+  }
+
+  async function setStatus(b: Booking, status: string) {
+    const booking_id = String(b.id);
+    setError(null);
+    setPending(booking_id, true);
+
+    // Some of your routes want bookingId (uuid) + booking_id.
+    // If b.id looks "short", do NOT send bookingId to avoid UUID parse errors.
+    const bookingId = isShortId(b.id) ? undefined : b.id;
+
+    try {
+      const res = await fetch("/api/dispatch/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, booking_id, status }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Update failed");
+
+      setRows((prev) => prev.map((x) => (x.id === booking_id ? data.row : x)));
+    } catch (e: any) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setPending(booking_id, false);
+    }
+  }
+
+  React.useEffect(() => {
+    load();
+    refreshDrivers();
+  }, []);
+
+  // Optional: refresh drivers periodically (keeps dropdown fresh)
+  React.useEffect(() => {
+    const t = window.setInterval(() => {
+      refreshDrivers();
+    }, 15000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  return (
+    <div className="p-6 space-y-8">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Dispatch Panel</h1>
+
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={forceAssign}
+            onChange={(e) => setForceAssign(e.target.checked)}
+          />
+          <span>Force assign (override busy)</span>
+        </label>
+      </div>
+
+      <div className="rounded-2xl border p-4 shadow space-y-3">
+        <h2 className="font-medium">New Booking</h2>
+
+        <div className="flex gap-3 items-center">
+          <label className="text-sm">Type</label>
+          <select
+            className="border rounded px-3 py-2"
+            value={serviceType}
+            onChange={(e) => setServiceType(e.target.value as any)}
+          >
+            <option value="dispatch">Dispatch (local)</option>
+            <option value="takeout">Takeout</option>
+          </select>
+
+          {serviceType === "takeout" ? (
+            <>
+              <label className="text-sm">Takeout</label>
+              <select
+                className="border rounded px-3 py-2"
+                value={takeoutLevel}
+                onChange={(e) => setTakeoutLevel(e.target.value as any)}
+                title="Regular = with waiting, Express = OTC/no waiting"
+              >
+                <option value="regular">Regular (PHP 70 min)</option>
+                <option value="express">Express / OTC (PHP 55 min)</option>
+              </select>
+            </>
+          ) : null}
+        </div>
+
+        {serviceType === "takeout" ? (
+          <div className="grid md:grid-cols-5 gap-3">
+            <input className="border rounded px-3 py-2" placeholder="Town (optional)" value={town} onChange={(e) => setTown(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="vendor_id (UUID)" value={vendorId} onChange={(e) => setVendorId(e.target.value)} />
+            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Pickup label (Vendor pickup)" value={pickupLabel} onChange={(e) => setPickupLabel(e.target.value)} />
+            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Dropoff label (Customer dropoff)" value={dropoffLabel} onChange={(e) => setDropoffLabel(e.target.value)} />
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-5 gap-3">
+            <input className="border rounded px-3 py-2" placeholder="Rider name" value={riderName} onChange={(e) => setRiderName(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Rider phone" value={riderPhone} onChange={(e) => setRiderPhone(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Town" value={town} onChange={(e) => setTown(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Pickup lat" value={pickupLat} onChange={(e) => setPickupLat(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Pickup lng" value={pickupLng} onChange={(e) => setPickupLng(e.target.value)} />
+          </div>
+        )}
+
+        <button onClick={createBooking} className="px-4 py-2 rounded-xl border shadow">Create</button>
+        {error ? <p className="text-red-600">{error}</p> : null}
+      </div>
+
+      <div className="rounded-2xl border p-4 shadow">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-medium mb-3">Queue</h2>
+
+          <div className="text-xs text-gray-600 flex items-center gap-3">
+            <button className="px-3 py-1 rounded border" onClick={refreshDrivers}>Refresh drivers</button>
+            {driversError ? <span className="text-red-600">{driversError}</span> : null}
+          </div>
+        </div>
+
+        {loading ? <p>Loading...</p> : rows.length === 0 ? <p>No active rides.</p> : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b">
+                <th className="py-2">ID</th>
+                <th className="py-2">Town</th>
+                <th className="py-2">Status</th>
+                <th className="py-2">Driver</th>
+                <th className="py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((b) => {
+                const bookingId = String(b.id);
+                const alreadyAssigned = !!b.driver_id;
+                const isTerminal = ["completed", "canceled", "cancelled"].includes(String(b.status || "").toLowerCase());
+
+                const townKey = normTown(b.town);
+                const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
+
+                const onlineDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+                const busyDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() !== "online");
+
+                const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
+
+                const selected = selectedDriverByBookingId[bookingId] || "";
+
+                const pending = !!pendingByBookingId[bookingId];
+
+                // Auto-select first eligible driver if empty (dispatch UX)
+                React.useEffect(() => {
+                  if (!alreadyAssigned && !selected && eligibleDrivers.length > 0) {
+                    setSelectedDriverByBookingId((prev) => ({ ...prev, [bookingId]: eligibleDrivers[0].id }));
+                  }
+                  // eslint-disable-next-line react-hooks/exhaustive-deps
+                }, [bookingId, alreadyAssigned, forceAssign, eligibleDrivers.length]);
+
+                return (
+                  <tr key={bookingId} className="border-b">
+                    <td className="py-2">{bookingId.slice(0, 8)}</td>
+                    <td className="py-2">{b.town || ""}</td>
+                    <td className="py-2">{b.status || ""}</td>
+                    <td className="py-2">{b.driver_id ? b.driver_id : "-"}</td>
+                    <td className="py-2 space-x-2">
+                      {!alreadyAssigned ? (
+                        <>
+                          <select
+                            className="border rounded px-2 py-1 w-56"
+                            value={selected}
+                            onChange={(e) => setSelectedDriverByBookingId((prev) => ({ ...prev, [bookingId]: e.target.value }))}
+                            disabled={pending}
+                            title="Eligible drivers are filtered by town. Enable Force assign to include busy drivers."
+                          >
+                            {eligibleDrivers.length === 0 ? (
+                              <option value="">No eligible drivers</option>
+                            ) : (
+                              eligibleDrivers.map((d) => {
+                                const st = String(d.status || "").toLowerCase();
+                                const tag = st === "online" ? "online" : "busy";
+                                return (
+                                  <option key={d.id} value={d.id}>
+                                    {d.id.slice(0, 8)} ({tag})
+                                  </option>
+                                );
+                              })
+                            )}
+                          </select>
+
+                          <span className="text-xs text-gray-600 ml-2">
+                            Online {onlineDrivers.length} / Busy {busyDrivers.length}
+                          </span>
+
+                          <button
+                            onClick={() => assign(bookingId)}
+                            className="px-2 py-1 rounded border"
+                            disabled={pending || !selected || eligibleDrivers.length === 0}
+                            title={!selected ? "Select a driver first" : ""}
+                          >
+                            Assign
+                          </button>
+                        </>
+                      ) : null}
+
+                      <button
+                        onClick={() => setStatus(b, "enroute")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        En-route
+                      </button>
+
+                      <button
+                        onClick={() => setStatus(b, "arrived")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        Arrived
+                      </button>
+
+                      <button
+                        onClick={() => setStatus(b, "completed")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        Complete
+                      </button>
+
+                      <button
+                        onClick={() => setStatus(b, "canceled")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        Cancel
+                      </button>
+
+                      {pending ? <span className="text-xs text-gray-500 ml-2">Updating...</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+'@
+
+Set-Content -Path $file -Value $NEW -Encoding UTF8
+Write-Host "[OK] Wrote new dispatch page.tsx (hard replace)." -ForegroundColor Green
+
+# Quick sanity checks
+$txt = Get-Content -Path $file -Raw
+if ($txt -match '\brow\b' -and $txt -match 'row is not defined') {
+  Write-Host "[WARN] Found 'row' string in file text. (Not necessarily a bug.)" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Next:" -ForegroundColor Cyan
+Write-Host "1) npm run dev" -ForegroundColor Cyan
+Write-Host "2) Open http://localhost:3000/dispatch" -ForegroundColor Cyan
+Write-Host "   - You should see Force assign toggle + driver dropdown per row." -ForegroundColor Cyan
+Write-Host "   - Assign disabled until a driver is selected (auto-selects first eligible when available)." -ForegroundColor Cyan
+Write-Host "   - Status buttons show 'Updating...' while request is in-flight." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Rollback (if needed):" -ForegroundColor Yellow
+Write-Host "Copy-Item `"$bak`" `"$file`" -Force" -ForegroundColor Yellow

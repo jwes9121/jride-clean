@@ -1,0 +1,17 @@
+﻿# NEVER COMMIT SECRETS
+.env*
+!.env.example
+
+# build + patch artifacts
+node_modules/
+.next/
+_patch_bak/
+_debug_route_dumps/
+_diag/
+_payments_proof_*/
+_payments_scan_report_*/
+**/*.pack
+**/*.bak
+**/*.bak.*
+tmp_*.json
+*MOJIBAKE_CLEAN_REPORT*.txt

@@ -1,0 +1,250 @@
+"use client";
+
+import React, { useMemo, useState } from "react";
+
+type Props = {
+  trip: any;
+  dispatcherName?: string | null;
+  onActionCompleted?: () => void;
+};
+
+/**
+ * DispatchActionPanel
+ * - Named export (matches LiveTripsMap import: { DispatchActionPanel })
+ * - Also default export (safe)
+ * - No duplicate vars/exports
+ * - Nudge/Reassign/Emergency make network requests and show readable errors
+ */
+export function DispatchActionPanel({ trip, dispatcherName, onActionCompleted }: Props) {
+  const [busy, setBusy] = useState(false);
+  const [statusText, setStatusText] = useState<string>("");
+  const [errorText, setErrorText] = useState<string>("");
+
+  const computed = useMemo(() => {
+    const t: any = trip || {};
+    const bookingCode =
+      t.booking_code ??
+      t.bookingCode ??
+      t.code ??
+      t.booking_code_str ??
+      null;
+
+    const bookingId =
+      t.booking_id ??
+      t.id ??
+      t.uuid ??
+      null;
+
+    const driverId =
+      t.driver_id ??
+      t.driverId ??
+      null;
+
+    const driverPhone =
+      t.driver_phone ??
+      t.driverPhone ??
+      t.rider_phone ??
+      t.driver_contact ??
+      null;
+
+    const status = String(t.status ?? "").toLowerCase();
+
+    return { bookingCode, bookingId, driverId, driverPhone, status };
+  }, [trip]);
+
+  async function postJson(url: string, body: any) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+
+    // If endpoint doesn't exist, let caller decide fallback
+    if (res.status === 404) {
+      return { ok: false, status: 404, data: null as any };
+    }
+
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch {
+      // ignore
+    }
+
+    return { ok: res.ok, status: res.status, data };
+  }
+
+  async function runAction(label: string, fn: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true);
+    setErrorText("");
+    setStatusText(`${label}...`);
+    try {
+      await fn();
+      setStatusText(`${label}: OK`);
+      onActionCompleted?.();
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      setStatusText("");
+      setErrorText(`${label} FAILED: ${msg}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // UI enable/disable
+  const canCall = String(computed.driverPhone ?? "").trim().length >= 7;
+  const tripFinished = computed.status === "completed" || computed.status === "cancelled";
+
+  const btnBase =
+    "flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[10px] font-medium border transition select-none";
+  const btnDisabled =
+    "border-slate-700 bg-slate-900/60 text-slate-500 cursor-not-allowed";
+  const btnEnabled =
+    "border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400";
+
+  const disabledCall = busy || !canCall;
+  const disabledNudge = busy || tripFinished;
+  const disabledReassign = busy || tripFinished;
+  const disabledEmergency = busy; // always allowed unless busy
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-100 space-y-2">
+      <div className="text-[11px] font-semibold tracking-wide text-slate-200">
+        DISPATCH ACTIONS
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        {/* CALL */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledCall ? btnDisabled : btnEnabled}`}
+          disabled={disabledCall}
+          onClick={() => {
+            if (!canCall) return;
+            const phone = String(computed.driverPhone).trim();
+            // try tel: on devices; on desktop it may do nothing (that's okay)
+            window.open(`tel:${phone}`, "_self");
+          }}
+          title={disabledCall ? (busy ? "Busy" : "No driver phone") : "Call driver"}
+        >
+          <div className="text-[12px]">📞</div>
+          <div>Call number</div>
+        </button>
+
+        {/* NUDGE */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledNudge ? btnDisabled : btnEnabled}`}
+          disabled={disabledNudge}
+          onClick={() =>
+            runAction("Nudge", async () => {
+              const payload = {
+                bookingId: computed.bookingId,
+                bookingCode: computed.bookingCode,
+                dispatcherName: dispatcherName ?? null,
+              };
+
+              // Try a dedicated endpoint first if you have it
+              let r = await postJson("/api/dispatch/nudge", payload);
+
+              // Fallback: some builds use /api/dispatch/status with a "nudge" action
+              if (r.status === 404) {
+                r = await postJson("/api/dispatch/status", { ...payload, action: "nudge" });
+              }
+
+              if (!r.ok) {
+                const msg = r.data?.message ?? `HTTP ${r.status} (no handler / error)`;
+                throw new Error(msg);
+              }
+            })
+          }
+          title={disabledNudge ? (busy ? "Busy" : "Trip completed/cancelled") : "Send nudge to driver app"}
+        >
+          <div className="text-[12px]">📳</div>
+          <div>Nudge driver</div>
+        </button>
+
+        {/* REASSIGN / UNASSIGN */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledReassign ? btnDisabled : btnEnabled}`}
+          disabled={disabledReassign}
+          onClick={() =>
+            runAction("Reassign", async () => {
+              const payload = {
+                bookingId: computed.bookingId,
+                bookingCode: computed.bookingCode,
+                dispatcherName: dispatcherName ?? null,
+              };
+
+              // Try dedicated endpoint first
+              let r = await postJson("/api/dispatch/reassign", payload);
+
+              // Fallback: status endpoint to unassign (if your backend supports it)
+              if (r.status === 404) {
+                r = await postJson("/api/dispatch/status", {
+                  ...payload,
+                  action: "reassign",
+                  // common pattern: drop driver + return to pending/assigned
+                  driverId: null,
+                  status: "pending",
+                });
+              }
+
+              if (!r.ok) {
+                const msg = r.data?.message ?? `HTTP ${r.status} (no handler / error)`;
+                throw new Error(msg);
+              }
+            })
+          }
+          title={disabledReassign ? (busy ? "Busy" : "Trip completed/cancelled") : "Unassign / change driver"}
+        >
+          <div className="text-[12px]">🔁</div>
+          <div>Reassign / change driver</div>
+        </button>
+
+        {/* EMERGENCY */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledEmergency ? btnDisabled : btnEnabled}`}
+          disabled={disabledEmergency}
+          onClick={() =>
+            runAction("Emergency", async () => {
+              const payload = {
+                bookingId: computed.bookingId,
+                bookingCode: computed.bookingCode,
+                dispatcherName: dispatcherName ?? null,
+              };
+
+              const r = await postJson("/api/dispatch/emergency", payload);
+
+              if (!r.ok) {
+                const msg = r.data?.message ?? `HTTP ${r.status}`;
+                throw new Error(msg);
+              }
+            })
+          }
+          title={disabledEmergency ? "Busy" : "Emergency priority alert"}
+        >
+          <div className="text-[12px]">🚨</div>
+          <div>Emergency priority alert</div>
+        </button>
+      </div>
+
+      {statusText ? (
+        <div className="text-[10px] text-emerald-300 pt-2">{statusText}</div>
+      ) : null}
+
+      {errorText ? (
+        <div className="text-[10px] text-red-300 pt-2 whitespace-pre-wrap">{errorText}</div>
+      ) : null}
+
+      <div className="text-[10px] text-slate-500 pt-1">
+        Driver phone: {computed.driverPhone ? computed.driverPhone : "--"}
+      </div>
+    </div>
+  );
+}
+
+export default DispatchActionPanel;

@@ -1,0 +1,76 @@
+﻿import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
+
+type Body = {
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  status?: string | null;
+};
+
+export async function POST(req: Request) {
+  try {
+    const supabase = supabaseAdmin();
+    const body = (await req.json().catch(() => ({}))) as Body;
+
+    const bookingId = String(body.bookingId ?? "").trim();
+    const bookingCode = String(body.bookingCode ?? "").trim();
+    const status = String(body.status ?? "").trim();
+
+    if (!status) return NextResponse.json({ error: "MISSING_STATUS" }, { status: 400 });
+    if (!bookingId && !bookingCode) {
+      return NextResponse.json({ error: "MISSING_BOOKING_IDENTIFIER" }, { status: 400 });
+    }
+
+    // Preferred path: wrapper RPC that can trigger settlement on "completed"
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "dispatcher_update_booking_status_v2",
+      {
+        p_booking_id: bookingId ? bookingId : null,
+        p_booking_code: bookingCode ? bookingCode : null,
+        p_status: status,
+      }
+    );
+
+    if (rpcError) {
+      console.error("[dispatch-status] RPC error, falling back to direct update", rpcError);
+
+      // Baseline fallback (original behavior)
+      const nowIso = new Date().toISOString();
+      let q = supabase.from("bookings").update({
+        status,
+        updated_at: nowIso,
+      });
+
+      if (bookingId) q = q.eq("id", bookingId);
+      else q = q.eq("booking_code", bookingCode);
+
+      const { error } = await q;
+      if (error) {
+        console.error("DISPATCH_STATUS_DB_ERROR", error);
+        return NextResponse.json({ error: "DISPATCH_STATUS_DB_ERROR", message: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json(
+        { ok: true, status, settlement_called: null, mode: "fallback_direct_update" },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        ...(rpcData ?? {}),
+        mode: "rpc_dispatcher_update_booking_status_v2",
+      },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    console.error("DISPATCH_STATUS_UNEXPECTED", err);
+    return NextResponse.json(
+      { error: "DISPATCH_STATUS_UNEXPECTED", message: err?.message ?? "Unexpected error" },
+      { status: 500 }
+    );
+  }
+}

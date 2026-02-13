@@ -1,0 +1,462 @@
+﻿"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import LiveTripsMap from "./components/LiveTripsMap";
+import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
+import TripWalletPanel from "./components/TripWalletPanel";
+import TripLifecycleActions from "./components/TripLifecycleActions";
+
+type Trip = any;
+type Driver = any;
+
+function isUuid(v: any) {
+  const s = String(v ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
+function tripIdOf(t: any) {
+  const v = t?.id ?? t?.uuid ?? t?.booking_id ?? t?.bookingId ?? null;
+  return v ? String(v) : null;
+}
+function tripCodeOf(t: any) {
+  const v = t?.booking_code ?? t?.bookingCode ?? t?.code ?? null;
+  return v ? String(v) : null;
+}
+function tripStatusOf(t: any) {
+  return String(t?.status ?? "").toLowerCase().trim();
+}
+
+
+function isLockedStatus(s: any) {
+  const x = String(s ?? "").toLowerCase().trim();
+  return x === "on_trip" || x === "completed" || x === "cancelled";
+}
+function pickupEtaMinutesOf(t: any): number | null {
+  const candidates = [
+    t?.pickup_eta_min,
+    t?.pickupEtaMin,
+    t?.eta_pickup_min,
+    t?.etaToPickupMin,
+    t?.pickup_eta_minutes,
+    t?.pickupEtaMinutes,
+  ];
+  for (const v of candidates) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+const STATUSES = [
+  { key: "pending", label: "Pending" },
+  { key: "assigned", label: "Assigned" },
+  { key: "on_the_way", label: "On the way" },
+  { key: "on_trip", label: "On trip" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
+  { key: "problem", label: "Problem trips" },
+] as const;
+
+type FilterKey = (typeof STATUSES)[number]["key"] | "all";
+
+export default function LiveTripsClient() {
+  const [loading, setLoading] = useState(false);
+  const [lastAction, setLastAction] = useState<string>("");
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [zones, setZones] = useState<any[]>([]);
+  const [selectedTripKey, setSelectedTripKey] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("all");
+
+  // safe fallback – until stuck watcher is wired for real
+  const stuckTripIds = useMemo(() => new Set<string>(), []);
+
+  const refreshTimer = useRef<any>(null);
+
+  async function loadPage() {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/admin/livetrips/page-data", { cache: "no-store" });
+      const j = await r.json();
+
+      // Robust trip extraction (your RPC sometimes returns "0" array)
+      let list: any[] = [];
+      if (Array.isArray(j?.trips)) list = j.trips;
+      else if (Array.isArray(j?.bookings)) list = j.bookings;
+      else if (Array.isArray(j?.data)) list = j.data;
+      else if (j && typeof j === "object" && Array.isArray(j["0"])) list = j["0"];
+
+      // Drivers: accept common keys; if none, keep existing
+      let drv: any[] = [];
+      if (Array.isArray(j?.drivers)) drv = j.drivers;
+      else if (Array.isArray(j?.driverLocations)) drv = j.driverLocations;
+      else if (Array.isArray(j?.driver_locations)) drv = j.driver_locations;
+
+      const z = Array.isArray(j?.zones) ? j.zones : [];
+
+      setTrips(list || []);
+      if (drv.length) setDrivers(drv);
+      setZones(z);
+
+      // keep selection stable if possible
+      if (!selectedTripKey && list?.length) {
+        const t0 = list[0];
+        setSelectedTripKey(tripIdOf(t0) || tripCodeOf(t0) || null);
+      }
+    } catch (e: any) {
+      console.error("loadPage failed", e);
+      setLastAction("Load failed: " + (e?.message ?? "unknown"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Auto-refresh every 4s (baseline-safe)
+  useEffect(() => {
+    loadPage();
+    refreshTimer.current = setInterval(loadPage, 4000);
+    return () => {
+      try { clearInterval(refreshTimer.current); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedTrip = useMemo(() => {
+    if (!selectedTripKey) return null;
+    return (trips || []).find((t) => {
+      const k = tripIdOf(t) || tripCodeOf(t);
+      return k && String(k) === String(selectedTripKey);
+    }) || null;
+  }, [trips, selectedTripKey]);
+
+  const stats = useMemo(() => {
+    const all = trips || [];
+    const c = {
+      all: all.length,
+      pending: 0,
+      assigned: 0,
+      on_the_way: 0,
+      on_trip: 0,
+      completed: 0,
+      cancelled: 0,
+      problem: 0,
+      active: 0,
+    };
+    for (const t of all) {
+      const st = tripStatusOf(t);
+      if (st in c) (c as any)[st]++;
+
+      if (st === "assigned" || st === "on_the_way" || st === "on_trip") c.active++;
+      const id = tripIdOf(t);
+      if (id && stuckTripIds.has(String(id))) c.problem++;
+    }
+    return c;
+  }, [trips, stuckTripIds]);
+
+  const visibleTrips = useMemo(() => {
+    const all = trips || [];
+    if (filter === "all") return all;
+
+    if (filter === "problem") {
+      return all.filter((t) => {
+        const id = tripIdOf(t);
+        return id && stuckTripIds.has(String(id));
+      });
+    }
+
+    return all.filter((t) => tripStatusOf(t) === filter);
+  }, [trips, filter, stuckTripIds]);
+
+  // Derive driver status from trips so the dropdown reflects assignments immediately
+  const derivedDrivers = useMemo(() => {
+    const activeByDriver = new Map<string, string>();
+    (trips || []).forEach((t: any) => {
+      const st = tripStatusOf(t);
+      const did = String(t?.driver_id ?? "").trim();
+      if (!did) return;
+      if (st === "assigned" || st === "on_the_way" || st === "on_trip") activeByDriver.set(did, st);
+    });
+    return (drivers || []).map((d: any) => {
+      const did = String(d?.id ?? d?.driver_id ?? "").trim();
+      const derived = activeByDriver.get(did);
+      if (!derived) return d;
+      return { ...d, status: derived };
+    });
+  }, [drivers, trips]);
+
+  // Calls (routes you provided)
+  async function setTripStatus(t: any, nextStatus: string) {
+    const bookingId = tripIdOf(t);
+    const bookingCode = tripCodeOf(t);
+
+    const payload = {
+      bookingId: bookingId && isUuid(bookingId) ? bookingId : "",
+      bookingCode: bookingCode || "",
+      status: nextStatus,
+    };
+
+    const r = await fetch("/api/dispatch/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+      const code = String(j?.error || j?.message || "ASSIGN_FAILED");
+      // show message, do not crash the page
+      setLastAction(`Assign FAILED: ${code}`);
+      return;
+    }setLastAction(`Status → ${nextStatus}`);
+    await loadPage();
+  }
+
+  async function assignDriver(t: any, driverId: string, source: string) {
+    const bookingId = tripIdOf(t);
+    const bookingCode = tripCodeOf(t);
+
+    const payload = {
+      bookingId: bookingId && isUuid(bookingId) ? bookingId : "",
+      bookingCode: bookingCode || "",
+      driverId,
+      source,
+    };
+
+    const r = await fetch("/api/dispatch/assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+      const code = String(j?.error || j?.message || "ASSIGN_FAILED");
+      // show message, do not crash the page
+      setLastAction(`Assign FAILED: ${code}`);
+      return;
+    }setLastAction("Assigned");
+    await loadPage();
+  }
+
+  // Simple selection + driver pick state for row actions
+  const [rowDriverPick, setRowDriverPick] = useState<Record<string, string>>({});
+
+  function TripRowActions({ t }: { t: any }) {
+    const k = String(tripIdOf(t) || tripCodeOf(t) || "");
+    const st = tripStatusOf(t);
+    const currentDriverId = String(t?.driver_id ?? "").trim();
+
+    const picked = rowDriverPick[k] ?? currentDriverId ?? "";
+
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <select
+          value={picked}
+          onChange={(e) => setRowDriverPick((p) => ({ ...p, [k]: e.target.value }))}
+          style={{ minWidth: 220, padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 8 }}
+        >
+          <option value="">Select driver</option>
+          {(derivedDrivers || []).map((d: any) => {
+            const did = String(d?.id ?? d?.driver_id ?? "");
+            const town = String(d?.town ?? d?.zone ?? "Unknown");
+            const ds = String(d?.status ?? "unknown");
+            return (
+              <option key={did} value={did}>
+                {`Driver ${did.slice(0, 4)} — ${town} — ${ds}`}
+              </option>
+            );
+          })}
+        </select>
+
+        <button
+          disabled={isLockedStatus(st)}
+          onClick={async () => {
+            if (!picked) return;
+            if (isLockedStatus(st)) {
+              setLastAction(`Assign blocked: status='${st}'`);
+              return;
+            }
+            await assignDriver(t, picked, "manual");
+          }}
+          style={{  padding: "6px 10px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff" , opacity: isLockedStatus(st) ? 0.5 : 1 }}
+        >
+          Assign
+        </button>
+
+        <button
+          disabled={st === "on_the_way" || st === "on_trip" || st === "completed" || st === "cancelled"}
+          onClick={async () => await setTripStatus(t, "on_the_way")}
+          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", opacity: (st === "pending" || st === "assigned") ? 1 : 0.5 }}
+        >
+          On the way
+        </button>
+
+        <button
+          disabled={st === "on_trip" || st === "completed" || st === "cancelled"}
+          onClick={async () => await setTripStatus(t, "on_trip")}
+          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", opacity: (st === "on_the_way" || st === "assigned") ? 1 : 0.5 }}
+        >
+          Start trip
+        </button>
+
+        <button
+          disabled={st !== "on_trip" && st !== "on_the_way" && st !== "assigned"}
+          onClick={async () => await setTripStatus(t, "completed")}
+          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", opacity: (st === "on_trip" || st === "on_the_way" || st === "assigned") ? 1 : 0.5 }}
+        >
+          Drop off
+        </button>
+      </div>
+    );
+  }
+
+  function Chip({ k, label, count }: { k: FilterKey; label: string; count: number }) {
+    const active = filter === k;
+    return (
+      <button
+        type="button"
+        onClick={() => setFilter(active ? "all" : k)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 999,
+          border: "1px solid #e5e7eb",
+          background: active ? "#111827" : "#fff",
+          color: active ? "#fff" : "#111827",
+          fontSize: 12,
+          display: "inline-flex",
+          gap: 8,
+          alignItems: "center",
+          cursor: "pointer",
+          userSelect: "none",
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ opacity: 0.8 }}>{count}</span>
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 12, padding: 12 }}>
+      {/* LEFT: classic list/table */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Live Trips</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Monitor active bookings on the left and follow them on the map on the right.</div>
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>{loading ? "Loading…" : lastAction}</div>
+        </div>
+
+        {/* STATUS CHIPS (clickable + obvious) */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Chip k="pending" label="Pending" count={stats.pending} />
+          <Chip k="assigned" label="Assigned" count={stats.assigned} />
+          <Chip k="on_the_way" label="On the way" count={stats.on_the_way} />
+          <Chip k="on_trip" label="On trip" count={stats.on_trip} />
+          <Chip k="completed" label="Completed" count={stats.completed} />
+          <Chip k="cancelled" label="Cancelled" count={stats.cancelled} />
+          <Chip k="problem" label="Problem trips" count={stats.problem} />
+        </div>
+
+        {/* ZONE CAPACITY (kept, compact) */}
+        {zones?.length ? (
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Zones workload</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+              {zones.slice(0, 6).map((z: any) => (
+                <div key={String(z.zone_id)} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{z.zone_name}</div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>{z.status}</div>
+                  <div style={{ fontSize: 12, opacity: 0.8 }}>{`Active: ${z.active_drivers} / Limit: ${z.capacity_limit}`}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* TRIPS TABLE (user-friendly + row actions) */}
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: 10, borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Active & recent trips</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>{filter === "all" ? `${trips.length} total` : `${visibleTrips.length} shown`}</div>
+          </div>
+
+          <div style={{ maxHeight: 520, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Code</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Passenger</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Pickup</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Dropoff</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Status</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Zone</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>ETA</th>
+                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(visibleTrips || []).map((t: any) => {
+                  const code = tripCodeOf(t) || "—";
+                  const key = String(tripIdOf(t) || code);
+                  const selected = selectedTripKey && String(selectedTripKey) === key;
+                  const eta = pickupEtaMinutesOf(t);
+                  return (
+                    <tr
+                      key={key}
+                      onClick={() => setSelectedTripKey(key)}
+                      style={{
+                        cursor: "pointer",
+                        background: selected ? "#eef2ff" : "transparent",
+                        borderBottom: "1px solid #f3f4f6",
+                      }}
+                    >
+                      <td style={{ padding: 8, fontWeight: 700 }}>{code}</td>
+                      <td style={{ padding: 8 }}>{String(t?.passenger_name ?? "—")}</td>
+                      <td style={{ padding: 8 }}>{String(t?.from_label ?? "—")}</td>
+                      <td style={{ padding: 8 }}>{String(t?.to_label ?? "—")}</td>
+                      <td style={{ padding: 8 }}>{String(t?.status ?? "—")}</td>
+                      <td style={{ padding: 8 }}>{String(t?.town ?? t?.zone ?? "—")}</td>
+                      <td style={{ padding: 8 }}>{eta !== null ? `${eta} min` : "—"}</td>
+                      <td style={{ padding: 8 }}>
+                        <TripRowActions t={t} />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!visibleTrips || visibleTrips.length === 0) ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: 14, opacity: 0.7 }}>No trips in this view.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Keep your existing wallet/actions panels but bind to selectedTrip */}
+        {selectedTrip ? (
+          <>
+            <TripWalletPanel trip={selectedTrip} />
+            <TripLifecycleActions trip={selectedTrip} />
+            <SmartAutoAssignSuggestions
+              trip={selectedTrip}
+              drivers={derivedDrivers}
+              onAssign={async (driverId: string, source?: string) => await assignDriver(selectedTrip, driverId, source || "smart")}
+            />
+          </>
+        ) : null}
+      </div>
+
+      {/* RIGHT: map */}
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", minHeight: 720 }}>
+        <LiveTripsMap
+          trips={visibleTrips}
+          selectedTripId={selectedTrip ? (tripIdOf(selectedTrip) || tripCodeOf(selectedTrip) || null) : null}
+          stuckTripIds={stuckTripIds}
+        />
+      </div>
+    </div>
+  );
+}
+
+

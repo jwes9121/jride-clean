@@ -1,0 +1,27 @@
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripWalletPanel.tsx; LineNumber=34; Line= * bookings has verified_fare, proposed_fare, total_errand_fare, and components:}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripWalletPanel.tsx; LineNumber=62; Line=  const verified = asNum(trip?.verified_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripWalletPanel.tsx; LineNumber=65; Line=  const proposed = asNum(trip?.proposed_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\fare-override\route.ts; LineNumber=41; Line=        verified_fare: verifiedFare,}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts; LineNumber=41; Line=  const vf = n(b?.verified_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts; LineNumber=79; Line=      .select("id,booking_code,status,driver_id,driver_payout,verified_fare,company_cut")}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts; LineNumber=54; Line=      .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,updated_at,driver_payout,verified_fare,company_cut")}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts; LineNumber=115; Line=    // 2) else max(verified_fare - company_cut, 0)}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts; LineNumber=119; Line=      const vf = n(b?.verified_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts; LineNumber=82; Line=  const verified = asNum(row?.verified_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts; LineNumber=85; Line=  const proposed = asNum(row?.proposed_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts; LineNumber=130; Line=          "verified_fare",}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts; LineNumber=131; Line=          "proposed_fare",}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\lgu\route.ts; LineNumber=45; Line=    const verified_fare = asNum(body.verified_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\lgu\route.ts; LineNumber=59; Line=    if (verified_fare !== null) patch.verified_fare = verified_fare;}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\lgu\route.ts; LineNumber=69; Line=      .select("id, booking_code, town, status, from_label, to_label, verified_fare, passenger_fare_response, updated_at")}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare\route.ts; LineNumber=28; Line=        proposed_fare: fare,}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts; LineNumber=71; Line=      updates.proposed_fare = null;}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx; LineNumber=27; Line=  verified_fare?: number | null;}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx; LineNumber=190; Line=  const hasFare = Number.isFinite(Number(b.fare ?? b.verified_fare));}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx; LineNumber=579; Line=      const fare = Number.isFinite(Number(b.fare ?? b.verified_fare)) ? to2(b.fare ?? b.verified_fare) : "N/A";}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx; LineNumber=650; Line=          const fare = Number(b.fare ?? b.verified_fare);}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx; LineNumber=724; Line=    setFixFare(Number.isFinite(Number(b.fare ?? b.verified_fare)) ? String(b.fare ?? b.verified_fare) : "");}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx; LineNumber=746; Line=    if (Number.isFinite(f)) payload.verified_fare = f;}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\history\page.tsx; LineNumber=297; Line=      safeNum(pickFirst(r, ["verified_fare"])) ??}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\history\page.tsx; LineNumber=299; Line=      safeNum(pickFirst(r, ["proposed_fare"])) ??}
+@{Path=C:\Users\jwes9\Desktop\jride-clean-fresh\app\request\passenger-count\page.tsx; LineNumber=24; Line=      <button className="px-4 py-2 rounded bg-green-600 text-white" onClick={()=>router.push(`/request/confirm-fare?count=${count}`)}>}

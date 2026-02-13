@@ -1,0 +1,24 @@
+{
+  "name": "J-Ride",
+  "short_name": "J-Ride",
+  "description": "Ride-hailing, delivery, and errands app for the community.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1D4ED8",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/png;base64,PUT-YOUR-LONG-BASE64-LOGO-HERE",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "data:image/png;base64,PUT-YOUR-LONG-BASE64-LOGO-HERE",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

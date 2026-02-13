@@ -1,0 +1,227 @@
+"use client";
+
+import * as React from "react";
+
+type Row = {
+  passenger_id: string;
+  full_name: string | null;
+  town: string | null;
+  status: string | null;
+  submitted_at: string | null;
+  admin_notes: string | null;
+
+  id_front_path?: string | null;
+  selfie_with_id_path?: string | null;
+
+  id_front_signed_url?: string | null;
+  selfie_signed_url?: string | null;
+
+  signed_url_note?: string | null;
+};
+
+function fmt(s: any) {
+  try { return new Date(String(s)).toLocaleString(); } catch { return String(s || ""); }
+}
+
+export default function AdminVerificationPage() {
+  const [loading, setLoading] = React.useState(true);
+  const [rows, setRows] = React.useState<Row[]>([]);
+  const [msg, setMsg] = React.useState<string>("");
+  const [busyId, setBusyId] = React.useState<string>("");
+
+  async function load() {
+    setLoading(true);
+    setMsg("");
+    try {
+      const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) throw new Error(j?.error || ("Failed to load pending (HTTP " + r.status + ")"));
+      setRows(Array.isArray(j.rows) ? j.rows : []);
+      const note = (j.rows && j.rows[0] && j.rows[0].signed_url_note) ? String(j.rows[0].signed_url_note) : "";
+      if (note) setMsg(note);
+    } catch (e: any) {
+      setMsg(e?.message || "Failed to load.");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function notifyPendingChanged() {
+    // Cross-tab / cross-page sync for Control Center counts
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        const bc = new BroadcastChannel("jride_verification");
+        bc.postMessage({ type: "pending_changed", at: Date.now() });
+        bc.close();
+      }
+    } catch {}
+    // Fallback for older browsers
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jride_verification_pending_changed", String(Date.now()));
+      }
+    } catch {}
+  }
+  async function decide(passenger_id: string, decision: "approve" | "reject", admin_notes: string) {
+    setMsg("Submitting decision...");
+    setBusyId(passenger_id);
+    try {
+      const r = await fetch("/api/admin/verification/decide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passenger_id, decision, admin_notes }),
+      });
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.ok) {
+        const err = j?.error || ("Decision failed (HTTP " + r.status + ")");
+        throw new Error(err);
+      }
+      setMsg("OK: " + decision + " saved. Refreshing...");
+      await load();
+      notifyPendingChanged();
+      setMsg("Done.");
+      setTimeout(() => setMsg(""), 1200);
+    } catch (e: any) {
+      setMsg("ERROR: " + (e?.message || "Decision failed"));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  React.useEffect(() => { load(); }, []);
+
+  return (
+    <main className="min-h-screen p-6 bg-white">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-2xl font-bold">Passenger Verification (Admin)</div>
+            <div className="text-sm opacity-70 mt-1">Approve or reject pending passenger verification requests.</div>
+          </div>
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {msg ? (
+          <div className="mt-4 text-sm rounded-xl border border-black/10 bg-black/5 p-3">{msg}</div>
+        ) : null}
+
+        <div className="mt-6 rounded-2xl border border-black/10 overflow-hidden">
+          <div className="px-4 py-3 bg-black/5 text-sm font-semibold">
+            {loading ? "Loading..." : ("Pending: " + rows.length)}
+          </div>
+
+          {!loading && rows.length === 0 ? (
+            <div className="p-4 text-sm">No pending verifications.</div>
+          ) : null}
+
+          {rows.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-black/5">
+                <tr>
+                  <th className="text-left p-3">Passenger</th>
+                  <th className="text-left p-3">Town</th>
+                  <th className="text-left p-3">Submitted</th>
+                  <th className="text-left p-3">Admin notes</th>
+                  <th className="text-left p-3">Uploads</th>
+                  <th className="text-left p-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <RowItem key={r.passenger_id} row={r} busy={busyId === r.passenger_id} onDecide={decide} />
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function Thumb({ url, label }: { url: string | null | undefined; label: string }) {
+  if (!url) {
+    return <div className="text-xs opacity-60">{label}: (no preview)</div>;
+  }
+  return (
+    <div className="mt-2">
+      <div className="text-xs opacity-80">{label}:</div>
+      <a href={url} target="_blank" rel="noreferrer" className="inline-block mt-1">
+        <img
+          src={url}
+          alt={label}
+          className="rounded-lg border border-black/10"
+          style={{ width: 160, height: 110, objectFit: "cover" }}
+        />
+      </a>
+      <div className="text-xs mt-1">
+        <a href={url} target="_blank" rel="noreferrer" className="underline">Open</a>
+      </div>
+    </div>
+  );
+}
+
+function RowItem({
+  row,
+  busy,
+  onDecide,
+}: {
+  row: Row;
+  busy: boolean;
+  onDecide: (id: string, d: "approve" | "reject", n: string) => void;
+}) {
+  const [notes, setNotes] = React.useState<string>(row.admin_notes || "");
+
+  return (
+    <tr className="border-t border-black/10 align-top">
+      <td className="p-3">
+        <div className="font-semibold">{row.full_name || "(no name)"}</div>
+        <div className="text-xs opacity-70">{row.passenger_id}</div>
+      </td>
+      <td className="p-3">{row.town || ""}</td>
+      <td className="p-3">{fmt(row.submitted_at)}</td>
+      <td className="p-3">
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes"
+          className="w-full rounded-xl border border-black/10 px-3 py-2"
+        />
+      </td>
+      <td className="p-3">
+        <Thumb url={row.id_front_signed_url} label="Valid ID" />
+        <Thumb url={row.selfie_signed_url} label="Selfie with ID" />
+        <div className="text-xs opacity-60 mt-2">
+          Paths: id={String(row.id_front_path || "")} selfie={String(row.selfie_with_id_path || "")}
+        </div>
+      </td>
+      <td className="p-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDecide(row.passenger_id, "approve", notes)}
+            className={"rounded-xl text-white px-4 py-2 font-semibold " + (busy ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500")}
+          >
+            {busy ? "Working..." : "Approve"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDecide(row.passenger_id, "reject", notes)}
+            className={"rounded-xl text-white px-4 py-2 font-semibold " + (busy ? "bg-red-300 cursor-not-allowed" : "bg-red-600 hover:bg-red-500")}
+          >
+            {busy ? "Working..." : "Reject"}
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}

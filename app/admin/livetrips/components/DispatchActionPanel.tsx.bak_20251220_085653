@@ -1,0 +1,166 @@
+"use client";
+
+import React, { useMemo, useState } from "react";
+
+type Props = {
+  trip: any | null;
+  onActionCompleted?: () => void;
+};
+
+async function postJson(url: string, payload: any) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let data: any = null;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const detail = data?.detail ? `\n${data.detail}` : "";
+    throw new Error(`${msg}${detail}`);
+  }
+  return data;
+}
+
+export default function DispatchActionPanel({ trip, onActionCompleted }: Props) {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string>("");
+  const [errorText, setErrorText] = useState<string>("");
+
+  const computed = useMemo(() => {
+    const t: any = trip || {};
+    const driverPhone =
+      t.driver_phone ||
+      t.driverPhone ||
+      t.rider_phone ||
+      t.driver_contact ||
+      "";
+
+    const bookingId = t.id || t.booking_id || t.uuid || null;
+    const bookingCode = t.booking_code || t.bookingCode || null;
+
+    return {
+      bookingId,
+      bookingCode,
+      driverPhone: String(driverPhone || "").trim(),
+      status: String(t.status || "").toLowerCase(),
+      driverId: t.assigned_driver_id || t.driver_id || t.driverId || null,
+    };
+  }, [trip]);
+
+  const canCall = computed.driverPhone.length >= 7;
+  const canReassign = computed.status !== "completed" && computed.status !== "cancelled";
+  const canNudge = computed.status !== "completed" && computed.status !== "cancelled";
+  const canEmergency = true;
+
+  const disabledCall = !!busyKey || !canCall;
+  const disabledNudge = !!busyKey || !canNudge;
+  const disabledReassign = !!busyKey || !canReassign;
+  const disabledEmergency = !!busyKey || !canEmergency;
+
+  async function run(key: string, fn: () => Promise<any>) {
+    if (!trip) return;
+    setBusyKey(key);
+    setErrorText("");
+    setStatusText("");
+    try {
+      const out = await fn();
+      setStatusText(out?.message || "OK");
+      onActionCompleted?.();
+    } catch (e: any) {
+      setErrorText(String(e?.message || e));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  const btnBase =
+    "flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[10px] font-medium border transition select-none";
+  const btnDisabled = "border-slate-700 bg-slate-900/60 text-slate-500 cursor-not-allowed";
+  const btnEnabled = "border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400";
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-100 space-y-2">
+      <div className="text-[10px] tracking-wide text-slate-300">DISPATCH ACTIONS</div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          className={`${btnBase} ${disabledCall ? btnDisabled : btnEnabled}`}
+          disabled={disabledCall}
+          title={!canCall ? "No driver phone" : "Call driver"}
+          onClick={() => run("call", async () => ({ message: "CALL: use phone app" }))}
+        >
+          <div className="text-[12px]">📞</div>
+          <div>Call</div>
+        </button>
+
+        <button
+          type="button"
+          className={`${btnBase} ${disabledNudge ? btnDisabled : btnEnabled}`}
+          disabled={disabledNudge}
+          title={disabledNudge ? "Busy or trip closed" : "Nudge driver (backend no-op ok for now)"}
+          onClick={() =>
+            run("nudge", async () =>
+              postJson("/api/dispatch/assign", {
+                bookingId: computed.bookingId,
+                bookingCode: computed.bookingCode,
+                mode: "nudge",
+              })
+            )
+          }
+        >
+          <div className="text-[12px]">👉</div>
+          <div>Nudge</div>
+        </button>
+
+        <button
+          type="button"
+          className={`${btnBase} ${disabledReassign ? btnDisabled : btnEnabled}`}
+          disabled={disabledReassign}
+          title={disabledReassign ? "Busy or trip closed" : "Unassign and return to pending"}
+          onClick={() =>
+            run("reassign", async () =>
+              postJson("/api/dispatch/assign", {
+                bookingId: computed.bookingId,
+                bookingCode: computed.bookingCode,
+                mode: "reassign",
+                driverId: null,
+              })
+            )
+          }
+        >
+          <div className="text-[12px]">🔁</div>
+          <div>Reassign</div>
+        </button>
+
+        <button
+          type="button"
+          className={`${btnBase} ${disabledEmergency ? btnDisabled : btnEnabled}`}
+          disabled={disabledEmergency}
+          title="Toggle emergency"
+          onClick={() =>
+            run("emergency", async () =>
+              postJson("/api/dispatch/emergency", {
+                bookingId: computed.bookingId,
+                bookingCode: computed.bookingCode,
+              })
+            )
+          }
+        >
+          <div className="text-[12px]">🚨</div>
+          <div>Emergency</div>
+        </button>
+      </div>
+
+      {statusText ? <div className="text-[10px] text-emerald-300 pt-1">{statusText}</div> : null}
+      {errorText ? <div className="text-[10px] text-red-300 pt-1 whitespace-pre-wrap">{errorText}</div> : null}
+
+      <div className="text-[10px] text-slate-400 pt-1">
+        Driver phone: {computed.driverPhone || "--"}
+      </div>
+    </div>
+  );
+}

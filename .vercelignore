@@ -1,0 +1,4 @@
+﻿backup_*/**
+jride-app_patch/**
+app/app/**
+deploy_web/**

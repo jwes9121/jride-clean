@@ -1,0 +1,562 @@
+# PATCH-DISPATCH-AUTOASSIGN-FORCEASSIGN-CLEAN.ps1
+# هدف: dispatch page stable + force assign toggle + assign suggested + auto-assign on create
+# Safety:
+# - creates timestamp backup
+# - overwrites app\dispatch\page.tsx with a known-good implementation (no hooks inside map)
+# - uses only existing endpoints: /api/dispatch/bookings, /api/dispatch/drivers, /api/dispatch/assign, /api/dispatch/status
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ throw $m }
+
+$root = "C:\Users\jwes9\Desktop\jride-clean-fresh"
+$file = Join-Path $root "app\dispatch\page.tsx"
+
+if (!(Test-Path $file)) { Fail "Missing file: $file" }
+
+$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+$bak = "$file.bak.$ts"
+Copy-Item $file $bak -Force
+Write-Host "[OK] Backup: $bak" -ForegroundColor Green
+
+# Write the full file content (known-good)
+$code = @'
+"use client";
+
+import * as React from "react";
+
+type Booking = {
+  id: string;
+
+  rider_name?: string | null;
+  rider_phone?: string | null;
+
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+
+  town?: string | null;
+  distance_km?: number | null;
+  fare?: number | null;
+
+  status?: string | null;
+  driver_id?: string | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+
+  service_type?: string | null;
+  trip_type?: string | null;
+  vendor_id?: string | null;
+  takeout_service_level?: "regular" | "express" | null;
+
+  booking_code?: string | null;
+};
+
+type DriverRow = {
+  id: string;
+  town?: string | null;
+  status?: string | null; // "online" | "busy" | etc
+  lat?: number | null;
+  lng?: number | null;
+  last_seen?: string | null;
+};
+
+function normTown(v: any) {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function isShortId(v: any) {
+  const s = String(v ?? "");
+  return s.length > 0 && s.length < 20;
+}
+
+function makeBookingCode(prefix: "DISP" | "TAKE") {
+  // simple, unique, readable code: DISP-YYYYMMDD-HHMMSS-### (milliseconds tail)
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const y = d.getFullYear();
+  const m = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  const tail = String(d.getMilliseconds()).padStart(3, "0");
+  return `${prefix}-${y}${m}${day}-${hh}${mm}${ss}-${tail}`;
+}
+
+export default function DispatchPage(): JSX.Element {
+  const [rows, setRows] = React.useState<Booking[]>([]);
+  const [loading, setLoading] = React.useState<boolean>(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // create form
+  const [serviceType, setServiceType] = React.useState<"dispatch" | "takeout">("dispatch");
+
+  // dispatch/local fields
+  const [riderName, setRiderName] = React.useState<string>("");
+  const [riderPhone, setRiderPhone] = React.useState<string>("");
+  const [town, setTown] = React.useState<string>("");
+  const [pickupLat, setPickupLat] = React.useState<string>("");
+  const [pickupLng, setPickupLng] = React.useState<string>("");
+
+  // takeout fields
+  const [vendorId, setVendorId] = React.useState<string>("");
+  const [takeoutLevel, setTakeoutLevel] = React.useState<"regular" | "express">("regular");
+  const [pickupLabel, setPickupLabel] = React.useState<string>("");
+  const [dropoffLabel, setDropoffLabel] = React.useState<string>("");
+
+  // drivers + per-row selection
+  const [drivers, setDrivers] = React.useState<DriverRow[]>([]);
+  const [driversError, setDriversError] = React.useState<string | null>(null);
+  const [selectedDriverByBookingId, setSelectedDriverByBookingId] = React.useState<Record<string, string>>({});
+  const [forceAssign, setForceAssign] = React.useState<boolean>(false);
+
+  // auto-assign when creating a booking
+  const [autoAssignOnCreate, setAutoAssignOnCreate] = React.useState<boolean>(true);
+
+  // per-row pending flags
+  const [pendingByBookingId, setPendingByBookingId] = React.useState<Record<string, boolean>>({});
+
+  function setPending(bookingId: string, v: boolean) {
+    setPendingByBookingId((prev) => ({ ...prev, [bookingId]: v }));
+  }
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dispatch/bookings", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to load");
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshDrivers() {
+    setDriversError(null);
+    try {
+      const res = await fetch("/api/dispatch/drivers", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || ("HTTP " + res.status));
+      const list = Array.isArray(data?.drivers) ? data.drivers : [];
+      setDrivers(list);
+    } catch (e: any) {
+      setDrivers([]);
+      setDriversError(e?.message || "Failed to load drivers");
+    }
+  }
+
+  function pickSuggestedDriverId(b: Booking): string {
+    const townKey = normTown(b.town);
+    const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
+    const online = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+    const eligible = forceAssign ? townDrivers : online;
+    return eligible.length ? eligible[0].id : "";
+  }
+
+  // Keep dropdown pre-selected safely (single hook, no hooks inside map)
+  React.useEffect(() => {
+    setSelectedDriverByBookingId((prev) => {
+      let changed = false;
+      const next: Record<string, string> = { ...prev };
+
+      for (const b of rows) {
+        const bookingId = String(b.id);
+        const alreadyAssigned = !!b.driver_id;
+        if (alreadyAssigned) continue;
+        if (next[bookingId]) continue;
+
+        const suggested = pickSuggestedDriverId(b);
+        if (suggested) {
+          next[bookingId] = suggested;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, drivers, forceAssign]);
+
+  async function assignDirect(booking_id: string, driver_id: string) {
+    if (!driver_id) return;
+
+    setError(null);
+    setPending(booking_id, true);
+    try {
+      const res = await fetch("/api/dispatch/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id, driver_id, force: !!forceAssign }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Assign failed");
+
+      setRows((prev) => prev.map((x) => (String(x.id) === String(booking_id) ? data.row : x)));
+
+      setSelectedDriverByBookingId((prev) => {
+        const next = { ...prev };
+        delete next[booking_id];
+        return next;
+      });
+    } catch (e: any) {
+      setError(e?.message || "Assign failed");
+    } finally {
+      setPending(booking_id, false);
+    }
+  }
+
+  async function assign(booking_id: string) {
+    const driver_id = selectedDriverByBookingId[booking_id] || "";
+    if (!driver_id) return;
+    return assignDirect(booking_id, driver_id);
+  }
+
+  async function createBooking() {
+    setError(null);
+    try {
+      const payload: any = {};
+
+      if (serviceType === "takeout") {
+        payload.service_type = "takeout";
+        payload.takeout_service_level = takeoutLevel;
+        payload.vendor_id = vendorId || null;
+        payload.pickup_label = pickupLabel || null;
+        payload.dropoff_label = dropoffLabel || null;
+        payload.town = town || "";
+        // some backends require booking_code
+        payload.booking_code = makeBookingCode("TAKE");
+      } else {
+        payload.service_type = "dispatch";
+        payload.rider_name = riderName;
+        payload.rider_phone = riderPhone;
+        payload.town = town;
+        payload.pickup_lat = pickupLat ? Number(pickupLat) : null;
+        payload.pickup_lng = pickupLng ? Number(pickupLng) : null;
+        // some backends require booking_code
+        payload.booking_code = makeBookingCode("DISP");
+      }
+
+      const res = await fetch("/api/dispatch/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Failed to create");
+
+      const newRow: Booking = data?.row;
+      if (!newRow?.id) throw new Error("Create returned no row/id");
+
+      setRows((prev) => [newRow, ...prev]);
+
+      // reset fields
+      setRiderName("");
+      setRiderPhone("");
+      setTown("");
+      setPickupLat("");
+      setPickupLng("");
+      setVendorId("");
+      setTakeoutLevel("regular");
+      setPickupLabel("");
+      setDropoffLabel("");
+
+      // auto-assign immediately (only if enabled and unassigned)
+      if (autoAssignOnCreate && !newRow.driver_id) {
+        // ensure we have fresh drivers list
+        if (!drivers.length) await refreshDrivers();
+        const suggested = pickSuggestedDriverId(newRow);
+        if (suggested) {
+          await assignDirect(String(newRow.id), suggested);
+        } else {
+          setError("Created booking, but no eligible drivers for its town.");
+        }
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to create");
+    }
+  }
+
+  async function setStatus(b: Booking, status: string) {
+    const booking_id = String(b.id);
+    setError(null);
+    setPending(booking_id, true);
+
+    const bookingId = isShortId(b.id) ? undefined : b.id;
+
+    try {
+      const res = await fetch("/api/dispatch/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId, booking_id, status }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((data && (data.error || data.message)) || "Update failed");
+
+      setRows((prev) => prev.map((x) => (String(x.id) === String(booking_id) ? data.row : x)));
+    } catch (e: any) {
+      setError(e?.message || "Update failed");
+    } finally {
+      setPending(booking_id, false);
+    }
+  }
+
+  React.useEffect(() => {
+    load();
+    refreshDrivers();
+  }, []);
+
+  React.useEffect(() => {
+    const t = window.setInterval(() => {
+      refreshDrivers();
+    }, 15000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  return (
+    <div className="p-6 space-y-8">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Dispatch Panel</h1>
+
+        <div className="flex items-center gap-6">
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={forceAssign}
+              onChange={(e) => setForceAssign(e.target.checked)}
+            />
+            <span>Force assign (override busy)</span>
+          </label>
+
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={autoAssignOnCreate}
+              onChange={(e) => setAutoAssignOnCreate(e.target.checked)}
+            />
+            <span>Auto-assign on create</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border p-4 shadow space-y-3">
+        <h2 className="font-medium">New Booking</h2>
+
+        <div className="flex gap-3 items-center">
+          <label className="text-sm">Type</label>
+          <select
+            className="border rounded px-3 py-2"
+            value={serviceType}
+            onChange={(e) => setServiceType(e.target.value as any)}
+          >
+            <option value="dispatch">Dispatch (local)</option>
+            <option value="takeout">Takeout</option>
+          </select>
+
+          {serviceType === "takeout" ? (
+            <>
+              <label className="text-sm">Takeout</label>
+              <select
+                className="border rounded px-3 py-2"
+                value={takeoutLevel}
+                onChange={(e) => setTakeoutLevel(e.target.value as any)}
+                title="Regular = with waiting, Express = OTC/no waiting"
+              >
+                <option value="regular">Regular (PHP 70 min)</option>
+                <option value="express">Express / OTC (PHP 55 min)</option>
+              </select>
+            </>
+          ) : null}
+        </div>
+
+        {serviceType === "takeout" ? (
+          <div className="grid md:grid-cols-5 gap-3">
+            <input className="border rounded px-3 py-2" placeholder="Town (optional)" value={town} onChange={(e) => setTown(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="vendor_id (UUID)" value={vendorId} onChange={(e) => setVendorId(e.target.value)} />
+            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Pickup label (Vendor pickup)" value={pickupLabel} onChange={(e) => setPickupLabel(e.target.value)} />
+            <input className="border rounded px-3 py-2 md:col-span-2" placeholder="Dropoff label (Customer dropoff)" value={dropoffLabel} onChange={(e) => setDropoffLabel(e.target.value)} />
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-5 gap-3">
+            <input className="border rounded px-3 py-2" placeholder="Rider name" value={riderName} onChange={(e) => setRiderName(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Rider phone" value={riderPhone} onChange={(e) => setRiderPhone(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Town" value={town} onChange={(e) => setTown(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Pickup lat" value={pickupLat} onChange={(e) => setPickupLat(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Pickup lng" value={pickupLng} onChange={(e) => setPickupLng(e.target.value)} />
+          </div>
+        )}
+
+        <button onClick={createBooking} className="px-4 py-2 rounded-xl border shadow">Create</button>
+        {error ? <p className="text-red-600">{error}</p> : null}
+      </div>
+
+      <div className="rounded-2xl border p-4 shadow">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-medium mb-3">Queue</h2>
+
+          <div className="text-xs text-gray-600 flex items-center gap-3">
+            <button className="px-3 py-1 rounded border" onClick={refreshDrivers}>Refresh drivers</button>
+            {driversError ? <span className="text-red-600">{driversError}</span> : null}
+          </div>
+        </div>
+
+        {loading ? <p>Loading...</p> : rows.length === 0 ? <p>No active rides.</p> : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b">
+                <th className="py-2">ID</th>
+                <th className="py-2">Town</th>
+                <th className="py-2">Status</th>
+                <th className="py-2">Driver</th>
+                <th className="py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((b) => {
+                const bookingId = String(b.id);
+                const alreadyAssigned = !!b.driver_id;
+                const isTerminal = ["completed", "canceled", "cancelled"].includes(String(b.status || "").toLowerCase());
+
+                const townKey = normTown(b.town);
+                const townDrivers = drivers.filter((d) => normTown(d.town) === townKey);
+
+                const onlineDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() === "online");
+                const busyDrivers = townDrivers.filter((d) => String(d.status || "").toLowerCase() !== "online");
+
+                const eligibleDrivers = forceAssign ? townDrivers : onlineDrivers;
+                const suggestedDriverId = eligibleDrivers.length ? eligibleDrivers[0].id : "";
+
+                const selected = selectedDriverByBookingId[bookingId] || "";
+                const pending = !!pendingByBookingId[bookingId];
+
+                return (
+                  <tr key={bookingId} className="border-b">
+                    <td className="py-2">{bookingId.slice(0, 8)}</td>
+                    <td className="py-2">{b.town || ""}</td>
+                    <td className="py-2">{b.status || ""}</td>
+                    <td className="py-2">{b.driver_id ? b.driver_id : "-"}</td>
+                    <td className="py-2 space-x-2">
+                      {!alreadyAssigned ? (
+                        <>
+                          <select
+                            className="border rounded px-2 py-1 w-56"
+                            value={selected}
+                            onChange={(e) => setSelectedDriverByBookingId((prev) => ({ ...prev, [bookingId]: e.target.value }))}
+                            disabled={pending}
+                            title="Eligible drivers are filtered by town. Enable Force assign to include busy drivers."
+                          >
+                            {eligibleDrivers.length === 0 ? (
+                              <option value="">No eligible drivers</option>
+                            ) : (
+                              eligibleDrivers.map((d) => {
+                                const st = String(d.status || "").toLowerCase();
+                                const tag = st === "online" ? "online" : "busy";
+                                return (
+                                  <option key={d.id} value={d.id}>
+                                    {d.id.slice(0, 8)} ({tag})
+                                  </option>
+                                );
+                              })
+                            )}
+                          </select>
+
+                          <span className="text-xs text-gray-600 ml-2">
+                            Online {onlineDrivers.length} / Busy {busyDrivers.length}
+                          </span>
+
+                          <button
+                            onClick={() => assign(bookingId)}
+                            className="px-2 py-1 rounded border"
+                            disabled={pending || !selected || eligibleDrivers.length === 0}
+                            title={!selected ? "Select a driver first" : ""}
+                          >
+                            Assign
+                          </button>
+
+                          <button
+                            onClick={() => suggestedDriverId && assignDirect(bookingId, suggestedDriverId)}
+                            className="px-2 py-1 rounded border"
+                            disabled={pending || !suggestedDriverId}
+                            title={!suggestedDriverId ? "No suggested driver available" : "Assign the best available driver"}
+                          >
+                            Assign suggested
+                          </button>
+                        </>
+                      ) : null}
+
+                      <button
+                        onClick={() => setStatus(b, "enroute")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        En-route
+                      </button>
+
+                      <button
+                        onClick={() => setStatus(b, "arrived")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        Arrived
+                      </button>
+
+                      <button
+                        onClick={() => setStatus(b, "completed")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        Complete
+                      </button>
+
+                      <button
+                        onClick={() => setStatus(b, "canceled")}
+                        className="px-2 py-1 rounded border"
+                        disabled={pending || isTerminal}
+                      >
+                        Cancel
+                      </button>
+
+                      {pending ? <span className="text-xs text-gray-500 ml-2">Updating...</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+'@
+
+Set-Content -Path $file -Value $code -Encoding UTF8
+Write-Host "[OK] Wrote clean dispatch page: $file" -ForegroundColor Green
+
+# Quick sanity: ensure no React.useEffect inside rows.map (we must not have that)
+$txt = Get-Content $file -Raw
+if ($txt -match "rows\.map\([\s\S]*React\.useEffect") {
+  Fail "Sanity failed: found React.useEffect inside rows.map(). This must never happen."
+}
+
+Write-Host "[OK] Sanity: no hooks inside rows.map()." -ForegroundColor Green
+
+Write-Host ""
+Write-Host "Next:" -ForegroundColor Cyan
+Write-Host "1) npm run dev" -ForegroundColor Cyan
+Write-Host "2) Open http://localhost:3000/dispatch" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "You should now see:" -ForegroundColor Cyan
+Write-Host "- Force assign (override busy) checkbox (top right)" -ForegroundColor Cyan
+Write-Host "- Auto-assign on create checkbox (top right)" -ForegroundColor Cyan
+Write-Host "- Assign suggested button per row" -ForegroundColor Cyan
+Write-Host "- Create no longer fails due to missing bookingCode" -ForegroundColor Cyan

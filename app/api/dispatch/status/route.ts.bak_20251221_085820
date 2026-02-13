@@ -1,0 +1,130 @@
+﻿import { NextResponse } from "next/server";
+
+type Body = {
+  bookingId?: string;
+  bookingCode?: string;
+  status?: string;
+};
+
+function bad(message: string, extra: any = {}, status = 400) {
+  return NextResponse.json({ ok: false, message, ...extra }, { status });
+}
+
+function pickStatusColumn(sample: Record<string, any>) {
+  // Prefer explicit status-like columns if present
+  const candidates = [
+    "status",
+    "trip_status",
+    "booking_status",
+    "dispatch_status",
+    "ride_status",
+  ];
+  for (const c of candidates) {
+    if (Object.prototype.hasOwnProperty.call(sample, c)) return c;
+  }
+  return null;
+}
+
+export async function POST(req: Request) {
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+  if (!supabaseUrl) return bad("Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL", {}, 500);
+  if (!serviceKey) return bad("Missing SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY)", {}, 500);
+
+  let body: Body;
+  try {
+    body = (await req.json()) as Body;
+  } catch {
+    return bad("Invalid JSON body");
+  }
+
+  const bookingCode = body.bookingCode ? String(body.bookingCode).trim() : undefined;
+  const bookingId = body.bookingId ? String(body.bookingId).trim() : undefined;
+  const nextStatus = body.status ? String(body.status).trim() : "";
+
+  if (!nextStatus) return bad("Missing status");
+  if (!bookingCode && !bookingId) return bad("Missing bookingId or bookingCode");
+
+  const where = bookingCode
+    ? `booking_code=eq.${encodeURIComponent(bookingCode)}`
+    : `id=eq.${encodeURIComponent(String(bookingId))}`;
+
+  const baseUrl = `${supabaseUrl}/rest/v1/bookings?${where}`;
+
+  // 1) Read the row first so we only update columns that actually exist
+  const readRes = await fetch(`${baseUrl}&select=*`, {
+    method: "GET",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+    },
+    cache: "no-store",
+  });
+
+  const readText = await readRes.text();
+  if (!readRes.ok) {
+    return bad("READ_FAILED", { httpStatus: readRes.status, detail: readText }, readRes.status);
+  }
+
+  let rows: any[] = [];
+  try {
+    rows = JSON.parse(readText);
+  } catch {
+    return bad("READ_PARSE_FAILED", { detail: readText }, 500);
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return bad("BOOKING_NOT_FOUND", { bookingCode, bookingId }, 404);
+  }
+
+  const sample = rows[0] as Record<string, any>;
+  const statusCol = pickStatusColumn(sample);
+
+  if (!statusCol) {
+    return bad("NO_STATUS_COLUMN_DETECTED", {
+      hint: "Bookings row has no known status-like column. Check schema / page-data derivation.",
+      keys: Object.keys(sample).slice(0, 50),
+    }, 409);
+  }
+
+  // 2) Patch ONLY the detected column
+  const patchBody: any = {};
+  patchBody[statusCol] = nextStatus;
+
+  const patchRes = await fetch(baseUrl, {
+    method: "PATCH",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(patchBody),
+  });
+
+  const patchText = await patchRes.text();
+  if (!patchRes.ok) {
+    return bad("PATCH_FAILED", {
+      httpStatus: patchRes.status,
+      detail: patchText,
+      attempted: patchBody,
+      detectedStatusColumn: statusCol,
+    }, patchRes.status);
+  }
+
+  let patched: any[] = [];
+  try { patched = JSON.parse(patchText); } catch {}
+
+  return NextResponse.json({
+    ok: true,
+    updated: Array.isArray(patched) ? patched.length : 1,
+    bookingCode: patched?.[0]?.booking_code ?? bookingCode,
+    id: patched?.[0]?.id ?? bookingId,
+    status: nextStatus,
+    statusColumnUpdated: statusCol,
+  });
+}

@@ -1,0 +1,116 @@
+﻿"use client";
+
+import { useMemo, useState } from "react";
+import type { LiveTrip } from "./actions/getLiveTrips";
+import SelectedBookingPanel from "./components/SelectedBookingPanel";
+import ZoneCapacityView from "./_components/ZoneCapacityView";
+import ProblemTripAlerts from "./_components/ProblemTripAlerts";
+
+type Props = {
+  initialTrips: LiveTrip[];
+};
+
+export default function LiveTripsClient({ initialTrips }: Props) {
+  const [trips] = useState<LiveTrip[]>(() => initialTrips ?? []);
+  const [selectedBooking, setSelectedBooking] = useState<LiveTrip | null>(() =>
+    initialTrips && initialTrips.length > 0 ? initialTrips[0] : null
+  );
+
+  const activeCount = useMemo(
+    () => trips.filter((t) => t.status === "on_trip" || t.status === "on_the_way").length,
+    [trips]
+  );
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Top summary row */}
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 text-xs">
+        <div className="font-semibold text-slate-700">
+          Live Trips (Dispatch)
+        </div>
+        <div className="flex gap-2 text-slate-500">
+          <div>Active trips: <span className="font-semibold text-slate-700">{activeCount}</span></div>
+          <div>Total: <span className="font-semibold text-slate-700">{trips.length}</span></div>
+        </div>
+      </div>
+
+      {/* Main content: table + selected booking */}
+      <div className="flex min-h-0 flex-1">
+        {/* Left: table */}
+        <div className="flex min-w-0 flex-1 flex-col border-r border-slate-200">
+          <div className="border-b border-slate-100 px-4 py-2 text-[11px] font-semibold text-slate-500">
+            ACTIVE &amp; RECENT TRIPS
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-xs">
+              <thead className="sticky top-0 bg-white text-[11px] uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="border-b border-slate-200 px-3 py-2 text-left">Code</th>
+                  <th className="border-b border-slate-200 px-3 py-2 text-left">Passenger</th>
+                  <th className="border-b border-slate-200 px-3 py-2 text-left">Pickup</th>
+                  <th className="border-b border-slate-200 px-3 py-2 text-left">Dropoff</th>
+                  <th className="border-b border-slate-200 px-3 py-2 text-left">Zone</th>
+                  <th className="border-b border-slate-200 px-3 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody className="text-[11px] text-slate-700">
+                {trips.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-3 py-4 text-center text-slate-400"
+                    >
+                      No active trips.
+                    </td>
+                  </tr>
+                )}
+
+                {trips.map((trip) => {
+                  const isSelected = selectedBooking?.id === trip.id;
+                  return (
+                    <tr
+                      key={trip.id}
+                      onClick={() => setSelectedBooking(trip)}
+                      className={
+                        "cursor-pointer transition-colors " +
+                        (isSelected
+                          ? "bg-sky-50 hover:bg-sky-100"
+                          : "hover:bg-slate-50")
+                      }
+                    >
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        <span className="font-semibold">{trip.booking_code}</span>
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        {trip.passenger_name ?? "—"}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        {trip.pickup ? `${trip.pickup.lat.toFixed(4)}, ${trip.pickup.lng.toFixed(4)}` : "—"}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        {trip.dropoff ? `${trip.dropoff.lat.toFixed(4)}, ${trip.dropoff.lng.toFixed(4)}` : "—"}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        {trip.zone ?? "—"}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        <span className="rounded-full border px-2 py-[2px] text-[10px] uppercase">
+                          {trip.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right: selected booking + map */}
+        <div className="flex min-w-[420px] max-w-[640px] flex-1 flex-col">
+          <SelectedBookingPanel booking={selectedBooking} />
+        </div>
+      </div>
+    </div>
+  );
+}

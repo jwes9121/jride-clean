@@ -1,0 +1,919 @@
+{/* PHASE P2B RECEIPT POLISH (UI-only, SAFE VARS) */}
+{isDebug && isTerminal && (
+  <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-600" data-patch="P5B_TIP_IIFE_REPAIR_V2">
+    Tip: use <span className="font-mono">completed</span> or{" "}
+    <span className="font-mono">cancelled</span> to preview the receipt.
+  </div>
+)}
+          {/* ===== END PHASE P5B ===== */}
+          <button
+            type="button"
+            onClick={() => router.push("/passenger")}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 font-semibold"
+          >
+            Back
+          </button>
+        </div>
+
+        <p className="mt-2 text-sm opacity-70">Phase 11B: unverified UX + verification request (UI-only).</p>
+
+        <div className="mt-3 flex flex-wrap gap-2 items-center">
+          {pill("Verified: " + (verified ? "YES" : "NO"), verified)}
+          {pill("Night gate now: " + (nightGate ? "ON" : "OFF"), !nightGate)}
+          {pill(walletPillText, walletPillGood)}
+          {pill(
+            geoPermission !== "granted"
+              ? "Location: OFF"
+              : (geoInsideIfugao === true ? "Location: Ifugao" : (geoInsideIfugao === false ? "Location: Outside" : "Location: ...")),
+            (geoPermission === "granted" && geoInsideIfugao === true)
+          )}
+          <button
+            type="button"
+            onClick={() => promptGeoFromClick()}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+            title="Enable or re-check location"
+          >
+            {geoPermission !== "granted" ? "Enable location" : "Re-check location"}
+          </button>
+<button
+            type="button"
+            onClick={refreshCanBook}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          >
+            Refresh status
+          </button>
+          {!verified ? (
+            <button
+              type="button"
+              onClick={() => router.push("/verify")}
+              className="rounded-xl border border-black/10 hover:bg-black/5 px-3 py-1 text-xs font-semibold"
+            >
+              Verify account
+            </button>
+          ) : null}
+        </div>
+
+        {geoErr ? (
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-amber-300 bg-amber-50 p-3">
+            {geoErr}
+          </div>
+        ) : null}
+
+        {!MAPBOX_TOKEN ? (
+          <div className="mt-3 text-xs rounded-xl border border-amber-300 bg-amber-50 p-3">
+            Mapbox token missing. Autocomplete and map tap picker are disabled. Set <b>NEXT_PUBLIC_MAPBOX_TOKEN</b> (or <b>NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</b>).
+          </div>
+        ) : null}
+
+        {canInfoErr ? (
+          <div className="mt-3 text-xs font-mono whitespace-pre-wrap rounded-xl border border-black/10 p-3">
+            {canInfoErr}
+          </div>
+        ) : null}
+
+        {geoGateBlocked() ? (
+          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-amber-900">{geoGateBlockTitle()}</div>
+                <div className="mt-1 text-sm text-amber-900/80">{geoGateBlockBody()}</div>
+
+                
+                {/* PHASE13-C2_UI_LOCAL_VERIFY */}
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold opacity-70 mb-1">
+                    Local verification code (optional)
+                  </label>
+                  <input
+                    className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm"
+                    placeholder="Enter local code if provided"
+                    value={localVerify}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLocalVerify(v);
+                      try {
+                        if (v) window.localStorage.setItem(LOCAL_VERIFY_KEY, v);
+                        else window.localStorage.removeItem(LOCAL_VERIFY_KEY);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  />
+                  <div className="mt-1 text-[11px] opacity-70">
+                    Use only if location fails. Provided by JRide admin / QR / referral.
+                  </div>
+                </div>
+                {/* END PHASE13-C2_UI_LOCAL_VERIFY */}
+<div className="mt-2 text-xs text-amber-900/70">
+                  Permission: <span className="font-mono">{geoPermission}</span>
+                  {" | "}
+                  Inside Ifugao: <span className="font-mono">{String(geoInsideIfugao)}</span>
+                  {" | "}
+                  Last check:{" "}
+                  <span className="font-mono">
+                    {geoCheckedAt ? Math.max(0, Math.floor((Date.now() - geoCheckedAt) / 1000)) + "s ago" : "--"}
+                  </span>
+                </div>
+
+                {geoLat !== null && geoLng !== null ? (
+                  <div className="mt-1 text-xs text-amber-900/70">
+                    Coords: <span className="font-mono">{geoLat.toFixed(5) + ", " + geoLng.toFixed(5)}</span>
+                  </div>
+                ) : null}
+
+                {geoGateErr ? (
+                  <div className="mt-2 rounded-lg border border-red-500/20 bg-red-50 p-2 text-xs font-mono">
+                    {geoGateErr}
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                onClick={() => promptGeoFromClick()}
+              >
+                {geoPermission !== "granted" ? "Enable location" : "Re-check"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+{(unverifiedBlocked || walletBlocked || (canCode || canMsg)) ? (
+          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-amber-900">{blockTitle()}</div>
+                <div className="mt-1 text-sm text-amber-900/80">
+                  {blockBody()}
+                </div>
+                {(canCode || canMsg) ? (
+                  <div className="mt-2 text-xs text-amber-900/70">
+                    Details: <span className="font-mono">{(canCode || "BLOCKED")}</span>{canMsg ? (" - " + canMsg) : ""}
+                  </div>
+                ) : null}
+              </div>
+
+              {!verified ? (
+                <button
+                  type="button"
+                  className="rounded-xl bg-amber-900 text-white px-4 py-2 text-sm font-semibold hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  onClick={() => router.push("/verify")}
+                >
+                  Go to verification
+                </button>
+              ) : null}
+            </div>
+
+            {showVerifyPanel && unverifiedBlocked ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+                <div className="font-semibold text-sm">Verification required</div>
+
+                <div className="mt-2 text-xs opacity-70">
+                  Current status: <b>{verificationStatusLabelFromApi(canInfo)}</b>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-xl bg-black text-white px-4 py-2 text-xs font-semibold hover:bg-black/90 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    onClick={() => router.push("/verify")}
+                  >
+                    Go to verification
+                  </button>
+
+                  <button
+                    type="button"
+                    className="rounded-xl border border-black/10 hover:bg-black/5 px-4 py-2 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    onClick={refreshCanBook}
+                  >
+                    Refresh status
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="font-semibold mb-3">Passenger</div>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1">Passenger name</label>
+            <input
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              value={passengerName}
+              onChange={(e) => setPassengerName(e.target.value)}
+            />
+
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Town</label>
+            <select
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              value={town}
+              onChange={(e) => setTown(e.target.value)}
+            >
+              <option value="Lagawe">Lagawe</option>
+              <option value="Kiangan" disabled>Kiangan (pending)</option>
+              <option value="Lamut" disabled>Lamut (pending)</option>
+              <option value="Hingyon">Hingyon</option>
+              <option value="Banaue">Banaue</option>
+            </select>
+            <div className="mt-2 text-xs text-amber-900/80">
+              Pilot phase: <b>Lagawe</b>, <b>Hingyon</b>, <b>Banaue</b> enabled. <b>Kiangan</b> and <b>Lamut</b> are temporarily disabled for pickup.
+            </div>
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Vehicle type</label>
+            <select
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              value={vehicleType}
+              disabled={busy || bookingSubmitted}
+              onChange={(e) => {
+                const v = (e.target.value as any) === "motorcycle" ? "motorcycle" : "tricycle";
+                setVehicleType(v);
+                setPassengerCount((prev) => clampPax(v, prev));
+              }}
+            >
+              <option value="tricycle">Tricycle (max 4 passengers)</option>
+              <option value="motorcycle">Motorcycle (max 1 passenger)</option>
+            </select>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Passengers</label>
+            <input
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={paxMaxForVehicle(vehicleType)}
+              step={1}
+              disabled={busy || bookingSubmitted}
+              value={passengerCount}
+              onChange={(e) => {
+                setPassengerCount(clampPax(vehicleType, e.target.value));
+              }}
+            />
+
+            <div className="mt-2 text-xs opacity-70">
+              Fare is proposed by drivers. You can accept to proceed or reject to request another driver quote.
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-black/10 p-4">
+            <div className="font-semibold mb-3">Route</div>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1">Pickup label</label>
+            <input
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              value={fromLabel}
+              onFocus={() => { setActiveGeoField("from"); }}
+              onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); setGeoNavFromIdx(-1); }}
+              onKeyDown={(e) => {
+                const items = geoFrom || [];
+                const open = activeGeoField === "from" && items.length > 0;
+
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setActiveGeoField(null);
+                  setGeoFrom([]);
+                  setGeoNavFromIdx(-1);
+                  return;
+                }
+
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("from"); return; }
+                  const next = Math.min((geoNavFromIdx < 0 ? 0 : geoNavFromIdx + 1), items.length - 1);
+                  setGeoNavFromIdx(next);
+                  return;
+                }
+
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("from"); return; }
+                  const prev = Math.max((geoNavFromIdx < 0 ? items.length - 1 : geoNavFromIdx - 1), 0);
+                  setGeoNavFromIdx(prev);
+                  return;
+                }
+
+                if (e.key === "Enter") {
+                  if (!open) return;
+                  e.preventDefault();
+                  const idx = geoNavFromIdx < 0 ? 0 : geoNavFromIdx;
+                  const f = items[idx];
+                  if (f) {
+                    const id = String((f.mapbox_id || f.id || "")).trim();
+                    if (id) setSelectedGeoFromId(id);
+                    applyGeoSelection("from", f);
+                  }
+                }
+              }}
+            />
+            {renderGeoList("from")}
+
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lat</label>
+                <input
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+                  value={pickupLat}
+                  onChange={(e) => setPickupLat(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Pickup lng</label>
+                <input
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+                  value={pickupLng}
+                  onChange={(e) => setPickupLng(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <label className="block text-xs font-semibold opacity-70 mb-1 mt-3">Dropoff label</label>
+            <input
+              className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+              value={toLabel}
+              onFocus={() => { setActiveGeoField("to"); }}
+              onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); setGeoNavToIdx(-1); }}
+              onKeyDown={(e) => {
+                const items = geoTo || [];
+                const open = activeGeoField === "to" && items.length > 0;
+
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setActiveGeoField(null);
+                  setGeoTo([]);
+                  setGeoNavToIdx(-1);
+                  return;
+                }
+
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("to"); return; }
+                  const next = Math.min((geoNavToIdx < 0 ? 0 : geoNavToIdx + 1), items.length - 1);
+                  setGeoNavToIdx(next);
+                  return;
+                }
+
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  if (!open) { setActiveGeoField("to"); return; }
+                  const prev = Math.max((geoNavToIdx < 0 ? items.length - 1 : geoNavToIdx - 1), 0);
+                  setGeoNavToIdx(prev);
+                  return;
+                }
+
+                if (e.key === "Enter") {
+                  if (!open) return;
+                  e.preventDefault();
+                  const idx = geoNavToIdx < 0 ? 0 : geoNavToIdx;
+                  const f = items[idx];
+                  if (f) {
+                    const id = String((f.mapbox_id || f.id || "")).trim();
+                    if (id) setSelectedGeoToId(id);
+                    applyGeoSelection("to", f);
+                  }
+                }
+              }}
+            />
+            {renderGeoList("to")}
+
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lat</label>
+                <input
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+                  value={dropLat}
+                  onChange={(e) => setDropLat(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold opacity-70 mb-1">Dropoff lng</label>
+                <input
+                  className={"w-full rounded-xl border border-black/10 px-3 py-2 " + ((busy || bookingSubmitted) ? "opacity-60" : "")}
+                  value={dropLng}
+                  onChange={(e) => setDropLng(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + (!MAPBOX_TOKEN ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => { setShowMapPicker((v) => !v); }}
+              >
+                {showMapPicker ? "Hide map picker" : "Pick on map"}
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN || !showMapPicker}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => setPickMode("pickup")}
+                title="Next tap on the map sets pickup"
+              >
+                Pick pickup
+              </button>
+
+              <button
+                type="button"
+                disabled={!MAPBOX_TOKEN || !showMapPicker}
+                className={"rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " + ((!MAPBOX_TOKEN || !showMapPicker) ? "opacity-50" : "hover:bg-black/5")}
+                onClick={() => setPickMode("dropoff")}
+                title="Next tap on the map sets dropoff"
+              >
+                Pick dropoff
+              </button>
+
+              <span className="text-xs opacity-70">
+                Mode: <b>{pickMode === "pickup" ? "Pickup" : "Dropoff"}</b> (tap map to set)
+              </span>
+            </div>
+
+            {showMapPicker ? (
+              <div className="mt-3 rounded-2xl border border-black/10 overflow-hidden">
+                <div className="px-3 py-2 text-xs opacity-70 border-b border-black/10 bg-white">
+                  <div>
+                    Tap the map to set {pickMode}. Markers: green pickup, red dropoff.
+                  </div>
+
+                  {hasBothPoints() ? (
+                    <div className="mt-2 flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full bg-black/5 px-2 py-0.5 text-[11px]">
+                          {routeInfo ? "Route ready" : "Route loading"}
+                        </span>
+                        <span className="text-[11px]">
+                          {routeInfo
+                            ? (Math.round(routeInfo.distance_m / 10) / 100) + " km, " + Math.round(routeInfo.duration_s / 60) + " min"
+                            : "Fetching route..."}
+                          {routeErr ? (" | " + routeErr) : ""}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px]">
+                        Pickup near: <b>{String(fromLabel || "").trim() || "(unset)"}</b>
+                      </div>
+                      <div className="text-[11px]">
+                        Dropoff near: <b>{String(toLabel || "").trim() || "(unset)"}</b>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[11px]">
+                      Route preview: set both pickup and dropoff.
+                    </div>
+                  )}
+                </div>
+                <div ref={mapDivRef} style={{ height: 260, width: "100%" }} />
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-3 items-center">
+          <button
+            type="button"
+          disabled={!allowSubmit}
+            onClick={submit}
+            className={
+              "rounded-xl px-5 py-2 font-semibold text-white " +
+              (!allowSubmit ? "bg-slate-400" : "bg-blue-600 hover:bg-blue-500")
+            }
+            title={bookingSubmitted ? "Booking already submitted. Press Clear to book again." : (!allowSubmit ? "Booking is blocked by rules above" : "Submit booking")}
+          >
+            {busy ? "Booking..." : (bookingSubmitted ? "Booking submitted" : "Submit booking")}
+          </button>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setResult("");
+              setActiveCode("");
+              setLiveStatus("");
+              setLiveDriverId("");
+              setLiveUpdatedAt(null);
+              setLiveErr("");
+            }}
+            className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
+          >
+            Clear
+          </button>
+
+          {!verified ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => router.push("/verify")}
+              className="rounded-xl border border-black/10 hover:bg-black/5 px-5 py-2 font-semibold"
+            >
+              Go to verification
+            </button>
+          ) : null}
+        </div>
+
+        {result ? (
+          <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 text-sm">
+            <div className="font-semibold">Result</div>
+
+            {p1FriendlyError(result) ? (
+              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs">
+                {p1FriendlyError(result)}
+              </div>
+            ) : null}
+
+            <div className="mt-2 font-mono text-xs whitespace-pre-wrap">{result}</div>
+          </div>
+        ) : null}
+
+        {activeCode ? (
+          <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-semibold">Trip status (live)</div>
+              <button
+                className={
+                  "text-xs rounded-lg border border-black/10 px-2 py-1 " +
+                  (p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "opacity-50 cursor-not-allowed" : "hover:bg-black/5")
+                }
+                disabled={p1IsNonCancellable(p5OverrideStatus(liveStatus))}
+                title={p1IsNonCancellable(p5OverrideStatus(liveStatus)) ? "You can't cancel/clear once the driver is on the way." : "Clear trip status card"}
+                onClick={() => {
+                  if (p1IsNonCancellable(p5OverrideStatus(liveStatus))) return;
+                  setActiveCode("");
+                  setLiveStatus("");
+                  setLiveDriverId("");
+                  setLiveUpdatedAt(null);
+                  setLiveErr("");
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="mt-1 text-xs font-mono">
+              code: <span className="font-semibold">{activeCode}</span>
+            </div>
+
+            <div className="mt-2">
+              <div className="text-sm font-semibold">
+                What's happening now?
+              </div>
+              <div className="mt-1 text-sm opacity-80">
+                {p1NowMessage(p5OverrideStatus(liveStatus))}
+              </div>
+
+              {p1WaitHint(p5OverrideStatus(liveStatus)) ? (
+                <div className="mt-2 text-xs opacity-70">
+                  {p1WaitHint(p5OverrideStatus(liveStatus))}
+                </div>
+              ) : null}
+
+              {p1RenderStepper(p5OverrideStatus(liveStatus))}
+              {/* ===== PHASE P1B: What's happening now? (UI-only) ===== */}
+              {(() => {
+                const eff = p5OverrideStatus(liveStatus);
+                return (
+                  <div className="mt-2 rounded-xl border border-black/10 bg-white p-2 text-xs">
+                    <div className="font-semibold">What's happening now?</div>
+                    <div className="mt-1">{p1NowMessage(eff)}</div>
+                    {p1WaitHint(eff) ? (
+                      <div className="mt-1 opacity-70">{p1WaitHint(eff)}</div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P1B (REAL) ===== */}
+              {/* ===== PHASE P2B: Trip receipt (debug-aware, UI-only) ===== */}
+              {(() => {
+                const eff = String(p5OverrideStatus(liveStatus) || "").trim().toLowerCase();
+                const isTerminal = eff === "completed" || eff === "cancelled";
+                if (!isTerminal) return null;
+
+                const receiptCode: string =
+                  (typeof activeCode !== "undefined" && activeCode) ? String(activeCode) : "(debug)";
+
+                const driver: string =
+                  (typeof liveDriverId !== "undefined" && liveDriverId) ? String(liveDriverId) : "";
+
+                const updatedRaw =
+                  (typeof liveUpdatedAt !== "undefined" && liveUpdatedAt) ? liveUpdatedAt : null;
+
+                const updated: string = updatedRaw
+                  ? (() => { try { return new Date(updatedRaw as any).toLocaleString(); } catch { return String(updatedRaw); } })()
+                  : "";
+
+                const statusLabel = eff ? (eff.charAt(0).toUpperCase() + eff.slice(1)) : "Unknown";
+                const dbg = (typeof p5GetDebugStatus === "function") ? p5GetDebugStatus() : "";
+
+                const receiptText =
+                  "JRIDE TRIP RECEIPT\n" +
+                  ("Code: " + receiptCode + "\n") +
+                  ("Status: " + statusLabel + "\n") +
+                  (driver ? ("Driver: " + driver + "\n") : "") +
+                  (updated ? ("Last update: " + updated + "\n") : "") +
+                  (dbg ? ("Debug: " + dbg + "\n") : "");
+
+                return (
+                  <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Trip receipt</div>
+                        <div className="text-xs opacity-70">
+                          {eff === "completed" ? "Completed trip summary" : "Cancelled trip summary"}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                          onClick={async () => {
+                            try {
+                              if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(receiptText);
+                              }
+                            } catch {}
+                          }}
+                          title="Copy receipt text"
+                        >
+                          Copy receipt
+                        </button>
+
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                          onClick={() => {
+                            // UI-only reset: remove debug_status param and reload
+                            try {
+                              if (typeof window !== "undefined") {
+                                const u = new URL(window.location.href);
+                                u.searchParams.delete("debug_status");
+                                window.location.href = u.toString();
+                              }
+                            } catch {
+                              if (typeof window !== "undefined") window.location.href = "/ride";
+                            }
+                          }}
+                          title="Clear debug preview and start fresh"
+                        >
+                          Book again
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Code</div>
+                        <div className="font-mono text-xs">{receiptCode}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Status</div>
+                        <div className="font-mono text-xs">{eff || "(unknown)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Driver</div>
+                        <div className="font-mono text-xs">{driver || "(none)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Last update</div>
+                        <div className="font-mono text-xs">{updated || "--"}</div>
+                      </div>
+                    </div>
+
+                    {dbg ? (
+                      <div className="mt-3 text-xs opacity-70">
+                        Debug preview active: <span className="font-mono">debug_status={dbg}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P2B ===== */}
+
+              {/* ===== PHASE P5: Debug status banner (UI-only) ===== */}
+              {(() => {
+                const dbg = p5GetDebugStatus();
+                if (!dbg) return null;
+                return (
+                  <div className="mt-2 rounded-xl border border-purple-200 bg-purple-50 p-2 text-xs">
+                    <span className="font-semibold">Debug preview:</span>
+                    <span className="font-mono">{" "}{dbg}</span>
+                    <span className="opacity-70">{" "} (remove ?debug_status=... to disable)</span>
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P5 BANNER ===== */}
+              {/* ===== PHASE P4: Preflight panel (UI-only) ===== */}
+              {(() => {
+                const pf = p4Preflight(result, status === "authenticated");
+                return (
+                  <div className={"mt-3 rounded-2xl border p-3 " + (pf.ok ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50")}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">{pf.title}</div>
+                        <div className="mt-1 text-xs opacity-80">{pf.body}</div>
+                      </div>
+                      <div className={"text-xs rounded-full px-3 py-1 font-semibold " + (pf.ok ? "bg-emerald-600 text-white" : "bg-slate-800 text-white")}>
+                        {pf.ok ? "READY" : "NOT READY"}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 bg-white p-2">
+                        <div className="text-[11px] opacity-70">Signed in</div>
+                        <div className="text-xs font-mono">{status === "authenticated" ? "yes" : "no"}</div>
+                      </div>
+                      <div className="rounded-xl border border-black/10 bg-white p-2">
+                        <div className="text-[11px] opacity-70">Block detected</div>
+                        <div className="text-xs font-mono">{p3ExplainBlock(result) ? "yes" : "no"}</div>
+                      </div>
+                    </div>
+
+                    {!pf.ok ? (
+                      <div className="mt-2 text-xs opacity-80">
+                        If this looks wrong, refresh the page or try again later.
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P4 ===== */}
+              {/* ===== PHASE P3: Block reason clarity (UI-only) ===== */}
+              {(() => {
+                const info = p3ExplainBlock(result);
+                if (!info) return null;
+                return (
+                  <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                    <div className="text-sm font-semibold text-amber-900">
+                      {info.title}
+                    </div>
+                    <div className="mt-1 text-xs text-amber-900/80">
+                      {info.body}
+                    </div>
+                    <div className="mt-2 text-xs font-medium text-amber-900">
+                      What you can do next:
+                    </div>
+                    <div className="text-xs text-amber-900/80">
+                      {info.next}
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P3 ===== */}
+              {/* ===== PHASE P2: Trip receipt (terminal-only, UI-only) ===== */}
+              {(() => {
+                const st = String(liveStatus || "").trim().toLowerCase();
+                const isTerminal = st === "completed" || st === "cancelled";
+                if (!isTerminal) return null;
+
+                const code = String(activeCode || "").trim();
+                const driver = String(liveDriverId || "").trim();
+                const updated = liveUpdatedAt ? new Date(liveUpdatedAt).toLocaleString() : "";
+
+                const receiptText =
+                  "JRIDE TRIP RECEIPT\n" +
+                  (code ? ("Code: " + code + "\n") : "") +
+                  ("Status: " + (st ? (st.charAt(0).toUpperCase() + st.slice(1)) : "Unknown") + "\n") +
+                  (driver ? ("Driver: " + driver + "\n") : "") +
+                  (updated ? ("Last update: " + updated + "\n") : "");
+
+                return (
+                  <div className="mt-4 rounded-2xl border border-black/10 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Trip receipt</div>
+                        <div className="text-xs opacity-70">
+                          {st === "completed" ? "Completed trip summary" : "Cancelled trip summary"}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                          onClick={async () => {
+                            try {
+                              if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(receiptText);
+                                setResult("Receipt copied to clipboard.");
+                              } else {
+                                setResult("Copy not supported on this device/browser.");
+                              }
+                            } catch {
+                              setResult("Copy failed. Please try again.");
+                            }
+                          }}
+                          title="Copy receipt text"
+                        >
+                          Copy receipt
+                        </button>
+
+                        <button
+                          type="button"
+                          className="text-xs rounded-lg border border-black/10 px-2 py-1 hover:bg-black/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                          onClick={() => {
+                            // UI-only reset (no backend calls)
+                            setActiveCode("");
+                            setLiveStatus("");
+                            setLiveDriverId("");
+                            setLiveUpdatedAt(null);
+                            setLiveErr("");
+                            setResult("");
+                          }}
+                          title="Clear receipt and start a new booking"
+                        >
+                          Book again
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Code</div>
+                        <div className="font-mono text-xs">{code || "(none)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Status</div>
+                        <div className="font-mono text-xs">{st || "(unknown)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Driver</div>
+                        <div className="font-mono text-xs">{driver || "(none)"}</div>
+                      </div>
+
+                      <div className="rounded-xl border border-black/10 p-2">
+                        <div className="text-xs opacity-70">Last update</div>
+                        <div className="font-mono text-xs">{updated || "--"}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 text-xs opacity-70">
+                      Tip: Keep this receipt for reference when reporting issues.
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ===== END PHASE P2 ===== */}
+
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="rounded-xl border border-black/10 p-2">
+                  <div className="text-xs opacity-70">Status</div>
+                  <div className="font-mono text-xs">{liveStatus || "(loading)"}</div>
+                </div>
+                <div className="rounded-xl border border-black/10 p-2">
+                  <div className="text-xs opacity-70">Driver</div>
+                  <div className="font-mono text-xs">{liveDriverId || "(none)"}</div>
+                </div>
+              </div>
+
+              <div className="mt-2 text-xs opacity-70">
+                Last update: {liveUpdatedAt ? Math.max(0, Math.floor((Date.now() - liveUpdatedAt) / 1000)) + "s ago" : "--"}
+              </div>
+
+              {liveErr ? (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2">
+                  <div className="text-xs font-semibold text-amber-900">
+                    {p1FriendlyError(liveErr) || "Status update issue"}
+                  </div>
+                  <div className="mt-1 text-xs text-amber-900/70 font-mono whitespace-pre-wrap">
+                    {liveErr}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-2 text-xs opacity-70">
+                Polling: /api/public/passenger/booking?code=...
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-6 text-xs opacity-70">Next: connect request-verification API (Phase 11C).</div>
+      </div>
+    </main>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

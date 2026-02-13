@@ -1,0 +1,356 @@
+# FIX-JRIDE_VENDOR_ORDERS_ROUTE_PHASE2D_REBUILD.ps1
+# Rebuild app/api/vendor-orders/route.ts into a valid Next.js route module with GET + POST
+# Phase 2D: idempotent takeout snapshot lock ONLY on create path; store subtotal in bookings.takeout_items_subtotal
+# UTF-8 (no BOM). Full overwrite (anchorless) to avoid brace/return corruption.
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m) { throw $m }
+function Info($m) { Write-Host $m -ForegroundColor Cyan }
+function Ok($m)   { Write-Host $m -ForegroundColor Green }
+function Warn($m) { Write-Host $m -ForegroundColor Yellow }
+
+$root = (Get-Location).Path
+$targetRel = "app\api\vendor-orders\route.ts"
+$target = Join-Path $root $targetRel
+
+if (!(Test-Path $target)) {
+  Fail "Target not found: $targetRel (run from repo root)"
+}
+
+# Backup
+$ts = Get-Date -Format "yyyyMMdd_HHmmss"
+$bak = "$target.bak.$ts"
+Copy-Item -LiteralPath $target -Destination $bak -Force
+Ok "[OK] Backup: $targetRel -> $(Split-Path -Leaf $bak)"
+
+# New file content (valid module shape)
+$code = @'
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { auth } from "@/auth";
+
+export const dynamic = "force-dynamic";
+
+function json(status: number, payload: any) {
+  return NextResponse.json(payload, { status });
+}
+
+function toNum(v: any): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getServiceRoleAdmin() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (!url || !serviceKey) return null;
+
+  return createAdminClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+async function isAuthedWithEither(supabase: any) {
+  // Do NOT change auth system; keep soft check (some environments may rely on session cookies)
+  const session = await auth().catch(() => null as any);
+  if (session?.user) return true;
+  const { data } = await supabase.auth.getUser();
+  return !!data?.user;
+}
+
+type SnapshotItem = {
+  booking_id?: string;
+  menu_item_id: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  snapshot_at?: string;
+};
+
+function normalizeItems(body: any): SnapshotItem[] {
+  // Prefer body.items (from /takeout/page.tsx), fallback to items_json/itemsJson
+  const rawA = Array.isArray(body?.items) ? body.items : null;
+  const rawB = Array.isArray(body?.items_json) ? body.items_json : (Array.isArray(body?.itemsJson) ? body.itemsJson : null);
+  const raw = (rawA && rawA.length ? rawA : rawB) || [];
+  const out: SnapshotItem[] = [];
+
+  for (const it of raw) {
+    if (!it) continue;
+    const midRaw = String(it?.menu_item_id || it?.menuItemId || it?.id || it?.item_id || "").trim();
+    const menu_item_id = midRaw ? midRaw : null;
+
+    const name = String(it?.name || "").trim();
+    if (!name) continue;
+
+    const price = toNum(it?.price ?? it?.unit_price ?? 0);
+    const qty = Math.max(1, parseInt(String(it?.quantity ?? it?.qty ?? 1), 10) || 1);
+
+    out.push({ menu_item_id, name, price, quantity: qty });
+  }
+
+  return out;
+}
+
+function computeSubtotal(items: SnapshotItem[]): number {
+  let s = 0;
+  for (const it of items) s += toNum(it.price) * Math.max(1, it.quantity || 1);
+  return s;
+}
+
+export async function GET(req: NextRequest) {
+  const supabase = createRouteHandlerClient({ cookies });
+
+  // Optional: keep auth check in place (but do not hard-fail pilot flows unless you want it later)
+  // await isAuthedWithEither(supabase).catch(() => false);
+
+  const vendor_id = String(
+    req.nextUrl.searchParams.get("vendor_id") ||
+      req.nextUrl.searchParams.get("vendorId") ||
+      ""
+  ).trim();
+
+  if (!vendor_id) {
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required (pilot mode)" });
+  }
+
+  const admin = getServiceRoleAdmin();
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    });
+  }
+
+  const b = await admin
+    .from("bookings")
+    .select("*")
+    .eq("vendor_id", vendor_id)
+    .order("created_at", { ascending: false });
+
+  if (b.error) return json(500, { ok: false, error: "DB_ERROR", message: b.error.message });
+
+  const rows = (Array.isArray(b.data) ? b.data : []) as any[];
+  const ids = rows.map((r) => r?.id).filter(Boolean);
+
+  const itemsByBooking: Record<string, SnapshotItem[]> = {};
+  const subtotalByBooking: Record<string, number> = {};
+
+  if (ids.length) {
+    const it = await admin
+      .from("takeout_order_items")
+      .select("booking_id,menu_item_id,name,price,quantity,snapshot_at")
+      .in("booking_id", ids);
+
+    if (!it.error && Array.isArray(it.data)) {
+      for (const r of it.data as any[]) {
+        const bid = String(r?.booking_id || "");
+        if (!bid) continue;
+
+        const item: SnapshotItem = {
+          booking_id: bid,
+          menu_item_id: r?.menu_item_id ? String(r.menu_item_id) : null,
+          name: String(r?.name || ""),
+          price: toNum(r?.price),
+          quantity: Math.max(1, parseInt(String(r?.quantity ?? 1), 10) || 1),
+          snapshot_at: r?.snapshot_at ? String(r.snapshot_at) : "",
+        };
+
+        if (!itemsByBooking[bid]) itemsByBooking[bid] = [];
+        itemsByBooking[bid].push(item);
+        subtotalByBooking[bid] = (subtotalByBooking[bid] || 0) + item.price * item.quantity;
+      }
+
+      for (const k of Object.keys(itemsByBooking)) {
+        itemsByBooking[k].sort((a, b2) => String(a.snapshot_at || "").localeCompare(String(b2.snapshot_at || "")));
+      }
+    }
+  }
+
+  const orders = rows.map((r) => {
+    const bid = String(r?.id ?? "");
+    const snapItems = itemsByBooking[bid] || null;
+
+    // Prefer stored subtotal column per Phase 2D
+    const storedSubtotal = r?.takeout_items_subtotal ?? null;
+    const computed = subtotalByBooking[bid] ?? null;
+
+    // total_bill is legacy-shaped in your UI; keep it stable
+    const fallbackBill =
+      r?.items_subtotal ?? r?.subtotal ?? r?.total_bill ?? r?.totalBill ?? r?.fare ?? null;
+
+    const total_bill =
+      (storedSubtotal != null && Number.isFinite(Number(storedSubtotal))) ? Number(storedSubtotal) :
+      (computed != null && Number.isFinite(Number(computed))) ? Number(computed) :
+      (fallbackBill != null && Number.isFinite(Number(fallbackBill))) ? Number(fallbackBill) : 0;
+
+    return {
+      id: r?.id ?? null,
+      booking_code: r?.booking_code ?? null,
+      vendor_id: r?.vendor_id ?? vendor_id,
+      vendor_status: r?.vendor_status ?? r?.vendorStatus ?? null,
+      status: r?.status ?? null,
+      service_type: r?.service_type ?? null,
+      created_at: r?.created_at ?? null,
+      updated_at: r?.updated_at ?? null,
+
+      customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
+      customer_phone: r?.customer_phone ?? r?.rider_phone ?? null,
+      to_label: r?.to_label ?? r?.dropoff_label ?? null,
+
+      items: snapItems,
+      items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
+      total_bill,
+    };
+  });
+
+  return json(200, { ok: true, vendor_id, orders });
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createRouteHandlerClient({ cookies });
+  // Keep auth system untouched; do not enforce hard fail unless you want later
+  // const authed = await isAuthedWithEither(supabase).catch(() => false);
+
+  const admin = getServiceRoleAdmin();
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    });
+  }
+
+  const body = await req.json().catch(() => ({} as any));
+
+  const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
+  if (!vendor_id) {
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+  }
+
+  const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
+
+  const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
+
+  // If order_id exists, treat as "update vendor_status" only (NO SNAPSHOT HERE)
+  if (order_id) {
+    const up = await admin
+      .from("bookings")
+      .update({ vendor_status })
+      .eq("id", order_id)
+      .eq("vendor_id", vendor_id)
+      .select("*")
+      .single();
+
+    if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
+
+    return json(200, {
+      ok: true,
+      action: "updated",
+      order_id: up.data?.id ?? order_id,
+      vendor_status: up.data?.vendor_status ?? vendor_status,
+    });
+  }
+
+  // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
+  const customer_name = String(body?.customer_name ?? body?.customerName ?? "").trim();
+  const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
+  const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
+  const note = String(body?.note ?? "").trim();
+
+  const items_text = String(body?.items_text ?? "").trim();
+
+  const items = normalizeItems(body);
+  if (!items.length) {
+    return json(400, { ok: false, error: "items_required", message: "items[] required" });
+  }
+
+  const subtotal = computeSubtotal(items);
+
+  // Create booking row
+  const ins = await admin
+    .from("bookings")
+    .insert({
+      vendor_id,
+      service_type: "takeout",
+      vendor_status,
+      status: "requested",
+      customer_name: customer_name || null,
+      customer_phone: customer_phone || null,
+      to_label: to_label || null,
+      note: note || null,
+      items_text: items_text || null,
+      takeout_items_subtotal: subtotal,
+    })
+    .select("*")
+    .single();
+
+  if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
+
+  const bookingId = String(ins.data?.id ?? "");
+  if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
+
+  // Snapshot lock (idempotent): if already exists, do not insert again
+  let takeoutSnapshot: any = null;
+  try {
+    const already = await admin
+      .from("takeout_order_items")
+      .select("id", { count: "exact", head: true })
+      .eq("booking_id", bookingId);
+
+    const existingCount = (already as any)?.count ?? 0;
+
+    if (existingCount > 0) {
+      // Ensure booking subtotal is set (repair only; do not re-snapshot)
+      const cur = toNum((ins.data as any)?.takeout_items_subtotal);
+      if (!(cur > 0) && subtotal > 0) {
+        await admin.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
+      }
+      takeoutSnapshot = { ok: true, inserted: 0, subtotal, note: "already_snapshotted" };
+    } else {
+      const rowsToInsert = items.map((it) => ({
+        booking_id: bookingId,
+        menu_item_id: it.menu_item_id,
+        name: it.name,
+        price: toNum(it.price),
+        quantity: Math.max(1, it.quantity || 1),
+        snapshot_at: new Date().toISOString(),
+      }));
+
+      const snapIns = await admin.from("takeout_order_items").insert(rowsToInsert);
+      if (snapIns.error) {
+        takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Insert failed: " + snapIns.error.message };
+      } else {
+        takeoutSnapshot = { ok: true, inserted: rowsToInsert.length, subtotal, note: "OK" };
+      }
+    }
+  } catch (e: any) {
+    takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Snapshot exception: " + String(e?.message || e) };
+  }
+
+  return json(200, {
+    ok: true,
+    action: "created",
+    order_id: bookingId,
+    takeout_items_subtotal: subtotal,
+    takeoutSnapshot,
+  });
+}
+'@
+
+# Write UTF-8 no BOM
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, $code, $utf8NoBom)
+
+# Sanity checks
+$written = Get-Content -LiteralPath $target -Raw
+if ($written -notmatch "export\s+async\s+function\s+GET") { Fail "Sanity check failed: GET export missing after write" }
+if ($written -notmatch "export\s+async\s+function\s+POST") { Fail "Sanity check failed: POST export missing after write" }
+Ok "[OK] Rebuilt: $targetRel (GET + POST restored, Phase 2D snapshot idempotent)"
+
+Info "`nNEXT:"
+Info "1) Run build: npm run build"
+Info "2) If green, commit/tag/push (commands below)"

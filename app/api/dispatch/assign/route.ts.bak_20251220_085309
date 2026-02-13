@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "default-no-store";
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+export async function POST(request: Request) {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return NextResponse.json({ ok:false, error:"SERVER_MISCONFIGURED" },{ status:500 });
+  }
+
+  let body:any = {};
+  try { body = await request.json(); } catch {
+    return NextResponse.json({ ok:false, error:"BAD_JSON" },{ status:400 });
+  }
+
+  const bookingCode = body.bookingCode;
+  const driverId = body.driverId;
+
+  if (!bookingCode || !driverId) {
+    return NextResponse.json({ ok:false, error:"MISSING_FIELDS" },{ status:400 });
+  }
+
+  const url = `${supabaseUrl}/rest/v1/bookings?booking_code=eq.${encodeURIComponent(bookingCode)}`;
+
+  const res = await fetch(url,{
+    method:"PATCH",
+    headers:{
+      apikey: supabaseServiceKey,
+      Authorization:`Bearer ${supabaseServiceKey}`,
+      "Content-Type":"application/json",
+      Prefer:"return=representation",
+    },
+    body:JSON.stringify({
+      driver_id: driverId,
+      status:"assigned",
+      updated_at:new Date().toISOString(),
+    }),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    return NextResponse.json({ ok:false, error:text },{ status:res.status });
+  }
+
+  return NextResponse.json({ ok:true });
+}

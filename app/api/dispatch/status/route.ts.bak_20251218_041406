@@ -1,0 +1,84 @@
+﻿import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
+
+type Body = {
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  status?: string | null;
+};
+
+export async function POST(req: Request) {
+  try {
+    const supabase = supabaseAdmin();
+    const body = (await req.json().catch(() => ({}))) as Body;
+
+    const bookingId = String(body.bookingId ?? "").trim();
+    const bookingCode = String(body.bookingCode ?? "").trim();
+    const status = String(body.status ?? "").trim();
+
+    if (!status) return NextResponse.json({ error: "MISSING_STATUS" }, { status: 400 });
+    if (!bookingId && !bookingCode) {
+      return NextResponse.json({ error: "MISSING_BOOKING_IDENTIFIER" }, { status: 400 });
+    }
+
+    // 1) Resolve booking row first (prevents "wrong id" / alias mismatches)
+    let readQ = supabase.from("bookings").select("id, booking_code, status").limit(1);
+    if (bookingId) readQ = readQ.eq("id", bookingId);
+    else readQ = readQ.eq("booking_code", bookingCode);
+
+    const { data: curRows, error: curErr } = await readQ;
+    if (curErr) {
+      console.error("DISPATCH_STATUS_READ_ERROR", curErr);
+      return NextResponse.json({ error: "DISPATCH_STATUS_READ_ERROR", message: curErr.message }, { status: 500 });
+    }
+
+    const cur = (curRows ?? [])[0] as any;
+    const resolvedId = String(cur?.id ?? "").trim();
+    const resolvedCode = String(cur?.booking_code ?? bookingCode ?? "").trim();
+    const prevStatus = String(cur?.status ?? "").trim();
+
+    if (!resolvedId) {
+      return NextResponse.json({ error: "BOOKING_NOT_FOUND" }, { status: 404 });
+    }
+
+    const nowIso = new Date().toISOString();
+
+    // 2) Update by resolved id and VERIFY 1 row updated (no silent no-op)
+    const { data: updRows, error: updErr } = await supabase
+      .from("bookings")
+      .update({ status, updated_at: nowIso })
+      .eq("id", resolvedId)
+      .select("id, booking_code, status")
+      .limit(1);
+
+    if (updErr) {
+      console.error("DISPATCH_STATUS_DB_ERROR", updErr);
+      return NextResponse.json({ error: "DISPATCH_STATUS_DB_ERROR", message: updErr.message }, { status: 500 });
+    }
+
+    const upd = (updRows ?? [])[0] as any;
+    if (!upd?.id) {
+      return NextResponse.json({ error: "STATUS_UPDATE_NO_ROWS", message: "No rows updated (identifier mismatch)." }, { status: 409 });
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        bookingId: String(upd.id),
+        bookingCode: String(upd.booking_code ?? resolvedCode),
+        previousStatus: prevStatus,
+        status: String(upd.status ?? status),
+        updatedAt: nowIso,
+      },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    console.error("DISPATCH_STATUS_UNEXPECTED", err);
+    return NextResponse.json(
+      { error: "DISPATCH_STATUS_UNEXPECTED", message: err?.message ?? "Unexpected error" },
+      { status: 500 }
+    );
+  }
+}
