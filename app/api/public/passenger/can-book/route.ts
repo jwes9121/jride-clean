@@ -257,6 +257,19 @@ const selectors = "wallet_balance,min_wallet_required,wallet_locked";
 export async function GET(req: NextRequest) {
   const supabase = createClient();
 
+  /* JRIDE_LOCAL_VERIFY_3600_BYPASS_BEGIN */
+  // TEST ONLY: allow local_verification_code=3600 to bypass location/verification gates in can-book GET.
+  // Remove after testing. Prefer JRIDE_LOCAL_VERIFY_CODE env in production.
+  const expectedLocal = String(process.env.JRIDE_LOCAL_VERIFY_CODE || "").trim();
+  const providedLocal = String(
+    req.nextUrl.searchParams.get("local_verification_code") ||
+    req.nextUrl.searchParams.get("local_verify") ||
+    ""
+  ).trim();
+  const localOk = ((!!expectedLocal && providedLocal === expectedLocal) || (providedLocal === "3600"));
+  /* JRIDE_LOCAL_VERIFY_3600_BYPASS_END */
+
+
   const nightGate = isNightGateNow();
   const v = await resolvePassengerVerification(supabase);
   // JRIDE_UNVERIFIED_ONE_DAY_RIDE_V1D
@@ -264,7 +277,7 @@ export async function GET(req: NextRequest) {
   // - Unverified: allow ONE daytime ride
   // - Unverified: block at night
   // - After first ride: verification required
-  if (!v.verified) {
+  if (!v.verified && !localOk) {
     const night = isNightGateNow();
 
     if (night) {
@@ -422,7 +435,7 @@ export async function POST(req: NextRequest) {
   // - Unverified: allow ONE daytime ride
   // - Unverified: block at night
   // - After first ride: verification required
-  if (!v.verified) {
+  if (!v.verified && !localOk) {
     const night = isNightGateNow();
 
     if (night) {

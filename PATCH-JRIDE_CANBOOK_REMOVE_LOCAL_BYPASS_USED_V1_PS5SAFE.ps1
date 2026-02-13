@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Ok($m){ Write-Host $m -ForegroundColor Green }
+function Warn($m){ Write-Host $m -ForegroundColor Yellow }
 function Fail($m){ Write-Host $m -ForegroundColor Red; exit 1 }
 
 function EnsureDir([string]$p){
@@ -27,38 +28,25 @@ function BackupFile([string]$path, [string]$repoRoot) {
   return $bak
 }
 
-$target = Join-Path $RepoRoot "app\ride\page.tsx"
-if (!(Test-Path -LiteralPath $target)) {
-  Fail "[FAIL] Could not find app\ride\page.tsx"
-}
+$target = Join-Path $RepoRoot "app\api\public\passenger\can-book\route.ts"
+if (!(Test-Path -LiteralPath $target)) { Fail "[FAIL] Missing can-book route.ts" }
 
 $bak = BackupFile $target $RepoRoot
-Ok "[OK] Backup created"
+Ok ("[OK] Backup: {0}" -f $bak)
+Ok ("[OK] Target: {0}" -f $target)
 
 $src = Get-Content -LiteralPath $target -Raw
 
-if ($src -like "*JRIDE_FORCE_UI_BOOKING_ALLOWED_BEGIN*") {
-  Ok "[OK] Already forced. Nothing changed."
+# Remove the injected line (with flexible whitespace)
+$pattern = "(?m)^\s*local_bypass_used:\s*!!localOk,\s*\r?\n"
+if (-not ([regex]::IsMatch($src, $pattern))) {
+  Warn "[WARN] local_bypass_used line not found. Nothing to remove."
   exit 0
 }
 
-# Replace any geoOrLocalOk declaration with forced true
-$pattern = '(?m)^\s*const\s+geoOrLocalOk\s*=.*?;'
-$match = [regex]::Match($src, $pattern)
-
-if (-not $match.Success) {
-  Fail "[FAIL] Could not find geoOrLocalOk line."
-}
-
-$newLine = @'
-  /* JRIDE_FORCE_UI_BOOKING_ALLOWED_BEGIN */
-  const geoOrLocalOk = true;
-  /* JRIDE_FORCE_UI_BOOKING_ALLOWED_END */
-'@
-
-$src2 = $src.Remove($match.Index, $match.Length).Insert($match.Index, $newLine)
+$src2 = [regex]::Replace($src, $pattern, "", 1)
 
 WriteUtf8NoBom $target $src2
-
-Ok "[OK] UI geofence gate disabled for testing"
+Ok "[OK] Removed local_bypass_used reference to localOk"
+Ok "[DONE] PATCH-JRIDE_CANBOOK_REMOVE_LOCAL_BYPASS_USED_V1_PS5SAFE"
 Ok "[NEXT] Run: npm.cmd run build"

@@ -542,7 +542,11 @@ export async function POST(req: Request) {
   // Phase 13-C1: allow a local verification code fallback (QR/referral/admin code).
   const expectedLocal = String(process.env.JRIDE_LOCAL_VERIFY_CODE || "").trim();
   const providedLocal = String(((body as any)?.local_verification_code || (body as any)?.local_verify || "")).trim();
-  const localOk = !!expectedLocal && !!providedLocal && (providedLocal === expectedLocal);
+  /* JRIDE_LOCAL_VERIFY_3600_BYPASS_BEGIN */
+  // TEST ONLY: allow local_verification_code=3600 to bypass Ifugao bbox geo gate in booking.
+  // Remove after testing. Prefer JRIDE_LOCAL_VERIFY_CODE env in production.
+  const localOk = (!!expectedLocal && !!providedLocal && (providedLocal === expectedLocal)) || (providedLocal === "3600");
+  /* JRIDE_LOCAL_VERIFY_3600_BYPASS_END */
 
   const lat = Number((body as any)?.pickup_lat);
   const lng = Number((body as any)?.pickup_lng);
