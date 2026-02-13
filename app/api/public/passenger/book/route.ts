@@ -449,6 +449,11 @@ async function getBaseUrlFromHeaders(req: Request) {
   return `${proto}://${host}`;
 }
 
+
+/* JRIDE_TEST_BYPASS_GEO_BEGIN */
+// TEST MODE: bypass geofence checks entirely
+const JRIDE_TEST_BYPASS_GEO = true;
+/* JRIDE_TEST_BYPASS_GEO_END */
 export async function POST(req: Request) {
   // JRIDE_TEST_BYPASS_PILOT_TOWN
   // Allows test bookings to bypass pilot-town restriction ONLY when explicit test headers are present.
