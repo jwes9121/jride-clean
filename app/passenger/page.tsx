@@ -26,8 +26,19 @@ export default function PassengerDashboardPage() {
         if (!alive) return;
         const ok = !!j?.authed;
         setAuthed(ok);
-        setVerified(!!j?.user?.verified);
-        setNightAllowed(!!j?.user?.night_allowed);
+                // JRIDE: derive verified/nightGate from can-book (source of truth)
+        try {
+          const cr = await fetch("/api/public/passenger/can-book", { cache: "no-store" });
+          const cj = await cr.json();
+          setVerified(!!cj?.verified);
+          // "night_allowed" means "night booking allowed now" (i.e., gate OFF or verified)
+          setNightAllowed(!cj?.nightGate || !!cj?.verified);
+        } catch {
+          // fallback (do not hard-fail dashboard)
+          setVerified(false);
+          setNightAllowed(false);
+        }
+        
 
         // Free ride promo status (audit-backed)
         try {
@@ -113,12 +124,12 @@ export default function PassengerDashboardPage() {
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-800">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="font-semibold">{verified ? "Account verified" : "Verification required"}</div>
+                <div className="font-semibold">{verified ? "Account verified" : (nightAllowed ? "Verification recommended" : "Verification required (night booking)")}</div>
                 <div className="opacity-80 text-xs mt-1">
                   Verified: {String(verified)} | Night allowed: {String(nightAllowed)}
                 </div>
                 <div className="opacity-80 text-xs mt-2">
-                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verify to unlock night booking and free ride promo.")}
+                  {freeRideMsg || (verified ? "First ride promo status will appear here." : "Verification unlocks free ride promo. Night booking (8PMâ€“5AM) requires verification.")}
                 </div>
               </div>
               <button
