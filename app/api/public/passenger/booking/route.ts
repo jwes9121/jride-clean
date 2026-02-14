@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 
+
+function getServiceRoleClient() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createAdminClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
 type Resp = {
   ok: boolean;
   code?: string;
@@ -69,7 +78,7 @@ if (bookingCode) {
   const user = userData?.user;
 
   if (!user) {
-    return json(200, { ok: true, signed_in: false, booking: null });
+    return json(200, { ok: true, signed_in: true, booking: null });
   }
 
   const res = await supabase
@@ -103,7 +112,7 @@ if (bookingCode) {
         ok: false,
         code: "DB_ERROR",
         message: String(error.message || error),
-        signed_in: false,
+        signed_in: true,
       });
     }
 
@@ -112,7 +121,7 @@ if (bookingCode) {
         ok: false,
         code: "NOT_FOUND",
         message: "Booking not found",
-        signed_in: false,
+        signed_in: true,
       });
     }
 
@@ -127,7 +136,7 @@ if (bookingCode) {
       ok: false,
       code: "ERROR",
       message: String(e?.message || e),
-      signed_in: false,
+      signed_in: true,
     });
   }
 }
