@@ -1,6 +1,24 @@
-﻿/* PHASE P1E DISABLED VISUALS (UI-only): add disabled button styling on native <button> tags */
+/* PHASE P1E DISABLED VISUALS (UI-only): add disabled button styling on native <button> tags */
 "use client";
 
+const JRIDE_ACTIVE_BOOKING_KEY = "jride_active_booking_code";
+
+function jrideGetActiveBookingCode(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(window.localStorage.getItem(JRIDE_ACTIVE_BOOKING_KEY) || "");
+  } catch {
+    return "";
+  }
+}
+
+function jrideSetActiveBookingCode(code: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (code) window.localStorage.setItem(JRIDE_ACTIVE_BOOKING_KEY, String(code));
+    else window.localStorage.removeItem(JRIDE_ACTIVE_BOOKING_KEY);
+  } catch {}
+}
 import * as React from "react";
 import { useRouter } from "next/navigation";
 /* ===== PHASE P1 TOPLEVEL HELPERS (AUTO) ===== */
@@ -436,7 +454,7 @@ const noDriversInTown = (() => {
   }
 const [passengerName, setPassengerName] = React.useState("Test Passenger A");
 
-const [passengerNameAuto, setPassengerNameAuto] = React.useState<string>(() => jrideGetActiveBookingCode());
+const [passengerNameAuto, setPassengerNameAuto] = React.useState<string>("");
 
 // UI-only: auto-fill passenger name from logged-in session (if available)
 React.useEffect(() => {
@@ -560,20 +578,20 @@ React.useEffect(() => {
     if (!isDefault) pickupTouchedRef.current = true;
   }, [pickupLat, pickupLng]);
   const [busy, setBusy] = React.useState(false);
-  const [result, setResult] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [result, setResult] = React.useState<string>("");
 
   const [activeCode, setActiveCode] = React.useState<string>(() => jrideGetActiveBookingCode());
-  const [liveStatus, setLiveStatus] = React.useState<string>(() => jrideGetActiveBookingCode());
-  const [liveDriverId, setLiveDriverId] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [liveStatus, setLiveStatus] = React.useState<string>("");
+  const [liveDriverId, setLiveDriverId] = React.useState<string>("");
   const [liveUpdatedAt, setLiveUpdatedAt] = React.useState<number | null>(null);
-  const [liveErr, setLiveErr] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [liveErr, setLiveErr] = React.useState<string>("");
   const [liveBooking, setLiveBooking] = React.useState<any | null>(null); // P4A/P4B
   const [fareBusy, setFareBusy] = React.useState<boolean>(false);
 const [p9FeesAck, setP9FeesAck] = React.useState<boolean>(false); // P9 fees acknowledgement (UI-only) // P4A/P4B
   const pollRef = React.useRef<any>(null);
 
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
-  const [canInfoErr, setCanInfoErr] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [canInfoErr, setCanInfoErr] = React.useState<string>("");
 
   // ===== Phase 13-A: UI-only location gate (Ifugao geofence) =====
   // Signup/Login allowed anywhere; booking/actions blocked unless:
@@ -584,7 +602,7 @@ const [p9FeesAck, setP9FeesAck] = React.useState<boolean>(false); // P9 fees ack
   const [geoInsideIfugao, setGeoInsideIfugao] = React.useState<boolean | null>(null);
   const [geoLat, setGeoLat] = React.useState<number | null>(null);
   const [geoLng, setGeoLng] = React.useState<number | null>(null);
-  const [geoGateErr, setGeoGateErr] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [geoGateErr, setGeoGateErr] = React.useState<string>("");
   const [geoCheckedAt, setGeoCheckedAt] = React.useState<number | null>(null);
 
   // JRIDE ISSUE#2 (UI-only): Use device geolocation as initial pickup ONCE
@@ -613,7 +631,7 @@ const [p9FeesAck, setP9FeesAck] = React.useState<boolean>(false); // P9 fees ack
   // ===== Phase 13-C2: Local verification code (UI-only) =====
   // Allows booking if (geo ok) OR (local code present). Backend validates the code.
   const LOCAL_VERIFY_KEY = "jride.local_verify_code";
-  const [localVerify, setLocalVerify] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [localVerify, setLocalVerify] = React.useState<string>("");
 
   function hasLocalVerify(): boolean {
     return !!String(localVerify || "").trim();
@@ -919,10 +937,10 @@ const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
   const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
 
   // Selected suggestion highlight (UI-only)
-  const [selectedGeoFromId, setSelectedGeoFromId] = React.useState<string>(() => jrideGetActiveBookingCode());
-  const [selectedGeoToId, setSelectedGeoToId] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [selectedGeoFromId, setSelectedGeoFromId] = React.useState<string>("");
+  const [selectedGeoToId, setSelectedGeoToId] = React.useState<string>("");
 
-  const [geoErr, setGeoErr] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [geoErr, setGeoErr] = React.useState<string>("");
   const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
 
   const fromDebounceRef = React.useRef<any>(null);
@@ -950,7 +968,7 @@ const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
   const ROUTE_LAYER_ID = "jride_route_line";
   const routeAbortRef = React.useRef<any>(null);
   const routeDebounceRef = React.useRef<any>(null);
-  const [routeErr, setRouteErr] = React.useState<string>(() => jrideGetActiveBookingCode());
+  const [routeErr, setRouteErr] = React.useState<string>("");
   const [routeInfo, setRouteInfo] = React.useState<{ distance_m: number; duration_s: number } | null>(null);
   const routeGeoRef = React.useRef<any>({
     type: "FeatureCollection",
@@ -1783,7 +1801,7 @@ const j = resp.json || {};
     !walletBlocked &&
     !bookingSubmitted &&
     pilotTownAllowed &&
-    geoOrLocalOk && p9FeesAck && !["requested","assigned","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase()) && !!String(toLabel || "").trim() && (numOrNull(dropLat) !== null) && (numOrNull(dropLng) !== null);
+    geoOrLocalOk && p9FeesAck && !["requested","assigned","fare_proposed","accepted","on_the_way","arrived","on_trip"].includes(String(p5OverrideStatus(liveStatus)||"").trim().toLowerCase()) && !!String(toLabel || "").trim() && (numOrNull(dropLat) !== null) && (numOrNull(dropLng) !== null);
 function blockTitle(): string {
     if (unverifiedBlocked) return "Verification required";
     if (walletBlocked) return "Wallet requirement not met";
@@ -3438,5 +3456,6 @@ setResult("");
 /* JRIDE_PASSENGER_NAME_AUTOFILL_OPTIONAL_V1B_FIX_AUTOVAR_APPLIED */
 
 /* JRIDE_PASSENGER_NAME_AUTOFILL_OPTIONAL_V1C_DEFINE_STATE_APPLIED */
+
 
 
