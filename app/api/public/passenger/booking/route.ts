@@ -18,34 +18,85 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient();
 
     const url = new URL(req.url);
-    const bookingCode = String(url.searchParams.get("code") || "").trim();
-    if (!bookingCode) {
-      return json(400, {
-        ok: false,
-        code: "MISSING_CODE",
-        message: "Missing booking code",
-        signed_in: false,
-      });
-    }
+const bookingCode = String(url.searchParams.get("code") || "").trim();
+
+// If code is missing, try to discover the passenger's latest ACTIVE booking via session.
+// If no session, we still return ok=true but signed_in=false (UI can fall back to "new booking" mode).
+const ACTIVE_STATUSES = [
+  "pending",
+  "searching",
+  "requested",
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "enroute",
+  "on_trip"
+];
 
     // Polling must NOT require auth.
     // Booking ownership is already enforced during booking creation.
-    const { data: b, error } = await supabase
-      .from("bookings")
-      .select(
-        `
-        id,
-        booking_code,
-        status,
-        driver_id,
-        assigned_driver_id,
-        created_at,
-        updated_at,
-        created_by_user_id
-        `
-      )
-      .eq("booking_code", bookingCode)
-      .maybeSingle();
+    let b: any = null;
+let error: any = null;
+
+if (bookingCode) {
+  const res = await supabase
+    .from("bookings")
+    .select(
+      `
+          id,
+          booking_code,
+          status,
+          driver_id,
+          assigned_driver_id,
+          created_at,
+          updated_at,
+          created_by_user_id,
+          proposed_fare,
+          passenger_fare_response
+          `
+    )
+    .eq("booking_code", bookingCode)
+    .maybeSingle();
+
+  b = res.data;
+  error = res.error;
+} else {
+  // Discover latest active booking for this signed-in passenger.
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+
+  if (!user) {
+    return json(200, { ok: true, signed_in: false, booking: null });
+  }
+
+  const res = await supabase
+    .from("bookings")
+    .select(
+      `
+          id,
+          booking_code,
+          status,
+          driver_id,
+          assigned_driver_id,
+          created_at,
+          updated_at,
+          created_by_user_id,
+          proposed_fare,
+          passenger_fare_response
+          `
+    )
+    .eq("created_by_user_id", user.id)
+    .in("status", ACTIVE_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  b = res.data;
+  error = res.error;
+}
 
     if (error) {
       return json(500, {
