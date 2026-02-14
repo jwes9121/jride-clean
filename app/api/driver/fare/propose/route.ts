@@ -40,14 +40,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "NOT_ALLOWED", message: "Booking status not allowed for fare proposal.", status: st }, { status: 409 });
     }
 
-    // Write proposed_fare; keep status at 'accepted' (driver accepted), passenger will accept/decline next.
+    // Write proposed_fare; set status to 'fare_proposed' (driver accepted), passenger will accept/decline next.
     const { error: upErr } = await supabase
       .from("bookings")
       .update({
         driver_id,
         proposed_fare: proposed,
         updated_at: new Date().toISOString(),
-        status: st === "assigned" ? "accepted" : b.status,
+        status: "fare_proposed",
       })
       .eq("id", b.id);
 
