@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
+import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 /* PHASE_3E_TOWNZONE_DERIVE_START */
 function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
@@ -80,7 +79,24 @@ function extractTripsAnyShape(payload: any): any[] {
 
 export async function GET(req: Request) {
   try {
-    const supabase = supabaseAdmin();
+  // Force service-role client here to avoid RLS silently returning empty trips in production.
+  const sbUrl =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const sbServiceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
+
+  const using_service_role = Boolean(sbUrl && sbServiceKey);
+
+  const supabase = createClient(
+    sbUrl,
+    (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+    {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    }
+  );
     const url = new URL(req.url);
     const debug = url.searchParams.get("debug") === "1";
 
@@ -121,7 +137,14 @@ export async function GET(req: Request) {
         .order("created_at", { ascending: false })
         .limit(250);
 
-      if (activeErr) {
+      
+
+      // Debug visibility (safe)
+      if (debug) {
+        (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+        (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+      }
+if (activeErr) {
         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
       } else if (Array.isArray(activeRows) && activeRows.length) {
         for (const b of activeRows as any[]) {
