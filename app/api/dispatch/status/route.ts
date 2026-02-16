@@ -22,6 +22,46 @@ const ALLOWED = [
   "cancelled",
 ] as const;
 
+
+/* JRIDE_COMPLETE_PROXIMITY_BEGIN */
+const JRIDE_COMPLETE_RADIUS_M = Number(process.env.JRIDE_COMPLETE_RADIUS_M ?? 250);
+
+// Haversine distance (meters)
+function jrideHaversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000; // meters
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+async function jrideGetDriverCoords(supabase: any, driverId: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    if (!driverId) return null;
+    const { data, error } = await supabase
+      .from("driver_locations")
+      .select("lat,lng,updated_at")
+      .eq("driver_id", driverId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (error) return null;
+    const row = Array.isArray(data) && data.length ? data[0] : null;
+    const lat = Number(row?.lat);
+    const lng = Number(row?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+/* JRIDE_COMPLETE_PROXIMITY_END */
 const NEXT: Record<string, string[]> = {
   requested: ["assigned", "cancelled"],
   assigned: ["accepted", "on_the_way", "arrived", "enroute", "cancelled"],
@@ -668,8 +708,47 @@ export async function POST(req: Request) {
       allowed_next: allowedNext,
     });
   }
+  /* JRIDE_COMPLETE_PROXIMITY_CHECK_BEGIN */
+  // Completion must be destination-based, NOT polyline-based.
+  // Allow complete if within radius of dropoff OR if forced.
+  if (target === "completed" && !force) {
+    const dLat = Number(booking?.dropoff_lat);
+    const dLng = Number(booking?.dropoff_lng);
 
-  // Best-effort timestamps + note (falls back to status-only if columns missing)
+    // Prefer coords from request body if present, else driver_locations fallback.
+    const bodyLat = Number(rawBody?.lat ?? rawBody?.driver_lat ?? rawBody?.driverLat);
+    const bodyLng = Number(rawBody?.lng ?? rawBody?.driver_lng ?? rawBody?.driverLng);
+
+    let curLat: number | null = null;
+    let curLng: number | null = null;
+
+    if (Number.isFinite(bodyLat) && Number.isFinite(bodyLng)) {
+      curLat = bodyLat; curLng = bodyLng;
+    } else {
+      const dl = await jrideGetDriverCoords(supabase as any, String(booking?.driver_id ?? ""));
+      if (dl) { curLat = dl.lat; curLng = dl.lng; }
+    }
+
+    if (Number.isFinite(dLat) && Number.isFinite(dLng) && Number.isFinite(curLat as any) && Number.isFinite(curLng as any)) {
+      const meters = jrideHaversineMeters(curLat as any, curLng as any, dLat, dLng);
+      const radius = Number.isFinite(JRIDE_COMPLETE_RADIUS_M) ? JRIDE_COMPLETE_RADIUS_M : 250;
+      if (meters > radius) {
+        return jsonErr("TOO_FAR_FROM_DROPOFF", "Driver too far from dropoff to complete (" + Math.round(meters) + "m, radius " + radius + "m). Use force=true to override.", 409, {
+          booking_id: String(booking.id),
+          booking_code: booking.booking_code ?? null,
+          meters: meters,
+          radius_m: radius,
+          driver_lat: curLat,
+          driver_lng: curLng,
+          dropoff_lat: dLat,
+          dropoff_lng: dLng
+        });
+      }
+    }
+  }
+  /* JRIDE_COMPLETE_PROXIMITY_CHECK_END */
+
+// Best-effort timestamps + note (falls back to status-only if columns missing)
   const nowIso = new Date().toISOString();
   const patch: Record<string, any> = { status: target };
 
