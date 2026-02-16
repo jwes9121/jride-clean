@@ -102,7 +102,7 @@ export async function GET(req: Request) {
 
     
     const forceCode = (url.searchParams.get("code") || "").trim();
-const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+    // AUTO: ?code= bypass to fetch a single booking for diagnosis (safe insertion)
     if (forceCode) {
       const probe = await supabase
         .from("bookings")
@@ -115,16 +115,15 @@ const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a s
       return ok({
         trips: row ? [row] : [],
         __debug: debug ? {
-          injected_active_statuses: ACTIVE_STATUSES,
-          using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
-          has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
-          has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+          injected_active_statuses: ["requested","pending","ready","assigned","on_the_way","arrived","enroute","on_trip"],
           code: forceCode,
-          probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+          probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null,
+          has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+          has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
         } : undefined
       });
     }
-await supabase.rpc(
+    const { data: rpcData, error: rpcErr } = await supabase.rpc(
       "admin_get_live_trips_page_data_v2"
     );
 
@@ -260,8 +259,8 @@ if (activeErr) {
 
   const payload =
       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
-        ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
-        : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+        ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+        : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined };
 
     return ok(payload);
   } catch (err: any) {
