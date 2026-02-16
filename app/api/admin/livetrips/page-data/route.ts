@@ -224,7 +224,58 @@ if (activeErr) {
     } catch (e: any) {
       console.error("LIVETRIPS_FALLBACK_ACTIVE_EXCEPTION", e?.message || e);
     }
-  const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
+    // ===== JRIDE_DRIVERLOC_ENRICH_BEGIN =====
+  // Attach latest driver location to trips so UI/map can show driver marker and avoid false "no driver linked".
+  try {
+    const ids = Array.from(
+      new Set(
+        (Array.isArray(trips) ? trips : [])
+          .map((t: any) => (t?.assigned_driver_id ?? t?.driver_id ?? null))
+          .filter((v: any) => v != null && String(v).trim() !== "")
+          .map((v: any) => String(v))
+      )
+    );
+
+    if (ids.length) {
+      const { data: locRows, error: locErr } = await supabase
+        .from("driver_locations")
+        .select("driver_id, lat, lng, status, town, updated_at")
+        .in("driver_id", ids)
+        .order("updated_at", { ascending: false })
+        .limit(1000);
+
+      if (locErr) {
+        console.error("LIVETRIPS_DRIVERLOC_QUERY_ERROR", locErr);
+      } else if (Array.isArray(locRows) && locRows.length) {
+        const latestByDriver = new Map<string, any>();
+        for (const r of locRows as any[]) {
+          const did = r?.driver_id != null ? String(r.driver_id) : "";
+          if (!did) continue;
+          if (!latestByDriver.has(did)) latestByDriver.set(did, r); // first is latest due to order desc
+        }
+
+        for (const t of (Array.isArray(trips) ? trips : []) as any[]) {
+          const did = t?.assigned_driver_id ?? t?.driver_id ?? null;
+          if (!did) continue;
+          const loc = latestByDriver.get(String(did));
+          if (!loc) continue;
+
+          // These fields are what LiveTripsMap checks first (explicit driver coords)
+          t.driver_lat = loc.lat ?? null;
+          t.driver_lng = loc.lng ?? null;
+
+          // Extra context for UI if needed later
+          t.driver_loc_status = loc.status ?? null;
+          t.driver_loc_town = loc.town ?? null;
+          t.driver_loc_updated_at = loc.updated_at ?? null;
+        }
+      }
+    }
+  } catch (e: any) {
+    console.error("LIVETRIPS_DRIVERLOC_ENRICH_EXCEPTION", e?.message || e);
+  }
+  // ===== JRIDE_DRIVERLOC_ENRICH_END =====
+const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
     // ===== STEP5D_TRIPSOUT_EMERGENCY =====
     is_emergency: Boolean(
       (t as any)?.is_emergency ??
