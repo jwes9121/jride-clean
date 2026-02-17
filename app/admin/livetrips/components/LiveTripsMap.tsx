@@ -361,12 +361,27 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
   // Audio for problem-trip alerts
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
 
-// ===== JRIDE_SOUND_UNLOCK_BEGIN =====
+
+  // ===== JRIDE_BEEP_ON_ASSIGN_BEGIN =====
+  const lastAssignedRef = useRef<Record<string, string>>({});
+  // ===== JRIDE_BEEP_ON_ASSIGN_END =====// ===== JRIDE_SOUND_UNLOCK_BEGIN =====
 const [soundEnabled, setSoundEnabled] = useState(false);
 
+// ===== JRIDE_PLAY_ALERT_SOUND_BEGIN =====
+function playAlertSound() {
+  try {
+    const a = alertAudioRef.current;
+    if (!a) return;
+    a.currentTime = 0;
+    if (soundEnabled) {
+      void a.play();
+    }
+  } catch {}
+}
+// ===== JRIDE_PLAY_ALERT_SOUND_END =====
 // Unlock audio after the first user gesture (browser autoplay policy)
 useEffect(() => {
-  const unlock = () => {
+const unlock = () => {
     try {
       const a = alertAudioRef.current;
       if (!a) { setSoundEnabled(true); return; }
@@ -479,14 +494,42 @@ const alertedIdsRef = useRef<Set<string>>(new Set());
       if (state.isStuck) stuck.add(id);
     }
     setLocalStuckIds(stuck);
-  }, [trips]);
+  
+
+    // ===== JRIDE_BEEP_ON_ASSIGN_EFFECT_BEGIN =====
+    try {
+      const prev = lastAssignedRef.current || {};
+      const next: Record<string, string> = {};
+
+      for (let i = 0; i < (trips?.length || 0); i++) {
+        const t: any = trips[i];
+        const id = String(t?.id ?? t?.bookingCode ?? t?.booking_code ?? i);
+        const driverId = String(
+          t?.driver_id ?? t?.driverId ?? t?.assigned_driver_id ?? t?.assignedDriverId ?? ""
+        );
+
+        next[id] = driverId;
+
+        const was = String(prev[id] ?? "");
+        const now = driverId;
+
+        if (!was && now) {
+          playAlertSound();
+        }
+      }
+
+      lastAssignedRef.current = next;
+    } catch {}
+    // ===== JRIDE_BEEP_ON_ASSIGN_EFFECT_END =====
+
+}, [trips]);
 
   const activeStuckIds =
     stuckTripIds && stuckTripIds.size > 0 ? stuckTripIds : localStuckIds;
 
   // ===== AUTO PROBLEM-TRIP ALERT SOUND =====
   useEffect(() => {
-    const audio = alertAudioRef.current;
+const audio = alertAudioRef.current;
     if (!audio) return;
 
     const currentProblemIds = new Set<string>();
@@ -526,7 +569,35 @@ const alertedIdsRef = useRef<Set<string>>(new Set());
         // ignore play errors
       }
     }
-  }, [trips, activeStuckIds]);
+  
+
+    // ===== JRIDE_BEEP_ON_ASSIGN_EFFECT_BEGIN =====
+    try {
+      const prev = lastAssignedRef.current || {};
+      const next: Record<string, string> = {};
+
+      for (let i = 0; i < (trips?.length || 0); i++) {
+        const t: any = trips[i];
+        const id = String(t?.id ?? t?.bookingCode ?? t?.booking_code ?? i);
+        const driverId = String(
+          t?.driver_id ?? t?.driverId ?? t?.assigned_driver_id ?? t?.assignedDriverId ?? ""
+        );
+
+        next[id] = driverId;
+
+        const was = String(prev[id] ?? "");
+        const now = driverId;
+
+        if (!was && now) {
+          playAlertSound();
+        }
+      }
+
+      lastAssignedRef.current = next;
+    } catch {}
+    // ===== JRIDE_BEEP_ON_ASSIGN_EFFECT_END =====
+
+}, [trips]);
 
   // ===== ZONE COLUMN FILTERS =====
   const [zoneFilter, setZoneFilter] = useState<string>("all");
@@ -608,7 +679,7 @@ const alertedIdsRef = useRef<Set<string>>(new Set());
   const [suggestions, setSuggestions] = useState<AutoAssignSuggestion[]>([]);
 
   useEffect(() => {
-    const pending = trips.filter((t: any) =>
+const pending = trips.filter((t: any) =>
       ["pending", "assigned"].includes((t.status ?? "").toString())
     );
     const drivers = trips.filter((t: any) =>
@@ -662,9 +733,37 @@ const alertedIdsRef = useRef<Set<string>>(new Set());
 
     next.sort((a, b) => a.score - b.score);
     setSuggestions(next.slice(0, 3));
-  }, [trips]);
+  
 
-  // ===== SELECTED DRIVER LIVE OVERVIEW =====
+    // ===== JRIDE_BEEP_ON_ASSIGN_EFFECT_BEGIN =====
+    try {
+      const prev = lastAssignedRef.current || {};
+      const next: Record<string, string> = {};
+
+      for (let i = 0; i < (trips?.length || 0); i++) {
+        const t: any = trips[i];
+        const id = String(t?.id ?? t?.bookingCode ?? t?.booking_code ?? i);
+        const driverId = String(
+          t?.driver_id ?? t?.driverId ?? t?.assigned_driver_id ?? t?.assignedDriverId ?? ""
+        );
+
+        next[id] = driverId;
+
+        const was = String(prev[id] ?? "");
+        const now = driverId;
+
+        if (!was && now) {
+          playAlertSound();
+        }
+      }
+
+      lastAssignedRef.current = next;
+    } catch {}
+    // ===== JRIDE_BEEP_ON_ASSIGN_EFFECT_END =====
+
+}, [trips]);
+
+  // ===== SELECTED Driver live overview
   const selectedTrip = useMemo(() => {
     if (!selectedTripId) return null;
     return (
@@ -1252,7 +1351,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Ã‚Â· {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1262,13 +1361,14 @@ const target: LngLatTuple | null =
           )}
         </div>
 
-        {/* DRIVER LIVE OVERVIEW + DISPATCH ACTION PANEL */}
+        {/* Driver live overview
+                + DISPATCH ACTION PANEL */}
         {selectedOverview && (
           <div className="pointer-events-auto absolute bottom-3 right-3 z-20 w-80 rounded-xl bg-white/90 p-3 text-xs shadow-md space-y-2">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-semibold text-slate-800">
                 Driver live overview
-              </span>
+                </span>
               <span className="text-[10px] text-slate-400">
                 {selectedOverview.bookingCode}
               </span>
@@ -1284,7 +1384,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  Ã‚Â·  STUCK" : ""}
+                  {selectedOverview.isStuck ? "  ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1300,7 +1400,7 @@ const target: LngLatTuple | null =
                 <span className="font-medium">
                   {selectedTrip?.passenger_name ??
                     (selectedTrip as any)?.passengerName ??
-                    "Ã¢â‚¬â€"}
+                    "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â"}
                 </span>
               </div>
 
@@ -1317,9 +1417,9 @@ const target: LngLatTuple | null =
                         : null;
                       const lng = Number(p?.[0]);
                       const lat = Number(p?.[1]);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "Ã¢â‚¬â€";
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "Ã¢â‚¬â€"; }
+                    } catch { return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â"; }
                   })()}
                 </span>
               </div>
@@ -1337,9 +1437,9 @@ const target: LngLatTuple | null =
                         : null;
                       const lng = Number(d?.[0]);
                       const lat = Number(d?.[1]);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "Ã¢â‚¬â€";
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "Ã¢â‚¬â€"; }
+                    } catch { return "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â"; }
                   })()}
                 </span>
               </div>
@@ -1439,26 +1539,5 @@ const target: LngLatTuple | null =
 };
 
 export default LiveTripsMap;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
