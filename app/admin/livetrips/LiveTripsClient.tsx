@@ -393,7 +393,18 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     const __normTrips = Array.isArray(__rawTrips)
       ? __rawTrips.map((t: any) => ({
           ...t,
-          is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false),
+
+          // ===== JRIDE_NORM_TRIP_FIELDS_BEGIN =====
+          booking_code: (t?.booking_code ?? t?.bookingCode ?? null),
+          passenger_name: (t?.passenger_name ?? t?.passengerName ?? t?.passenger ?? null),
+
+          pickup_lat: (t?.pickup_lat ?? t?.pickupLat ?? t?.from_lat ?? t?.fromLat ?? t?.origin_lat ?? t?.originLat ?? null),
+          pickup_lng: (t?.pickup_lng ?? t?.pickupLng ?? t?.from_lng ?? t?.fromLng ?? t?.origin_lng ?? t?.originLng ?? null),
+
+          dropoff_lat: (t?.dropoff_lat ?? t?.dropoffLat ?? t?.to_lat ?? t?.toLat ?? t?.dest_lat ?? t?.destLat ?? t?.destination_lat ?? t?.destinationLat ?? null),
+          dropoff_lng: (t?.dropoff_lng ?? t?.dropoffLng ?? t?.to_lng ?? t?.toLng ?? t?.dest_lng ?? t?.destLng ?? t?.destination_lng ?? t?.destinationLng ?? null),
+          // ===== JRIDE_NORM_TRIP_FIELDS_END =====
+is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false),
           pickup_distance_km:
             t?.pickup_distance_km ??
             t?.pickupDistanceKm ??
@@ -711,13 +722,13 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
                           {/* ===== JRIDE_STEP5D_EMERGENCY_BADGE ===== */}
                           {(Boolean((t as any).is_emergency)) ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
-                              ðŸš¨ EMERGENCY
+                              Ã°Å¸Å¡Â¨ EMERGENCY
                             </span>
                           ) : null}
 
                           {(Number((t as any).emergency_pickup_fee_php) > 0) ? (
                             <span className="ml-2 text-xs text-amber-800">
-                              +â‚±{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
+                              +Ã¢â€šÂ±{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
                               {Number.isFinite(Number((t as any).pickup_distance_km)) ? ` (${Number((t as any).pickup_distance_km).toFixed(2)} km)` : ""}
                             </span>
                           ) : (Number.isFinite(Number((t as any).pickup_distance_km)) ? (

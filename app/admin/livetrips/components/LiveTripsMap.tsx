@@ -394,7 +394,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
       if (!_hasDriver) {
         continue;
       }
-      const id = String(raw.id ?? raw.bookingCode ?? i);
+      const id = String(raw.id ?? raw.bookingCode ?? raw.booking_code ?? i);
 
       const driverReal =
         getDriverReal(raw) ?? getDropoff(raw) ?? getPickup(raw);
@@ -428,7 +428,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
 
     const idsNow = new Set(
       trips.map((t: any, idx: number) =>
-        String((t as any).id ?? (t as any).bookingCode ?? idx)
+        String((t as any).id ?? (t as any).bookingCode ?? (t as any).booking_code ?? idx)
       )
     );
     for (const id of Object.keys(tracker)) {
@@ -453,7 +453,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
     const currentProblemIds = new Set<string>();
 
     for (const tRaw of trips as any[]) {
-      const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
+      const id = String(tRaw.id ?? tRaw.bookingCode ?? tRaw.booking_code ?? "");
       const isStuck = activeStuckIds.has(id);
       const isProblem = !!tRaw.isProblem && isActiveStatusForProblem(tRaw.status);
       if (isStuck || isProblem) {
@@ -523,7 +523,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
 
     for (const tRaw of trips as any[]) {
       const status = String(tRaw.status ?? "");
-      const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
+      const id = String(tRaw.id ?? tRaw.bookingCode ?? tRaw.booking_code ?? "");
       const isStuck = activeStuckIds.has(id);
       const isProblem = !!tRaw.isProblem && isActiveStatusForProblem(tRaw.status);
 
@@ -629,7 +629,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
     return (
       (trips.find(
         (t: any) =>
-          String(t.id ?? t.bookingCode ?? "") === selectedTripId
+          String(t.id ?? t.bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
       ) as any) ?? null
     );
   }, [trips, selectedTripId]);
@@ -637,7 +637,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
   const selectedOverview = useMemo(() => {
     if (!selectedTrip) return null;
 
-    const id = String(selectedTrip.id ?? selectedTrip.bookingCode ?? "");
+    const id = String(selectedTrip.id ?? selectedTrip.bookingCode ?? (selectedTrip as any).booking_code ?? "");
     const driverName =
       selectedTrip.driver_name ?? selectedTrip.driverName ?? null;
     const status = String(selectedTrip.status ?? "");
@@ -653,7 +653,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
     if (driverReal && pickup) distToPickup = distanceMeters(driverReal, pickup);
     if (driverReal && drop) distToDrop = distanceMeters(driverReal, drop);
 
-    const bookingCode = selectedTrip.bookingCode ?? id;
+    const bookingCode = selectedTrip.bookingCode ?? (selectedTrip as any).booking_code ?? id;
     const lastUpdate =
       selectedTrip.driver_last_seen_at ??
       selectedTrip.updated_at ??
@@ -763,7 +763,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
 
     for (let i = 0; i < visibleTrips.length; i++) {
       const raw = visibleTrips[i] as any;
-      const id = String(raw.id ?? raw.bookingCode ?? i);
+      const id = String(raw.id ?? raw.bookingCode ?? raw.booking_code ?? i);
 
       const driverReal = getDriverReal(raw);
       const pickup = getPickup(raw);
@@ -987,7 +987,7 @@ if (isStuck || isProblem) el.classList.add("jride-marker-blink");marker = new ma
     if (!map || !selectedTripId) return;
 
     const raw = trips.find(
-      (t: any) => String(t.id ?? t.bookingCode ?? "") === selectedTripId
+      (t: any) => String(t.id ?? t.bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
     ) as any | undefined;
     if (!raw) return;
 
@@ -1211,7 +1211,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  · {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Â· {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1243,7 +1243,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  ·  STUCK" : ""}
+                  {selectedOverview.isStuck ? "  Â·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1252,6 +1252,57 @@ const target: LngLatTuple | null =
                   {selectedOverview.zoneLabel}
                 </span>
               </div>
+
+              {/* ===== JRIDE_SELECTED_DETAILS_ROWS_BEGIN ===== */}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Passenger</span>
+                <span className="font-medium">
+                  {selectedTrip?.passenger_name ??
+                    (selectedTrip as any)?.passengerName ??
+                    "â€”"}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Pickup</span>
+                <span className="font-medium">
+                  {(() => {
+                    try {
+                      const p = (selectedTrip as any)
+                        ? ([
+                            (selectedTrip as any).pickup_lng ?? (selectedTrip as any).from_lng ?? null,
+                            (selectedTrip as any).pickup_lat ?? (selectedTrip as any).from_lat ?? null,
+                          ] as any)
+                        : null;
+                      const lng = Number(p?.[0]);
+                      const lat = Number(p?.[1]);
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "â€”";
+                      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                    } catch { return "â€”"; }
+                  })()}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Dropoff</span>
+                <span className="font-medium">
+                  {(() => {
+                    try {
+                      const d = (selectedTrip as any)
+                        ? ([
+                            (selectedTrip as any).dropoff_lng ?? (selectedTrip as any).to_lng ?? null,
+                            (selectedTrip as any).dropoff_lat ?? (selectedTrip as any).to_lat ?? null,
+                          ] as any)
+                        : null;
+                      const lng = Number(d?.[0]);
+                      const lat = Number(d?.[1]);
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "â€”";
+                      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                    } catch { return "â€”"; }
+                  })()}
+                </span>
+              </div>
+              {/* ===== JRIDE_SELECTED_DETAILS_ROWS_END ===== */}
               <div className="flex justify-between">
                 <span className="text-slate-500">To pickup</span>
                 <span className="font-medium">
