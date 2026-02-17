@@ -360,7 +360,46 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
 
   // Audio for problem-trip alerts
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
-  const alertedIdsRef = useRef<Set<string>>(new Set());
+
+// ===== JRIDE_SOUND_UNLOCK_BEGIN =====
+const [soundEnabled, setSoundEnabled] = useState(false);
+
+// Unlock audio after the first user gesture (browser autoplay policy)
+useEffect(() => {
+  const unlock = () => {
+    try {
+      const a = alertAudioRef.current;
+      if (!a) { setSoundEnabled(true); return; }
+      const prevVol = a.volume;
+      a.volume = 0;
+
+      const p = a.play();
+      if (p && typeof (p as any).then === "function") {
+        (p as any).then(() => {
+          try { a.pause(); a.currentTime = 0; } catch {}
+          a.volume = prevVol;
+          setSoundEnabled(true);
+        }).catch(() => {
+          a.volume = prevVol;
+          setSoundEnabled(true);
+        });
+      } else {
+        try { a.pause(); a.currentTime = 0; } catch {}
+        a.volume = prevVol;
+        setSoundEnabled(true);
+      }
+    } catch {
+      setSoundEnabled(true);
+    }
+  };
+
+  window.addEventListener("pointerdown", unlock, { once: true } as any);
+  return () => {
+    try { window.removeEventListener("pointerdown", unlock as any); } catch {}
+  };
+}, []);
+// ===== JRIDE_SOUND_UNLOCK_END =====
+const alertedIdsRef = useRef<Set<string>>(new Set());
 
   
 
@@ -480,7 +519,9 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = (props) => {
     if (newOnes.length > 0) {
       try {
         audio.currentTime = 0;
-        void audio.play();
+        if (soundEnabled) {
+          void audio.play();
+        }
       } catch {
         // ignore play errors
       }
@@ -1211,7 +1252,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Â· {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  Ã‚Â· {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1243,7 +1284,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  Â·  STUCK" : ""}
+                  {selectedOverview.isStuck ? "  Ã‚Â·  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1259,7 +1300,7 @@ const target: LngLatTuple | null =
                 <span className="font-medium">
                   {selectedTrip?.passenger_name ??
                     (selectedTrip as any)?.passengerName ??
-                    "â€”"}
+                    "Ã¢â‚¬â€"}
                 </span>
               </div>
 
@@ -1276,9 +1317,9 @@ const target: LngLatTuple | null =
                         : null;
                       const lng = Number(p?.[0]);
                       const lat = Number(p?.[1]);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "â€”";
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "Ã¢â‚¬â€";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "â€”"; }
+                    } catch { return "Ã¢â‚¬â€"; }
                   })()}
                 </span>
               </div>
@@ -1296,9 +1337,9 @@ const target: LngLatTuple | null =
                         : null;
                       const lng = Number(d?.[0]);
                       const lat = Number(d?.[1]);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "â€”";
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "Ã¢â‚¬â€";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "â€”"; }
+                    } catch { return "Ã¢â‚¬â€"; }
                   })()}
                 </span>
               </div>
