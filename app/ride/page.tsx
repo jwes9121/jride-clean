@@ -1,4 +1,4 @@
-﻿/* PHASE P1E DISABLED VISUALS (UI-only): add disabled button styling on native <button> tags */
+/* PHASE P1E DISABLED VISUALS (UI-only): add disabled button styling on native <button> tags */
 "use client";
 
 const JRIDE_ACTIVE_BOOKING_KEY = "jride_active_booking_code";
