@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 // Passenger tracking endpoint (needed by mobile/web to refresh booking status)
@@ -72,7 +72,37 @@ export async function GET(req: NextRequest) {
     }
 
     if (!booking) {
-      return NextResponse.json(
+      
+// JRIDE_TRACK_UID_BYPASS_BEGIN
+
+  // TEMP TEST BYPASS:
+  // If server session is missing but uid is provided, allow tracking ONLY when uid matches created_by_user_id.
+  // Usage: /ride/track?code=BOOKING_CODE&uid=PASSENGER_UUID
+  try {
+    const url2 = new URL(req.url);
+    const code2 = (url2.searchParams.get("code") || url2.searchParams.get("booking_code") || "").trim();
+    const uid = (url2.searchParams.get("uid") || "").trim();
+    const uidOk = /^[0-9a-fA-F-]{36}$/.test(uid);
+
+    if (code2 && uidOk) {
+      const { data: row2, error: err2 } = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("booking_code", code2)
+        .limit(1)
+        .maybeSingle();
+
+      if (!err2 && row2 && String((row2 as any).created_by_user_id || "") === uid) {
+        return NextResponse.json(row2, { status: 200 });
+      }
+    }
+  } catch (e) {
+    // ignore bypass errors
+  }
+
+// JRIDE_TRACK_UID_BYPASS_END
+
+  return NextResponse.json(
         { ok: false, error: "Booking not found" },
         { status: 404 }
       );
@@ -115,6 +145,7 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
 
 
 
