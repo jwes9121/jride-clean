@@ -146,42 +146,38 @@ async function bestEffortAudit(
 async function bestEffortDispatchAction(
   supabase: any,
   entry: {
-    booking_id?: string | null;
-    booking_code?: string | null;
+    trip_id: string;
+    driver_id?: string | null;
     from_status?: string | null;
     to_status?: string | null;
-    actor?: string | null;
+    dispatcher_id?: string | null;
+    dispatcher_name?: string | null;
     source?: string | null;
   }
 ): Promise<{ warning?: string | null }> {
-  const payloadBase: any = {
-    booking_id: entry.booking_id ?? null,
-    trip_id: entry.booking_id ?? null,
-    booking_code: entry.booking_code ?? null,
-    from_status: entry.from_status ?? null,
-    to_status: entry.to_status ?? null,
-    action: entry.to_status ?? null,
-    actor: entry.actor ?? "system",
-    actor_id: entry.actor ?? null,
-    source: entry.source ?? "dispatch/status",
-    created_at: new Date().toISOString(),
+  // Match your real public.dispatch_actions schema:
+  // dispatcher_id, dispatcher_name, trip_id, driver_id, action_type, note, meta
+  const payload: any = {
+    trip_id: entry.trip_id,
+    driver_id: entry.driver_id ?? null,
+    dispatcher_id: entry.dispatcher_id ?? null,
+    dispatcher_name: entry.dispatcher_name ?? null,
+    action_type: "status_change",
+    note: null,
+    meta: {
+      from_status: entry.from_status ?? null,
+      to_status: entry.to_status ?? null,
+      source: entry.source ?? "dispatch/status",
+    },
   };
 
-  const variants: any[] = [
-    { booking_id: payloadBase.booking_id, from_status: payloadBase.from_status, to_status: payloadBase.to_status, actor: payloadBase.actor, source: payloadBase.source, created_at: payloadBase.created_at },
-    { trip_id: payloadBase.trip_id, from_status: payloadBase.from_status, to_status: payloadBase.to_status, actor: payloadBase.actor, source: payloadBase.source, created_at: payloadBase.created_at },
-    { trip_id: payloadBase.trip_id, booking_id: payloadBase.booking_id, action: payloadBase.action, actor: payloadBase.actor, source: payloadBase.source, created_at: payloadBase.created_at },
-    { trip_id: payloadBase.trip_id, booking_id: payloadBase.booking_id, from_status: payloadBase.from_status, to_status: payloadBase.to_status, actor_id: payloadBase.actor_id, source: payloadBase.source, created_at: payloadBase.created_at },
-  ];
-
-  for (const p of variants) {
-    try {
-      const r = await supabase.from("dispatch_actions").insert(p);
-      if (!r?.error) return { warning: null };
-    } catch {}
+  try {
+    const r = await supabase.from("dispatch_actions").insert(payload);
+    if (!r?.error) return { warning: null };
+    return { warning: "DISPATCH_ACTIONS_INSERT_ERROR: " + String(r.error?.message || r.error) };
+  } catch (e: any) {
+    return { warning: "DISPATCH_ACTIONS_INSERT_THROW: " + String(e?.message || e) };
   }
-
-  return { warning: "DISPATCH_ACTIONS_LOG_FAILED" };
 }
 
 async function fetchBooking(
@@ -847,19 +843,25 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
   if (!upd.ok && upd.error && upd.error.toLowerCase().includes("column")) {
     upd = await tryUpdateBooking(supabase, String(booking.id), { status: target });
   
-  // JRIDE_DISPATCH_ACTIONS_LOG_V6C (non-blocking)
+    // JRIDE_DISPATCH_ACTIONS_LOG_V6C (non-blocking)
   try {
-    const actorForLog =
-      ((typeof actorUserId !== "undefined" && actorUserId) ? String(actorUserId) : "system");await bestEffortDispatchAction(supabase, {
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
+    const driverForLog =
+      (booking?.driver_id ? String(booking.driver_id) :
+        (booking?.assigned_driver_id ? String(booking.assigned_driver_id) : null));
+
+    const dispatcherIdForLog =
+      ((typeof actorUserId !== "undefined" && actorUserId) ? String(actorUserId) : null);
+
+    await bestEffortDispatchAction(supabase, {
+      trip_id: String(booking.id),
+      driver_id: driverForLog,
       from_status: cur,
       to_status: target,
-      actor: actorForLog,
+      dispatcher_id: dispatcherIdForLog,
+      dispatcher_name: null,
       source: "dispatch/status",
     });
-  } catch {}
-}
+  } catch {}}
 
   if (!upd.ok) {
     return jsonErr("DISPATCH_STATUS_DB_ERROR", upd.error || "Booking update failed", 500, {
