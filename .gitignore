@@ -16,3 +16,18 @@ _payments_scan_report_*/
 tmp_*.json
 *MOJIBAKE_CLEAN_REPORT*.txtFIND-JRIDE_LATEST_SMALL_RIDE_PAGE_TSX_V1_PS5SAFE.ps1
 PATCH-JRIDE_RIDE_ACTIVE_CODE_SAFE_MICROPATCH_V1_PS5SAFE.ps1
+# JRIDE: local secrets
+.env.local
+.env.*.local
+
+# JRIDE: review/collector artifacts (never commit)
+_collect*/
+_collect_*/
+**/_collect*/
+JRIDE_REVIEW_COLLECT_*/
+JRIDE_LIFECYCLE_COLLECT_*/
+*_COLLECT_*.zip
+*.zip
+
+# JRIDE: patch backups
+_patch_bak/
