@@ -722,13 +722,13 @@ is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false
                           {/* ===== JRIDE_STEP5D_EMERGENCY_BADGE ===== */}
                           {(Boolean((t as any).is_emergency)) ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
-                              Ã°Å¸Å¡Â¨ EMERGENCY
+                              ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ EMERGENCY
                             </span>
                           ) : null}
 
                           {(Number((t as any).emergency_pickup_fee_php) > 0) ? (
                             <span className="ml-2 text-xs text-amber-800">
-                              +Ã¢â€šÂ±{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
+                              +ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
                               {Number.isFinite(Number((t as any).pickup_distance_km)) ? ` (${Number((t as any).pickup_distance_km).toFixed(2)} km)` : ""}
                             </span>
                           ) : (Number.isFinite(Number((t as any).pickup_distance_km)) ? (

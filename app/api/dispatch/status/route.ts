@@ -143,6 +143,47 @@ async function bestEffortAudit(
   return {};
 }
 
+async function bestEffortDispatchAction(
+  supabase: any,
+  entry: {
+    booking_id?: string | null;
+    booking_code?: string | null;
+    from_status?: string | null;
+    to_status?: string | null;
+    actor?: string | null;
+    source?: string | null;
+  }
+): Promise<{ warning?: string | null }> {
+  const payloadBase: any = {
+    booking_id: entry.booking_id ?? null,
+    trip_id: entry.booking_id ?? null,
+    booking_code: entry.booking_code ?? null,
+    from_status: entry.from_status ?? null,
+    to_status: entry.to_status ?? null,
+    action: entry.to_status ?? null,
+    actor: entry.actor ?? "system",
+    actor_id: entry.actor ?? null,
+    source: entry.source ?? "dispatch/status",
+    created_at: new Date().toISOString(),
+  };
+
+  const variants: any[] = [
+    { booking_id: payloadBase.booking_id, from_status: payloadBase.from_status, to_status: payloadBase.to_status, actor: payloadBase.actor, source: payloadBase.source, created_at: payloadBase.created_at },
+    { trip_id: payloadBase.trip_id, from_status: payloadBase.from_status, to_status: payloadBase.to_status, actor: payloadBase.actor, source: payloadBase.source, created_at: payloadBase.created_at },
+    { trip_id: payloadBase.trip_id, booking_id: payloadBase.booking_id, action: payloadBase.action, actor: payloadBase.actor, source: payloadBase.source, created_at: payloadBase.created_at },
+    { trip_id: payloadBase.trip_id, booking_id: payloadBase.booking_id, from_status: payloadBase.from_status, to_status: payloadBase.to_status, actor_id: payloadBase.actor_id, source: payloadBase.source, created_at: payloadBase.created_at },
+  ];
+
+  for (const p of variants) {
+    try {
+      const r = await supabase.from("dispatch_actions").insert(p);
+      if (!r?.error) return { warning: null };
+    } catch {}
+  }
+
+  return { warning: "DISPATCH_ACTIONS_LOG_FAILED" };
+}
+
 async function fetchBooking(
   supabase: ReturnType<typeof createClient>,
   booking_id?: string | null,
@@ -477,7 +518,26 @@ async function freeRideCreditDriverOnComplete(supabase:any, booking:any): Promis
 /* FREE_RIDE_DRIVER_CREDIT_END */
 export async function GET(req: Request) {
   const supabase = createClient();
-  try {
+  
+  // Auth/secret gate (OFF by default in production)
+  const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
+  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
+  const gotSecret = String(req.headers.get("x-jride-admin-secret") || "").trim();
+
+  let actorUserId: string | null = null;
+
+  if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
+    try {
+      const { data } = await supabase.auth.getUser();
+      actorUserId = data?.user?.id ?? null;
+    } catch {
+      actorUserId = null;
+    }
+    if (!actorUserId) {
+      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
+    }
+  }
+try {
     const url = new URL(req.url);
     const bookingId = url.searchParams.get("booking_id") || url.searchParams.get("id");
     const bookingCode = url.searchParams.get("booking_code") || url.searchParams.get("code");
@@ -610,7 +670,26 @@ export async function POST(req: Request) {
   // ===== END JRIDE_P5C_POST_START_BLOCK =====
 
   const supabase = createClient();
-  const rawBody = (await req.json().catch(() => ({}))) as any;
+  
+  // Auth/secret gate (OFF by default in production)
+  const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
+  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
+  const gotSecret = String(req.headers.get("x-jride-admin-secret") || "").trim();
+
+  let actorUserId: string | null = null;
+
+  if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
+    try {
+      const { data } = await supabase.auth.getUser();
+      actorUserId = data?.user?.id ?? null;
+    } catch {
+      actorUserId = null;
+    }
+    if (!actorUserId) {
+      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
+    }
+  }
+const rawBody = (await req.json().catch(() => ({}))) as any;
 
   const booking_id =
     rawBody?.booking_id ??
@@ -767,7 +846,20 @@ export async function POST(req: Request) {
 
   if (!upd.ok && upd.error && upd.error.toLowerCase().includes("column")) {
     upd = await tryUpdateBooking(supabase, String(booking.id), { status: target });
-  }
+  
+  // JRIDE_DISPATCH_ACTIONS_LOG_V6C (non-blocking)
+  try {
+    const actorForLog =
+      ((typeof actorUserId !== "undefined" && actorUserId) ? String(actorUserId) : "system");await bestEffortDispatchAction(supabase, {
+      booking_id: String(booking.id),
+      booking_code: booking.booking_code ?? null,
+      from_status: cur,
+      to_status: target,
+      actor: actorForLog,
+      source: "dispatch/status",
+    });
+  } catch {}
+}
 
   if (!upd.ok) {
     return jsonErr("DISPATCH_STATUS_DB_ERROR", upd.error || "Booking update failed", 500, {
@@ -788,7 +880,7 @@ export async function POST(req: Request) {
   const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
 
   // Audit (non-blocking)
-  const actor = getActorFromReq(req);
+  const actor = (actorUserId || '').trim() ? String(actorUserId) : getActorFromReq(req);
   const audit = await bestEffortAudit(supabase, {
     booking_id: String(booking.id),
     booking_code: booking.booking_code ?? null,
