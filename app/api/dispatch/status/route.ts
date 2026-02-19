@@ -515,31 +515,10 @@ async function freeRideCreditDriverOnComplete(supabase:any, booking:any): Promis
 export async function GET(req: Request) {
   const supabase = createClient();
   
-  
-  // JRIDE_ADMIN_SECRET_GATE_V1
-  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret =
-    String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
-
-  const adminSecretOk = Boolean(wantSecret) && Boolean(gotSecret) && gotSecret === wantSecret;
-
-  let actorUserId: string | null = null;
-
-  if (!adminSecretOk) {
-    try {
-      const { data } = await supabase.auth.getUser();
-      actorUserId = data?.user?.id ?? null;
-    } catch {
-      actorUserId = null;
-    }
-    if (!actorUserId) {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
-    }
-  }
-// Auth/secret gate (OFF by default in production)
+  // Auth/secret gate (OFF by default in production)
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret = String(req.headers.get("x-jride-admin-secret") || "").trim();
+  const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
 
   let actorUserId: string | null = null;
 
@@ -688,31 +667,10 @@ export async function POST(req: Request) {
 
   const supabase = createClient();
   
-  
-  // JRIDE_ADMIN_SECRET_GATE_V1
-  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret =
-    String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
-
-  const adminSecretOk = Boolean(wantSecret) && Boolean(gotSecret) && gotSecret === wantSecret;
-
-  let actorUserId: string | null = null;
-
-  if (!adminSecretOk) {
-    try {
-      const { data } = await supabase.auth.getUser();
-      actorUserId = data?.user?.id ?? null;
-    } catch {
-      actorUserId = null;
-    }
-    if (!actorUserId) {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
-    }
-  }
-// Auth/secret gate (OFF by default in production)
+  // Auth/secret gate (OFF by default in production)
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret = String(req.headers.get("x-jride-admin-secret") || "").trim();
+  const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
 
   let actorUserId: string | null = null;
 
