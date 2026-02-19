@@ -851,16 +851,6 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
 
     const dispatcherIdForLog =
       ((typeof actorUserId !== "undefined" && actorUserId) ? String(actorUserId) : null);
-
-    await bestEffortDispatchAction(supabase, {
-      trip_id: String(booking.id),
-      driver_id: driverForLog,
-      from_status: cur,
-      to_status: target,
-      dispatcher_id: dispatcherIdForLog,
-      dispatcher_name: null,
-      source: "dispatch/status",
-    });
   } catch {}}
 
   if (!upd.ok) {
