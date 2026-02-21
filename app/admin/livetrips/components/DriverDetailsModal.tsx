@@ -119,7 +119,7 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
               onClick={onClose}
               className="rounded-full p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
             >
-              ✕
+              
             </button>
           </div>
         </div>

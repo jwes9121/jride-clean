@@ -86,7 +86,7 @@ export default function DispatchRow({
       <td className="px-3 py-2">
         <div className="text-xs">
           <div>{fromLabel}</div>
-          <div className="text-gray-500">→ {toLabel}</div>
+          <div className="text-gray-500"> {toLabel}</div>
         </div>
       </td>
       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">

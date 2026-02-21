@@ -96,7 +96,7 @@ export default function StatusTestPage() {
     <div className="p-4 space-y-4">
       <h1 className="text-lg font-semibold">JRide - Trip Status & Assignment Test</h1>
       <p className="text-xs text-gray-600">
-        This page is for testing: Auto Assign → Start Trip → Drop Off (completed),
+        This page is for testing: Auto Assign  Start Trip  Drop Off (completed),
         including hotline/manual bookings.
       </p>
 

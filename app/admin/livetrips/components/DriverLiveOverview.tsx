@@ -49,7 +49,7 @@ export default function DriverLiveOverview(props: Props) {
   return (
     <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-3">
       <div className="text-xs text-white font-semibold">
-        ✅ DISPATCH ACTION PANEL ACTIVE
+         DISPATCH ACTION PANEL ACTIVE
       </div>
 
       <DispatchActionPanel

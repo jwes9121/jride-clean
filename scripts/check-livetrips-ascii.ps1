@@ -13,18 +13,25 @@ if (!(Test-Path -LiteralPath $ltDir)) {
   exit 2
 }
 
-$hits = @()
 $files = Get-ChildItem -LiteralPath $ltDir -Recurse -File -Include *.ts,*.tsx
+
+# Always keep hits as an array
+$hits = @()
 
 foreach ($f in $files) {
   $bytes = [System.IO.File]::ReadAllBytes($f.FullName)
+
+  $hasNonAscii = $false
   for ($i = 0; $i -lt $bytes.Length; $i++) {
-    if ($bytes[$i] -ge 0x80) { $hits += $f.FullName; break }
+    if ($bytes[$i] -ge 0x80) { $hasNonAscii = $true; break }
   }
+
+  if ($hasNonAscii) { $hits += $f.FullName }
 }
 
-$hits = $hits | Sort-Object -Unique
-if ($hits.Count -gt 0) {
+$hits = @($hits | Sort-Object -Unique)
+
+if ($hits.Length -gt 0) {
   Write-Host "[FAIL] Non-ASCII bytes detected in LiveTrips source. Fix before commit/build:" -ForegroundColor Red
   $hits | ForEach-Object { Write-Host (" - " + $_) -ForegroundColor Yellow }
   exit 1

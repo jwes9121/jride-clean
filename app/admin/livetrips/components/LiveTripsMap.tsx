@@ -1400,7 +1400,7 @@ const target: LngLatTuple | null =
                 <span className="font-medium">
                   {selectedTrip?.passenger_name ??
                     (selectedTrip as any)?.passengerName ??
-                    "ƒ’†€™ƒ€ ¢‚¬„¢ƒ’¢‚¬¡ƒ€š‚¢ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢‚¬¡‚¬ƒ€¦‚¡ƒ’¢‚¬¡ƒ€š‚¬ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢€š¬…¡ƒ€š‚¬ƒ’¢‚¬¡ƒ€š‚"}
+                    ""}
                 </span>
               </div>
 
@@ -1419,7 +1419,7 @@ const target: LngLatTuple | null =
                       const lat = Number(p?.[1]);
                       if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "ƒ’†€™ƒ€ ¢‚¬„¢ƒ’¢‚¬¡ƒ€š‚¢ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢‚¬¡‚¬ƒ€¦‚¡ƒ’¢‚¬¡ƒ€š‚¬ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢€š¬…¡ƒ€š‚¬ƒ’¢‚¬¡ƒ€š‚"; }
+                    } catch { return ""; }
                   })()}
                 </span>
               </div>
@@ -1439,7 +1439,7 @@ const target: LngLatTuple | null =
                       const lat = Number(d?.[1]);
                       if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "ƒ’†€™ƒ€ ¢‚¬„¢ƒ’¢‚¬¡ƒ€š‚¢ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢‚¬¡‚¬ƒ€¦‚¡ƒ’¢‚¬¡ƒ€š‚¬ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢€š¬…¡ƒ€š‚¬ƒ’¢‚¬¡ƒ€š‚"; }
+                    } catch { return ""; }
                   })()}
                 </span>
               </div>

@@ -394,7 +394,7 @@ driverEl.style.boxShadow = "none";
           </span>
           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
             {booking.pickup_label && <span>{booking.pickup_label}</span>}
-            <span>→</span>
+            <span></span>
             {booking.dropoff_label && <span>{booking.dropoff_label}</span>}
           </div>
         </div>

@@ -22,7 +22,7 @@ function money(v: number): string {
   try {
     return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(v);
   } catch {
-    return `₱${v.toFixed(2)}`;
+    return `${v.toFixed(2)}`;
   }
 }
 

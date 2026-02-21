@@ -139,7 +139,7 @@ export default function DriverListPanel() {
 
       {loading && (
         <div className="px-3 py-2 text-xs text-gray-500">
-          Loading drivers…
+          Loading drivers
         </div>
       )}
 

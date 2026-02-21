@@ -195,7 +195,7 @@ export default function AdminOpsPanel({
               </div>
 
               <div className="mt-1 text-[10px] text-slate-400">
-                Dropdown sources: props → suggestions → driver_locations fallback.
+                Dropdown sources: props  suggestions  driver_locations fallback.
               </div>
             </div>
           </>

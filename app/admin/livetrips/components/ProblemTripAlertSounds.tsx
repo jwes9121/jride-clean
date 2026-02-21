@@ -105,7 +105,7 @@ export const ProblemTripAlertSounds: React.FC<ProblemTripAlertSoundsProps> = ({
     );
   }, [problemTrips]);
 
-  // 🔔 automatic alert when a new problem trip appears
+  //  automatic alert when a new problem trip appears
   useEffect(() => {
     const prev = previousProblemIdsRef.current;
     let hasNew = false;

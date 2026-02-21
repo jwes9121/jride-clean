@@ -15,7 +15,7 @@ function money(v: any) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "--";
   try { return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(n); }
-  catch { return `₱${n.toFixed(2)}`; }
+  catch { return `${n.toFixed(2)}`; }
 }
 
 function pickId(d: any): string {
@@ -38,7 +38,7 @@ function normalizeDriverList(list: any[]): { id: string; label: string }[] {
     .filter(Boolean) as { id: string; label: string }[];
 }
 
-// Try to extract “Smart Auto-Assign Suggestions” drivers from trip payload
+// Try to extract Smart Auto-Assign Suggestions drivers from trip payload
 function extractSuggestionDrivers(trip: any): any[] {
   const candidates = [
     trip?.smart_auto_assign_suggestions,
@@ -153,7 +153,7 @@ export default function TripControlWalletPanel({ trip, drivers, onRefresh }: Pro
         const { error } = await supabase.rpc("dispatcher_assign_driver", p as any);
         if (!error) {
           setLocalStatus("assigned");
-          setUiMsg("Assigned ✅");
+          setUiMsg("Assigned ");
           await onRefresh?.();
           return;
         }
@@ -179,7 +179,7 @@ export default function TripControlWalletPanel({ trip, drivers, onRefresh }: Pro
         const { error } = await supabase.from("bookings").update({ status: next }).eq("uuid", bidUuid);
         if (!error) {
           setLocalStatus(next);
-          setUiMsg(`Status → ${next} ✅`);
+          setUiMsg(`Status  ${next} `);
           await onRefresh?.();
           return;
         }
@@ -191,7 +191,7 @@ export default function TripControlWalletPanel({ trip, drivers, onRefresh }: Pro
         const { error } = await supabase.from("bookings").update({ status: next }).eq("id", bidId);
         if (!error) {
           setLocalStatus(next);
-          setUiMsg(`Status → ${next} ✅`);
+          setUiMsg(`Status  ${next} `);
           await onRefresh?.();
           return;
         }
@@ -272,7 +272,7 @@ export default function TripControlWalletPanel({ trip, drivers, onRefresh }: Pro
       </div>
 
       <div className="mt-2 text-[10px] text-slate-500">
-        Dropdown sources: props → suggestions → driver_locations fallback.
+        Dropdown sources: props  suggestions  driver_locations fallback.
       </div>
     </div>
   );
