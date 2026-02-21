@@ -128,7 +128,7 @@ export default function TripWalletPanel(props: Props) {
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
     if (vb <= 0) return null;
-    // fare ÃƒÆ’Ã†'Ãƒâ€šÃ‚¢ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â‚¬Å¡Ã‚¬Ãƒâ€šÃ‚°ÃƒÆ’Ã¢â‚¬¹Ãƒ¢Ã¢â€š¬Ã‚  vendorEarnings / 0.90
+// fare vendorEarnings / 0.90
     return Math.round((vb / 0.90) * 100) / 100;
   }, [trip, isTakeout]);
 
@@ -137,7 +137,7 @@ export default function TripWalletPanel(props: Props) {
     if (derivedFare === null) return null;
     const vb = asNum(trip?.vendor_wallet_balance);
     if (vb === null) return null;
-    const cut = derivedFare - vb; // ÃƒÆ’Ã†'Ãƒâ€šÃ‚¢ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â‚¬Å¡Ã‚¬Ãƒâ€šÃ‚°ÃƒÆ’Ã¢â‚¬¹Ãƒ¢Ã¢â€š¬Ã‚  10%
+const cut = derivedFare - vb; // 10%
     return Math.round(cut * 100) / 100;
   }, [trip, isTakeout, derivedFare]);
 

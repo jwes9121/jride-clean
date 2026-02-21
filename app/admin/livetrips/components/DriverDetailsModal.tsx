@@ -184,7 +184,7 @@ export function DriverDetailsModal(props: DriverDetailsModalProps) {
 
         {/* Footer */}
         <div className="px-4 py-2.5 border-t border-slate-800 bg-slate-900/70 flex items-center justify-between text-[11px] text-slate-500">
-          <span>Dispatch action panel · JRide</span>
+          <span>Dispatch action panel - JRide</span>
           {dispatcherName && (
             <span>Dispatcher: {dispatcherName}</span>
           )}

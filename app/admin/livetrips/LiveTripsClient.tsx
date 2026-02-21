@@ -25,12 +25,9 @@ type TripRow = {
 
   booking_code?: string | null;
   status?: string | null;
-  // ===== STEP5D_TRIPROW_EMERGENCY =====
   is_emergency?: boolean | null;
   pickup_distance_km?: number | null;
   emergency_pickup_fee_php?: number | null;
-  // ===== END STEP5D_TRIPROW_EMERGENCY =====
-
   town?: string | null;
   zone?: string | null;
 
@@ -388,7 +385,6 @@ const [drivers, setDrivers] = useState<DriverRow[]>([]);
     const r = await fetch("/api/admin/livetrips/page-data", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
     setZones(j.zones || []);
-    // ===== STEP5D_LOADPAGE_EMERGENCY =====
     const __rawTrips = (j.trips || j.bookings || j.data || []) as any[];
     const __normTrips = Array.isArray(__rawTrips)
       ? __rawTrips.map((t: any) => ({
@@ -421,7 +417,6 @@ is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false
         }))
       : [];
     setAllTrips(__normTrips as any[]);
-    // ===== END STEP5D_LOADPAGE_EMERGENCY =====
   }
 
   async function loadDrivers() {
@@ -718,17 +713,14 @@ is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false
                         {reason ? (
                           <div className="mt-1 text-xs text-gray-600">{reason}</div>
                         ) : null}
-                      
-                          {/* ===== JRIDE_STEP5D_EMERGENCY_BADGE ===== */}
                           {(Boolean((t as any).is_emergency)) ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
-                              ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ EMERGENCY
                             </span>
                           ) : null}
 
                           {(Number((t as any).emergency_pickup_fee_php) > 0) ? (
                             <span className="ml-2 text-xs text-amber-800">
-                              +ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â±{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
++{Math.round(Number((t as any).emergency_pickup_fee_php))} pickup fee
                               {Number.isFinite(Number((t as any).pickup_distance_km)) ? ` (${Number((t as any).pickup_distance_km).toFixed(2)} km)` : ""}
                             </span>
                           ) : (Number.isFinite(Number((t as any).pickup_distance_km)) ? (
@@ -736,7 +728,6 @@ is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false
                               ({Number((t as any).pickup_distance_km).toFixed(2)} km)
                             </span>
                           ) : null)}
-                          {/* ===== END JRIDE_STEP5D_EMERGENCY_BADGE ===== */}
 </td>
 
                       <td className="p-2 align-top">{tripLabelPassenger(t)}</td>

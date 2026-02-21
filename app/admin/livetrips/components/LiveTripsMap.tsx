@@ -1351,7 +1351,7 @@ const target: LngLatTuple | null =
                   </div>
                   {s.distanceMeters != null && (
                     <div className="text-[10px] text-slate-500">
-                      ~{(s.distanceMeters / 1000).toFixed(2)} km away  ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {" "}
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away - {" "}
                       {s.reason}
                     </div>
                   )}
@@ -1384,7 +1384,7 @@ const target: LngLatTuple | null =
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â·  STUCK" : ""}
+                  {selectedOverview.isStuck ? " - STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1400,7 +1400,7 @@ const target: LngLatTuple | null =
                 <span className="font-medium">
                   {selectedTrip?.passenger_name ??
                     (selectedTrip as any)?.passengerName ??
-                    "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"}
+                    "ƒ’†€™ƒ€ ¢‚¬„¢ƒ’¢‚¬¡ƒ€š‚¢ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢‚¬¡‚¬ƒ€¦‚¡ƒ’¢‚¬¡ƒ€š‚¬ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢€š¬…¡ƒ€š‚¬ƒ’¢‚¬¡ƒ€š‚"}
                 </span>
               </div>
 
@@ -1417,9 +1417,9 @@ const target: LngLatTuple | null =
                         : null;
                       const lng = Number(p?.[0]);
                       const lat = Number(p?.[1]);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â";
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"; }
+                    } catch { return "ƒ’†€™ƒ€ ¢‚¬„¢ƒ’¢‚¬¡ƒ€š‚¢ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢‚¬¡‚¬ƒ€¦‚¡ƒ’¢‚¬¡ƒ€š‚¬ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢€š¬…¡ƒ€š‚¬ƒ’¢‚¬¡ƒ€š‚"; }
                   })()}
                 </span>
               </div>
@@ -1437,9 +1437,9 @@ const target: LngLatTuple | null =
                         : null;
                       const lng = Number(d?.[0]);
                       const lat = Number(d?.[1]);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â";
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return "";
                       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-                    } catch { return "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â"; }
+                    } catch { return "ƒ’†€™ƒ€ ¢‚¬„¢ƒ’¢‚¬¡ƒ€š‚¢ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢‚¬¡‚¬ƒ€¦‚¡ƒ’¢‚¬¡ƒ€š‚¬ƒ’†€™ƒ€š‚¢ƒ’‚¢ƒ¢¢€š¬…¡ƒ€š‚¬ƒ’¢‚¬¡ƒ€š‚"; }
                   })()}
                 </span>
               </div>
