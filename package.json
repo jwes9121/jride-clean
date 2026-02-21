@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "powershell -ExecutionPolicy Bypass -File scripts/check-livetrips-ascii.ps1 -ProjRoot .",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
