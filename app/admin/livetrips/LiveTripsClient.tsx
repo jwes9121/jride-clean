@@ -423,9 +423,10 @@ is_emergency: Boolean(t?.is_emergency ?? t?.isEmergency ?? t?.emergency ?? false
     try {
       const r = await fetch("/api/admin/driver_locations", { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
-      const list: DriverRow[] = (Array.isArray(j) ? j : (j?.drivers || j?.data || [])) as any[];
-      setDrivers(list);
-      setDriversDebug(`Drivers: loaded from /api/admin/driver_locations (${list.length})`);
+      const rows: DriverRow[] = (Array.isArray(j) ? j : (j?.rows ?? j?.drivers ?? j?.data ?? [])) as any[];
+      setDrivers(rows);
+
+      setDriversDebug(`Drivers: loaded from /api/admin/driver_locations (${rows.length})`);
     } catch (e: any) {
       setDriversDebug(`Drivers: failed (${String(e?.message || e)})`);
     }
