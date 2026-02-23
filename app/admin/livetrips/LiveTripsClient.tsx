@@ -183,42 +183,71 @@ export default function LiveTripsClient() {
 
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
-  }
+  }async function loadDrivers() {
+  // Prefer known-working admin endpoints first (avoid noisy 404s).
+  const endpoints = [
+    "/api/admin/driver_locations",
+    "/api/admin/driver-locations",
+    "/api/admin/drivers",
+    // legacy / optional (keep last)
+    "/api/driver-locations",
+    "/api/driver_locations",
+  ];
 
-  async function loadDrivers() {
-    const endpoints = [
-      "/api/admin/driver-locations",
-      "/api/admin/driver_locations",
-      "/api/admin/drivers",
-      "/api/driver-locations",
-      "/api/driver_locations",
-    ];
-
-    for (const url of endpoints) {
-      try {
-        const r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) continue;
-        const j = await r.json().catch(() => ({} as any));
-
-        const arr =
-          safeArray<DriverRow>(j.drivers) ||
-          safeArray<DriverRow>(j.data) ||
-          safeArray<DriverRow>(j["0"]) ||
-          (Array.isArray(j) ? (j as DriverRow[]) : []);
-
-        if (Array.isArray(arr) && arr.length) {
-          setDrivers(arr);
-          setDriversDebug(`loaded from ${url} (${arr.length})`);
-          return;
-        }
-      } catch {
-        // try next
-      }
+  const firstNonEmptyArray = (j: any, keys: string[]) => {
+    for (const k of keys) {
+      const arr = safeArray<any>(j?.[k]);
+      if (arr.length) return arr;
     }
+    if (Array.isArray(j) && j.length) return j;
+    return [];
+  };
 
-    setDrivers([]);
-    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
+  for (const url of endpoints) {
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) continue;
+
+      const j: any = await r.json().catch(() => ({}));
+
+      // Support your working shape: { ok:true, rows:[...] }
+      const raw = firstNonEmptyArray(j, ["rows", "drivers", "data", "items", "result"]);
+      if (!raw.length) continue;
+
+      const normalized: DriverRow[] = raw.map((d: any) => ({
+        driver_id: d?.driver_id ?? d?.driver_uuid ?? d?.driverId ?? d?.id ?? null,
+        name: d?.name ?? d?.driver_name ?? d?.driverName ?? d?.full_name ?? null,
+        phone: d?.phone ?? d?.driver_phone ?? d?.driverPhone ?? d?.mobile ?? null,
+        town: d?.town ?? d?.zone ?? d?.zone_name ?? d?.municipality ?? null,
+        status: d?.status ?? d?.driver_status ?? d?.driverStatus ?? null,
+        lat:
+          (typeof d?.lat === "number" ? d.lat : Number(d?.lat)) ||
+          (typeof d?.latitude === "number" ? d.latitude : Number(d?.latitude)) ||
+          (typeof d?.driver_lat === "number" ? d.driver_lat : Number(d?.driver_lat)) ||
+          null,
+        lng:
+          (typeof d?.lng === "number" ? d.lng : Number(d?.lng)) ||
+          (typeof d?.longitude === "number" ? d.longitude : Number(d?.longitude)) ||
+          (typeof d?.driver_lng === "number" ? d.driver_lng : Number(d?.driver_lng)) ||
+          null,
+        updated_at: d?.updated_at ?? d?.last_seen_at ?? d?.driver_last_seen_at ?? null,
+      }));
+
+      const filtered = normalized.filter((x) => String(x.driver_id || "").length > 0);
+
+      if (filtered.length) {
+        setDrivers(filtered);
+        setDriversDebug(`loaded from ${url} (${filtered.length})`);
+        return;
+      }
+    } catch (e: any) {
+      // ignore and try next endpoint
+    }
   }
+
+  setDrivers([]);
+  setDriversDebug("No drivers loaded from known endpoints");
+}
 
   useEffect(() => {
     loadPage().catch((e) =>
