@@ -347,9 +347,7 @@ async function step5eBestEffortEmergencyWalletSplit(
     const driverId = String(booking?.driver_id ?? "").trim();
 
     if (!bookingId || !driverId) {
-  const warnings: string[] = [];
-
-      ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_MISSING_BOOKING_OR_DRIVER");
+      warnings.push("STEP5E_MISSING_BOOKING_OR_DRIVER");
       return;
     }
 
@@ -364,12 +362,12 @@ async function step5eBestEffortEmergencyWalletSplit(
         reason: "emergency_pickup_fee_driver",
         booking_id: bookingId,
       });
-      if (error) ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_DRIVER_LEDGER_INSERT_FAILED: " + error.message);
+      if (error) warnings.push("STEP5E_DRIVER_LEDGER_INSERT_FAILED: " + error.message);
     }
 
     // ---- Company +15 (idempotent by booking_code + kind + amount) ----
     if (!bookingCode) {
-      ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_MISSING_BOOKING_CODE_FOR_COMPANY_LEDGER");
+      warnings.push("STEP5E_MISSING_BOOKING_CODE_FOR_COMPANY_LEDGER");
       return;
     }
 
@@ -383,16 +381,17 @@ async function step5eBestEffortEmergencyWalletSplit(
         note: "Emergency convenience fee",
       });
 
-      if (error) ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_COMPANY_LEDGER_INSERT_FAILED: " + error.message);
+      if (error) warnings.push("STEP5E_COMPANY_LEDGER_INSERT_FAILED: " + error.message);
     }
   } catch (e: any) {
-    ((globalThis as any).__jrideWarnings ??= []).push("STEP5E_UNEXPECTED: " + String(e?.message ?? e ?? "Unknown"));
+    warnings.push("STEP5E_UNEXPECTED: " + String(e?.message ?? e ?? "Unknown"));
   }
 }
 /* ===== END JRIDE STEP 5E ===== */
 async function bestEffortWalletSyncOnComplete(
   supabase: ReturnType<typeof createClient>,
-  booking: any
+  booking: any,
+  warnings: string[]
 ): Promise<{ warning?: string }> {
   const bookingId = booking?.id ? String(booking.id) : null;
   const serviceType = String(booking?.service_type ?? booking?.serviceType ?? "").toLowerCase();
@@ -401,7 +400,7 @@ async function bestEffortWalletSyncOnComplete(
   
 
   // STEP5E_CALL_SITE: Emergency fee wallet split (idempotent, completion-only)
-  await step5eBestEffortEmergencyWalletSplit(supabase, booking, []);
+  await step5eBestEffortEmergencyWalletSplit(supabase, booking, warnings);
 
 
   // 1) Apply platform/company cut (driver wallet deduction)
@@ -410,12 +409,12 @@ async function bestEffortWalletSyncOnComplete(
       const r: any = await supabase.rpc("process_booking_wallet_cut", {
         p_booking_id: bookingId,
       });
-      if (r?.error) ((globalThis as any).__jrideWarnings ??= []).push("WALLET_CUT_RPC_ERROR: " + r.error.message);
+      if (r?.error) warnings.push("WALLET_CUT_RPC_ERROR: " + r.error.message);
     } catch (e: any) {
-      ((globalThis as any).__jrideWarnings ??= []).push("WALLET_CUT_RPC_ERROR: " + String(e?.message || e));
+      warnings.push("WALLET_CUT_RPC_ERROR: " + String(e?.message || e));
     }
   } else {
-    ((globalThis as any).__jrideWarnings ??= []).push("WALLET_CUT_SKIPPED_NO_BOOKING_ID");
+    warnings.push("WALLET_CUT_SKIPPED_NO_BOOKING_ID");
   }
 
   // 2) Vendor wallet for takeout only
@@ -424,13 +423,13 @@ async function bestEffortWalletSyncOnComplete(
       const r: any = await supabase.rpc("sync_vendor_takeout_wallet", {
         v_vendor_id: vendorId,
       });
-      if (r?.error) ((globalThis as any).__jrideWarnings ??= []).push("VENDOR_SYNC_RPC_ERROR: " + r.error.message);
+      if (r?.error) warnings.push("VENDOR_SYNC_RPC_ERROR: " + r.error.message);
     } catch (e: any) {
-      ((globalThis as any).__jrideWarnings ??= []).push("VENDOR_SYNC_RPC_ERROR: " + String(e?.message || e));
+      warnings.push("VENDOR_SYNC_RPC_ERROR: " + String(e?.message || e));
     }
   }
 
-  return ((globalThis as any).__jrideWarnings ?? []).length ? { warning: ((globalThis as any).__jrideWarnings ?? []).join("; ") } : {};
+  return warnings.length ? { warning: ((globalThis as any).__jrideWarnings ?? []).join("; ") } : {};
 }
 
 
@@ -514,31 +513,11 @@ async function freeRideCreditDriverOnComplete(supabase:any, booking:any): Promis
 /* FREE_RIDE_DRIVER_CREDIT_END */
 export async function GET(req: Request) {
   const supabase = createClient();
-  
-
-  // JRIDE_ADMIN_SECRET_GATE_BEGIN
-  // Allow unauth only when explicitly enabled (dev/testing)
-  const __jride_allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
-  const __jride_wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const __jride_gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
-  const __jride_secretOk = Boolean(__jride_wantSecret) && Boolean(__jride_gotSecret) && __jride_gotSecret === __jride_wantSecret;
-
-  if (!__jride_allowUnauth && !__jride_secretOk) {
-    try {
-      const { data } = await supabase.auth.getUser();
-      const __jride_uid = data?.user?.id ?? null;
-      if (!__jride_uid) return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
-    } catch {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
-    }
-  }
-  // JRIDE_ADMIN_SECRET_GATE_END
   // Auth/secret gate (OFF by default in production)
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret = String(req.headers.get("x-jride-admin-secret") || "").trim();
-
-  let actorUserId: string | null = null;
+  const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
+let actorUserId: string | null = null;
 
   if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
     try {
@@ -586,10 +565,7 @@ try {
 }
 
 export async function POST(req: Request) {
-
-    // ===== JRIDE_WARNINGS_STABILIZE (AUTO) =====
   let warnings: string[] = [];
-  (globalThis as any).__jrideWarnings = warnings;
 // ===== JRIDE_P5C_POST_START_BLOCK (fare history prep; best-effort) =====
   // Runs early inside POST() async scope. Does NOT depend on later local variables.
   // It attempts to derive booking id/code from body/payload/data and fetch booking for signature + suggestion.
@@ -688,9 +664,8 @@ export async function POST(req: Request) {
   // Auth/secret gate (OFF by default in production)
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret = String(req.headers.get("x-jride-admin-secret") || "").trim();
-
-  let actorUserId: string | null = null;
+  const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
+let actorUserId: string | null = null;
 
   if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
     try {
@@ -913,7 +888,7 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
   // Wallet sync (completion only)
   let walletWarn: string | null = null;
   if (target === "completed") {
-    const w = await bestEffortWalletSyncOnComplete(supabase, updatedBooking);
+    const w = await bestEffortWalletSyncOnComplete(supabase, updatedBooking, warnings);
     walletWarn = w.warning ?? null;
 
     // FREE_RIDE_CREDIT_CALL (promo ride only)
