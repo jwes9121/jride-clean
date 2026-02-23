@@ -75,6 +75,34 @@ const NEXT: Record<string, string[]> = {
   cancelled: [],
 };
 
+
+/* JRIDE_LIFECYCLE_ENFORCE_BEGIN */
+function allowedNextStatuses(fromStatus: string): string[] {
+  const f = norm(fromStatus);
+  const arr = (NEXT as any)?.[f];
+  return Array.isArray(arr) ? arr : [];
+}
+
+function isValidTransition(fromStatus: string, toStatus: string): { ok: boolean; reason?: string; allowed?: string[] } {
+  const fromS = norm(fromStatus);
+  const toS = norm(toStatus);
+
+  if (!toS) return { ok: false, reason: "MISSING_TARGET_STATUS", allowed: allowedNextStatuses(fromS) };
+
+  if (fromS === "completed" || fromS === "cancelled") {
+    return { ok: false, reason: "TERMINAL_STATE", allowed: [] };
+  }
+
+  if (fromS === toS) return { ok: true };
+
+  const allowed = allowedNextStatuses(fromS);
+  if (!allowed.length) return { ok: false, reason: "NO_TRANSITIONS_DEFINED", allowed };
+
+  if (allowed.indexOf(toS) >= 0) return { ok: true };
+
+  return { ok: false, reason: "INVALID_TRANSITION", allowed };
+}
+/* JRIDE_LIFECYCLE_ENFORCE_END */
 function norm(v: any): string {
   let s = String(v ?? "").trim().toLowerCase();
   if (!s) return "";
@@ -632,6 +660,22 @@ export async function POST(req: Request) {
       }
 
       const booking = r?.data || null;
+  // JRIDE_LIFECYCLE_CHECK_BEGIN
+  const fromStatus = norm((booking as any)?.status);
+  const toStatus = norm(status);
+
+  if (!force) {
+    const v = isValidTransition(fromStatus, toStatus);
+    if (!v.ok) {
+      return jsonErr("INVALID_TRANSITION", "Status transition not allowed", 409, {
+        from_status: fromStatus,
+        to_status: toStatus,
+        allowed_next: v.allowed || [],
+        reason: v.reason || "INVALID_TRANSITION",
+      });
+    }
+  }
+  // JRIDE_LIFECYCLE_CHECK_END
       fare_signature = __p5c_sigFrom(booking);
 
       const vf = __p5c_num(booking?.verified_fare);
