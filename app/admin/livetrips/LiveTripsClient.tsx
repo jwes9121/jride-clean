@@ -184,81 +184,64 @@ export default function LiveTripsClient() {
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
   }async function loadDrivers() {
-  // Robust driver loader:
-  // - Supports { ok:true, rows:[...] } and other common shapes
-  // - Picks FIRST non-empty array (do NOT use "[] || []" because [] is truthy)
-  // - Normalizes driver_id/status/town/lat/lng so dropdown always has IDs
-
-  const endpoints = [
-    "/api/admin/driver_locations",
-    "/api/admin/driver-locations",
-    "/api/admin/drivers",
-    "/api/driver_locations",
-    "/api/driver-locations",
-  ];
-
-  const pickFirstNonEmptyArray = (j: any) => {
-    const candidates = [
-      j?.rows,
-      j?.drivers,
-      j?.data,
-      j?.items,
-      j?.locations,
-      j?.["0"],
-      Array.isArray(j) ? j : null,
+    // Robust: supports { ok:true, rows:[...] } and avoids the JS "[] || []" truthy short-circuit.
+    const endpoints = [
+      "/api/admin/driver-locations",
+      "/api/admin/driver_locations",
+      "/api/admin/drivers",
+      "/api/driver-locations",
+      "/api/driver_locations",
     ];
-    for (const c of candidates) {
-      if (Array.isArray(c) && c.length) return c;
-    }
-    return [];
-  };
 
-  const normalize = (arr: any[]) => {
-    return (arr || []).map((d: any) => {
-      const driver_id = String(d?.driver_id ?? d?.driverId ?? d?.id ?? "").trim() || null;
-      const name = d?.name ?? d?.driver_name ?? d?.full_name ?? null;
-      const phone = d?.phone ?? d?.driver_phone ?? null;
-      const town = d?.town ?? d?.zone ?? d?.home_town ?? null;
-      const status = String(d?.status ?? "").trim().toLowerCase() || null;
-
-      const latNum = Number(d?.lat);
-      const lngNum = Number(d?.lng);
-
-      return {
-        driver_id,
-        name,
-        phone,
-        town,
-        status,
-        lat: Number.isFinite(latNum) ? latNum : null,
-        lng: Number.isFinite(lngNum) ? lngNum : null,
-        updated_at: d?.updated_at ?? null,
-      };
-    }).filter((d: any) => !!d.driver_id);
-  };
-
-  for (const url of endpoints) {
-    try {
-      const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) continue;
-
-      const j: any = await r.json().catch(() => ({}));
-      const raw = pickFirstNonEmptyArray(j);
-      const arr = normalize(raw);
-
-      if (arr.length) {
-        setDrivers(arr);
-        setDriversDebug(`loaded from ${url} (${arr.length})`);
-        return;
+    const pickFirstNonEmpty = <T,>(cands: any[]): T[] => {
+      for (const c of cands) {
+        if (Array.isArray(c) && c.length) return c as T[];
       }
-    } catch {
-      // try next endpoint
-    }
-  }
+      return [];
+    };
 
-  setDrivers([]);
-  setDriversDebug("No drivers loaded from known endpoints (check endpoint path / auth / RLS).");
-}
+    for (const url of endpoints) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) continue;
+
+        const j: any = await r.json().catch(() => ({} as any));
+
+        const raw = pickFirstNonEmpty<DriverRow>([
+          j.rows,     // ... driver_locations shape
+          j.drivers,
+          j.data,
+          j.items,
+          j["0"],
+          Array.isArray(j) ? j : null,
+        ]);
+
+        if (!raw.length) continue;
+
+        const normalized: DriverRow[] = raw
+          .map((d: any) => ({
+            driver_id: d.driver_id ?? d.driverId ?? d.id ?? null,
+            name: d.name ?? d.driver_name ?? d.driverName ?? null,
+            phone: d.phone ?? d.driver_phone ?? d.driverPhone ?? null,
+            town: d.town ?? d.zone ?? d.zone_name ?? null,
+            status: d.status ?? d.driver_status ?? null,
+            lat: d.lat ?? d.latitude ?? d.driver_lat ?? d.driverLat ?? null,
+            lng: d.lng ?? d.longitude ?? d.driver_lng ?? d.driverLng ?? null,
+            updated_at: d.updated_at ?? d.last_seen_at ?? d.lastSeenAt ?? null,
+          }))
+          .filter((d: any) => !!d.driver_id);
+
+        setDrivers(normalized);
+        setDriversDebug(`loaded from ${url} (${normalized.length})`);
+        return;
+      } catch {
+        // try next endpoint
+      }
+    }
+
+    setDrivers([]);
+    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
+  }
 
   useEffect(() => {
     loadPage().catch((e) =>
