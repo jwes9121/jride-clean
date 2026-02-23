@@ -184,7 +184,8 @@ export default function LiveTripsClient() {
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
   }async function loadDrivers() {
-    // Robust: supports { ok:true, rows:[...] } and avoids the JS "[] || []" truthy short-circuit.
+    // Merge drivers from multiple endpoints (hyphen and underscore variants).
+    // Some deployments return different subsets; union by driver_id and keep freshest timestamps.
     const endpoints = [
       "/api/admin/driver-locations",
       "/api/admin/driver_locations",
@@ -193,54 +194,88 @@ export default function LiveTripsClient() {
       "/api/driver_locations",
     ];
 
-    const pickFirstNonEmpty = <T,>(cands: any[]): T[] => {
-      for (const c of cands) {
-        if (Array.isArray(c) && c.length) return c as T[];
-      }
+    const pickArray = (j: any): any[] => {
+      if (!j) return [];
+      if (Array.isArray(j.rows)) return j.rows;
+      if (Array.isArray(j.drivers)) return j.drivers;
+      if (Array.isArray(j.data)) return j.data;
+      if (Array.isArray(j.items)) return j.items;
+      if (Array.isArray(j["0"])) return j["0"];
+      if (Array.isArray(j)) return j;
       return [];
     };
 
+    const toMs = (v: any): number => {
+      if (!v) return 0;
+      const t = Date.parse(String(v));
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    const normalize = (d: any) => ({
+      driver_id: d?.driver_id ?? d?.driverId ?? d?.id ?? null,
+      name: d?.name ?? d?.driver_name ?? d?.driverName ?? null,
+      phone: d?.phone ?? d?.driver_phone ?? d?.driverPhone ?? null,
+      town: d?.town ?? d?.zone ?? d?.zone_name ?? d?.home_town ?? d?.homeTown ?? null,
+      status: d?.status ?? d?.driver_status ?? null,
+      lat: d?.lat ?? d?.latitude ?? d?.driver_lat ?? d?.driverLat ?? null,
+      lng: d?.lng ?? d?.longitude ?? d?.driver_lng ?? d?.driverLng ?? null,
+      updated_at: d?.updated_at ?? d?.last_seen_at ?? d?.lastSeenAt ?? null,
+      last_seen_at: d?.last_seen_at ?? d?.lastSeenAt ?? null,
+      vehicle_type: d?.vehicle_type ?? d?.vehicleType ?? null,
+      capacity: d?.capacity ?? null,
+      _ms: Math.max(toMs(d?.updated_at), toMs(d?.last_seen_at), toMs(d?.lastSeenAt)),
+    });
+
+    const merged: Record<string, any> = {};
+    const sourcesOk: string[] = [];
+    const sourcesTried: string[] = [];
+
     for (const url of endpoints) {
+      sourcesTried.push(url);
       try {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) continue;
-
         const j: any = await r.json().catch(() => ({} as any));
+        const arr = pickArray(j);
+        if (!arr.length) continue;
 
-        const raw = pickFirstNonEmpty<DriverRow>([
-          j.rows,     // ... driver_locations shape
-          j.drivers,
-          j.data,
-          j.items,
-          j["0"],
-          Array.isArray(j) ? j : null,
-        ]);
+        sourcesOk.push(url);
 
-        if (!raw.length) continue;
+        for (const raw of arr) {
+          const d = normalize(raw);
+          const id = d.driver_id ? String(d.driver_id) : "";
+          if (!id) continue;
 
-        const normalized: DriverRow[] = raw
-          .map((d: any) => ({
-            driver_id: d.driver_id ?? d.driverId ?? d.id ?? null,
-            name: d.name ?? d.driver_name ?? d.driverName ?? null,
-            phone: d.phone ?? d.driver_phone ?? d.driverPhone ?? null,
-            town: d.town ?? d.zone ?? d.zone_name ?? null,
-            status: d.status ?? d.driver_status ?? null,
-            lat: d.lat ?? d.latitude ?? d.driver_lat ?? d.driverLat ?? null,
-            lng: d.lng ?? d.longitude ?? d.driver_lng ?? d.driverLng ?? null,
-            updated_at: d.updated_at ?? d.last_seen_at ?? d.lastSeenAt ?? null,
-          }))
-          .filter((d: any) => !!d.driver_id);
-
-        setDrivers(normalized);
-        setDriversDebug(`loaded from ${url} (${normalized.length})`);
-        return;
+          const prev = merged[id];
+          if (!prev) {
+            merged[id] = d;
+          } else {
+            // keep the freshest timestamp; if tie, prefer "online"
+            const prevMs = prev._ms || 0;
+            const curMs = d._ms || 0;
+            if (curMs > prevMs) merged[id] = d;
+            else if (curMs === prevMs) {
+              const prevOn = String(prev.status || "").toLowerCase() === "online";
+              const curOn = String(d.status || "").toLowerCase() === "online";
+              if (curOn && !prevOn) merged[id] = d;
+            }
+          }
+        }
       } catch {
-        // try next endpoint
+        // ignore and continue
       }
     }
 
-    setDrivers([]);
-    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
+    const list = Object.values(merged)
+      .map((d: any) => {
+        // strip helper field
+        const { _ms, ...rest } = d;
+        return rest;
+      })
+      .filter((d: any) => !!d.driver_id);
+
+    setDrivers(list as any);
+    setDriversDebug(`loaded from ${sourcesOk.join(", ")} (${list.length})`);
   }
 
   useEffect(() => {
