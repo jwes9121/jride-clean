@@ -184,34 +184,57 @@ export default function LiveTripsClient() {
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
   }async function loadDrivers() {
-  // Goal:
-  // 1) support backend shape: { ok:true, rows:[...] }
-  // 2) avoid the "safeArray(...) || safeArray(...)" always-picks-[] bug
-  // 3) make dropdown usable even if API rows have no real names:
-  //    - force id = driver UUID
-  //    - force name fallback
+  // Robust driver loader:
+  // - Supports { ok:true, rows:[...] } and other common shapes
+  // - Picks FIRST non-empty array (do NOT use "[] || []" because [] is truthy)
+  // - Normalizes driver_id/status/town/lat/lng so dropdown always has IDs
 
   const endpoints = [
     "/api/admin/driver_locations",
     "/api/admin/driver-locations",
     "/api/admin/drivers",
-    // legacy / optional (keep last)
-    "/api/driver-locations",
     "/api/driver_locations",
+    "/api/driver-locations",
   ];
 
-  const firstNonEmptyArray = (j: any, keys: string[]) => {
-    for (const k of keys) {
-      const arr = safeArray<any>(j?.[k]);
-      if (arr.length) return arr;
+  const pickFirstNonEmptyArray = (j: any) => {
+    const candidates = [
+      j?.rows,
+      j?.drivers,
+      j?.data,
+      j?.items,
+      j?.locations,
+      j?.["0"],
+      Array.isArray(j) ? j : null,
+    ];
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length) return c;
     }
-    if (Array.isArray(j) && j.length) return j;
     return [];
   };
 
-  const shortId = (s: any) => {
-    const t = String(s || "");
-    return t.length > 8 ? t.slice(0, 8) : t;
+  const normalize = (arr: any[]) => {
+    return (arr || []).map((d: any) => {
+      const driver_id = String(d?.driver_id ?? d?.driverId ?? d?.id ?? "").trim() || null;
+      const name = d?.name ?? d?.driver_name ?? d?.full_name ?? null;
+      const phone = d?.phone ?? d?.driver_phone ?? null;
+      const town = d?.town ?? d?.zone ?? d?.home_town ?? null;
+      const status = String(d?.status ?? "").trim().toLowerCase() || null;
+
+      const latNum = Number(d?.lat);
+      const lngNum = Number(d?.lng);
+
+      return {
+        driver_id,
+        name,
+        phone,
+        town,
+        status,
+        lat: Number.isFinite(latNum) ? latNum : null,
+        lng: Number.isFinite(lngNum) ? lngNum : null,
+        updated_at: d?.updated_at ?? null,
+      };
+    }).filter((d: any) => !!d.driver_id);
   };
 
   for (const url of endpoints) {
@@ -220,64 +243,21 @@ export default function LiveTripsClient() {
       if (!r.ok) continue;
 
       const j: any = await r.json().catch(() => ({}));
+      const raw = pickFirstNonEmptyArray(j);
+      const arr = normalize(raw);
 
-      const raw = firstNonEmptyArray(j, ["rows", "drivers", "data", "items", "result", "list"]);
-      if (!raw.length) continue;
-
-      // normalize, then cast to any to avoid TS excess-property issues
-      const normalized = raw.map((d: any) => {
-        const driverUuid =
-          d?.driver_id ??
-          d?.driver_uuid ??
-          d?.driverId ??
-          d?.id ??
-          null;
-
-        const name =
-          d?.name ??
-          d?.driver_name ??
-          d?.driverName ??
-          d?.full_name ??
-          (driverUuid ? `Driver ${shortId(driverUuid)}` : "Driver");
-
-        return {
-          // many dropdowns expect "id"
-          id: driverUuid,
-
-          // keep existing DriverRow keys
-          driver_id: driverUuid,
-          name,
-          phone: d?.phone ?? d?.driver_phone ?? d?.driverPhone ?? d?.mobile ?? null,
-          town: d?.town ?? d?.zone ?? d?.zone_name ?? d?.municipality ?? null,
-          status: d?.status ?? d?.driver_status ?? d?.driverStatus ?? null,
-          lat:
-            (typeof d?.lat === "number" ? d.lat : Number(d?.lat)) ||
-            (typeof d?.latitude === "number" ? d.latitude : Number(d?.latitude)) ||
-            (typeof d?.driver_lat === "number" ? d.driver_lat : Number(d?.driver_lat)) ||
-            null,
-          lng:
-            (typeof d?.lng === "number" ? d.lng : Number(d?.lng)) ||
-            (typeof d?.longitude === "number" ? d.longitude : Number(d?.longitude)) ||
-            (typeof d?.driver_lng === "number" ? d.driver_lng : Number(d?.driver_lng)) ||
-            null,
-          updated_at: d?.updated_at ?? d?.last_seen_at ?? d?.driver_last_seen_at ?? null,
-        };
-      });
-
-      const filtered = normalized.filter((x: any) => String(x?.driver_id || x?.id || "").length > 0);
-
-      if (filtered.length) {
-        setDrivers(filtered as any);
-        setDriversDebug(`loaded from ${url} (${filtered.length})`);
+      if (arr.length) {
+        setDrivers(arr);
+        setDriversDebug(`loaded from ${url} (${arr.length})`);
         return;
       }
     } catch {
-      // ignore and try next endpoint
+      // try next endpoint
     }
   }
 
   setDrivers([]);
-  setDriversDebug("No drivers loaded from known endpoints");
+  setDriversDebug("No drivers loaded from known endpoints (check endpoint path / auth / RLS).");
 }
 
   useEffect(() => {
