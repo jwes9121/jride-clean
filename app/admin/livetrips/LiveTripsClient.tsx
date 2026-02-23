@@ -594,21 +594,22 @@ export default function LiveTripsClient() {
                 <select
                   className="min-w-[320px] rounded border px-2 py-1 text-sm"
                   value={manualDriverId}
-                  onChange={(e) => setManualDriverId(e.target.value)}
-                >
-                  <option value="">Select driver</option>
-                  {drivers.map((d, idx) => {
-                    const id = String(d.driver_id || "");
-                    const label = `${d.name || "Driver"} ${d.town ? `- ${d.town}` : ""} ${
-                      d.status ? `- ${d.status}` : ""
-                    }`.trim();
-                    return (
-                      <option key={id || idx} value={id}>
-                        {label}
-                      </option>
-                    );
-                  })}
-                </select>
+                  onChange={(e) =>
+          <option value="">Select driver</option>
+          {drivers.map((d: any) => {
+            const id = String(d?.driver_id || d?.driverId || d?.id || "");
+            if (!id) return null;
+            const town = String(d?.town || d?.home_town || "");
+            const st = String(d?.status || "");
+            const short = id.length > 8 ? id.slice(0, 8) + "..." : id;
+            const label = `${short} ${town ? "(" + town + ")" : ""} ${st ? "[" + st + "]" : ""}`;
+            return (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
 
                 <button
                   className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
