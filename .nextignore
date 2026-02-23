@@ -1,9 +1,3 @@
-﻿backups
-backups/**
-**/backups
-**/backups/**
-
-UPLOAD_TO_CHATGPT
-UPLOAD_TO_CHATGPT/**
-**/UPLOAD_TO_CHATGPT
-**/UPLOAD_TO_CHATGPT/**
+﻿_audit_bundle_*
+_diag_out_*
+_patch_bak

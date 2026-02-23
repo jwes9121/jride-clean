@@ -1,3 +1,50 @@
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ProjRoot
+)
+
+Set-StrictMode -Version 2.0
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ Write-Host $m -ForegroundColor Red; exit 1 }
+function Ok($m){ Write-Host $m -ForegroundColor Green }
+function Info($m){ Write-Host $m -ForegroundColor Cyan }
+
+function Ensure-Dir([string]$p){
+  if(-not (Test-Path -LiteralPath $p)){
+    New-Item -ItemType Directory -Path $p | Out-Null
+  }
+}
+
+function Read-TextUtf8NoBom([string]$path){
+  $bytes = [System.IO.File]::ReadAllBytes($path)
+  if($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF){
+    $bytes = $bytes[3..($bytes.Length-1)]
+  }
+  return [System.Text.Encoding]::UTF8.GetString($bytes)
+}
+
+function Write-TextUtf8NoBom([string]$path, [string]$text){
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($path, $text, $enc)
+}
+
+# --- Main ---
+if(-not (Test-Path -LiteralPath $ProjRoot)){ Fail "[FAIL] ProjRoot not found: $ProjRoot" }
+$ProjRoot = (Resolve-Path -LiteralPath $ProjRoot).Path
+
+$target = Join-Path $ProjRoot "app\api\dispatch\assign\route.ts"
+if(-not (Test-Path -LiteralPath $target)){ Fail "[FAIL] Missing: $target" }
+
+$bakDir = Join-Path $ProjRoot "_patch_bak"
+Ensure-Dir $bakDir
+$stamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
+$bak = Join-Path $bakDir ("route.ts.bak.DISPATCH_ASSIGN_HARDEN_V1." + $stamp)
+Copy-Item -LiteralPath $target -Destination $bak -Force
+Ok "[OK] Backup: $bak"
+
+# Overwrite route with hardened implementation (ASCII-only)
+$new = @'
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { auth } from "@/auth";
@@ -253,3 +300,9 @@ export async function POST(req: Request) {
     return jsonErr("SERVER_ERROR", String(e?.message || e), 500);
   }
 }
+'@
+
+Write-TextUtf8NoBom $target $new
+Ok "[OK] Patched: app/api/dispatch/assign/route.ts"
+
+Info "[NEXT] Run: npm.cmd run build"
