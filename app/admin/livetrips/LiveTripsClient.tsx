@@ -184,7 +184,13 @@ export default function LiveTripsClient() {
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
   }async function loadDrivers() {
-  // Prefer known-working admin endpoints first (avoid noisy 404s).
+  // Goal:
+  // 1) support backend shape: { ok:true, rows:[...] }
+  // 2) avoid the "safeArray(...) || safeArray(...)" always-picks-[] bug
+  // 3) make dropdown usable even if API rows have no real names:
+  //    - force id = driver UUID
+  //    - force name fallback
+
   const endpoints = [
     "/api/admin/driver_locations",
     "/api/admin/driver-locations",
@@ -203,6 +209,11 @@ export default function LiveTripsClient() {
     return [];
   };
 
+  const shortId = (s: any) => {
+    const t = String(s || "");
+    return t.length > 8 ? t.slice(0, 8) : t;
+  };
+
   for (const url of endpoints) {
     try {
       const r = await fetch(url, { cache: "no-store" });
@@ -210,37 +221,57 @@ export default function LiveTripsClient() {
 
       const j: any = await r.json().catch(() => ({}));
 
-      // Support your working shape: { ok:true, rows:[...] }
-      const raw = firstNonEmptyArray(j, ["rows", "drivers", "data", "items", "result"]);
+      const raw = firstNonEmptyArray(j, ["rows", "drivers", "data", "items", "result", "list"]);
       if (!raw.length) continue;
 
-      const normalized: DriverRow[] = raw.map((d: any) => ({
-        driver_id: d?.driver_id ?? d?.driver_uuid ?? d?.driverId ?? d?.id ?? null,
-        name: d?.name ?? d?.driver_name ?? d?.driverName ?? d?.full_name ?? null,
-        phone: d?.phone ?? d?.driver_phone ?? d?.driverPhone ?? d?.mobile ?? null,
-        town: d?.town ?? d?.zone ?? d?.zone_name ?? d?.municipality ?? null,
-        status: d?.status ?? d?.driver_status ?? d?.driverStatus ?? null,
-        lat:
-          (typeof d?.lat === "number" ? d.lat : Number(d?.lat)) ||
-          (typeof d?.latitude === "number" ? d.latitude : Number(d?.latitude)) ||
-          (typeof d?.driver_lat === "number" ? d.driver_lat : Number(d?.driver_lat)) ||
-          null,
-        lng:
-          (typeof d?.lng === "number" ? d.lng : Number(d?.lng)) ||
-          (typeof d?.longitude === "number" ? d.longitude : Number(d?.longitude)) ||
-          (typeof d?.driver_lng === "number" ? d.driver_lng : Number(d?.driver_lng)) ||
-          null,
-        updated_at: d?.updated_at ?? d?.last_seen_at ?? d?.driver_last_seen_at ?? null,
-      }));
+      // normalize, then cast to any to avoid TS excess-property issues
+      const normalized = raw.map((d: any) => {
+        const driverUuid =
+          d?.driver_id ??
+          d?.driver_uuid ??
+          d?.driverId ??
+          d?.id ??
+          null;
 
-      const filtered = normalized.filter((x) => String(x.driver_id || "").length > 0);
+        const name =
+          d?.name ??
+          d?.driver_name ??
+          d?.driverName ??
+          d?.full_name ??
+          (driverUuid ? `Driver ${shortId(driverUuid)}` : "Driver");
+
+        return {
+          // many dropdowns expect "id"
+          id: driverUuid,
+
+          // keep existing DriverRow keys
+          driver_id: driverUuid,
+          name,
+          phone: d?.phone ?? d?.driver_phone ?? d?.driverPhone ?? d?.mobile ?? null,
+          town: d?.town ?? d?.zone ?? d?.zone_name ?? d?.municipality ?? null,
+          status: d?.status ?? d?.driver_status ?? d?.driverStatus ?? null,
+          lat:
+            (typeof d?.lat === "number" ? d.lat : Number(d?.lat)) ||
+            (typeof d?.latitude === "number" ? d.latitude : Number(d?.latitude)) ||
+            (typeof d?.driver_lat === "number" ? d.driver_lat : Number(d?.driver_lat)) ||
+            null,
+          lng:
+            (typeof d?.lng === "number" ? d.lng : Number(d?.lng)) ||
+            (typeof d?.longitude === "number" ? d.longitude : Number(d?.longitude)) ||
+            (typeof d?.driver_lng === "number" ? d.driver_lng : Number(d?.driver_lng)) ||
+            null,
+          updated_at: d?.updated_at ?? d?.last_seen_at ?? d?.driver_last_seen_at ?? null,
+        };
+      });
+
+      const filtered = normalized.filter((x: any) => String(x?.driver_id || x?.id || "").length > 0);
 
       if (filtered.length) {
-        setDrivers(filtered);
+        setDrivers(filtered as any);
         setDriversDebug(`loaded from ${url} (${filtered.length})`);
         return;
       }
-    } catch (e: any) {
+    } catch {
       // ignore and try next endpoint
     }
   }
