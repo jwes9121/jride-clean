@@ -184,98 +184,50 @@ export default function LiveTripsClient() {
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
   }async function loadDrivers() {
-    // Merge drivers from multiple endpoints (hyphen and underscore variants).
-    // Some deployments return different subsets; union by driver_id and keep freshest timestamps.
+    // Diagnostic-safe, robust parsing. Avoids the JS "[] || []" truthy empty-array bug.
+    // Also removes known-404 endpoint "/api/driver-locations" (hyphen) to stop console spam.
     const endpoints = [
       "/api/admin/driver-locations",
       "/api/admin/driver_locations",
       "/api/admin/drivers",
-      "/api/driver-locations",
       "/api/driver_locations",
     ];
 
-    const pickArray = (j: any): any[] => {
-      if (!j) return [];
-      if (Array.isArray(j.rows)) return j.rows;
-      if (Array.isArray(j.drivers)) return j.drivers;
-      if (Array.isArray(j.data)) return j.data;
-      if (Array.isArray(j.items)) return j.items;
-      if (Array.isArray(j["0"])) return j["0"];
-      if (Array.isArray(j)) return j;
+    const pickFirstNonEmpty = <T,>(cands: any[]): T[] => {
+      for (const c of cands) {
+        if (Array.isArray(c) && c.length) return c as T[];
+      }
       return [];
     };
 
-    const toMs = (v: any): number => {
-      if (!v) return 0;
-      const t = Date.parse(String(v));
-      return Number.isFinite(t) ? t : 0;
-    };
-
-    const normalize = (d: any) => ({
-      driver_id: d?.driver_id ?? d?.driverId ?? d?.id ?? null,
-      name: d?.name ?? d?.driver_name ?? d?.driverName ?? null,
-      phone: d?.phone ?? d?.driver_phone ?? d?.driverPhone ?? null,
-      town: d?.town ?? d?.zone ?? d?.zone_name ?? d?.home_town ?? d?.homeTown ?? null,
-      status: d?.status ?? d?.driver_status ?? null,
-      lat: d?.lat ?? d?.latitude ?? d?.driver_lat ?? d?.driverLat ?? null,
-      lng: d?.lng ?? d?.longitude ?? d?.driver_lng ?? d?.driverLng ?? null,
-      updated_at: d?.updated_at ?? d?.last_seen_at ?? d?.lastSeenAt ?? null,
-      last_seen_at: d?.last_seen_at ?? d?.lastSeenAt ?? null,
-      vehicle_type: d?.vehicle_type ?? d?.vehicleType ?? null,
-      capacity: d?.capacity ?? null,
-      _ms: Math.max(toMs(d?.updated_at), toMs(d?.last_seen_at), toMs(d?.lastSeenAt)),
-    });
-
-    const merged: Record<string, any> = {};
-    const sourcesOk: string[] = [];
-    const sourcesTried: string[] = [];
-
     for (const url of endpoints) {
-      sourcesTried.push(url);
       try {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) continue;
+
         const j: any = await r.json().catch(() => ({} as any));
-        const arr = pickArray(j);
-        if (!arr.length) continue;
 
-        sourcesOk.push(url);
+        const arr = pickFirstNonEmpty<DriverRow>([
+          j.rows,     // { ok:true, rows:[...] }
+          j.drivers,
+          j.data,
+          j.items,
+          j["0"],
+          Array.isArray(j) ? j : null,
+        ]);
 
-        for (const raw of arr) {
-          const d = normalize(raw);
-          const id = d.driver_id ? String(d.driver_id) : "";
-          if (!id) continue;
-
-          const prev = merged[id];
-          if (!prev) {
-            merged[id] = d;
-          } else {
-            // keep the freshest timestamp; if tie, prefer "online"
-            const prevMs = prev._ms || 0;
-            const curMs = d._ms || 0;
-            if (curMs > prevMs) merged[id] = d;
-            else if (curMs === prevMs) {
-              const prevOn = String(prev.status || "").toLowerCase() === "online";
-              const curOn = String(d.status || "").toLowerCase() === "online";
-              if (curOn && !prevOn) merged[id] = d;
-            }
-          }
+        if (arr.length) {
+          setDrivers(arr);
+          setDriversDebug(`loaded from ${url} (${arr.length})`);
+          return;
         }
       } catch {
-        // ignore and continue
+        // try next endpoint
       }
     }
 
-    const list = Object.values(merged)
-      .map((d: any) => {
-        // strip helper field
-        const { _ms, ...rest } = d;
-        return rest;
-      })
-      .filter((d: any) => !!d.driver_id);
-
-    setDrivers(list as any);
-    setDriversDebug(`loaded from ${sourcesOk.join(", ")} (${list.length})`);
+    setDrivers([]);
+    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
   }
 
   useEffect(() => {
@@ -626,7 +578,10 @@ export default function LiveTripsClient() {
 
           {/* Selection controls & panels */}
           <div className="border-t p-3">
-            <div className="mb-2 text-xs text-gray-600">Drivers: {driversDebug}</div>
+            <div className="mb-2 text-xs text-gray-600">Drivers: {driversDebug}
+              <div className="mt-1 text-[11px] text-gray-500">
+                diag: driversLen={drivers.length} firstId={String((drivers[0] as any)?.driver_id || (drivers[0] as any)?.driverId || (drivers[0] as any)?.id || "")} keys={drivers[0] ? Object.keys(drivers[0] as any).join(",") : ""}
+              </div></div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <TripWalletPanel trip={selectedTrip as any} />
