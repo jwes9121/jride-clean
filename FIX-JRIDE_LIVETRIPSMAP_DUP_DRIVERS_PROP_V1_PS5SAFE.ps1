@@ -23,27 +23,39 @@ function BackupFile([string]$absPath, [string]$tag, [string]$bakRoot) {
   return $bak
 }
 
-Info "== JRIDE Fix: Force fleet marker effect to depend on [drivers] (V1 / PS5-safe) =="
+Info "== JRIDE Fix: Remove duplicate drivers prop in LiveTripsMapProps (V1 / PS5-safe) =="
 Info "Repo: $ProjRoot"
 Write-Host ""
 
+if (!(Test-Path -LiteralPath $ProjRoot)) { Fail "[FAIL] ProjRoot not found: $ProjRoot" }
+
 $mapPath = Join-Path $ProjRoot "app\admin\livetrips\components\LiveTripsMap.tsx"
-if (!(Test-Path -LiteralPath $mapPath)) { Fail "[FAIL] LiveTripsMap.tsx not found" }
+if (!(Test-Path -LiteralPath $mapPath)) { Fail "[FAIL] LiveTripsMap.tsx not found: $mapPath" }
 
 $bakRoot = Join-Path $ProjRoot "_patch_bak"
-$bak = BackupFile $mapPath "FORCE_FLEET_EFFECT_DEP_V1" $bakRoot
+$bak = BackupFile $mapPath "REMOVE_DUP_DRIVERS_PROP_V1" $bakRoot
 if ($bak) { Ok "[OK] Backup: $bak" }
 
-$txt = [System.IO.File]::ReadAllText($mapPath)
+$txt = [System.IO.File]::ReadAllText($mapPath, [System.Text.Encoding]::UTF8)
 
-# Replace ANY empty dependency array on fleet marker effect with [drivers]
-$txt = $txt -replace '\},\s*\[\s*\]\s*\);', '}, [drivers]);'
+# Remove the duplicate line we added earlier:
+#   drivers?: any[]; // fleet drivers from /api/admin/driver_locations
+$before = $txt.Length
+$txt = [System.Text.RegularExpressions.Regex]::Replace(
+  $txt,
+  '(?m)^\s*drivers\?\s*:\s*any\[\]\s*;\s*//\s*fleet\s*drivers\s*from\s*/api/admin/driver_locations\s*\r?\n',
+  ''
+)
 
-# Replace incorrect arrays that include mapReady
-$txt = $txt -replace '\[drivers,\s*mapReady\]', '[drivers]'
-$txt = $txt -replace '\[mapReady,\s*drivers\]', '[drivers]'
+if ($txt.Length -eq $before) {
+  # Fallback: remove any "drivers?: any[];" line (comment or no comment)
+  $txt = [System.Text.RegularExpressions.Regex]::Replace(
+    $txt,
+    '(?m)^\s*drivers\?\s*:\s*any\[\]\s*;\s*.*\r?\n',
+    ''
+  )
+}
 
 WriteUtf8NoBom $mapPath $txt
-
-Ok "[OK] Fleet marker effect now depends on [drivers]."
+Ok "[OK] Removed duplicate drivers?: any[] line (if present)."
 Ok "[NEXT] Run: npm.cmd run build"

@@ -256,8 +256,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       } catch (e: any) {
         if (!cancelled) setDebugFetchErr(String(e?.message ?? e));
       }
-    })();
-    return () => { cancelled = true; };
+    })();return () => { cancelled = true; };
   }, [drivers]);// Trip-derived markers
   const tripDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
@@ -268,7 +267,105 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
   // One-time auto-fit to fleet drivers when there are no trips
   const fleetFitDoneRef = useRef<boolean>(false);
+  
+  // ===== FLEET DRIVER MARKERS (V4) =====
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
 
+    // If mapReady exists, respect it; otherwise proceed
+    try {
+      // @ts-ignore
+      if (typeof mapReady !== "undefined" && !mapReady) return;
+    } catch { }
+
+    const list = Array.isArray(drivers) ? (drivers as any[]) : [];
+    const ids = new Set<string>();
+
+    const toNum = (v: any): number | null => {
+      if (typeof v === "number" && !Number.isNaN(v)) return v;
+      const n = parseFloat(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const isStale = (d: any): boolean => {
+      const s = String(d?.updated_at ?? "");
+      if (!s) return true;
+      const t = Date.parse(s);
+      if (!Number.isFinite(t)) return true;
+      return (Date.now() - t) > (5 * 60 * 1000);
+    };
+
+    for (const d of list) {
+      const id = String(d?.driver_id ?? d?.id ?? "");
+      if (!id) continue;
+
+      const lat = toNum(d?.lat ?? d?.latitude);
+      const lng = toNum(d?.lng ?? d?.lon ?? d?.longitude);
+      if (lat == null || lng == null) continue;
+
+      ids.add(id);
+
+      let marker = fleetMarkersRef.current[id];
+      if (!marker) {
+        const el = document.createElement("div");
+        el.style.width = "22px";
+        el.style.height = "22px";
+        el.style.borderRadius = "9999px";
+        el.style.border = "2px solid #ffffff";
+        el.style.boxShadow = "0 2px 10px rgba(0,0,0,0.35)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.fontSize = "9px";
+        el.style.fontWeight = "900";
+        el.style.color = "#ffffff";
+        el.style.zIndex = "9999";
+
+        marker = new mapboxgl.Marker({ element: el, anchor: "center" })
+          .setLngLat([lng, lat])
+          .addTo(map);
+
+        fleetMarkersRef.current[id] = marker;
+      } else {
+        marker.setLngLat([lng, lat]);
+      }
+
+      try {
+        const status = String(d?.status ?? "").toLowerCase();
+        const stale = isStale(d);
+        const online = status === "online" || status === "available" || status === "idle";
+        const el2 = marker.getElement() as HTMLDivElement;
+        el2.style.backgroundColor = stale ? "#6b7280" : (online ? "#22c55e" : "#f59e0b");
+        el2.style.opacity = stale ? "0.85" : "1";
+        el2.textContent = stale ? "S" : (online ? "ON" : "");
+        el2.title = `fleet ${id}\nstatus=${status}\ntown=${String(d?.town ?? "")}\nupdated_at=${String(d?.updated_at ?? "")}`;
+      } catch { }
+    }
+
+    for (const [id, mk] of Object.entries(fleetMarkersRef.current)) {
+      if (!ids.has(id)) {
+        try { mk.remove(); } catch {}
+        delete fleetMarkersRef.current[id];
+      }
+    }
+
+    try {
+      if (!fleetFitDoneRef.current && (trips?.length ?? 0) === 0 && ids.size > 0) {
+        const bounds = new mapboxgl.LngLatBounds();
+        for (const d of list) {
+          const lat = toNum(d?.lat ?? d?.latitude);
+          const lng = toNum(d?.lng ?? d?.lon ?? d?.longitude);
+          if (lat == null || lng == null) continue;
+          bounds.extend([lng, lat]);
+        }
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 600 });
+          fleetFitDoneRef.current = true;
+        }
+      }
+    } catch { }
+  }, [drivers, trips]); // JRIDE_FLEET_MARKERS_V4
   const routeIdsRef = useRef<Set<string>>(new Set());
   const lastFollowRef = useRef<LngLatTuple | null>(null);
 
