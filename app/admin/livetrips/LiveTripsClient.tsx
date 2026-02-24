@@ -71,16 +71,6 @@ const STUCK_THRESHOLDS_MIN = {
   on_trip: 25,
 };
 
-type FilterKey =
-  | "dispatch" // pending + assigned + on_the_way
-  | "pending"
-  | "assigned"
-  | "on_the_way"
-  | "on_trip"
-  | "completed"
-  | "cancelled"
-  | "problem";
-
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
@@ -97,13 +87,7 @@ function safeArray<T>(v: any): T[] {
 
 function parseTripsFromPageData(j: any): TripRow[] {
   if (!j) return [];
-  const candidates = [
-    j.trips,
-    j.bookings,
-    j.data,
-    j["0"],
-    Array.isArray(j) ? j : null,
-  ];
+  const candidates = [j.trips, j.bookings, j.data, j["0"], Array.isArray(j) ? j : null];
   for (const c of candidates) {
     const arr = safeArray<TripRow>(c);
     if (arr.length) return arr;
@@ -131,14 +115,22 @@ function computeIsProblem(t: TripRow): boolean {
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
 
-  const hasPickup =
-    Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
-  const hasDropoff =
-    Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
+  const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
+  const hasDropoff = Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
   const missingCoords = isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
 
   return isStuck || missingCoords;
 }
+
+type FilterKey =
+  | "dispatch"
+  | "pending"
+  | "assigned"
+  | "on_the_way"
+  | "on_trip"
+  | "completed"
+  | "cancelled"
+  | "problem";
 
 export default function LiveTripsClient() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
@@ -150,15 +142,12 @@ export default function LiveTripsClient() {
 
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
-
   const [manualDriverId, setManualDriverId] = useState<string>("");
 
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   async function loadPage() {
-    const r = await fetch("/api/admin/livetrips/page-data?debug=1", {
-      cache: "no-store",
-    });
+    const r = await fetch("/api/admin/livetrips/page-data?debug=1", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
 
     const z = safeArray<ZoneRow>(j.zones);
@@ -167,13 +156,8 @@ export default function LiveTripsClient() {
     const normalized = trips.map((t) => ({
       ...t,
       booking_code: t.booking_code ?? (t as any).bookingCode ?? null,
-      pickup_label:
-        t.pickup_label ??
-        (t as any).from_label ??
-        (t as any).fromLabel ??
-        null,
-      dropoff_label:
-        t.dropoff_label ?? (t as any).to_label ?? (t as any).toLabel ?? null,
+      pickup_label: t.pickup_label ?? (t as any).from_label ?? (t as any).fromLabel ?? null,
+      dropoff_label: t.dropoff_label ?? (t as any).to_label ?? (t as any).toLabel ?? null,
       zone: t.zone ?? (t as any).town ?? (t as any).zone_name ?? null,
       status: t.status ?? "pending",
     }));
@@ -182,41 +166,33 @@ export default function LiveTripsClient() {
     setAllTrips(normalized);
 
     const ids = new Set(normalized.map(normTripId).filter(Boolean));
-    if (selectedTripId && !ids.has(selectedTripId)) setSelectedTripId(null);
-  }async function loadDrivers() {
-    // Diagnostic-safe, robust parsing. Avoids the JS "[] || []" truthy empty-array bug.
-    // Also removes known-404 endpoint "/api/driver-locations" (hyphen) to stop console spam.
+    if (selectedTripId && !ids.has(selectedTripId)) {
+      setSelectedTripId(null);
+    }
+  }
+
+  async function loadDrivers() {
     const endpoints = [
       "/api/admin/driver-locations",
       "/api/admin/driver_locations",
       "/api/admin/drivers",
+      "/api/driver-locations",
       "/api/driver_locations",
     ];
-
-    const pickFirstNonEmpty = <T,>(cands: any[]): T[] => {
-      for (const c of cands) {
-        if (Array.isArray(c) && c.length) return c as T[];
-      }
-      return [];
-    };
 
     for (const url of endpoints) {
       try {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) continue;
+        const j = await r.json().catch(() => ({} as any));
 
-        const j: any = await r.json().catch(() => ({} as any));
+        const arr =
+          safeArray<DriverRow>(j.drivers) ||
+          safeArray<DriverRow>(j.data) ||
+          safeArray<DriverRow>(j["0"]) ||
+          (Array.isArray(j) ? (j as DriverRow[]) : []);
 
-        const arr = pickFirstNonEmpty<DriverRow>([
-          j.rows,     // { ok:true, rows:[...] }
-          j.drivers,
-          j.data,
-          j.items,
-          j["0"],
-          Array.isArray(j) ? j : null,
-        ]);
-
-        if (arr.length) {
+        if (Array.isArray(arr) && arr.length) {
           setDrivers(arr);
           setDriversDebug(`loaded from ${url} (${arr.length})`);
           return;
@@ -231,12 +207,8 @@ export default function LiveTripsClient() {
   }
 
   useEffect(() => {
-    loadPage().catch((e) =>
-      setLastAction("Trips load failed: " + (e?.message ?? "unknown"))
-    );
-    loadDrivers().catch((e) =>
-      setDriversDebug("Drivers load failed: " + (e?.message ?? "unknown"))
-    );
+    loadPage().catch((e) => setLastAction("Trips load failed: " + (e?.message ?? "unknown")));
+    loadDrivers().catch((e) => setDriversDebug("Drivers load failed: " + (e?.message ?? "unknown")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -271,7 +243,6 @@ export default function LiveTripsClient() {
       cancelled: 0,
       problem: 0,
     };
-
     for (const t of allTrips) {
       const s = normStatus(t.status);
       if (s === "pending") c.pending++;
@@ -291,9 +262,7 @@ export default function LiveTripsClient() {
 
     let out: TripRow[] = [];
     if (f === "dispatch") {
-      out = allTrips.filter((t) =>
-        ["pending", "assigned", "on_the_way"].includes(normStatus(t.status))
-      );
+      out = allTrips.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus(t.status)));
     } else if (f === "problem") {
       out = allTrips.filter((t) => stuckTripIds.has(normTripId(t)));
     } else {
@@ -301,8 +270,8 @@ export default function LiveTripsClient() {
     }
 
     out.sort((a, b) => {
-      const ta = new Date(a.updated_at || a.created_at || (0 as any)).getTime() || 0;
-      const tb = new Date(b.updated_at || b.created_at || (0 as any)).getTime() || 0;
+      const ta = new Date((a.updated_at || a.created_at || 0) as any).getTime() || 0;
+      const tb = new Date((b.updated_at || b.created_at || 0) as any).getTime() || 0;
       return tb - ta;
     });
 
@@ -327,9 +296,7 @@ export default function LiveTripsClient() {
   function pillClass(active: boolean) {
     return [
       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
-      active
-        ? "bg-black text-white border-black"
-        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
+      active ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
     ].join(" ");
   }
 
@@ -372,7 +339,7 @@ export default function LiveTripsClient() {
     await loadPage();
   }
 
-  const showThresholds = `Stuck watcher thresholds: on_the_way  ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip  ${STUCK_THRESHOLDS_MIN.on_trip} min`;
+  const showThresholds = `Stuck watcher thresholds: on_the_way   ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip   ${STUCK_THRESHOLDS_MIN.on_trip} min`;
 
   return (
     <div className="p-4">
@@ -386,8 +353,7 @@ export default function LiveTripsClient() {
         <div className="text-xs text-gray-600 text-right">
           <div className="font-medium">Stuck watcher thresholds</div>
           <div>
-            on_the_way  {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip {" "}
-            {STUCK_THRESHOLDS_MIN.on_trip} min
+            on_the_way   {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip   {STUCK_THRESHOLDS_MIN.on_trip} min
           </div>
         </div>
       </div>
@@ -433,7 +399,7 @@ export default function LiveTripsClient() {
       </div>
 
       {/* Zones */}
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
         {zones.map((z) => (
           <div key={z.zone_id} className="rounded-lg border p-3">
             <div className="flex items-center justify-between">
@@ -448,10 +414,10 @@ export default function LiveTripsClient() {
       </div>
 
       {/* Main layout: list + map */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2" ref={tableRef}>
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4" ref={tableRef}>
         {/* Left: trips list */}
         <div className="rounded-lg border">
-          <div className="flex items-center justify-between border-b p-3">
+          <div className="p-3 border-b flex items-center justify-between">
             <div className="font-semibold">
               {tripFilter === "dispatch" ? "Dispatch view (Pending + Assigned + On the way)" : "Trips"}
             </div>
@@ -460,7 +426,7 @@ export default function LiveTripsClient() {
 
           <div className="overflow-auto" style={{ maxHeight: 520 }}>
             <table className="w-full text-sm">
-              <thead className="sticky top-0 border-b bg-white">
+              <thead className="sticky top-0 bg-white border-b">
                 <tr className="text-left">
                   <th className="p-2">Code</th>
                   <th className="p-2">Passenger</th>
@@ -479,15 +445,15 @@ export default function LiveTripsClient() {
                     </td>
                   </tr>
                 ) : (
-                  visibleTrips.map((t) => {
-                    const id = normTripId(t);
+                  visibleTrips.map((t, idx) => {
+                    const id = normTripId(t) || String(idx);
                     const isSel = selectedTripId === id;
                     const isProblem = stuckTripIds.has(id);
                     const s = normStatus(t.status);
 
                     return (
                       <tr
-                        key={id || Math.random()}
+                        key={id}
                         className={["border-b cursor-pointer", isSel ? "bg-blue-50" : "hover:bg-gray-50"].join(" ")}
                         onClick={() => setSelectedTripId(id)}
                       >
@@ -509,9 +475,9 @@ export default function LiveTripsClient() {
                         </td>
                         <td className="p-2">{t.zone || t.town || "-"}</td>
                         <td className="p-2">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap gap-2 items-center">
                             <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (!t.booking_code) return;
@@ -526,7 +492,7 @@ export default function LiveTripsClient() {
                             </button>
 
                             <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (!t.booking_code) return;
@@ -541,7 +507,7 @@ export default function LiveTripsClient() {
                             </button>
 
                             <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-50"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (!t.booking_code) return;
@@ -577,42 +543,37 @@ export default function LiveTripsClient() {
           </div>
 
           {/* Selection controls & panels */}
-          <div className="border-t p-3">
-            <div className="mb-2 text-xs text-gray-600">Drivers: {driversDebug}
-              <div className="mt-1 text-[11px] text-gray-500">
-                diag: driversLen={drivers.length} firstId={String((drivers[0] as any)?.driver_id || (drivers[0] as any)?.driverId || (drivers[0] as any)?.id || "")} keys={drivers[0] ? Object.keys(drivers[0] as any).join(",") : ""}
-              </div></div>
+          <div className="p-3 border-t">
+            <div className="text-xs text-gray-600 mb-2">Drivers: {driversDebug}</div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <TripWalletPanel trip={selectedTrip as any} />
               <TripLifecycleActions trip={selectedTrip as any} />
             </div>
 
             <div className="mt-3 rounded border p-3">
-              <div className="mb-2 font-semibold">Assign driver (manual)</div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="font-semibold mb-2">Assign driver (manual)</div>
+
+              <div className="flex flex-wrap gap-2 items-center">
                 <select
-                  className="min-w-[320px] rounded border px-2 py-1 text-sm"
+                  className="border rounded px-2 py-1 text-sm min-w-[320px]"
                   value={manualDriverId}
-                  onChange={(e) =>
-          <option value="">Select driver</option>
-          {drivers.map((d: any) => {
-            const id = String(d?.driver_id || d?.driverId || d?.id || "");
-            if (!id) return null;
-            const town = String(d?.town || d?.home_town || "");
-            const st = String(d?.status || "");
-            const short = id.length > 8 ? id.slice(0, 8) + "..." : id;
-            const label = `${short} ${town ? "(" + town + ")" : ""} ${st ? "[" + st + "]" : ""}`;
-            return (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            );
-          })}
-        </select>
+                  onChange={(e) => setManualDriverId(e.target.value)}
+                >
+                  <option value="">Select driver</option>
+                  {drivers.map((d, idx) => {
+                    const did = String(d.driver_id || "");
+                    const label = `${d.name || "Driver"}${d.town ? ` - ${d.town}` : ""}${d.status ? ` - ${d.status}` : ""}`.trim();
+                    return (
+                      <option key={did || String(idx)} value={did}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
 
                 <button
-                  className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
+                  className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
                   disabled={!selectedTrip?.booking_code || !manualDriverId}
                   onClick={() => {
                     if (!selectedTrip?.booking_code) return;
@@ -644,13 +605,13 @@ export default function LiveTripsClient() {
         </div>
 
         {/* Right: map */}
-        <div className="overflow-hidden rounded-lg border">
-          <LiveTripsMap
-            trips={visibleTrips as any}
-            selectedTripId={selectedTripId}
-            stuckTripIds={stuckTripIds as any}
-            drivers={drivers as any}
-          />
+        <div className="rounded-lg border overflow-hidden">
+         <LiveTripsMap
+  trips={visibleTrips as any}
+  drivers={drivers as any}
+  selectedTripId={selectedTripId}
+  stuckTripIds={stuckTripIds as any}
+/>
         </div>
       </div>
     </div>
