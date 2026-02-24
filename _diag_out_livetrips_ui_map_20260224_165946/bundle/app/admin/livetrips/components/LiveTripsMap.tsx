@@ -551,14 +551,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
       // color
       const el2 = marker.getElement() as HTMLDivElement;
-      
-      // label text (makes it obvious the marker exists)
-      try {
-        el2.textContent = stale ? "STALE" : (isOnline ? "ON" : "OFF");
-      } catch {
-        // ignore
-      }
-if (stale) {
+      if (stale) {
         el2.style.backgroundColor = "#9ca3af"; // gray
         el2.style.opacity = "0.75";
       } else if (isOnline) {

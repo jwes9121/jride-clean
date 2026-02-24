@@ -1,0 +1,56 @@
+Timestamp: 2026-02-24T16:59:46
+ProjRoot:  C:\Users\jwes9\Desktop\jride-clean-fresh
+
+OK  app\admin\livetrips\LiveTripsClient.tsx
+OK  app\admin\livetrips\page.tsx
+OK  app\admin\livetrips\components\LiveTripsMap.tsx
+OK  app\admin\livetrips\components\SmartAutoAssignSuggestions.tsx
+OK  app\admin\livetrips\components\DispatchActionPanel.tsx
+OK  app\admin\livetrips\components\ProblemTripAlertSounds.tsx
+OK  app\admin\livetrips\components\TripLifecycleActions.tsx
+OK  app\admin\livetrips\components\TripWalletPanel.tsx
+OK  app\api\driver_locations\route.ts
+OK  app\api\driver-locations\route.ts
+OK  app\api\admin\driver_locations\route.ts
+OK  app\api\admin\driver-locations\route.ts
+OK  app\api\admin\livetrips\page-data\route.ts
+OK  app\api\admin\debug-livetrips\route.ts
+OK  app\api\dispatch\assign\route.ts
+OK  app\api\dispatch\status\route.ts
+OK  app\api\admin\manual-assign\route.ts
+OK  app\api\admin\auto-assign\route.ts
+OK  next.config.js
+OK  next.config.mjs
+OK  .env.local
+OK  app\layout.tsx
+OK  app\globals.css
+OK  scripts\check-livetrips-ascii.js
+
+Copied:  24
+Missing: 0
+
+---- BUNDLE FILE LIST (relative / bytes / lastwrite) ----
+FILE .env.local | 1460 bytes | 2026-02-19T06:16:32
+FILE app\admin\livetrips\components\DispatchActionPanel.tsx | 4277 bytes | 2026-02-09T02:29:39
+FILE app\admin\livetrips\components\LiveTripsMap.tsx | 33032 bytes | 2026-02-24T16:53:17
+FILE app\admin\livetrips\components\ProblemTripAlertSounds.tsx | 5662 bytes | 2026-02-22T07:02:45
+FILE app\admin\livetrips\components\SmartAutoAssignSuggestions.tsx | 7118 bytes | 2026-02-09T02:29:39
+FILE app\admin\livetrips\components\TripLifecycleActions.tsx | 3746 bytes | 2026-02-13T07:10:44
+FILE app\admin\livetrips\components\TripWalletPanel.tsx | 18735 bytes | 2026-02-22T06:51:32
+FILE app\admin\livetrips\LiveTripsClient.tsx | 23678 bytes | 2026-02-24T16:16:14
+FILE app\admin\livetrips\page.tsx | 272 bytes | 2026-02-13T07:10:44
+FILE app\api\admin\auto-assign\route.ts | 6043 bytes | 2026-02-09T02:29:39
+FILE app\api\admin\debug-livetrips\route.ts | 979 bytes | 2026-02-09T02:29:39
+FILE app\api\admin\driver_locations\route.ts | 52 bytes | 2026-02-24T16:24:27
+FILE app\api\admin\driver-locations\route.ts | 49 bytes | 2026-02-24T16:24:27
+FILE app\api\admin\livetrips\page-data\route.ts | 12257 bytes | 2026-02-16T20:29:52
+FILE app\api\admin\manual-assign\route.ts | 1461 bytes | 2026-02-09T02:29:39
+FILE app\api\dispatch\assign\route.ts | 9496 bytes | 2026-02-23T08:17:21
+FILE app\api\dispatch\status\route.ts | 32544 bytes | 2026-02-23T09:11:33
+FILE app\api\driver_locations\route.ts | 758 bytes | 2026-02-09T02:29:40
+FILE app\api\driver-locations\route.ts | 49 bytes | 2026-02-24T16:24:27
+FILE app\globals.css | 242 bytes | 2026-02-13T07:10:43
+FILE app\layout.tsx | 473 bytes | 2026-02-13T07:10:43
+FILE next.config.js | 125 bytes | 2025-11-27T08:05:13
+FILE next.config.mjs | 118 bytes | 2025-11-08T06:29:58
+FILE scripts\check-livetrips-ascii.js | 1271 bytes | 2026-02-22T07:38:44
