@@ -331,6 +331,25 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const lng = num(d?.lng);
       if (!id || lat == null || lng == null) continue;
 
+      // --- JRIDE: stale driver cutoff (minutes) ---
+      let ageMin = 0;
+      try {
+        const tsRaw = (d?.updated_at ?? d?.updatedAt ?? null);
+        if (tsRaw) {
+          const ts = new Date(tsRaw);
+          const now = Date.now();
+          ageMin = (now - ts.getTime()) / 60000;
+        }
+      } catch {
+        ageMin = 0;
+      }
+
+      if (ageMin > 10) {
+        // stale -> skip rendering marker
+        continue;
+      }
+      // --- end stale cutoff ---
+
       const ll: LngLatTuple = [lng, lat];
 
       let m = fleetMarkersRef.current[id];
