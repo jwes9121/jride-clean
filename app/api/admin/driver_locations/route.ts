@@ -1,1 +1,1 @@
-export { GET } from "../driver-locations/route";
+export { GET } from "../../driver_locations/route";

@@ -173,11 +173,10 @@ export default function LiveTripsClient() {
 
   async function loadDrivers() {
     const endpoints = [
-      "/api/admin/driver-locations",
+      "/api/admin/driver_locations?pretty=0",
       "/api/admin/driver_locations",
-      "/api/admin/drivers",
-      "/api/driver-locations",
-      "/api/driver_locations",
+      "/api/driver_locations?pretty=0",
+      "/api/driver_locations"
     ];
 
     for (const url of endpoints) {
