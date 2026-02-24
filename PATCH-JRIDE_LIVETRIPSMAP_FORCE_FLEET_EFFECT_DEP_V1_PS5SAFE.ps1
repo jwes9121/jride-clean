@@ -23,7 +23,7 @@ function BackupFile([string]$absPath, [string]$tag, [string]$bakRoot) {
   return $bak
 }
 
-Info "== JRIDE Fix: Remove mapReady dependency for fleet markers (V1 / PS5-safe) =="
+Info "== JRIDE Fix: Force fleet marker effect to depend on [drivers] (V1 / PS5-safe) =="
 Info "Repo: $ProjRoot"
 Write-Host ""
 
@@ -31,19 +31,19 @@ $mapPath = Join-Path $ProjRoot "app\admin\livetrips\components\LiveTripsMap.tsx"
 if (!(Test-Path -LiteralPath $mapPath)) { Fail "[FAIL] LiveTripsMap.tsx not found" }
 
 $bakRoot = Join-Path $ProjRoot "_patch_bak"
-$bak = BackupFile $mapPath "REMOVE_MAPREADY_DEP_V1" $bakRoot
+$bak = BackupFile $mapPath "FORCE_FLEET_EFFECT_DEP_V1" $bakRoot
 if ($bak) { Ok "[OK] Backup: $bak" }
 
 $txt = [System.IO.File]::ReadAllText($mapPath)
 
-# 1) Replace guard
-$txt = $txt -replace 'if\s*\(!mapReady\)\s*return;', 'if (!mapRef.current) return;'
+# Replace ANY empty dependency array on fleet marker effect with [drivers]
+$txt = $txt -replace '\},\s*\[\s*\]\s*\);', '}, [drivers]);'
 
-# 2) Remove mapReady from dependency arrays
+# Replace incorrect arrays that include mapReady
 $txt = $txt -replace '\[drivers,\s*mapReady\]', '[drivers]'
-$txt = $txt -replace '\[drivers,\s*trips,\s*mapReady\]', '[drivers, trips]'
+$txt = $txt -replace '\[mapReady,\s*drivers\]', '[drivers]'
 
 WriteUtf8NoBom $mapPath $txt
 
-Ok "[OK] Removed mapReady guard from fleet marker effect."
+Ok "[OK] Fleet marker effect now depends on [drivers]."
 Ok "[NEXT] Run: npm.cmd run build"

@@ -258,7 +258,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, []);// Trip-derived markers
+  }, [drivers]);// Trip-derived markers
   const tripDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
@@ -528,7 +528,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [drivers]);
 
   // ===== FLEET DRIVER MARKERS (from drivers prop) =====
   useEffect(() => {
@@ -629,7 +629,7 @@ if (stale) {
       if (!nextFleet[id]) marker.remove();
     }
     fleetMarkersRef.current = nextFleet;
-  }, [drivers, mapReady]);
+  }, [drivers]);
 
   // ===== TRIP MARKERS + ROUTES =====
   useEffect(() => {
