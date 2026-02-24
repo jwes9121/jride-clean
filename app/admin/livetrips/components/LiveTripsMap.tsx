@@ -331,7 +331,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const lng = num(d?.lng);
       if (!id || lat == null || lng == null) continue;
 
-      // --- JRIDE: stale driver cutoff (minutes) ---
+      // --- JRIDE: stale driver styling (minutes=10) ---
       let ageMin = 0;
       try {
         const tsRaw = (d?.updated_at ?? d?.updatedAt ?? null);
@@ -343,14 +343,9 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       } catch {
         ageMin = 0;
       }
-
-      if (ageMin > 10) {
-        // stale -> skip rendering marker
-        continue;
-      }
-      // --- end stale cutoff ---
-
-      const ll: LngLatTuple = [lng, lat];
+      const isStale = ageMin > 10;
+      // --- end stale styling ---
+const ll: LngLatTuple = [lng, lat];
 
       let m = fleetMarkersRef.current[id];
       if (!m) {
@@ -358,7 +353,8 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         el.style.width = "12px";
         el.style.height = "12px";
         el.style.borderRadius = "9999px";
-        el.style.background = "#22c55e"; // green
+        el.style.background = (isStale ? "#9ca3af" : "#22c55e"); // gray if stale, green if fresh
+        el.title = `Driver ${id} ??? ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
         el.style.border = "2px solid #ffffff";
         el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.10)";
         el.style.transform = "translate(-50%, -50%)";
@@ -367,6 +363,11 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         m = new mapboxgl.Marker(el).setLngLat(ll).addTo(map);
       } else {
         m.setLngLat(ll);
+        try {
+          const el = m.getElement();
+          el.style.background = (isStale ? "#9ca3af" : "#22c55e");
+          el.title = `Driver ${id} ??? ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
+        } catch {}
       }
 
       next[id] = m;
