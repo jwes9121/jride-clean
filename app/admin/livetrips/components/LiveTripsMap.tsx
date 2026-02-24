@@ -247,6 +247,9 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   // Fleet markers from /driver_locations
   const fleetMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
 
+  // One-time auto-fit to fleet drivers when there are no trips
+  const fleetFitDoneRef = useRef<boolean>(false);
+
   const routeIdsRef = useRef<Set<string>>(new Set());
   const lastFollowRef = useRef<LngLatTuple | null>(null);
 
