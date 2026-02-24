@@ -266,8 +266,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const fleetMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
 
   // One-time auto-fit to fleet drivers when there are no trips
-  const fleetFitDoneRef = useRef<boolean>(false);
-  
+  const fleetFitKeyRef = useRef<string>("");
   // ===== FLEET DRIVER MARKERS (V4) =====
   useEffect(() => {
     const map = mapRef.current;
@@ -351,17 +350,21 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     }
 
     try {
-      if (!fleetFitDoneRef.current && (trips?.length ?? 0) === 0 && ids.size > 0) {
-        const bounds = new mapboxgl.LngLatBounds();
-        for (const d of list) {
-          const lat = toNum(d?.lat ?? d?.latitude);
-          const lng = toNum(d?.lng ?? d?.lon ?? d?.longitude);
-          if (lat == null || lng == null) continue;
-          bounds.extend([lng, lat]);
-        }
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 600 });
-          fleetFitDoneRef.current = true;
+      if ((trips?.length ?? 0) === 0 && ids.size > 0) {
+        // Refit whenever the fleet set changes (IDs), so new online drivers appear automatically.
+        const key = Array.from(ids).sort().join("|");
+        if (fleetFitKeyRef.current !== key) {
+          const bounds = new mapboxgl.LngLatBounds();
+          for (const d of list) {
+            const lat = toNum(d?.lat ?? d?.latitude);
+            const lng = toNum(d?.lng ?? d?.lon ?? d?.longitude);
+            if (lat == null || lng == null) continue;
+            bounds.extend([lng, lat]);
+          }
+          if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 600 });
+            fleetFitKeyRef.current = key;
+          }
         }
       }
     } catch { }
