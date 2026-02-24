@@ -536,11 +536,18 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       let marker = fleetMarkersRef.current[id];
       if (!marker) {
         const el = document.createElement("div");
-        el.style.width = "14px";
-        el.style.height = "14px";
+        el.style.width = "40px";
+        el.style.height = "40px";
         el.style.borderRadius = "9999px";
-        el.style.border = "2px solid #ffffff";
-        el.style.boxShadow = "0 1px 4px rgba(0,0,0,0.25)";
+        el.style.border = "3px solid #ffffff";
+        el.style.boxShadow = "0 2px 10px rgba(0,0,0,0.45)";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.fontSize = "11px";
+        el.style.fontWeight = "800";
+        el.style.color = "#ffffff";
+        el.style.zIndex = "9999";
         el.title = title;
 
         marker = new mapboxgl.Marker(el).setLngLat([lng, lat]).addTo(map);
@@ -567,6 +574,32 @@ if (stale) {
       } else {
         el2.style.backgroundColor = "#f59e0b"; // amber (offline/other)
         el2.style.opacity = "1";
+      }      
+      // JRIDE_FLEET_POPUP_INJECT_V1
+      // Make fleet driver impossible to miss: label + always-open popup
+      try {
+        const label = stale ? "STALE" : (isOnline ? "ON" : "OFF");
+        const el2 = marker.getElement() as HTMLDivElement;
+        el2.textContent = label;
+        el2.style.zIndex = "9999";
+
+        const anyMarker: any = marker as any;
+        if (!anyMarker.__jrideFleetPopup) {
+          const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 18 })
+            .setHTML(`<div style="font-size:12px;font-weight:800;">FLEET: ${label}</div>
+                      <div style="font-size:11px;">${(d.town ?? "")}</div>
+                      <div style="font-size:10px;opacity:0.85;">${String(d.updated_at ?? "")}</div>`);
+          marker.setPopup(popup);
+          popup.addTo(map);
+          anyMarker.__jrideFleetPopup = popup;
+        } else {
+          anyMarker.__jrideFleetPopup.setHTML(`<div style="font-size:12px;font-weight:800;">FLEET: ${label}</div>
+                      <div style="font-size:11px;">${(d.town ?? "")}</div>
+                      <div style="font-size:10px;opacity:0.85;">${String(d.updated_at ?? "")}</div>`);
+          anyMarker.__jrideFleetPopup.addTo(map);
+        }
+      } catch {
+        // ignore
       }
 
       nextFleet[id] = marker;
