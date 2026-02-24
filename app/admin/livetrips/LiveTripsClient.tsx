@@ -92,6 +92,28 @@ export default function LiveTripsClient() {
         cache: "no-store",
       });
       const j = await res.json();
+
+// --- JRIDE: fetch fleet drivers separately (page-data does not include drivers) ---
+let driversPayload: any = null;
+try {
+  const drvRes = await fetch("/api/admin/driver_locations", {
+    method: "GET",
+    headers: { "content-type": "application/json" },
+    cache: "no-store",
+  });
+  driversPayload = await drvRes.json();
+} catch (e) {
+  // ignore; keep drivers empty
+  driversPayload = null;
+}
+
+const drvArr =
+  Array.isArray(driversPayload) ? driversPayload :
+  (Array.isArray((driversPayload as any)?.drivers) ? (driversPayload as any).drivers : []);
+
+setDrivers(drvArr as any);
+setDriversDebug(`loaded:${drvArr.length}`);
+// --- end fleet drivers fetch ---
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
 
       setTrips(Array.isArray(j?.trips) ? j.trips : []);
