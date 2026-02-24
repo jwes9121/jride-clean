@@ -239,7 +239,26 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
-  // Trip-derived markers
+  
+  // JRIDE_DEBUG_OVERLAY_STAMP_V1 (2026-02-24 18:25:32)
+  const JRIDE_DEBUG_STAMP = "JRIDE_DEBUG_OVERLAY_STAMP_V1_2026-02-24 18:25:32";
+  const [debugFetchedDrivers, setDebugFetchedDrivers] = useState<any[] | null>(null);
+  const [debugFetchErr, setDebugFetchErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/driver_locations?pretty=0", { cache: "no-store" });
+        const j: any = await res.json().catch(() => null);
+        const arr = (j && Array.isArray(j.drivers)) ? j.drivers : (Array.isArray(j) ? j : []);
+        if (!cancelled) setDebugFetchedDrivers(arr);
+      } catch (e: any) {
+        if (!cancelled) setDebugFetchErr(String(e?.message ?? e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);// Trip-derived markers
   const tripDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
@@ -772,7 +791,29 @@ if (stale) {
   return (
     <>
       <div className="relative h-full w-full">
-        <div ref={containerRef} className="h-full w-full" />
+        
+        {/* JRIDE_DEBUG_OVERLAY_STAMP_V1 */}
+        <div className="pointer-events-auto absolute top-16 left-3 z-[9999] w-[360px] max-w-[92vw] rounded-xl bg-black/80 p-3 text-[11px] text-white shadow-lg">
+          <div className="mb-1 text-[12px] font-extrabold">LIVE MAP DEBUG</div>
+          <div className="mb-2 break-all opacity-90">Stamp: {JRIDE_DEBUG_STAMP}</div>
+
+          <div className="mb-2 rounded-md bg-white/10 p-2">
+            <div className="font-bold">Props drivers</div>
+            <div>count: {(drivers ? (drivers as any[]).length : 0)}</div>
+            <div className="mt-1 break-all">
+              first: {drivers && (drivers as any[]).length ? JSON.stringify((drivers as any[])[0]) : "none"}
+            </div>
+          </div>
+
+          <div className="rounded-md bg-white/10 p-2">
+            <div className="font-bold">Client fetch /api/admin/driver_locations</div>
+            <div>err: {debugFetchErr ?? "none"}</div>
+            <div>count: {debugFetchedDrivers ? debugFetchedDrivers.length : (debugFetchedDrivers === null ? "loading" : 0)}</div>
+            <div className="mt-1 break-all">
+              first: {debugFetchedDrivers && debugFetchedDrivers.length ? JSON.stringify(debugFetchedDrivers[0]) : (debugFetchedDrivers === null ? "loading" : "none")}
+            </div>
+          </div>
+        </div><div ref={containerRef} className="h-full w-full" />
 
         {/* KPI BANNER */}
         <div className="pointer-events-auto absolute top-3 right-3 z-20 flex max-w-xl flex-wrap gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs shadow-md">
