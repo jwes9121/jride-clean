@@ -117,8 +117,11 @@ setDriversDebug(`loaded:${drvArr.length}`);
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
 
       setTrips(Array.isArray(j?.trips) ? j.trips : []);
-      setDrivers(Array.isArray(j?.drivers) ? j.drivers : []);
-      setDriversDebug(`loaded:${(Array.isArray(j?.drivers) ? j.drivers.length : 0)}`);
+      const pageDrivers = (Array.isArray((j as any)?.drivers) ? ((j as any).drivers as any[]) : null);
+if (pageDrivers && pageDrivers.length > 0) {
+  setDrivers(pageDrivers as any);
+  setDriversDebug(`loaded:${pageDrivers.length}`);
+}
 
       // problem/stuck ids (if provided)
       if (Array.isArray(j?.stuck_trip_ids)) {

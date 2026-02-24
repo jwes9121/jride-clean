@@ -1,11 +1,13 @@
-# FIX-JRIDE_LIVETRIPS_FETCH_DRIVERS_SEPARATE_V1_PS5SAFE.ps1
+# FIX-JRIDE_LIVETRIPS_DRIVERS_OVERWRITE_GUARD_V1_PS5SAFE.ps1
 # Purpose:
-# - LiveTrips shows Fleet:0 / DriversDebug:loaded:0 because /api/admin/livetrips/page-data does NOT return drivers.
-# - Fix by fetching drivers separately from the already-working endpoint: /api/admin/driver_locations
-# - No UI redesign. No Mapbox changes. Only data wiring.
+# - Prevent LiveTripsClient from overwriting fleet drivers to [] when page-data has no drivers
+# - Converts:
+#     setDrivers(Array.isArray(j?.drivers) ? j.drivers : []);
+#     setDriversDebug(...)
+#   into a guarded block that only applies when j.drivers exists and has items
 # - Runs: npm.cmd run build
 #
-# PS5-safe, UTF-8 no BOM, includes backup.
+# PS5-safe, UTF-8 no BOM, backups included.
 
 [CmdletBinding()]
 param(
@@ -51,7 +53,7 @@ function Backup-File([string]$src, [string]$bakDir, [string]$tag) {
   Ok ("[OK] Backup: {0}" -f $dst)
 }
 
-Info "== JRIDE Fix: Fetch drivers separately for LiveTrips (V1 / PS5-safe) =="
+Info "== JRIDE Fix: Guard drivers overwrite in LiveTripsClient (V1 / PS5-safe) =="
 $root = (Resolve-Path -LiteralPath $ProjRoot).Path
 Info ("Repo: {0}" -f $root)
 
@@ -61,54 +63,43 @@ if (-not (Test-Path -LiteralPath $clientPath)) {
 }
 
 $bakDir = Join-Path $root "_patch_bak"
-Backup-File $clientPath $bakDir "FETCH_DRIVERS_SEPARATE_V1"
+Backup-File $clientPath $bakDir "DRIVERS_OVERWRITE_GUARD_V1"
 
 $txt = Read-TextUtf8NoBom $clientPath
+$before = $txt
 
-# We will inject a driver fetch right after:
-#   const j = await res.json();
-# inside fetchPageData().
+# Replace the common overwrite pair:
+#   setDrivers(Array.isArray(j?.drivers) ? j.drivers : []);
+#   setDriversDebug(`loaded:${...}`);
 #
-# This is a narrow, deterministic insertion that avoids restructuring the whole function.
+# with a guarded block that only applies if j.drivers exists and has items.
 
-$needlePattern = 'const\s+j\s*=\s*await\s+res\.json\(\)\s*;'
-$rx = New-Object System.Text.RegularExpressions.Regex($needlePattern)
+$pattern = 'setDrivers\(\s*Array\.isArray\(j\?\.\s*drivers\)\s*\?\s*j\.drivers\s*:\s*\[\]\s*\)\s*;\s*[\r\n]+\s*setDriversDebug\(\s*`loaded:\$\{\s*\(Array\.isArray\(j\?\.\s*drivers\)\s*\?\s*j\.drivers\.length\s*:\s*0\s*\)\s*\}`\s*\)\s*;'
+$rx = New-Object System.Text.RegularExpressions.Regex($pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
 
-$m = $rx.Match($txt)
-if (-not $m.Success) {
-  Fail "[FAIL] Could not find 'const j = await res.json();' in LiveTripsClient.tsx to inject driver fetch."
+if (-not $rx.IsMatch($txt)) {
+  # Fallback: just guard any setDrivers(j?.drivers) + setDriversDebug block variants
+  $pattern2 = 'setDrivers\(\s*Array\.isArray\(j\?\.\s*drivers\)\s*\?\s*j\.drivers\s*:\s*\[\]\s*\)\s*;\s*[\s\S]{0,200}?setDriversDebug\([\s\S]*?\)\s*;'
+  $rx = New-Object System.Text.RegularExpressions.Regex($pattern2, [System.Text.RegularExpressions.RegexOptions]::Singleline)
 }
 
-$injection = @'
-const j = await res.json();
-
-// --- JRIDE: fetch fleet drivers separately (page-data does not include drivers) ---
-let driversPayload: any = null;
-try {
-  const drvRes = await fetch("/api/admin/driver_locations", {
-    method: "GET",
-    headers: { "content-type": "application/json" },
-    cache: "no-store",
-  });
-  driversPayload = await drvRes.json();
-} catch (e) {
-  // ignore; keep drivers empty
-  driversPayload = null;
+if (-not $rx.IsMatch($txt)) {
+  Fail "[FAIL] Could not find the drivers overwrite lines in LiveTripsClient.tsx to patch."
 }
 
-const drvArr =
-  Array.isArray(driversPayload) ? driversPayload :
-  (Array.isArray((driversPayload as any)?.drivers) ? (driversPayload as any).drivers : []);
-
-setDrivers(drvArr as any);
-setDriversDebug(`loaded:${drvArr.length}`);
-// --- end fleet drivers fetch ---
+$replacement = @'
+const pageDrivers = (Array.isArray((j as any)?.drivers) ? ((j as any).drivers as any[]) : null);
+if (pageDrivers && pageDrivers.length > 0) {
+  setDrivers(pageDrivers as any);
+  setDriversDebug(`loaded:${pageDrivers.length}`);
+}
 '@
 
-# Replace the single line with our injected block (keeps same "const j" name used later)
-$txt2 = $rx.Replace($txt, [System.Text.RegularExpressions.MatchEvaluator]{
-  param($mm) $injection
-}, 1)
+$txt2 = $rx.Replace($txt, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $replacement }, 1)
+
+if ($txt2 -eq $before) {
+  Fail "[FAIL] Patch produced no changes (unexpected)."
+}
 
 Write-TextUtf8NoBom $clientPath $txt2
 Ok ("[OK] Patched: {0}" -f $clientPath)
