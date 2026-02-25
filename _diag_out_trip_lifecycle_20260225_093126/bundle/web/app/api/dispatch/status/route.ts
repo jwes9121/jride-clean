@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type StatusReq = {
@@ -623,7 +623,7 @@ export async function POST(req: Request) {
     return Number.isFinite(n) ? n : null;
   };
 
-  // We will attempt after body parse exists; this block expects later code defines `body` OR uses rawBody
+  // We will attempt after body parse exists; this block expects later code defines `body` OR uses req.json()
   // So we do nothing here yet; we run after body is available by wrapping in a microtask below.
   Promise.resolve().then(async () => {
     try {
@@ -738,23 +738,8 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
     rawBody?.booking?.booking_code ??
     rawBody?.booking?.bookingCode ??
     null;
-  const actionRaw = (rawBody?.action ?? rawBody?.key ?? null);
-  const action = (actionRaw ? String(actionRaw).trim().toLowerCase() : null);
 
-  const mapActionToStatus = (a: string | null): string | null => {
-    if (!a) return null;
-    if (a === "on_the_way") return "on_the_way";
-    if (a === "arrived") return "arrived";
-    if (a === "start_trip") return "on_trip";
-    if (a === "complete_trip") return "completed";
-    if (a === "cancel_trip") return "cancelled";
-    if (a === "accept_fare") return "accepted";
-    if (a === "fare_proposed" || a === "propose_fare") return "fare_proposed";
-    return null;
-  };
-
-  let status: any = (rawBody?.status ?? null);
-  if (!status && action) status = mapActionToStatus(action);
+  const status = rawBody?.status ?? null;
   const note = rawBody?.note ?? null;
   const force = Boolean(rawBody?.force);
 
@@ -976,7 +961,6 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
     warning: mergedWarn,
   });
 }
-
 
 
 
