@@ -317,12 +317,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-
-    console.log("[FLEET] MAP READY", mapReady);
-    console.log("[FLEET] MAP REF", !!mapRef.current);
-    console.log("[FLEET] DRIVERS IN HOOK", (drivers ?? []).length);
-    console.log("[FLEET] BEFORE KEYS", Object.keys(fleetMarkersRef.current));
-
+if (process.env.NODE_ENV !== "production") console.log("[FLEET] MAP READY", mapReady);
+if (process.env.NODE_ENV !== "production") console.log("[FLEET] MAP REF", !!mapRef.current);
+if (process.env.NODE_ENV !== "production") console.log("[FLEET] DRIVERS IN HOOK", (drivers ?? []).length);
+if (process.env.NODE_ENV !== "production") console.log("[FLEET] BEFORE KEYS", Object.keys(fleetMarkersRef.current));
     const next: Record<string, mapboxgl.Marker> = {};
 
     for (const d of drivers as any[]) {
@@ -379,8 +377,7 @@ const ll: LngLatTuple = [lng, lat];
     }
 
     fleetMarkersRef.current = next;
-
-    console.log("[FLEET] AFTER KEYS", Object.keys(fleetMarkersRef.current));
+if (process.env.NODE_ENV !== "production") console.log("[FLEET] AFTER KEYS", Object.keys(fleetMarkersRef.current));
   }, [drivers, mapReady]);
 
   // ---------- Fit map to markers ----------
