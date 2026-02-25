@@ -1,29 +1,26 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      persistSession: false,
-    },
-  }
-);
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
 export async function GET() {
-  const { data, error } = await supabaseAdmin
-    .from("driver_locations")
+  const supabase = createClient();
+
+  // Source of truth for driver last-known locations used by dispatch/admin.
+  // This view already resolves the underlying source (driver_locations / latest) and is what you validated in DB.
+  const { data, error } = await supabase
+    .from("dispatch_driver_locations_view")
     .select("driver_id, lat, lng, status, town, updated_at")
-    .neq("status", "offline"); // adjust filter as needed
+    .order("updated_at", { ascending: false });
 
   if (error) {
-    console.error("driver_locations admin fetch error", error);
+    console.error("[driver_locations] error", error);
     return NextResponse.json(
-      { ok: false, error: "DB_ERROR_FETCH" },
+      { ok: false, error: error.message, drivers: [] },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ ok: true, drivers: data ?? [] });
+  return NextResponse.json(
+    { ok: true, drivers: Array.isArray(data) ? data : [] },
+    { status: 200 }
+  );
 }
