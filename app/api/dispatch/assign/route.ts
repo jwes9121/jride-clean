@@ -1,6 +1,14 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { auth } from "@/auth";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 function jsonOk(body: any, status = 200) {
   return NextResponse.json(body, { status });

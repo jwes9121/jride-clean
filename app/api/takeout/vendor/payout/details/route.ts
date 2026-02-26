@@ -1,6 +1,14 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +24,7 @@ const supabase =
 export async function GET() {
   try {
     if (!supabase) {
-      console.error("❌ Supabase env vars missing in vendor payout details API");
+      console.error("âŒ Supabase env vars missing in vendor payout details API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -37,7 +45,7 @@ export async function GET() {
       .limit(1);
 
     if (vendorError) {
-      console.error("❌ vendor_accounts error:", vendorError);
+      console.error("âŒ vendor_accounts error:", vendorError);
       return NextResponse.json(
         { error: vendorError.message },
         { status: 500 }
@@ -64,7 +72,7 @@ export async function GET() {
       .limit(1);
 
     if (summaryError) {
-      console.error("❌ admin_vendor_payout_summary error:", summaryError);
+      console.error("âŒ admin_vendor_payout_summary error:", summaryError);
       return NextResponse.json(
         { error: summaryError.message },
         { status: 500 }
@@ -83,7 +91,7 @@ export async function GET() {
       .order("month_start", { ascending: false });
 
     if (monthlyError) {
-      console.error("❌ admin_vendor_payout_monthly error:", monthlyError);
+      console.error("âŒ admin_vendor_payout_monthly error:", monthlyError);
       return NextResponse.json(
         { error: monthlyError.message },
         { status: 500 }
@@ -100,7 +108,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (orderError) {
-      console.error("❌ takeout_pricing_10pct_view error:", orderError);
+      console.error("âŒ takeout_pricing_10pct_view error:", orderError);
       return NextResponse.json(
         { error: orderError.message },
         { status: 500 }
@@ -115,7 +123,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (walletError) {
-      console.error("❌ vendor_wallet_transactions error:", walletError);
+      console.error("âŒ vendor_wallet_transactions error:", walletError);
       return NextResponse.json(
         { error: walletError.message },
         { status: 500 }
@@ -132,7 +140,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (payoutError) {
-      console.error("❌ vendor_payout_requests error:", payoutError);
+      console.error("âŒ vendor_payout_requests error:", payoutError);
       return NextResponse.json(
         { error: payoutError.message },
         { status: 500 }
@@ -152,11 +160,12 @@ export async function GET() {
       hasPendingRequest,
     });
   } catch (err: any) {
-    console.error("❌ vendor payout details API error:", err);
+    console.error("âŒ vendor payout details API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
     );
   }
 }
+
 

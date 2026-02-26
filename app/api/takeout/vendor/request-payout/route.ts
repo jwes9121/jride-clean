@@ -1,6 +1,14 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,7 +21,7 @@ const supabase =
 export async function POST() {
   try {
     if (!supabase) {
-      console.error("❌ Supabase env vars missing for vendor request-payout API");
+      console.error("âŒ Supabase env vars missing for vendor request-payout API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -38,7 +46,7 @@ export async function POST() {
       .limit(1);
 
     if (vendorError) {
-      console.error("❌ Error loading vendor_accounts:", vendorError);
+      console.error("âŒ Error loading vendor_accounts:", vendorError);
       return NextResponse.json(
         { error: vendorError.message },
         { status: 500 }
@@ -63,7 +71,7 @@ export async function POST() {
       .limit(1);
 
     if (summaryError) {
-      console.error("❌ Error loading admin_vendor_payout_summary:", summaryError);
+      console.error("âŒ Error loading admin_vendor_payout_summary:", summaryError);
       return NextResponse.json(
         { error: summaryError.message },
         { status: 500 }
@@ -90,7 +98,7 @@ export async function POST() {
       .limit(1);
 
     if (existingError) {
-      console.error("❌ Error checking existing payout requests:", existingError);
+      console.error("âŒ Error checking existing payout requests:", existingError);
       return NextResponse.json(
         { error: existingError.message },
         { status: 500 }
@@ -117,7 +125,7 @@ export async function POST() {
       .limit(1);
 
     if (insertError) {
-      console.error("❌ Error inserting vendor_payout_requests:", insertError);
+      console.error("âŒ Error inserting vendor_payout_requests:", insertError);
       return NextResponse.json(
         { error: insertError.message },
         { status: 500 }
@@ -128,10 +136,11 @@ export async function POST() {
 
     return NextResponse.json({ request });
   } catch (err: any) {
-    console.error("❌ vendor request-payout API error:", err);
+    console.error("âŒ vendor request-payout API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
     );
   }
 }
+

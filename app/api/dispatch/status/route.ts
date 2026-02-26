@@ -1,5 +1,89 @@
 ﻿import { NextResponse } from "next/server";
+import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
+
+const supabaseAdmin = createSupabaseAdmin(
+  (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "") as string,
+  (process.env.SUPABASE_SERVICE_ROLE_KEY || "") as string,
+  { auth: { persistSession: false } }
+);
+
+function hasServiceRoleEnv(): { ok: boolean; reason?: string } {
+  const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!url) return { ok: false, reason: "MISSING_SUPABASE_URL" };
+  if (!key) return { ok: false, reason: "MISSING_SERVICE_ROLE_KEY" };
+  return { ok: true };
+}
+
+async function ensureDriverDeviceLock(driverId: string, deviceId: string): Promise<
+  | { ok: true }
+  | { ok: false; code: string; message: string; status: number; extra?: any }
+> {
+  const eok = hasServiceRoleEnv();
+  if (!eok.ok) return { ok: false, code: "SERVER_MISCONFIG", message: eok.reason || "ENV_ERROR", status: 500 };
+
+  const { data: locks, error: lockErr } = await supabaseAdmin
+    .from("driver_device_locks")
+    .select("driver_id, device_id, created_at")
+    .eq("driver_id", driverId)
+    .limit(1);
+
+  if (lockErr) return { ok: false, code: "DB_ERROR_DEVICE_LOCK", message: "Device lock lookup failed", status: 500 };
+
+  const row: any = (Array.isArray(locks) && locks.length) ? locks[0] : null;
+
+  if (!row) {
+    const { error: insErr } = await supabaseAdmin
+      .from("driver_device_locks")
+      .insert([{ driver_id: driverId, device_id: deviceId }]);
+
+    if (insErr) return { ok: false, code: "DB_ERROR_DEVICE_LOCK_CREATE", message: "Failed to create device lock", status: 500 };
+    return { ok: true };
+  }
+
+  const lockedDevice = String(row?.device_id ?? "").trim();
+  if (lockedDevice && lockedDevice !== deviceId) {
+    return { ok: false, code: "DEVICE_LOCKED", message: "Driver is locked to another device", status: 403, extra: { locked_device_id: lockedDevice } };
+  }
+
+  return { ok: true };
+}
+
+async function enforceDriverOwnsBooking(driverId: string, bookingId: any, bookingCode: any): Promise<
+  | { ok: true; booking: any }
+  | { ok: false; code: string; message: string; status: number }
+> {
+  const bid = String(bookingId ?? "").trim();
+  const bcode = String(bookingCode ?? "").trim();
+
+  let q: any = supabaseAdmin.from("bookings").select("id, booking_code, driver_id, assigned_driver_id, status").limit(1);
+
+  if (bid) q = q.eq("id", bid);
+  else if (bcode) q = q.eq("booking_code", bcode);
+  else return { ok: false, code: "MISSING_BOOKING", message: "booking_id or booking_code required", status: 400 };
+
+  const { data, error } = await q;
+  if (error) return { ok: false, code: "DB_ERROR_BOOKING_LOOKUP", message: "Booking lookup failed", status: 500 };
+
+  const bk: any = (Array.isArray(data) && data.length) ? data[0] : null;
+  if (!bk) return { ok: false, code: "NOT_FOUND", message: "Booking not found", status: 404 };
+
+  const bDriver = String(bk?.driver_id ?? "").trim();
+  const bAssigned = String(bk?.assigned_driver_id ?? "").trim();
+  if (bDriver !== driverId && bAssigned !== driverId) {
+    return { ok: false, code: "FORBIDDEN", message: "Booking not owned by this driver", status: 403 };
+  }
+
+  return { ok: true, booking: bk };
+}
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 type StatusReq = {
   booking_id?: string | null;
@@ -541,11 +625,13 @@ async function freeRideCreditDriverOnComplete(supabase:any, booking:any): Promis
 /* FREE_RIDE_DRIVER_CREDIT_END */
 export async function GET(req: Request) {
   const supabase = createClient();
-  // Auth/secret gate (OFF by default in production)
+
+  // Admin/session gate (GET has no body; do NOT attempt driver device-lock here)
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
   const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
-let actorUserId: string | null = null;
+
+  let actorUserId: string | null = null;
 
   if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
     try {
@@ -558,42 +644,42 @@ let actorUserId: string | null = null;
       return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
     }
   }
-try {
-    const url = new URL(req.url);
-    const bookingId = url.searchParams.get("booking_id") || url.searchParams.get("id");
-    const bookingCode = url.searchParams.get("booking_code") || url.searchParams.get("code");
 
-    const bk = await fetchBooking(supabase, bookingId ?? null, bookingCode ?? null);
-    if (!bk.data) {
-      return jsonErr(
-        "BOOKING_NOT_FOUND",
-        bk.error || "Booking not found",
-        404,
-        { booking_id: bookingId ?? null, booking_code: bookingCode ?? null }
-      );
+  try {
+    const url = new URL(req.url);
+    const bookingId = (url.searchParams.get("booking_id") || url.searchParams.get("id") || "").trim();
+    const bookingCode = (url.searchParams.get("booking_code") || url.searchParams.get("code") || "").trim();
+
+    if (!bookingId && !bookingCode) {
+      return jsonErr("BAD_REQUEST", "booking_id or booking_code is required", 400);
     }
 
-    const booking: any = bk.data;
-    const cur = norm(booking.status) || "requested";
-    const allowedNext = NEXT[cur] ?? [];
-    const hasDriver = !!booking.driver_id;
+    let q: any = supabase
+      .from("bookings")
+      .select("id, booking_code, status, assigned_driver_id, driver_id, updated_at, proposed_fare, passenger_fare_response, verified_fare, verified_at, verified_by")
+      .limit(1);
 
-    return jsonOk({
-      ok: true,
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      current_status: cur,
-      has_driver: hasDriver,
-      allowed_next: allowedNext,
-      booking,
-    });
+    if (bookingId) q = q.eq("id", bookingId);
+    else q = q.eq("booking_code", bookingCode);
+
+    const r: any = await q.order("updated_at", { ascending: false, nullsFirst: false }).maybeSingle();
+    if (r?.error) {
+      return jsonErr("DB_ERROR", String(r.error.message || "query failed"), 500);
+    }
+    if (!r?.data) {
+      return jsonErr("NOT_FOUND", "Booking not found", 404);
+    }
+
+    return jsonOk({ booking: r.data });
   } catch (e: any) {
-    return jsonErr("SERVER_ERROR", e?.message || "Unknown error", 500);
+    return jsonErr("SERVER_ERROR", String(e?.message || e), 500);
   }
 }
-
 export async function POST(req: Request) {
-  let warnings: string[] = [];
+  const body = await req.json().catch(() => null);
+
+
+let warnings: string[] = [];
 // ===== JRIDE_P5C_POST_START_BLOCK (fare history prep; best-effort) =====
   // Runs early inside POST() async scope. Does NOT depend on later local variables.
   // It attempts to derive booking id/code from body/payload/data and fetch booking for signature + suggestion.
@@ -623,7 +709,7 @@ export async function POST(req: Request) {
     return Number.isFinite(n) ? n : null;
   };
 
-  // We will attempt after body parse exists; this block expects later code defines `body` OR uses rawBody
+  // We will attempt after body parse exists; this block expects later code defines `body` OR uses body
   // So we do nothing here yet; we run after body is available by wrapping in a microtask below.
   Promise.resolve().then(async () => {
     try {
@@ -722,23 +808,23 @@ let actorUserId: string | null = null;
       return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
     }
   }
-const rawBody = (await req.json().catch(() => ({}))) as any;
+
 
   const booking_id =
-    rawBody?.booking_id ??
-    rawBody?.bookingId ??
-    rawBody?.id ??
-    rawBody?.booking?.id ??
+    body?.booking_id ??
+    body?.bookingId ??
+    body?.id ??
+    body?.booking?.id ??
     null;
 
   const booking_code =
-    rawBody?.booking_code ??
-    rawBody?.bookingCode ??
-    rawBody?.code ??
-    rawBody?.booking?.booking_code ??
-    rawBody?.booking?.bookingCode ??
+    body?.booking_code ??
+    body?.bookingCode ??
+    body?.code ??
+    body?.booking?.booking_code ??
+    body?.booking?.bookingCode ??
     null;
-  const actionRaw = (rawBody?.action ?? rawBody?.key ?? null);
+  const actionRaw = (body?.action ?? body?.key ?? null);
   const action = (actionRaw ? String(actionRaw).trim().toLowerCase() : null);
 
   const mapActionToStatus = (a: string | null): string | null => {
@@ -753,10 +839,10 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
     return null;
   };
 
-  let status: any = (rawBody?.status ?? null);
+  let status: any = (body?.status ?? null);
   if (!status && action) status = mapActionToStatus(action);
-  const note = rawBody?.note ?? null;
-  const force = Boolean(rawBody?.force);
+  const note = body?.note ?? null;
+  const force = Boolean(body?.force);
 
   if ((!booking_id || String(booking_id).trim() === "") && (!booking_code || String(booking_code).trim() === "")) {
     return jsonErr("BAD_REQUEST", "Missing booking identifier", 400);
@@ -843,8 +929,8 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
     const dLng = Number(booking?.dropoff_lng);
 
     // Prefer coords from request body if present, else driver_locations fallback.
-    const bodyLat = Number(rawBody?.lat ?? rawBody?.driver_lat ?? rawBody?.driverLat);
-    const bodyLng = Number(rawBody?.lng ?? rawBody?.driver_lng ?? rawBody?.driverLng);
+    const bodyLat = Number(body?.lat ?? body?.driver_lat ?? body?.driverLat);
+    const bodyLng = Number(body?.lng ?? body?.driver_lng ?? body?.driverLng);
 
     let curLat: number | null = null;
     let curLng: number | null = null;
@@ -976,6 +1062,15 @@ const rawBody = (await req.json().catch(() => ({}))) as any;
     warning: mergedWarn,
   });
 }
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,4 +1,12 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 function json(status: number, body: any) {
   return NextResponse.json(body, { status });
@@ -78,4 +86,5 @@ export async function POST(req: Request) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message || String(e) });
   }
 }
+
 

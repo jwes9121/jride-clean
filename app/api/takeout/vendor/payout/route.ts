@@ -1,6 +1,14 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +24,7 @@ const supabase =
 export async function GET() {
   try {
     if (!supabase) {
-      console.error("❌ Supabase env vars missing for vendor payout API");
+      console.error("âŒ Supabase env vars missing for vendor payout API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -41,7 +49,7 @@ export async function GET() {
       .limit(1);
 
     if (vendorError) {
-      console.error("❌ Error loading vendor_accounts:", vendorError);
+      console.error("âŒ Error loading vendor_accounts:", vendorError);
       return NextResponse.json(
         { error: vendorError.message },
         { status: 500 }
@@ -66,7 +74,7 @@ export async function GET() {
       .limit(1);
 
     if (summaryError) {
-      console.error("❌ Error loading admin_vendor_payout_summary:", summaryError);
+      console.error("âŒ Error loading admin_vendor_payout_summary:", summaryError);
       return NextResponse.json(
         { error: summaryError.message },
         { status: 500 }
@@ -83,7 +91,7 @@ export async function GET() {
       .order("month_start", { ascending: false });
 
     if (monthlyError) {
-      console.error("❌ Error loading admin_vendor_payout_monthly:", monthlyError);
+      console.error("âŒ Error loading admin_vendor_payout_monthly:", monthlyError);
       return NextResponse.json(
         { error: monthlyError.message },
         { status: 500 }
@@ -112,7 +120,7 @@ export async function GET() {
       .limit(300);
 
     if (orderError) {
-      console.error("❌ Error loading vendor orders:", orderError);
+      console.error("âŒ Error loading vendor orders:", orderError);
       return NextResponse.json(
         { error: orderError.message },
         { status: 500 }
@@ -128,7 +136,7 @@ export async function GET() {
       .limit(200);
 
     if (walletError) {
-      console.error("❌ Error loading vendor_wallet_transactions:", walletError);
+      console.error("âŒ Error loading vendor_wallet_transactions:", walletError);
       return NextResponse.json(
         { error: walletError.message },
         { status: 500 }
@@ -146,7 +154,7 @@ export async function GET() {
       .limit(10);
 
     if (requestError) {
-      console.error("❌ Error loading vendor_payout_requests:", requestError);
+      console.error("âŒ Error loading vendor_payout_requests:", requestError);
       return NextResponse.json(
         { error: requestError.message },
         { status: 500 }
@@ -162,11 +170,12 @@ export async function GET() {
       payoutRequests: requestRows ?? [],
     });
   } catch (err: any) {
-    console.error("❌ vendor payout API error:", err);
+    console.error("âŒ vendor payout API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
     );
   }
 }
+
 

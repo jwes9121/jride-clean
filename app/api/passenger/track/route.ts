@@ -1,5 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 // Passenger tracking endpoint (needed by mobile/web to refresh booking status)
 // GET /api/passenger/track?booking_code=JR-UI-...
@@ -209,6 +217,7 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
 
 
 

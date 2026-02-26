@@ -1,6 +1,14 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,7 +21,7 @@ const supabase =
 export async function POST(req: Request) {
   try {
     if (!supabase) {
-      console.error("❌ Supabase env vars missing in admin settle-request API");
+      console.error("âŒ Supabase env vars missing in admin settle-request API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -46,7 +54,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (requestError) {
-      console.error("❌ vendor_payout_requests load error:", requestError);
+      console.error("âŒ vendor_payout_requests load error:", requestError);
       return NextResponse.json(
         { error: requestError.message },
         { status: 500 }
@@ -95,7 +103,7 @@ export async function POST(req: Request) {
 
     if (walletInsertError) {
       console.error(
-        "❌ vendor_wallet_transactions insert error:",
+        "âŒ vendor_wallet_transactions insert error:",
         walletInsertError
       );
       return NextResponse.json(
@@ -118,7 +126,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (updateError) {
-      console.error("❌ vendor_payout_requests update error:", updateError);
+      console.error("âŒ vendor_payout_requests update error:", updateError);
       return NextResponse.json(
         { error: updateError.message },
         { status: 500 }
@@ -129,10 +137,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ request: updated });
   } catch (err: any) {
-    console.error("❌ admin settle-request API error:", err);
+    console.error("âŒ admin settle-request API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
     );
   }
 }
+

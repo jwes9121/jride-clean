@@ -1,4 +1,0 @@
-﻿JRIDE Trip Lifecycle Bundle V1
-Timestamp: 20260225_093126
-WebRoot: C:\Users\jwes9\Desktop\jride-clean-fresh
-AndroidRoot: C:\Users\jwes9\AndroidStudioProjects\JRideApp

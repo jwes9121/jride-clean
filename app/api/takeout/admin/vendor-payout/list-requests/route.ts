@@ -1,6 +1,14 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
+
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +25,7 @@ export async function GET() {
   try {
     if (!supabase) {
       console.error(
-        "❌ Supabase env vars missing in admin vendor-payout list-requests API"
+        "âŒ Supabase env vars missing in admin vendor-payout list-requests API"
       );
       return NextResponse.json(
         { error: "Supabase not configured" },
@@ -39,7 +47,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (requestError) {
-      console.error("❌ vendor_payout_requests list error:", requestError);
+      console.error("âŒ vendor_payout_requests list error:", requestError);
       return NextResponse.json(
         { error: requestError.message },
         { status: 500 }
@@ -67,7 +75,7 @@ export async function GET() {
         .in("id", vendorIds);
 
       if (vendorError) {
-        console.error("❌ vendor_accounts load for list-requests error:", vendorError);
+        console.error("âŒ vendor_accounts load for list-requests error:", vendorError);
         return NextResponse.json(
           { error: vendorError.message },
           { status: 500 }
@@ -94,11 +102,12 @@ export async function GET() {
 
     return NextResponse.json({ requests: decorated });
   } catch (err: any) {
-    console.error("❌ admin list-requests API error:", err);
+    console.error("âŒ admin list-requests API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
     );
   }
 }
+
 

@@ -31,3 +31,8 @@ JRIDE_LIFECYCLE_COLLECT_*/
 
 # JRIDE: patch backups
 _patch_bak/
+
+# JRIDE diagnostic folders
+/_diag_*
+/_audit_*
+/_zip_stage_*
