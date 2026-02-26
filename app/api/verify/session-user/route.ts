@@ -4,75 +4,59 @@ import { auth } from "../../../../auth";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Use NextAuth v5 wrapper form so cookies from THIS request are used
+function cookieNames(cookieHeader: string | null) {
+  if (!cookieHeader) return [];
+  return cookieHeader
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => p.split("=")[0])
+    .slice(0, 50);
+}
+
+// NextAuth v5 wrapper form
 export const GET = auth(async (req) => {
   try {
-    const email = (req as any)?.auth?.user?.email ?? null;
+    const cookieHeader = req.headers.get("cookie");
+    const names = cookieNames(cookieHeader);
 
-    if (!email) {
+    const a: any = (req as any).auth;
+    const email = a?.user?.email ?? null;
+    const name = a?.user?.name ?? null;
+    const userId = a?.user?.id ?? null;
+
+    // This debug is safe (no cookie values)
+    if (!email && !userId) {
       return NextResponse.json(
         {
           ok: false,
-          reason: "no_session_email",
+          reason: "no_session_identity",
           debug: {
-            hasAuth: !!(req as any)?.auth,
-            authKeys: (req as any)?.auth ? Object.keys((req as any).auth) : [],
-            userKeys: (req as any)?.auth?.user ? Object.keys((req as any).auth.user) : [],
+            hasAuth: !!a,
+            authKeys: a ? Object.keys(a) : [],
+            userKeys: a?.user ? Object.keys(a.user) : [],
+            cookieHeaderPresent: !!cookieHeader,
+            cookieNames: names,
           },
         },
         { status: 200 }
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceRole) {
-      return NextResponse.json(
-        {
-          ok: false,
-          reason: "missing_env",
-          needs: ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
-        },
-        { status: 200 }
-      );
-    }
-
-    // Supabase Auth Admin API: list users, match by email
-    const adminUrl = `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=200`;
-    const ar = await fetch(adminUrl, {
-      method: "GET",
-      headers: {
-        apikey: serviceRole,
-        Authorization: `Bearer ${serviceRole}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!ar.ok) {
-      const t = await ar.text();
-      return NextResponse.json(
-        { ok: false, reason: "admin_api_error", status: ar.status, body: t },
-        { status: 200 }
-      );
-    }
-
-    const users = await ar.json();
-    const arr = Array.isArray(users) ? users : (users?.users || []);
-    const u = Array.isArray(arr)
-      ? arr.find((x: any) => (x?.email || "").toLowerCase() === String(email).toLowerCase())
-      : null;
-
-    if (!u?.id) {
-      return NextResponse.json(
-        { ok: false, reason: "no_supabase_user_for_email", email },
-        { status: 200 }
-      );
-    }
-
+    // For now just prove we can see identity
     return NextResponse.json(
-      { ok: true, email, supabase_user_id: u.id },
+      {
+        ok: true,
+        identity: {
+          email,
+          namePresent: !!name,
+          userIdPresent: !!userId,
+        },
+        debug: {
+          cookieHeaderPresent: !!cookieHeader,
+          cookieNames: names,
+        },
+      },
       { status: 200 }
     );
   } catch (e: any) {
