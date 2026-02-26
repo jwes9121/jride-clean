@@ -1,25 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { auth } from "../../../../auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Reads NextAuth session via its built-in endpoint, using the incoming cookies.
-// No import from auth.ts required.
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    // Build absolute URL to /api/auth/session
-    const url = new URL("/api/auth/session", req.url);
-
-    const r = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        // forward cookies so NextAuth can read the session
-        cookie: req.headers.get("cookie") || "",
-      },
-      cache: "no-store",
-    });
-
-    const session = await r.json().catch(() => null);
+    const session = await auth();
     const email = session?.user?.email || null;
 
     if (!email) {
@@ -28,8 +15,9 @@ export async function GET(req: NextRequest) {
           ok: false,
           reason: "no_session_email",
           debug: {
-            sessionKeys: session ? Object.keys(session) : [],
-            userKeys: session?.user ? Object.keys(session.user) : [],
+            hasSession: !!session,
+            sessionKeys: session ? Object.keys(session as any) : [],
+            userKeys: (session as any)?.user ? Object.keys((session as any).user) : [],
           },
         },
         { status: 200 }
@@ -50,7 +38,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Supabase Admin API: list users, then match email
+    // Supabase Auth Admin API (list users, match by email)
     const adminUrl = `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=200`;
     const ar = await fetch(adminUrl, {
       method: "GET",
