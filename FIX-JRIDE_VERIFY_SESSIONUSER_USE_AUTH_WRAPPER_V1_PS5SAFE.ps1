@@ -18,7 +18,6 @@ if(!(Test-Path -LiteralPath $apiRoute)){
   throw "ROUTE_NOT_FOUND: $apiRoute"
 }
 
-# Ensure root auth.ts exists (sanity)
 $rootAuth = Join-Path $ProjRoot "auth.ts"
 if(!(Test-Path -LiteralPath $rootAuth)){
   throw "ROOT_AUTH_NOT_FOUND: expected $rootAuth"
@@ -27,10 +26,14 @@ if(!(Test-Path -LiteralPath $rootAuth)){
 $bakDir = Join-Path $ProjRoot "_patch_bak"
 EnsureDir $bakDir
 $ts = Stamp
-$bak = Join-Path $bakDir ("route.ts.bak.VERIFY_SESSIONUSER_IMPORTPATH_FIX_V1.$ts")
+$bak = Join-Path $bakDir ("route.ts.bak.VERIFY_SESSIONUSER_AUTH_WRAPPER_V1.$ts")
 Copy-Item -LiteralPath $apiRoute -Destination $bak -Force
 Write-Host "[OK] Backup: $bak"
 
+# NOTE:
+# route.ts is app/api/verify/session-user/route.ts
+# root auth.ts is at /auth.ts
+# correct relative path: ../../../../auth
 $content = @'
 import { NextResponse } from "next/server";
 import { auth } from "../../../../auth";
@@ -38,10 +41,10 @@ import { auth } from "../../../../auth";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+// Use NextAuth v5 wrapper form so cookies from THIS request are used
+export const GET = auth(async (req) => {
   try {
-    const session = await auth();
-    const email = session?.user?.email || null;
+    const email = (req as any)?.auth?.user?.email ?? null;
 
     if (!email) {
       return NextResponse.json(
@@ -49,9 +52,9 @@ export async function GET() {
           ok: false,
           reason: "no_session_email",
           debug: {
-            hasSession: !!session,
-            sessionKeys: session ? Object.keys(session as any) : [],
-            userKeys: (session as any)?.user ? Object.keys((session as any).user) : [],
+            hasAuth: !!(req as any)?.auth,
+            authKeys: (req as any)?.auth ? Object.keys((req as any).auth) : [],
+            userKeys: (req as any)?.auth?.user ? Object.keys((req as any).auth.user) : [],
           },
         },
         { status: 200 }
@@ -72,7 +75,7 @@ export async function GET() {
       );
     }
 
-    // Supabase Auth Admin API (list users, match by email)
+    // Supabase Auth Admin API: list users, match by email
     const adminUrl = `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=200`;
     const ar = await fetch(adminUrl, {
       method: "GET",
@@ -95,7 +98,7 @@ export async function GET() {
     const users = await ar.json();
     const arr = Array.isArray(users) ? users : (users?.users || []);
     const u = Array.isArray(arr)
-      ? arr.find((x: any) => (x?.email || "").toLowerCase() === email.toLowerCase())
+      ? arr.find((x: any) => (x?.email || "").toLowerCase() === String(email).toLowerCase())
       : null;
 
     if (!u?.id) {
@@ -115,9 +118,9 @@ export async function GET() {
       { status: 200 }
     );
   }
-}
+});
 '@
 
 WriteUtf8NoBom $apiRoute $content
 Write-Host "[OK] Patched: $apiRoute"
-Write-Host "[DONE] VERIFY_SESSIONUSER_IMPORTPATH_FIX_V1 applied."
+Write-Host "[DONE] VERIFY_SESSIONUSER_AUTH_WRAPPER_V1 applied."

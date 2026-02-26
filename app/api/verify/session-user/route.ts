@@ -4,10 +4,10 @@ import { auth } from "../../../../auth";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+// Use NextAuth v5 wrapper form so cookies from THIS request are used
+export const GET = auth(async (req) => {
   try {
-    const session = await auth();
-    const email = session?.user?.email || null;
+    const email = (req as any)?.auth?.user?.email ?? null;
 
     if (!email) {
       return NextResponse.json(
@@ -15,9 +15,9 @@ export async function GET() {
           ok: false,
           reason: "no_session_email",
           debug: {
-            hasSession: !!session,
-            sessionKeys: session ? Object.keys(session as any) : [],
-            userKeys: (session as any)?.user ? Object.keys((session as any).user) : [],
+            hasAuth: !!(req as any)?.auth,
+            authKeys: (req as any)?.auth ? Object.keys((req as any).auth) : [],
+            userKeys: (req as any)?.auth?.user ? Object.keys((req as any).auth.user) : [],
           },
         },
         { status: 200 }
@@ -38,7 +38,7 @@ export async function GET() {
       );
     }
 
-    // Supabase Auth Admin API (list users, match by email)
+    // Supabase Auth Admin API: list users, match by email
     const adminUrl = `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=200`;
     const ar = await fetch(adminUrl, {
       method: "GET",
@@ -61,7 +61,7 @@ export async function GET() {
     const users = await ar.json();
     const arr = Array.isArray(users) ? users : (users?.users || []);
     const u = Array.isArray(arr)
-      ? arr.find((x: any) => (x?.email || "").toLowerCase() === email.toLowerCase())
+      ? arr.find((x: any) => (x?.email || "").toLowerCase() === String(email).toLowerCase())
       : null;
 
     if (!u?.id) {
@@ -81,4 +81,4 @@ export async function GET() {
       { status: 200 }
     );
   }
-}
+});
