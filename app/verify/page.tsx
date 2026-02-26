@@ -11,6 +11,31 @@ type VerificationRecord = {
   selfie_photo_url: string | null;
 };
 export default function PassengerVerifyPage() {
+  // ===== JRIDE_VERIFY_AUTOFILL_FROM_SESSIONUSER_USERID_V1 =====
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveUserIdFromCookieSession() {
+      try {
+        const r = await fetch("/api/verify/session-user", { cache: "no-store" });
+        const j = await r.json().catch(() => null);
+
+        if (cancelled) return;
+
+        if (j?.ok && j?.user_id) {
+          setUserId(String(j.user_id));
+          setAuthUserPresent(true);
+        }
+      } catch {
+        // ignore (manual UUID still works)
+      }
+    }
+
+    resolveUserIdFromCookieSession();
+    return () => { cancelled = true; };
+  }, []);
+  // ===== /JRIDE_VERIFY_AUTOFILL_FROM_SESSIONUSER_USERID_V1 =====
+
   const [userId, setUserId] = useState<string>("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -27,33 +52,6 @@ export default function PassengerVerifyPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [authUserPresent, setAuthUserPresent] = useState(false);
   // Try to auto-detect logged in user and prefill userId
-  
-  // ===== JRIDE_NEXTAUTH_SUPABASE_UUID_RESOLVER_V1 =====
-  useEffect(() => {
-    let cancelled = false;
-
-    async function resolveFromNextAuth() {
-      try {
-        // Resolve Supabase auth UUID using NextAuth session email (server-side lookup)
-        const r = await fetch("/api/verify/session-user", { cache: "no-store" });
-        const j = await r.json().catch(() => null);
-
-        if (cancelled) return;
-
-        if (j?.ok && j?.supabase_user_id) {
-          setUserId(String(j.supabase_user_id));
-          setAuthUserPresent(true);
-          return;
-        }
-      } catch {
-        // ignore, fallback to existing supabase.auth.getUser logic below
-      }
-    }
-
-    resolveFromNextAuth();
-    return () => { cancelled = true; };
-  }, []);
-  // ===== /JRIDE_NEXTAUTH_SUPABASE_UUID_RESOLVER_V1 =====
 useEffect(() => {
     const loadUser = async () => {
       const { data, error } = await supabase.auth.getUser();
