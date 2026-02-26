@@ -10,7 +10,6 @@ type VerificationRecord = {
   id_photo_url: string | null;
   selfie_photo_url: string | null;
 };
-
 export default function PassengerVerifyPage() {
   const [userId, setUserId] = useState<string>("");
   const [fullName, setFullName] = useState("");
@@ -27,7 +26,6 @@ export default function PassengerVerifyPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [authUserPresent, setAuthUserPresent] = useState(false);
-
   // Try to auto-detect logged in user and prefill userId
   useEffect(() => {
     const loadUser = async () => {
@@ -40,6 +38,7 @@ export default function PassengerVerifyPage() {
         setUserId(data.user.id);
         setAuthUserPresent(true);
       }
+
     };
     loadUser();
   }, []);
@@ -94,7 +93,6 @@ export default function PassengerVerifyPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
-
     if (!userId) {
       setMessage("Please enter a user ID (or log in).");
       return;
@@ -132,31 +130,46 @@ export default function PassengerVerifyPage() {
       );
       return;
     }
+    try {
+      console.log("[JRIDE_VERIFY] submit:start", {
+        userId,
+        undefined,
+        hasIdUrl: !!finalIdUrl,
+        hasSelfieUrl: !!finalSelfieUrl,
+      });
 
-    const { data, error } = await supabase.rpc(
-      "passenger_request_verification",
-      {
-        p_user_id: userId,
-        p_full_name: fullName,
-        p_phone: phone,
-        p_id_type: idType,
-        p_id_number: idNumber,
-        p_id_photo_url: finalIdUrl,
-        p_selfie_photo_url: finalSelfieUrl,
+      const { data, error } = await supabase.rpc(
+        "passenger_request_verification",
+        {
+          p_user_id: userId,
+          p_full_name: fullName,
+          p_phone: phone,
+          p_id_type: idType,
+          p_id_number: idNumber,
+          p_id_photo_url: finalIdUrl,
+          p_selfie_photo_url: finalSelfieUrl,
+        }
+      );
+
+      if (error) {
+        console.error("passenger_request_verification error", error);
+        const msg = (error as any)?.message
+          ? String((error as any).message)
+          : "Error submitting verification. Please try again.";
+        setMessage(msg);
+        return;
       }
-    );
 
-    setLoading(false);
-
-    if (error) {
-      console.error("passenger_request_verification error", error);
-      setMessage("Error submitting verification. Please try again.");
+      setCurrent(data as VerificationRecord);
+      setMessage("Verification submitted. Dispatcher will review first, then Admin will verify.");
+    } catch (e) {
+      const msg = (e as any)?.message ? String((e as any).message) : "Submit failed (unexpected).";
+      setMessage(msg);
       return;
+    } finally {
+      setLoading(false);
     }
-
-    setCurrent(data as VerificationRecord);
-    setMessage("Verification submitted. Dispatcher will review first, then Admin will verify.");
-  };
+};
   const statusLabel = () => {
     if (!current) return "Not submitted";
     switch (current.status) {
@@ -180,7 +193,7 @@ return (
       </p>
 
       {!authUserPresent && (
-        <div className="mb-3 text-xs text-orange-700">
+<div className="mb-3 text-xs text-orange-700">
           No logged-in user detected. For testing, paste a passenger <b>user
           UUID</b> below. In production, this will be filled automatically after
           login.
@@ -203,7 +216,7 @@ return (
           <div className="text-red-600 mt-1">
             Reason: {current.reject_reason}
           </div>
-        )}
+)}
       </div>
 
       {message && <div className="mb-3 text-xs text-blue-700">{message}</div>}
