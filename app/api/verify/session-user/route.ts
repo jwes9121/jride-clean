@@ -1,27 +1,35 @@
-import { NextResponse } from "next/server";
-import { auth } from "../../../../../auth";
+import { NextRequest, NextResponse } from "next/server";
 
-// Ensure request is not cached/static
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+// Reads NextAuth session via its built-in endpoint, using the incoming cookies.
+// No import from auth.ts required.
+export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
+    // Build absolute URL to /api/auth/session
+    const url = new URL("/api/auth/session", req.url);
 
-    const email = session?.user?.email ?? null;
-    const name = session?.user?.name ?? null;
+    const r = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        // forward cookies so NextAuth can read the session
+        cookie: req.headers.get("cookie") || "",
+      },
+      cache: "no-store",
+    });
 
-    // Debug info (safe): tells us if auth() worked at all
+    const session = await r.json().catch(() => null);
+    const email = session?.user?.email || null;
+
     if (!email) {
       return NextResponse.json(
         {
           ok: false,
           reason: "no_session_email",
           debug: {
-            hasSession: !!session,
+            sessionKeys: session ? Object.keys(session) : [],
             userKeys: session?.user ? Object.keys(session.user) : [],
-            namePresent: !!name,
           },
         },
         { status: 200 }
@@ -42,9 +50,9 @@ export async function GET() {
       );
     }
 
-    // Supabase Admin API list users, then match email
-    const url = `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=200`;
-    const r = await fetch(url, {
+    // Supabase Admin API: list users, then match email
+    const adminUrl = `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=200`;
+    const ar = await fetch(adminUrl, {
       method: "GET",
       headers: {
         apikey: serviceRole,
@@ -54,15 +62,15 @@ export async function GET() {
       cache: "no-store",
     });
 
-    if (!r.ok) {
-      const t = await r.text();
+    if (!ar.ok) {
+      const t = await ar.text();
       return NextResponse.json(
-        { ok: false, reason: "admin_api_error", status: r.status, body: t },
+        { ok: false, reason: "admin_api_error", status: ar.status, body: t },
         { status: 200 }
       );
     }
 
-    const users = await r.json();
+    const users = await ar.json();
     const arr = Array.isArray(users) ? users : (users?.users || []);
     const u = Array.isArray(arr)
       ? arr.find((x: any) => (x?.email || "").toLowerCase() === email.toLowerCase())
