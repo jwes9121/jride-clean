@@ -1,143 +1,172 @@
 ﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type VerificationRecord = {
-  id?: number;
-  status?: string;
-  reject_reason?: string | null;
-  id_photo_url?: string | null;
-  selfie_photo_url?: string | null;
-  created_at?: string;
+type VerificationStatus = "submitted" | "pending_admin" | "approved" | "rejected" | string;
+
+type VerificationRequest = {
+  passenger_id: string;
+  full_name: string | null;
+  town: string | null;
+  status: VerificationStatus | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  admin_notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  id_front_path: string | null;
+  selfie_with_id_path: string | null;
+  id_back_path?: string | null;
+  id_front_mime?: string | null;
+  selfie_mime?: string | null;
+  id_front_bytes?: number | null;
+  selfie_bytes?: number | null;
 };
 
-function safeStatusLabel(status?: string | null) {
-  const s = String(status || "").trim();
-  if (!s) return "Not submitted";
-  switch (s) {
-    case "submitted":
-      return "Submitted (waiting for review)";
-    case "pending_admin":
-      return "Pending admin approval";
-    case "approved":
-      return "VERIFIED";
-    case "rejected":
-      return "REJECTED (check reason and re-submit)";
-    default:
-      return s;
-  }
+function niceStatus(s?: string | null) {
+  const v = String(s || "");
+  if (!v) return "Not submitted";
+  if (v === "submitted") return "Submitted (waiting for dispatcher review)";
+  if (v === "pending_admin") return "Pending Admin (dispatcher forwarded)";
+  if (v === "approved") return "VERIFIED";
+  if (v === "rejected") return "Rejected (you may re-submit)";
+  return v;
+}
+
+function isLocked(status?: string | null) {
+  return status === "submitted" || status === "pending_admin" || status === "approved";
 }
 
 export default function PassengerVerifyPage() {
-  // Auth/session + current request
-  const [authUserPresent, setAuthUserPresent] = useState<boolean>(false);
-  const [userId, setUserId] = useState<string>("");
-  const [current, setCurrent] = useState<VerificationRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Form fields (must exist because JSX references them)
-  const [fullName, setFullName] = useState<string>("");
-  const [town, setTown] = useState<string>("");
-  const [phone, setPhone] = useState<string>("");
-  const [idType, setIdType] = useState<string>("");
-  const [idNumber, setIdNumber] = useState<string>("");
-
-  // Uploads or URL fallbacks
-  const [idFile, setIdFile] = useState<File | null>(null);
-  const [selfieFile, setSelfieFile] = useState<File | null>(null);
-  const [idPhotoUrl, setIdPhotoUrl] = useState<string>("");
-  const [selfieUrl, setSelfieUrl] = useState<string>("");
-
-  // UX state
   const [message, setMessage] = useState<string>("");
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
-  const statusText = useMemo(() => safeStatusLabel(current?.status), [current?.status]);
+  const [authed, setAuthed] = useState<boolean>(false);
+  const [userId, setUserId] = useState<string>("");
 
-  async function loadSessionAndCurrent() {
+  const [current, setCurrent] = useState<VerificationRequest | null>(null);
+
+  // form fields (kept minimal; backend only needs full_name + town + 2 files)
+  const [fullName, setFullName] = useState("");
+  const [town, setTown] = useState("");
+  const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+
+  const locked = useMemo(() => isLocked(current?.status || null), [current?.status]);
+
+  async function refresh() {
+    setLoading(true);
+    setError("");
+    setMessage("");
+
     try {
-      // 1) Session user (server reads cookie session)
-      const sres = await fetch("/api/verify/session-user", { method: "GET" });
-      const sj = await sres.json().catch(() => ({} as any));
-
+      // session user
+      const sres = await fetch("/api/verify/session-user", { method: "GET", cache: "no-store" });
+      const sj: any = await sres.json().catch(() => ({}));
       const uid = sj?.user_id ? String(sj.user_id) : "";
-      if (uid) {
-        setAuthUserPresent(true);
-        setUserId(uid);
-      } else {
-        setAuthUserPresent(false);
+
+      if (!uid) {
+        setAuthed(false);
+        setUserId("");
+        setCurrent(null);
+        setLoading(false);
+        return;
       }
 
-      // 2) Current verification request (Option B GET)
-      const rres = await fetch("/api/public/passenger/verification/request", { method: "GET" });
-      const rj = await rres.json().catch(() => ({} as any));
+      setAuthed(true);
+      setUserId(uid);
 
-      // Accept common shapes without guessing beyond "request" / "data"
-      const req = (rj && (rj.request || rj.data || rj.current || null)) as any;
-      if (req && typeof req === "object") setCurrent(req as VerificationRecord);
-      else setCurrent(null);
-    } catch {
-      // non-fatal
+      // current request
+      const rres = await fetch("/api/public/passenger/verification/request", { method: "GET", cache: "no-store" });
+      const rj: any = await rres.json().catch(() => ({}));
+
+      const req = rj?.request ? (rj.request as VerificationRequest) : null;
+      setCurrent(req);
+
+      // Autofill inputs from existing request (if present)
+      if (req) {
+        setFullName(String(req.full_name || ""));
+        setTown(String(req.town || ""));
+      }
+    } catch (e: any) {
+      setError("Failed to load verification state: " + (e?.message || String(e)));
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (cancelled) return;
-      await loadSessionAndCurrent();
-    })();
-    return () => {
-      cancelled = true;
-    };
+    refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError("");
     setMessage("");
+
+    if (!authed || !userId) {
+      setError("You are not signed in. Please sign in first.");
+      return;
+    }
+
+    if (locked) {
+      setMessage("Already submitted. Please wait for review.");
+      return;
+    }
+
+    if (!fullName.trim()) {
+      setError("Full name is required.");
+      return;
+    }
+    if (!town.trim()) {
+      setError("Town is required.");
+      return;
+    }
+    if (!idFrontFile) {
+      setError("Please choose an ID front photo.");
+      return;
+    }
+    if (!selfieFile) {
+      setError("Please choose a selfie holding your ID.");
+      return;
+    }
+
     setSubmitting(true);
+    setMessage("Submitting verification…");
 
     try {
-      // Build FormData for Option B API.
       const body = new FormData();
-
-      // If your API ignores user_id and uses session cookie, this is harmless.
-      // If your API supports dev/manual userId entry, this helps testing.
-      if (userId) body.append("user_id", userId);
-
-      if (fullName.trim()) body.append("full_name", fullName.trim());
-      if (town.trim()) body.append("town", town.trim());
-      if (phone.trim()) body.append("phone", phone.trim());
-      if (idType.trim()) body.append("id_type", idType.trim());
-      if (idNumber.trim()) body.append("id_number", idNumber.trim());
-
-      // Prefer file uploads if provided; else send URL fallbacks if provided
-      if (idFile) body.append("id_front", idFile);
-      else if (idPhotoUrl.trim()) body.append("id_photo_url", idPhotoUrl.trim());
-
-      if (selfieFile) body.append("selfie_with_id", selfieFile);
-      else if (selfieUrl.trim()) body.append("selfie_photo_url", selfieUrl.trim());
-
-      setMessage("Submitting verification...");
+      body.append("full_name", fullName.trim());
+      body.append("town", town.trim());
+      body.append("id_front", idFrontFile);
+      body.append("selfie_with_id", selfieFile);
 
       const res = await fetch("/api/public/passenger/verification/request", {
         method: "POST",
-        body
+        body,
       });
 
-      const txt = await res.text();
+      const j: any = await res.json().catch(async () => {
+        const t = await res.text().catch(() => "");
+        return { ok: false, error: t || "Unknown error" };
+      });
 
-      if (!res.ok) {
-        setMessage("Submit failed: " + txt);
+      if (!res.ok || !j?.ok) {
+        setError(String(j?.error || "Submit failed"));
+        setMessage("");
         return;
       }
 
-      setMessage("Submitted. Please wait for admin review.");
-
-      // Refresh current status after submit
-      await loadSessionAndCurrent();
-    } catch (err: any) {
-      setMessage("Submit error: " + (err?.message || String(err)));
+      setMessage("Submitted. Please wait for review.");
+      await refresh();
+    } catch (e: any) {
+      setError("Submit error: " + (e?.message || String(e)));
+      setMessage("");
     } finally {
       setSubmitting(false);
     }
@@ -145,45 +174,69 @@ export default function PassengerVerifyPage() {
 
   return (
     <div className="p-4 text-sm max-w-xl mx-auto">
-      <h1 className="text-lg font-bold mb-2">Passenger Verification</h1>
-
-      <p className="text-xs text-gray-600 mb-3">
-        Upload your ID details so JRide can verify you. Verified passengers can book rides and access restricted services.
-      </p>
-
-      {!authUserPresent && (
-        <div className="mb-3 text-xs text-orange-700">
-          No logged-in user detected. For testing, you may paste a passenger <b>user UUID</b> below.
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold">Passenger Verification</h1>
+          <p className="text-xs text-gray-600 mt-1">
+            Upload your ID details so JRide can verify you. Verified passengers can book rides and access restricted services.
+          </p>
         </div>
-      )}
 
-      <div className="flex flex-col mb-3">
-        <label className="text-xs mb-1">User ID (UUID)</label>
-        <input
-          className="border rounded px-2 py-1 text-xs font-mono"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="auto-filled when logged in"
-        />
+        <button
+          type="button"
+          className="border rounded px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          onClick={refresh}
+          disabled={loading || submitting}
+        >
+          Refresh
+        </button>
       </div>
 
-      <div className="mb-4 text-xs">
-        Current status: <b>{statusText}</b>
-        {current?.status === "rejected" && current.reject_reason && (
-          <div className="text-red-600 mt-1">Reason: {current.reject_reason}</div>
-        )}
+      <div className="mt-4 p-3 rounded border bg-white">
+        <div className="text-xs text-gray-600">User ID (UUID)</div>
+        <div className="font-mono text-xs break-all mt-1">{userId || "(not signed in)"}</div>
+
+        <div className="mt-3 text-xs">
+          Current status:{" "}
+          <span className="font-semibold">
+            {loading ? "Loading…" : niceStatus(current?.status || null)}
+          </span>
+          {current?.status === "rejected" && current?.admin_notes ? (
+            <div className="text-red-700 mt-1">
+              Reason/notes: {current.admin_notes}
+            </div>
+          ) : null}
+        </div>
+
+        {locked ? (
+          <div className="mt-2 text-xs text-blue-700">
+            Already submitted. Please wait for review.
+          </div>
+        ) : null}
       </div>
 
-      {message && <div className="mb-3 text-xs text-blue-700">{message}</div>}
+      {error ? (
+        <div className="mt-3 p-3 rounded border border-red-200 bg-red-50 text-xs text-red-800">
+          {error}
+        </div>
+      ) : null}
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      {message ? (
+        <div className="mt-3 p-3 rounded border border-blue-200 bg-blue-50 text-xs text-blue-800">
+          {message}
+        </div>
+      ) : null}
+
+      <form onSubmit={handleSubmit} className="space-y-3 mt-4">
         <div className="flex flex-col">
           <label className="text-xs mb-1">Full name (same as ID)</label>
           <input
             name="full_name"
-            className="border rounded px-2 py-1 text-sm"
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
+            disabled={loading || submitting || locked}
+            placeholder="e.g., Juan Dela Cruz"
           />
         </div>
 
@@ -191,49 +244,11 @@ export default function PassengerVerifyPage() {
           <label className="text-xs mb-1">Town</label>
           <input
             name="town"
-            className="border rounded px-2 py-1 text-sm"
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
             value={town}
             onChange={(e) => setTown(e.target.value)}
-            placeholder="e.g., Lagawe / Banaue / Hingyon"
-          />
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-xs mb-1">Mobile number</label>
-          <input
-            name="phone"
-            className="border rounded px-2 py-1 text-sm"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="09xxxxxxxxx"
-          />
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-xs mb-1">ID type</label>
-          <select
-            name="id_type"
-            className="border rounded px-2 py-1 text-sm"
-            value={idType}
-            onChange={(e) => setIdType(e.target.value)}
-          >
-            <option value="">Select ID type</option>
-            <option value="National ID">National ID</option>
-            <option value="Driver's License">Driver&apos;s License</option>
-            <option value="Passport">Passport</option>
-            <option value="UMID">UMID</option>
-            <option value="Voter's ID">Voter&apos;s ID</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-xs mb-1">ID number</label>
-          <input
-            name="id_number"
-            className="border rounded px-2 py-1 text-sm"
-            value={idNumber}
-            onChange={(e) => setIdNumber(e.target.value)}
+            disabled={loading || submitting || locked}
+            placeholder="e.g., Lagawe"
           />
         </div>
 
@@ -243,16 +258,13 @@ export default function PassengerVerifyPage() {
             name="id_front"
             type="file"
             accept="image/*"
-            className="border rounded px-2 py-1 text-sm"
-            onChange={(e) => setIdFile(e.target.files?.[0] ?? null)}
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
+            onChange={(e) => setIdFrontFile(e.target.files?.[0] ?? null)}
+            disabled={loading || submitting || locked}
           />
-          <input
-            name="id_photo_url"
-            className="border rounded px-2 py-1 text-xs mt-1"
-            value={idPhotoUrl}
-            onChange={(e) => setIdPhotoUrl(e.target.value)}
-            placeholder="Or paste an existing image URL (optional)"
-          />
+          {idFrontFile ? (
+            <div className="text-[11px] text-gray-600 mt-1">Selected: {idFrontFile.name}</div>
+          ) : null}
         </div>
 
         <div className="flex flex-col">
@@ -261,25 +273,28 @@ export default function PassengerVerifyPage() {
             name="selfie_with_id"
             type="file"
             accept="image/*"
-            className="border rounded px-2 py-1 text-sm"
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
             onChange={(e) => setSelfieFile(e.target.files?.[0] ?? null)}
+            disabled={loading || submitting || locked}
           />
-          <input
-            name="selfie_photo_url"
-            className="border rounded px-2 py-1 text-xs mt-1"
-            value={selfieUrl}
-            onChange={(e) => setSelfieUrl(e.target.value)}
-            placeholder="Or paste an existing image URL (optional)"
-          />
+          {selfieFile ? (
+            <div className="text-[11px] text-gray-600 mt-1">Selected: {selfieFile.name}</div>
+          ) : null}
         </div>
 
         <button
           type="submit"
-          disabled={submitting}
-          className="mt-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
+          className="w-full bg-green-600 text-white rounded px-3 py-2 text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading || submitting || locked}
         >
-          {submitting ? "Submitting..." : "Submit for verification"}
+          {submitting ? "Submitting…" : locked ? "Submitted" : "Submit for verification"}
         </button>
+
+        {current?.status ? (
+          <div className="text-[11px] text-gray-600">
+            Tip: If you need to change details after submitting, ask admin to reject so you can re-submit.
+          </div>
+        ) : null}
       </form>
     </div>
   );
