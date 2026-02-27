@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ function nowIso() {
 export async function GET() {
   const supabase = createClient();
 
-  // ✅ Supabase cookie auth (passenger login)
+  // âœ… Supabase cookie auth (passenger login)
   const { data: userRes, error: userErr } = await supabase.auth.getUser();
   const user = userRes?.user;
 
@@ -40,7 +40,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const supabase = createClient();
 
-  // ✅ Supabase cookie auth (passenger login)
+  // âœ… Supabase cookie auth (passenger login)
   const { data: userRes, error: userErr } = await supabase.auth.getUser();
   const user = userRes?.user;
 
@@ -53,17 +53,83 @@ export async function POST(req: Request) {
 
   const passenger_id = user.id;
 
-  const body: any = await req.json().catch(() => ({}));
-  const full_name = String(body?.full_name || "").trim();
-  const town = String(body?.town || "").trim();
+  const bucket = process.env.VERIFICATION_BUCKET || "passenger-verifications";
 
-  const id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
-  const selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
+  // Accept BOTH JSON and multipart/form-data
+  const ct = req.headers.get("content-type") || "";
+
+  let full_name = "";
+  let town = "";
+
+  // These are the DB fields your table expects:
+  // - id_front_path
+  // - selfie_with_id_path
+  let id_front_path = "";
+  let selfie_with_id_path = "";
+
+  // Optional URL fields if your client provides them
+  let id_photo_url = "";
+  let selfie_photo_url = "";
+
+  // Helper: upload a file to Supabase Storage and return its path
+  async function uploadToBucket(file: File, keyPrefix: string) {
+    const ext = (file.name && file.name.includes(".")) ? file.name.split(".").pop() : "jpg";
+    const safeExt = String(ext || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const key = `${keyPrefix}/${passenger_id}/${Date.now()}_${Math.random().toString(16).slice(2)}.${safeExt}`;
+
+    const up = await supabase.storage.from(bucket).upload(key, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true
+    });
+
+    if (up.error) {
+      throw new Error(`Storage upload failed (bucket=${bucket}): ${up.error.message}`);
+    }
+    return key;
+  }
+
+  if (ct.includes("multipart/form-data")) {
+    const fd = await req.formData();
+
+    full_name = String(fd.get("full_name") || "").trim();
+    town = String(fd.get("town") || "").trim();
+
+    // Accept either file uploads OR pre-existing path/url strings
+    const idFrontAny = fd.get("id_front");
+    const selfieAny = fd.get("selfie_with_id");
+
+    id_front_path = String(fd.get("id_front_path") || "").trim();
+    selfie_with_id_path = String(fd.get("selfie_with_id_path") || "").trim();
+
+    id_photo_url = String(fd.get("id_photo_url") || "").trim();
+    selfie_photo_url = String(fd.get("selfie_photo_url") || "").trim();
+
+    // If files are provided, upload them and set paths
+    if (!id_front_path && idFrontAny && typeof idFrontAny === "object") {
+      const f = idFrontAny as File;
+      id_front_path = await uploadToBucket(f, "id_front");
+    }
+    if (!selfie_with_id_path && selfieAny && typeof selfieAny === "object") {
+      const f = selfieAny as File;
+      selfie_with_id_path = await uploadToBucket(f, "selfie_with_id");
+    }
+  } else {
+    // JSON fallback
+    const body: any = await req.json().catch(() => ({}));
+    full_name = String(body?.full_name || "").trim();
+    town = String(body?.town || "").trim();
+
+    id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
+    selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
+
+    id_photo_url = body?.id_photo_url ? String(body.id_photo_url).trim() : "";
+    selfie_photo_url = body?.selfie_photo_url ? String(body.selfie_photo_url).trim() : "";
+  }
 
   if (!full_name) return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
   if (!town) return NextResponse.json({ ok: false, error: "Town required" }, { status: 400 });
-  if (!id_front_path) return NextResponse.json({ ok: false, error: "ID front path required" }, { status: 400 });
-  if (!selfie_with_id_path) return NextResponse.json({ ok: false, error: "Selfie-with-ID path required" }, { status: 400 });
+  if (!id_front_path) return NextResponse.json({ ok: false, error: "ID front required (file upload failed or missing). If using file upload, ensure VERIFICATION_BUCKET is set correctly on Vercel." }, { status: 400 });
+  if (!selfie_with_id_path) return NextResponse.json({ ok: false, error: "Selfie-with-ID required (file upload failed or missing). If using file upload, ensure VERIFICATION_BUCKET is set correctly on Vercel." }, { status: 400 });
 
   // Read existing request (if any)
   const existing = await supabase
@@ -82,7 +148,7 @@ export async function POST(req: Request) {
   const ex = existing.data as any | null;
   const exStatus = (ex?.status ? String(ex.status) : "") as VerificationStatus | "";
 
-  // ✅ Prevent overwriting final/forwarded states (unless rejected)
+  // âœ… Prevent overwriting final/forwarded states (unless rejected)
   if (ex && (exStatus === "approved" || exStatus === "pending_admin")) {
     return NextResponse.json({
       ok: true,
