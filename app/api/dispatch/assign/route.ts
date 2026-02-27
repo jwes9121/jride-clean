@@ -1,202 +1,204 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { auth } from "@/auth";
+import { createClient } from "@supabase/supabase-js";
 
-function jsonOk(body: any, status = 200) {
+function jOk(body: any, status = 200) {
   return NextResponse.json(body, { status });
 }
-function jsonErr(code: string, message: string, status: number, extra?: any) {
+function jErr(code: string, message: string, status: number, extra?: any) {
   return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
 }
-function isUuidLike(s: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || "").trim());
+
+function normTown(s: any) {
+  return String(s ?? "").trim().toLowerCase();
 }
-function pickFirst(body: any, keys: string[]) {
-  for (const k of keys) {
-    const v = body?.[k];
-    if (v !== undefined && v !== null && String(v).trim().length > 0) return String(v).trim();
-  }
-  return "";
+function isUuidLike(s: any) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s ?? "").trim());
 }
 
-async function requireDispatcherAuth(req: Request) {
-  // Dev/testing escape hatch (ONLY for debugging):
+function getAdminClient() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url) throw new Error("Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)");
+  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function allowRequest(req: Request) {
+  // Optional debug bypass (set to "1" only while testing)
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_ASSIGN || "").trim() === "1";
 
-  // Optional secret gate for server-to-server/admin tooling
+  // Optional shared-secret gate (recommended for admin tools/server-to-server)
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
   const gotSecret = String(
-    req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || ""
+    req.headers.get("x-jride-admin-secret") ||
+    req.headers.get("x-admin-secret") ||
+    ""
   ).trim();
   const secretOk = Boolean(wantSecret) && Boolean(gotSecret) && gotSecret === wantSecret;
 
-  if (allowUnauth || secretOk) return { ok: true as const, mode: secretOk ? "secret" : "allowUnauth" };
+  if (allowUnauth || secretOk) return true;
 
-  try {
-    const session = await auth();
-    const uid = (session as any)?.user?.id || (session as any)?.user?.email || null;
-    if (!uid) return { ok: false as const, code: "UNAUTHORIZED", message: "Not authenticated" };
-    return { ok: true as const, mode: "nextauth" };
-  } catch {
-    return { ok: false as const, code: "UNAUTHORIZED", message: "Not authenticated" };
-  }
+  // If you later want NextAuth gate here, add it â€” but keep DB ops using service role.
+  return false;
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
   try {
-    const gate = await requireDispatcherAuth(req);
-    if (!gate.ok) return jsonErr(gate.code, gate.message, 401);
+    if (!allowRequest(req)) {
+      return jErr("UNAUTHORIZED", "Missing admin secret (or set JRIDE_ALLOW_UNAUTH_DISPATCH_ASSIGN=1 for debugging).", 401);
+    }
 
     const body = await req.json().catch(() => ({} as any));
+    const booking_code = String(body?.booking_code ?? body?.bookingCode ?? "").trim();
+    const booking_id = String(body?.booking_id ?? body?.bookingId ?? "").trim();
+    const requested_driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
 
-    const bookingCode = pickFirst(body, ["bookingCode", "booking_code"]);
-    const bookingId = pickFirst(body, ["bookingId", "booking_id"]);
-    const requestedDriverId = pickFirst(body, ["driverId", "driver_id"]);
-
-    if (!bookingCode && !bookingId) {
-      return jsonErr("BOOKING_NOT_FOUND", "Missing booking_id or booking_code", 400);
+    if (!booking_code && !booking_id) {
+      return jErr("BAD_REQUEST", "Provide booking_code or booking_id.", 400);
     }
-    if (requestedDriverId && !isUuidLike(requestedDriverId)) {
-      return jsonErr("INVALID_DRIVER_ID", "Invalid driver_id/driverId (uuid)", 400);
+    if (requested_driver_id && !isUuidLike(requested_driver_id)) {
+      return jErr("BAD_REQUEST", "driver_id must be a UUID.", 400);
     }
 
-    const supabase = createClient();
+    const admin = getAdminClient();
 
     // 1) Load booking
-    const bookingSel = "id, booking_code, status, town, created_at, assigned_at, assigned_driver_id, driver_id";
+    const bookingSel =
+      "id, booking_code, status, town, created_at, updated_at, assigned_driver_id, assigned_at, driver_id";
     let booking: any = null;
 
-    if (bookingId) {
-      const { data, error } = await supabase
+    if (booking_id) {
+      const { data, error } = await admin
         .from("bookings")
         .select(bookingSel)
-        .eq("id", bookingId)
+        .eq("id", booking_id)
         .limit(1);
-      if (error) return jsonErr("DB_SELECT_ERROR", error.message, 500);
+      if (error) return jErr("DB_SELECT_BOOKING", error.message, 500);
       booking = Array.isArray(data) && data.length ? data[0] : null;
     } else {
-      const { data, error } = await supabase
+      const { data, error } = await admin
         .from("bookings")
         .select(bookingSel)
-        .eq("booking_code", bookingCode)
+        .eq("booking_code", booking_code)
         .order("created_at", { ascending: false })
         .limit(1);
-      if (error) return jsonErr("DB_SELECT_ERROR", error.message, 500);
+      if (error) return jErr("DB_SELECT_BOOKING", error.message, 500);
       booking = Array.isArray(data) && data.length ? data[0] : null;
     }
 
     if (!booking) {
-      return jsonErr("BOOKING_NOT_FOUND", "Booking not found", 404, {
-        booking_id: bookingId || null,
-        booking_code: bookingCode || null,
-      });
+      return jErr("BOOKING_NOT_FOUND", "Booking not found.", 404, { booking_code, booking_id });
     }
 
-    const currentStatus = String(booking.status || "").trim();
-    const allowedCurrent = ["requested", "booked_ok", "booked", "pending", "created", ""];
+    const bTown = normTown(booking.town);
+    const bStatus = String(booking.status ?? "").trim();
 
-    if (!allowedCurrent.includes(currentStatus)) {
-      return jsonErr("CANNOT_ASSIGN_FROM_STATUS", "Booking status is not assignable", 409, {
+    // Only assign from these statuses (adjust if needed)
+    const assignable = new Set(["requested", "booked_ok", "booked", "pending", "created", ""]);
+    if (!assignable.has(bStatus)) {
+      return jErr("NOT_ASSIGNABLE", "Booking status is not assignable.", 409, {
         booking_id: booking.id,
         booking_code: booking.booking_code,
-        current_status: currentStatus,
+        status: bStatus,
       });
     }
 
-    // 2) Pick driver
-    const town = String(booking.town || "").trim();
-    let finalDriverId = requestedDriverId;
+    // 2) Determine candidate drivers from driver_locations
+    const cutoffMinutes = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
+    const cutoffIso = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString();
 
-    // Auto-pick from driver_locations (your real online signal)
-    if (!finalDriverId) {
-      const cutoffIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: locs, error: locErr } = await admin
+      .from("driver_locations")
+      .select("driver_id, status, updated_at, town, home_town")
+      .eq("status", "online")
+      .gte("updated_at", cutoffIso)
+      .order("updated_at", { ascending: false })
+      .limit(200);
 
-      // Prefer same town / home_town if present
-      const { data: locs, error: locErr } = await supabase
-        .from("driver_locations")
-        .select("driver_id, updated_at, status, town, home_town")
-        .eq("status", "online")
-        .gte("updated_at", cutoffIso)
-        .order("updated_at", { ascending: false })
-        .limit(80);
+    if (locErr) return jErr("DB_SELECT_LOCATIONS", locErr.message, 500);
 
-      if (locErr) return jsonErr("DB_LOCATIONS_ERROR", locErr.message, 500);
+    const allOnline = (Array.isArray(locs) ? locs : []).filter((r: any) => isUuidLike(r?.driver_id));
+    const townMatches = bTown
+      ? allOnline.filter((r: any) => {
+          const t1 = normTown(r?.town);
+          const t2 = normTown(r?.home_town);
+          return t1 === bTown || t2 === bTown;
+        })
+      : allOnline;
 
-      const candidates = (Array.isArray(locs) ? locs : [])
-        .map((r: any) => ({
-          driver_id: String(r?.driver_id || "").trim(),
-          town: String(r?.town || "").trim(),
-          home_town: String(r?.home_town || "").trim(),
-        }))
-        .filter((r: any) => isUuidLike(r.driver_id));
-
-      // town-first filter
-      const townMatches = town
-        ? candidates.filter((c: any) => c.town === town || c.home_town === town)
-        : candidates;
-
-      const chosen = (townMatches.length ? townMatches : candidates)[0];
-      finalDriverId = chosen?.driver_id || "";
-    }
-
-    if (!finalDriverId) {
-      return jsonErr("NO_AVAILABLE_DRIVER", "No ONLINE drivers with recent location updates.", 409, {
-        booking_id: booking.id,
-        booking_code: booking.booking_code,
-        town,
-      });
-    }
-
-    // 3) Confirm driver exists in driver_profiles (prevents junk IDs)
-    const { data: prof, error: profErr } = await supabase
-      .from("driver_profiles")
-      .select("driver_id, municipality, full_name")
-      .eq("driver_id", finalDriverId)
-      .limit(1);
-
-    if (profErr) return jsonErr("DB_DRIVERPROFILE_ERROR", profErr.message, 500);
-    if (!Array.isArray(prof) || !prof.length) {
-      return jsonErr("DRIVER_NOT_FOUND", "Chosen driver_id not found in driver_profiles", 409, {
-        driver_id: finalDriverId,
-      });
-    }
-
-    // 4) Atomic assign
-    const patch: any = {
-      assigned_driver_id: finalDriverId,
-      assigned_at: new Date().toISOString(),
-      status: "assigned",
+    const counts = {
+      cutoff_minutes: cutoffMinutes,
+      online_recent: allOnline.length,
+      online_town_recent: townMatches.length,
+      booking_town: booking.town ?? null,
     };
 
-    const { data: upd, error: updErr } = await supabase
+    let chosenDriverId = requested_driver_id || "";
+    if (!chosenDriverId) {
+      chosenDriverId = (townMatches.length ? townMatches : allOnline)[0]?.driver_id || "";
+    }
+
+    if (!chosenDriverId) {
+      return jErr("NO_AVAILABLE_DRIVER", "No ONLINE drivers with recent location updates.", 409, counts);
+    }
+
+    // 3) Confirm chosen driver exists in driver_profiles
+    const { data: prof, error: profErr } = await admin
+      .from("driver_profiles")
+      .select("driver_id, full_name, municipality")
+      .eq("driver_id", chosenDriverId)
+      .limit(1);
+
+    if (profErr) return jErr("DB_SELECT_DRIVER_PROFILE", profErr.message, 500, { driver_id: chosenDriverId, counts });
+    if (!Array.isArray(prof) || !prof.length) {
+      return jErr("DRIVER_PROFILE_MISSING", "Chosen driver_id not found in driver_profiles.", 409, {
+        driver_id: chosenDriverId,
+        counts,
+      });
+    }
+
+    // 4) Assign booking (atomic-ish: only if not already assigned)
+    const patch: any = {
+      status: "assigned",
+      assigned_driver_id: chosenDriverId,
+      assigned_at: new Date().toISOString(),
+    };
+
+    const { data: upd, error: updErr } = await admin
       .from("bookings")
       .update(patch)
       .eq("id", booking.id)
-      .in("status", allowedCurrent)
       .is("assigned_driver_id", null)
       .is("assigned_at", null)
       .select(bookingSel)
       .limit(1);
 
-    if (updErr) return jsonErr("DB_UPDATE_ERROR", updErr.message, 500, { booking_id: booking.id });
+    if (updErr) {
+      console.error("DISPATCH_ASSIGN_UPDATE_ERROR", { message: updErr.message, booking_id: booking.id, booking_code: booking.booking_code });
+      return jErr("DB_UPDATE_ASSIGN", updErr.message, 500, { booking_id: booking.id, booking_code: booking.booking_code, driver_id: chosenDriverId });
+    }
 
     const updated = Array.isArray(upd) && upd.length ? upd[0] : null;
     if (!updated) {
-      return jsonErr("ASSIGN_RACE_LOST", "Booking was already assigned or status changed.", 409, {
+      return jErr("ASSIGN_RACE_LOST", "Booking was already assigned or changed.", 409, {
         booking_id: booking.id,
         booking_code: booking.booking_code,
+        driver_id: chosenDriverId,
       });
     }
 
-    return jsonOk({
+    return jOk({
       ok: true,
-      note: "ASSIGNED_OK",
+      assign_ok: true,
       booking_id: updated.id,
       booking_code: updated.booking_code,
-      assigned_driver_id: finalDriverId,
-      updated,
+      assigned_driver_id: chosenDriverId,
+      counts,
+      ms: Date.now() - startedAt,
     });
   } catch (e: any) {
-    return jsonErr("SERVER_ERROR", String(e?.message || e), 500);
+    console.error("DISPATCH_ASSIGN_FATAL", e);
+    return jErr("SERVER_ERROR", String(e?.message || e), 500, { ms: Date.now() - startedAt });
   }
 }
