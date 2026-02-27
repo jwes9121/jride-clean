@@ -56,21 +56,26 @@ export async function POST(req: Request) {
   const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
   const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";
 
-  // Accept BOTH JSON and multipart/form-data
-  const ct = req.headers.get("content-type") || "";
-
+  // Hoisted vars so validation below can see them (try/catch must not hide scope)
   let full_name = "";
   let town = "";
+  let id_front_path = "";
+  let selfie_with_id_path = "";
+  let id_photo_url = "";
+  let selfie_photo_url = "";
+
+try {
+// Accept BOTH JSON and multipart/form-data
+  const ct = req.headers.get("content-type") || "";
+  full_name = "";let town = "";
 
   // These are the DB fields your table expects:
   // - id_front_path
   // - selfie_with_id_path
-  let id_front_path = "";
-  let selfie_with_id_path = "";
+  id_front_path = "";let selfie_with_id_path = "";
 
   // Optional URL fields if your client provides them
-  let id_photo_url = "";
-  let selfie_photo_url = "";
+  id_photo_url = "";let selfie_photo_url = "";
 
   // Helper: upload a file to Supabase Storage and return its path
   async function uploadToBucket(file: File, bucketName: string, keyPrefix: string) {
@@ -89,7 +94,7 @@ export async function POST(req: Request) {
     return key;
   }
 
-  if (ct.includes("multipart/form-data")) {
+if (ct.includes("multipart/form-data")) {
     const fd = await req.formData();
 
     full_name = String(fd.get("full_name") || "").trim();
@@ -110,7 +115,8 @@ export async function POST(req: Request) {
       const f = idFrontAny as File;
       id_front_path = await uploadToBucket(f, idBucket, "id_front");
     }
-    if (!selfie_with_id_path && selfieAny && typeof selfieAny === "object") {
+
+if (!selfie_with_id_path && selfieAny && typeof selfieAny === "object") {
       const f = selfieAny as File;
       selfie_with_id_path = await uploadToBucket(f, selfieBucket, "selfie_with_id");
     }
@@ -127,10 +133,18 @@ export async function POST(req: Request) {
     selfie_photo_url = body?.selfie_photo_url ? String(body.selfie_photo_url).trim() : "";
   }
 
-  if (!full_name) return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
+  
+} catch (e: any) {
+  return NextResponse.json(
+    { ok: false, error: "Upload/parse failed: " + (e?.message || String(e)) },
+    { status: 400 }
+  );
+}
+
+if (!full_name) return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
   if (!town) return NextResponse.json({ ok: false, error: "Town required" }, { status: 400 });
-  if (!id_front_path) return NextResponse.json({ ok: false, error: "ID front required (file upload failed or missing). If using file upload, ensure VERIFICATION_BUCKET is set correctly on Vercel." }, { status: 400 });
-  if (!selfie_with_id_path) return NextResponse.json({ ok: false, error: "Selfie-with-ID required (file upload failed or missing). If using file upload, ensure VERIFICATION_BUCKET is set correctly on Vercel." }, { status: 400 });
+  if (!id_front_path) return NextResponse.json({ ok: false, error: "ID front required (file upload failed or missing). If using file upload, ensure VERIFICATION_ID_BUCKET/VERIFICATION_SELFIE_BUCKET (or defaults) and Storage policies are correct." }, { status: 400 });
+  if (!selfie_with_id_path) return NextResponse.json({ ok: false, error: "Selfie-with-ID required (file upload failed or missing). If using file upload, ensure VERIFICATION_ID_BUCKET/VERIFICATION_SELFIE_BUCKET (or defaults) and Storage policies are correct." }, { status: 400 });
 
   // Read existing request (if any)
   const existing = await supabase
@@ -219,4 +233,8 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, request: upd.data });
 }
+
+
+
+
 
