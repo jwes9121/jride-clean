@@ -7,18 +7,18 @@ export const dynamic = "force-dynamic";
 
 function env(name: string) {
   const v = process.env[name];
-  return (v && String(v).trim()) ? String(v).trim() : "";
+  return v && String(v).trim() ? String(v).trim() : "";
 }
 
 function parseCsv(v: string) {
   return String(v || "")
     .split(",")
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 }
 
 function toLowerList(xs: string[]) {
-  return xs.map(s => s.trim().toLowerCase()).filter(Boolean);
+  return xs.map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
 function isInList(val: string | null | undefined, list: string[]) {
@@ -55,20 +55,20 @@ export async function GET() {
     "";
   const service =
     env("SUPABASE_SERVICE_ROLE_KEY") ||
-    env("SUPABASE_SERVICE_KEY") ||
     env("SUPABASE_SERVICE_ROLE") ||
+    env("SUPABASE_SERVICE_KEY") ||
     "";
 
   if (!url) return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
   if (!anon) return NextResponse.json({ ok: false, error: "Missing SUPABASE_ANON_KEY" }, { status: 500 });
   if (!service) {
     return NextResponse.json(
-      { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY (required for private signed URLs)" },
+      { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" },
       { status: 500 }
     );
   }
 
-  // 1) Cookie-based user session (Supabase auth)
+  // 1) Who is calling? (Supabase cookie session)
   const cookieStore = cookies();
   const userSb = createServerClient(url, anon, {
     cookies: {
@@ -80,22 +80,19 @@ export async function GET() {
 
   const { data: userData } = await userSb.auth.getUser();
   const user = userData?.user;
-
   const requesterId = user?.id ? String(user.id) : "";
   const requesterEmail = user?.email ? String(user.email) : "";
 
-  if (!requesterId) {
-    return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
-  }
+  if (!requesterId) return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
 
-  // 2) Service-role client for admin-only operations (metadata + signed URLs + DB)
+  // 2) Service-role client for privileged operations
   const adminSb = createClient(url, service, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Allowlists: IDs first (strongest), then email, then metadata fallback
-  const adminIds = parseCsv(env("ADMIN_USER_IDS") || env("JRIDE_ADMIN_USER_IDS"));
-  const dispatcherIds = parseCsv(env("DISPATCHER_USER_IDS") || env("JRIDE_DISPATCHER_USER_IDS"));
+  // Allowlists + metadata role fallback
+  const adminIds = parseCsv(env("JRIDE_ADMIN_USER_IDS") || env("ADMIN_USER_IDS"));
+  const dispatcherIds = parseCsv(env("JRIDE_DISPATCHER_USER_IDS") || env("DISPATCHER_USER_IDS"));
 
   const adminEmailsLower = toLowerList(parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS")));
   const dispatcherEmailsLower = toLowerList(parseCsv(env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS")));
@@ -110,28 +107,52 @@ export async function GET() {
   }
 
   if (!isAdmin && !isDispatcher) {
-    return NextResponse.json(
-      { ok: false, error: "Forbidden (requires admin/dispatcher)." },
-      { status: 403 }
-    );
+    return NextResponse.json({ ok: false, error: "Forbidden (admin/dispatcher only)." }, { status: 403 });
   }
 
-  const { data, error } = await adminSb
+  // Queue counts
+  const submittedCountRes = await adminSb
     .from("passenger_verification_requests")
-    .select("passenger_id, full_name, town, status, submitted_at, admin_notes, id_front_path, selfie_with_id_path")
-    .eq("status", "pending")
+    .select("passenger_id", { count: "exact", head: true })
+    .eq("status", "submitted");
+
+  const pendingAdminCountRes = await adminSb
+    .from("passenger_verification_requests")
+    .select("passenger_id", { count: "exact", head: true })
+    .eq("status", "pending_admin");
+
+  if (submittedCountRes.error) {
+    return NextResponse.json({ ok: false, error: submittedCountRes.error.message }, { status: 500 });
+  }
+  if (pendingAdminCountRes.error) {
+    return NextResponse.json({ ok: false, error: pendingAdminCountRes.error.message }, { status: 500 });
+  }
+
+  // Rows for each queue
+  const submittedRowsRes = await adminSb
+    .from("passenger_verification_requests")
+    .select("passenger_id, full_name, town, status, submitted_at, id_front_path, selfie_with_id_path, admin_notes")
+    .eq("status", "submitted")
     .order("submitted_at", { ascending: true });
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  const pendingAdminRowsRes = await adminSb
+    .from("passenger_verification_requests")
+    .select("passenger_id, full_name, town, status, submitted_at, reviewed_at, reviewed_by, admin_notes, id_front_path, selfie_with_id_path")
+    .eq("status", "pending_admin")
+    .order("submitted_at", { ascending: true });
 
-  const rows = Array.isArray(data) ? data : [];
+  if (submittedRowsRes.error) {
+    return NextResponse.json({ ok: false, error: submittedRowsRes.error.message }, { status: 500 });
+  }
+  if (pendingAdminRowsRes.error) {
+    return NextResponse.json({ ok: false, error: pendingAdminRowsRes.error.message }, { status: 500 });
+  }
 
-  const ID_BUCKET = "passenger-ids";
-  const SELFIE_BUCKET = "passenger-selfies";
+  const ID_BUCKET = env("JRIDE_ID_BUCKET") || "passenger-ids";
+  const SELFIE_BUCKET = env("JRIDE_SELFIE_BUCKET") || "passenger-selfies";
   const EXPIRES = 60 * 10;
 
-  const out: any[] = [];
-  for (const r of rows) {
+  async function attachSignedUrls(r: any) {
     let id_front_signed_url: string | null = null;
     let selfie_signed_url: string | null = null;
 
@@ -147,8 +168,21 @@ export async function GET() {
       if (!s.error) selfie_signed_url = s.data?.signedUrl || null;
     }
 
-    out.push({ ...r, id_front_signed_url, selfie_signed_url });
+    return { ...r, id_front_signed_url, selfie_signed_url };
   }
 
-  return NextResponse.json({ ok: true, rows: out });
+  const submittedRows = await Promise.all((submittedRowsRes.data || []).map(attachSignedUrls));
+  const pendingAdminRows = await Promise.all((pendingAdminRowsRes.data || []).map(attachSignedUrls));
+
+  return NextResponse.json({
+    ok: true,
+    counts: {
+      submitted: submittedCountRes.count || 0,
+      pending_admin: pendingAdminCountRes.count || 0,
+    },
+    rows: {
+      submitted: submittedRows,
+      pending_admin: pendingAdminRows,
+    },
+  });
 }
