@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+
+export const dynamic = "force-dynamic";
+
+function env(name: string) {
+  const v = process.env[name];
+  return v && String(v).trim() ? String(v).trim() : "";
+}
 
 function parseCsv(v: string) {
   return String(v || "")
     .split(",")
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 }
 
 function toLowerList(xs: string[]) {
-  return xs.map(s => s.trim().toLowerCase()).filter(Boolean);
+  return xs.map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
 function isInList(val: string | null | undefined, list: string[]) {
@@ -25,29 +33,15 @@ function isEmailInList(email: string | null | undefined, listLower: string[]) {
   return listLower.includes(e);
 }
 
-function adminSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    "";
-
-  if (!url) throw new Error("Missing env: SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
-  if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY");
-
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-async function isRequesterAdmin(supabase: any, userId: string, email: string) {
-  const adminIds = parseCsv(process.env.ADMIN_USER_IDS || process.env.JRIDE_ADMIN_USER_IDS || "");
-  const adminEmailsLower = toLowerList(parseCsv(process.env.JRIDE_ADMIN_EMAILS || process.env.ADMIN_EMAILS || ""));
+async function isRequesterAdmin(adminSb: any, userId: string, email: string) {
+  const adminIds = parseCsv(env("ADMIN_USER_IDS") || env("JRIDE_ADMIN_USER_IDS"));
+  const adminEmailsLower = toLowerList(parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS")));
 
   if (isInList(userId, adminIds)) return true;
   if (isEmailInList(email, adminEmailsLower)) return true;
 
   try {
-    const u = await supabase.auth.admin.getUserById(userId);
+    const u = await adminSb.auth.admin.getUserById(userId);
     const md: any = u?.data?.user?.user_metadata || {};
     const role = String(md?.role || "").toLowerCase();
     if (md?.is_admin === true) return true;
@@ -59,16 +53,54 @@ async function isRequesterAdmin(supabase: any, userId: string, email: string) {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    const requesterId = session?.user?.id ? String(session.user.id) : "";
-    const requesterEmail = session?.user?.email ? String(session.user.email) : "";
+    const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
+    const anon =
+      env("SUPABASE_ANON_KEY") ||
+      env("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+      env("NEXT_PUBLIC_SUPABASE_KEY");
+    const service =
+      env("SUPABASE_SERVICE_ROLE_KEY") ||
+      env("SUPABASE_SERVICE_ROLE") ||
+      env("SUPABASE_SERVICE_KEY");
 
-    if (!requesterId) return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
+    if (!url) return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
+    if (!anon) return NextResponse.json({ ok: false, error: "Missing SUPABASE_ANON_KEY" }, { status: 500 });
+    if (!service) {
+      return NextResponse.json(
+        { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" },
+        { status: 500 }
+      );
+    }
 
-    const supabase = adminSupabase();
+    // 1) Supabase cookie session (who is calling)
+    const cookieStore = cookies();
+    const userSb = createServerClient(url, anon, {
+      cookies: {
+        get(name) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    });
 
-    const okAdmin = await isRequesterAdmin(supabase, requesterId, requesterEmail);
-    if (!okAdmin) return NextResponse.json({ ok: false, error: "Forbidden (admin only)." }, { status: 403 });
+    const { data: userData } = await userSb.auth.getUser();
+    const user = userData?.user;
+
+    const requesterId = user?.id ? String(user.id) : "";
+    const requesterEmail = user?.email ? String(user.email) : "";
+
+    if (!requesterId) {
+      return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
+    }
+
+    // 2) Admin/service client (privileged DB + auth admin)
+    const adminSb = createClient(url, service, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const okAdmin = await isRequesterAdmin(adminSb, requesterId, requesterEmail);
+    if (!okAdmin) {
+      return NextResponse.json({ ok: false, error: "Forbidden (admin only)." }, { status: 403 });
+    }
 
     const body: any = await req.json().catch(() => ({}));
     const passenger_id = String(body?.passenger_id || "").trim();
@@ -83,7 +115,7 @@ export async function POST(req: Request) {
     const now = new Date().toISOString();
     const newStatus = decision === "approve" ? "approved" : "rejected";
 
-    const up = await supabase
+    const up = await adminSb
       .from("passenger_verification_requests")
       .update({
         status: newStatus,
@@ -98,7 +130,7 @@ export async function POST(req: Request) {
     if (up.error) return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
 
     if (decision === "approve") {
-      const u = await supabase.auth.admin.updateUserById(passenger_id, {
+      const u = await adminSb.auth.admin.updateUserById(passenger_id, {
         user_metadata: { verified: true, night_allowed: true },
       });
 

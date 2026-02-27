@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +33,9 @@ function isEmailInList(email: string | null | undefined, listLower: string[]) {
   return listLower.includes(e);
 }
 
-async function getRoleFromMetadata(supabase: any, userId: string) {
+async function getRoleFromMetadata(adminSb: any, userId: string) {
   try {
-    const u = await supabase.auth.admin.getUserById(userId);
+    const u = await adminSb.auth.admin.getUserById(userId);
     const md: any = u?.data?.user?.user_metadata || {};
     const role = String(md?.role || "").toLowerCase();
     const isAdmin = md?.is_admin === true || role === "admin";
@@ -46,15 +47,12 @@ async function getRoleFromMetadata(supabase: any, userId: string) {
 }
 
 export async function GET() {
-  const session = await auth();
-  const requesterId = session?.user?.id ? String(session.user.id) : "";
-  const requesterEmail = session?.user?.email ? String(session.user.email) : "";
-
-  if (!requesterId) {
-    return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
-  }
-
   const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
+  const anon =
+    env("SUPABASE_ANON_KEY") ||
+    env("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+    env("NEXT_PUBLIC_SUPABASE_KEY") ||
+    "";
   const service =
     env("SUPABASE_SERVICE_ROLE_KEY") ||
     env("SUPABASE_SERVICE_KEY") ||
@@ -62,11 +60,38 @@ export async function GET() {
     "";
 
   if (!url) return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
+  if (!anon) return NextResponse.json({ ok: false, error: "Missing SUPABASE_ANON_KEY" }, { status: 500 });
   if (!service) {
-    return NextResponse.json({ ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY (required for private signed URLs)" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY (required for private signed URLs)" },
+      { status: 500 }
+    );
   }
 
-  const supabase = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
+  // 1) Cookie-based user session (Supabase auth)
+  const cookieStore = cookies();
+  const userSb = createServerClient(url, anon, {
+    cookies: {
+      get(name) {
+        return cookieStore.get(name)?.value;
+      },
+    },
+  });
+
+  const { data: userData } = await userSb.auth.getUser();
+  const user = userData?.user;
+
+  const requesterId = user?.id ? String(user.id) : "";
+  const requesterEmail = user?.email ? String(user.email) : "";
+
+  if (!requesterId) {
+    return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
+  }
+
+  // 2) Service-role client for admin-only operations (metadata + signed URLs + DB)
+  const adminSb = createClient(url, service, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 
   // Allowlists: IDs first (strongest), then email, then metadata fallback
   const adminIds = parseCsv(env("ADMIN_USER_IDS") || env("JRIDE_ADMIN_USER_IDS"));
@@ -79,7 +104,7 @@ export async function GET() {
   let isDispatcher = isInList(requesterId, dispatcherIds) || isEmailInList(requesterEmail, dispatcherEmailsLower);
 
   if (!isAdmin && !isDispatcher) {
-    const md = await getRoleFromMetadata(supabase, requesterId);
+    const md = await getRoleFromMetadata(adminSb, requesterId);
     isAdmin = md.isAdmin;
     isDispatcher = md.isDispatcher;
   }
@@ -91,7 +116,7 @@ export async function GET() {
     );
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await adminSb
     .from("passenger_verification_requests")
     .select("passenger_id, full_name, town, status, submitted_at, admin_notes, id_front_path, selfie_with_id_path")
     .eq("status", "pending")
@@ -114,11 +139,11 @@ export async function GET() {
     const sfPath = r?.selfie_with_id_path ? String(r.selfie_with_id_path) : "";
 
     if (idPath) {
-      const s = await supabase.storage.from(ID_BUCKET).createSignedUrl(idPath, EXPIRES);
+      const s = await adminSb.storage.from(ID_BUCKET).createSignedUrl(idPath, EXPIRES);
       if (!s.error) id_front_signed_url = s.data?.signedUrl || null;
     }
     if (sfPath) {
-      const s = await supabase.storage.from(SELFIE_BUCKET).createSignedUrl(sfPath, EXPIRES);
+      const s = await adminSb.storage.from(SELFIE_BUCKET).createSignedUrl(sfPath, EXPIRES);
       if (!s.error) selfie_signed_url = s.data?.signedUrl || null;
     }
 
