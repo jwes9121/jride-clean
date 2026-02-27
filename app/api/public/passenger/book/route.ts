@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 
@@ -257,112 +257,87 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
   const hour = parseInt(fmt.format(new Date()), 10);
   const nightGate = hour >= 20 || hour < 5;
 
-  const { data: userRes } = await supabase.auth.getUser();
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
   const user = userRes?.user;
 
+  if (userErr || !user?.id) {
+    out.ok = false;
+    out.status = 401;
+    out.code = "NOT_AUTHED";
+    out.message = "Not signed in.";
+    throw out;
+  }
 
-  // === JRIDE_VERIFICATION_ALIGNMENT_PATCH_V2 ===
-// Night gate verification must align with legacy DB table constraints.
-// Source of truth (legacy): public.passenger_verifications.status
-// Allowed "verified" statuses include: approved_admin (legacy), approved (OptionB), verified (generic).
-const safeUserId = user?.id ?? "00000000-0000-0000-0000-000000000000";
+  const userId = user.id;
+  const email = user.email ?? null;
 
-const { data: pv } = await supabase
-  .from("passenger_verifications")
-  .select("status")
-  .eq("user_id", safeUserId)
-  .maybeSingle();
+  // Single source of truth: VERIFIED if passenger_verifications.status indicates approval
+  let verified = false;
 
-const pvStatus = String((pv as any)?.status ?? "").toLowerCase().trim();
-
-let verified =
-  !!user?.id &&
-  (pvStatus === "approved_admin" || pvStatus === "approved" || pvStatus === "verified");
-
-// Fallback: Option B table (requests) can be 'approved' even if legacy table row is missing.
-if (!verified && user?.id) {
+  // 1) passenger_verifications (current)
   try {
-    const { data: reqRow } = await supabase
-      .from("passenger_verification_requests")
+    const pv = await supabase
+      .from("passenger_verifications")
       .select("status")
-      .eq("passenger_id", user.id)
+      .eq("user_id", userId)
       .maybeSingle();
 
-    const rs = String((reqRow as any)?.status ?? "").toLowerCase().trim();
-    if (rs === "approved" || rs === "approved_admin" || rs === "verified") verified = true;
-  } catch {}
-}
-// === END JRIDE_VERIFICATION_ALIGNMENT_PATCH_V2 ===
-
-  if (!verified && user) {
-    const email = user.email ?? null;
-    const userId = user.id;
-    const selV = "is_verified,verified,verification_tier";
-    const tries: Array<["auth_user_id" | "user_id" | "email", string | null]> = [
-      ["auth_user_id", userId],
-      ["user_id", userId],
-      ["email", email],
-    ];
-
-    for (const [col, val] of tries) {
-      if (!val) continue;
-      const r = await supabase.from("passengers").select(selV).eq(col, val).limit(1).maybeSingle();
-      if (!r.error && r.data) {
-        const row: any = r.data;
-        const truthy = (v: any) =>
-          v === true ||
-          (typeof v === "string" && v.trim().toLowerCase() !== "" && v.trim().toLowerCase() !== "false") ||
-          (typeof v === "number" && v > 0);
-        verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
-        break;
-      }
+    const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
+    if (s === "approved_admin" || s === "approved" || s === "verified") {
+      verified = true;
     }
+  } catch {}
+
+  // 2) passenger_verification_requests (legacy / dispatcher queue)
+  if (!verified) {
+    try {
+      const pr = await supabase
+        .from("passenger_verification_requests")
+        .select("status")
+        .eq("passenger_id", userId)
+        .maybeSingle();
+
+      const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
+      if (s === "approved_admin" || s === "approved" || s === "verified") {
+        verified = true;
+      }
+    } catch {}
   }
-if (nightGate && !verified && !jrideNightGateBypass()) {
+
+  // 3) passengers table (legacy flags) - best effort only
+  if (!verified) {
+    try {
+      const selV = "is_verified,verified,verification_tier";
+      const tries: Array<["auth_user_id" | "user_id" | "email", string | null]> = [
+        ["auth_user_id", userId],
+        ["user_id", userId],
+        ["email", email],
+      ];
+
+      const truthy = (v: any) =>
+        v === true ||
+        (typeof v === "string" && v.trim().toLowerCase() !== "" && v.trim().toLowerCase() !== "false" && v.trim().toLowerCase() !== "0" && v.trim().toLowerCase() !== "no") ||
+        (typeof v === "number" && v > 0);
+
+      for (const [col, val] of tries) {
+        if (!val) continue;
+        const r = await supabase.from("passengers").select(selV).eq(col, val).limit(1).maybeSingle();
+        if (!r.error && r.data) {
+          const row: any = r.data;
+          verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
+          if (verified) break;
+        }
+      }
+    } catch {}
+  }
+
+  // Enforce night gate ONLY when not verified, unless explicit bypass headers are present
+  if (nightGate && !verified && !jrideNightGateBypass()) {
     out.ok = false;
     out.status = 403;
     out.code = "NIGHT_GATE_UNVERIFIED";
     out.message = "Booking is restricted from 8PM to 5AM unless verified.";
     throw out;
-  }
-
-  if (!verified && user) {
-    const email = user.email ?? null;
-    const userId = user.id;
-    const selW = "wallet_balance,min_wallet_required,wallet_locked";
-    const tries: Array<["auth_user_id" | "user_id" | "email", string | null]> = [
-      ["auth_user_id", userId],
-      ["user_id", userId],
-      ["email", email],
-    ];
-
-    for (const [col, val] of tries) {
-      if (!val) continue;
-      const r = await supabase.from("passengers").select(selW).eq(col, val).limit(1).maybeSingle();
-      if (r.error) break; // fail-open
-      if (r.data) {
-        const row: any = r.data;
-        const locked = row.wallet_locked === true;
-        const bal = typeof row.wallet_balance === "number" ? row.wallet_balance : null;
-        const min = typeof row.min_wallet_required === "number" ? row.min_wallet_required : null;
-
-        if (locked) {
-          out.ok = false;
-          out.status = 402;
-          out.code = "WALLET_LOCKED";
-          out.message = "Wallet is locked.";
-          throw out;
-        }
-        if (typeof bal === "number" && typeof min === "number" && bal < min) {
-          out.ok = false;
-          out.status = 402;
-          out.code = "WALLET_INSUFFICIENT";
-          out.message = "Insufficient wallet balance.";
-          throw out;
-        }
-        break;
-      }
-    }
   }
 
   return true;
@@ -762,6 +737,7 @@ if (j && (j as any).code === "INVALID_DRIVER_ID") {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign, takeoutSnapshot }, { status: 200 });
 }
+
 
 
 
