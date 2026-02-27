@@ -1,227 +1,159 @@
-"use client";
+﻿"use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import React, { useEffect, useMemo, useState } from "react";
 
 type VerificationRecord = {
-  id: number;
-  status: string;
-  reject_reason: string | null;
-  id_photo_url: string | null;
-  selfie_photo_url: string | null;
+  id?: number;
+  status?: string;
+  reject_reason?: string | null;
+  id_photo_url?: string | null;
+  selfie_photo_url?: string | null;
+  created_at?: string;
 };
+
+function safeStatusLabel(status?: string | null) {
+  const s = String(status || "").trim();
+  if (!s) return "Not submitted";
+  switch (s) {
+    case "submitted":
+      return "Submitted (waiting for review)";
+    case "pending_admin":
+      return "Pending admin approval";
+    case "approved":
+      return "VERIFIED";
+    case "rejected":
+      return "REJECTED (check reason and re-submit)";
+    default:
+      return s;
+  }
+}
+
 export default function PassengerVerifyPage() {
-  // ===== JRIDE_VERIFY_AUTOFILL_FROM_SESSIONUSER_USERID_V1 =====
-  useEffect(() => {
-    let cancelled = false;
-
-    async function resolveUserIdFromCookieSession() {
-      try {
-        const r = await fetch("/api/verify/session-user", { cache: "no-store" });
-        const j = await r.json().catch(() => null);
-
-        if (cancelled) return;
-
-        if (j?.ok && j?.user_id) {
-          setUserId(String(j.user_id));
-          setAuthUserPresent(true);
-        }
-      } catch {
-        // ignore (manual UUID still works)
-      }
-    }
-
-    resolveUserIdFromCookieSession();
-    return () => { cancelled = true; };
-  }, []);
-  // ===== /JRIDE_VERIFY_AUTOFILL_FROM_SESSIONUSER_USERID_V1 =====
-
+  // Auth/session + current request
+  const [authUserPresent, setAuthUserPresent] = useState<boolean>(false);
   const [userId, setUserId] = useState<string>("");
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [idType, setIdType] = useState("");
-  const [idNumber, setIdNumber] = useState("");
-  const [idPhotoUrl, setIdPhotoUrl] = useState("");
-  const [selfieUrl, setSelfieUrl] = useState("");
+  const [current, setCurrent] = useState<VerificationRecord | null>(null);
 
+  // Form fields (must exist because JSX references them)
+  const [fullName, setFullName] = useState<string>("");
+  const [town, setTown] = useState<string>("");
+  const [phone, setPhone] = useState<string>("");
+  const [idType, setIdType] = useState<string>("");
+  const [idNumber, setIdNumber] = useState<string>("");
+
+  // Uploads or URL fallbacks
   const [idFile, setIdFile] = useState<File | null>(null);
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
+  const [idPhotoUrl, setIdPhotoUrl] = useState<string>("");
+  const [selfieUrl, setSelfieUrl] = useState<string>("");
 
-  const [current, setCurrent] = useState<VerificationRecord | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [authUserPresent, setAuthUserPresent] = useState(false);
-  // Try to auto-detect logged in user and prefill userId
-useEffect(() => {
-    const loadUser = async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) {
-        console.warn("getUser error (okay for local testing):", error);
-        return;
-      }
-      if (data?.user) {
-        setUserId(data.user.id);
+  // UX state
+  const [message, setMessage] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const statusText = useMemo(() => safeStatusLabel(current?.status), [current?.status]);
+
+  async function loadSessionAndCurrent() {
+    try {
+      // 1) Session user (server reads cookie session)
+      const sres = await fetch("/api/verify/session-user", { method: "GET" });
+      const sj = await sres.json().catch(() => ({} as any));
+
+      const uid = sj?.user_id ? String(sj.user_id) : "";
+      if (uid) {
         setAuthUserPresent(true);
+        setUserId(uid);
+      } else {
+        setAuthUserPresent(false);
       }
 
+      // 2) Current verification request (Option B GET)
+      const rres = await fetch("/api/public/passenger/verification/request", { method: "GET" });
+      const rj = await rres.json().catch(() => ({} as any));
+
+      // Accept common shapes without guessing beyond "request" / "data"
+      const req = (rj && (rj.request || rj.data || rj.current || null)) as any;
+      if (req && typeof req === "object") setCurrent(req as VerificationRecord);
+      else setCurrent(null);
+    } catch {
+      // non-fatal
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (cancelled) return;
+      await loadSessionAndCurrent();
+    })();
+    return () => {
+      cancelled = true;
     };
-    loadUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load existing verification for this userId (when set)
-  useEffect(() => {
-    if (!userId) return;
-    const loadExisting = async () => {
-      const { data, error } = await supabase
-        .from("passenger_verifications")
-        .select("id,status,reject_reason,id_photo_url,selfie_photo_url")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (!error && data) {
-        setCurrent(data as VerificationRecord);
-        if (data.id_photo_url) setIdPhotoUrl(data.id_photo_url);
-        if (data.selfie_photo_url) setSelfieUrl(data.selfie_photo_url);
-      } else if (error && error.code !== "PGRST116") {
-        console.error("loadExisting error", error);
-      }
-    };
-    loadExisting();
-  }, [userId]);
-
-  const uploadToStorage = async (file: File, kind: "id" | "selfie"): Promise<string | null> => {
-    if (!file) return null;
-    const bucket = "passenger-ids";
-    const safeUserId = userId || "anon";
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${safeUserId}/${kind}-${Date.now()}.${ext}`;
-
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, {
-        upsert: true,
-      });
-
-    if (error || !data) {
-      console.error("uploadToStorage error", error);
-      setMessage("Error uploading file. Please try again.");
-      return null;
-    }
-
-    const { data: publicData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(data.path);
-
-    return publicData.publicUrl;
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setMessage(null);
-    if (!userId) {
-      setMessage("Please enter a user ID (or log in).");
-      return;
-    }
-    if (!fullName || !phone || !idType || !idNumber) {
-      setMessage("Please complete all text fields.");
-      return;
-    }
+    setMessage("");
+    setSubmitting(true);
 
-    setLoading(true);
-
-    // If we have files selected and no URL yet, upload them
-    let finalIdUrl = idPhotoUrl;
-    let finalSelfieUrl = selfieUrl;
-
-    if (!finalIdUrl && idFile) {
-      const url = await uploadToStorage(idFile, "id");
-      if (url) {
-        finalIdUrl = url;
-        setIdPhotoUrl(url);
-      }
-    }
-    if (!finalSelfieUrl && selfieFile) {
-      const url = await uploadToStorage(selfieFile, "selfie");
-      if (url) {
-        finalSelfieUrl = url;
-        setSelfieUrl(url);
-      }
-    }
-
-    if (!finalIdUrl || !finalSelfieUrl) {
-      setLoading(false);
-      setMessage(
-        "Please upload both ID photo and selfie, or provide their URLs."
-      );
-      return;
-    }
     try {
-      console.log("[JRIDE_VERIFY] submit:start", {
-        userId,
-        undefined,
-        hasIdUrl: !!finalIdUrl,
-        hasSelfieUrl: !!finalSelfieUrl,
+      // Build FormData for Option B API.
+      const body = new FormData();
+
+      // If your API ignores user_id and uses session cookie, this is harmless.
+      // If your API supports dev/manual userId entry, this helps testing.
+      if (userId) body.append("user_id", userId);
+
+      if (fullName.trim()) body.append("full_name", fullName.trim());
+      if (town.trim()) body.append("town", town.trim());
+      if (phone.trim()) body.append("phone", phone.trim());
+      if (idType.trim()) body.append("id_type", idType.trim());
+      if (idNumber.trim()) body.append("id_number", idNumber.trim());
+
+      // Prefer file uploads if provided; else send URL fallbacks if provided
+      if (idFile) body.append("id_front", idFile);
+      else if (idPhotoUrl.trim()) body.append("id_photo_url", idPhotoUrl.trim());
+
+      if (selfieFile) body.append("selfie_with_id", selfieFile);
+      else if (selfieUrl.trim()) body.append("selfie_photo_url", selfieUrl.trim());
+
+      setMessage("Submitting verification...");
+
+      const res = await fetch("/api/public/passenger/verification/request", {
+        method: "POST",
+        body
       });
 
-      const { data, error } = await supabase.rpc(
-        "passenger_request_verification",
-        {
-          p_user_id: userId,
-          p_full_name: fullName,
-          p_phone: phone,
-          p_id_type: idType,
-          p_id_number: idNumber,
-          p_id_photo_url: finalIdUrl,
-          p_selfie_photo_url: finalSelfieUrl,
-        }
-      );
+      const txt = await res.text();
 
-      if (error) {
-        console.error("passenger_request_verification error", error);
-        const msg = (error as any)?.message
-          ? String((error as any).message)
-          : "Error submitting verification. Please try again.";
-        setMessage(msg);
+      if (!res.ok) {
+        setMessage("Submit failed: " + txt);
         return;
       }
 
-      setCurrent(data as VerificationRecord);
-      setMessage("Verification submitted. Dispatcher will review first, then Admin will verify.");
-    } catch (e) {
-      const msg = (e as any)?.message ? String((e as any).message) : "Submit failed (unexpected).";
-      setMessage(msg);
-      return;
+      setMessage("Submitted. Please wait for admin review.");
+
+      // Refresh current status after submit
+      await loadSessionAndCurrent();
+    } catch (err: any) {
+      setMessage("Submit error: " + (err?.message || String(err)));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
-};
-  const statusLabel = () => {
-    if (!current) return "Not submitted";
-    switch (current.status) {
-      case "pending":
-        return "Submitted (waiting for dispatcher review)";
-      case "pre_approved_dispatcher":
-        return "Pending admin approval";
-      case "approved_admin":
-        return "VERIFIED (rides and restricted services allowed)";
-      case "rejected":
-        return "REJECTED - check reason and re-submit";
-      default:
-        return String(current.status || "");
-    }
-  };
-return (
+  }
+
+  return (
     <div className="p-4 text-sm max-w-xl mx-auto">
       <h1 className="text-lg font-bold mb-2">Passenger Verification</h1>
+
       <p className="text-xs text-gray-600 mb-3">
         Upload your ID details so JRide can verify you. Verified passengers can book rides and access restricted services.
       </p>
 
       {!authUserPresent && (
-<div className="mb-3 text-xs text-orange-700">
-          No logged-in user detected. For testing, paste a passenger <b>user
-          UUID</b> below. In production, this will be filled automatically after
-          login.
+        <div className="mb-3 text-xs text-orange-700">
+          No logged-in user detected. For testing, you may paste a passenger <b>user UUID</b> below.
         </div>
       )}
 
@@ -236,12 +168,10 @@ return (
       </div>
 
       <div className="mb-4 text-xs">
-        Current status: <b>{statusLabel()}</b>
+        Current status: <b>{statusText}</b>
         {current?.status === "rejected" && current.reject_reason && (
-          <div className="text-red-600 mt-1">
-            Reason: {current.reject_reason}
-          </div>
-)}
+          <div className="text-red-600 mt-1">Reason: {current.reject_reason}</div>
+        )}
       </div>
 
       {message && <div className="mb-3 text-xs text-blue-700">{message}</div>}
@@ -250,6 +180,7 @@ return (
         <div className="flex flex-col">
           <label className="text-xs mb-1">Full name (same as ID)</label>
           <input
+            name="full_name"
             className="border rounded px-2 py-1 text-sm"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -257,17 +188,31 @@ return (
         </div>
 
         <div className="flex flex-col">
+          <label className="text-xs mb-1">Town</label>
+          <input
+            name="town"
+            className="border rounded px-2 py-1 text-sm"
+            value={town}
+            onChange={(e) => setTown(e.target.value)}
+            placeholder="e.g., Lagawe / Banaue / Hingyon"
+          />
+        </div>
+
+        <div className="flex flex-col">
           <label className="text-xs mb-1">Mobile number</label>
           <input
+            name="phone"
             className="border rounded px-2 py-1 text-sm"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
+            placeholder="09xxxxxxxxx"
           />
         </div>
 
         <div className="flex flex-col">
           <label className="text-xs mb-1">ID type</label>
           <select
+            name="id_type"
             className="border rounded px-2 py-1 text-sm"
             value={idType}
             onChange={(e) => setIdType(e.target.value)}
@@ -285,6 +230,7 @@ return (
         <div className="flex flex-col">
           <label className="text-xs mb-1">ID number</label>
           <input
+            name="id_number"
             className="border rounded px-2 py-1 text-sm"
             value={idNumber}
             onChange={(e) => setIdNumber(e.target.value)}
@@ -292,16 +238,16 @@ return (
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs mb-1">
-            ID photo (front of your ID)
-          </label>
+          <label className="text-xs mb-1">ID photo (front of your ID)</label>
           <input
+            name="id_front"
             type="file"
             accept="image/*"
             className="border rounded px-2 py-1 text-sm"
             onChange={(e) => setIdFile(e.target.files?.[0] ?? null)}
           />
           <input
+            name="id_photo_url"
             className="border rounded px-2 py-1 text-xs mt-1"
             value={idPhotoUrl}
             onChange={(e) => setIdPhotoUrl(e.target.value)}
@@ -310,16 +256,16 @@ return (
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs mb-1">
-            Selfie photo (you holding your ID)
-          </label>
+          <label className="text-xs mb-1">Selfie photo (you holding your ID)</label>
           <input
+            name="selfie_with_id"
             type="file"
             accept="image/*"
             className="border rounded px-2 py-1 text-sm"
             onChange={(e) => setSelfieFile(e.target.files?.[0] ?? null)}
           />
           <input
+            name="selfie_photo_url"
             className="border rounded px-2 py-1 text-xs mt-1"
             value={selfieUrl}
             onChange={(e) => setSelfieUrl(e.target.value)}
@@ -329,10 +275,10 @@ return (
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={submitting}
           className="mt-2 px-4 py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
         >
-          {loading ? "Submitting?" : "Submit for verification"}
+          {submitting ? "Submitting..." : "Submit for verification"}
         </button>
       </form>
     </div>
