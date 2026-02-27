@@ -53,7 +53,8 @@ export async function POST(req: Request) {
 
   const passenger_id = user.id;
 
-  const bucket = process.env.VERIFICATION_BUCKET || "passenger-verifications";
+  const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
+  const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";
 
   // Accept BOTH JSON and multipart/form-data
   const ct = req.headers.get("content-type") || "";
@@ -72,18 +73,18 @@ export async function POST(req: Request) {
   let selfie_photo_url = "";
 
   // Helper: upload a file to Supabase Storage and return its path
-  async function uploadToBucket(file: File, keyPrefix: string) {
+  async function uploadToBucket(file: File, bucketName: string, keyPrefix: string) {
     const ext = (file.name && file.name.includes(".")) ? file.name.split(".").pop() : "jpg";
     const safeExt = String(ext || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
     const key = `${keyPrefix}/${passenger_id}/${Date.now()}_${Math.random().toString(16).slice(2)}.${safeExt}`;
 
-    const up = await supabase.storage.from(bucket).upload(key, file, {
+    const up = await supabase.storage.from(bucketName).upload(key, file, {
       contentType: file.type || "application/octet-stream",
       upsert: true
     });
 
     if (up.error) {
-      throw new Error(`Storage upload failed (bucket=${bucket}): ${up.error.message}`);
+      throw new Error(`Storage upload failed (bucket=${bucketName}): ${up.error.message}`);
     }
     return key;
   }
@@ -107,11 +108,11 @@ export async function POST(req: Request) {
     // If files are provided, upload them and set paths
     if (!id_front_path && idFrontAny && typeof idFrontAny === "object") {
       const f = idFrontAny as File;
-      id_front_path = await uploadToBucket(f, "id_front");
+      id_front_path = await uploadToBucket(f, idBucket, "id_front");
     }
     if (!selfie_with_id_path && selfieAny && typeof selfieAny === "object") {
       const f = selfieAny as File;
-      selfie_with_id_path = await uploadToBucket(f, "selfie_with_id");
+      selfie_with_id_path = await uploadToBucket(f, selfieBucket, "selfie_with_id");
     }
   } else {
     // JSON fallback
@@ -218,3 +219,4 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, request: upd.data });
 }
+
