@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { headers } from "next/headers";
 
@@ -261,33 +261,39 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
   const user = userRes?.user;
 
 
-  // === JRIDE_VERIFICATION_ALIGNMENT_PATCH_V1 ===
-  // Align night gate verification with /can-book (public.passenger_verifications).
-  // IMPORTANT: Do NOT redeclare hour or isVerified here. Reuse the existing nightGate boolean.
+  // === JRIDE_VERIFICATION_ALIGNMENT_PATCH_V2 ===
+// Night gate verification must align with legacy DB table constraints.
+// Source of truth (legacy): public.passenger_verifications.status
+// Allowed "verified" statuses include: approved_admin (legacy), approved (OptionB), verified (generic).
+const safeUserId = user?.id ?? "00000000-0000-0000-0000-000000000000";
 
-  const { data: pv } = await supabase
-    .from("passenger_verifications")
-    .select("verification_status")
-    .eq("user_id", user?.id ?? "00000000-0000-0000-0000-000000000000")
-    .maybeSingle();
+const { data: pv } = await supabase
+  .from("passenger_verifications")
+  .select("status")
+  .eq("user_id", safeUserId)
+  .maybeSingle();
 
-  const pvVerified = !!user?.id && (
-    pv?.verification_status === "verified" ||
-    pv?.verification_status === "approved_admin"
-  );
+const pvStatus = String((pv as any)?.status ?? "").toLowerCase().trim();
 
-  if (nightGate && !pvVerified) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "NIGHT_GATE_UNVERIFIED",
-        message: "Booking is restricted from 8PM to 5AM unless verified."
-      },
-      { status: 403 }
-    );
-  }
-  // === END JRIDE_VERIFICATION_ALIGNMENT_PATCH_V1 ===
-let verified = pvVerified;
+let verified =
+  !!user?.id &&
+  (pvStatus === "approved_admin" || pvStatus === "approved" || pvStatus === "verified");
+
+// Fallback: Option B table (requests) can be 'approved' even if legacy table row is missing.
+if (!verified && user?.id) {
+  try {
+    const { data: reqRow } = await supabase
+      .from("passenger_verification_requests")
+      .select("status")
+      .eq("passenger_id", user.id)
+      .maybeSingle();
+
+    const rs = String((reqRow as any)?.status ?? "").toLowerCase().trim();
+    if (rs === "approved" || rs === "approved_admin" || rs === "verified") verified = true;
+  } catch {}
+}
+// === END JRIDE_VERIFICATION_ALIGNMENT_PATCH_V2 ===
+
   if (!verified && user) {
     const email = user.email ?? null;
     const userId = user.id;
@@ -756,6 +762,8 @@ if (j && (j as any).code === "INVALID_DRIVER_ID") {
 
   return NextResponse.json({ ok: true, env: jrideEnvEcho(), booking_code, booking, assign, takeoutSnapshot }, { status: 200 });
 }
+
+
 
 
 
