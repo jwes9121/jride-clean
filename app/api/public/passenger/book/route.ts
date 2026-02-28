@@ -619,7 +619,10 @@ export async function POST(req: Request) {
       try {
         const resp = await fetch(`${baseUrl}/api/dispatch/assign`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-jride-admin-secret": process.env.JRIDE_ADMIN_SECRET || "",
+      },
           body: JSON.stringify({ booking_id: String(booking.id) }),
         });
         const j = await resp.json().catch(() => ({}));
@@ -718,7 +721,10 @@ if (j && (j as any).code === "INVALID_DRIVER_ID") {
   try {
     const resp = await fetch(`${baseUrl}/api/dispatch/assign`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-jride-admin-secret": process.env.JRIDE_ADMIN_SECRET || "",
+      },
       body: JSON.stringify({ booking_id: String(booking.id) }),
     });
     const j = await resp.json().catch(() => ({}));
