@@ -5,12 +5,6 @@ function isUuidLike(s: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || "").trim());
 }
 
-function getSupabaseEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-  return { url, key };
-}
-
 function parseDateMs(v: any): number | null {
   try {
     const t = Date.parse(String(v || ""));
@@ -20,8 +14,29 @@ function parseDateMs(v: any): number | null {
   }
 }
 
+function getAdminClient() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function allow(req: Request) {
+  // Recommended: protect with DRIVER_PING_SECRET (already in your Vercel env)
+  const want = String(process.env.DRIVER_PING_SECRET || "").trim();
+  const got = String(req.headers.get("x-driver-ping-secret") || "").trim();
+  if (!want) return true; // if not set, allow (dev)
+  return Boolean(got) && got === want;
+}
+
 export async function GET(req: Request) {
   try {
+    if (!allow(req)) {
+      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
     const u = new URL(req.url);
     const driverId = String(u.searchParams.get("driver_id") || "").trim();
 
@@ -32,46 +47,26 @@ export async function GET(req: Request) {
       );
     }
 
-    const env = getSupabaseEnv();
-    if (!env.url || !env.key) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "MISSING_SUPABASE_ENV",
-          message:
-            "Missing SUPABASE env. Need NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_URL + SUPABASE_ANON_KEY).",
-        },
-        { status: 500 }
-      );
-    }
+    const supabase = getAdminClient();
 
-    const supabase = createClient(env.url, env.key);
+    const activeStatuses = ["assigned","accepted","fare_proposed","on_the_way","arrived","on_trip","ready"];
 
-    // Include assigned so the driver can see fresh dispatches.
-    const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip", "ready"];    
-    // Fare-evidence guard:
-    // If a trip claims it's already in movement states but has no fare data at all,
-    // treat it as stale/invalid so it doesn't haunt the driver forever.
     function hasFareEvidence(r: any): boolean {
       const pf = (r as any)?.proposed_fare;
       const vf = (r as any)?.verified_fare;
       const pr = (r as any)?.passenger_fare_response;
       return pf != null || vf != null || pr != null;
     }
-
     function isMovementState(st: string): boolean {
       return st === "on_the_way" || st === "arrived" || st === "on_trip";
     }
-
-    
-
     function isReadyButNotAccepted(r: any): boolean {
       const st = String((r as any)?.status ?? "");
       if (st !== "ready") return false;
       const pr = String((r as any)?.passenger_fare_response ?? "").toLowerCase();
       return pr !== "accepted";
     }
-// NOTE: select("*") avoids build/runtime failures if certain columns don't exist.
+
     const { data, error } = await supabase
       .from("bookings")
       .select("*")
@@ -84,7 +79,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "DB_ERROR", message: error.message }, { status: 500 });
     }
 
-    // Hard cast to avoid TS union noise (fixes: Property 'status' does not exist...)
     const rows: any[] = Array.isArray(data) ? (data as any[]) : [];
 
     if (rows.length === 0) {
@@ -97,24 +91,18 @@ export async function GET(req: Request) {
       });
     }
 
-    // Prevent "old assigned" trips haunting the driver forever:
-    // Only treat assigned as active if it's recent.
     const now = Date.now();
     const ASSIGNED_MAX_AGE_MINUTES = 90;
     const assignedMaxAgeMs = ASSIGNED_MAX_AGE_MINUTES * 60 * 1000;
 
     let picked: any = null;
 
-    // 1) Prefer non-assigned active states first (guard invalid movement states without fare)
+    // 1) Prefer non-assigned states first
     for (const r of rows) {
       const st = String((r as any)?.status ?? "");
       if (!st || st === "assigned") continue;
-
-      // If status claims movement but no fare was ever proposed/verified/responded to,
-      // ignore it (prevents "stuck on_the_way" ghosts).
       if (isMovementState(st) && !hasFareEvidence(r)) continue;
       if (isReadyButNotAccepted(r)) continue;
-
       picked = r;
       break;
     }
@@ -124,7 +112,6 @@ export async function GET(req: Request) {
       for (const r of rows) {
         const st = String((r as any)?.status ?? "");
         if (st !== "assigned") continue;
-
         const t = parseDateMs((r as any)?.updated_at) ?? parseDateMs((r as any)?.created_at);
         if (t && (now - t) <= assignedMaxAgeMs) {
           picked = r;
@@ -150,4 +137,3 @@ export async function GET(req: Request) {
     );
   }
 }
-
