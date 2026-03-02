@@ -6,7 +6,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 export default function PassengerDashboardPage() {
-const router = useRouter();
+  const router = useRouter();
 
   const [loading, setLoading] = React.useState(true);
   const [authed, setAuthed] = React.useState(false);
@@ -15,7 +15,8 @@ const router = useRouter();
 
   const [freeRideStatus, setFreeRideStatus] = React.useState<string>("unknown");
   const [freeRideMsg, setFreeRideMsg] = React.useState<string>("");
-React.useEffect(() => {
+
+  React.useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -24,7 +25,8 @@ React.useEffect(() => {
         if (!alive) return;
         const ok = !!j?.authed;
         setAuthed(ok);
-                // JRIDE: derive verified/nightGate from can-book (source of truth)
+
+        // JRIDE: derive verified/nightGate from can-book (source of truth)
         try {
           const cr = await fetch("/api/public/passenger/can-book", { cache: "no-store" });
           const cj = await cr.json();
@@ -36,14 +38,17 @@ React.useEffect(() => {
           setVerified(false);
           setNightAllowed(false);
         }
-        
 
         // Free ride promo status (audit-backed)
         try {
           if (!!j?.authed) {
             const rr = await fetch("/api/public/passenger/free-ride", { cache: "no-store" });
             const jj: any = await rr.json().catch(() => ({}));
-            const st = String(jj?.free_ride?.status || jj?.free_ride?.status === 0 ? jj?.free_ride?.status : jj?.free_ride?.status || jj?.free_ride?.status || jj?.free_ride?.status).trim();
+            const st = String(
+              jj?.free_ride?.status || jj?.free_ride?.status === 0
+                ? jj?.free_ride?.status
+                : jj?.free_ride?.status || jj?.free_ride?.status || jj?.free_ride?.status
+            ).trim();
             const status = st && st !== "undefined" ? st : String(jj?.free_ride?.status || jj?.free_ride?.status || "none");
             setFreeRideStatus(String(jj?.free_ride?.status || "none"));
 
@@ -71,7 +76,7 @@ React.useEffect(() => {
         setLoading(false);
       }
     })();
-return () => { alive = false; };
+    return () => { alive = false; };
   }, []);
 
   function gotoLogin() {
@@ -99,20 +104,20 @@ return () => { alive = false; };
           <div className="text-xs rounded-full border border-black/10 px-3 py-1">
             <span className="font-semibold">{authed ? "Signed in" : "Guest"}</span>
             <span className="opacity-70">{" - "}{loading ? "loading" : authed ? "session ok" : "no session"}</span>
-{/* JRIDE_SIGNOUT_BUTTON_BEGIN */}
-<button
-  type="button"
-  className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
-  onClick={async () => {
-    try {
-      await fetch("/api/public/auth/logout", { method: "POST", cache: "no-store" });
-    } catch {}
-    window.location.replace("/passenger-login");
-  }}
->
-  Sign out
-</button>
-{/* JRIDE_SIGNOUT_BUTTON_END */}
+            {/* JRIDE_SIGNOUT_BUTTON_BEGIN */}
+            <button
+              type="button"
+              className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
+              onClick={async () => {
+                try {
+                  await fetch("/api/public/auth/logout", { method: "POST", cache: "no-store" });
+                } catch {}
+                window.location.replace("/passenger-login");
+              }}
+            >
+              Sign out
+            </button>
+            {/* JRIDE_SIGNOUT_BUTTON_END */}
           </div>
         </div>
 
@@ -127,7 +132,9 @@ return () => { alive = false; };
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-800">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="font-semibold">{verified ? "Account verified" : (nightAllowed ? "Verification recommended" : "Verification required (night booking)")}</div>
+                <div className="font-semibold">
+                  {verified ? "Account verified" : (nightAllowed ? "Verification recommended" : "Verification required (night booking)")}
+                </div>
                 <div className="opacity-80 text-xs mt-1">
                   Verified: {String(verified)} | Night allowed: {String(nightAllowed)}
                 </div>
@@ -171,7 +178,7 @@ return () => { alive = false; };
 
           <button
             type="button"
-            onClick={() => (authed ? router.push("/errand") : gotoLogin())}
+            onClick={() => (authed ? router.push("/errands") : gotoLogin())}
             className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3"
           >
             <div className="font-semibold">Errands</div>
