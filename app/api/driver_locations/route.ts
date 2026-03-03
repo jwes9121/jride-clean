@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+const STALE_AFTER_SECONDS = 120; // 2 minutes
 export async function GET() {
   const supabase = createClient();
 
@@ -21,12 +22,23 @@ export async function GET() {
 
     const normalized = (Array.isArray(data) ? data : []).map((r: any) => {
     const town = (r?.town ?? r?.home_town ?? null);
+
+    // Staleness: view shows last 10 minutes; mark stale after 2 minutes.
+    const updatedAt = r?.updated_at ? new Date(String(r.updated_at)) : null;
+    const ageSeconds =
+      updatedAt && !isNaN(updatedAt.getTime())
+        ? Math.max(0, Math.floor((Date.now() - updatedAt.getTime()) / 1000))
+        : null;
+
+    const isStale = typeof ageSeconds === "number" ? ageSeconds > STALE_AFTER_SECONDS : true;
+
     // keep original fields, but ensure town is populated when possible
-    return { ...r, town };
+    return { ...r, town, age_seconds: ageSeconds, is_stale: isStale };
   });
 
   return NextResponse.json(
-    { ok: true, drivers: normalized },
+    { ok: true, stale_after_seconds: STALE_AFTER_SECONDS, drivers: normalized },
     { status: 200 }
   );}
+
 
