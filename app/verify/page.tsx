@@ -57,6 +57,30 @@ export default function PassengerVerifyPage() {
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
 
   const locked = useMemo(() => isLocked(current?.status || null), [current?.status]);
+  // Network guard: never let UI hang forever
+  async function fetchWithTimeout(input: RequestInfo, init: RequestInit | undefined, ms: number) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+      return await fetch(input, { ...(init || {}), signal: controller.signal });
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
+  async function uploadOne(kind: "id_front" | "selfie", file: File) {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", file);
+
+    const res = await fetchWithTimeout("/api/public/passenger/verification/upload", { method: "POST", body: fd }, 60000);
+    const j: any = await res.json().catch(() => ({}));
+    if (!res.ok || !j?.ok) {
+      throw new Error(String(j?.error || "Upload failed"));
+    }
+    if (!j?.path) throw new Error("Upload failed: missing path");
+    return String(j.path);
+  }
 
   async function refresh() {
     setLoading(true);
@@ -137,19 +161,28 @@ export default function PassengerVerifyPage() {
     }
 
     setSubmitting(true);
-    setMessage("Submitting verification…");
+    setMessage("Submitting verificationâ€¦");
 
     try {
-      const body = new FormData();
-      body.append("full_name", fullName.trim());
-      body.append("town", town.trim());
-      body.append("id_front", idFrontFile);
-      body.append("selfie_with_id", selfieFile);
+      // 1) Upload files via dedicated endpoint (service role)
+      const id_front_path = await uploadOne("id_front", idFrontFile);
+      const selfie_with_id_path = await uploadOne("selfie", selfieFile);
 
-      const res = await fetch("/api/public/passenger/verification/request", {
-        method: "POST",
-        body,
-      });
+      // 2) Write DB row via request endpoint (authenticated/RLS-safe)
+      const res = await fetchWithTimeout(
+        "/api/public/passenger/verification/request",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            full_name: fullName.trim(),
+            town: town.trim(),
+            id_front_path,
+            selfie_with_id_path,
+          }),
+        },
+        60000
+      );
 
       const j: any = await res.json().catch(async () => {
         const t = await res.text().catch(() => "");
@@ -162,10 +195,21 @@ export default function PassengerVerifyPage() {
         return;
       }
 
-      setMessage("Submitted. Please wait for review.");
+      // If backend responds with "Already approved"/etc, show it
+      if (j?.message) {
+        setMessage(String(j.message));
+      } else {
+        setMessage("Submitted. Please wait for review.");
+      }
+
       await refresh();
     } catch (e: any) {
-      setError("Submit error: " + (e?.message || String(e)));
+      const msg = String(e?.message || e || "");
+      if (msg.toLowerCase().includes("abort")) {
+        setError("Submit timed out. Please try again (network/upload delay).");
+      } else {
+        setError("Submit error: " + msg);
+      }
       setMessage("");
     } finally {
       setSubmitting(false);
@@ -299,3 +343,4 @@ export default function PassengerVerifyPage() {
     </div>
   );
 }
+
