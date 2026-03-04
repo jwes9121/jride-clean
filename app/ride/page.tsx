@@ -359,6 +359,9 @@ function verificationStatusLabel(info: any): string {
 }
 
 export default function RidePage() {
+  /* JRIDE_REGISTER_EMAIL_REQUIRED_V1_BEGIN */
+  // Enforce email required (phone-only accounts cannot reset/login reliably without paid SMS OTP).
+  /* JRIDE_REGISTER_EMAIL_REQUIRED_V1_END */
 /* ===== JRIDE_STEP5A_EMERGENCY_STATE ===== */
 const [isEmergency, setIsEmergency] = React.useState(false);
   // ===== JRIDE STEP5C: Emergency pickup fee state =====
