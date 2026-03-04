@@ -633,7 +633,11 @@ export async function GET(req: Request) {
 
   let actorUserId: string | null = null;
 
-  if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
+  const driverSecret = String(req.headers.get("x-driver-ping-secret") || "").trim();
+const wantDriverSecret = String(process.env.DRIVER_PING_SECRET || process.env.DRIVER_API_SECRET || "").trim();
+const driverSecretOk = !!(wantDriverSecret && driverSecret === wantDriverSecret);
+
+if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
     try {
       const { data } = await supabase.auth.getUser();
       actorUserId = data?.user?.id ?? null;
@@ -797,7 +801,11 @@ let warnings: string[] = [];
   const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
 let actorUserId: string | null = null;
 
-  if (!allowUnauth && !(wantSecret && gotSecret && gotSecret === wantSecret)) {
+  const driverSecret = String(req.headers.get("x-driver-ping-secret") || "").trim();
+const wantDriverSecret = String(process.env.DRIVER_PING_SECRET || process.env.DRIVER_API_SECRET || "").trim();
+const driverSecretOk = !!(wantDriverSecret && driverSecret === wantDriverSecret);
+
+if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
     try {
       const { data } = await supabase.auth.getUser();
       actorUserId = data?.user?.id ?? null;
@@ -1062,6 +1070,7 @@ let actorUserId: string | null = null;
     warning: mergedWarn,
   });
 }
+
 
 
 
