@@ -637,7 +637,17 @@ export async function GET(req: Request) {
 const wantDriverSecret = String(process.env.DRIVER_PING_SECRET || process.env.DRIVER_API_SECRET || "").trim();
 const driverSecretOk = !!(wantDriverSecret && driverSecret === wantDriverSecret);
 
-if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
+// JRIDE_UNAUTH_DIAG_V1 (safe: does NOT expose secrets)
+const __jrideUnauthDiag = {
+  driver_secret_present: !!driverSecret,
+  driver_secret_len: driverSecret ? String(driverSecret).length : 0,
+  want_driver_secret_present: !!wantDriverSecret,
+  want_driver_secret_len: wantDriverSecret ? String(wantDriverSecret).length : 0,
+  allow_unauth_flag: allowUnauth,
+  has_admin_secret_env: !!wantSecret,
+  has_admin_secret_header: !!gotSecret,
+};
+if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
     try {
       const { data } = await supabase.auth.getUser();
       actorUserId = data?.user?.id ?? null;
@@ -645,7 +655,7 @@ if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret ==
       actorUserId = null;
     }
     if (!actorUserId) {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
+      return jsonErr("UNAUTHORIZED", "Not authenticated", 401, { diag: __jrideUnauthDiag });
     }
   }
 
@@ -805,7 +815,17 @@ let actorUserId: string | null = null;
 const wantDriverSecret = String(process.env.DRIVER_PING_SECRET || process.env.DRIVER_API_SECRET || "").trim();
 const driverSecretOk = !!(wantDriverSecret && driverSecret === wantDriverSecret);
 
-if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
+// JRIDE_UNAUTH_DIAG_V1 (safe: does NOT expose secrets)
+const __jrideUnauthDiag = {
+  driver_secret_present: !!driverSecret,
+  driver_secret_len: driverSecret ? String(driverSecret).length : 0,
+  want_driver_secret_present: !!wantDriverSecret,
+  want_driver_secret_len: wantDriverSecret ? String(wantDriverSecret).length : 0,
+  allow_unauth_flag: allowUnauth,
+  has_admin_secret_env: !!wantSecret,
+  has_admin_secret_header: !!gotSecret,
+};
+if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
     try {
       const { data } = await supabase.auth.getUser();
       actorUserId = data?.user?.id ?? null;
@@ -813,7 +833,7 @@ if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret ==
       actorUserId = null;
     }
     if (!actorUserId) {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401);
+      return jsonErr("UNAUTHORIZED", "Not authenticated", 401, { diag: __jrideUnauthDiag });
     }
   }
 
@@ -1070,6 +1090,8 @@ if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret ==
     warning: mergedWarn,
   });
 }
+
+
 
 
 
