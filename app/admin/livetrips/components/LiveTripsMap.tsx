@@ -136,6 +136,37 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   }, []);
 
   // ---------- Initialize Map ----------
+function getDriverLabelText(trip: any): string {
+  // Prefer jersey number if present (supports multiple possible field names)
+  const jersey =
+    trip.jersey ??
+    trip.jersey_no ??
+    trip.jersey_number ??
+    trip.driver_jersey ??
+    trip.driver_jersey_no ??
+    trip.driver_jersey_number ??
+    trip.driverJersey ??
+    trip.driverJerseyNo ??
+    null;
+
+  const jerseyStr = jersey != null ? String(jersey).trim() : "";
+  if (jerseyStr) return jerseyStr;
+
+  const id =
+    trip.driver_id ??
+    trip.driverId ??
+    trip.driver_uuid ??
+    trip.driverUuid ??
+    trip.id ??
+    trip.uuid ??
+    null;
+
+  const idStr = id != null ? String(id).trim() : "";
+  if (idStr.length >= 2) return idStr.slice(0, 2).toUpperCase();
+  if (idStr.length === 1) return idStr.toUpperCase();
+
+  return "";
+}
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
 
@@ -275,8 +306,31 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           label.style.fontSize = "11px";
           label.style.whiteSpace = "nowrap";
           label.style.color = "rgba(0,0,0,0.75)";
+          label.setAttribute("data-jride-status-label", "1");
           label.textContent = st || "trip";
           el.appendChild(label);
+
+          // badge (driver identity): jersey # else UUID prefix (2 chars)
+          const badgeText = getDriverLabelText(t);
+          if (badgeText) {
+            const badge = document.createElement("div");
+            badge.setAttribute("data-jride-driver-label", "1");
+            badge.style.position = "absolute";
+            badge.style.left = "50%";
+            badge.style.top = "-12px";
+            badge.style.transform = "translateX(-50%)";
+            badge.style.padding = "1px 6px";
+            badge.style.borderRadius = "9999px";
+            badge.style.background = "rgba(0,0,0,0.75)";
+            badge.style.border = "1px solid rgba(255,255,255,0.55)";
+            badge.style.fontSize = "10px";
+            badge.style.fontWeight = "700";
+            badge.style.whiteSpace = "nowrap";
+            badge.style.color = "#fff";
+            badge.style.pointerEvents = "none";
+            badge.textContent = badgeText;
+            el.appendChild(badge);
+          }
 
           m = new mapboxgl.Marker(el).setLngLat(driver).addTo(map);
 
@@ -290,8 +344,34 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           m.setLngLat(driver);
           const el = m.getElement();
           el.style.zIndex = isSelected ? "9999" : "11";
-          const label = el.querySelector("div");
-          if (label) (label as HTMLDivElement).textContent = st || "trip";
+          const statusLabel = el.querySelector("[data-jride-status-label]");
+          if (statusLabel) (statusLabel as HTMLDivElement).textContent = st || "trip";
+
+          const driverBadge = el.querySelector("[data-jride-driver-label]");
+          const badgeText = getDriverLabelText(t);
+          if (driverBadge) {
+            (driverBadge as HTMLDivElement).textContent = badgeText;
+            (driverBadge as any).style.display = badgeText ? "block" : "none";
+          } else if (badgeText) {
+            const badge = document.createElement("div");
+            badge.setAttribute("data-jride-driver-label", "1");
+            badge.style.position = "absolute";
+            badge.style.left = "50%";
+            badge.style.top = "-12px";
+            badge.style.transform = "translateX(-50%)";
+            badge.style.padding = "1px 6px";
+            badge.style.borderRadius = "9999px";
+            badge.style.background = "rgba(0,0,0,0.75)";
+            badge.style.border = "1px solid rgba(255,255,255,0.55)";
+            badge.style.fontSize = "10px";
+            badge.style.fontWeight = "700";
+            badge.style.whiteSpace = "nowrap";
+            badge.style.color = "#fff";
+            badge.style.pointerEvents = "none";
+            badge.textContent = badgeText;
+            el.appendChild(badge);
+          }
+          
         }
         nextDriver[id] = m;
       }
@@ -352,7 +432,7 @@ const ll: LngLatTuple = [lng, lat];
         el.style.height = "12px";
         el.style.borderRadius = "9999px";
         el.style.background = (isStale ? "#9ca3af" : "#22c55e"); // gray if stale, green if fresh
-        el.title = `Driver ${id} ??? ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
+        el.title = `Driver ${id}  ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
         el.style.border = "2px solid #ffffff";
         el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.10)";
         el.style.transform = "translate(-50%, -50%)";
@@ -364,7 +444,7 @@ const ll: LngLatTuple = [lng, lat];
         try {
           const el = m.getElement();
           el.style.background = (isStale ? "#9ca3af" : "#22c55e");
-          el.title = `Driver ${id} ??? ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
+          el.title = `Driver ${id}  ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
         } catch {}
       }
 
@@ -476,3 +556,4 @@ if (process.env.NODE_ENV !== "production") console.log("[FLEET] AFTER KEYS", Obj
 };
 
 export default LiveTripsMap;
+
