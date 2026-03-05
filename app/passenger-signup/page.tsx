@@ -80,14 +80,14 @@ setLoading(true);
           </div>
 
           <div>
-            <label className="text-sm opacity-80">Email (optional)</label>
+            <label className="text-sm opacity-80">Email</label>
             <input
               className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
               placeholder="you@email.com"
               type="email"
-            />
+             required/>
           </div>
 
           <div>
