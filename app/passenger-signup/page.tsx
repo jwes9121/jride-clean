@@ -105,9 +105,9 @@ setLoading(true);
             <select
               className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
               value={townOrigin}
-              onChange={(e) => setTownOrigin(e.target.value)}
+              onChange={(e) = required> setTownOrigin(e.target.value)}
             >
-              <option value="">Select town (optional)</option>
+              <option value="">Select town</option>
               <option value="Lagawe">Lagawe</option>
               <option value="Hingyon">Hingyon</option>
               <option value="Banaue">Banaue</option>
@@ -146,9 +146,22 @@ setLoading(true);
             </div>
           )}
 
-          {/* JRIDE_TOWN_ORIGIN_UI_V1 */}
+          
+<button
+            disabled={loading}
+            className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-4 py-2 font-semibold"
+            type="submit"
+          >
+            {loading ? "Creating..." : "Create account"}
+          </button>
 
-</form>
+          <div className="text-sm opacity-80 text-center">
+            Already have an account?{" "}
+            <a className="text-blue-300 underline" href="/passenger-login">
+              Login
+            </a>
+          </div>
+        </form>
       </div>
     </main>
   );
