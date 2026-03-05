@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+const __JRIDE_WANT_DRIVER_SECRET__ = String(
+  (process.env.JRIDE_DRIVER_SECRET ?? process.env.DRIVER_PING_SECRET ?? process.env.DRIVER_API_SECRET ?? "")
+).trim();
 
 function jOk(body: any, status = 200) {
   return NextResponse.json(body, { status });
