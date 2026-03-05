@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseServerClient } from "@/utils/supabase/server";
 const __JRIDE_WANT_DRIVER_SECRET__ = String(
   (process.env.JRIDE_DRIVER_SECRET ?? process.env.DRIVER_PING_SECRET ?? process.env.DRIVER_API_SECRET ?? "")
 ).trim();
@@ -26,30 +27,39 @@ function getAdminClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function allowRequest(req: Request) {
-  // Optional debug bypass (set to "1" only while testing)
+async function allowRequest(req: Request): Promise<{ ok: boolean; mode?: string; user_id?: string | null }> {
   const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_ASSIGN || "").trim() === "1";
+  if (allowUnauth) return { ok: true, mode: "allowUnauth", user_id: null };
 
-  // Optional shared-secret gate (recommended for admin tools/server-to-server)
   const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
   const gotSecret = String(
     req.headers.get("x-jride-admin-secret") ||
     req.headers.get("x-admin-secret") ||
     ""
   ).trim();
+
   const secretOk = Boolean(wantSecret) && Boolean(gotSecret) && gotSecret === wantSecret;
+  if (secretOk) return { ok: true, mode: "adminSecret", user_id: null };
 
-  if (allowUnauth || secretOk) return true;
+  // Browser admin UI lane: allow valid Supabase session (cookie)
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id ?? null;
+    if (uid) return { ok: true, mode: "session", user_id: uid };
+  } catch {
+    // ignore
+  }
 
-  // If you later want NextAuth gate here, add it â€” but keep DB ops using service role.
-  return false;
+  return { ok: false };
 }
 
 export async function POST(req: Request) {
   const startedAt = Date.now();
   try {
-    if (!allowRequest(req)) {
-      return jErr("UNAUTHORIZED", "Missing admin secret (or set JRIDE_ALLOW_UNAUTH_DISPATCH_ASSIGN=1 for debugging).", 401);
+    const gate = await allowRequest(req);
+    if (!gate.ok) {
+      return jErr("UNAUTHORIZED", "Not authenticated (admin secret or valid session required).", 401);
     }
 
     const body = await req.json().catch(() => ({} as any));
