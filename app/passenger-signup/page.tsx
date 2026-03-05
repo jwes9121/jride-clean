@@ -101,22 +101,54 @@ setLoading(true);
           </div>
 
                     <div>
-            
-<button
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-4 py-2 font-semibold"
-            type="submit"
-          >
-            {loading ? "Creating..." : "Create account"}
-          </button>
-
-          <div className="text-sm opacity-80 text-center">
-            Already have an account?{" "}
-            <a className="text-blue-300 underline" href="/passenger-login">
-              Login
-            </a>
+            <label className="text-sm opacity-80">Town of origin *</label>
+            <select
+              className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
+              value={townOrigin}
+              onChange={(e) => setTownOrigin(e.target.value)}
+            >
+              <option value="">Select town (optional)</option>
+              <option value="Lagawe">Lagawe</option>
+              <option value="Hingyon">Hingyon</option>
+              <option value="Banaue">Banaue</option>
+              <option value="Kiangan">Kiangan</option>
+              <option value="Lamut">Lamut</option>
+              <option value="Other">Other</option>
+            </select>
+            <div className="mt-1 text-xs opacity-70">
+              This is your origin/home town for your profile. It does NOT restrict where you can book.
+            </div>
           </div>
-        </form>
+
+          <div>
+            <label className="text-sm opacity-80">Barangay of origin (optional)</label>
+            <input
+              className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
+              value={barangayOrigin}
+              onChange={(e) => setBarangayOrigin(e.target.value)}
+              placeholder="Barangay (optional)"
+            />
+          </div><div>
+            <label className="text-sm opacity-80">Password</label>
+            <input
+              className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min 6 characters"
+              type="password"
+              required
+            />
+          </div>
+
+          {msg && (
+            <div className="text-sm rounded-xl px-3 py-2 bg-white/10 border border-white/10">
+              {msg}
+            </div>
+          )}
+
+          {/* JRIDE_TOWN_ORIGIN_UI_V1 */}
+
+</form>
       </div>
     </main>
   );
