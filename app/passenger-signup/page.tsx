@@ -105,7 +105,7 @@ setLoading(true);
             <select
               className="mt-1 w-full rounded-xl bg-white/10 border border-white/10 px-3 py-2 outline-none"
               value={townOrigin}
-              onChange={(e) = required> setTownOrigin(e.target.value)}
+              onChange={(e) => setTownOrigin(e.target.value)}
             >
               <option value="">Select town</option>
               <option value="Lagawe">Lagawe</option>
