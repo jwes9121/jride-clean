@@ -167,6 +167,8 @@ function getDriverLabelText(trip: any): string {
 
   return "";
 }
+  // Once user drags/zooms the map, stop auto-fit recentering
+  const userInteractedRef = useRef(false);
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
 
@@ -179,7 +181,12 @@ function getDriverLabelText(trip: any): string {
         attributionControl: false,
       });
 
-      mapRef.current = map;
+      mapRef.current = map;    // Stop auto-fit once user interacts
+    map.on("dragstart", () => { userInteractedRef.current = true; });
+    map.on("zoomstart", () => { userInteractedRef.current = true; });
+    map.on("rotatestart", () => { userInteractedRef.current = true; });
+    map.on("pitchstart", () => { userInteractedRef.current = true; });
+
 
       map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
@@ -489,7 +496,7 @@ if (process.env.NODE_ENV !== "production") console.log("[FLEET] AFTER KEYS", Obj
     for (const c of coords) b.extend(c);
 
     try {
-      map.fitBounds(b, { padding: 90, maxZoom: 14, duration: 700 });
+      if (!userInteractedRef.current) map.fitBounds(b, { padding: 90, maxZoom: 14, duration: 700 });
     } catch {
       // ignore
     }
