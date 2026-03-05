@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 
@@ -690,6 +690,16 @@ const __jrideUnauthDiag = {
   }
 }
 export async function POST(req: Request) {
+  /* JRIDE_DISPATCH_STATUS_QUERY_PING_V1 */
+  // Health check that bypasses body parsing/validation
+  try {
+    const u = new URL(req.url);
+    if (u.searchParams.get("ping") === "1") {
+      return NextResponse.json({ ok: true, pong: true }, { status: 200 });
+    }
+  } catch {}
+  /* JRIDE_DISPATCH_STATUS_QUERY_PING_V1_END */
+
   const body = await req.json().catch(() => null);
 
 
