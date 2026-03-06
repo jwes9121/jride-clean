@@ -53,7 +53,10 @@ export default function AdminVerificationPage() {
     setLoading(true);
     setMsg("");
     try {
-      const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
+      const r = await fetch("/api/admin/passenger-verifications/pending", {
+        cache: "no-store",
+        credentials: "include",
+      });
       const j: Payload = await r.json().catch(() => ({} as any));
 
       if (!r.ok || !j?.ok) throw new Error(j?.error || ("Failed to load (HTTP " + r.status + ")"));
@@ -105,9 +108,10 @@ export default function AdminVerificationPage() {
     setMsg("Forwarding to admin...");
     setBusyId(passenger_id);
     try {
-      const r = await fetch("/api/admin/verification/forward", {
+      const r = await fetch("/api/admin/passenger-verifications/forward", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ passenger_id, admin_notes: notes }),
       });
       const j: any = await r.json().catch(() => ({}));
@@ -129,9 +133,10 @@ export default function AdminVerificationPage() {
     setMsg("Submitting decision...");
     setBusyId(passenger_id);
     try {
-      const r = await fetch("/api/admin/verification/decide", {
+      const r = await fetch("/api/admin/passenger-verifications/decide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ passenger_id, decision, admin_notes }),
       });
       const j: any = await r.json().catch(() => ({}));
@@ -160,7 +165,7 @@ export default function AdminVerificationPage() {
           <div>
             <div className="text-2xl font-bold">Passenger Verification (Admin)</div>
             <div className="text-sm opacity-70 mt-1">
-              Dispatcher queue: <b>Submitted</b> → forward to <b>Pending Admin</b> → approve/reject.
+              Dispatcher queue: <b>Submitted</b> â†’ forward to <b>Pending Admin</b> â†’ approve/reject.
               Admin may also approve directly from Submitted (bypass).
             </div>
           </div>
@@ -178,8 +183,8 @@ export default function AdminVerificationPage() {
         ) : null}
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <StatCard label="Submitted (Dispatcher queue)" value={loading ? "…" : String(cSubmitted)} />
-          <StatCard label="Pending Admin" value={loading ? "…" : String(cPendingAdmin)} />
+          <StatCard label="Submitted (Dispatcher queue)" value={loading ? "..." : String(cSubmitted)} />
+          <StatCard label="Pending Admin" value={loading ? "..." : String(cPendingAdmin)} />
         </div>
 
         <QueueTable
@@ -255,7 +260,7 @@ function QueueTable({
   return (
     <div className="mt-6 rounded-2xl border border-black/10 overflow-hidden">
       <div className="px-4 py-3 bg-black/5 text-sm font-semibold">
-        {loading ? "Loading..." : `${title} — ${rows.length}`}
+        {loading ? "Loading..." : `${title} - ${rows.length}`}
       </div>
 
       {!loading && rows.length === 0 ? (
@@ -343,7 +348,7 @@ function RowItem({
                 (busy ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-500")
               }
             >
-              {busy ? "Working..." : "Forward → Admin"}
+              {busy ? "Working..." : "Forward -> Admin"}
             </button>
           ) : null}
 
