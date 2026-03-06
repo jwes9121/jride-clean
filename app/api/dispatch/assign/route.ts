@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createSupabaseServerClient } from "@/utils/supabase/server";
+
 const __JRIDE_WANT_DRIVER_SECRET__ = String(
   (process.env.JRIDE_DRIVER_SECRET ?? process.env.DRIVER_PING_SECRET ?? process.env.DRIVER_API_SECRET ?? "")
 ).trim();
@@ -41,7 +42,6 @@ async function allowRequest(req: Request): Promise<{ ok: boolean; mode?: string;
   const secretOk = Boolean(wantSecret) && Boolean(gotSecret) && gotSecret === wantSecret;
   if (secretOk) return { ok: true, mode: "adminSecret", user_id: null };
 
-  // Browser admin UI lane: allow valid Supabase session (cookie)
   try {
     const supabase = createSupabaseServerClient();
     const { data } = await supabase.auth.getUser();
@@ -65,7 +65,6 @@ async function insertDriverNotificationBestEffort(
     ? ("New booking assigned: " + bookingCode)
     : "New booking assigned";
 
-  // Duplicate check based on exact existing schema only
   try {
     const q: any = await admin
       .from("driver_notifications")
@@ -103,8 +102,32 @@ async function insertDriverNotificationBestEffort(
     return { ok: false, duplicate: false, error: String(e?.message || e || "INSERT_FAILED") };
   }
 }
+
+async function loadBookingByResolved(admin: any, booking_id: string, booking_code: string, bookingSel: string) {
+  if (booking_id) {
+    const { data, error } = await admin
+      .from("bookings")
+      .select(bookingSel)
+      .eq("id", booking_id)
+      .limit(1);
+    if (error) throw new Error("DB_SELECT_BOOKING: " + error.message);
+    return Array.isArray(data) && data.length ? data[0] : null;
+  }
+
+  const { data, error } = await admin
+    .from("bookings")
+    .select(bookingSel)
+    .eq("booking_code", booking_code)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) throw new Error("DB_SELECT_BOOKING: " + error.message);
+  return Array.isArray(data) && data.length ? data[0] : null;
+}
+
 export async function POST(req: Request) {
   const startedAt = Date.now();
+
   try {
     const gate = await allowRequest(req);
     if (!gate.ok) {
@@ -125,28 +148,14 @@ export async function POST(req: Request) {
 
     const admin = getAdminClient();
 
-    // 1) Load booking
     const bookingSel =
       "id, booking_code, status, town, created_at, updated_at, assigned_driver_id, assigned_at, driver_id";
-    let booking: any = null;
 
-    if (booking_id) {
-      const { data, error } = await admin
-        .from("bookings")
-        .select(bookingSel)
-        .eq("id", booking_id)
-        .limit(1);
-      if (error) return jErr("DB_SELECT_BOOKING", error.message, 500);
-      booking = Array.isArray(data) && data.length ? data[0] : null;
-    } else {
-      const { data, error } = await admin
-        .from("bookings")
-        .select(bookingSel)
-        .eq("booking_code", booking_code)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (error) return jErr("DB_SELECT_BOOKING", error.message, 500);
-      booking = Array.isArray(data) && data.length ? data[0] : null;
+    let booking: any = null;
+    try {
+      booking = await loadBookingByResolved(admin, booking_id, booking_code, bookingSel);
+    } catch (e: any) {
+      return jErr("DB_SELECT_BOOKING", String(e?.message || e), 500);
     }
 
     if (!booking) {
@@ -156,8 +165,8 @@ export async function POST(req: Request) {
     const bTown = normTown(booking.town);
     const bStatus = String(booking.status ?? "").trim();
 
-    // Only assign from these statuses (adjust if needed)
-    const assignable = new Set(["requested", "booked_ok", "booked", "pending", "created", ""]);
+    const assignable = new Set(["requested", "booked_ok", "booked", "pending", "created", "", "assigned"]);
+
     if (!assignable.has(bStatus)) {
       return jErr("NOT_ASSIGNABLE", "Booking status is not assignable.", 409, {
         booking_id: booking.id,
@@ -166,7 +175,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2) Determine candidate drivers from driver_locations
     const cutoffMinutes = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
     const cutoffIso = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString();
 
@@ -205,14 +213,15 @@ export async function POST(req: Request) {
       return jErr("NO_AVAILABLE_DRIVER", "No ONLINE drivers with recent location updates.", 409, counts);
     }
 
-    // 3) Confirm chosen driver exists in driver_profiles
     const { data: prof, error: profErr } = await admin
       .from("driver_profiles")
       .select("driver_id, full_name, municipality")
       .eq("driver_id", chosenDriverId)
       .limit(1);
 
-    if (profErr) return jErr("DB_SELECT_DRIVER_PROFILE", profErr.message, 500, { driver_id: chosenDriverId, counts });
+    if (profErr) {
+      return jErr("DB_SELECT_DRIVER_PROFILE", profErr.message, 500, { driver_id: chosenDriverId, counts });
+    }
     if (!Array.isArray(prof) || !prof.length) {
       return jErr("DRIVER_PROFILE_MISSING", "Chosen driver_id not found in driver_profiles.", 409, {
         driver_id: chosenDriverId,
@@ -220,9 +229,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4) Assign booking (atomic-ish: only if not already assigned)
     const patch: any = {
       status: "assigned",
+      driver_id: chosenDriverId,
       assigned_driver_id: chosenDriverId,
       assigned_at: new Date().toISOString(),
     };
@@ -237,24 +246,111 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (updErr) {
-      console.error("DISPATCH_ASSIGN_UPDATE_ERROR", { message: updErr.message, booking_id: booking.id, booking_code: booking.booking_code });
-      return jErr("DB_UPDATE_ASSIGN", updErr.message, 500, { booking_id: booking.id, booking_code: booking.booking_code, driver_id: chosenDriverId });
-    }
-
-    const updated = Array.isArray(upd) && upd.length ? upd[0] : null;
-    let notifyOk = false;
-    let notifyDuplicate = false;
-    let notifyError: string | null = null;
-    if (!updated) {
-      return jErr("ASSIGN_RACE_LOST", "Booking was already assigned or changed.", 409, {
+      console.error("DISPATCH_ASSIGN_UPDATE_ERROR", {
+        message: updErr.message,
+        booking_id: booking.id,
+        booking_code: booking.booking_code,
+      });
+      return jErr("DB_UPDATE_ASSIGN", updErr.message, 500, {
         booking_id: booking.id,
         booking_code: booking.booking_code,
         driver_id: chosenDriverId,
       });
     }
 
+    let updated = Array.isArray(upd) && upd.length ? upd[0] : null;
+    let adoptedExisting = false;
+    let backfillApplied = false;
 
-    const notifyRes = await insertDriverNotificationBestEffort(admin, chosenDriverId, updated);
+    if (!updated) {
+      let current: any = null;
+      try {
+        current = await loadBookingByResolved(admin, String(booking.id), "", bookingSel);
+      } catch (e: any) {
+        return jErr("DB_RELOAD_BOOKING", String(e?.message || e), 500, {
+          booking_id: booking.id,
+          booking_code: booking.booking_code,
+          driver_id: chosenDriverId,
+        });
+      }
+
+      const currentStatus = String(current?.status ?? "").trim();
+      const currentDriverId = String(current?.driver_id ?? "").trim();
+      const currentAssignedDriverId = String(current?.assigned_driver_id ?? "").trim();
+
+      const sameDriverAlreadyAssigned =
+        current &&
+        currentStatus === "assigned" &&
+        (
+          (currentDriverId && currentDriverId === chosenDriverId) ||
+          (currentAssignedDriverId && currentAssignedDriverId === chosenDriverId)
+        );
+
+      if (!sameDriverAlreadyAssigned) {
+        return jErr("ASSIGN_RACE_LOST", "Booking was already assigned or changed.", 409, {
+          booking_id: booking.id,
+          booking_code: booking.booking_code,
+          driver_id: chosenDriverId,
+          current_status: currentStatus || null,
+          current_driver_id: currentDriverId || null,
+          current_assigned_driver_id: currentAssignedDriverId || null,
+        });
+      }
+
+      adoptedExisting = true;
+
+      const needsBackfill =
+        current &&
+        (
+          String(current?.driver_id ?? "").trim() !== chosenDriverId ||
+          String(current?.assigned_driver_id ?? "").trim() !== chosenDriverId ||
+          !String(current?.assigned_at ?? "").trim()
+        );
+
+      if (needsBackfill) {
+        const backfillPatch: any = {
+          status: "assigned",
+          driver_id: chosenDriverId,
+          assigned_driver_id: chosenDriverId,
+          assigned_at: String(current?.assigned_at ?? "").trim() || new Date().toISOString(),
+        };
+
+        const { data: bf, error: bfErr } = await admin
+          .from("bookings")
+          .update(backfillPatch)
+          .eq("id", booking.id)
+          .select(bookingSel)
+          .limit(1);
+
+        if (bfErr) {
+          return jErr("DB_BACKFILL_ASSIGN", bfErr.message, 500, {
+            booking_id: booking.id,
+            booking_code: booking.booking_code,
+            driver_id: chosenDriverId,
+          });
+        }
+
+        updated = Array.isArray(bf) && bf.length ? bf[0] : current;
+        backfillApplied = true;
+      } else {
+        updated = current;
+      }
+    }
+
+    const finalBooking = updated;
+    if (!finalBooking) {
+      return jErr("ASSIGN_FINAL_BOOKING_MISSING", "Assigned booking could not be reloaded.", 500, {
+        booking_id: booking.id,
+        booking_code: booking.booking_code,
+        driver_id: chosenDriverId,
+      });
+    }
+
+    let notifyOk = false;
+    let notifyDuplicate = false;
+    let notifyError: string | null = null;
+
+    const notifyRes = await insertDriverNotificationBestEffort(admin, chosenDriverId, finalBooking);
     notifyOk = !!notifyRes.ok;
     notifyDuplicate = !!notifyRes.duplicate;
     notifyError = notifyRes.error ?? null;
@@ -265,8 +361,10 @@ export async function POST(req: Request) {
       notify_ok: notifyOk,
       notify_duplicate: notifyDuplicate,
       notify_error: notifyError,
-      booking_id: updated.id,
-      booking_code: updated.booking_code,
+      adopted_existing_assignment: adoptedExisting,
+      backfill_applied: backfillApplied,
+      booking_id: finalBooking.id,
+      booking_code: finalBooking.booking_code,
       assigned_driver_id: chosenDriverId,
       counts,
       ms: Date.now() - startedAt,
