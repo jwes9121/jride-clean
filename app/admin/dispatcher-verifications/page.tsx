@@ -11,25 +11,36 @@ type Row = {
   admin_notes: string | null;
   id_front_path?: string | null;
   selfie_with_id_path?: string | null;
+  id_front_signed_url?: string | null;
+  selfie_signed_url?: string | null;
 };
 
 function fmt(s: any) {
-  try { return new Date(String(s)).toLocaleString(); } catch { return String(s || ""); }
+  try {
+    if (!s) return "";
+    return new Date(String(s)).toLocaleString();
+  } catch {
+    return String(s || "");
+  }
 }
 
-export default function DispatcherVerificationsPage() {
+export default function DispatcherVerificationPage() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Row[]>([]);
-  const [msg, setMsg] = React.useState<string>("");
+  const [msg, setMsg] = React.useState("");
 
   async function load() {
     setLoading(true);
     setMsg("");
     try {
-      const r = await fetch("/api/admin/verification/pending", { cache: "no-store" });
+      const r = await fetch("/api/admin/passenger-verifications/pending", {
+        cache: "no-store",
+        credentials: "include",
+      });
       const j: any = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Failed to load pending");
-      setRows(Array.isArray(j.rows) ? j.rows : []);
+      if (!r.ok || !j?.ok) throw new Error(j?.error || ("Failed to load (HTTP " + r.status + ")"));
+      const submitted = Array.isArray(j?.rows?.submitted) ? j.rows.submitted : [];
+      setRows(submitted);
     } catch (e: any) {
       setMsg(e?.message || "Failed to load.");
       setRows([]);
@@ -38,7 +49,9 @@ export default function DispatcherVerificationsPage() {
     }
   }
 
-  React.useEffect(() => { load(); }, []);
+  React.useEffect(() => {
+    load();
+  }, []);
 
   return (
     <main className="min-h-screen p-6 bg-white">
@@ -47,7 +60,7 @@ export default function DispatcherVerificationsPage() {
           <div>
             <div className="text-2xl font-bold">Passenger Verification (Dispatcher)</div>
             <div className="text-sm opacity-70 mt-1">
-              Read-only queue view. Use Admin Verification to approve/reject for now.
+              Read-only queue of submitted passenger verifications.
             </div>
           </div>
           <div className="flex gap-2">
@@ -60,18 +73,20 @@ export default function DispatcherVerificationsPage() {
             </button>
             <a
               href="/admin/verification"
-              className="rounded-xl bg-black text-white px-4 py-2 font-semibold"
+              className="rounded-xl bg-black text-white px-4 py-2 font-semibold inline-flex items-center"
             >
               Open Admin Verification
             </a>
           </div>
         </div>
 
-        {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
+        {msg ? (
+          <div className="mt-4 text-sm rounded-xl border border-black/10 bg-black/5 p-3">{msg}</div>
+        ) : null}
 
         <div className="mt-6 rounded-2xl border border-black/10 overflow-hidden">
           <div className="px-4 py-3 bg-black/5 text-sm font-semibold">
-            {loading ? "Loading..." : ("Pending: " + rows.length)}
+            {loading ? "Loading..." : `Pending: ${rows.length}`}
           </div>
 
           {!loading && rows.length === 0 ? (
@@ -85,21 +100,22 @@ export default function DispatcherVerificationsPage() {
                   <th className="text-left p-3">Passenger</th>
                   <th className="text-left p-3">Town</th>
                   <th className="text-left p-3">Submitted</th>
-                  <th className="text-left p-3">Uploads (paths)</th>
+                  <th className="text-left p-3">Uploads</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.passenger_id} className="border-t border-black/10">
+                  <tr key={r.passenger_id} className="border-t border-black/10 align-top">
                     <td className="p-3">
                       <div className="font-semibold">{r.full_name || "(no name)"}</div>
                       <div className="text-xs opacity-70">{r.passenger_id}</div>
+                      <div className="text-xs opacity-60 mt-1">Status: {r.status || ""}</div>
                     </td>
                     <td className="p-3">{r.town || ""}</td>
                     <td className="p-3">{fmt(r.submitted_at)}</td>
                     <td className="p-3">
-                      <div className="text-xs opacity-80">id: {String(r.id_front_path || "")}</div>
-                      <div className="text-xs opacity-80 mt-1">selfie: {String(r.selfie_with_id_path || "")}</div>
+                      <Thumb url={r.id_front_signed_url} label="Valid ID" />
+                      <Thumb url={r.selfie_signed_url} label="Selfie with ID" />
                     </td>
                   </tr>
                 ))}
@@ -109,5 +125,22 @@ export default function DispatcherVerificationsPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function Thumb({ url, label }: { url: string | null | undefined; label: string }) {
+  if (!url) return <div className="text-xs opacity-60">{label}: (no preview)</div>;
+  return (
+    <div className="mt-2">
+      <div className="text-xs opacity-80">{label}:</div>
+      <a href={url} target="_blank" rel="noreferrer" className="inline-block mt-1">
+        <img
+          src={url}
+          alt={label}
+          className="rounded-lg border border-black/10"
+          style={{ width: 160, height: 110, objectFit: "cover" }}
+        />
+      </a>
+    </div>
   );
 }
