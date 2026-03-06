@@ -60,114 +60,48 @@ async function insertDriverNotificationBestEffort(
   booking: any
 ): Promise<{ ok: boolean; duplicate: boolean; error?: string | null }> {
   const nowIso = new Date().toISOString();
-  const bookingId = String(booking?.id ?? "").trim();
   const bookingCode = String(booking?.booking_code ?? "").trim();
-
-  // Best-effort duplicate checks (swallow schema mismatch errors)
-  try {
-    if (bookingId) {
-      const q1: any = await admin
-        .from("driver_notifications")
-        .select("id")
-        .eq("driver_id", driverId)
-        .eq("booking_id", bookingId)
-        .limit(1);
-      const rows1 = Array.isArray(q1?.data) ? q1.data : [];
-      if (rows1.length > 0) return { ok: true, duplicate: true, error: null };
-    }
-  } catch {}
-
-  try {
-    if (bookingCode) {
-      const q2: any = await admin
-        .from("driver_notifications")
-        .select("id")
-        .eq("driver_id", driverId)
-        .eq("booking_code", bookingCode)
-        .limit(1);
-      const rows2 = Array.isArray(q2?.data) ? q2.data : [];
-      if (rows2.length > 0) return { ok: true, duplicate: true, error: null };
-    }
-  } catch {}
-
-  const payloadObj: any = {
-    kind: "dispatch_assign",
-    booking_id: bookingId || null,
-    booking_code: bookingCode || null,
-    status: String(booking?.status ?? "assigned"),
-    town: (booking as any)?.town ?? null,
-  };
-
-  const title = bookingCode
+  const message = bookingCode
     ? ("New booking assigned: " + bookingCode)
     : "New booking assigned";
 
-  const body = (booking as any)?.town
-    ? ("You have a new assigned booking in " + String((booking as any).town))
-    : "You have a new assigned booking.";
+  // Duplicate check based on exact existing schema only
+  try {
+    const q: any = await admin
+      .from("driver_notifications")
+      .select("id")
+      .eq("driver_id", driverId)
+      .eq("type", "booking_assigned")
+      .eq("message", message)
+      .limit(1);
 
-  // Try richest -> leanest shapes to tolerate schema differences
-  const candidates: any[] = [
-    {
-      driver_id: driverId,
-      booking_id: bookingId || null,
-      booking_code: bookingCode || null,
-      type: "dispatch_assign",
-      title,
-      body,
-      payload: payloadObj,
-      is_read: false,
-      created_at: nowIso,
-    },
-    {
-      driver_id: driverId,
-      booking_id: bookingId || null,
-      booking_code: bookingCode || null,
-      type: "dispatch_assign",
-      title,
-      body,
-      created_at: nowIso,
-    },
-    {
-      driver_id: driverId,
-      booking_id: bookingId || null,
-      booking_code: bookingCode || null,
-      created_at: nowIso,
-    },
-    {
-      driver_id: driverId,
-      booking_id: bookingId || null,
-      created_at: nowIso,
-    },
-    {
-      driver_id: driverId,
-      booking_code: bookingCode || null,
-      created_at: nowIso,
-    },
-    {
-      driver_id: driverId,
-      created_at: nowIso,
-    },
-  ];
-
-  let lastError = "";
-
-  for (const row of candidates) {
-    try {
-      const ins: any = await admin
-        .from("driver_notifications")
-        .insert(row)
-        .select("id")
-        .limit(1);
-
-      if (!ins?.error) return { ok: true, duplicate: false, error: null };
-      lastError = String(ins.error?.message || "INSERT_FAILED");
-    } catch (e: any) {
-      lastError = String(e?.message || e || "INSERT_FAILED");
+    const rows = Array.isArray(q?.data) ? q.data : [];
+    if (rows.length > 0) {
+      return { ok: true, duplicate: true, error: null };
     }
-  }
+  } catch {}
 
-  return { ok: false, duplicate: false, error: lastError || "INSERT_FAILED" };
+  try {
+    const ins: any = await admin
+      .from("driver_notifications")
+      .insert({
+        driver_id: driverId,
+        type: "booking_assigned",
+        message,
+        is_read: false,
+        created_at: nowIso,
+      })
+      .select("id")
+      .limit(1);
+
+    if (ins?.error) {
+      return { ok: false, duplicate: false, error: String(ins.error?.message || "INSERT_FAILED") };
+    }
+
+    return { ok: true, duplicate: false, error: null };
+  } catch (e: any) {
+    return { ok: false, duplicate: false, error: String(e?.message || e || "INSERT_FAILED") };
+  }
 }
 export async function POST(req: Request) {
   const startedAt = Date.now();
