@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@/utils/supabase/server";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -30,60 +29,16 @@ function extFromMime(mime: string) {
   return "bin";
 }
 
-function cookieNames(cookieHeader: string | null) {
-  if (!cookieHeader) return [];
-  return cookieHeader
-    .split(";")
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => p.split("=")[0])
-    .slice(0, 50);
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const url = env("NEXT_PUBLIC_SUPABASE_URL") || env("SUPABASE_URL");
-    const anon = env("NEXT_PUBLIC_SUPABASE_ANON_KEY") || env("SUPABASE_ANON_KEY");
+    const supabase = createClient();
 
-    if (!url || !anon) {
+    const { data: userRes, error: userErr } = await supabase.auth.getUser();
+    const user = userRes?.user;
+
+    if (userErr || !user?.id) {
       return NextResponse.json(
-        { ok: false, error: "Missing Supabase anon env" },
-        { status: 500 }
-      );
-    }
-
-    const cookieStore = cookies();
-
-    const supabase = createServerClient(url, anon, {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: any) {
-          cookieStore.set({ name, value: "", ...options, maxAge: 0 });
-        },
-      },
-    });
-
-    const { data, error } = await supabase.auth.getUser();
-    const user = data?.user;
-
-    if (error || !user?.id) {
-      const hdr = cookieStore.toString ? cookieStore.toString() : null;
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Not signed in",
-          debug: {
-            cookieNames: cookieNames(hdr),
-            hasSbCookies: cookieNames(hdr).some(
-              (n) => n.startsWith("sb-") && n.includes("-auth-token")
-            ),
-          },
-        },
+        { ok: false, error: "Not signed in" },
         { status: 401 }
       );
     }
@@ -127,7 +82,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, bucket, path, bytes, mime }, { status: 200 });
+    return NextResponse.json(
+      { ok: true, bucket, path, bytes, mime },
+      { status: 200 }
+    );
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: String(e?.message || e || "error") },
