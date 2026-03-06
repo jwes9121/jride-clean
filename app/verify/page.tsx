@@ -75,30 +75,6 @@ export default function VerifyPage() {
     }
   }
 
-  async function uploadOne(kind: "id_front" | "selfie", file: File) {
-    const fd = new FormData();
-    fd.append("kind", kind);
-    fd.append("file", file);
-
-    const res = await fetchWithTimeout(
-      "/api/public/passenger/verification/upload",
-      {
-        method: "POST",
-        body: fd,
-      },
-      60000
-    );
-
-    const j: any = await res.json().catch(() => ({}));
-    if (!res.ok || !j?.ok) {
-      throw new Error(String(j?.error || "Upload failed"));
-    }
-    if (!j?.path) {
-      throw new Error("Upload failed: missing path");
-    }
-    return String(j.path);
-  }
-
   async function refresh() {
     setLoading(true);
     setError("");
@@ -195,22 +171,19 @@ export default function VerifyPage() {
     setMessage("Submitting verification...");
 
     try {
-      const id_front_path = await uploadOne("id_front", idFrontFile);
-      const selfie_with_id_path = await uploadOne("selfie", selfieFile);
+      const fd = new FormData();
+      fd.append("full_name", fullName.trim());
+      fd.append("town", town.trim());
+      fd.append("id_front", idFrontFile);
+      fd.append("selfie_with_id", selfieFile);
 
       const res = await fetchWithTimeout(
         "/api/public/passenger/verification/request",
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            full_name: fullName.trim(),
-            town: town.trim(),
-            id_front_path,
-            selfie_with_id_path,
-          }),
+          body: fd,
         },
-        60000
+        120000
       );
 
       const j: any = await res.json().catch(async () => {
