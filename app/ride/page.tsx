@@ -291,6 +291,7 @@ type CanBookInfo = {
 };
 
 type AssignInfo = {
+  assign_ok?: boolean | null;
   ok?: boolean;
   driver_id?: string | null;
   note?: string | null;
@@ -2040,7 +2041,7 @@ if (pax > maxPax) {
       if (bj.booking && bj.booking.driver_id) lines.push("driver_id: " + String(bj.booking.driver_id));
 
       if (bj.assign) {
-        lines.push("assign.ok: " + String(!!bj.assign.ok));
+        lines.push("assign.ok: " + String(!!(bj.assign.ok || bj.assign.assign_ok)));
         if (bj.assign.driver_id) lines.push("assign.driver_id: " + String(bj.assign.driver_id));
         if (bj.assign.note) lines.push("assign.note: " + String(bj.assign.note));
         if (bj.assign.update_ok !== undefined) lines.push("assign.update_ok: " + String(!!bj.assign.update_ok));

@@ -94,6 +94,22 @@ function inIfugaoBBox(lat: number, lng: number): boolean {
   return lat >= 16.5 && lat <= 17.2 && lng >= 120.8 && lng <= 121.4;
 }
 /* JRIDE_ENV_ECHO */
+function normalizeAssignResult(j: any) {
+  const src = j || {};
+  const ok =
+    !!src.ok ||
+    !!src.assign_ok ||
+    !!src.update_ok ||
+    !!src.notify_ok ||
+    !!src.assigned_driver_id ||
+    !!src.driver_id ||
+    !!src.toDriverId;
+
+  return {
+    ...src,
+    ok,
+  };
+}
 function jrideEnvEcho() {
   const u = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   let host = "";
@@ -629,7 +645,7 @@ export async function POST(req: Request) {
 if (j && (j as any).code === "INVALID_DRIVER_ID") {
   assign = { ok: true, skipped: true, reason: "no_driver_id" };
 } else {
-  assign = j;
+  assign = normalizeAssignResult(j);
 }
       } catch (err: any) {
         assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };
@@ -731,7 +747,7 @@ if (j && (j as any).code === "INVALID_DRIVER_ID") {
 if (j && (j as any).code === "INVALID_DRIVER_ID") {
   assign = { ok: true, skipped: true, reason: "no_driver_id" };
 } else {
-  assign = j;
+  assign = normalizeAssignResult(j);
 }
   } catch (err: any) {
     assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };

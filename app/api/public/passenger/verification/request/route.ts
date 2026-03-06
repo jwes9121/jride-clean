@@ -1,12 +1,28 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createAdmin } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
 type VerificationStatus = "submitted" | "pending_admin" | "approved" | "rejected";
 
+function env(name: string) {
+  return process.env[name] || "";
+}
+
 function nowIso() {
   return new Date().toISOString();
+}
+
+function adminClient() {
+  const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
+  const key = env("SUPABASE_SERVICE_ROLE_KEY") || env("SUPABASE_SERVICE_ROLE");
+  if (!url || !key) {
+    throw new Error("Missing Supabase service role env (SUPABASE_SERVICE_ROLE_KEY)");
+  }
+  return createAdmin(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 export async function GET() {
@@ -50,33 +66,28 @@ export async function POST(req: Request) {
   }
 
   const passenger_id = user.id;
-
-  // Buckets that actually exist in your project
   const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
   const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";
 
-  // Parse content type once
   const ct = req.headers.get("content-type") || "";
 
-  // Hoisted vars used after parse
   let full_name = "";
   let town = "";
   let id_front_path = "";
   let selfie_with_id_path = "";
-  let id_photo_url = "";
-  let selfie_photo_url = "";
 
   async function uploadToBucket(file: File, bucketName: string, keyPrefix: string) {
     const ext = file?.name && file.name.includes(".") ? file.name.split(".").pop() : "jpg";
-    const safeExt = String(ext || "jpg")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "") || "jpg";
+    const safeExt = String(ext || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
 
     const key = `${keyPrefix}/${passenger_id}/${Date.now()}_${Math.random()
       .toString(16)
       .slice(2)}.${safeExt}`;
 
-    const up = await supabase.storage.from(bucketName).upload(key, file, {
+    const admin = adminClient();
+    const ab = await file.arrayBuffer();
+
+    const up = await admin.storage.from(bucketName).upload(key, ab, {
       contentType: file.type || "application/octet-stream",
       upsert: true,
     });
@@ -92,7 +103,6 @@ export async function POST(req: Request) {
     if (ct.includes("multipart/form-data")) {
       const fd = await req.formData();
 
-      // Accept common key variants (in case UI changes)
       full_name = String(fd.get("full_name") || fd.get("fullName") || fd.get("fullname") || "").trim();
       town = String(fd.get("town") || fd.get("Town") || "").trim();
 
@@ -101,9 +111,6 @@ export async function POST(req: Request) {
 
       id_front_path = String(fd.get("id_front_path") || "").trim();
       selfie_with_id_path = String(fd.get("selfie_with_id_path") || "").trim();
-
-      id_photo_url = String(fd.get("id_photo_url") || "").trim();
-      selfie_photo_url = String(fd.get("selfie_photo_url") || "").trim();
 
       if (!id_front_path && idFrontAny && typeof idFrontAny === "object") {
         id_front_path = await uploadToBucket(idFrontAny as File, idBucket, "id_front");
@@ -118,9 +125,6 @@ export async function POST(req: Request) {
 
       id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
       selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
-
-      id_photo_url = body?.id_photo_url ? String(body.id_photo_url).trim() : "";
-      selfie_photo_url = body?.selfie_photo_url ? String(body.selfie_photo_url).trim() : "";
     }
   } catch (e: any) {
     return NextResponse.json(
@@ -129,21 +133,21 @@ export async function POST(req: Request) {
     );
   }
 
-  // Validation (inside POST scope, always legal)
   if (!full_name) return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
   if (!town) return NextResponse.json({ ok: false, error: "Town required" }, { status: 400 });
-  if (!id_front_path)
+  if (!id_front_path) {
     return NextResponse.json(
-      { ok: false, error: "ID front required (upload failed or missing). Check Storage policies for passenger-ids." },
+      { ok: false, error: "ID front required (upload failed or missing)." },
       { status: 400 }
     );
-  if (!selfie_with_id_path)
+  }
+  if (!selfie_with_id_path) {
     return NextResponse.json(
-      { ok: false, error: "Selfie-with-ID required (upload failed or missing). Check Storage policies for passenger-selfies." },
+      { ok: false, error: "Selfie-with-ID required (upload failed or missing)." },
       { status: 400 }
     );
+  }
 
-  // Read existing request (if any)
   const existing = await supabase
     .from("passenger_verification_requests")
     .select("passenger_id,status,submitted_at,reviewed_at,reviewed_by,admin_notes,full_name,town,id_front_path,selfie_with_id_path")
@@ -160,7 +164,6 @@ export async function POST(req: Request) {
   const ex = existing.data as any | null;
   const exStatus = (ex?.status ? String(ex.status) : "") as VerificationStatus | "";
 
-  // Prevent overwriting final/forwarded states (unless rejected)
   if (ex && (exStatus === "approved" || exStatus === "pending_admin")) {
     return NextResponse.json({
       ok: true,
