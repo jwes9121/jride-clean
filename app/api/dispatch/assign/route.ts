@@ -54,6 +54,121 @@ async function allowRequest(req: Request): Promise<{ ok: boolean; mode?: string;
   return { ok: false };
 }
 
+async function insertDriverNotificationBestEffort(
+  admin: any,
+  driverId: string,
+  booking: any
+): Promise<{ ok: boolean; duplicate: boolean; error?: string | null }> {
+  const nowIso = new Date().toISOString();
+  const bookingId = String(booking?.id ?? "").trim();
+  const bookingCode = String(booking?.booking_code ?? "").trim();
+
+  // Best-effort duplicate checks (swallow schema mismatch errors)
+  try {
+    if (bookingId) {
+      const q1: any = await admin
+        .from("driver_notifications")
+        .select("id")
+        .eq("driver_id", driverId)
+        .eq("booking_id", bookingId)
+        .limit(1);
+      const rows1 = Array.isArray(q1?.data) ? q1.data : [];
+      if (rows1.length > 0) return { ok: true, duplicate: true, error: null };
+    }
+  } catch {}
+
+  try {
+    if (bookingCode) {
+      const q2: any = await admin
+        .from("driver_notifications")
+        .select("id")
+        .eq("driver_id", driverId)
+        .eq("booking_code", bookingCode)
+        .limit(1);
+      const rows2 = Array.isArray(q2?.data) ? q2.data : [];
+      if (rows2.length > 0) return { ok: true, duplicate: true, error: null };
+    }
+  } catch {}
+
+  const payloadObj: any = {
+    kind: "dispatch_assign",
+    booking_id: bookingId || null,
+    booking_code: bookingCode || null,
+    status: String(booking?.status ?? "assigned"),
+    town: (booking as any)?.town ?? null,
+  };
+
+  const title = bookingCode
+    ? ("New booking assigned: " + bookingCode)
+    : "New booking assigned";
+
+  const body = (booking as any)?.town
+    ? ("You have a new assigned booking in " + String((booking as any).town))
+    : "You have a new assigned booking.";
+
+  // Try richest -> leanest shapes to tolerate schema differences
+  const candidates: any[] = [
+    {
+      driver_id: driverId,
+      booking_id: bookingId || null,
+      booking_code: bookingCode || null,
+      type: "dispatch_assign",
+      title,
+      body,
+      payload: payloadObj,
+      is_read: false,
+      created_at: nowIso,
+    },
+    {
+      driver_id: driverId,
+      booking_id: bookingId || null,
+      booking_code: bookingCode || null,
+      type: "dispatch_assign",
+      title,
+      body,
+      created_at: nowIso,
+    },
+    {
+      driver_id: driverId,
+      booking_id: bookingId || null,
+      booking_code: bookingCode || null,
+      created_at: nowIso,
+    },
+    {
+      driver_id: driverId,
+      booking_id: bookingId || null,
+      created_at: nowIso,
+    },
+    {
+      driver_id: driverId,
+      booking_code: bookingCode || null,
+      created_at: nowIso,
+    },
+    {
+      driver_id: driverId,
+      created_at: nowIso,
+    },
+  ];
+
+  let lastError = "";
+
+  for (const row of candidates) {
+    try {
+      const ins: any = await admin
+        .from("driver_notifications")
+        .insert(row)
+        .select("id")
+        .limit(1);
+
+      if (!ins?.error) return { ok: true, duplicate: false, error: null };
+      lastError = String(ins.error?.message || "INSERT_FAILED");
+    } catch (e: any) {
+      lastError = String(e?.message || e || "INSERT_FAILED");
+    }
+  }
+
+  return { ok: false, duplicate: false, error: lastError || "INSERT_FAILED" };
+}
 export async function POST(req: Request) {
   const startedAt = Date.now();
   try {
@@ -193,6 +308,9 @@ export async function POST(req: Request) {
     }
 
     const updated = Array.isArray(upd) && upd.length ? upd[0] : null;
+    let notifyOk = false;
+    let notifyDuplicate = false;
+    let notifyError: string | null = null;
     if (!updated) {
       return jErr("ASSIGN_RACE_LOST", "Booking was already assigned or changed.", 409, {
         booking_id: booking.id,
@@ -201,9 +319,18 @@ export async function POST(req: Request) {
       });
     }
 
+
+    const notifyRes = await insertDriverNotificationBestEffort(admin, chosenDriverId, updated);
+    notifyOk = !!notifyRes.ok;
+    notifyDuplicate = !!notifyRes.duplicate;
+    notifyError = notifyRes.error ?? null;
+
     return jOk({
       ok: true,
       assign_ok: true,
+      notify_ok: notifyOk,
+      notify_duplicate: notifyDuplicate,
+      notify_error: notifyError,
       booking_id: updated.id,
       booking_code: updated.booking_code,
       assigned_driver_id: chosenDriverId,
