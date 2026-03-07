@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type DriverRowDb = {
   id?: string | null;
   driver_id?: string | null;
   status?: string | null;
   town?: string | null;
+  home_town?: string | null;
   lat?: number | null;
   lng?: number | null;
   created_at?: string | null;
@@ -38,28 +40,16 @@ function ageSecondsFromIso(input: string | null | undefined) {
   return Math.max(0, Math.floor(ms / 1000));
 }
 
-function parsePositiveInt(input: string | null, fallbackValue: number) {
-  const n = Number(input);
-  if (!Number.isFinite(n)) return fallbackValue;
-  const v = Math.floor(n);
-  if (v <= 0) return fallbackValue;
-  return v;
-}
-
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const url = new URL(req.url);
-    const debug = url.searchParams.get("debug") === "1";
-    const staleAfterSeconds = parsePositiveInt(url.searchParams.get("stale_after_seconds"), 120);
-    const limit = Math.min(parsePositiveInt(url.searchParams.get("limit"), 200), 1000);
-
+    const staleAfterSeconds = 120;
     const supabase = supabaseAdmin();
 
     const { data, error } = await supabase
       .from("driver_locations")
       .select("*")
       .order("updated_at", { ascending: false })
-      .limit(limit);
+      .limit(500);
 
     if (error) {
       console.error("ADMIN_DRIVER_LOCATIONS_ERROR", error);
@@ -90,6 +80,7 @@ export async function GET(req: Request) {
         created_at_ph: toPhilippineTime(createdAt),
         age_seconds: ageSeconds,
         is_stale: isStale,
+        age_min: ageSeconds == null ? null : Math.floor(ageSeconds / 60),
         effective_status: effectiveStatus,
       };
     });
@@ -98,7 +89,6 @@ export async function GET(req: Request) {
       {
         ok: true,
         source: "app/api/admin/driver_locations/route.ts",
-        debug,
         stale_after_seconds: staleAfterSeconds,
         server_now_utc: new Date().toISOString(),
         server_now_ph: new Date().toLocaleString("en-PH", {
