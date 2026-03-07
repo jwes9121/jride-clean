@@ -297,6 +297,13 @@ type AssignInfo = {
   note?: string | null;
   update_ok?: boolean;
   update_error?: string | null;
+  notify_ok?: boolean | null;
+  notify_duplicate?: boolean | null;
+  notify_error?: string | null;
+  adopted_existing_assignment?: boolean | null;
+  backfill_applied?: boolean | null;
+  code?: string | null;
+  message?: string | null;
 };
 
 type BookingRow = {
@@ -2045,7 +2052,13 @@ if (pax > maxPax) {
         if (bj.assign.driver_id) lines.push("assign.driver_id: " + String(bj.assign.driver_id));
         if (bj.assign.note) lines.push("assign.note: " + String(bj.assign.note));
         if (bj.assign.update_ok !== undefined) lines.push("assign.update_ok: " + String(!!bj.assign.update_ok));
-        if (bj.assign.update_error) lines.push("assign.update_error: " + String(bj.assign.update_error));
+        if (bj.assign.notify_ok !== undefined) lines.push("assign.notify_ok: " + String(!!bj.assign.notify_ok));
+        if (bj.assign.notify_duplicate !== undefined) lines.push("assign.notify_duplicate: " + String(!!bj.assign.notify_duplicate));
+        if (bj.assign.notify_error) lines.push("assign.notify_error: " + String(bj.assign.notify_error));
+        if (bj.assign.adopted_existing_assignment !== undefined) lines.push("assign.adopted_existing_assignment: " + String(!!bj.assign.adopted_existing_assignment));
+        if (bj.assign.backfill_applied !== undefined) lines.push("assign.backfill_applied: " + String(!!bj.assign.backfill_applied));
+        if (bj.assign.code) lines.push("assign.code: " + String(bj.assign.code));
+        if (bj.assign.message) lines.push("assign.message: " + String(bj.assign.message));
       } else {
         lines.push("assign: (none)");
       }
