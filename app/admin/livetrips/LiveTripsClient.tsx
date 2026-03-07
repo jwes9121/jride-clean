@@ -24,6 +24,7 @@ type DriverRow = {
   lng?: number | null;
   status?: string | null;
   updated_at?: string | null;
+  updated_at_ph?: string | null;
 };
 
 type FilterKey =
@@ -65,6 +66,23 @@ function nextLifecycleStatus(st: string): string {
   if (x === "arrived") return "in_progress";
   if (x === "in_progress") return "completed";
   return x;
+}
+
+/* JRIDE_PH_TIME_FORMATTER_V7 */
+function formatPHTime(input?: string | null): string {
+  if (!input) return "-";
+  const d = new Date(input);
+  if (!Number.isFinite(d.getTime())) return String(input);
+  return d.toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 }
 
 export default function LiveTripsClient() {
