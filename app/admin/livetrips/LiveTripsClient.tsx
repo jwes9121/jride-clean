@@ -503,6 +503,7 @@ export default function LiveTripsClient() {
               trips={visibleTrips as any}
               selectedTripId={selectedTripId}
               stuckTripIds={stuckTripIds as any}
+              drivers={drivers as any}
             />
           </div>
         </div>

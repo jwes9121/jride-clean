@@ -186,13 +186,37 @@ export default function VerifyPage() {
         120000
       );
 
-      const j: any = await res.json().catch(async () => {
-        const t = await res.text().catch(() => "");
-        return { ok: false, error: t || "Unknown error" };
-      });
+      const rawText = await res.text().catch(() => "");
+      let j: any = null;
+
+      try {
+        j = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        j = null;
+      }
 
       if (!res.ok || !j?.ok) {
-        setError(String(j?.error || "Submit failed"));
+        const parts: string[] = [];
+
+        if (!res.ok) {
+          parts.push("HTTP " + String(res.status));
+        }
+
+        if (j?.error) {
+          parts.push(String(j.error));
+        } else if (j?.message) {
+          parts.push(String(j.message));
+        } else if (rawText) {
+          parts.push(rawText);
+        } else {
+          parts.push("Empty or non-JSON response from verification API");
+        }
+
+        if (j?.hint) {
+          parts.push("Hint: " + String(j.hint));
+        }
+
+        setError(parts.join(" | "));
         setMessage("");
         return;
       }
