@@ -154,8 +154,38 @@ async function loadBookingByResolved(admin: any, booking_id: string, booking_cod
     .order("created_at", { ascending: false })
     .limit(1);
 
-    if (error) throw new Error("DB_SELECT_BOOKING: " + error.message);
-    return Array.isArray(data) && data.length ? data[0] : null;
+  if (error) throw new Error("DB_SELECT_BOOKING: " + error.message);
+  return Array.isArray(data) && data.length ? data[0] : null;
+}
+
+function buildDriverEligibilityMap(rows: any[], bookingTown: string) {
+  const map = new Map<string, any>();
+  const bTown = normTown(bookingTown);
+  const onlineLike = new Set(["online", "available", "idle", "waiting"]);
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const driverId = String(row?.driver_id ?? "").trim();
+    if (!driverId) continue;
+
+    const rawStatus = String(row?.status ?? "").trim().toLowerCase();
+    const town = normTown(row?.town);
+    const homeTown = normTown(row?.home_town);
+    const sameTown = !bTown || town === bTown || homeTown === bTown;
+    const onlineEligible = onlineLike.has(rawStatus);
+
+    map.set(driverId, {
+      driver_id: driverId,
+      status: rawStatus || null,
+      town: row?.town ?? null,
+      home_town: row?.home_town ?? null,
+      updated_at: row?.updated_at ?? null,
+      same_town: sameTown,
+      online_eligible: onlineEligible,
+      eligible: sameTown && onlineEligible,
+    });
+  }
+
+  return map;
 }
 
 export async function POST(req: Request) {
@@ -250,7 +280,6 @@ export async function POST(req: Request) {
     const { data: locs, error: locErr } = await admin
       .from("driver_locations")
       .select("driver_id, status, updated_at, town, home_town")
-      .eq("status", "online")
       .gte("updated_at", cutoffIso)
       .order("updated_at", { ascending: false })
       .limit(200);
@@ -267,27 +296,95 @@ export async function POST(req: Request) {
       return jErr("DB_SELECT_LOCATIONS", locErr.message, 500);
     }
 
-    const allOnline = (Array.isArray(locs) ? locs : []).filter((r: any) => isUuidLike(r?.driver_id));
-    const townMatches = bTown
-      ? allOnline.filter((r: any) => {
-          const t1 = normTown(r?.town);
-          const t2 = normTown(r?.home_town);
-          return t1 === bTown || t2 === bTown;
-        })
-      : allOnline;
+    const eligibilityMap = buildDriverEligibilityMap(Array.isArray(locs) ? locs : [], String(booking.town ?? ""));
+    const allRecent = Array.from(eligibilityMap.values());
+    const allOnline = allRecent.filter((r: any) => r.online_eligible);
+    const townMatches = allOnline.filter((r: any) => r.same_town);
 
     const counts = {
       cutoff_minutes: cutoffMinutes,
+      recent_rows: allRecent.length,
       online_recent: allOnline.length,
       online_town_recent: townMatches.length,
       booking_town: booking.town ?? null,
+      eligible_driver_ids: townMatches.map((r: any) => r.driver_id),
+      fallback_online_driver_ids: allOnline.map((r: any) => r.driver_id),
     };
 
-    let chosenDriverId = requested_driver_id || "";
-    if (!chosenDriverId) {
+    let chosenDriverId = "";
+    if (requested_driver_id) {
+      const requested = eligibilityMap.get(requested_driver_id) || null;
+      auditDriverId = requested_driver_id;
+
+      if (!requested) {
+        await auditAssign(admin, {
+          booking_id: auditBookingId,
+          booking_code: auditBookingCode,
+          chosen_driver_id: requested_driver_id,
+          phase: "requested_driver_not_recent",
+          ok: false,
+          code: "REQUESTED_DRIVER_NOT_RECENT",
+          message: "Requested driver has no recent driver_locations row within cutoff.",
+          payload: counts,
+        });
+        return jErr("REQUESTED_DRIVER_NOT_RECENT", "Requested driver has no recent driver_locations row within cutoff.", 409, counts);
+      }
+
+      if (!requested.online_eligible) {
+        await auditAssign(admin, {
+          booking_id: auditBookingId,
+          booking_code: auditBookingCode,
+          chosen_driver_id: requested_driver_id,
+          phase: "requested_driver_not_online",
+          ok: false,
+          code: "REQUESTED_DRIVER_NOT_ONLINE",
+          message: "Requested driver is not online-eligible.",
+          payload: {
+            status: requested.status,
+            town: requested.town,
+            home_town: requested.home_town,
+            updated_at: requested.updated_at,
+            counts,
+          },
+        });
+        return jErr("REQUESTED_DRIVER_NOT_ONLINE", "Requested driver is not online-eligible.", 409, {
+          status: requested.status,
+          town: requested.town,
+          home_town: requested.home_town,
+          updated_at: requested.updated_at,
+          counts,
+        });
+      }
+
+      if (!requested.same_town) {
+        await auditAssign(admin, {
+          booking_id: auditBookingId,
+          booking_code: auditBookingCode,
+          chosen_driver_id: requested_driver_id,
+          phase: "requested_driver_wrong_town",
+          ok: false,
+          code: "REQUESTED_DRIVER_WRONG_TOWN",
+          message: "Requested driver is not from the booking town.",
+          payload: {
+            booking_town: booking.town ?? null,
+            driver_town: requested.town,
+            driver_home_town: requested.home_town,
+            counts,
+          },
+        });
+        return jErr("REQUESTED_DRIVER_WRONG_TOWN", "Requested driver is not from the booking town.", 409, {
+          booking_town: booking.town ?? null,
+          driver_town: requested.town,
+          driver_home_town: requested.home_town,
+          counts,
+        });
+      }
+
+      chosenDriverId = requested_driver_id;
+    } else {
       chosenDriverId = (townMatches.length ? townMatches : allOnline)[0]?.driver_id || "";
+      auditDriverId = chosenDriverId || null;
     }
-    auditDriverId = chosenDriverId || null;
 
     if (!chosenDriverId) {
       await auditAssign(admin, {
@@ -297,10 +394,10 @@ export async function POST(req: Request) {
         phase: "no_available_driver",
         ok: false,
         code: "NO_AVAILABLE_DRIVER",
-        message: "No ONLINE drivers with recent location updates.",
+        message: "No online drivers with recent location updates.",
         payload: counts,
       });
-      return jErr("NO_AVAILABLE_DRIVER", "No ONLINE drivers with recent location updates.", 409, counts);
+      return jErr("NO_AVAILABLE_DRIVER", "No online drivers with recent location updates.", 409, counts);
     }
 
     const { data: prof, error: profErr } = await admin

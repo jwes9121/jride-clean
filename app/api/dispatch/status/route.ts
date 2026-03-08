@@ -510,15 +510,12 @@ async function bestEffortWalletSyncOnComplete(
   const serviceType = String(booking?.service_type ?? booking?.serviceType ?? "").toLowerCase();
   const vendorId = booking?.vendor_id ? String(booking.vendor_id) : null;
 
-  
-
   // STEP5E_CALL_SITE: Emergency fee wallet split (idempotent, completion-only)
   await step5eBestEffortEmergencyWalletSplit(supabase, booking, warnings);
 
-
   // 1) Apply platform/company cut (driver wallet deduction)
   if (bookingId) {
-  const warnings: string[] = [];    try {
+    try {
       const r: any = await supabase.rpc("process_booking_wallet_cut", {
         p_booking_id: bookingId,
       });
@@ -542,7 +539,7 @@ async function bestEffortWalletSyncOnComplete(
     }
   }
 
-  return warnings.length ? { warning: ((globalThis as any).__jrideWarnings ?? []).join("; ") } : {};
+  return warnings.length ? { warning: warnings.join("; ") } : {};
 }
 
 
@@ -801,6 +798,28 @@ const __jrideUnauthDiag = {
   const cur = norm(booking.status) || "requested";
   const allowedNext = NEXT[cur] ?? [];
   const hasDriver = !!booking.driver_id;
+
+  const isAdminSecretRequest = !!(wantSecret && gotSecret && gotSecret === wantSecret);
+  const requestDriverId = String(body?.driver_id ?? body?.driverId ?? "").trim();
+  const requestDeviceId = String(body?.device_id ?? body?.deviceId ?? "").trim();
+
+  if (!isAdminSecretRequest && isDriverDeviceLockAllowed(body)) {
+    const lockRes = await ensureDriverDeviceLock(requestDriverId, requestDeviceId);
+    if (!lockRes.ok) {
+      return jsonErr(lockRes.code, lockRes.message, lockRes.status, lockRes.extra || {});
+    }
+  }
+
+  if (!isAdminSecretRequest && requestDriverId) {
+    const ownRes = await enforceDriverOwnsBooking(
+      requestDriverId,
+      booking_id ? String(booking_id).trim() : null,
+      booking_code ? String(booking_code).trim() : null
+    );
+    if (!ownRes.ok) {
+      return jsonErr(ownRes.code, ownRes.message, ownRes.status);
+    }
+  }
 
   // PHASE 3L: Trip lock
   if ((cur === "completed" || cur === "cancelled") && cur !== target) {

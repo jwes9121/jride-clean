@@ -43,6 +43,10 @@ function ageSecondsFromIso(input: string | null | undefined) {
 export async function GET() {
   try {
     const staleAfterSeconds = 120;
+    const assignCutoffMinutes = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
+    const assignCutoffSeconds = assignCutoffMinutes * 60;
+    const onlineLike = new Set(["online", "available", "idle", "waiting"]);
+
     const supabase = supabaseAdmin();
 
     const { data, error } = await supabase
@@ -70,7 +74,11 @@ export async function GET() {
       const createdAt = row.created_at ?? null;
       const ageSeconds = ageSecondsFromIso(updatedAt);
       const isStale = ageSeconds == null ? true : ageSeconds > staleAfterSeconds;
-      const effectiveStatus = isStale ? "stale" : String(row.status ?? "");
+      const rawStatus = String(row.status ?? "").trim().toLowerCase();
+      const effectiveStatus = isStale ? "stale" : rawStatus;
+      const assignFresh = ageSeconds == null ? false : ageSeconds <= assignCutoffSeconds;
+      const assignOnlineEligible = onlineLike.has(rawStatus);
+      const assignEligible = assignFresh && assignOnlineEligible;
 
       return {
         ...row,
@@ -82,6 +90,10 @@ export async function GET() {
         is_stale: isStale,
         age_min: ageSeconds == null ? null : Math.floor(ageSeconds / 60),
         effective_status: effectiveStatus,
+        assign_cutoff_minutes: assignCutoffMinutes,
+        assign_fresh: assignFresh,
+        assign_online_eligible: assignOnlineEligible,
+        assign_eligible: assignEligible,
       };
     });
 
@@ -90,6 +102,7 @@ export async function GET() {
         ok: true,
         source: "app/api/admin/driver_locations/route.ts",
         stale_after_seconds: staleAfterSeconds,
+        assign_cutoff_minutes: assignCutoffMinutes,
         server_now_utc: new Date().toISOString(),
         server_now_ph: new Date().toLocaleString("en-PH", {
           timeZone: "Asia/Manila",
