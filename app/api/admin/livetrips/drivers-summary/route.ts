@@ -45,6 +45,23 @@ function ageSeconds(input?: string | null) {
   return Math.max(0, Math.floor(ms / 1000));
 }
 
+function eligibilityReason(row: any) {
+  const rawStatus = s(row?.status).trim().toLowerCase();
+  const effectiveStatus = s(row?.effective_status).trim().toLowerCase();
+  const activeBookingStatus = s(row?.active_booking_status).trim().toLowerCase();
+
+  if (activeBookingStatus === "on_trip" || activeBookingStatus === "enroute") return "on trip";
+  if (activeBookingStatus === "assigned" || activeBookingStatus === "accepted" || activeBookingStatus === "on_the_way" || activeBookingStatus === "arrived" || activeBookingStatus === "fare_proposed") {
+    return effectiveStatus === "stale" ? "assigned booking and stale heartbeat" : "assigned booking";
+  }
+  if (row?.assign_eligible === true) return "eligible now";
+  if (effectiveStatus === "stale") return "stale heartbeat";
+  if (rawStatus === "offline" || rawStatus === "logout" || rawStatus === "logged_out") return "offline";
+  if (!row?.assign_online_eligible) return "not online eligible";
+  if (!row?.assign_fresh) return "not fresh";
+  return "not eligible";
+}
+
 export async function GET() {
   try {
     const sbUrl =
@@ -75,7 +92,7 @@ export async function GET() {
 
     const locRes = await supabase
       .from("driver_locations")
-      .select("id, driver_id, lat, lng, status, town, home_town, updated_at, created_at, vehicle_type, capacity")
+      .select("*")
       .order("updated_at", { ascending: false })
       .limit(1000);
 
@@ -108,6 +125,12 @@ export async function GET() {
       .select("driver_id, full_name, municipality")
       .in("driver_id", ids);
 
+    if (profRes.error) {
+      return bad("driver_profiles query failed", "DRIVER_PROFILES_QUERY_FAILED", 500, {
+        details: profRes.error.message,
+      });
+    }
+
     const profileByDriver = new Map<string, any>();
     for (const row of (profRes.data || []) as any[]) {
       const did = s(row?.driver_id).trim();
@@ -121,12 +144,24 @@ export async function GET() {
       .order("updated_at", { ascending: false })
       .limit(5000);
 
+    if (bookingsByDriverRes.error) {
+      return bad("bookings(driver_id) query failed", "BOOKINGS_BY_DRIVER_QUERY_FAILED", 500, {
+        details: bookingsByDriverRes.error.message,
+      });
+    }
+
     const bookingsByAssignedRes = await supabase
       .from("bookings")
       .select("id, booking_code, driver_id, assigned_driver_id, status, town, created_at, updated_at")
       .in("assigned_driver_id", ids)
       .order("updated_at", { ascending: false })
       .limit(5000);
+
+    if (bookingsByAssignedRes.error) {
+      return bad("bookings(assigned_driver_id) query failed", "BOOKINGS_BY_ASSIGNED_QUERY_FAILED", 500, {
+        details: bookingsByAssignedRes.error.message,
+      });
+    }
 
     const bookingMap = new Map<string, any>();
     for (const row of ([] as any[]).concat(bookingsByDriverRes.data || [], bookingsByAssignedRes.data || [])) {
@@ -188,7 +223,7 @@ export async function GET() {
       const assignOnlineEligible = onlineLike.has(rawStatus);
       const assignEligible = assignFresh && assignOnlineEligible;
 
-      return {
+      const row = {
         id: loc?.id ?? null,
         driver_id: did,
         full_name: prof?.full_name ?? null,
@@ -219,7 +254,10 @@ export async function GET() {
         active_booking_status: counts.activeBooking?.status ?? null,
         active_booking_town: counts.activeBooking?.town ?? null,
         active_booking_updated_at: counts.activeBooking?.updated_at ?? counts.activeBooking?.created_at ?? null,
-      };
+      } as any;
+
+      row.eligibility_reason = eligibilityReason(row);
+      return row;
     });
 
     return ok({
