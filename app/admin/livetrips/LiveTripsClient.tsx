@@ -7,24 +7,23 @@ import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions"
 import TripWalletPanel from "./components/TripWalletPanel";
 import TripLifecycleActions from "./components/TripLifecycleActions";
 
-/**
- * Dispatcher-first LiveTrips client:
- * - Clickable status pills that FILTER list + map
- * - "Problem trips" pill focuses stuck/problem trips
- * - Live trips table includes key actions
- * - Fleet panel (drivers online/offline)
- */
-
 type LiveTripRow = any;
 
 type DriverRow = {
   driver_id?: string | null;
+  id?: string | null;
+  full_name?: string | null;
   name?: string | null;
   lat?: number | null;
   lng?: number | null;
   status?: string | null;
+  effective_status?: string | null;
   updated_at?: string | null;
   updated_at_ph?: string | null;
+  town?: string | null;
+  home_town?: string | null;
+  municipality?: string | null;
+  zone?: string | null;
 };
 
 type FilterKey =
@@ -47,6 +46,12 @@ function s(v: any): string {
   return String(v ?? "");
 }
 
+function n(v: any): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
+
 function statusEff(row: any): string {
   const st = s(row?.status ?? row?.trip_status ?? row?.status_eff).toLowerCase();
   if (!st) return "";
@@ -55,17 +60,6 @@ function statusEff(row: any): string {
 
 function bookingCode(row: any): string {
   return s(row?.booking_code ?? row?.bookingCode ?? row?.id);
-}
-
-function nextLifecycleStatus(st: string): string {
-  const x = s(st).toLowerCase();
-  if (x === "dispatch") return "pending_fare";
-  if (x === "pending_fare") return "driver_accepted";
-  if (x === "driver_accepted") return "on_the_way";
-  if (x === "on_the_way") return "arrived";
-  if (x === "arrived") return "in_progress";
-  if (x === "in_progress") return "completed";
-  return x;
 }
 
 /* JRIDE_PH_TIME_FORMATTER_V7 */
@@ -85,6 +79,74 @@ function formatPHTime(input?: string | null): string {
   });
 }
 
+function normalizeTripForSuggestions(t: any) {
+  if (!t) return null;
+
+  const pickupLat =
+    n(t?.pickupLat) ??
+    n(t?.pickup_lat) ??
+    n(t?.from_lat) ??
+    n(t?.origin_lat);
+
+  const pickupLng =
+    n(t?.pickupLng) ??
+    n(t?.pickup_lng) ??
+    n(t?.from_lng) ??
+    n(t?.origin_lng);
+
+  const zone =
+    s(t?.zone ?? t?.town ?? t?.municipality ?? t?.area).trim() || "Unknown";
+
+  const tripType =
+    s(t?.tripType ?? t?.trip_type ?? t?.service_type ?? t?.serviceType).trim() || "ride";
+
+  return {
+    id: s(t?.id ?? t?.booking_id ?? t?.booking_code),
+    pickupLat: pickupLat ?? 0,
+    pickupLng: pickupLng ?? 0,
+    zone,
+    tripType,
+  };
+}
+
+function normalizeDriversForSuggestions(rows: DriverRow[]) {
+  return (rows ?? [])
+    .map((d) => {
+      const id = s(d?.driver_id ?? d?.id).trim();
+      const lat = n(d?.lat);
+      const lng = n(d?.lng);
+      if (!id || lat == null || lng == null) return null;
+
+      const homeTown =
+        s(d?.home_town ?? d?.municipality ?? d?.town ?? d?.zone).trim() || "Unknown";
+
+      const zone =
+        s(d?.zone ?? d?.town ?? d?.home_town ?? d?.municipality).trim() || "Unknown";
+
+      const status =
+        s(d?.effective_status ?? d?.status).trim() || "unknown";
+
+      return {
+        id,
+        name: s(d?.name ?? d?.full_name ?? d?.driver_id ?? d?.id).trim() || id,
+        lat,
+        lng,
+        zone,
+        homeTown,
+        status,
+      };
+    })
+    .filter(Boolean) as Array<{
+      id: string;
+      name: string;
+      lat: number;
+      lng: number;
+      zone: string;
+      homeTown: string;
+      status: string;
+    }>;
+}
+
 export default function LiveTripsClient() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -96,6 +158,7 @@ export default function LiveTripsClient() {
 
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("not-loaded");
+  const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
 
   const [stuckTripIds, setStuckTripIds] = useState<Set<string>>(new Set());
   const pollRef = useRef<any>(null);
@@ -103,51 +166,59 @@ export default function LiveTripsClient() {
   async function fetchPageData() {
     setLoading(true);
     setErr(null);
+
     try {
       const res = await fetch("/api/admin/livetrips/page-data", {
         method: "GET",
         headers: { "content-type": "application/json" },
         cache: "no-store",
       });
+
       const j = await res.json();
 
-// --- JRIDE: fetch fleet drivers separately (page-data does not include drivers) ---
-let driversPayload: any = null;
-try {
-  const drvRes = await fetch("/api/admin/driver_locations", {
-    method: "GET",
-    headers: { "content-type": "application/json" },
-    cache: "no-store",
-  });
-  driversPayload = await drvRes.json();
-} catch (e) {
-  // ignore; keep drivers empty
-  driversPayload = null;
-}
+      let driversPayload: any = null;
+      try {
+        const drvRes = await fetch("/api/admin/driver_locations", {
+          method: "GET",
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+        });
+        driversPayload = await drvRes.json();
+      } catch {
+        driversPayload = null;
+      }
 
-const drvArr =
-  Array.isArray(driversPayload) ? driversPayload :
-  (Array.isArray((driversPayload as any)?.drivers) ? (driversPayload as any).drivers : []);
+      const drvArr =
+        Array.isArray(driversPayload)
+          ? driversPayload
+          : Array.isArray((driversPayload as any)?.drivers)
+          ? (driversPayload as any).drivers
+          : [];
 
-setDrivers(drvArr as any);
-setDriversDebug(`loaded:${drvArr.length}`);
-// --- end fleet drivers fetch ---
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      setDrivers(drvArr as any);
+      setDriversDebug(`loaded:${drvArr.length}`);
 
-      setTrips(Array.isArray(j?.trips) ? j.trips : []);
-      const pageDrivers = (Array.isArray((j as any)?.drivers) ? ((j as any).drivers as any[]) : null);
-if (pageDrivers && pageDrivers.length > 0) {
-  setDrivers(pageDrivers as any);
-  setDriversDebug(`loaded:${pageDrivers.length}`);
-}
+      if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
 
-      // problem/stuck ids (if provided)
+      const nextTrips = Array.isArray(j?.trips) ? j.trips : [];
+      setTrips(nextTrips);
+
+      const pageDrivers = Array.isArray((j as any)?.drivers) ? ((j as any).drivers as any[]) : null;
+      if (pageDrivers && pageDrivers.length > 0) {
+        setDrivers(pageDrivers as any);
+        setDriversDebug(`loaded:${pageDrivers.length}`);
+      }
+
       if (Array.isArray(j?.stuck_trip_ids)) {
         const set = new Set<string>();
         for (const x of j.stuck_trip_ids) set.add(String(x));
         setStuckTripIds(set);
       } else {
         setStuckTripIds(new Set());
+      }
+
+      if (!selectedTripId && nextTrips.length > 0) {
+        setSelectedTripId(bookingCode(nextTrips[0]));
       }
     } catch (e: any) {
       setErr(e?.message ?? "Unknown error");
@@ -156,10 +227,62 @@ if (pageDrivers && pageDrivers.length > 0) {
     }
   }
 
+  async function handleAssign(driverId: string) {
+    const selectedTrip =
+      (visibleTrips ?? []).find((t: any) => bookingCode(t) === selectedTripId) ??
+      (visibleTrips?.[0] ?? null);
+
+    if (!selectedTrip) {
+      setLastAction("assign blocked: no selected trip");
+      return;
+    }
+
+    const booking_code = s(selectedTrip?.booking_code).trim();
+    const booking_id = s(selectedTrip?.id).trim();
+
+    if (!booking_code && !booking_id) {
+      setLastAction("assign blocked: missing booking identifier");
+      return;
+    }
+
+    setAssigningDriverId(driverId);
+    setErr(null);
+
+    try {
+      const res = await fetch("/api/dispatch/assign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          booking_code: booking_code || undefined,
+          booking_id: booking_id || undefined,
+          driver_id: driverId,
+        }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+
+      if (!res.ok || j?.ok === false) {
+        throw new Error(j?.message ?? j?.error ?? j?.code ?? `HTTP ${res.status}`);
+      }
+
+      setLastAction(
+        `assigned ${driverId} to ${booking_code || booking_id} at ${formatPHTime(new Date().toISOString())}`
+      );
+
+      await fetchPageData();
+    } catch (e: any) {
+      const msg = e?.message ?? "Assignment failed";
+      setErr(msg);
+      setLastAction(`assign failed: ${msg}`);
+    } finally {
+      setAssigningDriverId(null);
+    }
+  }
+
   useEffect(() => {
     fetchPageData();
 
-    // poll every 3s
     pollRef.current = setInterval(() => {
       fetchPageData();
     }, 3000);
@@ -180,16 +303,22 @@ if (pageDrivers && pageDrivers.length > 0) {
     if (activeFilter === "all") return rows;
 
     if (activeFilter === "problem") {
-      // stuck/problem
       return rows.filter((r) => {
         const code = bookingCode(r);
         return stuckTripIds.has(code) || truthy(r?.is_stuck) || truthy(r?.stuck);
       });
     }
 
-    // normal status filter
     return rows.filter((r) => statusEff(r) === activeFilter);
   }, [trips, activeFilter, stuckTripIds]);
+
+  const selectedTrip = useMemo(() => {
+    return (
+      visibleTrips.find((t: any) => bookingCode(t) === selectedTripId) ??
+      visibleTrips[0] ??
+      null
+    );
+  }, [visibleTrips, selectedTripId]);
 
   const summary = useMemo(() => {
     const rows = trips ?? [];
@@ -220,6 +349,18 @@ if (pageDrivers && pageDrivers.length > 0) {
 
   const fleetCount = useMemo(() => (drivers ?? []).length, [drivers]);
 
+  const suggestionTrip = useMemo(() => normalizeTripForSuggestions(selectedTrip), [selectedTrip]);
+  const suggestionDrivers = useMemo(() => normalizeDriversForSuggestions(drivers), [drivers]);
+  const zoneStats = useMemo(() => ({} as Record<string, { util: number; status: string }>), []);
+  const assignedDriverId = s(selectedTrip?.assigned_driver_id ?? selectedTrip?.driver_id).trim() || null;
+
+  const canAssign = useMemo(() => {
+    const st = statusEff(selectedTrip);
+    return st === "dispatch" || st === "requested" || st === "assigned" || !st;
+  }, [selectedTrip]);
+
+  const lockReason = canAssign ? undefined : "Trip is no longer in an assignable state.";
+
   return (
     <div className="flex h-full w-full flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -239,7 +380,6 @@ if (pageDrivers && pageDrivers.length > 0) {
         </div>
       </div>
 
-      {/* Filter pills */}
       <div className="flex flex-wrap gap-2">
         {(
           [
@@ -273,7 +413,6 @@ if (pageDrivers && pageDrivers.length > 0) {
         })}
       </div>
 
-      {/* Debug row */}
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
         <div>Trips: {visibleTrips.length}</div>
         <div>Fleet: {fleetCount}</div>
@@ -282,7 +421,6 @@ if (pageDrivers && pageDrivers.length > 0) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        {/* Left: list */}
         <div className="lg:col-span-1">
           <div className="rounded-lg border bg-white">
             <div className="border-b p-2 text-sm font-semibold">Trips</div>
@@ -300,7 +438,7 @@ if (pageDrivers && pageDrivers.length > 0) {
 
                     return (
                       <div
-                        key={code || Math.random()}
+                        key={code || t?.id || Math.random()}
                         className={"p-3 " + (isSel ? "bg-gray-50" : "bg-white")}
                         onClick={() => setSelectedTripId(code || null)}
                         style={{ cursor: "pointer" }}
@@ -346,21 +484,25 @@ if (pageDrivers && pageDrivers.length > 0) {
             <div className="border-b p-2 text-sm font-semibold">Auto-Assign Suggestions</div>
             <div className="p-2">
               <SmartAutoAssignSuggestions
-  trip={(visibleTrips?.[0]) as any}
-  drivers={drivers as any}
-/>
+                trip={suggestionTrip as any}
+                drivers={suggestionDrivers as any}
+                zoneStats={zoneStats}
+                onAssign={handleAssign}
+                assignedDriverId={assignedDriverId}
+                assigningDriverId={assigningDriverId}
+                canAssign={canAssign}
+                lockReason={lockReason}
+              />
             </div>
           </div>
         </div>
 
-        {/* Right: map */}
         <div className="lg:col-span-2">
-          <div className="rounded-lg border overflow-hidden">
+          <div className="overflow-hidden rounded-lg border">
             <LiveTripsMap
               trips={visibleTrips as any}
               selectedTripId={selectedTripId}
               stuckTripIds={stuckTripIds as any}
-              drivers={drivers as any}
             />
           </div>
         </div>
