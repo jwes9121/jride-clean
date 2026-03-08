@@ -75,7 +75,7 @@ export async function GET() {
 
     const locRes = await supabase
       .from("driver_locations")
-      .select("id, driver_id, lat, lng, status, town, home_town, updated_at, created_at, vehicle_type, capacity")
+      .select("*")
       .order("updated_at", { ascending: false })
       .limit(1000);
 
@@ -108,6 +108,12 @@ export async function GET() {
       .select("driver_id, full_name, municipality")
       .in("driver_id", ids);
 
+    if (profRes.error) {
+      return bad("driver_profiles query failed", "DRIVER_PROFILES_QUERY_FAILED", 500, {
+        details: profRes.error.message,
+      });
+    }
+
     const profileByDriver = new Map<string, any>();
     for (const row of (profRes.data || []) as any[]) {
       const did = s(row?.driver_id).trim();
@@ -121,12 +127,24 @@ export async function GET() {
       .order("updated_at", { ascending: false })
       .limit(5000);
 
+    if (bookingsByDriverRes.error) {
+      return bad("bookings(driver_id) query failed", "BOOKINGS_BY_DRIVER_QUERY_FAILED", 500, {
+        details: bookingsByDriverRes.error.message,
+      });
+    }
+
     const bookingsByAssignedRes = await supabase
       .from("bookings")
       .select("id, booking_code, driver_id, assigned_driver_id, status, town, created_at, updated_at")
       .in("assigned_driver_id", ids)
       .order("updated_at", { ascending: false })
       .limit(5000);
+
+    if (bookingsByAssignedRes.error) {
+      return bad("bookings(assigned_driver_id) query failed", "BOOKINGS_BY_ASSIGNED_QUERY_FAILED", 500, {
+        details: bookingsByAssignedRes.error.message,
+      });
+    }
 
     const bookingMap = new Map<string, any>();
     for (const row of ([] as any[]).concat(bookingsByDriverRes.data || [], bookingsByAssignedRes.data || [])) {
