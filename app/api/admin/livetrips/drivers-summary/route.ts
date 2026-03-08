@@ -45,6 +45,18 @@ function ageSeconds(input?: string | null) {
   return Math.max(0, Math.floor(ms / 1000));
 }
 
+function activeBookingBlocksAssign(activeBookingStatus: string) {
+  return [
+    "assigned",
+    "accepted",
+    "fare_proposed",
+    "on_the_way",
+    "arrived",
+    "enroute",
+    "on_trip",
+  ].includes(activeBookingStatus);
+}
+
 function eligibilityReason(row: any) {
   const rawStatus = s(row?.status).trim().toLowerCase();
   const effectiveStatus = s(row?.effective_status).trim().toLowerCase();
@@ -227,7 +239,9 @@ export async function GET() {
       const effectiveStatus = isStale ? "stale" : rawStatus;
       const assignFresh = age == null ? false : age <= assignCutoffSeconds;
       const assignOnlineEligible = onlineLike.has(rawStatus);
-      const assignEligible = assignFresh && assignOnlineEligible;
+      const activeBookingStatus = s(counts.activeBooking?.status).trim().toLowerCase();
+      const blockedByActiveBooking = activeBookingBlocksAssign(activeBookingStatus);
+      const assignEligible = assignFresh && assignOnlineEligible && !blockedByActiveBooking;
 
       const row: any = {
         id: loc?.id ?? null,
