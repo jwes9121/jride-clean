@@ -5,8 +5,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "== JRIDE Patch: LiveTrips driver tab UX hardening (V2 / PS5-safe) =="
+Write-Host "== JRIDE Patch: LiveTrips driver tab (V1 / PS5-safe) =="
 Write-Host "Root: $ProjRoot"
+
+function Read-TextUtf8 {
+  param([Parameter(Mandatory=$true)][string]$Path)
+  return [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+}
 
 function Write-TextUtf8NoBom {
   param(
@@ -41,10 +46,10 @@ function Backup-File {
 }
 
 $clientPath = Join-Path $ProjRoot "app\admin\livetrips\LiveTripsClient.tsx"
-$routePath = Join-Path $ProjRoot "app\api\admin\livetrips\drivers-summary\route.ts"
+$summaryRoutePath = Join-Path $ProjRoot "app\api\admin\livetrips\drivers-summary\route.ts"
 
-Backup-File -Path $clientPath -Tag "LIVETRIPS_DRIVER_TAB_UX_V2"
-Backup-File -Path $routePath -Tag "LIVETRIPS_DRIVER_TAB_UX_V2"
+Backup-File -Path $clientPath -Tag "LIVETRIPS_DRIVER_TAB_V1"
+Backup-File -Path $summaryRoutePath -Tag "LIVETRIPS_DRIVER_TAB_V1"
 
 $clientContent = @'
 "use client";
@@ -77,7 +82,6 @@ type DriverRow = {
   assign_fresh?: boolean | null;
   assign_online_eligible?: boolean | null;
   assign_eligible?: boolean | null;
-  eligibility_reason?: string | null;
   completed_trips_count?: number | null;
   cancelled_trips_count?: number | null;
   active_booking_id?: string | null;
@@ -281,7 +285,6 @@ function filterDriverBySearch(d: DriverRow, q: string): boolean {
 
 function kpiCounts(drivers: DriverRow[]) {
   return {
-    total: drivers.length,
     online_eligible: drivers.filter((d) => driverStatusBucket(d) === "online_eligible").length,
     assigned: drivers.filter((d) => driverStatusBucket(d) === "assigned").length,
     on_trip: drivers.filter((d) => driverStatusBucket(d) === "on_trip").length,
@@ -419,25 +422,6 @@ export default function LiveTripsClient() {
     }
   }
 
-  function jumpToLinkedTrip() {
-    const code = s(selectedDriver?.active_booking_code).trim();
-    const id = s(selectedDriver?.active_booking_id).trim();
-    if (!code && !id) return;
-
-    setMainTab("trips");
-    setActiveFilter("all");
-
-    const found = (trips ?? []).find((t: any) => {
-      const tc = s(t?.booking_code).trim();
-      const ti = s(t?.id).trim();
-      return (code && tc === code) || (id && ti === id);
-    });
-
-    if (found) {
-      setSelectedTripId(bookingCode(found));
-    }
-  }
-
   useEffect(() => {
     fetchPageData();
 
@@ -526,12 +510,9 @@ export default function LiveTripsClient() {
     return ["All", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
   }, [drivers]);
 
-  const townScopedDrivers = useMemo(() => {
-    return [...(drivers ?? [])].filter((d) => filterDriverByTown(d, driverTownFilter));
-  }, [drivers, driverTownFilter]);
-
   const filteredDrivers = useMemo(() => {
-    const rows = [...townScopedDrivers]
+    const rows = [...(drivers ?? [])]
+      .filter((d) => filterDriverByTown(d, driverTownFilter))
       .filter((d) => filterDriverBySearch(d, driverSearch));
 
     if (driverStatusFilter !== "all") {
@@ -539,7 +520,7 @@ export default function LiveTripsClient() {
     }
 
     return rows.sort(compareDrivers);
-  }, [townScopedDrivers, driverStatusFilter, driverSearch]);
+  }, [drivers, driverTownFilter, driverStatusFilter, driverSearch]);
 
   const selectedDriver = useMemo(() => {
     return (
@@ -549,7 +530,7 @@ export default function LiveTripsClient() {
     );
   }, [filteredDrivers, selectedDriverId]);
 
-  const driverKPIs = useMemo(() => kpiCounts(filteredDrivers), [filteredDrivers]);
+  const driverKPIs = useMemo(() => kpiCounts(drivers), [drivers]);
 
   const driverTabTrips = useMemo(() => {
     const activeCode = s(selectedDriver?.active_booking_code).trim();
@@ -736,11 +717,7 @@ export default function LiveTripsClient() {
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">Total drivers</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.total}</div>
-            </div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
             <div className="rounded-lg border bg-white p-3">
               <div className="text-[11px] text-gray-500">Online eligible</div>
               <div className="mt-1 text-lg font-semibold">{driverKPIs.online_eligible}</div>
@@ -763,45 +740,36 @@ export default function LiveTripsClient() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Town</label>
-              <select
-                className="w-full rounded border px-3 py-2 text-sm"
-                value={driverTownFilter}
-                onChange={(e) => setDriverTownFilter(e.target.value)}
-              >
-                {allDriverTowns.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="rounded border px-3 py-2 text-sm"
+              value={driverTownFilter}
+              onChange={(e) => setDriverTownFilter(e.target.value)}
+            >
+              {allDriverTowns.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Status</label>
-              <select
-                className="w-full rounded border px-3 py-2 text-sm"
-                value={driverStatusFilter}
-                onChange={(e) => setDriverStatusFilter(e.target.value as DriverFilterKey)}
-              >
-                <option value="all">All statuses</option>
-                <option value="online_eligible">Online eligible</option>
-                <option value="assigned">Assigned</option>
-                <option value="on_trip">On trip</option>
-                <option value="stale">Stale</option>
-                <option value="offline">Offline</option>
-              </select>
-            </div>
+            <select
+              className="rounded border px-3 py-2 text-sm"
+              value={driverStatusFilter}
+              onChange={(e) => setDriverStatusFilter(e.target.value as DriverFilterKey)}
+            >
+              <option value="all">All statuses</option>
+              <option value="online_eligible">Online eligible</option>
+              <option value="assigned">Assigned</option>
+              <option value="on_trip">On trip</option>
+              <option value="stale">Stale</option>
+              <option value="offline">Offline</option>
+            </select>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Search</label>
-              <input
-                className="w-full rounded border px-3 py-2 text-sm"
-                placeholder="Driver, UUID, booking code"
-                value={driverSearch}
-                onChange={(e) => setDriverSearch(e.target.value)}
-              />
-            </div>
+            <input
+              className="min-w-[240px] flex-1 rounded border px-3 py-2 text-sm"
+              placeholder="Search driver, UUID, booking code"
+              value={driverSearch}
+              onChange={(e) => setDriverSearch(e.target.value)}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -845,10 +813,6 @@ export default function LiveTripsClient() {
                               <div className="truncate">Completed: {s(d?.completed_trips_count ?? 0)}</div>
                               <div className="truncate">Cancelled: {s(d?.cancelled_trips_count ?? 0)}</div>
                             </div>
-
-                            <div className="mt-2 text-[11px] text-amber-700">
-                              Eligibility reason: {s(d?.eligibility_reason) || "-"}
-                            </div>
                           </button>
                         );
                       })}
@@ -861,17 +825,7 @@ export default function LiveTripsClient() {
             <div className="xl:col-span-2">
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 <div className="rounded-lg border bg-white p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold">Driver details</div>
-                    <button
-                      type="button"
-                      className="rounded border px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                      disabled={!selectedDriver?.active_booking_code && !selectedDriver?.active_booking_id}
-                      onClick={jumpToLinkedTrip}
-                    >
-                      View linked trip
-                    </button>
-                  </div>
+                  <div className="text-sm font-semibold">Driver details</div>
 
                   {!selectedDriver ? (
                     <div className="mt-3 text-sm text-gray-500">Select a driver.</div>
@@ -892,14 +846,6 @@ export default function LiveTripsClient() {
                         <div>
                           <div className="text-xs text-gray-500">Assign eligible</div>
                           <div>{truthy(selectedDriver?.assign_eligible) ? "Yes" : "No"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Eligibility reason</div>
-                          <div>{s(selectedDriver?.eligibility_reason) || "-"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Dispatch bucket</div>
-                          <div>{driverStatusBucket(selectedDriver).replace("_", " ")}</div>
                         </div>
                         <div>
                           <div className="text-xs text-gray-500">Raw status</div>
@@ -946,10 +892,6 @@ export default function LiveTripsClient() {
                             <div className="text-xs text-gray-500">Booking updated</div>
                             <div>{formatPHTime(selectedDriver?.active_booking_updated_at)}</div>
                           </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Booking age</div>
-                            <div>{formatAgo(n(selectedDriver?.active_booking_updated_at ? Math.floor((Date.now() - new Date(selectedDriver.active_booking_updated_at).getTime()) / 1000) : null))}</div>
-                          </div>
                         </div>
                       </div>
 
@@ -978,7 +920,7 @@ export default function LiveTripsClient() {
 }
 '@
 
-$routeContent = @'
+$summaryRouteContent = @'
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -1026,23 +968,6 @@ function ageSeconds(input?: string | null) {
   return Math.max(0, Math.floor(ms / 1000));
 }
 
-function eligibilityReason(row: any) {
-  const rawStatus = s(row?.status).trim().toLowerCase();
-  const effectiveStatus = s(row?.effective_status).trim().toLowerCase();
-  const activeBookingStatus = s(row?.active_booking_status).trim().toLowerCase();
-
-  if (activeBookingStatus === "on_trip" || activeBookingStatus === "enroute") return "on trip";
-  if (activeBookingStatus === "assigned" || activeBookingStatus === "accepted" || activeBookingStatus === "on_the_way" || activeBookingStatus === "arrived" || activeBookingStatus === "fare_proposed") {
-    return effectiveStatus === "stale" ? "assigned booking and stale heartbeat" : "assigned booking";
-  }
-  if (row?.assign_eligible === true) return "eligible now";
-  if (effectiveStatus === "stale") return "stale heartbeat";
-  if (rawStatus === "offline" || rawStatus === "logout" || rawStatus === "logged_out") return "offline";
-  if (!row?.assign_online_eligible) return "not online eligible";
-  if (!row?.assign_fresh) return "not fresh";
-  return "not eligible";
-}
-
 export async function GET() {
   try {
     const sbUrl =
@@ -1073,7 +998,7 @@ export async function GET() {
 
     const locRes = await supabase
       .from("driver_locations")
-      .select("*")
+      .select("id, driver_id, lat, lng, status, town, home_town, updated_at, created_at, vehicle_type, capacity")
       .order("updated_at", { ascending: false })
       .limit(1000);
 
@@ -1106,12 +1031,6 @@ export async function GET() {
       .select("driver_id, full_name, municipality")
       .in("driver_id", ids);
 
-    if (profRes.error) {
-      return bad("driver_profiles query failed", "DRIVER_PROFILES_QUERY_FAILED", 500, {
-        details: profRes.error.message,
-      });
-    }
-
     const profileByDriver = new Map<string, any>();
     for (const row of (profRes.data || []) as any[]) {
       const did = s(row?.driver_id).trim();
@@ -1125,24 +1044,12 @@ export async function GET() {
       .order("updated_at", { ascending: false })
       .limit(5000);
 
-    if (bookingsByDriverRes.error) {
-      return bad("bookings(driver_id) query failed", "BOOKINGS_BY_DRIVER_QUERY_FAILED", 500, {
-        details: bookingsByDriverRes.error.message,
-      });
-    }
-
     const bookingsByAssignedRes = await supabase
       .from("bookings")
       .select("id, booking_code, driver_id, assigned_driver_id, status, town, created_at, updated_at")
       .in("assigned_driver_id", ids)
       .order("updated_at", { ascending: false })
       .limit(5000);
-
-    if (bookingsByAssignedRes.error) {
-      return bad("bookings(assigned_driver_id) query failed", "BOOKINGS_BY_ASSIGNED_QUERY_FAILED", 500, {
-        details: bookingsByAssignedRes.error.message,
-      });
-    }
 
     const bookingMap = new Map<string, any>();
     for (const row of ([] as any[]).concat(bookingsByDriverRes.data || [], bookingsByAssignedRes.data || [])) {
@@ -1204,7 +1111,7 @@ export async function GET() {
       const assignOnlineEligible = onlineLike.has(rawStatus);
       const assignEligible = assignFresh && assignOnlineEligible;
 
-      const row = {
+      return {
         id: loc?.id ?? null,
         driver_id: did,
         full_name: prof?.full_name ?? null,
@@ -1235,10 +1142,7 @@ export async function GET() {
         active_booking_status: counts.activeBooking?.status ?? null,
         active_booking_town: counts.activeBooking?.town ?? null,
         active_booking_updated_at: counts.activeBooking?.updated_at ?? counts.activeBooking?.created_at ?? null,
-      } as any;
-
-      row.eligibility_reason = eligibilityReason(row);
-      return row;
+      };
     });
 
     return ok({
@@ -1259,7 +1163,7 @@ export async function GET() {
 Write-TextUtf8NoBom -Path $clientPath -Content $clientContent
 Write-Host "[OK] Replaced: app/admin/livetrips/LiveTripsClient.tsx"
 
-Write-TextUtf8NoBom -Path $routePath -Content $routeContent
-Write-Host "[OK] Replaced: app/api/admin/livetrips/drivers-summary/route.ts"
+Write-TextUtf8NoBom -Path $summaryRoutePath -Content $summaryRouteContent
+Write-Host "[OK] Wrote: app/api/admin/livetrips/drivers-summary/route.ts"
 
 Write-Host "[DONE] Patch applied."
