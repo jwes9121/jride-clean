@@ -253,6 +253,7 @@ export default function LiveTripsClient() {
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("not-loaded");
   const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
+  const [retryingBookingCode, setRetryingBookingCode] = useState<string | null>(null);
 
   const [stuckTripIds, setStuckTripIds] = useState<Set<string>>(new Set());
   const [mainTab, setMainTab] = useState<MainTab>("trips");
@@ -367,6 +368,55 @@ export default function LiveTripsClient() {
       setLastAction(`assign failed: ${msg}`);
     } finally {
       setAssigningDriverId(null);
+    }
+  }
+
+  async function handleRetryAutoAssign(trip: any) {
+    const booking_code = s(trip?.booking_code).trim();
+    const booking_id = s(trip?.id).trim();
+    const st = s(trip?.status).trim().toLowerCase();
+
+    if (!booking_code && !booking_id) {
+      setLastAction("retry blocked: missing booking identifier");
+      return;
+    }
+
+    if (st && st !== "requested" && st !== "dispatch") {
+      setLastAction("retry blocked: booking is not in requested/dispatch state");
+      return;
+    }
+
+    setRetryingBookingCode(booking_code || booking_id);
+    setErr(null);
+
+    try {
+      const res = await fetch("/api/dispatch/retry-auto-assign", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          booking_code: booking_code || undefined,
+          booking_id: booking_id || undefined,
+        }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+
+      if (!res.ok || j?.ok === false) {
+        throw new Error(j?.message ?? j?.error ?? j?.code ?? `HTTP ${res.status}`);
+      }
+
+      const resultCode = s(j?.assign?.code ?? "OK");
+      const resultMessage = s(j?.assign?.message ?? "retry completed");
+      setLastAction(`retry ${booking_code || booking_id}: ${resultCode} ${resultMessage}`.trim());
+
+      await fetchPageData();
+    } catch (e: any) {
+      const msg = e?.message ?? "Retry auto-assign failed";
+      setErr(msg);
+      setLastAction(`retry failed: ${msg}`);
+    } finally {
+      setRetryingBookingCode(null);
     }
   }
 
@@ -638,11 +688,27 @@ export default function LiveTripsClient() {
                               <div className="truncate">Fare: {s(t?.verified_fare ?? t?.proposed_fare ?? "")}</div>
                             </div>
 
-                            <div className="mt-3">
+                            <div className="mt-3 space-y-2">
                               <TripLifecycleActions
                                 trip={t as any}
                                 onAfterAction={() => setLastAction("action completed")}
                               />
+
+                              {(s(t?.status).trim().toLowerCase() === "requested" || s(t?.status).trim().toLowerCase() === "dispatch") ? (
+                                <button
+                                  type="button"
+                                  className="rounded border px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-50"
+                                  disabled={retryingBookingCode === (s(t?.booking_code).trim() || s(t?.id).trim())}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRetryAutoAssign(t);
+                                  }}
+                                >
+                                  {retryingBookingCode === (s(t?.booking_code).trim() || s(t?.id).trim())
+                                    ? "Retrying auto-assign..."
+                                    : "Retry Auto-Assign"}
+                                </button>
+                              ) : null}
                             </div>
 
                             <div className="mt-3">
