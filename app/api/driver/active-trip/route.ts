@@ -24,9 +24,19 @@ function getAdminClient() {
 }
 
 function allow(req: Request) {
-  // Recommended: protect with DRIVER_PING_SECRET (already in your Vercel env)
-  const want = String(process.env.DRIVER_PING_SECRET || "").trim();
-  const got = String(req.headers.get("x-driver-ping-secret") || "").trim();
+  // Accept both legacy and current driver-secret headers.
+  const want = String(
+    process.env.DRIVER_PING_SECRET ||
+    process.env.JRIDE_DRIVER_SECRET ||
+    ""
+  ).trim();
+
+  const got = String(
+    req.headers.get("x-driver-ping-secret") ||
+    req.headers.get("x-jride-driver-secret") ||
+    ""
+  ).trim();
+
   if (!want) return true; // if not set, allow (dev)
   return Boolean(got) && got === want;
 }
