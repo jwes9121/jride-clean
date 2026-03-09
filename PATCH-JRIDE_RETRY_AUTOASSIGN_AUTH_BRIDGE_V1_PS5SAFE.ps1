@@ -1,3 +1,49 @@
+﻿param(
+  [Parameter(Mandatory=$true)]
+  [string]$ProjRoot
+)
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "== JRIDE Patch: retry auto-assign auth bridge (V1 / PS5-safe) =="
+Write-Host "Root: $ProjRoot"
+
+function Write-TextUtf8NoBom {
+  param(
+    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory=$true)][string]$Content
+  )
+  $dir = Split-Path -Parent $Path
+  if ($dir -and !(Test-Path -LiteralPath $dir)) {
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+  }
+  [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Backup-File {
+  param(
+    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory=$true)][string]$Tag
+  )
+  if (!(Test-Path -LiteralPath $Path)) {
+    Write-Host "[WARN] Missing file for backup: $Path"
+    return
+  }
+  $bakDir = Join-Path $ProjRoot "_patch_bak"
+  if (!(Test-Path -LiteralPath $bakDir)) {
+    New-Item -ItemType Directory -Path $bakDir | Out-Null
+  }
+  $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+  $name = [System.IO.Path]::GetFileName($Path)
+  $bak = Join-Path $bakDir ($name + ".bak." + $Tag + "." + $stamp)
+  Copy-Item -LiteralPath $Path -Destination $bak -Force
+  Write-Host "[OK] Backup: $bak"
+}
+
+$routePath = Join-Path $ProjRoot "app\api\dispatch\retry-auto-assign\route.ts"
+Backup-File -Path $routePath -Tag "RETRY_AUTOASSIGN_AUTH_BRIDGE_V1"
+
+$routeContent = @'
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -149,3 +195,8 @@ export async function POST(req: Request) {
     );
   }
 }
+'@
+
+Write-TextUtf8NoBom -Path $routePath -Content $routeContent
+Write-Host "[OK] Replaced: app/api/dispatch/retry-auto-assign/route.ts"
+Write-Host "[DONE] Patch applied."
