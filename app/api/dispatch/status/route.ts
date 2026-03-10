@@ -1,1042 +1,171 @@
-import { NextResponse } from "next/server";
-import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
-import { createClient } from "@/utils/supabase/server";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const supabaseAdmin = createSupabaseAdmin(
-  (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "") as string,
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || "") as string,
-  { auth: { persistSession: false } }
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function hasServiceRoleEnv(): { ok: boolean; reason?: string } {
-  const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "").trim();
-  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  if (!url) return { ok: false, reason: "MISSING_SUPABASE_URL" };
-  if (!key) return { ok: false, reason: "MISSING_SERVICE_ROLE_KEY" };
-  return { ok: true };
-}
-
-async function ensureDriverDeviceLock(driverId: string, deviceId: string): Promise<
+type DeviceLockResult =
   | { ok: true }
-  | { ok: false; code: string; message: string; status: number; extra?: any }
-> {
-  const eok = hasServiceRoleEnv();
-  if (!eok.ok) return { ok: false, code: "SERVER_MISCONFIG", message: eok.reason || "ENV_ERROR", status: 500 };
+  | { ok: false; code: string; message: string };
+
+async function ensureDriverDeviceLock(
+  driverId: string,
+  deviceId: string
+): Promise<DeviceLockResult> {
+  if (!driverId || !deviceId) {
+    return {
+      ok: false,
+      code: "DEVICE_ID_MISSING",
+      message: "Driver or device id missing",
+    };
+  }
 
   const { data: locks, error: lockErr } = await supabaseAdmin
     .from("driver_device_locks")
-    .select("driver_id, device_id, created_at")
+    .select("driver_id, device_id, claimed_at, last_seen")
     .eq("driver_id", driverId)
     .limit(1);
 
-  if (lockErr) return { ok: false, code: "DB_ERROR_DEVICE_LOCK", message: "Device lock lookup failed", status: 500 };
+  if (lockErr) {
+    return {
+      ok: false,
+      code: "DB_ERROR_DEVICE_LOCK",
+      message: "Device lock lookup failed",
+    };
+  }
 
-  const row: any = (Array.isArray(locks) && locks.length) ? locks[0] : null;
+  if (!locks || locks.length === 0) {
+    const now = new Date().toISOString();
 
-  if (!row) {
-    const { error: insErr } = await supabaseAdmin
+    const { error: insertErr } = await supabaseAdmin
       .from("driver_device_locks")
-      .insert([{ driver_id: driverId, device_id: deviceId }]);
+      .insert([
+        {
+          driver_id: driverId,
+          device_id: deviceId,
+          claimed_at: now,
+          last_seen: now,
+        },
+      ]);
 
-    if (insErr) return { ok: false, code: "DB_ERROR_DEVICE_LOCK_CREATE", message: "Failed to create device lock", status: 500 };
+    if (insertErr) {
+      return {
+        ok: false,
+        code: "DEVICE_LOCK_CREATE_FAILED",
+        message: insertErr.message,
+      };
+    }
+
     return { ok: true };
   }
 
-  const lockedDevice = String(row?.device_id ?? "").trim();
-  if (lockedDevice && lockedDevice !== deviceId) {
-    return { ok: false, code: "DEVICE_LOCKED", message: "Driver is locked to another device", status: 403, extra: { locked_device_id: lockedDevice } };
+  const existing = locks[0];
+
+  if (existing.device_id !== deviceId) {
+    return {
+      ok: false,
+      code: "DEVICE_LOCK_MISMATCH",
+      message: "Driver already locked to another device",
+    };
   }
+
+  await supabaseAdmin
+    .from("driver_device_locks")
+    .update({ last_seen: new Date().toISOString() })
+    .eq("driver_id", driverId)
+    .eq("device_id", deviceId);
 
   return { ok: true };
 }
 
-async function enforceDriverOwnsBooking(driverId: string, bookingId: any, bookingCode: any): Promise<
-  | { ok: true; booking: any }
-  | { ok: false; code: string; message: string; status: number }
-> {
-  const bid = String(bookingId ?? "").trim();
-  const bcode = String(bookingCode ?? "").trim();
-
-  let q: any = supabaseAdmin.from("bookings").select("id, booking_code, driver_id, assigned_driver_id, status").limit(1);
-
-  if (bid) q = q.eq("id", bid);
-  else if (bcode) q = q.eq("booking_code", bcode);
-  else return { ok: false, code: "MISSING_BOOKING", message: "booking_id or booking_code required", status: 400 };
-
-  const { data, error } = await q;
-  if (error) return { ok: false, code: "DB_ERROR_BOOKING_LOOKUP", message: "Booking lookup failed", status: 500 };
-
-  const bk: any = (Array.isArray(data) && data.length) ? data[0] : null;
-  if (!bk) return { ok: false, code: "NOT_FOUND", message: "Booking not found", status: 404 };
-
-  const bDriver = String(bk?.driver_id ?? "").trim();
-  const bAssigned = String(bk?.assigned_driver_id ?? "").trim();
-  if (bDriver !== driverId && bAssigned !== driverId) {
-    return { ok: false, code: "FORBIDDEN", message: "Booking not owned by this driver", status: 403 };
-  }
-
-  return { ok: true, booking: bk };
-}
-function isDriverDeviceLockAllowed(body: any): boolean {
-  // Minimal gate: require driver_id + device_id present
+function isDriverDeviceLockAllowed(body: any) {
   if (!body) return false;
-  const driver_id = body.driver_id || body.driverId;
-  const device_id = body.device_id || body.deviceId;
-  return !!(driver_id && device_id);
+  if (!body.driver_id) return false;
+  if (!body.device_id) return false;
+  return true;
 }
 
-type StatusReq = {
-  booking_id?: string | null;
-  booking_code?: string | null;
-  status?: string | null;
-  note?: string | null;
-  force?: boolean | null;
-};
-
-const ALLOWED = [
-  "requested",
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "on_the_way",
-  "arrived",
-  "enroute",
-  "on_trip",
-  "completed",
-  "cancelled",
-] as const;
-
-
-/* JRIDE_COMPLETE_PROXIMITY_BEGIN */
-const JRIDE_COMPLETE_RADIUS_M = Number(process.env.JRIDE_COMPLETE_RADIUS_M ?? 250);
-
-// Haversine distance (meters)
-function jrideHaversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371000; // meters
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const lat1 = toRad(aLat);
-  const lat2 = toRad(bLat);
-
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-  const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-async function jrideGetDriverCoords(supabase: any, driverId: string): Promise<{ lat: number; lng: number } | null> {
+export async function POST(req: NextRequest) {
   try {
-    if (!driverId) return null;
-    const { data, error } = await supabase
-      .from("driver_locations")
-      .select("lat,lng,updated_at")
-      .eq("driver_id", driverId)
-      .order("updated_at", { ascending: false })
-      .limit(1);
+    const body = await req.json();
 
-    if (error) return null;
-    const row = Array.isArray(data) && data.length ? data[0] : null;
-    const lat = Number(row?.lat);
-    const lng = Number(row?.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng };
-  } catch {
-    return null;
-  }
-}
-/* JRIDE_COMPLETE_PROXIMITY_END */
-const NEXT: Record<string, string[]> = {
-  requested: ["assigned", "cancelled"],
-  assigned: ["accepted", "on_the_way", "arrived", "enroute", "cancelled"],
-  accepted: ["fare_proposed", "cancelled"],
-  fare_proposed: ["on_the_way", "arrived", "enroute", "cancelled"],
-  on_the_way: ["arrived", "enroute", "cancelled"],
-  arrived: ["on_trip", "completed", "cancelled"],
-  enroute: ["arrived", "on_trip", "completed", "cancelled"],
-  on_trip: ["completed", "cancelled"],
-  completed: [],
-  cancelled: [],
-};
+    const driverId =
+      body.driver_id ||
+      body.driverId ||
+      null;
 
+    const deviceId =
+      body.device_id ||
+      body.deviceId ||
+      null;
 
-/* JRIDE_LIFECYCLE_ENFORCE_BEGIN */
-function allowedNextStatuses(fromStatus: string): string[] {
-  const f = norm(fromStatus);
-  const arr = (NEXT as any)?.[f];
-  return Array.isArray(arr) ? arr : [];
-}
+    if (isDriverDeviceLockAllowed(body)) {
+      const lock = await ensureDriverDeviceLock(driverId, deviceId);
 
-function isValidTransition(fromStatus: string, toStatus: string): { ok: boolean; reason?: string; allowed?: string[] } {
-  const fromS = norm(fromStatus);
-  const toS = norm(toStatus);
-
-  if (!toS) return { ok: false, reason: "MISSING_TARGET_STATUS", allowed: allowedNextStatuses(fromS) };
-
-  if (fromS === "completed" || fromS === "cancelled") {
-    return { ok: false, reason: "TERMINAL_STATE", allowed: [] };
-  }
-
-  if (fromS === toS) return { ok: true };
-
-  const allowed = allowedNextStatuses(fromS);
-  if (!allowed.length) return { ok: false, reason: "NO_TRANSITIONS_DEFINED", allowed };
-
-  if (allowed.indexOf(toS) >= 0) return { ok: true };
-
-  return { ok: false, reason: "INVALID_TRANSITION", allowed };
-}
-/* JRIDE_LIFECYCLE_ENFORCE_END */
-function norm(v: any): string {
-  let s = String(v ?? "").trim().toLowerCase();
-  if (!s) return "";
-  s = s.replace(/[\s\-]+/g, "_");
-  if (s === "new") return "requested";
-  if (s === "ongoing") return "on_trip";
-  return s;
-}
-
-function jsonOk(body: any, status = 200) {
-return NextResponse.json(body, { status });
-}
-
-function jsonErr(code: string, message: string, status: number, extra?: any) {
-return NextResponse.json(
-    Object.assign({ ok: false, code, message }, extra || {}),
-    { status }
-  );
-}
-
-function getActorFromReq(req: Request): string {
-  try {
-    const h: any = (req as any)?.headers;
-    const v =
-      h?.get?.("x-dispatcher-id") ||
-      h?.get?.("x-user-id") ||
-      h?.get?.("x-admin-id") ||
-      h?.get?.("x-actor") ||
-      "system";
-    return String(v || "system");
-  } catch {
-    return "system";
-  }
-}
-
-async function bestEffortAudit(
-  supabase: ReturnType<typeof createClient>,
-  entry: {
-    booking_id?: string | null;
-    booking_code?: string | null;
-    from_status?: string | null;
-    to_status?: string | null;
-    actor?: string | null;
-    source?: string | null;
-  }
-): Promise<{ warning?: string }> {
-  const payload: any = {
-    booking_id: entry.booking_id ?? null,
-    booking_code: entry.booking_code ?? null,
-    from_status: entry.from_status ?? null,
-    to_status: entry.to_status ?? null,
-    actor: entry.actor ?? "system",
-    source: entry.source ?? "dispatch/status",
-    created_at: new Date().toISOString(),
-  };
-
-  const tables = ["dispatch_audit_log", "audit_log", "status_audit"];
-
-  for (let i = 0; i < tables.length; i++) {
-    const tbl = tables[i];
-    try {
-      const r: any = await supabase.from(tbl).insert(payload);
-      if (!r?.error) return {};
-    } catch {}
-  }
-  return {};
-}
-
-async function bestEffortDispatchAction(
-  supabase: any,
-  entry: {
-    trip_id: string;
-    driver_id?: string | null;
-    from_status?: string | null;
-    to_status?: string | null;
-    dispatcher_id?: string | null;
-    dispatcher_name?: string | null;
-    source?: string | null;
-  }
-): Promise<{ warning?: string | null }> {
-  // Match your real public.dispatch_actions schema:
-  // dispatcher_id, dispatcher_name, trip_id, driver_id, action_type, note, meta
-  const payload: any = {
-    trip_id: entry.trip_id,
-    driver_id: entry.driver_id ?? null,
-    dispatcher_id: entry.dispatcher_id ?? null,
-    dispatcher_name: entry.dispatcher_name ?? null,
-    action_type: "status_change",
-    note: null,
-    meta: {
-      from_status: entry.from_status ?? null,
-      to_status: entry.to_status ?? null,
-      source: entry.source ?? "dispatch/status",
-    },
-  };
-
-  try {
-    const r = await supabase.from("dispatch_actions").insert(payload);
-    if (!r?.error) return { warning: null };
-    return { warning: "DISPATCH_ACTIONS_INSERT_ERROR: " + String(r.error?.message || r.error) };
-  } catch (e: any) {
-    return { warning: "DISPATCH_ACTIONS_INSERT_THROW: " + String(e?.message || e) };
-  }
-}
-
-async function fetchBooking(
-  supabase: ReturnType<typeof createClient>,
-  booking_id?: string | null,
-  booking_code?: string | null
-): Promise<{ data: any | null; error: string | null }> {
-  try {
-    if (booking_id) {
-      const r = await supabase
-        .from("bookings")
-        .select("*, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, verified_fare")
-        .eq("id", booking_id)
-        .maybeSingle();
-      return { data: r.data ?? null, error: r.error?.message || null };
-    }
-    if (booking_code) {
-      const r = await supabase
-        .from("bookings")
-        .select("*")
-        .eq("booking_code", booking_code)
-        .maybeSingle();
-      return { data: r.data ?? null, error: r.error?.message || null };
-    }
-    return { data: null, error: "Missing booking_id or booking_code" };
-  } catch (e: any) {
-    return { data: null, error: e?.message || "Booking lookup failed" };
-  }
-}
-
-async function tryUpdateBooking(
-  supabase: ReturnType<typeof createClient>,
-  bookingId: string,
-  patch: Record<string, any>
-): Promise<{ ok: boolean; data: any | null; error: string | null }> {
-  try {
-    const r = await supabase
-      .from("bookings")
-      .update(patch)
-      .eq("id", bookingId)
-      .select("*")
-      .maybeSingle();
-    if (r.error) return { ok: false, data: null, error: r.error.message };
-    return { ok: true, data: r.data ?? null, error: null };
-  } catch (e: any) {
-    return { ok: false, data: null, error: e?.message || "Booking update failed" };
-  }
-}
-
-// Best-effort: keep driver status roughly aligned (non-blocking)
-function driverStatusForBookingStatus(status: string): string | null {
-  const s = norm(status);
-  // IMPORTANT: do NOT overwrite ONLINE/AVAILABLE with "assigned" (prevents UI showing OFFLINE).
-  if (s === "assigned") return null;
-  if (s === "on_the_way" || s === "enroute") return "on_the_way";
-  if (s === "arrived") return "arrived";
-  if (s === "on_trip") return "on_trip";
-  if (s === "completed") return "available";
-  if (s === "cancelled") return "available";
-  return null;
-}
-
-async function bestEffortUpdateDriverLocation(
-  supabase: ReturnType<typeof createClient>,
-  driverId: string,
-  bookingStatus: string
-): Promise<{ warning?: string }> {
-  // Guard: this helper must return an object (never void) to satisfy Promise<{ warning?: string }>.
-  if (!driverId) return {};
-  if (!bookingStatus) return {};
-
-  const mapped = driverStatusForBookingStatus(bookingStatus);
-  
-    if (!mapped) return {}; // do not overwrite driver_locations.status when mapping is null
-    if (!driverId || !mapped) return {};
-
-  try {
-    const r = await supabase
-      .from("driver_locations")
-      .update({ status: mapped, updated_at: new Date().toISOString() })
-      .eq("driver_id", driverId);
-
-    if (r.error) {
-      return { warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR: " + r.error.message };
-    }
-    return {};
-  } catch (e: any) {
-    return { warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR: " + (e?.message || "Unknown error") };
-  }
-}
-
-/**
- * PHASE 3L - wallet sync (completion only)
- * IMPORTANT: Do NOT call admin_finalize_trip_and_credit_wallets(text)
- * because you have a DB trigger that credits driver wallet on status -> completed.
- * Calling finalize could double-credit driver earnings.
- *
- * What we DO:
- * - apply platform cut via process_booking_wallet_cut(p_booking_id uuid)
- * - for takeout: sync vendor wallet via sync_vendor_takeout_wallet(v_vendor_id uuid)
- */
-/* ===== JRIDE STEP 5E: EMERGENCY WALLET SPLIT ===== */
-const STEP5E_DRIVER_CREDIT = 20;
-const STEP5E_COMPANY_FEE = 15;
-
-async function step5eHasDriverCredit(supabase: any, bookingId: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from("driver_wallet_transactions")
-      .select("id")
-      .eq("booking_id", bookingId)
-      .eq("reason", "emergency_pickup_fee_driver")
-      .limit(1);
-
-    if (error) return false;
-    return Array.isArray(data) && data.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-async function step5eNextDriverBalanceAfter(supabase: any, driverId: string, delta: number): Promise<number> {
-  try {
-    const { data, error } = await supabase
-      .from("driver_wallet_transactions")
-      .select("balance_after")
-      .eq("driver_id", driverId)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (error) return delta;
-    const last = Array.isArray(data) && data.length > 0 ? Number(data[0]?.balance_after ?? 0) : 0;
-    const next = last + Number(delta);
-    return Number.isFinite(next) ? next : Number(delta);
-  } catch {
-    return Number(delta);
-  }
-}
-
-async function step5eHasCompanyFee(supabase: any, bookingCode: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from("vendor_wallet_transactions")
-      .select("id")
-      .eq("booking_code", bookingCode)
-      .eq("kind", "company_convenience_fee")
-      .eq("amount", STEP5E_COMPANY_FEE)
-      .limit(1);
-
-    if (error) return false;
-    return Array.isArray(data) && data.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-async function step5eBestEffortEmergencyWalletSplit(
-  supabase: any,
-  booking: any,
-  warnings: string[]
-): Promise<void> {
-  try {
-    const isEmergency = Boolean(booking?.is_emergency);
-    if (!isEmergency) return;
-
-    const bookingId = String(booking?.id ?? "").trim();
-    const bookingCode = String(booking?.booking_code ?? "").trim();
-    const driverId = String(booking?.driver_id ?? "").trim();
-
-    if (!bookingId || !driverId) {
-      warnings.push("STEP5E_MISSING_BOOKING_OR_DRIVER");
-      return;
-    }
-
-    // ---- Driver +20 (idempotent by booking_id + reason) ----
-    const alreadyDriver = await step5eHasDriverCredit(supabase, bookingId);
-    if (!alreadyDriver) {
-      const balanceAfter = await step5eNextDriverBalanceAfter(supabase, driverId, STEP5E_DRIVER_CREDIT);
-      const { error } = await supabase.from("driver_wallet_transactions").insert({
-        driver_id: driverId,
-        amount: STEP5E_DRIVER_CREDIT,
-        balance_after: balanceAfter,
-        reason: "emergency_pickup_fee_driver",
-        booking_id: bookingId,
-      });
-      if (error) warnings.push("STEP5E_DRIVER_LEDGER_INSERT_FAILED: " + error.message);
-    }
-
-    // ---- Company +15 (idempotent by booking_code + kind + amount) ----
-    if (!bookingCode) {
-      warnings.push("STEP5E_MISSING_BOOKING_CODE_FOR_COMPANY_LEDGER");
-      return;
-    }
-
-    const alreadyCompany = await step5eHasCompanyFee(supabase, bookingCode);
-    if (!alreadyCompany) {
-      const { error } = await supabase.from("vendor_wallet_transactions").insert({
-        vendor_id: null,
-        booking_code: bookingCode,
-        amount: STEP5E_COMPANY_FEE,
-        kind: "company_convenience_fee",
-        note: "Emergency convenience fee",
-      });
-
-      if (error) warnings.push("STEP5E_COMPANY_LEDGER_INSERT_FAILED: " + error.message);
-    }
-  } catch (e: any) {
-    warnings.push("STEP5E_UNEXPECTED: " + String(e?.message ?? e ?? "Unknown"));
-  }
-}
-/* ===== END JRIDE STEP 5E ===== */
-async function bestEffortWalletSyncOnComplete(
-  supabase: ReturnType<typeof createClient>,
-  booking: any,
-  warnings: string[]
-): Promise<{ warning?: string }> {
-  const bookingId = booking?.id ? String(booking.id) : null;
-  const serviceType = String(booking?.service_type ?? booking?.serviceType ?? "").toLowerCase();
-  const vendorId = booking?.vendor_id ? String(booking.vendor_id) : null;
-
-  // STEP5E_CALL_SITE: Emergency fee wallet split (idempotent, completion-only)
-  await step5eBestEffortEmergencyWalletSplit(supabase, booking, warnings);
-
-  // 1) Apply platform/company cut (driver wallet deduction)
-  if (bookingId) {
-    try {
-      const r: any = await supabase.rpc("process_booking_wallet_cut", {
-        p_booking_id: bookingId,
-      });
-      if (r?.error) warnings.push("WALLET_CUT_RPC_ERROR: " + r.error.message);
-    } catch (e: any) {
-      warnings.push("WALLET_CUT_RPC_ERROR: " + String(e?.message || e));
-    }
-  } else {
-    warnings.push("WALLET_CUT_SKIPPED_NO_BOOKING_ID");
-  }
-
-  // 2) Vendor wallet for takeout only
-  if (serviceType === "takeout" && vendorId) {
-    try {
-      const r: any = await supabase.rpc("sync_vendor_takeout_wallet", {
-        v_vendor_id: vendorId,
-      });
-      if (r?.error) warnings.push("VENDOR_SYNC_RPC_ERROR: " + r.error.message);
-    } catch (e: any) {
-      warnings.push("VENDOR_SYNC_RPC_ERROR: " + String(e?.message || e));
-    }
-  }
-
-  return warnings.length ? { warning: warnings.join("; ") } : {};
-}
-
-
-/* FREE_RIDE_DRIVER_CREDIT_BEGIN */
-async function freeRideCreditDriverOnComplete(supabase:any, booking:any): Promise<{ warning?: string }> {
-  try {
-    const bookingId = booking?.id ? String(booking.id) : "";
-    const driverId = booking?.driver_id ? String(booking.driver_id) : "";
-    if (!bookingId || !driverId) return {};
-
-    // Only if this booking is the promo trip
-    const ar = await supabase
-      .from("passenger_free_ride_audit")
-      .select("*")
-      .eq("trip_id", bookingId)
-      .maybeSingle();
-
-    if (ar?.error || !ar?.data) return {};
-    if (String(ar.data.status || "") !== "used") return {};
-
-    // Prevent double-credit: check reason unique by booking
-    const reason = "free_ride_credit:" + bookingId;
-    const ex = await supabase
-      .from("driver_wallet_transactions")
-      .select("id")
-      .eq("reason", reason)
-      .limit(1);
-
-    if (!ex?.error && Array.isArray(ex.data) && ex.data.length) {
-      return {};
-    }
-
-    // Compute next balance_after from last known entry
-    let prevBal = 0;
-    try {
-      const last = await supabase
-        .from("driver_wallet_transactions")
-        .select("balance_after")
-        .eq("driver_id", driverId)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (!last?.error && Array.isArray(last.data) && last.data.length) {
-        const v = Number(last.data[0]?.balance_after);
-        if (Number.isFinite(v)) prevBal = v;
+      if (!lock.ok) {
+        return NextResponse.json(lock);
       }
-    } catch {}
-
-    const credit = Number(ar.data.driver_credit_php ?? 20);
-    const nextBal = prevBal + (Number.isFinite(credit) ? credit : 20);
-
-    // Insert credit row
-    const ins = await supabase.from("driver_wallet_transactions").insert({
-      driver_id: driverId,
-      amount: credit,
-      balance_after: nextBal,
-      reason: reason,
-      booking_id: bookingId,
-      created_at: new Date().toISOString(),
-    });
-
-    if (ins?.error) {
-      return { warning: "FREE_RIDE_CREDIT_INSERT_ERROR: " + String(ins.error.message || "insert failed") };
     }
 
-    // Backfill audit with driver_id if missing (best-effort)
-    try {
-      if (!ar.data.driver_id) {
-        await supabase
-          .from("passenger_free_ride_audit")
-          .update({ driver_id: driverId, used_at: ar.data.used_at || new Date().toISOString() })
-          .eq("passenger_id", String(ar.data.passenger_id));
-      }
-    } catch {}
+    const bookingId =
+      body.booking_id ||
+      body.bookingId ||
+      null;
 
-    return {};
-  } catch (e:any) {
-    return { warning: "FREE_RIDE_CREDIT_EXCEPTION: " + String(e?.message || e) };
-  }
-}
-/* FREE_RIDE_DRIVER_CREDIT_END */
-export async function GET(req: Request) {
-  const supabase = createClient();
+    const bookingCode =
+      body.booking_code ||
+      body.bookingCode ||
+      null;
 
-  // Admin/session gate (GET has no body; do NOT attempt driver device-lock here)
-  const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
-  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
-
-  let actorUserId: string | null = null;
-  const driverSecret = String(req.headers.get("x-jride-driver-secret") || req.headers.get("x-driver-ping-secret") || req.headers.get("x-driver-secret") || "").trim();
-  const wantDriverSecret = String(process.env.JRIDE_DRIVER_SECRET || process.env.DRIVER_PING_SECRET || process.env.DRIVER_API_SECRET || "").trim();
-const driverSecretOk = !!(wantDriverSecret && driverSecret === wantDriverSecret);
-
-// JRIDE_UNAUTH_DIAG_V1 (safe: does NOT expose secrets)
-const __jrideUnauthDiag = {
-  driver_secret_present: !!driverSecret,
-  driver_secret_len: driverSecret ? String(driverSecret).length : 0,
-  want_driver_secret_present: !!wantDriverSecret,
-  want_driver_secret_len: wantDriverSecret ? String(wantDriverSecret).length : 0,
-  allow_unauth_flag: allowUnauth,
-  has_admin_secret_env: !!wantSecret,
-  has_admin_secret_header: !!gotSecret,
-};
-if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
-    try {
-      const { data } = await supabase.auth.getUser();
-      actorUserId = data?.user?.id ?? null;
-    } catch {
-      actorUserId = null;
-    }
-    if (!actorUserId) {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401, { diag: __jrideUnauthDiag });
-    }
-  }
-
-  try {
-    const url = new URL(req.url);
-    const bookingId = (url.searchParams.get("booking_id") || url.searchParams.get("id") || "").trim();
-    const bookingCode = (url.searchParams.get("booking_code") || url.searchParams.get("code") || "").trim();
+    const status =
+      body.status ||
+      null;
 
     if (!bookingId && !bookingCode) {
-      return jsonErr("BAD_REQUEST", "booking_id or booking_code is required", 400);
+      return NextResponse.json({
+        ok: false,
+        code: "BOOKING_ID_MISSING",
+        message: "Booking id or booking code required",
+      });
     }
 
-    let q: any = supabase
+    let query = supabaseAdmin
       .from("bookings")
-      .select("id, booking_code, status, assigned_driver_id, driver_id, updated_at, proposed_fare, passenger_fare_response, verified_fare, verified_at, verified_by")
-      .limit(1);
+      .update({
+        status: status,
+        driver_id: driverId,
+        assigned_driver_id: driverId,
+        updated_at: new Date().toISOString(),
+      });
 
-    if (bookingId) q = q.eq("id", bookingId);
-    else q = q.eq("booking_code", bookingCode);
-
-    const r: any = await q.order("updated_at", { ascending: false, nullsFirst: false }).maybeSingle();
-    if (r?.error) {
-      return jsonErr("DB_ERROR", String(r.error.message || "query failed"), 500);
-    }
-    if (!r?.data) {
-      return jsonErr("NOT_FOUND", "Booking not found", 404);
+    if (bookingId) {
+      query = query.eq("id", bookingId);
     }
 
-    return jsonOk({ booking: r.data });
-  } catch (e: any) {
-    return jsonErr("SERVER_ERROR", String(e?.message || e), 500);
-  }
-}
-export async function POST(req: Request) {
-  /* JRIDE_DISPATCH_STATUS_QUERY_PING_V1 */
-  // Health check that bypasses body parsing/validation
-  try {
-    const u = new URL(req.url);
-    if (u.searchParams.get("ping") === "1") {
-      return NextResponse.json({ ok: true, pong: true }, { status: 200 });
+    if (bookingCode) {
+      query = query.eq("booking_code", bookingCode);
     }
-  } catch {}
-  /* JRIDE_DISPATCH_STATUS_QUERY_PING_V1_END */
 
-  const body = await req.json().catch(() => null);
+    const { error: updateErr } = await query;
 
-
-let warnings: string[] = [];
-  const supabase = createClient();
-  
-  // Auth/secret gate (OFF by default in production)
-  const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_STATUS || "").trim() === "1";
-  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
-  const gotSecret = String(req.headers.get("x-jride-admin-secret") || req.headers.get("x-admin-secret") || "").trim();
-let actorUserId: string | null = null;
-  const driverSecret = String(req.headers.get("x-jride-driver-secret") || req.headers.get("x-driver-ping-secret") || req.headers.get("x-driver-secret") || "").trim();
-  const wantDriverSecret = String(process.env.JRIDE_DRIVER_SECRET || process.env.DRIVER_PING_SECRET || process.env.DRIVER_API_SECRET || "").trim();
-const driverSecretOk = !!(wantDriverSecret && driverSecret === wantDriverSecret);
-
-// JRIDE_UNAUTH_DIAG_V1 (safe: does NOT expose secrets)
-const __jrideUnauthDiag = {
-  driver_secret_present: !!driverSecret,
-  driver_secret_len: driverSecret ? String(driverSecret).length : 0,
-  want_driver_secret_present: !!wantDriverSecret,
-  want_driver_secret_len: wantDriverSecret ? String(wantDriverSecret).length : 0,
-  allow_unauth_flag: allowUnauth,
-  has_admin_secret_env: !!wantSecret,
-  has_admin_secret_header: !!gotSecret,
-};
-if (!allowUnauth && !(driverSecretOk || (wantSecret && gotSecret && gotSecret === wantSecret))) {
-    try {
-      const { data } = await supabase.auth.getUser();
-      actorUserId = data?.user?.id ?? null;
-    } catch {
-      actorUserId = null;
+    if (updateErr) {
+      return NextResponse.json({
+        ok: false,
+        code: "BOOKING_UPDATE_FAILED",
+        message: updateErr.message,
+      });
     }
-    if (!actorUserId) {
-      return jsonErr("UNAUTHORIZED", "Not authenticated", 401, { diag: __jrideUnauthDiag });
-    }
-  }
 
-
-  const booking_id =
-    body?.booking_id ??
-    body?.bookingId ??
-    body?.id ??
-    body?.booking?.id ??
-    null;
-
-  const booking_code =
-    body?.booking_code ??
-    body?.bookingCode ??
-    body?.code ??
-    body?.booking?.booking_code ??
-    body?.booking?.bookingCode ??
-    null;
-  const actionRaw = (body?.action ?? body?.key ?? null);
-  const action = (actionRaw ? String(actionRaw).trim().toLowerCase() : null);
-
-  const mapActionToStatus = (a: string | null): string | null => {
-    if (!a) return null;
-    if (a === "on_the_way") return "on_the_way";
-    if (a === "arrived") return "arrived";
-    if (a === "start_trip") return "on_trip";
-    if (a === "complete_trip") return "completed";
-    if (a === "cancel_trip") return "cancelled";
-    if (a === "accept_fare") return "accepted";
-    if (a === "fare_proposed" || a === "propose_fare") return "fare_proposed";
-    return null;
-  };
-
-  let status: any = (body?.status ?? null);
-  if (!status && action) status = mapActionToStatus(action);
-  const note = body?.note ?? null;
-  const force = Boolean(body?.force);
-
-  if ((!booking_id || String(booking_id).trim() === "") && (!booking_code || String(booking_code).trim() === "")) {
-    return jsonErr("BAD_REQUEST", "Missing booking identifier", 400);
-  }
-  if (!status) {
-    return jsonErr("BAD_REQUEST", "Missing target status", 400);
-  }
-
-  const target = norm(status);
-  if (!target || !(ALLOWED as any).includes(target)) {
-    return jsonErr("INVALID_STATUS", "Invalid status. Allowed: " + ALLOWED.join(", "), 400);
-  }
-
-  const bk = await fetchBooking(
-    supabase,
-    booking_id ? String(booking_id).trim() : null,
-    booking_code ? String(booking_code).trim() : null
-  );
-
-  if (!bk.data) {
-    return jsonErr("BOOKING_NOT_FOUND", bk.error || "Booking not found", 404, {
-      booking_id: booking_id ?? null,
-      booking_code: booking_code ?? null,
-    });
-  }
-
-  const booking: any = bk.data;
-  const cur = norm(booking.status) || "requested";
-  const allowedNext = NEXT[cur] ?? [];
-  const hasDriver = !!booking.driver_id;
-
-  const isAdminSecretRequest = !!(wantSecret && gotSecret && gotSecret === wantSecret);
-  const requestDriverId = String(body?.driver_id ?? body?.driverId ?? "").trim();
-  const requestDeviceId = String(body?.device_id ?? body?.deviceId ?? "").trim();
-
-  if (!isAdminSecretRequest && isDriverDeviceLockAllowed(body)) {
-    const lockRes = await ensureDriverDeviceLock(requestDriverId, requestDeviceId);
-    if (!lockRes.ok) {
-      return jsonErr(lockRes.code, lockRes.message, lockRes.status, lockRes.extra || {});
-    }
-  }
-
-  if (!isAdminSecretRequest && requestDriverId) {
-    const ownRes = await enforceDriverOwnsBooking(
-      requestDriverId,
-      booking_id ? String(booking_id).trim() : null,
-      booking_code ? String(booking_code).trim() : null
-    );
-    if (!ownRes.ok) {
-      return jsonErr(ownRes.code, ownRes.message, ownRes.status);
-    }
-  }
-
-  // PHASE 3L: Trip lock
-  if ((cur === "completed" || cur === "cancelled") && cur !== target) {
-    return jsonErr("TRIP_LOCKED", "Trip already " + cur + " (no further updates allowed)", 409, {
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      current_status: cur,
-      target_status: target,
-    });
-  }
-
-  // Require driver for lifecycle statuses (except requested/cancelled)
-  if (!hasDriver && target !== "requested" && target !== "cancelled") {
-    return jsonErr("NO_DRIVER", "Cannot set status without driver_id", 409, {
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      current_status: cur,
-      target_status: target,
-      has_driver: hasDriver,
-      allowed_next: allowedNext,
-      current_status_raw: booking.status ?? null,
-    });
-  }
-
-  // Idempotent retry
-  if (cur === target) {
-    return jsonOk({
+    return NextResponse.json({
       ok: true,
-      changed: false,
-      idempotent: true,
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      status: booking.status ?? null,
-      booking,
+    });
+  } catch (err: any) {
+    return NextResponse.json({
+      ok: false,
+      code: "UNHANDLED_ERROR",
+      message: err?.message || "Unknown error",
     });
   }
-
-  // Strict transitions unless forced
-  if (!force && !allowedNext.includes(target)) {
-    return jsonErr("INVALID_TRANSITION", "Cannot transition " + cur + " -> " + target, 409, {
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      current_status: cur,
-      target_status: target,
-      has_driver: hasDriver,
-      allowed_next: allowedNext,
-    });
-  }
-  /* JRIDE_COMPLETE_PROXIMITY_CHECK_BEGIN */
-  // Completion must be destination-based, NOT polyline-based.
-  // Allow complete if within radius of dropoff OR if forced.
-  if (target === "completed" && !force) {
-    const dLat = Number(booking?.dropoff_lat);
-    const dLng = Number(booking?.dropoff_lng);
-
-    // Prefer coords from request body if present, else driver_locations fallback.
-    const bodyLat = Number(body?.lat ?? body?.driver_lat ?? body?.driverLat);
-    const bodyLng = Number(body?.lng ?? body?.driver_lng ?? body?.driverLng);
-
-    let curLat: number | null = null;
-    let curLng: number | null = null;
-
-    if (Number.isFinite(bodyLat) && Number.isFinite(bodyLng)) {
-      curLat = bodyLat; curLng = bodyLng;
-    } else {
-      const dl = await jrideGetDriverCoords(supabase as any, String(booking?.driver_id ?? ""));
-      if (dl) { curLat = dl.lat; curLng = dl.lng; }
-    }
-
-    if (Number.isFinite(dLat) && Number.isFinite(dLng) && Number.isFinite(curLat as any) && Number.isFinite(curLng as any)) {
-      const meters = jrideHaversineMeters(curLat as any, curLng as any, dLat, dLng);
-      const radius = Number.isFinite(JRIDE_COMPLETE_RADIUS_M) ? JRIDE_COMPLETE_RADIUS_M : 250;
-      if (meters > radius) {
-        return jsonErr("TOO_FAR_FROM_DROPOFF", "Driver too far from dropoff to complete (" + Math.round(meters) + "m, radius " + radius + "m). Use force=true to override.", 409, {
-          booking_id: String(booking.id),
-          booking_code: booking.booking_code ?? null,
-          meters: meters,
-          radius_m: radius,
-          driver_lat: curLat,
-          driver_lng: curLng,
-          dropoff_lat: dLat,
-          dropoff_lng: dLng
-        });
-      }
-    }
-  }
-  /* JRIDE_COMPLETE_PROXIMITY_CHECK_END */
-
-// Best-effort timestamps + note (falls back to status-only if columns missing)
-  const nowIso = new Date().toISOString();
-  const patch: Record<string, any> = { status: target };
-
-  if (target === "assigned") patch.assigned_at = nowIso;
-  if (target === "on_the_way" || target === "enroute") patch.enroute_at = nowIso;
-  if (target === "arrived") patch.arrived_at = nowIso;
-  if (target === "on_trip") patch.on_trip_at = nowIso;
-  if (target === "completed") patch.completed_at = nowIso;
-  if (target === "cancelled") patch.cancelled_at = nowIso;
-
-  if (note && String(note).trim() !== "") {
-    patch.status_note = String(note).trim();
-  }
-
-  let upd = await tryUpdateBooking(supabase, String(booking.id), patch);
-
-  if (!upd.ok && upd.error && upd.error.toLowerCase().includes("column")) {
-    upd = await tryUpdateBooking(supabase, String(booking.id), { status: target });
-  
-    // JRIDE_DISPATCH_ACTIONS_LOG_V6C (non-blocking)
-  try {
-    const driverForLog =
-      (booking?.driver_id ? String(booking.driver_id) :
-        (booking?.assigned_driver_id ? String(booking.assigned_driver_id) : null));
-
-    const dispatcherIdForLog =
-      ((typeof actorUserId !== "undefined" && actorUserId) ? String(actorUserId) : null);
-
-    await bestEffortDispatchAction(supabase, {
-      trip_id: String(booking.id),
-      driver_id: driverForLog,
-      from_status: cur,
-      to_status: target,
-      dispatcher_id: dispatcherIdForLog,
-      dispatcher_name: null,
-      source: "dispatch/status",
-    });
-  } catch {}}
-
-  if (!upd.ok) {
-    return jsonErr("DISPATCH_STATUS_DB_ERROR", upd.error || "Booking update failed", 500, {
-      booking_id: String(booking.id),
-      booking_code: booking.booking_code ?? null,
-      current_status: cur,
-      target_status: target,
-    });
-  }
-
-  const updatedBooking = upd.data ?? booking;
-
-  // Driver location sync (non-blocking)
-  const driverId =
-    updatedBooking?.driver_id ? String(updatedBooking.driver_id) :
-    (booking?.driver_id ? String(booking.driver_id) : "");
-
-  const drv = await bestEffortUpdateDriverLocation(supabase, driverId, target);
-
-  // Audit (non-blocking)
-  const actor = (actorUserId || '').trim() ? String(actorUserId) : getActorFromReq(req);
-  const audit = await bestEffortAudit(supabase, {
-    booking_id: String(booking.id),
-    booking_code: booking.booking_code ?? null,
-    from_status: cur,
-    to_status: target,
-    actor,
-    source: "dispatch/status",
-  });
-
-  // Wallet sync (completion only)
-  let walletWarn: string | null = null;
-  if (target === "completed") {
-    const w = await bestEffortWalletSyncOnComplete(supabase, updatedBooking, warnings);
-    walletWarn = w.warning ?? null;
-
-    // FREE_RIDE_CREDIT_CALL (promo ride only)
-    const fr = await freeRideCreditDriverOnComplete(supabase as any, updatedBooking);
-    if (fr.warning) walletWarn = walletWarn ? (String(walletWarn) + "; " + String(fr.warning)) : String(fr.warning);
-  }
-
-  const warn =
-    drv.warning
-      ? (audit.warning ? (String(drv.warning) + "; " + String(audit.warning)) : String(drv.warning))
-      : (audit.warning ? String(audit.warning) : null);
-
-  const mergedWarn =
-    warn
-      ? (walletWarn ? (String(warn) + "; " + String(walletWarn)) : String(warn))
-      : (walletWarn ? String(walletWarn) : null);
-
-  return jsonOk({
-    ok: true,
-    changed: true,
-    booking_id: String(booking.id),
-    booking_code: booking.booking_code ?? null,
-    status: target,
-    allowed_next: NEXT[target] ?? [],
-    booking: updatedBooking ?? null,
-    warning: mergedWarn,
-  });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
