@@ -1,83 +1,190 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-type Body = {
-  bookingId?: string | null;
-  bookingCode?: string | null;
-  status?: string | null;
-  base_fare?: number | null;
-  convenience_fee?: number | null;
-  proposed_fare?: number | null;
-};
+type DeviceLockResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string };
 
-const ALLOWED = new Set([
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "ready",
-  "on_the_way",
-  "arrived",
-  "on_trip",
-  "completed",
-  "cancelled",
-]);
+async function ensureDriverDeviceLock(
+  driverId: string,
+  deviceId: string
+): Promise<DeviceLockResult> {
+  if (!driverId || !deviceId) {
+    return {
+      ok: false,
+      code: "DEVICE_ID_MISSING",
+      message: "Driver or device id missing",
+    };
+  }
 
-function normalizeStatus(raw: string) {
-  const s = String(raw || "").trim().toLowerCase();
-  if (s === "driver_accepted") return "accepted";
-  if (s === "awaiting_passenger_confirmation") return "fare_proposed";
-  return s;
+  const { data: locks, error: lockErr } = await supabaseAdmin
+    .from("driver_device_locks")
+    .select("driver_id, device_id, claimed_at, last_seen")
+    .eq("driver_id", driverId)
+    .limit(1);
+
+  if (lockErr) {
+    return {
+      ok: false,
+      code: "DB_ERROR_DEVICE_LOCK",
+      message: "Device lock lookup failed",
+    };
+  }
+
+  if (!locks || locks.length === 0) {
+    const now = new Date().toISOString();
+
+    const { error: insertErr } = await supabaseAdmin
+      .from("driver_device_locks")
+      .insert([
+        {
+          driver_id: driverId,
+          device_id: deviceId,
+          claimed_at: now,
+          last_seen: now,
+        },
+      ]);
+
+    if (insertErr) {
+      return {
+        ok: false,
+        code: "DEVICE_LOCK_CREATE_FAILED",
+        message: insertErr.message,
+      };
+    }
+
+    return { ok: true };
+  }
+
+  const existing = locks[0];
+
+  if (existing.device_id !== deviceId) {
+    return {
+      ok: false,
+      code: "DEVICE_LOCK_MISMATCH",
+      message: "Driver already locked to another device",
+    };
+  }
+
+  await supabaseAdmin
+    .from("driver_device_locks")
+    .update({ last_seen: new Date().toISOString() })
+    .eq("driver_id", driverId)
+    .eq("device_id", deviceId);
+
+  return { ok: true };
 }
 
-function driverStatusForBookingStatus(s: string) {
-  if (s === "completed" || s === "cancelled") return "online";
-  if (["assigned", "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip"].includes(s)) return "on_trip";
-  return null;
+function isDriverDeviceLockAllowed(body: any) {
+  if (!body) return false;
+  if (!body.driver_id) return false;
+  if (!body.device_id) return false;
+  return true;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = supabaseAdmin();
-    const body = (await req.json().catch(() => ({}))) as Body;
+    const body = await req.json();
 
-    const bookingId = String(body.bookingId ?? "").trim();
-    const bookingCode = String(body.bookingCode ?? "").trim();
-    const status = normalizeStatus(String(body.status ?? ""));
-    const legacyFare = Number(body.base_fare ?? 0) + Number(body.convenience_fee ?? 0);
-    const proposedFare = Number(body.proposed_fare ?? 0) || legacyFare || null;
+    const driverId =
+      body.driver_id ||
+      body.driverId ||
+      null;
 
-    if (!status) return NextResponse.json({ error: "MISSING_STATUS" }, { status: 400 });
-    if (!bookingId && !bookingCode) return NextResponse.json({ error: "MISSING_BOOKING_IDENTIFIER" }, { status: 400 });
-    if (!ALLOWED.has(status)) return NextResponse.json({ error: "INVALID_STATUS", statusValue: status }, { status: 400 });
+    const deviceId =
+      body.device_id ||
+      body.deviceId ||
+      null;
 
-    let sel = supabase.from("bookings").select("id, booking_code, status, driver_id").limit(1);
-    sel = bookingId ? sel.eq("id", bookingId) : sel.eq("booking_code", bookingCode);
+    if (isDriverDeviceLockAllowed(body)) {
+      const lock = await ensureDriverDeviceLock(driverId, deviceId);
 
-    const { data: rows, error: selErr } = await sel;
-    if (selErr) return NextResponse.json({ error: "DISPATCH_STATUS_SELECT_ERROR", message: selErr.message }, { status: 500 });
-
-    const booking = rows?.[0];
-    if (!booking?.id) return NextResponse.json({ error: "BOOKING_NOT_FOUND" }, { status: 404 });
-
-    const updateBody: Record<string, any> = { status, updated_at: new Date().toISOString() };
-
-    if (status === "fare_proposed" && proposedFare != null) {
-      updateBody.proposed_fare = proposedFare;
+      if (!lock.ok) {
+        return NextResponse.json(lock);
+      }
     }
 
-    const { error: upErr } = await supabase.from("bookings").update(updateBody).eq("id", booking.id);
-    if (upErr) return NextResponse.json({ error: "DISPATCH_STATUS_DB_ERROR", message: upErr.message }, { status: 500 });
+    const bookingId =
+      body.booking_id ||
+      body.bookingId ||
+      null;
 
-    const driverId = booking.driver_id ? String(booking.driver_id) : "";
-    const mapped = driverStatusForBookingStatus(status);
-    if (driverId && mapped) {
-      await supabase.from("driver_locations").update({ status: mapped, updated_at: new Date().toISOString() }).eq("driver_id", driverId);
+    const bookingCode =
+      body.booking_code ||
+      body.bookingCode ||
+      null;
+
+    const status =
+      body.status ||
+      null;
+
+    const proposedFareRaw = Number(body.proposed_fare);
+    const baseFareRaw = Number(body.base_fare);
+    const convenienceFeeRaw = Number(body.convenience_fee);
+
+    let derivedProposedFare: number | null = null;
+    if (Number.isFinite(proposedFareRaw) && proposedFareRaw >= 0) {
+      derivedProposedFare = proposedFareRaw;
+    } else if (Number.isFinite(baseFareRaw) && baseFareRaw >= 0) {
+      const conv = Number.isFinite(convenienceFeeRaw) ? convenienceFeeRaw : 0;
+      derivedProposedFare = baseFareRaw + conv;
     }
 
-    return NextResponse.json({ ok: true, status, legacy: true }, { status: 200 });
+    if (!bookingId && !bookingCode) {
+      return NextResponse.json({
+        ok: false,
+        code: "BOOKING_ID_MISSING",
+        message: "Booking id or booking code required",
+      });
+    }
+
+    const patch: any = {
+      status: status,
+      driver_id: driverId,
+      assigned_driver_id: driverId,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === "fare_proposed" && derivedProposedFare !== null) {
+      patch.proposed_fare = derivedProposedFare;
+      patch.passenger_fare_response = null;
+    }
+
+    let query = supabaseAdmin
+      .from("bookings")
+      .update(patch);
+
+    if (bookingId) {
+      query = query.eq("id", bookingId);
+    }
+
+    if (bookingCode) {
+      query = query.eq("booking_code", bookingCode);
+    }
+
+    const { error: updateErr } = await query;
+
+    if (updateErr) {
+      return NextResponse.json({
+        ok: false,
+        code: "BOOKING_UPDATE_FAILED",
+        message: updateErr.message,
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+    });
   } catch (err: any) {
-    return NextResponse.json({ error: "DISPATCH_STATUS_UNEXPECTED", message: err?.message ?? "Unexpected error" }, { status: 500 });
+    return NextResponse.json({
+      ok: false,
+      code: "UNHANDLED_ERROR",
+      message: err?.message || "Unknown error",
+    });
   }
 }
