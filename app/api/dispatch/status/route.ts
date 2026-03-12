@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
@@ -123,6 +123,18 @@ export async function POST(req: NextRequest) {
       body.status ||
       null;
 
+    const proposedFareRaw = Number(body.proposed_fare);
+    const baseFareRaw = Number(body.base_fare);
+    const convenienceFeeRaw = Number(body.convenience_fee);
+
+    let derivedProposedFare: number | null = null;
+    if (Number.isFinite(proposedFareRaw) && proposedFareRaw >= 0) {
+      derivedProposedFare = proposedFareRaw;
+    } else if (Number.isFinite(baseFareRaw) && baseFareRaw >= 0) {
+      const conv = Number.isFinite(convenienceFeeRaw) ? convenienceFeeRaw : 0;
+      derivedProposedFare = baseFareRaw + conv;
+    }
+
     if (!bookingId && !bookingCode) {
       return NextResponse.json({
         ok: false,
@@ -131,14 +143,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const patch: any = {
+      status: status,
+      driver_id: driverId,
+      assigned_driver_id: driverId,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === "fare_proposed" && derivedProposedFare !== null) {
+      patch.proposed_fare = derivedProposedFare;
+      patch.passenger_fare_response = null;
+    }
+
     let query = supabaseAdmin
       .from("bookings")
-      .update({
-        status: status,
-        driver_id: driverId,
-        assigned_driver_id: driverId,
-        updated_at: new Date().toISOString(),
-      });
+      .update(patch);
 
     if (bookingId) {
       query = query.eq("id", bookingId);
