@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function isUuidLike(s: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || "").trim());
-}
-function getSupabaseEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-  return { url, key };
 }
 
 export async function POST(req: Request) {
@@ -28,25 +23,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, code: "INVALID_FARE" }, { status: 400 });
     }
 
-    const env = getSupabaseEnv();
-    if (!env.url || !env.key) {
-      return NextResponse.json({ ok: false, code: "MISSING_SUPABASE_ENV" }, { status: 500 });
-    }
-    const supabase = createClient(env.url, env.key);
+    const supabase = supabaseAdmin();
 
-    // Update booking: keep assigned_driver_id + driver_id intact, set proposed_fare and move to fare_proposed
-    const match = booking_id ? { id: booking_id } : { booking_code };
+    let q = supabase.from("bookings").update({
+      proposed_fare,
+      status: "fare_proposed",
+      driver_id,
+      assigned_driver_id: driver_id,
+      updated_at: new Date().toISOString(),
+    });
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .update({
-        proposed_fare,
-        status: "fare_proposed",
-        driver_id,
-        assigned_driver_id: driver_id,
-        updated_at: new Date().toISOString(),
-      })
-      .match(match)
+    q = booking_id ? q.eq("id", booking_id) : q.eq("booking_code", booking_code);
+
+    const { data, error } = await q
       .select("id, booking_code, status, proposed_fare, driver_id, assigned_driver_id, updated_at")
       .limit(1);
 

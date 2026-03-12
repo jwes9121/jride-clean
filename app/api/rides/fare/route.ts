@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       .from("bookings")
       .update({
         proposed_fare: fare,
-        status: "awaiting_passenger_confirmation",
+        status: "fare_proposed",
         updated_at: new Date().toISOString(),
       })
       .eq("booking_code", bookingCode)

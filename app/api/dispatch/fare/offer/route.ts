@@ -7,15 +7,8 @@ type Body = {
   bookingId?: string | null;
   bookingCode?: string | null;
   driverId?: string | null;
-
-  // Driver-entered fare EXCLUDING convenience fee
   fare?: number | string | null;
-
-  // Convenience fee to add (defaults to 15)
   convenienceFee?: number | string | null;
-
-  // Optional source label
-  source?: string | null;
 };
 
 function num(x: any, d: number) {
@@ -31,7 +24,6 @@ export async function POST(req: Request) {
     const bookingId = String(body.bookingId ?? "").trim();
     const bookingCode = String(body.bookingCode ?? "").trim();
     const driverId = String(body.driverId ?? "").trim();
-    const source = String(body.source ?? "android").trim();
 
     if (!driverId) return NextResponse.json({ ok: false, code: "MISSING_DRIVER_ID" }, { status: 400 });
     if (!bookingId && !bookingCode) {
@@ -46,56 +38,28 @@ export async function POST(req: Request) {
     const conv = num(body.convenienceFee, 15);
     const total = Math.round((baseFare + conv) * 100) / 100;
 
-    // Resolve booking
-    let readQ = supabase.from("bookings").select("id, booking_code, status, driver_id, assigned_driver_id").limit(1);
-    if (bookingId) readQ = readQ.eq("id", bookingId);
-    else readQ = readQ.eq("booking_code", bookingCode);
-
-    const { data: rows, error: selErr } = await readQ;
-    if (selErr) {
-      return NextResponse.json({ ok: false, code: "FARE_OFFER_SELECT_ERROR", message: selErr.message }, { status: 500 });
-    }
-    const b = rows?.[0];
-    if (!b?.id) return NextResponse.json({ ok: false, code: "BOOKING_NOT_FOUND" }, { status: 404 });
-
-    // Basic safety: if booking is already completed/cancelled, block
-    const st = String(b.status ?? "").toLowerCase().trim();
-    if (st === "completed" || st === "cancelled" || st === "on_trip") {
-      return NextResponse.json({ ok: false, code: "BOOKING_NOT_OFFERABLE", status: b.status }, { status: 409 });
-    }
-
-    // Save offer + auto-verify so passenger can accept immediately
-    const now = new Date().toISOString();
-    const patch: any = {
+    let q = supabase.from("bookings").update({
       proposed_fare: total,
-      verified_fare: total,
-      verified_reason: "driver_offer_auto",
-      verified_at: now,
       passenger_fare_response: null,
-
-      // Ensure driver assignment is present
       driver_id: driverId,
       assigned_driver_id: driverId,
-      assigned_at: now,
+      assigned_at: new Date().toISOString(),
+      status: "fare_proposed",
+      updated_at: new Date().toISOString(),
+    });
 
-      // Hold state for passenger decision
-      status: "accepted",
+    q = bookingId ? q.eq("id", bookingId) : q.eq("booking_code", bookingCode);
 
-      updated_at: now,
-    };
+    const { data, error } = await q
+      .select("id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
+      .limit(1);
 
-    const { error: upErr } = await supabase.from("bookings").update(patch).eq("id", b.id);
-    if (upErr) {
-      return NextResponse.json(
-        { ok: false, code: "FARE_OFFER_DB_ERROR", message: upErr.message, source },
-        { status: 500 }
-      );
+    if (error) {
+      return NextResponse.json({ ok: false, code: "FARE_OFFER_DB_ERROR", message: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(
-      { ok: true, booking_id: b.id, booking_code: b.booking_code, total_fare: total, base_fare: baseFare, convenience_fee: conv },
-      { status: 200 }
-    );
+    const row = Array.isArray(data) && data.length ? data[0] : null;
+    return NextResponse.json({ ok: true, booking: row, total_fare: total, base_fare: baseFare, convenience_fee: conv });
   } catch (e: any) {
     return NextResponse.json({ ok: false, code: "FARE_OFFER_FATAL", message: String(e?.message ?? e) }, { status: 500 });
   }
