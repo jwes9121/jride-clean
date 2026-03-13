@@ -6,990 +6,692 @@ import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions"
 import TripWalletPanel from "./components/TripWalletPanel";
 import TripLifecycleActions from "./components/TripLifecycleActions";
 
-type LiveTripRow = any;
+/**
+ * Dispatcher-first LiveTrips client:
+ * - Clickable status pills that FILTER list + map
+ * - "Problem trips" pill focuses stuck/problem trips
+ * - Auto-select first trip in current filtered set
+ * - Keeps UI reactive after status updates
+ */
+
+type ZoneRow = {
+  zone_id: string;
+  zone_name: string;
+  color_hex?: string | null;
+  capacity_limit?: number | null;
+  active_drivers?: number | null;
+  available_slots?: number | null;
+  status?: string | null;
+};
+
+type TripRow = {
+  id?: string | number | null;
+  uuid?: string | null;
+  booking_code?: string | null;
+  passenger_name?: string | null;
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+  status?: string | null;
+  zone?: string | null; // town/zone name
+  town?: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
 
 type DriverRow = {
   driver_id?: string | null;
-  id?: string | null;
-  full_name?: string | null;
   name?: string | null;
+  phone?: string | null;
+  town?: string | null;
+  status?: string | null;
   lat?: number | null;
   lng?: number | null;
-  status?: string | null;
-  effective_status?: string | null;
   updated_at?: string | null;
-  updated_at_ph?: string | null;
-  town?: string | null;
-  home_town?: string | null;
-  municipality?: string | null;
-  zone?: string | null;
-  age_seconds?: number | null;
-  is_stale?: boolean | null;
-  assign_fresh?: boolean | null;
-  assign_online_eligible?: boolean | null;
-  assign_eligible?: boolean | null;
-  eligibility_reason?: string | null;
-  completed_trips_count?: number | null;
-  cancelled_trips_count?: number | null;
-  active_booking_id?: string | null;
-  active_booking_code?: string | null;
-  active_booking_status?: string | null;
-  active_booking_town?: string | null;
-  active_booking_updated_at?: string | null;
 };
 
+type PageData = {
+  zones?: ZoneRow[];
+  trips?: TripRow[];
+  bookings?: TripRow[];
+  data?: TripRow[];
+  driverWalletBalances?: any;
+  vendorWalletBalances?: any;
+  [k: string]: any;
+};
+
+const STUCK_THRESHOLDS_MIN = {
+  on_the_way: 15,
+  on_trip: 25,
+};
+
+function normStatus(s?: any) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function normTripId(t: TripRow): string {
+  return String(t.uuid || t.id || t.booking_code || "");
+}
+
+function safeArray<T>(v: any): T[] {
+  if (!v) return [];
+  if (Array.isArray(v)) return v as T[];
+  return [];
+}
+
+function parseTripsFromPageData(j: any): TripRow[] {
+  if (!j) return [];
+  // common shapes
+  const candidates = [
+    j.trips,
+    j.bookings,
+    j.data,
+    j["0"],
+    Array.isArray(j) ? j : null,
+  ];
+  for (const c of candidates) {
+    const arr = safeArray<TripRow>(c);
+    if (arr.length) return arr;
+  }
+  return [];
+}
+
+function minutesSince(iso?: string | null): number {
+  if (!iso) return 999999;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return 999999;
+  const now = Date.now();
+  return Math.floor((now - t) / 60000);
+}
+
+function isActiveTripStatus(s: string) {
+  return ["pending", "assigned", "on_the_way", "on_trip"].includes(s);
+}
+
+function isCompletedStatus(s: string) {
+  return ["completed", "cancelled"].includes(s);
+}
+
+function computeIsProblem(t: TripRow): boolean {
+  const s = normStatus(t.status);
+  const mins = minutesSince(t.updated_at || t.created_at || null);
+
+  const isStuck =
+    (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
+    (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
+
+  // also treat "missing coords" as problem for active trips
+  const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
+  const hasDropoff = Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
+  const missingCoords = isActiveTripStatus(s) && (!hasPickup || !hasDropoff);
+
+  return isStuck || missingCoords;
+}
+
 type FilterKey =
-  | "all"
-  | "dispatch"
-  | "pending_fare"
-  | "driver_accepted"
+  | "dispatch" // pending + assigned + on_the_way
+  | "pending"
+  | "assigned"
   | "on_the_way"
-  | "arrived"
-  | "in_progress"
+  | "on_trip"
   | "completed"
   | "cancelled"
   | "problem";
 
-type MainTab = "trips" | "drivers";
-type DriverFilterKey = "all" | "online_eligible" | "assigned" | "on_trip" | "stale" | "offline";
-
-function truthy(v: any) {
-  return v === true || v === "true" || v === 1 || v === "1";
-}
-
-function s(v: any): string {
-  return String(v ?? "");
-}
-
-function n(v: any): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-}
-
-function statusEff(row: any): string {
-  const st = s(row?.status ?? row?.trip_status ?? row?.status_eff).toLowerCase();
-  if (!st) return "";
-  return st;
-}
-
-function bookingCode(row: any): string {
-  return s(row?.booking_code ?? row?.bookingCode ?? row?.id);
-}
-
-function formatPHTime(input?: string | null): string {
-  if (!input) return "-";
-  const d = new Date(input);
-  if (!Number.isFinite(d.getTime())) return String(input);
-  return d.toLocaleString("en-PH", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-}
-
-function formatAgo(ageSeconds: number | null | undefined): string {
-  const v = Number(ageSeconds);
-  if (!Number.isFinite(v) || v < 0) return "-";
-  if (v < 60) return `${Math.floor(v)}s ago`;
-  if (v < 3600) return `${Math.floor(v / 60)}m ago`;
-  return `${Math.floor(v / 3600)}h ${Math.floor((v % 3600) / 60)}m ago`;
-}
-
-function normalizeTripForSuggestions(t: any) {
-  if (!t) return null;
-
-  const pickupLat =
-    n(t?.pickupLat) ??
-    n(t?.pickup_lat) ??
-    n(t?.from_lat) ??
-    n(t?.origin_lat);
-
-  const pickupLng =
-    n(t?.pickupLng) ??
-    n(t?.pickup_lng) ??
-    n(t?.from_lng) ??
-    n(t?.origin_lng);
-
-  const zone =
-    s(t?.zone ?? t?.town ?? t?.municipality ?? t?.area).trim() || "Unknown";
-
-  const tripType =
-    s(t?.tripType ?? t?.trip_type ?? t?.service_type ?? t?.serviceType).trim() || "ride";
-
-  return {
-    id: s(t?.id ?? t?.booking_id ?? t?.booking_code),
-    pickupLat: pickupLat ?? 0,
-    pickupLng: pickupLng ?? 0,
-    zone,
-    tripType,
-  };
-}
-
-function normalizeDriversForSuggestions(rows: DriverRow[]) {
-  return (rows ?? [])
-    .map((d) => {
-      const id = s(d?.driver_id ?? d?.id).trim();
-      const lat = n(d?.lat);
-      const lng = n(d?.lng);
-      if (!id || lat == null || lng == null) return null;
-
-      const homeTown =
-        s(d?.home_town ?? d?.municipality ?? d?.town ?? d?.zone).trim() || "Unknown";
-
-      const zone =
-        s(d?.zone ?? d?.town ?? d?.home_town ?? d?.municipality).trim() || "Unknown";
-
-      const status =
-        s(d?.effective_status ?? d?.status).trim() || "unknown";
-
-      return {
-        id,
-        name: s(d?.name ?? d?.full_name ?? d?.driver_id ?? d?.id).trim() || id,
-        lat,
-        lng,
-        zone,
-        homeTown,
-        status,
-      };
-    })
-    .filter(Boolean) as Array<{
-      id: string;
-      name: string;
-      lat: number;
-      lng: number;
-      zone: string;
-      homeTown: string;
-      status: string;
-    }>;
-}
-
-function driverTown(d: DriverRow): string {
-  return s(d?.town ?? d?.home_town ?? d?.municipality ?? d?.zone).trim();
-}
-
-function driverDisplayName(d: DriverRow): string {
-  return s(d?.full_name ?? d?.name ?? d?.driver_id ?? d?.id).trim() || "(unnamed)";
-}
-
-function driverStatusBucket(d: DriverRow): DriverFilterKey {
-  const raw = s(d?.status).toLowerCase().trim();
-  const eff = s(d?.effective_status).toLowerCase().trim();
-  const active = s(d?.active_booking_status).toLowerCase().trim();
-  const assignEligible = truthy(d?.assign_eligible);
-
-  if (assignEligible) return "online_eligible";
-  if (active === "on_trip" || active === "completed" || active === "enroute") return "on_trip";
-  if (active === "assigned" || active === "accepted" || active === "on_the_way" || active === "arrived" || active === "fare_proposed") return "assigned";
-  if (eff === "stale" || truthy(d?.is_stale)) return "stale";
-  if (raw === "offline" || raw === "logout" || raw === "logged_out") return "offline";
-  return "offline";
-}
-
-function onlineEligibleSortScore(d: DriverRow): number {
-  const bucket = driverStatusBucket(d);
-  if (bucket === "online_eligible") return 0;
-  if (bucket === "assigned") return 1;
-  if (bucket === "on_trip") return 2;
-  if (bucket === "stale") return 3;
-  return 4;
-}
-
-function compareDrivers(a: DriverRow, b: DriverRow): number {
-  const sa = onlineEligibleSortScore(a);
-  const sb = onlineEligibleSortScore(b);
-  if (sa !== sb) return sa - sb;
-
-  const aa = Number(a?.age_seconds ?? Number.MAX_SAFE_INTEGER);
-  const bb = Number(b?.age_seconds ?? Number.MAX_SAFE_INTEGER);
-  if (aa !== bb) return aa - bb;
-
-  return driverDisplayName(a).localeCompare(driverDisplayName(b));
-}
-
-function filterDriverByTown(d: DriverRow, town: string): boolean {
-  if (!town || town === "All") return true;
-  return driverTown(d).toLowerCase() === town.toLowerCase();
-}
-
-function filterDriverBySearch(d: DriverRow, q: string): boolean {
-  const needle = q.trim().toLowerCase();
-  if (!needle) return true;
-  const hay = [
-    driverDisplayName(d),
-    s(d?.driver_id),
-    driverTown(d),
-    s(d?.active_booking_code),
-    s(d?.active_booking_status),
-  ].join(" ").toLowerCase();
-  return hay.includes(needle);
-}
-
-function kpiCounts(drivers: DriverRow[]) {
-  return {
-    total: drivers.length,
-    online_eligible: drivers.filter((d) => driverStatusBucket(d) === "online_eligible").length,
-    assigned: drivers.filter((d) => driverStatusBucket(d) === "assigned").length,
-    on_trip: drivers.filter((d) => driverStatusBucket(d) === "on_trip").length,
-    stale: drivers.filter((d) => driverStatusBucket(d) === "stale").length,
-    offline: drivers.filter((d) => driverStatusBucket(d) === "offline").length,
-  };
-}
-
 export default function LiveTripsClient() {
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [zones, setZones] = useState<ZoneRow[]>([]);
 
-  const [trips, setTrips] = useState<LiveTripRow[]>([]);
+  // Keep a single status-update path for the UI.
+  const setTripStatus = async (bookingCode: string, status: string) => {
+    if (!bookingCode || !status) return;
+    setLastAction(`Setting ${bookingCode} -> ${status}...`);
+
+    const r = await fetch("/api/dispatch/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingCode, status }),
+    });
+
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || j?.message || "STATUS_UPDATE_FAILED");
+
+    setLastAction(`Status -> ${status}`);
+
+    try {
+      await loadPage();
+    } catch (e) {
+      console.warn("[LiveTrips] reload failed after status change", e);
+    }
+  };
+  const [allTrips, setAllTrips] = useState<TripRow[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<FilterKey>("dispatch");
+
+  const [tripFilter, setTripFilter] = useState<FilterKey>("dispatch");
   const [lastAction, setLastAction] = useState<string>("");
 
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
-  const [driversDebug, setDriversDebug] = useState<string>("not-loaded");
-  const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
-  const [retryingBookingCode, setRetryingBookingCode] = useState<string | null>(null);
+  const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
 
-  const [stuckTripIds, setStuckTripIds] = useState<Set<string>>(new Set());
-  const [mainTab, setMainTab] = useState<MainTab>("trips");
-  const [driverTownFilter, setDriverTownFilter] = useState<string>("All");
-  const [driverStatusFilter, setDriverStatusFilter] = useState<DriverFilterKey>("all");
-  const [driverSearch, setDriverSearch] = useState<string>("");
-  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [manualDriverId, setManualDriverId] = useState<string>("");
 
-  const pollRef = useRef<any>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
 
-  async function fetchPageData() {
-    setLoading(true);
-    setErr(null);
+  async function loadPage() {
+    const r = await fetch("/api/admin/livetrips/page-data?debug=1", { cache: "no-store" });
+    const j: PageData = await r.json().catch(() => ({} as any));
 
-    try {
-      const [pageRes, driverRes] = await Promise.all([
-        fetch("/api/admin/livetrips/page-data", {
-          method: "GET",
-          headers: { "content-type": "application/json" },
-          cache: "no-store",
-        }),
-        fetch("/api/admin/livetrips/drivers-summary", {
-          method: "GET",
-          headers: { "content-type": "application/json" },
-          cache: "no-store",
-        }),
-      ]);
+    const z = safeArray<ZoneRow>(j.zones);
+    const trips = parseTripsFromPageData(j);
 
-      const j = await pageRes.json().catch(() => ({}));
-      const dj = await driverRes.json().catch(() => ({}));
+    // normalize key fields so UI doesn't break
+    const normalized = trips.map((t) => ({
+      ...t,
+      booking_code: t.booking_code ?? (t as any).bookingCode ?? null,
+      pickup_label: t.pickup_label ?? (t as any).from_label ?? (t as any).fromLabel ?? null,
+      dropoff_label: t.dropoff_label ?? (t as any).to_label ?? (t as any).toLabel ?? null,
+      zone: t.zone ?? (t as any).town ?? (t as any).zone_name ?? null,
+      status: t.status ?? "pending",
+    }));
 
-      if (!pageRes.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${pageRes.status}`);
-      if (!driverRes.ok) throw new Error(dj?.error ?? dj?.message ?? `HTTP ${driverRes.status}`);
+    setZones(z);
+    setAllTrips(normalized);
 
-      const nextTrips = Array.isArray(j?.trips) ? j.trips : [];
-      const nextDrivers = Array.isArray(dj?.drivers) ? (dj.drivers as DriverRow[]) : [];
-
-      setTrips(nextTrips);
-      setDrivers(nextDrivers);
-      setDriversDebug(`loaded:${nextDrivers.length}`);
-
-      if (Array.isArray(j?.stuck_trip_ids)) {
-        const set = new Set<string>();
-        for (const x of j.stuck_trip_ids) set.add(String(x));
-        setStuckTripIds(set);
-      } else {
-        setStuckTripIds(new Set());
-      }
-
-      if (!selectedTripId && nextTrips.length > 0) {
-        setSelectedTripId(bookingCode(nextTrips[0]));
-      }
-
-      if (!selectedDriverId && nextDrivers.length > 0) {
-        const first = [...nextDrivers].sort(compareDrivers)[0];
-        setSelectedDriverId(String(first?.driver_id ?? first?.id ?? ""));
-      }
-    } catch (e: any) {
-      setErr(e?.message ?? "Unknown error");
-    } finally {
-      setLoading(false);
+    // keep selectedTripId valid
+    const ids = new Set(normalized.map(normTripId).filter(Boolean));
+    if (selectedTripId && !ids.has(selectedTripId)) {
+      setSelectedTripId(null);
     }
   }
 
-  async function handleAssign(driverId: string) {
-    const selectedTrip =
-      (visibleTrips ?? []).find((t: any) => bookingCode(t) === selectedTripId) ??
-      (visibleTrips?.[0] ?? null);
+  async function loadDrivers() {
+    // We keep this conservative (won't break if endpoint differs).
+    const endpoints = [
+      "/api/admin/driver-locations",
+      "/api/admin/driver_locations",
+      "/api/admin/drivers",
+      "/api/driver-locations",
+      "/api/driver_locations",
+    ];
 
-    if (!selectedTrip) {
-      setLastAction("assign blocked: no selected trip");
-      return;
-    }
+    for (const url of endpoints) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        if (!r.ok) continue;
+        const j = await r.json().catch(() => ({} as any));
 
-    const booking_code = s(selectedTrip?.booking_code).trim();
-    const booking_id = s(selectedTrip?.id).trim();
+        const arr =
+          safeArray<DriverRow>(j.drivers) ||
+          safeArray<DriverRow>(j.data) ||
+          safeArray<DriverRow>(j["0"]) ||
+          (Array.isArray(j) ? (j as DriverRow[]) : []);
 
-    if (!booking_code && !booking_id) {
-      setLastAction("assign blocked: missing booking identifier");
-      return;
-    }
-
-    setAssigningDriverId(driverId);
-    setErr(null);
-
-    try {
-      const res = await fetch("/api/dispatch/assign", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({
-          booking_code: booking_code || undefined,
-          booking_id: booking_id || undefined,
-          driver_id: driverId,
-        }),
-      });
-
-      const j = await res.json().catch(() => ({}));
-
-      if (!res.ok || j?.ok === false) {
-        throw new Error(j?.message ?? j?.error ?? j?.code ?? `HTTP ${res.status}`);
+        if (Array.isArray(arr) && arr.length) {
+          setDrivers(arr);
+          setDriversDebug(`loaded from ${url} (${arr.length})`);
+          return;
+        }
+      } catch {
+        // try next endpoint
       }
-
-      setLastAction(
-        `assigned ${driverId} to ${booking_code || booking_id} at ${formatPHTime(new Date().toISOString())}`
-      );
-
-      await fetchPageData();
-    } catch (e: any) {
-      const msg = e?.message ?? "Assignment failed";
-      setErr(msg);
-      setLastAction(`assign failed: ${msg}`);
-    } finally {
-      setAssigningDriverId(null);
-    }
-  }
-
-  async function handleRetryAutoAssign(trip: any) {
-    const booking_code = s(trip?.booking_code).trim();
-    const booking_id = s(trip?.id).trim();
-    const st = s(trip?.status).trim().toLowerCase();
-
-    if (!booking_code && !booking_id) {
-      setLastAction("retry blocked: missing booking identifier");
-      return;
     }
 
-    if (st && st !== "requested" && st !== "dispatch") {
-      setLastAction("retry blocked: booking is not in requested/dispatch state");
-      return;
-    }
-
-    setRetryingBookingCode(booking_code || booking_id);
-    setErr(null);
-
-    try {
-      const res = await fetch("/api/dispatch/retry-auto-assign", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({
-          booking_code: booking_code || undefined,
-          booking_id: booking_id || undefined,
-        }),
-      });
-
-      const j = await res.json().catch(() => ({}));
-
-      if (!res.ok || j?.ok === false) {
-        throw new Error(j?.message ?? j?.error ?? j?.code ?? `HTTP ${res.status}`);
-      }
-
-      const resultCode = s(j?.assign?.code ?? "OK");
-      const resultMessage = s(j?.assign?.message ?? "retry completed");
-      setLastAction(`retry ${booking_code || booking_id}: ${resultCode} ${resultMessage}`.trim());
-
-      await fetchPageData();
-    } catch (e: any) {
-      const msg = e?.message ?? "Retry auto-assign failed";
-      setErr(msg);
-      setLastAction(`retry failed: ${msg}`);
-    } finally {
-      setRetryingBookingCode(null);
-    }
-  }
-
-  function jumpToLinkedTrip() {
-    const code = s(selectedDriver?.active_booking_code).trim();
-    const id = s(selectedDriver?.active_booking_id).trim();
-    if (!code && !id) return;
-
-    setMainTab("trips");
-    setActiveFilter("all");
-
-    const found = (trips ?? []).find((t: any) => {
-      const tc = s(t?.booking_code).trim();
-      const ti = s(t?.id).trim();
-      return (code && tc === code) || (id && ti === id);
-    });
-
-    if (found) {
-      setSelectedTripId(bookingCode(found));
-    }
+    setDrivers([]);
+    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
   }
 
   useEffect(() => {
-    fetchPageData();
-
-    pollRef.current = setInterval(() => {
-      fetchPageData();
-    }, 5000);
-
-    return () => {
-      try {
-        clearInterval(pollRef.current);
-      } catch {
-      }
-    };
+    // initial load
+    loadPage().catch((e) => setLastAction("Trips load failed: " + (e?.message ?? "unknown")));
+    loadDrivers().catch((e) => setDriversDebug("Drivers load failed: " + (e?.message ?? "unknown")));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visibleTrips = useMemo(() => {
-    const rows = trips ?? [];
+  // Auto-refresh (keeps counts accurate)
+  useEffect(() => {
+    const t = setInterval(() => {
+      loadPage().catch(() => {});
+      loadDrivers().catch(() => {});
+    }, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    if (activeFilter === "all") return rows;
-
-    if (activeFilter === "problem") {
-      return rows.filter((r) => {
-        const code = bookingCode(r);
-        return stuckTripIds.has(code) || truthy(r?.is_stuck) || truthy(r?.stuck);
-      });
+  // Problem/stuck detection set
+  const stuckTripIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of allTrips) {
+      if (computeIsProblem(t)) {
+        const id = normTripId(t);
+        if (id) s.add(id);
+      }
     }
+    return s;
+  }, [allTrips]);
 
-    return rows.filter((r) => statusEff(r) === activeFilter);
-  }, [trips, activeFilter, stuckTripIds]);
-
-  const selectedTrip = useMemo(() => {
-    return (
-      visibleTrips.find((t: any) => bookingCode(t) === selectedTripId) ??
-      visibleTrips[0] ??
-      null
-    );
-  }, [visibleTrips, selectedTripId]);
-
-  const summary = useMemo(() => {
-    const rows = trips ?? [];
-    const counts: Record<string, number> = {
-      all: rows.length,
+  const counts = useMemo(() => {
+    const c = {
       dispatch: 0,
-      pending_fare: 0,
-      driver_accepted: 0,
+      pending: 0,
+      assigned: 0,
       on_the_way: 0,
-      arrived: 0,
-      in_progress: 0,
+      on_trip: 0,
       completed: 0,
       cancelled: 0,
       problem: 0,
     };
+    for (const t of allTrips) {
+      const s = normStatus(t.status);
+      if (s === "pending") c.pending++;
+      if (s === "assigned") c.assigned++;
+      if (s === "on_the_way") c.on_the_way++;
+      if (s === "on_trip") c.on_trip++;
+      if (s === "completed") c.completed++;
+      if (s === "cancelled") c.cancelled++;
+      if (["pending", "assigned", "on_the_way"].includes(s)) c.dispatch++;
+      if (computeIsProblem(t)) c.problem++;
+    }
+    return c;
+  }, [allTrips]);
 
-    for (const r of rows) {
-      const st = statusEff(r);
-      if (counts[st] != null) counts[st] += 1;
+  const visibleTrips = useMemo(() => {
+    const f = tripFilter;
 
-      const code = bookingCode(r);
-      const isProb = stuckTripIds.has(code) || truthy(r?.is_stuck) || truthy(r?.stuck);
-      if (isProb) counts.problem += 1;
+    let out: TripRow[] = [];
+    if (f === "dispatch") {
+      out = allTrips.filter((t) => ["pending", "assigned", "on_the_way"].includes(normStatus(t.status)));
+    } else if (f === "problem") {
+      out = allTrips.filter((t) => stuckTripIds.has(normTripId(t)));
+    } else {
+      out = allTrips.filter((t) => normStatus(t.status) === f);
     }
 
-    return counts;
-  }, [trips, stuckTripIds]);
+    // stable ordering: newest updated first
+    out.sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || 0 as any).getTime() || 0;
+      const tb = new Date(b.updated_at || b.created_at || 0 as any).getTime() || 0;
+      return tb - ta;
+    });
 
-  const fleetCount = useMemo(() => (drivers ?? []).length, [drivers]);
+    return out;
+  }, [allTrips, tripFilter, stuckTripIds]);
 
-  const suggestionTrip = useMemo(() => normalizeTripForSuggestions(selectedTrip), [selectedTrip]);
-  const suggestionDrivers = useMemo(() => normalizeDriversForSuggestions(drivers), [drivers]);
-  const zoneStats = useMemo(() => ({} as Record<string, { util: number; status: string }>), []);
-  const assignedDriverId = s(selectedTrip?.assigned_driver_id ?? selectedTrip?.driver_id).trim() || null;
+  useEffect(() => {
+    if (!visibleTrips.length) {
+      if (selectedTripId !== null) setSelectedTripId(null);
+      return;
+    }
 
-  const canAssign = useMemo(() => {
-    const st = statusEff(selectedTrip);
-    return st === "dispatch" || st === "requested" || st === "assigned" || !st;
+    const ids = new Set(visibleTrips.map(normTripId).filter(Boolean));
+    if (!selectedTripId || !ids.has(selectedTripId)) {
+      setSelectedTripId(normTripId(visibleTrips[0]));
+    }
+  }, [visibleTrips, selectedTripId]);
+
+  const selectedTrip = useMemo(() => {
+    if (!selectedTripId) return null;
+    return allTrips.find((t) => normTripId(t) === selectedTripId) || null;
+  }, [allTrips, selectedTripId]);
+
+  function pillClass(active: boolean) {
+    return [
+      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
+      active ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
+    ].join(" ");
+  }
+
+  function setFilterAndFocus(f: FilterKey) {
+    setTripFilter(f);
+
+    // after filter changes, scroll list into view (dispatcher-friendly)
+    setTimeout(() => {
+      if (tableRef.current) {
+        tableRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  }
+
+  async function postJson(url: string, body: any) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = (j && (j.error || j.message)) || "REQUEST_FAILED";
+      throw new Error(msg);
+    }
+    return j;
+  }
+
+  async function assignDriver(bookingCode: string, driverId: string) {
+    if (!bookingCode || !driverId) return;
+    setLastAction("Assigning...");
+    await postJson("/api/dispatch/assign", { bookingCode, driverId });
+    setLastAction("Assigned");
+    await loadPage();
+  }
+
+  async function updateTripStatus(bookingCode: string, status: string) {
+    await setTripStatus(bookingCode, status);
+  }
+
+  const zoneStats = useMemo(() => {
+    const out: Record<string, { util: number; status: string }> = {};
+    for (const z of zones) {
+      const key = String(z.zone_name || z.zone_id || "Unknown");
+      const active = Number(z.active_drivers ?? 0);
+      const cap = Number(z.capacity_limit ?? 0);
+      const util = cap > 0 ? active / cap : 0;
+      out[key] = {
+        util,
+        status: String(z.status || (util >= 1 ? "FULL" : util >= 0.8 ? "WARN" : "OK")).toUpperCase(),
+      };
+    }
+    return out;
+  }, [zones]);
+
+  const selectedTripForSuggestions = useMemo(() => {
+    if (!selectedTrip) return null;
+    return {
+      id: normTripId(selectedTrip),
+      pickupLat: Number(selectedTrip.pickup_lat ?? 0),
+      pickupLng: Number(selectedTrip.pickup_lng ?? 0),
+      zone: String(selectedTrip.zone || selectedTrip.town || "Unknown"),
+      tripType: String((selectedTrip as any).trip_type || (selectedTrip as any).service_type || "ride"),
+    };
   }, [selectedTrip]);
 
-  const lockReason = canAssign ? undefined : "Trip is no longer in an assignable state.";
+  const assignedDriverId = String(selectedTrip?.driver_id || "") || null;
 
-  const allDriverTowns = useMemo(() => {
-    const set = new Set<string>();
-    for (const d of drivers) {
-      const t = driverTown(d);
-      if (t) set.add(t);
-    }
-    return ["All", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-  }, [drivers]);
-
-  const townScopedDrivers = useMemo(() => {
-    return [...(drivers ?? [])].filter((d) => filterDriverByTown(d, driverTownFilter));
-  }, [drivers, driverTownFilter]);
-
-  const filteredDrivers = useMemo(() => {
-    const rows = [...townScopedDrivers]
-      .filter((d) => filterDriverBySearch(d, driverSearch));
-
-    if (driverStatusFilter !== "all") {
-      return rows.filter((d) => driverStatusBucket(d) === driverStatusFilter).sort(compareDrivers);
-    }
-
-    return rows.sort(compareDrivers);
-  }, [townScopedDrivers, driverStatusFilter, driverSearch]);
-
-  const selectedDriver = useMemo(() => {
-    return (
-      filteredDrivers.find((d) => String(d?.driver_id ?? d?.id ?? "") === selectedDriverId) ??
-      filteredDrivers[0] ??
-      null
-    );
-  }, [filteredDrivers, selectedDriverId]);
-
-  const driverKPIs = useMemo(() => kpiCounts(filteredDrivers), [filteredDrivers]);
-
-  const driverTabTrips = useMemo(() => {
-    const activeCode = s(selectedDriver?.active_booking_code).trim();
-    const activeId = s(selectedDriver?.active_booking_id).trim();
-    if (!activeCode && !activeId) return [] as any[];
-    return (trips ?? []).filter((t: any) => {
-      const code = s(t?.booking_code).trim();
-      const id = s(t?.id).trim();
-      return (activeCode && code === activeCode) || (activeId && id === activeId);
-    });
-  }, [selectedDriver, trips]);
+  const showThresholds = `Stuck watcher thresholds: on_the_way ? ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ? ${STUCK_THRESHOLDS_MIN.on_trip} min`;
 
   return (
-    <div className="flex h-full w-full flex-col gap-3 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-sm font-semibold">LiveTrips</div>
-
-        <button
-          className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-          onClick={() => fetchPageData()}
-          disabled={loading}
-        >
-          Refresh
-        </button>
-
-        <div className="ml-auto text-xs text-gray-500">
-          {loading ? "Loading..." : "Ready"}{" "}
-          {err ? <span className="text-red-600">* {err}</span> : null}
+    <div className="p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Live Trips</h1>
+          <p className="text-sm text-gray-600">Monitor active bookings on the left and follow them on the map on the right.</p>
+        </div>
+        <div className="text-xs text-gray-600 text-right">
+          <div className="font-medium">Stuck watcher thresholds</div>
+          <div>on_the_way ? {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ? {STUCK_THRESHOLDS_MIN.on_trip} min</div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      {/* Clickable status pills */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button className={pillClass(tripFilter === "dispatch")} onClick={() => setFilterAndFocus("dispatch")}>
+          Dispatch <span className="text-xs opacity-80">{counts.dispatch}</span>
+        </button>
+        <button className={pillClass(tripFilter === "pending")} onClick={() => setFilterAndFocus("pending")}>
+          Pending <span className="text-xs opacity-80">{counts.pending}</span>
+        </button>
+        <button className={pillClass(tripFilter === "assigned")} onClick={() => setFilterAndFocus("assigned")}>
+          Assigned <span className="text-xs opacity-80">{counts.assigned}</span>
+        </button>
+        <button className={pillClass(tripFilter === "on_the_way")} onClick={() => setFilterAndFocus("on_the_way")}>
+          On the way <span className="text-xs opacity-80">{counts.on_the_way}</span>
+        </button>
+        <button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>
+          On trip <span className="text-xs opacity-80">{counts.on_trip}</span>
+        </button>
+        <button className={pillClass(tripFilter === "completed")} onClick={() => setFilterAndFocus("completed")}>
+          Completed <span className="text-xs opacity-80">{counts.completed}</span>
+        </button>
+        <button className={pillClass(tripFilter === "cancelled")} onClick={() => setFilterAndFocus("cancelled")}>
+          Cancelled <span className="text-xs opacity-80">{counts.cancelled}</span>
+        </button>
         <button
-          className={
-            "rounded-full border px-3 py-1 text-xs " +
-            (mainTab === "trips" ? "bg-black text-white" : "bg-white hover:bg-gray-50")
-          }
-          onClick={() => setMainTab("trips")}
+          className={[
+            pillClass(tripFilter === "problem"),
+            tripFilter === "problem" ? "" : "border-red-300 text-red-700 hover:bg-red-50",
+          ].join(" ")}
+          onClick={() => setFilterAndFocus("problem")}
+          title={showThresholds}
         >
-          Trips
+          Problem trips <span className="text-xs opacity-80">{counts.problem}</span>
         </button>
 
-        <button
-          className={
-            "rounded-full border px-3 py-1 text-xs " +
-            (mainTab === "drivers" ? "bg-black text-white" : "bg-white hover:bg-gray-50")
-          }
-          onClick={() => setMainTab("drivers")}
-        >
-          Drivers
-        </button>
+        <div className="ml-auto text-xs text-gray-600 self-center">
+          {lastAction ? <span>Last action: {lastAction}</span> : <span>&nbsp;</span>}
+        </div>
       </div>
 
-      {mainTab === "trips" ? (
-        <>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["dispatch", "Dispatch"],
-                ["pending_fare", "Pending Fare"],
-                ["driver_accepted", "Driver Accepted"],
-                ["on_the_way", "On the way"],
-                ["arrived", "Arrived"],
-                ["in_progress", "In progress"],
-                ["completed", "Completed"],
-                ["cancelled", "Cancelled"],
-                ["problem", "Problem"],
-                ["all", "All"],
-              ] as Array<[FilterKey, string]>
-            ).map(([k, label]) => {
-              const isOn = activeFilter === k;
-              const count = summary[k] ?? 0;
-              return (
-                <button
-                  key={k}
-                  className={
-                    "rounded-full border px-3 py-1 text-xs " +
-                    (isOn ? "bg-black text-white" : "bg-white hover:bg-gray-50")
-                  }
-                  onClick={() => setActiveFilter(k)}
-                  title={`${label} (${count})`}
-                >
-                  {label} <span className={isOn ? "text-white/80" : "text-gray-500"}>({count})</span>
-                </button>
-              );
-            })}
+      {/* Zones */}
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        {zones.map((z) => (
+          <div key={z.zone_id} className="rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">{z.zone_name}</div>
+              <div className="text-xs text-gray-600">{z.status || "-"}</div>
+            </div>
+            <div className="text-xs text-gray-600">
+              Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "-"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main layout: list + map */}
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4" ref={tableRef}>
+        {/* Left: trips list */}
+        <div className="rounded-lg border">
+          <div className="p-3 border-b flex items-center justify-between">
+            <div className="font-semibold">
+              {tripFilter === "dispatch" ? "Dispatch view (Pending + Assigned + On the way)" : "Trips"}
+            </div>
+            <div className="text-xs text-gray-600">{visibleTrips.length} shown</div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
-            <div>Trips: {visibleTrips.length}</div>
-            <div>Fleet: {fleetCount}</div>
-            <div className="truncate">DriversDebug: {driversDebug}</div>
-            <div className="truncate">LastAction: {lastAction}</div>
-          </div>
+          <div className="overflow-auto" style={{ maxHeight: 520 }}>
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white border-b">
+                <tr className="text-left">
+                  <th className="p-2">Code</th>
+                  <th className="p-2">Passenger</th>
+                  <th className="p-2">Pickup</th>
+                  <th className="p-2">Dropoff</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2">Zone</th>
+                  <th className="p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleTrips.length === 0 ? (
+                  <tr>
+                    <td className="p-3 text-gray-600" colSpan={7}>
+                      No trips in this view.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleTrips.map((t) => {
+                    const id = normTripId(t);
+                    const isSel = selectedTripId === id;
+                    const isProblem = stuckTripIds.has(id);
+                    const s = normStatus(t.status);
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            <div className="lg:col-span-1">
-              <div className="rounded-lg border bg-white">
-                <div className="border-b p-2 text-sm font-semibold">Trips</div>
+                    return (
+                      <tr
+                        key={id || Math.random()}
+                        className={[
+                          "border-b cursor-pointer",
+                          isSel ? "bg-blue-50" : "hover:bg-gray-50",
+                        ].join(" ")}
+                        onClick={() => setSelectedTripId(id)}
+                      >
+                        <td className="p-2 font-medium">
+                          {t.booking_code || "-"}
+                          {isProblem ? (
+                            <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">
+                              PROBLEM
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="p-2">{t.passenger_name || "-"}</td>
+                        <td className="p-2">{t.pickup_label || "-"}</td>
+                        <td className="p-2">{t.dropoff_label || "-"}</td>
+                        <td className="p-2">
+                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
+                            {s || "-"}
+                          </span>
+                        </td>
+                        <td className="p-2">{t.zone || t.town || "-"}</td>
+                        <td className="p-2">
+                          {/* Minimal inline status actions */}
+                          <div className="flex flex-wrap gap-2 items-center">
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!t.booking_code) return;
+                                updateTripStatus(t.booking_code, "on_the_way").catch((err) => setLastAction(String(err?.message || err)));
+                              }}
+                              disabled={s !== "assigned"}
+                              title={s !== "assigned" ? "Allowed only when status=assigned" : "Mark on_the_way"}
+                            >
+                              On the way
+                            </button>
 
-                <div className="max-h-[70vh] overflow-auto">
-                  {visibleTrips.length === 0 ? (
-                    <div className="p-3 text-sm text-gray-500">No trips for this filter.</div>
-                  ) : (
-                    <div className="divide-y">
-                      {visibleTrips.map((t: any) => {
-                        const code = bookingCode(t);
-                        const st = statusEff(t);
-                        const isSel = selectedTripId === code;
-                        const isProb = stuckTripIds.has(code) || truthy(t?.is_stuck) || truthy(t?.stuck);
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!t.booking_code) return;
+                                updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err)));
+                              }}
+                              disabled={s !== "on_the_way"}
+                              title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Start trip"}
+                            >
+                              Start trip
+                            </button>
 
-                        return (
-                          <div
-                            key={code || t?.id || Math.random()}
-                            className={"p-3 " + (isSel ? "bg-gray-50" : "bg-white")}
-                            onClick={() => setSelectedTripId(code || null)}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm font-semibold">{code || "(no code)"}</div>
-                              <div
-                                className={
-                                  "rounded-full border px-2 py-0.5 text-[11px] " +
-                                  (isProb ? "border-red-300 bg-red-50 text-red-700" : "border-gray-200 bg-gray-50")
-                                }
-                              >
-                                {isProb ? "PROBLEM" : st || "unknown"}
-                              </div>
-                            </div>
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!t.booking_code) return;
+                                updateTripStatus(t.booking_code, "completed").catch((err) => setLastAction(String(err?.message || err)));
+                              }}
+                              disabled={s !== "on_trip"}
+                              title={s !== "on_trip" ? "Allowed only when status=on_trip" : "Complete trip"}
+                            >
+                              Drop off
+                            </button>
 
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
-                              <div className="truncate">From: {s(t?.from_label ?? t?.pickup_label ?? t?.from)}</div>
-                              <div className="truncate">To: {s(t?.to_label ?? t?.dropoff_label ?? t?.to)}</div>
-                              <div className="truncate">Town: {s(t?.town)}</div>
-                              <div className="truncate">Fare: {s(t?.verified_fare ?? t?.proposed_fare ?? "")}</div>
-                            </div>
-
-                            <div className="mt-3 space-y-2">
-                              <TripLifecycleActions
-                                trip={t as any}
-                                onAfterAction={() => setLastAction("action completed")}
-                              />
-
-                              {(s(t?.status).trim().toLowerCase() === "requested" || s(t?.status).trim().toLowerCase() === "dispatch") ? (
-                                <button
-                                  type="button"
-                                  className="rounded border px-3 py-2 text-xs hover:bg-gray-50 disabled:opacity-50"
-                                  disabled={retryingBookingCode === (s(t?.booking_code).trim() || s(t?.id).trim())}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRetryAutoAssign(t);
-                                  }}
-                                >
-                                  {retryingBookingCode === (s(t?.booking_code).trim() || s(t?.id).trim())
-                                    ? "Retrying auto-assign..."
-                                    : "Retry Auto-Assign"}
-                                </button>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-3">
-                              <TripWalletPanel trip={t as any} />
-                            </div>
+                            <button
+                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTripId(id);
+                                setFilterAndFocus("problem");
+                              }}
+                              title="Focus Problem trips view"
+                            >
+                              Find problem
+                            </button>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
 
-              <div className="mt-3 rounded-lg border bg-white">
-                <div className="border-b p-2 text-sm font-semibold">Auto-Assign Suggestions</div>
-                <div className="p-2">
-                  <SmartAutoAssignSuggestions
-                    trip={suggestionTrip as any}
-                    drivers={suggestionDrivers as any}
-                    zoneStats={zoneStats}
-                    onAssign={handleAssign}
-                    assignedDriverId={assignedDriverId}
-                    assigningDriverId={assigningDriverId}
-                    canAssign={canAssign}
-                    lockReason={lockReason}
-                  />
-                </div>
-              </div>
+          {/* Selection controls & panels */}
+          <div className="p-3 border-t">
+            <div className="text-xs text-gray-600 mb-2">
+              Drivers: {driversDebug}
             </div>
 
-            <div className="lg:col-span-2">
-              <div className="overflow-hidden rounded-lg border">
-                <LiveTripsMap
-                  trips={visibleTrips as any}
-                  selectedTripId={selectedTripId}
-                  stuckTripIds={stuckTripIds as any}
-                  drivers={drivers as any}
+            {/* Keep your existing components (won't break if they handle null gracefully) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <TripWalletPanel trip={selectedTrip as any} />
+              <TripLifecycleActions trip={selectedTrip as any} />
+            </div>
+
+            <div className="mt-3 rounded border p-3">
+              <div className="font-semibold mb-2">Assign driver (manual)</div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <select
+                  className="border rounded px-2 py-1 text-sm min-w-[320px]"
+                  value={manualDriverId}
+                  onChange={(e) => setManualDriverId(e.target.value)}
+                >
+                  <option value="">Select driver</option>
+                  {drivers.map((d, idx) => {
+                    const id = String(d.driver_id || "");
+                    const label = `${d.name || "Driver"} ${d.town ? `- ${d.town}` : ""} ${d.status ? `- ${d.status}` : ""}`.trim();
+                    return (
+                      <option key={id || idx} value={id}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <button
+                  className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
+                  disabled={!selectedTrip?.booking_code || !manualDriverId}
+                  onClick={() => {
+                    if (!selectedTrip?.booking_code) return;
+                    assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) => setLastAction(String(err?.message || err)));
+                  }}
+                >
+                  Assign
+                </button>
+
+                <button
+                  className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                  onClick={() => {
+                    loadPage().catch(() => {});
+                    loadDrivers().catch(() => {});
+                    setLastAction("Refreshed");
+                  }}
+                >
+                  Refresh now
+                </button>
+              </div>
+
+              <div className="mt-2">
+                <SmartAutoAssignSuggestions
+                  trip={selectedTripForSuggestions as any}
+                  drivers={drivers.map((d) => ({
+                    id: String(d.driver_id || ""),
+                    name: String(d.name || "Driver"),
+                    lat: Number(d.lat ?? 0),
+                    lng: Number(d.lng ?? 0),
+                    zone: String(d.town || "Unknown"),
+                    homeTown: String(d.town || "Unknown"),
+                    status: String(d.status || ""),
+                  })) as any}
+                  zoneStats={zoneStats}
+                  assignedDriverId={assignedDriverId}
+                  onAssign={async (driverId) => {
+                    if (!selectedTrip?.booking_code) return;
+                    await assignDriver(selectedTrip.booking_code, driverId);
+                  }}
                 />
               </div>
             </div>
           </div>
-        </>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">Total drivers</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.total}</div>
-            </div>
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">Online eligible</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.online_eligible}</div>
-            </div>
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">Assigned</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.assigned}</div>
-            </div>
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">On trip</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.on_trip}</div>
-            </div>
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">Stale</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.stale}</div>
-            </div>
-            <div className="rounded-lg border bg-white p-3">
-              <div className="text-[11px] text-gray-500">Offline</div>
-              <div className="mt-1 text-lg font-semibold">{driverKPIs.offline}</div>
-            </div>
-          </div>
+        </div>
 
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Town</label>
-              <select
-                className="w-full rounded border px-3 py-2 text-sm"
-                value={driverTownFilter}
-                onChange={(e) => setDriverTownFilter(e.target.value)}
-              >
-                {allDriverTowns.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Status</label>
-              <select
-                className="w-full rounded border px-3 py-2 text-sm"
-                value={driverStatusFilter}
-                onChange={(e) => setDriverStatusFilter(e.target.value as DriverFilterKey)}
-              >
-                <option value="all">All statuses</option>
-                <option value="online_eligible">Online eligible</option>
-                <option value="assigned">Assigned</option>
-                <option value="on_trip">On trip</option>
-                <option value="stale">Stale</option>
-                <option value="offline">Offline</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700">Search</label>
-              <input
-                className="w-full rounded border px-3 py-2 text-sm"
-                placeholder="Driver, UUID, booking code"
-                value={driverSearch}
-                onChange={(e) => setDriverSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-            <div className="xl:col-span-1">
-              <div className="rounded-lg border bg-white">
-                <div className="border-b p-2 text-sm font-semibold">
-                  Drivers ({filteredDrivers.length})
-                </div>
-
-                <div className="max-h-[72vh] overflow-auto">
-                  {filteredDrivers.length === 0 ? (
-                    <div className="p-3 text-sm text-gray-500">No drivers for this filter.</div>
-                  ) : (
-                    <div className="divide-y">
-                      {filteredDrivers.map((d) => {
-                        const id = s(d?.driver_id ?? d?.id);
-                        const isSel = id === selectedDriverId;
-                        const bucket = driverStatusBucket(d);
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            onClick={() => setSelectedDriverId(id)}
-                            className={"block w-full p-3 text-left " + (isSel ? "bg-gray-50" : "bg-white")}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold">{driverDisplayName(d)}</div>
-                                <div className="truncate text-[11px] text-gray-500">{id}</div>
-                              </div>
-                              <div className="rounded-full border px-2 py-0.5 text-[11px]">
-                                {bucket.replace("_", " ")}
-                              </div>
-                            </div>
-
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
-                              <div className="truncate">Town: {driverTown(d) || "-"}</div>
-                              <div className="truncate">Last seen: {formatAgo(n(d?.age_seconds))}</div>
-                              <div className="truncate">Raw: {s(d?.status) || "-"}</div>
-                              <div className="truncate">Effective: {s(d?.effective_status) || "-"}</div>
-                              <div className="truncate">Completed: {s(d?.completed_trips_count ?? 0)}</div>
-                              <div className="truncate">Cancelled: {s(d?.cancelled_trips_count ?? 0)}</div>
-                            </div>
-
-                            <div className="mt-2 text-[11px] text-amber-700">
-                              Eligibility reason: {s(d?.eligibility_reason) || "-"}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="xl:col-span-2">
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                <div className="rounded-lg border bg-white p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold">Driver details</div>
-                    <button
-                      type="button"
-                      className="rounded border px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                      disabled={!selectedDriver?.active_booking_code && !selectedDriver?.active_booking_id}
-                      onClick={jumpToLinkedTrip}
-                    >
-                      View linked trip
-                    </button>
-                  </div>
-
-                  {!selectedDriver ? (
-                    <div className="mt-3 text-sm text-gray-500">Select a driver.</div>
-                  ) : (
-                    <div className="mt-3 space-y-3 text-sm">
-                      <div>
-                        <div className="text-lg font-semibold">{driverDisplayName(selectedDriver)}</div>
-                        <div className="font-mono text-xs text-gray-500">
-                          {s(selectedDriver?.driver_id ?? selectedDriver?.id)}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <div className="text-xs text-gray-500">Town</div>
-                          <div>{driverTown(selectedDriver) || "-"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Assign eligible</div>
-                          <div>{truthy(selectedDriver?.assign_eligible) ? "Yes" : "No"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Eligibility reason</div>
-                          <div>{s(selectedDriver?.eligibility_reason) || "-"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Dispatch bucket</div>
-                          <div>{driverStatusBucket(selectedDriver).replace("_", " ")}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Raw status</div>
-                          <div>{s(selectedDriver?.status) || "-"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Effective status</div>
-                          <div>{s(selectedDriver?.effective_status) || "-"}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Last seen</div>
-                          <div>{formatAgo(n(selectedDriver?.age_seconds))}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Last ping PH</div>
-                          <div>{s(selectedDriver?.updated_at_ph) || formatPHTime(selectedDriver?.updated_at)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Completed trips</div>
-                          <div>{s(selectedDriver?.completed_trips_count ?? 0)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500">Cancelled trips</div>
-                          <div>{s(selectedDriver?.cancelled_trips_count ?? 0)}</div>
-                        </div>
-                      </div>
-
-                      <div className="rounded border bg-gray-50 p-3">
-                        <div className="text-xs font-semibold text-gray-700">Current dispatch context</div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <div className="text-xs text-gray-500">Active booking code</div>
-                            <div>{s(selectedDriver?.active_booking_code) || "-"}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Active booking status</div>
-                            <div>{s(selectedDriver?.active_booking_status) || "-"}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Booking town</div>
-                            <div>{s(selectedDriver?.active_booking_town) || "-"}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Booking updated</div>
-                            <div>{formatPHTime(selectedDriver?.active_booking_updated_at)}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500">Booking age</div>
-                            <div>{formatAgo(n(selectedDriver?.active_booking_updated_at ? Math.floor((Date.now() - new Date(selectedDriver.active_booking_updated_at).getTime()) / 1000) : null))}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded border bg-amber-50 p-3 text-xs text-amber-800">
-                        Online session duration is not shown here because the current backend tracks heartbeat freshness, not true online-session start history.
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="overflow-hidden rounded-lg border">
-                  <LiveTripsMap
-                    trips={driverTabTrips as any}
-                    selectedTripId={selectedTripId}
-                    stuckTripIds={stuckTripIds as any}
-                    drivers={filteredDrivers as any}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+        {/* Right: map */}
+        <div className="rounded-lg border overflow-hidden">
+          <LiveTripsMap trips={visibleTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
+        </div>
+      </div>
     </div>
   );
 }
+
+

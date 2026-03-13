@@ -1,326 +1,212 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+﻿import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
 export const dynamic = "force-dynamic";
-/* PHASE_3E_TOWNZONE_DERIVE_START */
-function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
-  const la = (lat == null ? NaN : Number(lat));
-  const lo = (lng == null ? NaN : Number(lng));
-  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
 
-  // Rough Ifugao municipality boxes (fallback).
-  const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
-    { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
-    { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
-    { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
-    { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
-    { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
-  ];
+type Json = Record<string, any>;
 
-  for (const b of BOXES) {
-    if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+type ZoneRow = {
+  zone_id: string;
+  zone_name: string;
+  color_hex?: string | null;
+  capacity_limit?: number | null;
+  active_drivers?: number | null;
+  available_slots?: number | null;
+  status?: string | null;
+};
+
+const BOOKING_COLUMN_CANDIDATES = [
+  "id",
+  "uuid",
+  "booking_code",
+  "passenger_name",
+  "pickup_label",
+  "dropoff_label",
+  "pickup_lat",
+  "pickup_lng",
+  "dropoff_lat",
+  "dropoff_lng",
+  "status",
+  "driver_id",
+  "driver_name",
+  "driver_phone",
+  "town",
+  "zone",
+  "created_at",
+  "updated_at",
+  // pricing-ish fields kept optional; route will only select them if they exist
+  "base_fare",
+  "convenience_fee",
+  "distance_fee",
+  "takeout_fee",
+  "proposed_fare",
+  "verified_fare",
+  "passenger_fare_response",
+  // previously problematic in your stack; must never be forced if absent
+  "pickup_distance_fee",
+] as const;
+
+async function getExistingColumns(supabase: ReturnType<typeof supabaseAdmin>, table: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("information_schema.columns")
+    .select("column_name")
+    .eq("table_schema", "public")
+    .eq("table_name", table);
+
+  if (error) {
+    console.error("PAGE_DATA_SCHEMA_COLUMNS_ERROR", { table, message: error.message });
+    return new Set<string>();
   }
-  return null;
+
+  return new Set<string>((data || []).map((r: any) => String(r.column_name || "").trim()).filter(Boolean));
 }
 
-function deriveZoneFromTown(town: string | null): string | null {
-  const t = String(town || "").trim();
-  return t ? t : null; // zone==town for now
-}
-/* PHASE_3E_TOWNZONE_DERIVE_END */
-
-export const revalidate = 0;
-
-function bad(message: string, code: string, status = 400, extra: any = {}) {
-  return NextResponse.json(
-    { ok: false, code, message, ...extra },
-    { status, headers: { "Cache-Control": "no-store" } }
-  );
+function pickSelectColumns(existing: Set<string>, candidates: readonly string[]) {
+  return candidates.filter((c) => existing.has(c));
 }
 
-function ok(payload: any, status = 200) {
-  return NextResponse.json(payload, {
-    status,
-    headers: { "Cache-Control": "no-store" },
-  });
+function normalizeTrip(row: Json): Json {
+  return {
+    ...row,
+    booking_code: row.booking_code ?? row.bookingCode ?? null,
+    pickup_label: row.pickup_label ?? row.from_label ?? row.fromLabel ?? null,
+    dropoff_label: row.dropoff_label ?? row.to_label ?? row.toLabel ?? null,
+    zone: row.zone ?? row.town ?? row.zone_name ?? null,
+    status: row.status ?? "pending",
+  };
 }
 
-function pick(obj: any, keys: string[]) {
-  for (const k of keys) {
-    if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
-      const v = (obj as any)[k];
-      if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
+  const cols = await getExistingColumns(supabase, "bookings");
+  if (!cols.size) {
+    return {
+      trips: [] as Json[],
+      usedColumns: [] as string[],
+      warnings: ["BOOKINGS_SCHEMA_NOT_READABLE"],
+    };
+  }
+
+  const selected = pickSelectColumns(cols, BOOKING_COLUMN_CANDIDATES);
+  if (!selected.includes("id") || !selected.includes("status")) {
+    return {
+      trips: [] as Json[],
+      usedColumns: selected,
+      warnings: ["BOOKINGS_REQUIRED_COLUMNS_MISSING"],
+    };
+  }
+
+  const query = selected.join(",");
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(query)
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .limit(300);
+
+  if (error) {
+    console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", { message: error.message, query });
+    return {
+      trips: [] as Json[],
+      usedColumns: selected,
+      warnings: ["BOOKINGS_QUERY_FAILED", error.message],
+    };
+  }
+
+  return {
+    trips: (data || []).map(normalizeTrip),
+    usedColumns: selected,
+    warnings: [] as string[],
+  };
+}
+
+async function tryLoadZones(supabase: ReturnType<typeof supabaseAdmin>) {
+  const warnings: string[] = [];
+
+  for (const table of ["zones", "dispatch_zones", "service_zones"]) {
+    const cols = await getExistingColumns(supabase, table);
+    if (!cols.size) continue;
+
+    const selectable = [
+      cols.has("id") ? "id" : null,
+      cols.has("zone_id") ? "zone_id" : null,
+      cols.has("name") ? "name" : null,
+      cols.has("zone_name") ? "zone_name" : null,
+      cols.has("color_hex") ? "color_hex" : null,
+      cols.has("capacity_limit") ? "capacity_limit" : null,
+      cols.has("active_drivers") ? "active_drivers" : null,
+      cols.has("available_slots") ? "available_slots" : null,
+      cols.has("status") ? "status" : null,
+    ].filter(Boolean) as string[];
+
+    if (!selectable.length) continue;
+
+    const { data, error } = await supabase.from(table).select(selectable.join(",")).limit(200);
+    if (error) {
+      warnings.push(`${table.toUpperCase()}_QUERY_FAILED:${error.message}`);
+      continue;
     }
-  }
-  return undefined;
-}
 
-function extractTripsAnyShape(payload: any): any[] {
-  if (!payload) return [];
-  if (Array.isArray(payload)) return payload;
+    const zones: ZoneRow[] = (data || []).map((z: any) => ({
+      zone_id: String(z.zone_id ?? z.id ?? z.name ?? z.zone_name ?? ""),
+      zone_name: String(z.zone_name ?? z.name ?? z.zone_id ?? z.id ?? "Unknown"),
+      color_hex: z.color_hex ?? null,
+      capacity_limit: z.capacity_limit ?? null,
+      active_drivers: z.active_drivers ?? null,
+      available_slots: z.available_slots ?? null,
+      status: z.status ?? null,
+    }));
 
-  if (typeof payload === "object") {
-    const t1 = (payload as any).trips;
-    if (Array.isArray(t1)) return t1;
-
-    const t2 = (payload as any).bookings;
-    if (Array.isArray(t2)) return t2;
-
-    const t3 = (payload as any).data;
-    if (Array.isArray(t3)) return t3;
-
-    const keys = Object.keys(payload)
-      .filter((k) => /^\d+$/.test(k))
-      .sort((a, b) => Number(a) - Number(b));
-    if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+    return { zones, zoneSource: table, warnings };
   }
 
-  return [];
+  return { zones: [] as ZoneRow[], zoneSource: null as string | null, warnings };
 }
 
 export async function GET(req: Request) {
   try {
-  // Force service-role client here to avoid RLS silently returning empty trips in production.
-  const sbUrl =
-    process.env.SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "";
-  const sbServiceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "";
-
-  const using_service_role = Boolean(sbUrl && sbServiceKey);
-
-  const supabase = createClient(
-    sbUrl,
-    (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
-    {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    }
-  );
     const url = new URL(req.url);
     const debug = url.searchParams.get("debug") === "1";
+    const supabase = supabaseAdmin();
 
-    
-    const forceCode = (url.searchParams.get("code") || "").trim();
-    // AUTO: ?code= bypass to fetch a single booking for diagnosis (safe insertion)
-    if (forceCode) {
-      const probe = await supabase
-        .from("bookings")
-        .select("*")
-        .eq("booking_code", forceCode)
-        .limit(1);
+    const [bookingsRes, zonesRes] = await Promise.all([
+      loadBookings(supabase),
+      tryLoadZones(supabase),
+    ]);
 
-      const row = (probe as any)?.data?.[0] ?? null;
+    const warnings = [...bookingsRes.warnings, ...zonesRes.warnings];
 
-      return ok({
-        trips: row ? [row] : [],
-        __debug: debug ? {
-          injected_active_statuses: ["requested","pending","ready","assigned","on_the_way","arrived","enroute","on_trip"],
-          code: forceCode,
-          probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null,
-          has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
-          has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
-        } : undefined
-      });
-    }
-    const { data: rpcData, error: rpcErr } = await supabase.rpc(
-      "admin_get_live_trips_page_data_v2"
-    );
+    const payload: Json = {
+      ok: true,
+      zones: zonesRes.zones,
+      trips: bookingsRes.trips,
+      bookings: bookingsRes.trips,
+      data: bookingsRes.trips,
+      warnings,
+    };
 
-    if (rpcErr) {
-      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
-      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
-        details: rpcErr.message,
-      });
+    if (debug) {
+      payload.debug = {
+        bookingColumnsUsed: bookingsRes.usedColumns,
+        zoneSource: zonesRes.zoneSource,
+        tripCount: bookingsRes.trips.length,
+        zoneCount: zonesRes.zones.length,
+        note: "pickup_distance_fee is only queried if it exists in public.bookings",
+      };
     }
 
-    const trips = extractTripsAnyShape(rpcData);
-
-    const existingCodes = new Set(
-      trips
-        .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
-        .map((v: any) => (v ? String(v).trim() : ""))
-        .filter(Boolean)
-    );
-
-    const existingIds = new Set(
-      trips
-        .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
-        .map((v: any) => (v ? String(v).trim() : ""))
-        .filter(Boolean)
-    );
-
-    const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
-
-    try {
-      const { data: activeRows, error: activeErr } = await supabase
-        .from("bookings")
-        .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
-        .in("status", ACTIVE_STATUSES)
-        .order("created_at", { ascending: false })
-        .limit(250);
-
-      
-
-      // Debug visibility (safe)
-      if (debug) {
-        (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
-        (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
-      }
-if (activeErr) {
-        console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
-      } else if (Array.isArray(activeRows) && activeRows.length) {
-        for (const b of activeRows as any[]) {
-          const bid = b?.id != null ? String(b.id) : "";
-          const bcode = b?.booking_code != null ? String(b.booking_code) : "";
-
-          if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
-
-          trips.push({
-            id: bid || null,
-            uuid: bid || null,
-            booking_id: bid || null,
-            booking_code: bcode || null,
-            status: b?.status ?? null,
-            town: b?.town ?? null,
-            zone: b?.town ?? null,
-            driver_id: b?.driver_id ?? (b as any)?.assigned_driver_id ?? null,
-
-            pickup_lat: b?.pickup_lat ?? null,
-            pickup_lng: b?.pickup_lng ?? null,
-            dropoff_lat: b?.dropoff_lat ?? null,
-            dropoff_lng: b?.dropoff_lng ?? null,
-            pickup_label: b?.pickup_label ?? b?.from_label ?? null,
-            dropoff_label: b?.dropoff_label ?? b?.to_label ?? null,
-
-            created_at: b?.created_at ?? null,
-            updated_at: b?.updated_at ?? null,
-
-            trip_type: b?.trip_type ?? null,
-            vendor_id: b?.vendor_id ?? null,
-
-            // ===== STEP5D_FALLBACK_EMERGENCY =====
-            is_emergency: (b as any)?.is_emergency ?? (b as any)?.isEmergency ?? null,
-            pickup_distance_km:
-              (b as any)?.pickup_distance_km ??
-              (b as any)?.pickupDistanceKm ??
-              (b as any)?.pickup_distance ??
-              (b as any)?.pickupDistance ??
-              null,
-            emergency_pickup_fee_php:
-              (b as any)?.emergency_pickup_fee_php ??
-              (b as any)?.emergencyPickupFeePhp ??
-              (b as any)?.pickup_distance_fee ??
-              (b as any)?.pickup_distance_fee_php ??
-              null,
-            // ===== END STEP5D_FALLBACK_EMERGENCY =====
-            __fallback_injected: true,
-          });
-
-          if (bid) existingIds.add(bid);
-          if (bcode) existingCodes.add(bcode);
-        }
-      }
-    } catch (e: any) {
-      console.error("LIVETRIPS_FALLBACK_ACTIVE_EXCEPTION", e?.message || e);
-    }
-    // ===== JRIDE_DRIVERLOC_ENRICH_BEGIN =====
-  // Attach latest driver location to trips so UI/map can show driver marker and avoid false "no driver linked".
-  try {
-    const ids = Array.from(
-      new Set(
-        (Array.isArray(trips) ? trips : [])
-          .map((t: any) => (t?.assigned_driver_id ?? t?.driver_id ?? null))
-          .filter((v: any) => v != null && String(v).trim() !== "")
-          .map((v: any) => String(v))
-      )
-    );
-
-    if (ids.length) {
-      const { data: locRows, error: locErr } = await supabase
-        .from("driver_locations")
-        .select("driver_id, lat, lng, status, town, updated_at")
-        .in("driver_id", ids)
-        .order("updated_at", { ascending: false })
-        .limit(1000);
-
-      if (locErr) {
-        console.error("LIVETRIPS_DRIVERLOC_QUERY_ERROR", locErr);
-      } else if (Array.isArray(locRows) && locRows.length) {
-        const latestByDriver = new Map<string, any>();
-        for (const r of locRows as any[]) {
-          const did = r?.driver_id != null ? String(r.driver_id) : "";
-          if (!did) continue;
-          if (!latestByDriver.has(did)) latestByDriver.set(did, r); // first is latest due to order desc
-        }
-
-        for (const t of (Array.isArray(trips) ? trips : []) as any[]) {
-          const did = t?.assigned_driver_id ?? t?.driver_id ?? null;
-          if (!did) continue;
-          const loc = latestByDriver.get(String(did));
-          if (!loc) continue;
-
-          // These fields are what LiveTripsMap checks first (explicit driver coords)
-          t.driver_lat = loc.lat ?? null;
-          t.driver_lng = loc.lng ?? null;
-
-          // Extra context for UI if needed later
-          t.driver_loc_status = loc.status ?? null;
-          t.driver_loc_town = loc.town ?? null;
-          t.driver_loc_updated_at = loc.updated_at ?? null;
-        }
-      }
-    }
-  } catch (e: any) {
-    console.error("LIVETRIPS_DRIVERLOC_ENRICH_EXCEPTION", e?.message || e);
-  }
-  // ===== JRIDE_DRIVERLOC_ENRICH_END =====
-const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
-    // ===== STEP5D_TRIPSOUT_EMERGENCY =====
-    is_emergency: Boolean(
-      (t as any)?.is_emergency ??
-      (t as any)?.isEmergency ??
-      false
-    ),
-    pickup_distance_km:
-      (t as any)?.pickup_distance_km ??
-      (t as any)?.pickupDistanceKm ??
-      (t as any)?.pickup_distance ??
-      (t as any)?.pickupDistance ??
-      (t as any)?.driver_to_pickup_km ??
-      null,
-    emergency_pickup_fee_php:
-      (t as any)?.emergency_pickup_fee_php ??
-      (t as any)?.emergencyPickupFeePhp ??
-      (t as any)?.pickup_distance_fee ??
-      (t as any)?.pickup_distance_fee_php ??
-      null,
-    // ===== END STEP5D_TRIPSOUT_EMERGENCY =====
-
-    ...t,
-    suggested_verified_fare:
-      (t as any)?.suggested_verified_fare ??
-      (t as any)?.suggestedVerifiedFare ??
-      (t as any)?.verified_suggested_fare ??
-      (t as any)?.fare_suggested_verified ??
-      (t as any)?.suggested_fare_verified ??
-      (t as any)?.suggested_fare ??
-      null,
-  }));
-
-  const payload =
-      rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
-        ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
-        : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined };
-
-    return ok(payload);
+    return NextResponse.json(payload, { status: 200 });
   } catch (err: any) {
-    console.error("LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR", err);
-    return bad(
-      "Unexpected error in LiveTrips page-data route",
-      "LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR",
-      500,
-      { details: err?.message ?? String(err) }
+    console.error("PAGE_DATA_UNEXPECTED", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "PAGE_DATA_UNEXPECTED",
+        message: err?.message ?? "Unexpected error",
+        zones: [],
+        trips: [],
+        bookings: [],
+        data: [],
+      },
+      { status: 500 }
     );
   }
 }

@@ -1,4 +1,3 @@
-// app/admin/livetrips/components/LiveTripsMap.tsx
 "use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -13,19 +12,7 @@ export interface LiveTripsMapProps {
   trips: LiveTrip[];
   selectedTripId: string | null;
   stuckTripIds: Set<string>; // external optional stuck set
-  drivers?: FleetDriver[];
 }
-
-// Fleet driver row coming from /api/admin/driver_locations
-type FleetDriver = {
-  driver_id?: string | null;
-  id?: string | null;
-  name?: string | null;
-  lat?: number | string | null;
-  lng?: number | string | null;
-  status?: string | null;
-  updated_at?: string | null;
-};
 
 type LngLatTuple = [number, number];
 
@@ -78,459 +65,824 @@ function getExplicitDriver(trip: any): LngLatTuple | null {
   return null;
 }
 
-function fallbackDriverNearPickup(pickup: LngLatTuple | null): LngLatTuple | null {
-  if (!pickup) return null;
-  // small offset so driver marker isn't exactly on pickup marker
-  return [pickup[0] + 0.00008, pickup[1] + 0.00008];
+/**
+ * Fallback: collect all coords and infer a driver position
+ */
+function getAllCoords(trip: any): LngLatTuple[] {
+  if (!trip || typeof trip !== "object") return [];
+  const entries = Object.entries(trip) as [string, any][];
+  const lowers = entries.map(([k, v]) => [k.toLowerCase(), v] as [string, any]);
+
+  const latKeys: Record<string, string> = {};
+  const lngKeys: Record<string, string> = {};
+
+  for (const [key, value] of lowers) {
+    const n = num(value);
+    if (n == null) continue;
+
+    if (key.includes("lat")) {
+      const base = key.replace("latitude", "").replace("lat", "");
+      latKeys[base] = key;
+    }
+    if (key.includes("lng") || key.includes("lon") || key.includes("long")) {
+      const base = key
+        .replace("longitude", "")
+        .replace("long", "")
+        .replace("lng", "")
+        .replace("lon", "");
+      lngKeys[base] = key;
+    }
+  }
+
+  const coords: LngLatTuple[] = [];
+  const bases = new Set<string>([...Object.keys(latKeys), ...Object.keys(lngKeys)]);
+  for (const base of bases) {
+    const latKey = latKeys[base];
+    const lngKey = lngKeys[base];
+    if (!latKey || !lngKey) continue;
+
+    const lat = num((trip as any)[latKey]);
+    const lng = num((trip as any)[lngKey]);
+    if (lat == null || lng == null) continue;
+
+    coords.push([lng, lat]);
+  }
+
+  return coords;
 }
 
-function statusKey(trip: any): string {
-  return String(trip?.status ?? trip?.trip_status ?? "").toLowerCase();
+/**
+ * Driver position priority:
+ * 1) explicit driver_* fields
+ * 2) from all coords:
+ *    - 1 coord  => that coord
+ *    - 2 coords => second coord
+ *    - 3+       => second-to-last coord
+ */
+function getDriverReal(trip: any): LngLatTuple | null {
+  const explicit = getExplicitDriver(trip);
+  if (explicit) return explicit;
+
+  const coords = getAllCoords(trip);
+  if (!coords.length) return null;
+  if (coords.length === 1) return coords[0];
+  if (coords.length === 2) return coords[1];
+  return coords[coords.length - 2];
 }
 
-function isStuckTrip(trip: any, stuckTripIds: Set<string>): boolean {
-  const code = String(trip?.booking_code ?? trip?.bookingCode ?? trip?.id ?? "");
-  if (code && stuckTripIds?.has(code)) return true;
-  return Boolean(trip?.is_stuck || trip?.stuck);
+/**
+ * Display position for the trike icon: slightly south of real driver position
+ * so the destination red dot (at true coords) never sits on top of it.
+ */
+function getDriverDisplay(real: LngLatTuple | null): LngLatTuple | null {
+  if (!real) return null;
+  const [lng, lat] = real;
+  // ~20m south
+  const offsetLat = lat - 0.00018;
+  return [lng, offsetLat];
 }
 
-function safeId(trip: any): string {
-  return String(trip?.booking_code ?? trip?.bookingCode ?? trip?.id ?? "");
+function distanceMeters(a: LngLatTuple, b: LngLatTuple): number {
+  const R = 6371000;
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+  const dLng = ((b[0] - a[0]) * Math.PI) / 180;
+  const sa = Math.sin(dLat / 2);
+  const sb = Math.sin(dLng / 2);
+  const c =
+    2 *
+    Math.atan2(
+      Math.sqrt(
+        sa * sa +
+          Math.cos((a[1] * Math.PI) / 180) *
+            Math.cos((b[1] * Math.PI) / 180) *
+            sb * sb
+      ),
+      Math.sqrt(1 - sa * sa)
+    );
+  return R * c;
 }
 
-// ---------- Main Component ----------
+/**
+ * Road-following route via Mapbox Directions.
+ * Returns straight line if anything fails.
+ */
+async function getRoadRoute(
+  start: LngLatTuple,
+  end: LngLatTuple
+): Promise<any> {
+  const straight: any = {
+    type: "Feature",
+    geometry: {
+      type: "LineString",
+      coordinates: [start, end],
+    },
+    properties: {},
+  };
+
+  try {
+    if (!mapboxgl.accessToken) return straight;
+
+    const url =
+      "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+      `${start[0]},${start[1]};${end[0]},${end[1]}` +
+      `?geometries=geojson&overview=full&access_token=${encodeURIComponent(
+        mapboxgl.accessToken
+      )}`;
+
+    const res = await fetch(url);
+    if (!res.ok) return straight;
+
+    const json: any = await res.json();
+    const geometry: any = json?.routes?.[0]?.geometry;
+
+    if (!geometry || geometry.type !== "LineString") return straight;
+
+    return {
+      type: "Feature",
+      geometry,
+      properties: {},
+    };
+  } catch {
+    return straight;
+  }
+}
+
+// ---------- Zone helpers ----------
+
+function getZoneName(trip: any): string {
+  return (
+    (trip.town ??
+      trip.zone ??
+      trip.area ??
+      trip.municipality ??
+      "Unknown") as string
+  );
+}
+
+function normalizeZone(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+// ---------- Main component ----------
 
 export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   trips,
   selectedTripId,
   stuckTripIds,
-  drivers = [],
 }) => {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const fleetMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const [mapReady, setMapReady] = useState(false);
-
-  const [openTripId, setOpenTripId] = useState<string | null>(null);
-
-  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
-  const lastAlertedTripIdRef = useRef<string | null>(null);
-
-  const [mapBounds, setMapBounds] = useState<mapboxgl.LngLatBounds | null>(null);
-
-  const visibleTrips = useMemo(() => trips ?? [], [trips]);
 
   const driverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const routeIdsRef = useRef<Set<string>>(new Set());
+  const lastFollowRef = useRef<LngLatTuple | null>(null);
 
-  const mapStyle = useMemo(() => {
+  // Audio for problem-trip alerts
+  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const alertedIdsRef = useRef<Set<string>>(new Set());
+
+  // ===== STUCK TRIP WATCHER (internal) =====
+  type TrackState = {
+    lastPos: LngLatTuple | null;
+    lastMoveTime: number;
+    isStuck: boolean;
+  };
+  const trackerRef = useRef<Record<string, TrackState>>({});
+  const [localStuckIds, setLocalStuckIds] = useState<Set<string>>(new Set());
+
+  const MOVE_THRESHOLD_M = 25; // >25m counts as movement
+  const STUCK_MS = 3 * 60 * 1000; // 3 minutes => stuck
+
+  useEffect(() => {
+    const now = Date.now();
+    const tracker = trackerRef.current;
+
+    for (let i = 0; i < trips.length; i++) {
+      const raw = trips[i] as any;
+      const id = String(raw.id ?? raw.bookingCode ?? i);
+
+      const driverReal =
+        getDriverReal(raw) ?? getDropoff(raw) ?? getPickup(raw);
+      if (!driverReal) continue;
+
+      const prev = tracker[id] ?? {
+        lastPos: driverReal,
+        lastMoveTime: now,
+        isStuck: false,
+      };
+
+      if (prev.lastPos) {
+        const dist = distanceMeters(prev.lastPos, driverReal);
+        if (dist > MOVE_THRESHOLD_M) {
+          prev.lastPos = driverReal;
+          prev.lastMoveTime = now;
+          prev.isStuck = false;
+        } else {
+          if (now - prev.lastMoveTime > STUCK_MS) {
+            prev.isStuck = true;
+          }
+        }
+      } else {
+        prev.lastPos = driverReal;
+        prev.lastMoveTime = now;
+        prev.isStuck = false;
+      }
+
+      tracker[id] = prev;
+    }
+
+    const idsNow = new Set(
+      trips.map((t: any, idx) =>
+        String((t as any).id ?? (t as any).bookingCode ?? idx)
+      )
+    );
+    for (const id of Object.keys(tracker)) {
+      if (!idsNow.has(id)) delete tracker[id];
+    }
+
+    const stuck = new Set<string>();
+    for (const [id, state] of Object.entries(tracker)) {
+      if (state.isStuck) stuck.add(id);
+    }
+    setLocalStuckIds(stuck);
+  }, [trips]);
+
+  const activeStuckIds =
+    stuckTripIds && stuckTripIds.size > 0 ? stuckTripIds : localStuckIds;
+
+  // ===== AUTO PROBLEM-TRIP ALERT SOUND =====
+  useEffect(() => {
+    const audio = alertAudioRef.current;
+    if (!audio) return;
+
+    const currentProblemIds = new Set<string>();
+
+    for (const tRaw of trips as any[]) {
+      const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
+      const isStuck = activeStuckIds.has(id);
+      const isProblem = !!tRaw.isProblem;
+      if (isStuck || isProblem) {
+        currentProblemIds.add(id);
+      }
+    }
+
+    const already = alertedIdsRef.current;
+    const newOnes: string[] = [];
+
+    currentProblemIds.forEach((id) => {
+      if (!already.has(id)) {
+        already.add(id);
+        newOnes.push(id);
+      }
+    });
+
+    for (const id of Array.from(already)) {
+      if (!currentProblemIds.has(id)) {
+        already.delete(id);
+      }
+    }
+
+    if (newOnes.length > 0) {
+      try {
+        audio.currentTime = 0;
+        void audio.play();
+      } catch {
+        // ignore play errors
+      }
+    }
+  }, [trips, activeStuckIds]);
+
+  // ===== ZONE COLUMN FILTERS =====
+  const [zoneFilter, setZoneFilter] = useState<string>("all");
+
+  const zoneStats = useMemo(() => {
+    const map: Record<string, { key: string; label: string; count: number }> =
+      {};
+    for (const t of trips as any[]) {
+      const label = getZoneName(t);
+      const key = normalizeZone(label);
+      if (!key) continue;
+      if (!map[key]) map[key] = { key, label, count: 0 };
+      map[key].count++;
+    }
+    return Object.values(map).sort((a, b) =>
+      a.label.localeCompare(b.label, "en")
+    );
+  }, [trips]);
+
+  const visibleTrips = useMemo(() => {
+    if (zoneFilter === "all") return trips;
+    return trips.filter(
+      (t: any) => normalizeZone(getZoneName(t)) === zoneFilter
+    );
+  }, [trips, zoneFilter]);
+
+  // ===== KPI BANNER =====
+  const kpi = useMemo(() => {
+    let active = 0;
+    let pending = 0;
+    let problem = 0;
+    let stuck = 0;
+    let etaSum = 0;
+    let etaCount = 0;
+
+    for (const tRaw of trips as any[]) {
+      const status = String(tRaw.status ?? "");
+      const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
+      const isStuck = activeStuckIds.has(id);
+      const isProblem = !!tRaw.isProblem;
+
+      if (["pending", "assigned", "on_the_way", "on_trip"].includes(status)) {
+        active++;
+      }
+      if (["pending", "assigned"].includes(status)) pending++;
+      if (isProblem) problem++;
+      if (isStuck) stuck++;
+
+      const etaSeconds =
+        num(tRaw.pickup_eta_seconds) ??
+        (num(tRaw.pickup_eta_minutes) != null
+          ? ((num(tRaw.pickup_eta_minutes) as number) * 60)
+          : null) ??
+        num(tRaw.eta_pickup_seconds) ??
+        (num(tRaw.eta_pickup_minutes) != null
+          ? ((num(tRaw.eta_pickup_minutes) as number) * 60)
+          : null);
+
+      if (etaSeconds != null) {
+        etaSum += etaSeconds;
+        etaCount++;
+      }
+    }
+
+    const avgPickupEtaSeconds = etaCount ? etaSum / etaCount : null;
+    const atRisk = Math.max(0, active - pending - (problem + stuck));
+
     return {
-      width: "100%",
-      height: "100%",
-      minHeight: 480,
-      borderRadius: 12,
-      overflow: "hidden",
-      border: "1px solid rgba(0,0,0,0.08)",
-    } as React.CSSProperties;
-  }, []);
+      active,
+      pending,
+      problem,
+      stuck,
+      atRisk,
+      avgPickupEtaSeconds,
+    };
+  }, [trips, activeStuckIds]);
 
-  // ---------- Initialize Map ----------
-function getDriverLabelText(trip: any): string {
-  // Prefer jersey number if present (supports multiple possible field names)
-  const jersey =
-    trip.jersey ??
-    trip.jersey_no ??
-    trip.jersey_number ??
-    trip.driver_jersey ??
-    trip.driver_jersey_no ??
-    trip.driver_jersey_number ??
-    trip.driverJersey ??
-    trip.driverJerseyNo ??
-    null;
 
-  const jerseyStr = jersey != null ? String(jersey).trim() : "";
-  if (jerseyStr) return jerseyStr;
+  // ===== SELECTED DRIVER LIVE OVERVIEW =====
+  const selectedTrip = useMemo(() => {
+    if (!selectedTripId) return null;
+    return (
+      (trips.find(
+        (t: any) =>
+          String((t as any).id ?? (t as any).bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
+      ) as any) ?? null
+    );
+  }, [trips, selectedTripId]);
 
-  const id =
-    trip.driver_id ??
-    trip.driverId ??
-    trip.driver_uuid ??
-    trip.driverUuid ??
-    trip.id ??
-    trip.uuid ??
-    null;
+  const selectedOverview = useMemo(() => {
+    if (!selectedTrip) return null;
 
-  const idStr = id != null ? String(id).trim() : "";
-  if (idStr.length >= 2) return idStr.slice(0, 2).toUpperCase();
-  if (idStr.length === 1) return idStr.toUpperCase();
+    const id = String(selectedTrip.id ?? selectedTrip.bookingCode ?? "");
+    const driverName =
+      selectedTrip.driver_name ?? selectedTrip.driverName ?? null;
+    const status = String(selectedTrip.status ?? "");
+    const zoneLabel = getZoneName(selectedTrip);
+    const isStuck = activeStuckIds.has(id) || !!selectedTrip.isProblem;
 
-  return "";
-}
-  // Once user drags/zooms the map, stop auto-fit recentering
-  const userInteractedRef = useRef(false);
+    const driverReal = getDriverReal(selectedTrip);
+    const pickup = getPickup(selectedTrip);
+    const drop = getDropoff(selectedTrip);
+
+    let distToPickup: number | null = null;
+    let distToDrop: number | null = null;
+    if (driverReal && pickup) distToPickup = distanceMeters(driverReal, pickup);
+    if (driverReal && drop) distToDrop = distanceMeters(driverReal, drop);
+
+    const bookingCode = selectedTrip.bookingCode ?? selectedTrip.booking_code ?? id;
+    const lastUpdate =
+      selectedTrip.driver_last_seen_at ??
+      selectedTrip.updated_at ??
+      selectedTrip.inserted_at ??
+      null;
+
+    return {
+      id,
+      driverName,
+      status,
+      zoneLabel,
+      isStuck,
+      distToPickup,
+      distToDrop,
+      bookingCode,
+      lastUpdate,
+    };
+  }, [selectedTrip, activeStuckIds]);
+
+  // ===== INIT MAP =====
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
 
-    try {
-      const map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [121.0002, 16.9995],
-        zoom: 10.6,
-        attributionControl: false,
-      });
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [121.1, 16.8],
+      zoom: 13,
+    });
+    mapRef.current = map;
 
-      mapRef.current = map;    // Stop auto-fit once user interacts
-    map.on("dragstart", () => { userInteractedRef.current = true; });
-    map.on("zoomstart", () => { userInteractedRef.current = true; });
-    map.on("rotatestart", () => { userInteractedRef.current = true; });
-    map.on("pitchstart", () => { userInteractedRef.current = true; });
-
-
-      map.addControl(new mapboxgl.NavigationControl(), "top-right");
-
-      map.on("load", () => {
-        setMapReady(true);
-      });
-
-      map.on("moveend", () => {
-        try {
-          setMapBounds(map.getBounds());
-        } catch {
-          // ignore
-        }
-      });
-    } catch (e) {
-      console.error("[LiveTripsMap] map init error", e);
-    }
-
+    const onLoad = () => setMapReady(true);
+    map.on("load", onLoad);
+    if (map.isStyleLoaded()) setMapReady(true);
     return () => {
-      try {
-        mapRef.current?.remove();
-      } catch {
-        // ignore
-      }
+      map.off("load", onLoad);
+      setMapReady(false);
+      map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // ---------- Trip Markers ----------
+  // ===== MARKERS + ROUTES =====
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    const nextDriver: Record<string, mapboxgl.Marker> = {};
-    const nextPickup: Record<string, mapboxgl.Marker> = {};
-    const nextDrop: Record<string, mapboxgl.Marker> = {};
+    if (!map) return;
+    if (!mapReady) return;
+    const nextDrivers: Record<string, mapboxgl.Marker> = {};
+    const nextPickups: Record<string, mapboxgl.Marker> = {};
+    const nextDrops: Record<string, mapboxgl.Marker> = {};
+    const validRouteIds = new Set<string>();
 
     for (let i = 0; i < visibleTrips.length; i++) {
-      const t: any = visibleTrips[i];
-      const id = safeId(t);
-      if (!id) continue;
+      const raw = visibleTrips[i] as any;
+      const id = String(raw.id ?? raw.bookingCode ?? i);
 
-      const pickup = getPickup(t);
-      const drop = getDropoff(t);
-      const explicitDriver = getExplicitDriver(t);
-      const driver = explicitDriver ?? fallbackDriverNearPickup(pickup);
+      const driverReal = getDriverReal(raw);
+      const driverDisplay = getDriverDisplay(driverReal);
+      const pickup = getPickup(raw);
+      const drop = getDropoff(raw);
 
-      const st = statusKey(t);
-      const isSelected = selectedTripId && id === selectedTripId;
-      const isStuck = isStuckTrip(t, stuckTripIds);
+      const isStuck = activeStuckIds.has(id);
+      const isProblem = !!raw.isProblem;
 
-      // Pickup marker
+      // DRIVER marker
+      if (driverDisplay) {
+        let marker = driverMarkersRef.current[id];
+        if (!marker) {
+          const el = document.createElement("img");
+          el.src = "/icons/jride-trike.png";
+          el.style.width = "42px";
+          el.style.height = "42px";
+          el.style.transform = "translate(-50%, -50%)";
+          if (isStuck || isProblem) el.classList.add("jride-marker-blink");
+          marker = new mapboxgl.Marker(el).setLngLat(driverDisplay).addTo(map);
+        } else {
+          marker.setLngLat(driverDisplay);
+          const el = marker.getElement();
+          if (isStuck || isProblem) {
+            el.classList.add("jride-marker-blink");
+          } else {
+            el.classList.remove("jride-marker-blink");
+          }
+        }
+        nextDrivers[id] = marker;
+      }
+
+      // PICKUP
       if (pickup) {
-        let m = pickupMarkersRef.current[id];
-        if (!m) {
-          const el = document.createElement("div");
-          el.style.width = "12px";
-          el.style.height = "12px";
-          el.style.borderRadius = "9999px";
-          el.style.background = isStuck ? "#ef4444" : "#0ea5e9";
-          el.style.border = "2px solid #ffffff";
-          el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.10)";
-          el.style.transform = "translate(-50%, -50%)";
-          el.style.zIndex = isSelected ? "9998" : "10";
-          if (isStuck) el.className = "jride-marker-blink";
-
-          m = new mapboxgl.Marker(el).setLngLat(pickup).addTo(map);
-        } else {
-          m.setLngLat(pickup);
-          const el = m.getElement();
-          el.style.background = isStuck ? "#ef4444" : "#0ea5e9";
-          el.style.zIndex = isSelected ? "9998" : "10";
-          if (isStuck) el.classList.add("jride-marker-blink");
-          else el.classList.remove("jride-marker-blink");
-        }
-        nextPickup[id] = m;
-      }
-
-      // Dropoff marker
-      if (drop) {
-        let m = dropMarkersRef.current[id];
-        if (!m) {
-          const el = document.createElement("div");
-          el.style.width = "10px";
-          el.style.height = "10px";
-          el.style.borderRadius = "9999px";
-          el.style.background = "#a855f7";
-          el.style.border = "2px solid #ffffff";
-          el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.10)";
-          el.style.transform = "translate(-50%, -50%)";
-          el.style.zIndex = isSelected ? "9997" : "9";
-
-          m = new mapboxgl.Marker(el).setLngLat(drop).addTo(map);
-        } else {
-          m.setLngLat(drop);
-          m.getElement().style.zIndex = isSelected ? "9997" : "9";
-        }
-        nextDrop[id] = m;
-      }
-
-      // Driver marker (trip-derived)
-      if (driver) {
-        let m = driverMarkersRef.current[id];
-        if (!m) {
+        let marker = pickupMarkersRef.current[id];
+        if (!marker) {
           const el = document.createElement("div");
           el.style.width = "14px";
           el.style.height = "14px";
           el.style.borderRadius = "9999px";
-          el.style.background = "#22c55e";
+          el.style.backgroundColor = "#22c55e";
           el.style.border = "2px solid #ffffff";
-          el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.12)";
           el.style.transform = "translate(-50%, -50%)";
-          el.style.zIndex = isSelected ? "9999" : "11";
-
-          // label (status)
-          const label = document.createElement("div");
-          label.style.position = "absolute";
-          label.style.left = "18px";
-          label.style.top = "-2px";
-          label.style.padding = "2px 6px";
-          label.style.borderRadius = "9999px";
-          label.style.background = "rgba(255,255,255,0.92)";
-          label.style.border = "1px solid rgba(0,0,0,0.08)";
-          label.style.fontSize = "11px";
-          label.style.whiteSpace = "nowrap";
-          label.style.color = "rgba(0,0,0,0.75)";
-          label.setAttribute("data-jride-status-label", "1");
-          label.textContent = st || "trip";
-          el.appendChild(label);
-
-          // badge (driver identity): jersey # else UUID prefix (2 chars)
-          const badgeText = getDriverLabelText(t);
-          if (badgeText) {
-            const badge = document.createElement("div");
-            badge.setAttribute("data-jride-driver-label", "1");
-            badge.style.position = "absolute";
-            badge.style.left = "50%";
-            badge.style.top = "-12px";
-            badge.style.transform = "translateX(-50%)";
-            badge.style.padding = "1px 6px";
-            badge.style.borderRadius = "9999px";
-            badge.style.background = "rgba(0,0,0,0.75)";
-            badge.style.border = "1px solid rgba(255,255,255,0.55)";
-            badge.style.fontSize = "10px";
-            badge.style.fontWeight = "700";
-            badge.style.whiteSpace = "nowrap";
-            badge.style.color = "#fff";
-            badge.style.pointerEvents = "none";
-            badge.textContent = badgeText;
-            el.appendChild(badge);
-          }
-
-          m = new mapboxgl.Marker(el).setLngLat(driver).addTo(map);
-
-          // click opens panel
-          el.style.cursor = "pointer";
-          el.onclick = (ev) => {
-            ev.stopPropagation();
-            setOpenTripId((prev) => (prev === id ? null : id));
-          };
+          marker = new mapboxgl.Marker(el).setLngLat(pickup).addTo(map);
         } else {
-          m.setLngLat(driver);
-          const el = m.getElement();
-          el.style.zIndex = isSelected ? "9999" : "11";
-          const statusLabel = el.querySelector("[data-jride-status-label]");
-          if (statusLabel) (statusLabel as HTMLDivElement).textContent = st || "trip";
+          marker.setLngLat(pickup);
+        }
+        nextPickups[id] = marker;
+      }
 
-          const driverBadge = el.querySelector("[data-jride-driver-label]");
-          const badgeText = getDriverLabelText(t);
-          if (driverBadge) {
-            (driverBadge as HTMLDivElement).textContent = badgeText;
-            (driverBadge as any).style.display = badgeText ? "block" : "none";
-          } else if (badgeText) {
-            const badge = document.createElement("div");
-            badge.setAttribute("data-jride-driver-label", "1");
-            badge.style.position = "absolute";
-            badge.style.left = "50%";
-            badge.style.top = "-12px";
-            badge.style.transform = "translateX(-50%)";
-            badge.style.padding = "1px 6px";
-            badge.style.borderRadius = "9999px";
-            badge.style.background = "rgba(0,0,0,0.75)";
-            badge.style.border = "1px solid rgba(255,255,255,0.55)";
-            badge.style.fontSize = "10px";
-            badge.style.fontWeight = "700";
-            badge.style.whiteSpace = "nowrap";
-            badge.style.color = "#fff";
-            badge.style.pointerEvents = "none";
-            badge.textContent = badgeText;
-            el.appendChild(badge);
+      // DROPOFF
+      if (drop) {
+        let marker = dropMarkersRef.current[id];
+        if (!marker) {
+          const el = document.createElement("div");
+          el.style.width = "14px";
+          el.style.height = "14px";
+          el.style.borderRadius = "9999px";
+          el.style.backgroundColor = "#ef4444";
+          el.style.border = "2px solid #ffffff";
+          el.style.transform = "translate(-50%, -50%)";
+          marker = new mapboxgl.Marker(el).setLngLat(drop).addTo(map);
+        } else {
+          marker.setLngLat(drop);
+        }
+        nextDrops[id] = marker;
+      }
+
+      // ROUTE
+      const routeId = `route-road-${id}`;
+
+      if (pickup && drop) {
+        validRouteIds.add(routeId);
+
+        void (async () => {
+          const feature = await getRoadRoute(pickup, drop);
+          const data: any = {
+            type: "FeatureCollection",
+            features: [feature],
+          };
+
+          const existing = map.getSource(routeId) as mapboxgl.GeoJSONSource | undefined;
+          if (existing) {
+            existing.setData(data);
+          } else {
+            map.addSource(routeId, {
+              type: "geojson",
+              data,
+            });
+
+            map.addLayer({
+              id: routeId,
+              type: "line",
+              source: routeId,
+              paint: {
+                "line-color": "#16a34a",
+                "line-width": 5,
+              },
+            });
           }
-          
-        }
-        nextDriver[id] = m;
-      }
-    }
-
-    // cleanup removed trips
-    for (const [id, m] of Object.entries(pickupMarkersRef.current)) {
-      if (!nextPickup[id]) m.remove();
-    }
-    for (const [id, m] of Object.entries(dropMarkersRef.current)) {
-      if (!nextDrop[id]) m.remove();
-    }
-    for (const [id, m] of Object.entries(driverMarkersRef.current)) {
-      if (!nextDriver[id]) m.remove();
-    }
-
-    pickupMarkersRef.current = nextPickup;
-    dropMarkersRef.current = nextDrop;
-    driverMarkersRef.current = nextDriver;
-  }, [visibleTrips, selectedTripId, stuckTripIds, mapReady]);
-
-  // ---------- Fleet markers (online drivers) ----------
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-if (process.env.NODE_ENV !== "production") console.log("[FLEET] MAP READY", mapReady);
-if (process.env.NODE_ENV !== "production") console.log("[FLEET] MAP REF", !!mapRef.current);
-if (process.env.NODE_ENV !== "production") console.log("[FLEET] DRIVERS IN HOOK", (drivers ?? []).length);
-if (process.env.NODE_ENV !== "production") console.log("[FLEET] BEFORE KEYS", Object.keys(fleetMarkersRef.current));
-    const next: Record<string, mapboxgl.Marker> = {};
-
-    for (const d of drivers as any[]) {
-      const id = String(d?.driver_id ?? d?.id ?? "");
-      const lat = num(d?.lat);
-      const lng = num(d?.lng);
-      if (!id || lat == null || lng == null) continue;
-
-      // --- JRIDE: stale driver styling (minutes=10) ---
-      let ageMin = 0;
-      try {
-        const tsRaw = (d?.updated_at ?? d?.updatedAt ?? null);
-        if (tsRaw) {
-          const ts = new Date(tsRaw);
-          const now = Date.now();
-          ageMin = (now - ts.getTime()) / 60000;
-        }
-      } catch {
-        ageMin = 0;
-      }
-      const isStale = ageMin > 10;
-      // --- end stale styling ---
-const ll: LngLatTuple = [lng, lat];
-
-      let m = fleetMarkersRef.current[id];
-      if (!m) {
-        const el = document.createElement("div");
-        el.style.width = "12px";
-        el.style.height = "12px";
-        el.style.borderRadius = "9999px";
-        el.style.background = (isStale ? "#9ca3af" : "#22c55e"); // gray if stale, green if fresh
-        el.title = `Driver ${id}  ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
-        el.style.border = "2px solid #ffffff";
-        el.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.10)";
-        el.style.transform = "translate(-50%, -50%)";
-        el.style.zIndex = "9999";
-
-        m = new mapboxgl.Marker(el).setLngLat(ll).addTo(map);
+        })();
       } else {
-        m.setLngLat(ll);
-        try {
-          const el = m.getElement();
-          el.style.background = (isStale ? "#9ca3af" : "#22c55e");
-          el.title = `Driver ${id}  ${isStale ? "stale " + Math.round(ageMin) + "m" : "fresh"}`;
-        } catch {}
+        if (map.getLayer(routeId)) map.removeLayer(routeId);
+        if (map.getSource(routeId)) map.removeSource(routeId);
+      }
+    }
+
+    const map2 = mapRef.current;
+    if (map2) {
+      for (const [id, marker] of Object.entries(driverMarkersRef.current)) {
+        if (!nextDrivers[id]) marker.remove();
+      }
+      for (const [id, marker] of Object.entries(pickupMarkersRef.current)) {
+        if (!nextPickups[id]) marker.remove();
+      }
+      for (const [id, marker] of Object.entries(dropMarkersRef.current)) {
+        if (!nextDrops[id]) marker.remove();
       }
 
-      next[id] = m;
+      for (const prevId of routeIdsRef.current) {
+        if (!validRouteIds.has(prevId)) {
+          if (map2.getLayer(prevId)) map2.removeLayer(prevId);
+          if (map2.getSource(prevId)) map2.removeSource(prevId);
+        }
+      }
     }
 
-    // cleanup removed drivers
-    for (const [id, m] of Object.entries(fleetMarkersRef.current)) {
-      if (!next[id]) m.remove();
-    }
+    driverMarkersRef.current = nextDrivers;
+    pickupMarkersRef.current = nextPickups;
+    dropMarkersRef.current = nextDrops;
+    routeIdsRef.current = validRouteIds;
+  }, [visibleTrips, activeStuckIds, mapReady]);
 
-    fleetMarkersRef.current = next;
-if (process.env.NODE_ENV !== "production") console.log("[FLEET] AFTER KEYS", Object.keys(fleetMarkersRef.current));
-  }, [drivers, mapReady]);
-
-  // ---------- Fit map to markers ----------
+  // ===== AUTO-FOLLOW =====
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
+    if (!map || !selectedTripId) return;
 
-    const coords: LngLatTuple[] = [];
+    const raw = trips.find(
+      (t: any) => String((t as any).id ?? (t as any).bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
+    ) as any | undefined;
+    if (!raw) return;
 
-    // include fleet coords too (so trips=0 still fits)
-    for (const d of drivers as any[]) {
-      const lat = num(d?.lat);
-      const lng = num(d?.lng);
-      if (lat != null && lng != null) coords.push([lng, lat]);
+    const driverReal = getDriverReal(raw);
+    const pickup = getPickup(raw);
+    const drop = getDropoff(raw);
+
+    const target: LngLatTuple | null = driverReal ?? drop ?? pickup ?? null;
+    if (!target) return;
+
+    if (lastFollowRef.current) {
+      const dist = distanceMeters(lastFollowRef.current, target);
+      if (dist < 30) return;
     }
 
-    for (const t of visibleTrips as any[]) {
-      const pickup = getPickup(t);
-      const drop = getDropoff(t);
-      const drv = getExplicitDriver(t);
-      if (pickup) coords.push(pickup);
-      if (drop) coords.push(drop);
-      if (drv) coords.push(drv);
-    }
+    lastFollowRef.current = target;
 
-    if (!coords.length) return;
+    map.flyTo({
+      center: target,
+      zoom: 15,
+      speed: 1.2,
+      essential: true,
+    });
+  }, [selectedTripId, trips]);
 
-    const b = new mapboxgl.LngLatBounds(coords[0], coords[0]);
-    for (const c of coords) b.extend(c);
-
-    try {
-      if (!userInteractedRef.current) map.fitBounds(b, { padding: 90, maxZoom: 14, duration: 700 });
-    } catch {
-      // ignore
-    }
-  }, [visibleTrips, drivers, mapReady]);
-
-  // ---------- Audio alert for stuck trips ----------
-  useEffect(() => {
-    const stuck = (visibleTrips as any[]).find((t) => isStuckTrip(t, stuckTripIds));
-    if (!stuck) return;
-
-    const id = safeId(stuck);
-    if (!id) return;
-
-    if (lastAlertedTripIdRef.current === id) return;
-    lastAlertedTripIdRef.current = id;
-
-    try {
-      alertAudioRef.current?.play().catch(() => {});
-    } catch {
-      // ignore
-    }
-  }, [visibleTrips, stuckTripIds]);
-
+  // ===== RENDER =====
   return (
     <>
-      <div className="relative w-full">
-        <div ref={containerRef} style={mapStyle} />
+      <div className="relative h-full w-full">
+        <div ref={containerRef} className="h-full w-full" />
 
-        {openTripId && (
-          <div className="absolute left-3 top-3 z-[10000] w-[360px] max-w-[92vw] rounded-xl border bg-white shadow-lg">
+        {/* KPI BANNER */}
+        <div className="pointer-events-auto absolute top-3 right-3 z-20 flex max-w-xl flex-wrap gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs shadow-md">
+          <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-2 rounded-md bg-rose-50 px-2 py-1 text-rose-800">
+              <span className="text-[10px] font-semibold uppercase tracking-wide">
+                Problem trips
+              </span>
+              <span className="text-sm font-bold">
+                {kpi.problem + kpi.stuck}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-amber-800">
+              <span className="text-[10px] font-semibold uppercase tracking-wide">
+                At risk
+              </span>
+              <span className="text-sm font-bold">{kpi.atRisk}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-2 py-1 text-emerald-800">
+              <span className="text-[10px] font-semibold uppercase tracking-wide">
+                Active trips
+              </span>
+              <span className="text-sm font-bold">{kpi.active}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-slate-800">
+              <span className="text-[10px] font-semibold uppercase tracking-wide">
+                Pending
+              </span>
+              <span className="text-sm font-bold">{kpi.pending}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1 text-slate-800">
+              <span className="text-[10px] font-semibold uppercase tracking-wide">
+                Avg pickup ETA
+              </span>
+              <span className="text-sm font-bold">
+                {kpi.avgPickupEtaSeconds == null
+                  ? "--"
+                  : `${Math.round(kpi.avgPickupEtaSeconds / 60)} min`}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ZONE COLUMN FILTERS */}
+        <div className="pointer-events-auto absolute top-3 left-3 z-20 max-w-xl rounded-xl bg-white/90 px-3 py-2 text-xs shadow-md">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="font-semibold text-slate-800">
+              Zones workload
+            </span>
+            <button
+              type="button"
+              onClick={() => setZoneFilter("all")}
+              className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
+            >
+              Reset
+            </button>
+          </div>
+          {zoneStats.length === 0 ? (
+            <div className="text-[11px] text-slate-500">
+              No active zones.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {zoneStats.map((z) => {
+                const isActive = zoneFilter === z.key;
+                return (
+                  <button
+                    key={z.key}
+                    type="button"
+                    onClick={() =>
+                      setZoneFilter((prev) => (prev === z.key ? "all" : z.key))
+                    }
+                    className={[
+                      "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                      isActive
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <span>{z.label}</span>
+                    <span
+                      className={[
+                        "rounded-full px-1 text-[10px]",
+                        isActive
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-100 text-slate-700",
+                      ].join(" ")}
+                    >
+                      {z.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+
+        {/* DRIVER LIVE OVERVIEW + DISPATCH ACTION PANEL */}
+        {selectedOverview && (
+          <div className="pointer-events-auto absolute bottom-3 right-3 z-20 w-80 rounded-xl bg-white/90 p-3 text-xs shadow-md space-y-2">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="font-semibold text-slate-800">
+                Driver live overview
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {selectedOverview.bookingCode}
+              </span>
+            </div>
+            <div className="space-y-1 text-[11px] text-slate-700">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Driver</span>
+                <span className="font-medium">
+                  {selectedOverview.driverName ?? "Unknown"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Status</span>
+                <span className="font-medium">
+                  {selectedOverview.status}
+                  {selectedOverview.isStuck ? " ? STUCK" : ""}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Zone</span>
+                <span className="font-medium">
+                  {selectedOverview.zoneLabel}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">To pickup</span>
+                <span className="font-medium">
+                  {selectedOverview.distToPickup == null
+                    ? "--"
+                    : `${(selectedOverview.distToPickup / 1000).toFixed(2)} km`}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">To dropoff</span>
+                <span className="font-medium">
+                  {selectedOverview.distToDrop == null
+                    ? "--"
+                    : `${(selectedOverview.distToDrop / 1000).toFixed(2)} km`}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Last update</span>
+                <span className="font-medium">
+                  {selectedOverview.lastUpdate
+                    ? String(selectedOverview.lastUpdate)
+                    : "-"}
+                </span>
+              </div>
+            </div>
+
             <DispatchActionPanel
-  bookingCode={openTripId as any}
-  dispatcherName={undefined}
-/>
+              selectedTrip={
+                selectedTrip && selectedTrip.id
+                  ? {
+                      id: String(selectedTrip.id),
+                      booking_code:
+                        selectedTrip.bookingCode ?? selectedOverview.bookingCode,
+                      status:
+                        selectedTrip.status ?? selectedOverview.status,
+                      driver_id:
+                        selectedTrip.driver_id ??
+                        selectedTrip.driverId ??
+                        null,
+                      driver_name:
+                        selectedTrip.driver_name ??
+                        selectedTrip.driverName ??
+                        selectedOverview.driverName ??
+                        null,
+                      driver_phone:
+                        selectedTrip.driver_phone ??
+                        selectedTrip.driverPhone ??
+                        null,
+                      passenger_name:
+                        selectedTrip.passenger_name ??
+                        selectedTrip.passengerName ??
+                        null,
+                      town:
+                        selectedTrip.town ??
+                        selectedTrip.zone ??
+                        selectedOverview.zoneLabel ??
+                        null,
+                      is_emergency:
+                        selectedTrip.is_emergency ??
+                        selectedTrip.isEmergency ??
+                        false,
+                    }
+                  : null
+              }
+              dispatcherName={undefined}
+            />
           </div>
         )}
 
@@ -563,4 +915,9 @@ if (process.env.NODE_ENV !== "production") console.log("[FLEET] AFTER KEYS", Obj
 };
 
 export default LiveTripsMap;
+
+
+
+
+
 
