@@ -1,4 +1,25 @@
-﻿import { NextResponse } from "next/server";
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ProjRoot
+)
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "== JRIDE LIVETRIPS PAGE-DATA DIRECT BOOKINGS V1 (PS5-safe) =="
+
+$routePath = Join-Path $ProjRoot "app\api\admin\livetrips\page-data\route.ts"
+if (!(Test-Path $routePath)) {
+  throw "route.ts not found: $routePath"
+}
+
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backupDir = Join-Path $ProjRoot "_patch_bak"
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+Copy-Item $routePath (Join-Path $backupDir ("route.ts.bak.LIVETRIPS_PAGE_DATA_DIRECT_BOOKINGS_V1.{0}" -f $timestamp)) -Force
+Write-Host "[OK] Backup created"
+
+$content = @'
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -119,3 +140,11 @@ export async function GET(req: Request) {
     );
   }
 }
+'@
+
+Set-Content -LiteralPath $routePath -Value $content -Encoding UTF8
+Write-Host "[OK] Wrote route.ts"
+Write-Host ""
+Write-Host "PATCH COMPLETE"
+Write-Host "Modified file:"
+Write-Host " - $routePath"
