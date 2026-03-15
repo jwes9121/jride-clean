@@ -1,5 +1,23 @@
 "use client";
 
+
+function formatLastSeen(ageSeconds?: number) {
+  if (!ageSeconds && ageSeconds !== 0) return "--";
+  if (ageSeconds < 60) return ageSeconds + "s ago";
+  if (ageSeconds < 3600) return Math.floor(ageSeconds / 60) + "m ago";
+  return Math.floor(ageSeconds / 3600) + "h ago";
+}
+
+function formatWaiting(createdAt?: string) {
+  if (!createdAt) return "--";
+  const age = (Date.now() - new Date(createdAt).getTime()) / 1000;
+  if (age < 60) return Math.floor(age) + "s";
+  if (age < 3600) return Math.floor(age / 60) + "m";
+  return Math.floor(age / 3600) + "h";
+}
+
+
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
 import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
@@ -43,14 +61,19 @@ type TripRow = {
 };
 
 type DriverRow = {
-  driver_id?: string | null;
-  name?: string | null;
-  phone?: string | null;
-  town?: string | null;
-  status?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-  updated_at?: string | null;
+  driver_id: string
+  lat?: number
+  lng?: number
+  status?: string
+  updated_at?: string
+
+  age_seconds?: number
+  assign_eligible?: boolean
+  is_stale?: boolean
+
+  name?: string
+  phone?: string
+  town?: string
 };
 
 type PageData = {
@@ -240,7 +263,25 @@ export default function LiveTripsClient() {
       loadPage().catch(() => {});
       loadDrivers().catch(() => {});
     }, 5000);
-    return () => clearInterval(t);
+    
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return () => clearInterval(t);
   }, []);
 
   const stuckTripIds = useMemo(() => {
@@ -446,7 +487,25 @@ export default function LiveTripsClient() {
   const assignedDriverId = String(selectedTrip?.assigned_driver_id || selectedTrip?.driver_id || "") || null;
   const showThresholds = "Stuck watcher thresholds: on_the_way >= " + STUCK_THRESHOLDS_MIN.on_the_way + " min, on_trip >= " + STUCK_THRESHOLDS_MIN.on_trip + " min";
 
-  return (
+  
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -569,7 +628,25 @@ export default function LiveTripsClient() {
                       const trip = row.activeTrip;
                       const isSel = trip ? selectedTripId === normTripId(trip) : false;
 
-                      return (
+                      
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
                         <tr
                           key={row.key}
                           className={[
@@ -596,7 +673,7 @@ export default function LiveTripsClient() {
                               <span className="text-gray-500">No active trip</span>
                             )}
                           </td>
-                          <td className="p-2">{labelOrDash((d as any).updated_at_ph || d.updated_at)}</td>
+                          <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
 <td className="p-2">
   {typeof (d as any).age_seconds === "number"
     ? Math.floor((d as any).age_seconds / 60) + "m"
@@ -648,7 +725,25 @@ export default function LiveTripsClient() {
                       const isProblem = stuckTripIds.has(id);
                       const s = normStatus(t.status);
 
-                      return (
+                      
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
                         <tr
                           key={rowKey}
                           className={[
@@ -793,7 +888,25 @@ export default function LiveTripsClient() {
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
                     const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + (d.status ? " - " + d.status : "")).trim();
-                    return (
+                    
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
                       <option key={id || String(idx)} value={id}>
                         {label}
                       </option>
@@ -855,4 +968,6 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+
+
 
