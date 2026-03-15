@@ -27,44 +27,85 @@ function normalizeTrip(row: Json): Json {
 }
 
 async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
-  // Use direct bookings query only.
-  // These columns are already evidenced in your stack / DB checks and are enough for LiveTrips.
-  const query = [
-    "id",
-    "booking_code",
-    "pickup_lat",
-    "pickup_lng",
-    "status",
-    "driver_id",
-    "assigned_driver_id",
-    "created_at",
-    "updated_at",
-    "town"
-  ].join(",");
-
   const { data, error } = await supabase
     .from("bookings")
-    .select(query)
+    .select([
+      "id",
+      "booking_code",
+      "passenger_name",
+      "pickup_label",
+      "dropoff_label",
+      "from_label",
+      "to_label",
+      "pickup_lat",
+      "pickup_lng",
+      "dropoff_lat",
+      "dropoff_lng",
+      "status",
+      "driver_id",
+      "assigned_driver_id",
+      "created_at",
+      "updated_at",
+      "town"
+    ].join(","))
     .order("updated_at", { ascending: false, nullsFirst: false })
     .limit(300);
 
   if (error) {
-    console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", { message: error.message, query });
+    console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", { message: error.message });
     return {
       trips: [] as Json[],
       warnings: ["BOOKINGS_QUERY_FAILED", error.message],
     };
   }
 
+  const trips = (data || []).map(normalizeTrip);
+
+  const driverIds = Array.from(
+    new Set(
+      trips
+        .map((t: any) => String(t.assigned_driver_id || t.driver_id || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  let driversById: Record<string, any> = {};
+  if (driverIds.length) {
+    const { data: drivers, error: driversError } = await supabase
+      .from("drivers")
+      .select("id,driver_name,driver_status,zone_id,toda_name,wallet_balance")
+      .in("id", driverIds);
+
+    if (driversError) {
+      console.error("PAGE_DATA_DRIVERS_QUERY_ERROR", { message: driversError.message });
+    } else {
+      driversById = Object.fromEntries(
+        (drivers || []).map((d: any) => [String(d.id), d])
+      );
+    }
+  }
+
+  const enriched = trips.map((t: any) => {
+    const did = String(t.assigned_driver_id || t.driver_id || "").trim();
+    const d = did ? driversById[did] : null;
+
+    return {
+      ...t,
+      driver_name: d?.driver_name ?? null,
+      driver_status: d?.driver_status ?? null,
+      zone_id: d?.zone_id ?? null,
+      toda_name: d?.toda_name ?? null,
+      wallet_balance: d?.wallet_balance ?? null,
+    };
+  });
+
   return {
-    trips: (data || []).map(normalizeTrip),
+    trips: enriched,
     warnings: [] as string[],
   };
 }
 
 async function tryLoadZones(supabase: ReturnType<typeof supabaseAdmin>) {
-  // Disable schema-cache probing via information_schema.columns.
-  // Return empty zones safely instead of breaking the page-data response.
   return {
     zones: [] as ZoneRow[],
     zoneSource: null as string | null,
@@ -98,7 +139,7 @@ export async function GET(req: Request) {
       payload.debug = {
         tripCount: bookingsRes.trips.length,
         zoneCount: zonesRes.zones.length,
-        note: "Direct bookings query; information_schema probing disabled",
+        note: "Direct bookings query with drivers join; information_schema probing disabled",
       };
     }
 

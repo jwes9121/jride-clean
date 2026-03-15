@@ -1,3 +1,24 @@
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ProjRoot
+)
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "== JRIDE LIVETRIPSCLIENT FULLWRITE RESTORE V1 (PS5-safe) =="
+
+$file = Join-Path $ProjRoot "app\admin\livetrips\LiveTripsClient.tsx"
+if (!(Test-Path $file)) {
+  throw "LiveTripsClient.tsx not found: $file"
+}
+
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backupDir = Join-Path $ProjRoot "_patch_bak"
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+Copy-Item $file (Join-Path $backupDir ("LiveTripsClient.tsx.bak.FULLWRITE_RESTORE_V1.{0}" -f $timestamp)) -Force
+Write-Host "[OK] Backup created"
+
+$content = @'
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -684,3 +705,13 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+'@
+
+$enc = New-Object System.Text.ASCIIEncoding
+[System.IO.File]::WriteAllText($file, $content, $enc)
+
+Write-Host "[OK] Wrote ASCII-safe LiveTripsClient.tsx"
+Write-Host ""
+Write-Host "PATCH COMPLETE"
+Write-Host "Modified file:"
+Write-Host " - $file"
