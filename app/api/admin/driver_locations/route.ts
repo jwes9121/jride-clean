@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type DriverRowDb = {
+type DriverLocationRowDb = {
   id?: string | null;
   driver_id?: string | null;
   status?: string | null;
@@ -14,6 +14,17 @@ type DriverRowDb = {
   lng?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  vehicle_type?: string | null;
+  capacity?: number | null;
+  [key: string]: any;
+};
+
+type DriverIdentityRowDb = {
+  id?: string | null;
+  driver_name?: string | null;
+  driver_status?: string | null;
+  zone_id?: string | null;
+  toda_name?: string | null;
   [key: string]: any;
 };
 
@@ -29,7 +40,7 @@ function toPhilippineTime(input: string | null | undefined) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
+    hour12: false
   });
 }
 
@@ -61,13 +72,38 @@ export async function GET() {
         {
           ok: false,
           error: "ADMIN_DRIVER_LOCATIONS_ERROR",
-          message: error.message,
+          message: error.message
         },
         { status: 500 }
       );
     }
 
-    const rows = Array.isArray(data) ? (data as DriverRowDb[]) : [];
+    const rows = Array.isArray(data) ? (data as DriverLocationRowDb[]) : [];
+
+    const driverIds = Array.from(
+      new Set(
+        rows
+          .map((row) => String(row.driver_id || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    let identityById: Record<string, DriverIdentityRowDb> = {};
+    if (driverIds.length > 0) {
+      const { data: driversData, error: driversError } = await supabase
+        .from("drivers")
+        .select("id,driver_name,driver_status,zone_id,toda_name")
+        .in("id", driverIds);
+
+      if (driversError) {
+        console.error("ADMIN_DRIVER_LOCATIONS_DRIVERS_JOIN_ERROR", driversError);
+      } else {
+        const identities = Array.isArray(driversData) ? (driversData as DriverIdentityRowDb[]) : [];
+        identityById = Object.fromEntries(
+          identities.map((d) => [String(d.id || ""), d])
+        );
+      }
+    }
 
     const drivers = rows.map((row) => {
       const updatedAt = row.updated_at ?? null;
@@ -80,8 +116,16 @@ export async function GET() {
       const assignOnlineEligible = onlineLike.has(rawStatus);
       const assignEligible = assignFresh && assignOnlineEligible;
 
+      const driverId = String(row.driver_id || "").trim();
+      const identity = driverId ? identityById[driverId] : null;
+
       return {
         ...row,
+        name: identity?.driver_name ?? null,
+        phone: null,
+        zone_id: identity?.zone_id ?? null,
+        toda_name: identity?.toda_name ?? null,
+        driver_status_master: identity?.driver_status ?? null,
         updated_at: updatedAt,
         updated_at_ph: toPhilippineTime(updatedAt),
         created_at: createdAt,
@@ -93,7 +137,7 @@ export async function GET() {
         assign_cutoff_minutes: assignCutoffMinutes,
         assign_fresh: assignFresh,
         assign_online_eligible: assignOnlineEligible,
-        assign_eligible: assignEligible,
+        assign_eligible: assignEligible
       };
     });
 
@@ -112,10 +156,10 @@ export async function GET() {
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit",
-          hour12: false,
+          hour12: false
         }),
         count: drivers.length,
-        drivers,
+        drivers
       },
       { status: 200 }
     );
@@ -125,7 +169,7 @@ export async function GET() {
       {
         ok: false,
         error: "ADMIN_DRIVER_LOCATIONS_UNEXPECTED",
-        message: err?.message ?? "Unexpected error",
+        message: err?.message ?? "Unexpected error"
       },
       { status: 500 }
     );
