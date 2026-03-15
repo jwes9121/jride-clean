@@ -612,13 +612,16 @@ return (
                     <th className="p-2">Town</th>
                     <th className="p-2">Status</th>
                     <th className="p-2">Trips</th>
-                    <th className="p-2">Updated</th>
+                    <th className="p-2">Last Ping (PHT)</th>
+                    <th className="p-2">Seen Ago</th>
+                    <th className="p-2">Eligible</th>
+                    <th className="p-2">Stale</th>
                   </tr>
                 </thead>
                 <tbody>
                   {driverRows.length === 0 ? (
                     <tr>
-                      <td className="p-3 text-gray-600" colSpan={6}>
+                      <td className="p-3 text-gray-600" colSpan={9}>
                         No drivers in this view.
                       </td>
                     </tr>
@@ -674,11 +677,7 @@ return (
                             )}
                           </td>
                           <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
-<td className="p-2">
-  {typeof (d as any).age_seconds === "number"
-    ? Math.floor((d as any).age_seconds / 60) + "m"
-    : "--"}
-</td>
+<td className="p-2">{formatLastSeen(d.age_seconds)}</td>
 <td className="p-2">
   {(d as any).assign_eligible
     ? <span className="text-green-600 font-medium">Yes</span>
