@@ -28,6 +28,13 @@ type DriverIdentityRowDb = {
   [key: string]: any;
 };
 
+type DriverProfileRowDb = {
+  driver_id?: string | null;
+  phone?: string | null;
+  full_name?: string | null;
+  [key: string]: any;
+};
+
 function toPhilippineTime(input: string | null | undefined) {
   if (!input) return null;
   const d = new Date(input);
@@ -89,6 +96,8 @@ export async function GET() {
     );
 
     let identityById: Record<string, DriverIdentityRowDb> = {};
+    let profileByDriverId: Record<string, DriverProfileRowDb> = {};
+
     if (driverIds.length > 0) {
       const { data: driversData, error: driversError } = await supabase
         .from("drivers")
@@ -101,6 +110,20 @@ export async function GET() {
         const identities = Array.isArray(driversData) ? (driversData as DriverIdentityRowDb[]) : [];
         identityById = Object.fromEntries(
           identities.map((d) => [String(d.id || ""), d])
+        );
+      }
+
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("driver_profiles")
+        .select("driver_id,phone,full_name")
+        .in("driver_id", driverIds);
+
+      if (profilesError) {
+        console.error("ADMIN_DRIVER_LOCATIONS_DRIVER_PROFILES_JOIN_ERROR", profilesError);
+      } else {
+        const profiles = Array.isArray(profilesData) ? (profilesData as DriverProfileRowDb[]) : [];
+        profileByDriverId = Object.fromEntries(
+          profiles.map((p) => [String(p.driver_id || ""), p])
         );
       }
     }
@@ -118,11 +141,12 @@ export async function GET() {
 
       const driverId = String(row.driver_id || "").trim();
       const identity = driverId ? identityById[driverId] : null;
+      const profile = driverId ? profileByDriverId[driverId] : null;
 
       return {
         ...row,
-        name: identity?.driver_name ?? null,
-        phone: null,
+        name: identity?.driver_name ?? profile?.full_name ?? null,
+        phone: profile?.phone ?? null,
         zone_id: identity?.zone_id ?? null,
         toda_name: identity?.toda_name ?? null,
         driver_status_master: identity?.driver_status ?? null,
