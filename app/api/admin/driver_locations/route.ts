@@ -58,6 +58,12 @@ function ageSecondsFromIso(input: string | null | undefined) {
   return Math.max(0, Math.floor(ms / 1000));
 }
 
+function ts(input: string | null | undefined) {
+  if (!input) return 0;
+  const t = new Date(input).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
 export async function GET() {
   try {
     const staleAfterSeconds = 120;
@@ -85,15 +91,37 @@ export async function GET() {
       );
     }
 
-    const rows = Array.isArray(data) ? (data as DriverLocationRowDb[]) : [];
+    const rawRows = Array.isArray(data) ? (data as DriverLocationRowDb[]) : [];
 
-    const driverIds = Array.from(
-      new Set(
-        rows
-          .map((row) => String(row.driver_id || "").trim())
-          .filter(Boolean)
-      )
-    );
+    // Deduplicate by driver_id: keep only the latest updated_at row per driver
+    const latestByDriverId: Record<string, DriverLocationRowDb> = {};
+    for (const row of rawRows) {
+      const driverId = String(row.driver_id || "").trim();
+      if (!driverId) continue;
+
+      const prev = latestByDriverId[driverId];
+      if (!prev) {
+        latestByDriverId[driverId] = row;
+        continue;
+      }
+
+      const prevTs = ts(prev.updated_at || prev.created_at || null);
+      const nextTs = ts(row.updated_at || row.created_at || null);
+
+      if (nextTs > prevTs) {
+        latestByDriverId[driverId] = row;
+      }
+    }
+
+    const rows = Object.values(latestByDriverId).sort((a, b) => {
+      const at = ts(a.updated_at || a.created_at || null);
+      const bt = ts(b.updated_at || b.created_at || null);
+      return bt - at;
+    });
+
+    const driverIds = rows
+      .map((row) => String(row.driver_id || "").trim())
+      .filter(Boolean);
 
     let identityById: Record<string, DriverIdentityRowDb> = {};
     let profileByDriverId: Record<string, DriverProfileRowDb> = {};
