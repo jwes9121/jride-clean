@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -26,40 +26,108 @@ function normalizeTrip(row: Json): Json {
   };
 }
 
-async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .select([
-      "id",
-      "booking_code",
-      "passenger_name",
-      "pickup_label",
-      "dropoff_label",
-      "from_label",
-      "to_label",
-      "pickup_lat",
-      "pickup_lng",
-      "dropoff_lat",
-      "dropoff_lng",
-      "status",
-      "driver_id",
-      "assigned_driver_id",
-      "created_at",
-      "updated_at",
-      "town"
-    ].join(","))
-    .order("updated_at", { ascending: false, nullsFirst: false })
-    .limit(300);
+function uniqueStrings(values: string[]): string[] {
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+}
+async function selectBookingsAdaptive(supabase: ReturnType<typeof supabaseAdmin>) {
+  const selectColumns = [
+    "id",
+    "booking_code",
+    "passenger_name",
+    "pickup_label",
+    "dropoff_label",
+    "from_label",
+    "to_label",
+    "pickup_lat",
+    "pickup_lng",
+    "dropoff_lat",
+    "dropoff_lng",
+    "status",
+    "driver_id",
+    "assigned_driver_id",
+    "created_at",
+    "updated_at",
+    "town",
+  ];
 
-  if (error) {
-    console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", { message: error.message });
+  const removed: string[] = [];
+  let warnings: string[] = [];
+  let lastErrorMessage = "";
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const activeColumns = selectColumns.filter((c) => removed.indexOf(c) === -1);
+    if (!activeColumns.length) {
+      return {
+        ok: false,
+        data: [] as Json[],
+        warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", "No selectable columns left for bookings"]),
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(activeColumns.join(","))
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .limit(300);
+
+    if (!error) {
+      return {
+        ok: true,
+        data: (data || []) as Json[],
+        warnings,
+        activeColumns,
+        removed,
+      };
+    }
+
+    const msg = String(error.message || "");
+    lastErrorMessage = msg;
+
+    const match = msg.match(/column\s+bookings\.([a-zA-Z0-9_]+)\s+does\s+not\s+exist/i);
+    if (!match) {
+      console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", { message: msg, activeColumns });
+      return {
+        ok: false,
+        data: [] as Json[],
+        warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", msg]),
+      };
+    }
+
+    const missingCol = String(match[1] || "").trim();
+    if (!missingCol || removed.indexOf(missingCol) !== -1) {
+      console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", { message: msg, activeColumns });
+      return {
+        ok: false,
+        data: [] as Json[],
+        warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", msg]),
+      };
+    }
+
+    removed.push(missingCol);
+    warnings.push("BOOKINGS_COLUMN_SKIPPED:" + missingCol);
+    console.warn("PAGE_DATA_BOOKINGS_COLUMN_SKIPPED", { missingCol });
+  }
+
+  return {
+    ok: false,
+    data: [] as Json[],
+    warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", lastErrorMessage || "Adaptive bookings select exhausted"]),
+  };
+}
+
+async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
+  const bookingRes = await selectBookingsAdaptive(supabase);
+
+  if (!bookingRes.ok) {
     return {
       trips: [] as Json[],
-      warnings: ["BOOKINGS_QUERY_FAILED", error.message],
+      warnings: bookingRes.warnings,
+      debugSelect: [] as string[],
+      removedColumns: [] as string[],
     };
   }
 
-  const trips = (data || []).map(normalizeTrip);
+  const trips = bookingRes.data.map(normalizeTrip);
 
   const driverIds = Array.from(
     new Set(
@@ -101,7 +169,9 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
 
   return {
     trips: enriched,
-    warnings: [] as string[],
+    warnings: bookingRes.warnings,
+    debugSelect: bookingRes.activeColumns || [],
+    removedColumns: bookingRes.removed || [],
   };
 }
 
@@ -139,7 +209,9 @@ export async function GET(req: Request) {
       payload.debug = {
         tripCount: bookingsRes.trips.length,
         zoneCount: zonesRes.zones.length,
-        note: "Direct bookings query with drivers join; information_schema probing disabled",
+        note: "Direct bookings query with adaptive column removal; information_schema probing disabled",
+        bookingsSelectColumns: bookingsRes.debugSelect || [],
+        removedBookingColumns: bookingsRes.removedColumns || [],
       };
     }
 
