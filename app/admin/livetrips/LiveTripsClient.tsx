@@ -596,7 +596,22 @@ export default function LiveTripsClient() {
                               <span className="text-gray-500">No active trip</span>
                             )}
                           </td>
-                          <td className="p-2">{labelOrDash(d.updated_at)}</td>
+                          <td className="p-2">{labelOrDash((d as any).updated_at_ph || d.updated_at)}</td>
+<td className="p-2">
+  {typeof (d as any).age_seconds === "number"
+    ? Math.floor((d as any).age_seconds / 60) + "m"
+    : "--"}
+</td>
+<td className="p-2">
+  {(d as any).assign_eligible
+    ? <span className="text-green-600 font-medium">Yes</span>
+    : <span className="text-gray-400">No</span>}
+</td>
+<td className="p-2">
+  {(d as any).is_stale
+    ? <span className="text-red-600 font-medium">Yes</span>
+    : <span className="text-green-600">No</span>}
+</td>
                         </tr>
                       );
                     })
@@ -840,3 +855,4 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+
