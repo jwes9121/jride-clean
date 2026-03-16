@@ -264,22 +264,6 @@ export default function LiveTripsClient() {
       loadDrivers().catch(() => {});
     }, 5000);
     
-{/* SUPPLY SUMMARY */}
-<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
-  <div className="p-2 border rounded">Online: {drivers.length}</div>
-  <div className="p-2 border rounded">
-    Eligible: {drivers.filter(d => d.assign_eligible).length}
-  </div>
-  <div className="p-2 border rounded">
-    Stale: {drivers.filter(d => d.is_stale).length}
-  </div>
-  <div className="p-2 border rounded">
-    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
-  </div>
-  <div className="p-2 border rounded">
-    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
-  </div>
-</div>
 
 return () => clearInterval(t);
   }, []);
@@ -488,22 +472,6 @@ return () => clearInterval(t);
   const showThresholds = "Stuck watcher thresholds: on_the_way >= " + STUCK_THRESHOLDS_MIN.on_the_way + " min, on_trip >= " + STUCK_THRESHOLDS_MIN.on_trip + " min";
 
   
-{/* SUPPLY SUMMARY */}
-<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
-  <div className="p-2 border rounded">Online: {drivers.length}</div>
-  <div className="p-2 border rounded">
-    Eligible: {drivers.filter(d => d.assign_eligible).length}
-  </div>
-  <div className="p-2 border rounded">
-    Stale: {drivers.filter(d => d.is_stale).length}
-  </div>
-  <div className="p-2 border rounded">
-    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
-  </div>
-  <div className="p-2 border rounded">
-    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
-  </div>
-</div>
 
 return (
     <div className="p-4">
@@ -632,22 +600,6 @@ return (
                       const isSel = trip ? selectedTripId === normTripId(trip) : false;
 
                       
-{/* SUPPLY SUMMARY */}
-<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
-  <div className="p-2 border rounded">Online: {drivers.length}</div>
-  <div className="p-2 border rounded">
-    Eligible: {drivers.filter(d => d.assign_eligible).length}
-  </div>
-  <div className="p-2 border rounded">
-    Stale: {drivers.filter(d => d.is_stale).length}
-  </div>
-  <div className="p-2 border rounded">
-    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
-  </div>
-  <div className="p-2 border rounded">
-    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
-  </div>
-</div>
 
 return (
                         <tr
@@ -725,22 +677,6 @@ return (
                       const s = normStatus(t.status);
 
                       
-{/* SUPPLY SUMMARY */}
-<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
-  <div className="p-2 border rounded">Online: {drivers.length}</div>
-  <div className="p-2 border rounded">
-    Eligible: {drivers.filter(d => d.assign_eligible).length}
-  </div>
-  <div className="p-2 border rounded">
-    Stale: {drivers.filter(d => d.is_stale).length}
-  </div>
-  <div className="p-2 border rounded">
-    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
-  </div>
-  <div className="p-2 border rounded">
-    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
-  </div>
-</div>
 
 return (
                         <tr
@@ -888,22 +824,6 @@ return (
                     const id = String(d.driver_id || "");
                     const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + (d.status ? " - " + d.status : "")).trim();
                     
-{/* SUPPLY SUMMARY */}
-<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
-  <div className="p-2 border rounded">Online: {drivers.length}</div>
-  <div className="p-2 border rounded">
-    Eligible: {drivers.filter(d => d.assign_eligible).length}
-  </div>
-  <div className="p-2 border rounded">
-    Stale: {drivers.filter(d => d.is_stale).length}
-  </div>
-  <div className="p-2 border rounded">
-    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
-  </div>
-  <div className="p-2 border rounded">
-    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
-  </div>
-</div>
 
 return (
                       <option key={id || String(idx)} value={id}>
@@ -960,7 +880,7 @@ return (
         </div>
 
         <div className="rounded-lg border overflow-hidden">
-          <LiveTripsMap trips={mapTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
+          <LiveTripsMap trips={mapTrips as any} drivers={drivers} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
         </div>
       </div>
     </div>

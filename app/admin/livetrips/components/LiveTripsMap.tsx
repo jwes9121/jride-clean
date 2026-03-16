@@ -8,8 +8,23 @@ import DispatchActionPanel from "./DispatchActionPanel";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
+export type DriverLocation = {
+  driver_id: string;
+  lat?: number;
+  lng?: number;
+  status?: string;
+  updated_at?: string;
+  age_seconds?: number;
+  assign_eligible?: boolean;
+  is_stale?: boolean;
+  name?: string;
+  phone?: string;
+  town?: string;
+};
+
 export interface LiveTripsMapProps {
   trips: LiveTrip[];
+  drivers?: DriverLocation[];
   selectedTripId: string | null;
   stuckTripIds: Set<string>; // external optional stuck set
 }
@@ -227,6 +242,7 @@ function normalizeZone(name: string): string {
 
 export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   trips,
+  drivers = [],
   selectedTripId,
   stuckTripIds,
 }) => {
@@ -238,6 +254,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const routeIdsRef = useRef<Set<string>>(new Set());
+  const standaloneDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const lastFollowRef = useRef<LngLatTuple | null>(null);
 
   // Audio for problem-trip alerts
@@ -500,6 +517,12 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     return () => {
       map.off("load", onLoad);
       setMapReady(false);
+
+      for (const marker of Object.values(standaloneDriverMarkersRef.current)) {
+        marker.remove();
+      }
+      standaloneDriverMarkersRef.current = {};
+
       map.remove();
       mapRef.current = null;
     };
@@ -651,6 +674,66 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     routeIdsRef.current = validRouteIds;
   }, [visibleTrips, activeStuckIds, mapReady]);
 
+
+  // ===== STANDALONE DRIVER MARKERS (independent from trip data) =====
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const nextStandalone: Record<string, mapboxgl.Marker> = {};
+
+    for (const d of drivers ?? []) {
+      const lat = num((d as any).lat);
+      const lng = num((d as any).lng);
+      if (lat == null || lng == null) continue;
+
+      const id = String((d as any).driver_id || "");
+      if (!id) continue;
+
+      const statusLower = String((d as any).status ?? "").toLowerCase();
+      const isStale = !!(d as any).is_stale;
+      const isOnline = ["available", "online", "idle", "assigned", "on_the_way", "on_trip"].includes(statusLower);
+
+      let marker = standaloneDriverMarkersRef.current[id];
+      if (!marker) {
+        const el = document.createElement("div");
+        el.style.width = "18px";
+        el.style.height = "18px";
+        el.style.borderRadius = "9999px";
+        el.style.border = "2px solid #ffffff";
+        el.style.boxShadow = "0 1px 4px rgba(0,0,0,0.35)";
+        el.style.transform = "translate(-50%, -50%)";
+        el.style.cursor = "pointer";
+        el.style.backgroundColor = isStale ? "#94a3b8" : isOnline ? "#2563eb" : "#64748b";
+        el.title = [
+          (d as any).name ?? id,
+          (d as any).status ?? "",
+          (d as any).town ?? "",
+        ].filter(Boolean).join(" | ");
+
+        marker = new mapboxgl.Marker(el).setLngLat([lng, lat]).addTo(map);
+      } else {
+        marker.setLngLat([lng, lat]);
+        const el = marker.getElement();
+        el.style.backgroundColor = isStale ? "#94a3b8" : isOnline ? "#2563eb" : "#64748b";
+        el.title = [
+          (d as any).name ?? id,
+          (d as any).status ?? "",
+          (d as any).town ?? "",
+        ].filter(Boolean).join(" | ");
+      }
+
+      nextStandalone[id] = marker;
+    }
+
+    for (const [id, marker] of Object.entries(standaloneDriverMarkersRef.current)) {
+      if (!nextStandalone[id]) {
+        marker.remove();
+      }
+    }
+
+    standaloneDriverMarkersRef.current = nextStandalone;
+  }, [drivers, mapReady]);
   // ===== AUTO-FOLLOW =====
   useEffect(() => {
     const map = mapRef.current;
@@ -808,7 +891,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? " ? STUCK" : ""}
+                  {selectedOverview.isStuck ? "  STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -915,7 +998,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 };
 
 export default LiveTripsMap;
-
 
 
 
