@@ -633,12 +633,44 @@ export async function POST(req: Request) {
 
     if (!isTakeout) {
       try {
-        const resp = await fetch(`${baseUrl}/api/dispatch/assign`, {
+        const assignUrl = `${baseUrl}/api/dispatch/assign`;
+        const assignPayload = { booking_id: String(booking.id) };
+
+        const resp = await fetch(assignUrl, {
           method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-jride-admin-secret": process.env.JRIDE_ADMIN_SECRET || "",
-      },
+          headers: {
+            "Content-Type": "application/json",
+            "x-jride-admin-secret": process.env.JRIDE_ADMIN_SECRET || "",
+          },
+          body: JSON.stringify(assignPayload),
+        });
+
+        const rawText = await resp.text();
+        let parsed: any = null;
+        try {
+          parsed = rawText ? JSON.parse(rawText) : null;
+        } catch {}
+
+        assign = {
+          ok: resp.ok,
+          status: resp.status,
+          statusText: resp.statusText,
+          url: assignUrl,
+          payload: assignPayload,
+          responseText: rawText,
+          responseJson: parsed,
+        };
+      } catch (err: any) {
+        assign = {
+          ok: false,
+          note: "Assign call failed: " + String(err?.message || err),
+          errorName: String(err?.name || ""),
+          errorMessage: String(err?.message || err),
+          baseUrl,
+          booking_id: String(booking.id),
+        };
+      }
+    },
           body: JSON.stringify({ booking_id: String(booking.id) }),
         });
         const j = await resp.json().catch(() => ({}));
