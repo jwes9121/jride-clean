@@ -37,6 +37,10 @@ export async function POST(req: Request) {
     const bookingCode = String(body.bookingCode ?? body.booking_code ?? "").trim();
     const driverId = String(body.driver_id ?? "").trim();
     const status = String(body.status ?? "").trim();
+    let normalizedStatus = status;
+    if (normalizedStatus === "accepted") {
+      normalizedStatus = "assigned";
+    }
 
     if (!status) {
       return NextResponse.json(
@@ -73,7 +77,7 @@ export async function POST(req: Request) {
           bookingId,
           bookingCode,
           driverId,
-          status,
+          status: normalizedStatus,
         },
         { status: 500 }
       );
@@ -89,14 +93,13 @@ export async function POST(req: Request) {
           bookingId,
           bookingCode,
           driverId,
-          status,
+          status: normalizedStatus,
         },
         { status: 404 }
       );
     }
-
-    const updatePayload: Record<string, any> = {
-      status,
+const updatePayload: Record<string, any> = {
+      status: normalizedStatus,
       updated_at: new Date().toISOString(),
     };
 
@@ -121,7 +124,7 @@ export async function POST(req: Request) {
           bookingId,
           bookingCode,
           driverId,
-          status,
+          status: normalizedStatus,
           matchedBookingId: booking.id,
         },
         { status: 500 }
@@ -138,7 +141,7 @@ export async function POST(req: Request) {
           bookingId,
           bookingCode,
           driverId,
-          status,
+          status: normalizedStatus,
           matchedBookingId: booking.id,
         },
         { status: 500 }
@@ -148,7 +151,7 @@ export async function POST(req: Request) {
     const effectiveDriverId =
       String(updated.driver_id ?? booking.driver_id ?? driverId ?? "").trim();
 
-    const mapped = driverStatusForBookingStatus(status);
+    const mapped = driverStatusForBookingStatus(normalizedStatus);
 
     if (effectiveDriverId && mapped) {
       const { error: drvErr } = await supabase
@@ -161,7 +164,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             ok: true,
-            status,
+            status: normalizedStatus,
             bookingId: updated.id,
             bookingCode: updated.booking_code,
             driverId: effectiveDriverId,
