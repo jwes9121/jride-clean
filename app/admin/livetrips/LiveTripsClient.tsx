@@ -1,5 +1,23 @@
 "use client";
 
+
+function formatLastSeen(ageSeconds?: number) {
+  if (!ageSeconds && ageSeconds !== 0) return "--";
+  if (ageSeconds < 60) return ageSeconds + "s ago";
+  if (ageSeconds < 3600) return Math.floor(ageSeconds / 60) + "m ago";
+  return Math.floor(ageSeconds / 3600) + "h ago";
+}
+
+function formatWaiting(createdAt?: string) {
+  if (!createdAt) return "--";
+  const age = (Date.now() - new Date(createdAt).getTime()) / 1000;
+  if (age < 60) return Math.floor(age) + "s";
+  if (age < 3600) return Math.floor(age / 60) + "m";
+  return Math.floor(age / 3600) + "h";
+}
+
+
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
 import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
@@ -40,31 +58,22 @@ type TripRow = {
   wallet_balance?: number | null;
   updated_at?: string | null;
   created_at?: string | null;
-  current_offer_driver_id?: string | null;
-  current_offer_driver_name?: string | null;
-  current_offer_status?: string | null;
-  current_offer_rank?: number | null;
-  current_offer_expires_at?: string | null;
-  current_offer_offered_at?: string | null;
-  current_offer_responded_at?: string | null;
-  current_offer_response_source?: string | null;
 };
 
 type DriverRow = {
-  driver_id?: string;
-  id?: string;
-  lat?: number;
-  lng?: number;
-  status?: string;
-  updated_at?: string;
-  last_seen?: string;
-  age_seconds?: number;
-  assign_eligible?: boolean;
-  is_stale?: boolean;
-  name?: string;
-  phone?: string;
-  town?: string;
-  home_town?: string;
+  driver_id: string
+  lat?: number
+  lng?: number
+  status?: string
+  updated_at?: string
+
+  age_seconds?: number
+  assign_eligible?: boolean
+  is_stale?: boolean
+
+  name?: string
+  phone?: string
+  town?: string
 };
 
 type PageData = {
@@ -72,6 +81,8 @@ type PageData = {
   trips?: TripRow[];
   bookings?: TripRow[];
   data?: TripRow[];
+  driverWalletBalances?: any;
+  vendorWalletBalances?: any;
   warnings?: string[];
   debug?: any;
   [k: string]: any;
@@ -81,17 +92,6 @@ const STUCK_THRESHOLDS_MIN = {
   on_the_way: 15,
   on_trip: 25,
 };
-
-type FilterKey =
-  | "dispatch"
-  | "unassigned"
-  | "requested"
-  | "assigned"
-  | "on_the_way"
-  | "on_trip"
-  | "completed"
-  | "cancelled"
-  | "problem";
 
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
@@ -109,7 +109,13 @@ function safeArray<T>(v: any): T[] {
 
 function parseTripsFromPageData(j: any): TripRow[] {
   if (!j) return [];
-  const candidates = [j.trips, j.bookings, j.data, j["0"], Array.isArray(j) ? j : null];
+  const candidates = [
+    j.trips,
+    j.bookings,
+    j.data,
+    j["0"],
+    Array.isArray(j) ? j : null,
+  ];
   for (const c of candidates) {
     const arr = safeArray<TripRow>(c);
     if (arr.length) return arr;
@@ -119,7 +125,12 @@ function parseTripsFromPageData(j: any): TripRow[] {
 
 function parseDriversFromPayload(j: any): DriverRow[] {
   if (!j) return [];
-  const candidates = [j.drivers, j.data, j["0"], Array.isArray(j) ? j : null];
+  const candidates = [
+    j.drivers,
+    j.data,
+    j["0"],
+    Array.isArray(j) ? j : null,
+  ];
   for (const c of candidates) {
     const arr = safeArray<DriverRow>(c);
     if (arr.length) return arr;
@@ -131,7 +142,8 @@ function minutesSince(iso?: string | null): number {
   if (!iso) return 999999;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return 999999;
-  return Math.floor((Date.now() - t) / 60000);
+  const now = Date.now();
+  return Math.floor((now - t) / 60000);
 }
 
 function isActiveTripStatus(s: string) {
@@ -141,6 +153,7 @@ function isActiveTripStatus(s: string) {
 function computeIsProblem(t: TripRow): boolean {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
+
   const isStuck =
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
@@ -152,76 +165,48 @@ function computeIsProblem(t: TripRow): boolean {
   return isStuck || missingCoords;
 }
 
-function formatWaiting(createdAt?: string | null) {
-  if (!createdAt) return "--";
-  const age = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000));
-  if (age < 60) return `${age}s`;
-  if (age < 3600) return `${Math.floor(age / 60)}m`;
-  return `${Math.floor(age / 3600)}h`;
-}
+type ViewMode = "dispatch" | "trips" | "drivers";
 
-function waitingTone(createdAt?: string | null) {
-  if (!createdAt) return "text-gray-600";
-  const age = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000));
-  if (age >= 180) return "text-red-700 font-semibold";
-  if (age >= 60) return "text-amber-700 font-semibold";
-  return "text-gray-700";
-}
+type FilterKey =
+  | "all"
+  | "dispatch"
+  | "requested"
+  | "assigned"
+  | "on_the_way"
+  | "on_trip"
+  | "completed"
+  | "cancelled"
+  | "problem";
 
-function formatSeenAgo(ageSeconds?: number | null) {
-  if (ageSeconds === null || ageSeconds === undefined || !Number.isFinite(ageSeconds)) return "--";
-  if (ageSeconds < 60) return `${Math.floor(ageSeconds)}s`;
-  if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)}m`;
-  return `${Math.floor(ageSeconds / 3600)}h`;
-}
-
-function formatPht(iso?: string | null) {
-  if (!iso) return "--";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "--";
-  return new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  }).format(d);
-}
-
-function offerBadgeClass(status?: string | null) {
-  const s = normStatus(status);
-  if (s === "accepted") return "border-emerald-300 bg-emerald-50 text-emerald-700";
-  if (s === "offered") return "border-blue-300 bg-blue-50 text-blue-700";
-  if (s === "expired" || s === "rejected" || s === "cancelled" || s === "skipped") {
-    return "border-red-300 bg-red-50 text-red-700";
-  }
-  return "border-gray-300 bg-gray-50 text-gray-700";
-}
-
-function isUnassigned(t: TripRow) {
-  return normStatus(t.status) === "requested" && !String(t.assigned_driver_id || t.driver_id || "").trim();
+function labelOrDash(v?: any) {
+  const s = String(v ?? "").trim();
+  return s ? s : "--";
 }
 
 export default function LiveTripsClient() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [allTrips, setAllTrips] = useState<TripRow[]>([]);
-  const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [tripFilter, setTripFilter] = useState<FilterKey>("unassigned");
+
+  const [viewMode, setViewMode] = useState<ViewMode>("dispatch");
+  const [tripFilter, setTripFilter] = useState<FilterKey>("dispatch");
   const [lastAction, setLastAction] = useState<string>("");
+
+  const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
+
   const [manualDriverId, setManualDriverId] = useState<string>("");
-  const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
+
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   async function loadPage() {
     const r = await fetch("/api/admin/livetrips/page-data?debug=1", { cache: "no-store" });
     const j: PageData = await r.json().catch(() => ({} as any));
 
-    const trips = parseTripsFromPageData(j).map((t) => ({
+    const z = safeArray<ZoneRow>(j.zones);
+    const trips = parseTripsFromPageData(j);
+
+    const normalized = trips.map((t) => ({
       ...t,
       booking_code: t.booking_code ?? (t as any).bookingCode ?? null,
       pickup_label: t.pickup_label ?? (t as any).from_label ?? (t as any).fromLabel ?? null,
@@ -230,8 +215,13 @@ export default function LiveTripsClient() {
       status: t.status ?? "requested",
     }));
 
-    setZones(safeArray<ZoneRow>(j.zones));
-    setAllTrips(trips);
+    setZones(z);
+    setAllTrips(normalized);
+
+    const ids = new Set(normalized.map(normTripId).filter(Boolean));
+    if (selectedTripId && !ids.has(selectedTripId)) {
+      setSelectedTripId(null);
+    }
   }
 
   async function loadDrivers() {
@@ -249,33 +239,49 @@ export default function LiveTripsClient() {
         if (!r.ok) continue;
         const j = await r.json().catch(() => ({} as any));
         const arr = parseDriversFromPayload(j);
+
         if (arr.length) {
           setDrivers(arr);
-          setDriversDebug(`loaded from ${url} (${arr.length})`);
+          setDriversDebug("loaded from " + url + " (" + arr.length + ")");
           return;
         }
       } catch {
-        // try next endpoint
       }
     }
 
     setDrivers([]);
-    setDriversDebug("No drivers loaded from known endpoints.");
-  }
-
-  async function refreshAll() {
-    await Promise.all([loadPage(), loadDrivers()]);
+    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
   }
 
   useEffect(() => {
-    refreshAll().catch((e) => setLastAction(String(e?.message || e)));
+    loadPage().catch((e) => setLastAction("Trips load failed: " + (e?.message ?? "unknown")));
+    loadDrivers().catch((e) => setDriversDebug("Drivers load failed: " + (e?.message ?? "unknown")));
   }, []);
 
   useEffect(() => {
     const t = setInterval(() => {
-      refreshAll().catch(() => {});
+      loadPage().catch(() => {});
+      loadDrivers().catch(() => {});
     }, 5000);
-    return () => clearInterval(t);
+    
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return () => clearInterval(t);
   }, []);
 
   const stuckTripIds = useMemo(() => {
@@ -291,8 +297,8 @@ export default function LiveTripsClient() {
 
   const counts = useMemo(() => {
     const c = {
+      all: allTrips.length,
       dispatch: 0,
-      unassigned: 0,
       requested: 0,
       assigned: 0,
       on_the_way: 0,
@@ -301,51 +307,67 @@ export default function LiveTripsClient() {
       cancelled: 0,
       problem: 0,
     };
-
     for (const t of allTrips) {
       const s = normStatus(t.status);
       if (s === "requested") c.requested++;
-      if (isUnassigned(t)) c.unassigned++;
       if (s === "assigned") c.assigned++;
       if (s === "on_the_way") c.on_the_way++;
       if (s === "on_trip") c.on_trip++;
       if (s === "completed") c.completed++;
       if (s === "cancelled") c.cancelled++;
-      if (isUnassigned(t) || s === "assigned" || s === "on_the_way") c.dispatch++;
+      if (["requested", "assigned", "on_the_way"].includes(s)) c.dispatch++;
       if (computeIsProblem(t)) c.problem++;
     }
     return c;
   }, [allTrips]);
 
   const visibleTrips = useMemo(() => {
+    const f = tripFilter;
+
     let out: TripRow[] = [];
-    if (tripFilter === "dispatch") {
-      out = allTrips.filter((t) => isUnassigned(t) || ["assigned", "on_the_way"].includes(normStatus(t.status)));
-    } else if (tripFilter === "unassigned") {
-      out = allTrips.filter((t) => isUnassigned(t));
-    } else if (tripFilter === "problem") {
+    if (f === "all") {
+      out = allTrips.slice();
+    } else if (f === "dispatch") {
+      out = allTrips.filter((t) => ["requested", "assigned", "on_the_way"].includes(normStatus(t.status)));
+    } else if (f === "problem") {
       out = allTrips.filter((t) => stuckTripIds.has(normTripId(t)));
     } else {
-      out = allTrips.filter((t) => normStatus(t.status) === tripFilter);
+      out = allTrips.filter((t) => normStatus(t.status) === f);
     }
 
-    return [...out].sort((a, b) => {
-      const ta = new Date(a.updated_at || a.created_at || 0 as any).getTime() || 0;
-      const tb = new Date(b.updated_at || b.created_at || 0 as any).getTime() || 0;
+    out.sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || (0 as any)).getTime() || 0;
+      const tb = new Date(b.updated_at || b.created_at || (0 as any)).getTime() || 0;
       return tb - ta;
     });
+
+    return out;
   }, [allTrips, tripFilter, stuckTripIds]);
 
+  const mapTrips = useMemo(() => {
+    if (viewMode === "drivers") {
+      return selectedTripId
+        ? allTrips.filter((t) => normTripId(t) === selectedTripId)
+        : visibleTrips.slice(0, 50);
+    }
+    return visibleTrips;
+  }, [viewMode, allTrips, visibleTrips, selectedTripId]);
+
   useEffect(() => {
-    const ids = new Set(visibleTrips.map(normTripId).filter(Boolean));
-    if (!visibleTrips.length) {
-      setSelectedTripId(null);
+    if (viewMode === "drivers") {
       return;
     }
+
+    if (!visibleTrips.length) {
+      if (selectedTripId !== null) setSelectedTripId(null);
+      return;
+    }
+
+    const ids = new Set(visibleTrips.map(normTripId).filter(Boolean));
     if (!selectedTripId || !ids.has(selectedTripId)) {
       setSelectedTripId(normTripId(visibleTrips[0]));
     }
-  }, [visibleTrips, selectedTripId]);
+  }, [visibleTrips, selectedTripId, viewMode]);
 
   const selectedTrip = useMemo(() => {
     if (!selectedTripId) return null;
@@ -353,30 +375,26 @@ export default function LiveTripsClient() {
   }, [allTrips, selectedTripId]);
 
   const driverRows = useMemo(() => {
-    return [...drivers]
-      .map((d) => {
-        const driverId = String(d.driver_id || d.id || "");
-        const age = typeof d.age_seconds === "number"
-          ? d.age_seconds
-          : d.updated_at || d.last_seen
-          ? Math.max(0, Math.floor((Date.now() - new Date(String(d.updated_at || d.last_seen)).getTime()) / 1000))
-          : null;
-        const lastPing = (d.updated_at || d.last_seen || null) as string | null;
-        const currentOfferTrip = allTrips.find((t) => normStatus(t.current_offer_status) === "offered" && String(t.current_offer_driver_id || "") === driverId);
+    return drivers
+      .map((d, idx) => {
+        const driverId = String(d.driver_id || "");
+        const driverTrips = allTrips.filter((t) => String(t.assigned_driver_id || t.driver_id || "") === driverId);
+        const activeTrip = driverTrips.find((t) => {
+          const s = normStatus(t.status);
+          return ["requested", "assigned", "on_the_way", "on_trip"].includes(s);
+        }) || null;
+
         return {
-          ...d,
-          driver_id: driverId,
-          age_seconds: age ?? undefined,
-          updated_at: lastPing || undefined,
-          current_offer_booking: currentOfferTrip?.booking_code || null,
-          current_offer_rank: currentOfferTrip?.current_offer_rank ?? null,
-          current_offer_expiry: currentOfferTrip?.current_offer_expires_at ?? null,
+          key: driverId || String(idx),
+          driver: d,
+          tripCount: driverTrips.length,
+          activeTrip,
         };
       })
       .sort((a, b) => {
-        const aa = typeof a.age_seconds === "number" ? a.age_seconds : 999999;
-        const bb = typeof b.age_seconds === "number" ? b.age_seconds : 999999;
-        return aa - bb;
+        const au = new Date(a.driver.updated_at || "").getTime() || 0;
+        const bu = new Date(b.driver.updated_at || "").getTime() || 0;
+        return bu - au;
       });
   }, [drivers, allTrips]);
 
@@ -390,7 +408,23 @@ export default function LiveTripsClient() {
   function setFilterAndFocus(f: FilterKey) {
     setTripFilter(f);
     setTimeout(() => {
-      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (tableRef.current) {
+        tableRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+  }
+
+  function setModeAndFocus(mode: ViewMode) {
+    setViewMode(mode);
+    if (mode === "dispatch") {
+      setTripFilter("dispatch");
+    } else if (mode === "trips") {
+      setTripFilter("all");
+    }
+    setTimeout(() => {
+      if (tableRef.current) {
+        tableRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }, 0);
   }
 
@@ -409,323 +443,529 @@ export default function LiveTripsClient() {
   }
 
   async function assignDriver(bookingCode: string, driverId: string) {
-    setAssigningDriverId(driverId);
-    setLastAction(`Assigning ${bookingCode}...`);
-    try {
-      await postJson("/api/dispatch/assign", { bookingCode, driverId });
-      setLastAction(`Assigned ${bookingCode}`);
-      await refreshAll();
-    } finally {
-      setAssigningDriverId(null);
-    }
-  }
-
-  async function sendOffer(bookingCode: string) {
-    setLastAction(`Sending offer for ${bookingCode}...`);
-    await postJson("/api/dispatch/offer", {
-      bookingCode,
-      timeoutSeconds: 8,
-      source: "livetrips_manual",
-    });
-    setLastAction(`Offer sent for ${bookingCode}`);
-    await refreshAll();
+    if (!bookingCode || !driverId) return;
+    setLastAction("Assigning...");
+    await postJson("/api/dispatch/assign", { bookingCode, driverId });
+    setLastAction("Assigned");
+    await loadPage();
   }
 
   async function updateTripStatus(bookingCode: string, status: string) {
-    setLastAction(`Updating ${bookingCode} -> ${status}...`);
+    if (!bookingCode || !status) return;
+    setLastAction("Setting " + bookingCode + " -> " + status + "...");
     await postJson("/api/dispatch/status", { bookingCode, status });
-    setLastAction(`Status updated for ${bookingCode}`);
-    await refreshAll();
+    setLastAction("Status -> " + status);
+    await loadPage();
   }
 
-  const suggestionTrip = selectedTrip
-    ? {
-        id: String(selectedTrip.id || selectedTrip.booking_code || ""),
-        pickupLat: Number(selectedTrip.pickup_lat || 0),
-        pickupLng: Number(selectedTrip.pickup_lng || 0),
-        zone: String(selectedTrip.zone || selectedTrip.town || ""),
-        tripType: "ride",
-      }
-    : null;
+  const zoneStats = useMemo(() => {
+    const out: Record<string, { util: number; status: string }> = {};
+    for (const z of zones) {
+      const key = String(z.zone_name || z.zone_id || "Unknown");
+      const active = Number(z.active_drivers ?? 0);
+      const cap = Number(z.capacity_limit ?? 0);
+      const util = cap > 0 ? active / cap : 0;
+      out[key] = {
+        util,
+        status: String(z.status || (util >= 1 ? "FULL" : util >= 0.8 ? "WARN" : "OK")).toUpperCase(),
+      };
+    }
+    return out;
+  }, [zones]);
 
-  const suggestionDrivers = driverRows
-    .filter((d) => Number.isFinite(d.lat as any) && Number.isFinite(d.lng as any))
-    .map((d) => ({
-      id: String(d.driver_id || ""),
-      name: String(d.name || d.driver_id || "Driver"),
-      lat: Number(d.lat || 0),
-      lng: Number(d.lng || 0),
-      zone: String(d.town || ""),
-      homeTown: String(d.home_town || d.town || ""),
-      status: String(d.status || ""),
-    }));
+  const selectedTripForSuggestions = useMemo(() => {
+    if (!selectedTrip) return null;
+    return {
+      id: normTripId(selectedTrip),
+      pickupLat: Number(selectedTrip.pickup_lat ?? 0),
+      pickupLng: Number(selectedTrip.pickup_lng ?? 0),
+      zone: String(selectedTrip.zone || selectedTrip.town || "Unknown"),
+      tripType: String((selectedTrip as any).trip_type || (selectedTrip as any).service_type || "ride"),
+    };
+  }, [selectedTrip]);
 
-  return (
+  const assignedDriverId = String(selectedTrip?.assigned_driver_id || selectedTrip?.driver_id || "") || null;
+  const showThresholds = "Stuck watcher thresholds: on_the_way >= " + STUCK_THRESHOLDS_MIN.on_the_way + " min, on_trip >= " + STUCK_THRESHOLDS_MIN.on_trip + " min";
+
+  
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Live Trips</h1>
-          <p className="text-sm text-gray-600">Unassigned queue, dispatch offer visibility, and normalized driver freshness.</p>
+          <p className="text-sm text-gray-600">Monitor active bookings on the left and follow them on the map on the right.</p>
         </div>
         <div className="text-xs text-gray-600 text-right">
           <div className="font-medium">Stuck watcher thresholds</div>
-          <div>on_the_way {">="} {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip {">="} {STUCK_THRESHOLDS_MIN.on_trip} min</div>
+          <div>{"on_the_way >= " + STUCK_THRESHOLDS_MIN.on_the_way + " min, on_trip >= " + STUCK_THRESHOLDS_MIN.on_trip + " min"}</div>
         </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <button className={pillClass(tripFilter === "dispatch")} onClick={() => setFilterAndFocus("dispatch")}>Dispatch <span className="text-xs opacity-80">{counts.dispatch}</span></button>
-        <button className={pillClass(tripFilter === "unassigned")} onClick={() => setFilterAndFocus("unassigned")}>Unassigned <span className="text-xs opacity-80">{counts.unassigned}</span></button>
-        <button className={pillClass(tripFilter === "requested")} onClick={() => setFilterAndFocus("requested")}>Requested <span className="text-xs opacity-80">{counts.requested}</span></button>
-        <button className={pillClass(tripFilter === "assigned")} onClick={() => setFilterAndFocus("assigned")}>Assigned <span className="text-xs opacity-80">{counts.assigned}</span></button>
-        <button className={pillClass(tripFilter === "on_the_way")} onClick={() => setFilterAndFocus("on_the_way")}>On the way <span className="text-xs opacity-80">{counts.on_the_way}</span></button>
-        <button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>On trip <span className="text-xs opacity-80">{counts.on_trip}</span></button>
-        <button className={pillClass(tripFilter === "completed")} onClick={() => setFilterAndFocus("completed")}>Completed <span className="text-xs opacity-80">{counts.completed}</span></button>
-        <button className={pillClass(tripFilter === "cancelled")} onClick={() => setFilterAndFocus("cancelled")}>Cancelled <span className="text-xs opacity-80">{counts.cancelled}</span></button>
-        <button className={[pillClass(tripFilter === "problem"), tripFilter === "problem" ? "" : "border-red-300 text-red-700 hover:bg-red-50"].join(" ")} onClick={() => setFilterAndFocus("problem")}>Problem <span className="text-xs opacity-80">{counts.problem}</span></button>
-        <div className="ml-auto flex items-center gap-3 text-xs text-gray-600 self-center">
-          <span>{lastAction || "Ready"}</span>
-          <button className="rounded border px-3 py-1.5 text-xs hover:bg-gray-50" onClick={() => refreshAll().then(() => setLastAction("Refreshed"))}>Refresh now</button>
+        <button className={pillClass(viewMode === "trips")} onClick={() => setModeAndFocus("trips")}>
+          Trips <span className="text-xs opacity-80">{counts.all}</span>
+        </button>
+        <button className={pillClass(viewMode === "drivers")} onClick={() => setModeAndFocus("drivers")}>
+          Drivers <span className="text-xs opacity-80">{drivers.length}</span>
+        </button>
+        <button className={pillClass(viewMode === "dispatch")} onClick={() => setModeAndFocus("dispatch")}>
+          Dispatch <span className="text-xs opacity-80">{counts.dispatch}</span>
+        </button>
+
+        <div className="ml-auto text-xs text-gray-600 self-center">
+          {lastAction ? <span>Last action: {lastAction}</span> : <span>&nbsp;</span>}
         </div>
       </div>
 
-      {!!zones.length && (
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-          {zones.map((z) => (
-            <div key={z.zone_id} className="rounded-lg border p-3">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold">{z.zone_name}</div>
-                <div className="text-xs text-gray-600">{z.status || "-"}</div>
-              </div>
-              <div className="text-xs text-gray-600">Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "-"}</div>
-            </div>
-          ))}
+      {viewMode !== "drivers" ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {viewMode === "trips" ? (
+            <button className={pillClass(tripFilter === "all")} onClick={() => setFilterAndFocus("all")}>
+              All trips <span className="text-xs opacity-80">{counts.all}</span>
+            </button>
+          ) : null}
+
+          <button className={pillClass(tripFilter === "requested")} onClick={() => setFilterAndFocus("requested")}>
+            Requested <span className="text-xs opacity-80">{counts.requested}</span>
+          </button>
+          <button className={pillClass(tripFilter === "assigned")} onClick={() => setFilterAndFocus("assigned")}>
+            Assigned <span className="text-xs opacity-80">{counts.assigned}</span>
+          </button>
+          <button className={pillClass(tripFilter === "on_the_way")} onClick={() => setFilterAndFocus("on_the_way")}>
+            On the way <span className="text-xs opacity-80">{counts.on_the_way}</span>
+          </button>
+          <button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>
+            On trip <span className="text-xs opacity-80">{counts.on_trip}</span>
+          </button>
+          <button className={pillClass(tripFilter === "completed")} onClick={() => setFilterAndFocus("completed")}>
+            Completed <span className="text-xs opacity-80">{counts.completed}</span>
+          </button>
+          <button className={pillClass(tripFilter === "cancelled")} onClick={() => setFilterAndFocus("cancelled")}>
+            Cancelled <span className="text-xs opacity-80">{counts.cancelled}</span>
+          </button>
+          <button
+            className={[
+              pillClass(tripFilter === "problem"),
+              tripFilter === "problem" ? "" : "border-red-300 text-red-700 hover:bg-red-50",
+            ].join(" ")}
+            onClick={() => setFilterAndFocus("problem")}
+            title={showThresholds}
+          >
+            Problem trips <span className="text-xs opacity-80">{counts.problem}</span>
+          </button>
         </div>
-      )}
+      ) : null}
 
-      <div className="mt-4 grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-4" ref={tableRef}>
-        <div className="rounded-lg border overflow-hidden">
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        {zones.map((z) => (
+          <div key={z.zone_id} className="rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">{z.zone_name}</div>
+              <div className="text-xs text-gray-600">{z.status || "-"}</div>
+            </div>
+            <div className="text-xs text-gray-600">
+              Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "-"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4" ref={tableRef}>
+        <div className="rounded-lg border">
           <div className="p-3 border-b flex items-center justify-between">
-            <div className="font-semibold">{tripFilter === "unassigned" ? "Unassigned queue" : tripFilter === "dispatch" ? "Dispatch view" : "Trips"}</div>
-            <div className="text-xs text-gray-600">{visibleTrips.length} shown</div>
+            <div className="font-semibold">
+              {viewMode === "drivers"
+                ? "Drivers view"
+                : viewMode === "trips"
+                ? "Trips view"
+                : "Dispatch view (Requested + Assigned + On the way)"}
+            </div>
+            <div className="text-xs text-gray-600">
+              {viewMode === "drivers" ? (drivers.length + " shown") : (visibleTrips.length + " shown")}
+            </div>
           </div>
 
-          <div className="overflow-auto" style={{ maxHeight: 560 }}>
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white border-b">
-                <tr className="text-left">
-                  <th className="p-2">Code</th>
-                  <th className="p-2">Passenger</th>
-                  <th className="p-2">Pickup</th>
-                  <th className="p-2">Waiting</th>
-                  <th className="p-2">Offer</th>
-                  <th className="p-2">Driver</th>
-                  <th className="p-2">Status</th>
-                  <th className="p-2">Zone</th>
-                  <th className="p-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!visibleTrips.length ? (
-                  <tr>
-                    <td className="p-3 text-gray-600" colSpan={9}>No trips in this view.</td>
+          {viewMode === "drivers" ? (
+            <div className="overflow-auto" style={{ maxHeight: 420 }}>
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white border-b">
+                  <tr className="text-left">
+                    <th className="p-2">Driver</th>
+                    <th className="p-2">Phone</th>
+                    <th className="p-2">Town</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2">Trips</th>
+                    <th className="p-2">Last Ping (PHT)</th>
+                    <th className="p-2">Seen Ago</th>
+                    <th className="p-2">Eligible</th>
+                    <th className="p-2">Stale</th>
                   </tr>
-                ) : (
-                  visibleTrips.map((t) => {
-                    const id = normTripId(t);
-                    const s = normStatus(t.status);
-                    const isSel = selectedTripId === id;
-                    const problem = stuckTripIds.has(id);
-                    const offerStatus = t.current_offer_status || (isUnassigned(t) ? "waiting" : null);
-                    const offerDriver = t.current_offer_driver_name || t.current_offer_driver_id || "--";
-                    return (
-                      <tr key={id} className={["border-b cursor-pointer", isSel ? "bg-blue-50" : "hover:bg-gray-50"].join(" ")} onClick={() => setSelectedTripId(id)}>
-                        <td className="p-2 font-medium align-top">
-                          <div>{t.booking_code || "-"}</div>
-                          {problem ? <div className="mt-1 inline-flex rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] text-red-700">PROBLEM</div> : null}
-                        </td>
-                        <td className="p-2 align-top">{t.passenger_name || "-"}</td>
-                        <td className="p-2 align-top">{t.pickup_label || "-"}</td>
-                        <td className="p-2 align-top">
-                          <span className={waitingTone(t.created_at)}>{formatWaiting(t.created_at)}</span>
-                        </td>
-                        <td className="p-2 align-top">
-                          <div className="space-y-1">
-                            <div>
-                              <span className={["inline-flex rounded-full border px-2 py-0.5 text-[10px]", offerBadgeClass(offerStatus)].join(" ")}>{offerStatus || "--"}</span>
-                            </div>
-                            <div className="text-[11px] text-gray-600">{offerDriver}</div>
-                            {t.current_offer_rank ? <div className="text-[11px] text-gray-500">Rank #{t.current_offer_rank}</div> : null}
-                            {t.current_offer_expires_at ? <div className="text-[11px] text-gray-500">Expires {formatPht(t.current_offer_expires_at)}</div> : null}
-                          </div>
-                        </td>
-                        <td className="p-2 align-top">
-                          <div>{t.driver_name || "--"}</div>
-                          {t.driver_status ? <div className="text-[11px] text-gray-500">{t.driver_status}</div> : null}
-                        </td>
-                        <td className="p-2 align-top"><span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{s || "-"}</span></td>
-                        <td className="p-2 align-top">{t.zone || t.town || "-"}</td>
-                        <td className="p-2 align-top">
-                          <div className="flex flex-wrap gap-2 items-center">
-                            <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!t.booking_code) return;
-                                sendOffer(t.booking_code).catch((err) => setLastAction(String(err?.message || err)));
-                              }}
-                              disabled={!t.booking_code || s === "completed" || s === "cancelled"}
-                            >
-                              {isUnassigned(t) ? "Send offer" : "Retry offer"}
-                            </button>
-                            <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!t.booking_code) return;
-                                updateTripStatus(t.booking_code, "on_the_way").catch((err) => setLastAction(String(err?.message || err)));
-                              }}
-                              disabled={s !== "assigned"}
-                            >
-                              On the way
-                            </button>
-                            <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!t.booking_code) return;
-                                updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err)));
-                              }}
-                              disabled={s !== "on_the_way"}
-                            >
-                              Start trip
-                            </button>
-                            <button
-                              className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!t.booking_code) return;
-                                updateTripStatus(t.booking_code, "completed").catch((err) => setLastAction(String(err?.message || err)));
-                              }}
-                              disabled={s !== "on_trip"}
-                            >
-                              Drop off
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {driverRows.length === 0 ? (
+                    <tr>
+                      <td className="p-3 text-gray-600" colSpan={9}>
+                        No drivers in this view.
+                      </td>
+                    </tr>
+                  ) : (
+                    driverRows.map((row) => {
+                      const d = row.driver;
+                      const trip = row.activeTrip;
+                      const isSel = trip ? selectedTripId === normTripId(trip) : false;
 
-          <div className="p-3 border-t space-y-3">
-            <div className="text-xs text-gray-600">Drivers: {driversDebug}</div>
+                      
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
+                        <tr
+                          key={row.key}
+                          className={[
+                            "border-b",
+                            trip ? "cursor-pointer hover:bg-gray-50" : "",
+                            isSel ? "bg-blue-50" : "",
+                          ].join(" ")}
+                          onClick={() => {
+                            if (trip) {
+                              setSelectedTripId(normTripId(trip));
+                            }
+                          }}
+                        >
+                          <td className="p-2 font-medium">{labelOrDash(d.name)}</td>
+                          <td className="p-2">{labelOrDash(d.phone)}</td>
+                          <td className="p-2">{labelOrDash(d.town)}</td>
+                          <td className="p-2">{labelOrDash(d.status)}</td>
+                          <td className="p-2">
+                            {trip ? (
+                              <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
+                                {labelOrDash(trip.booking_code)} / {labelOrDash(trip.status)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">No active trip</span>
+                            )}
+                          </td>
+                          <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
+<td className="p-2">{formatLastSeen(d.age_seconds)}</td>
+<td className="p-2">
+  {(d as any).assign_eligible
+    ? <span className="text-green-600 font-medium">Yes</span>
+    : <span className="text-gray-400">No</span>}
+</td>
+<td className="p-2">
+  {(d as any).is_stale
+    ? <span className="text-red-600 font-medium">Yes</span>
+    : <span className="text-green-600">No</span>}
+</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="overflow-auto" style={{ maxHeight: 420 }}>
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white border-b">
+                  <tr className="text-left">
+                    <th className="p-2">Code</th>
+                    <th className="p-2">Passenger</th>
+                    <th className="p-2">Pickup</th>
+                    <th className="p-2">Dropoff</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2">Zone</th>
+                    <th className="p-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleTrips.length === 0 ? (
+                    <tr>
+                      <td className="p-3 text-gray-600" colSpan={7}>
+                        No trips in this view.
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleTrips.map((t, idx) => {
+                      const id = normTripId(t);
+                      const rowKey = id || ("trip-row-" + String(idx));
+                      const isSel = selectedTripId === id;
+                      const isProblem = stuckTripIds.has(id);
+                      const s = normStatus(t.status);
+
+                      
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
+                        <tr
+                          key={rowKey}
+                          className={[
+                            "border-b cursor-pointer",
+                            isSel ? "bg-blue-50" : "hover:bg-gray-50",
+                          ].join(" ")}
+                          onClick={() => setSelectedTripId(id)}
+                        >
+                          <td className="p-2 font-medium">
+                            {t.booking_code || "-"}
+                            {isProblem ? (
+                              <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">
+                                PROBLEM
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="p-2">{t.passenger_name || "-"}</td>
+                          <td className="p-2">{t.pickup_label || "-"}</td>
+                          <td className="p-2">{t.dropoff_label || "-"}</td>
+                          <td className="p-2">
+                            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
+                              {s || "-"}
+                            </span>
+                          </td>
+                          <td className="p-2">{t.zone || t.town || "-"}</td>
+                          <td className="p-2">
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <button
+                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!t.booking_code) return;
+                                  updateTripStatus(t.booking_code, "on_the_way").catch((err) => setLastAction(String(err?.message || err)));
+                                }}
+                                disabled={s !== "assigned"}
+                                title={s !== "assigned" ? "Allowed only when status=assigned" : "Mark on_the_way"}
+                              >
+                                On the way
+                              </button>
+
+                              <button
+                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!t.booking_code) return;
+                                  updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err)));
+                                }}
+                                disabled={s !== "on_the_way"}
+                                title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Start trip"}
+                              >
+                                Start trip
+                              </button>
+
+                              <button
+                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!t.booking_code) return;
+                                  updateTripStatus(t.booking_code, "completed").catch((err) => setLastAction(String(err?.message || err)));
+                                }}
+                                disabled={s !== "on_trip"}
+                                title={s !== "on_trip" ? "Allowed only when status=on_trip" : "Complete trip"}
+                              >
+                                Drop off
+                              </button>
+
+                              <button
+                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTripId(id);
+                                  setTripFilter("problem");
+                                  setViewMode("dispatch");
+                                }}
+                                title="Focus Problem trips view"
+                              >
+                                Find problem
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="p-3 border-t">
+            <div className="text-xs text-gray-600 mb-2">
+              Drivers: {driversDebug}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded border p-3">
+                <div className="font-semibold mb-2">Trip details</div>
+                {!selectedTrip ? (
+                  <div className="text-sm text-gray-500">Select a trip to view details.</div>
+                ) : (
+                  <div className="space-y-1 text-sm">
+                    <div><span className="text-gray-500">Code:</span> <span className="font-medium">{labelOrDash(selectedTrip.booking_code)}</span></div>
+                    <div><span className="text-gray-500">Passenger:</span> <span className="font-medium">{labelOrDash(selectedTrip.passenger_name)}</span></div>
+                    <div><span className="text-gray-500">Pickup:</span> <span className="font-medium">{labelOrDash(selectedTrip.pickup_label)}</span></div>
+                    <div><span className="text-gray-500">Dropoff:</span> <span className="font-medium">{labelOrDash(selectedTrip.dropoff_label)}</span></div>
+                    <div><span className="text-gray-500">Status:</span> <span className="font-medium">{labelOrDash(selectedTrip.status)}</span></div>
+                    <div><span className="text-gray-500">Town:</span> <span className="font-medium">{labelOrDash(selectedTrip.town || selectedTrip.zone)}</span></div>
+                    <div><span className="text-gray-500">Updated:</span> <span className="font-medium">{labelOrDash(selectedTrip.updated_at)}</span></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded border p-3">
+                <div className="font-semibold mb-2">Driver details</div>
+                {!selectedTrip ? (
+                  <div className="text-sm text-gray-500">Select a trip to view driver details.</div>
+                ) : (
+                  <div className="space-y-1 text-sm">
+                    <div><span className="text-gray-500">Driver ID:</span> <span className="font-medium break-all">{labelOrDash(selectedTrip.driver_id || selectedTrip.assigned_driver_id)}</span></div>
+                    <div><span className="text-gray-500">Name:</span> <span className="font-medium">{labelOrDash(selectedTrip.driver_name)}</span></div>
+                    <div><span className="text-gray-500">Phone:</span> <span className="font-medium">{labelOrDash(selectedTrip.driver_phone)}</span></div>
+                    <div><span className="text-gray-500">Driver status:</span> <span className="font-medium">{labelOrDash(selectedTrip.driver_status)}</span></div>
+                    <div><span className="text-gray-500">TODA:</span> <span className="font-medium">{labelOrDash(selectedTrip.toda_name)}</span></div>
+                    <div><span className="text-gray-500">Zone ID:</span> <span className="font-medium">{labelOrDash(selectedTrip.zone_id)}</span></div>
+                  </div>
+                )}
+              </div>
+
               <TripWalletPanel trip={selectedTrip as any} />
               <TripLifecycleActions trip={selectedTrip as any} />
             </div>
 
-            <div className="rounded border p-3">
+            <div className="mt-3 rounded border p-3">
               <div className="font-semibold mb-2">Assign driver (manual)</div>
               <div className="flex flex-wrap gap-2 items-center">
-                <select className="border rounded px-2 py-1 text-sm min-w-[320px]" value={manualDriverId} onChange={(e) => setManualDriverId(e.target.value)}>
+                <select
+                  className="border rounded px-2 py-1 text-sm min-w-[320px]"
+                  value={manualDriverId}
+                  onChange={(e) => setManualDriverId(e.target.value)}
+                >
                   <option value="">Select driver</option>
-                  {driverRows.map((d, idx) => {
+                  {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
-                    const label = `${d.name || id || "Driver"}${d.town ? ` - ${d.town}` : ""}${d.status ? ` - ${d.status}` : ""}`;
-                    return <option key={id || idx} value={id}>{label}</option>;
+                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + (d.status ? " - " + d.status : "")).trim();
+                    
+{/* SUPPLY SUMMARY */}
+<div className="mb-4 grid grid-cols-5 gap-2 text-sm">
+  <div className="p-2 border rounded">Online: {drivers.length}</div>
+  <div className="p-2 border rounded">
+    Eligible: {drivers.filter(d => d.assign_eligible).length}
+  </div>
+  <div className="p-2 border rounded">
+    Stale: {drivers.filter(d => d.is_stale).length}
+  </div>
+  <div className="p-2 border rounded">
+    Active Trips: {allTrips.filter(t => t.status === "on_trip").length}
+  </div>
+  <div className="p-2 border rounded">
+    Waiting Trips: {allTrips.filter(t => t.status === "requested").length}
+  </div>
+</div>
+
+return (
+                      <option key={id || String(idx)} value={id}>
+                        {label}
+                      </option>
+                    );
                   })}
                 </select>
+
                 <button
                   className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
                   disabled={!selectedTrip?.booking_code || !manualDriverId}
                   onClick={() => {
-                    if (!selectedTrip?.booking_code || !manualDriverId) return;
+                    if (!selectedTrip?.booking_code) return;
                     assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) => setLastAction(String(err?.message || err)));
                   }}
                 >
-                  {selectedTrip?.assigned_driver_id || selectedTrip?.driver_id ? "Reassign" : "Assign"}
+                  Assign
                 </button>
-                {selectedTrip?.booking_code ? (
-                  <button className="rounded border px-3 py-2 text-sm hover:bg-gray-50" onClick={() => sendOffer(selectedTrip.booking_code!).catch((err) => setLastAction(String(err?.message || err)))}>
-                    Send offer
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-3">
-                <SmartAutoAssignSuggestions
-                  trip={suggestionTrip as any}
-                  drivers={suggestionDrivers as any}
-                  zoneStats={{}}
-                  onAssign={(driverId) => {
-                    if (!selectedTrip?.booking_code) return Promise.resolve();
-                    return assignDriver(selectedTrip.booking_code, driverId);
+
+                <button
+                  className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                  onClick={() => {
+                    loadPage().catch(() => {});
+                    loadDrivers().catch(() => {});
+                    setLastAction("Refreshed");
                   }}
-                  assignedDriverId={String(selectedTrip?.assigned_driver_id || selectedTrip?.driver_id || "") || null}
-                  assigningDriverId={assigningDriverId}
-                  canAssign={normStatus(selectedTrip?.status) !== "on_trip" && normStatus(selectedTrip?.status) !== "completed"}
-                  lockReason={normStatus(selectedTrip?.status) === "on_trip" ? "Trip already started." : normStatus(selectedTrip?.status) === "completed" ? "Trip already completed." : undefined}
+                >
+                  Refresh now
+                </button>
+              </div>
+
+              <div className="mt-2">
+                <SmartAutoAssignSuggestions
+                  trip={selectedTripForSuggestions as any}
+                  drivers={drivers.map((d) => ({
+                    id: String(d.driver_id || ""),
+                    name: String(d.name || "Driver"),
+                    lat: Number(d.lat ?? 0),
+                    lng: Number(d.lng ?? 0),
+                    zone: String(d.town || "Unknown"),
+                    homeTown: String(d.town || "Unknown"),
+                    status: String(d.status || ""),
+                  })) as any}
+                  zoneStats={zoneStats}
+                  onAssign={async (driverId) => {
+                    if (!selectedTrip?.booking_code) return;
+                    await assignDriver(selectedTrip.booking_code, driverId);
+                  }}
                 />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="rounded-lg border overflow-hidden">
-            <LiveTripsMap trips={visibleTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
-          </div>
-
-          <div className="rounded-lg border overflow-hidden">
-            <div className="p-3 border-b flex items-center justify-between">
-              <div className="font-semibold">Drivers</div>
-              <div className="text-xs text-gray-600">{driverRows.length} shown</div>
-            </div>
-            <div className="overflow-auto" style={{ maxHeight: 360 }}>
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-white border-b">
-                  <tr className="text-left">
-                    <th className="p-2">Driver</th>
-                    <th className="p-2">Town</th>
-                    <th className="p-2">Status</th>
-                    <th className="p-2">Last Ping (PHT)</th>
-                    <th className="p-2">Seen Ago</th>
-                    <th className="p-2">Offer</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!driverRows.length ? (
-                    <tr><td className="p-3 text-gray-600" colSpan={6}>No drivers loaded.</td></tr>
-                  ) : (
-                    driverRows.map((d, idx) => (
-                      <tr key={String(d.driver_id || idx)} className="border-b">
-                        <td className="p-2">{d.name || d.driver_id || "-"}</td>
-                        <td className="p-2">{d.town || d.home_town || "-"}</td>
-                        <td className="p-2">{d.status || "-"}</td>
-                        <td className="p-2">{formatPht(d.updated_at || d.last_seen || null)}</td>
-                        <td className="p-2">{formatSeenAgo(d.age_seconds)}</td>
-                        <td className="p-2 text-[11px] text-gray-600">
-                          {d.current_offer_booking ? (
-                            <div>
-                              <div>{d.current_offer_booking}</div>
-                              <div>Rank #{d.current_offer_rank || "--"}</div>
-                              <div>{formatPht(d.current_offer_expiry || null)}</div>
-                            </div>
-                          ) : "--"}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div className="rounded-lg border overflow-hidden">
+          <LiveTripsMap trips={mapTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
         </div>
       </div>
     </div>
   );
 }
+
+
+
