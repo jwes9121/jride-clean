@@ -1,0 +1,45 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
+
+const STALE_AFTER_SECONDS = 120;
+
+export async function GET() {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("dispatch_driver_locations_view")
+      .select("driver_id, lat, lng, status, town, home_town, updated_at")
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      return NextResponse.json({ ok: false, error: "SUPABASE_QUERY_FAILED", detail: error.message, drivers: [] }, { status: 500 });
+    }
+
+    const drivers = (Array.isArray(data) ? data : [])
+      .map((r: any) => {
+        const updatedAt = r?.updated_at ? new Date(String(r.updated_at)) : null;
+        const ageSeconds = updatedAt && !isNaN(updatedAt.getTime()) ? Math.max(0, Math.floor((Date.now() - updatedAt.getTime()) / 1000)) : null;
+        const status = String(r?.status ?? "").toLowerCase() || "online";
+        const isStale = typeof ageSeconds === "number" ? ageSeconds > STALE_AFTER_SECONDS : true;
+        return {
+          id: String(r?.driver_id || ""),
+          driver_id: String(r?.driver_id || ""),
+          town: r?.town ?? r?.home_town ?? null,
+          home_town: r?.home_town ?? null,
+          status: r?.status ?? "online",
+          lat: r?.lat ?? null,
+          lng: r?.lng ?? null,
+          updated_at: r?.updated_at ?? null,
+          last_seen: r?.updated_at ?? null,
+          age_seconds: ageSeconds,
+          assign_eligible: !isStale && ["online", "available", "active", "idle", "waiting"].includes(status),
+          is_stale: isStale,
+        };
+      })
+      .filter((d: any) => !!d.driver_id && !!d.assign_eligible);
+
+    return NextResponse.json({ ok: true, stale_after_seconds: STALE_AFTER_SECONDS, drivers }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: "UNHANDLED_EXCEPTION", detail: String(e?.message || e), drivers: [] }, { status: 500 });
+  }
+}

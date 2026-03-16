@@ -1,51 +1,64 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    }
-  },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
-  ],
-  "exclude": [
-    "_collect_*",
-    "**/_collect_*",
-    "JRIDE_REVIEW_COLLECT_*",
-    "**/JRIDE_REVIEW_COLLECT_*",
-    "node_modules",
-    "backups",
-    "backups/**",
-    "UPLOAD_TO_CHATGPT",
-    "UPLOAD_TO_CHATGPT/**",
-    "_patch_bak",
-    "**/_patch_bak/**",
-    ".next",
-    "**/.next/**",
-
-    "_audit_bundle_*",
-    "**/_audit_bundle_*",
-    "_audit_bundle_*/**",
-
-    "_diag_out_*",
-    "**/_diag_out_*",
-    "_diag_out_*/**"
-  ]
+    "compilerOptions":  {
+                            "target":  "ES2020",
+                            "lib":  [
+                                        "dom",
+                                        "dom.iterable",
+                                        "esnext"
+                                    ],
+                            "allowJs":  true,
+                            "skipLibCheck":  true,
+                            "strict":  true,
+                            "noEmit":  true,
+                            "esModuleInterop":  true,
+                            "module":  "esnext",
+                            "moduleResolution":  "bundler",
+                            "resolveJsonModule":  true,
+                            "isolatedModules":  true,
+                            "jsx":  "preserve",
+                            "incremental":  true,
+                            "plugins":  [
+                                            {
+                                                "name":  "next"
+                                            }
+                                        ],
+                            "baseUrl":  ".",
+                            "paths":  {
+                                          "@/*":  [
+                                                      "./*"
+                                                  ]
+                                      }
+                        },
+    "include":  [
+                    "next-env.d.ts",
+                    "**/*.ts",
+                    "**/*.tsx",
+                    ".next/types/**/*.ts"
+                ],
+    "exclude":  [
+                    "_collect_*",
+                    "**/_collect_*",
+                    "JRIDE_REVIEW_COLLECT_*",
+                    "**/JRIDE_REVIEW_COLLECT_*",
+                    "node_modules",
+                    "backups",
+                    "backups/**",
+                    "UPLOAD_TO_CHATGPT",
+                    "UPLOAD_TO_CHATGPT/**",
+                    "_patch_bak",
+                    "**/_patch_bak/**",
+                    ".next",
+                    "**/.next/**",
+                    "_audit_bundle_*",
+                    "**/_audit_bundle_*",
+                    "_audit_bundle_*/**",
+                    "_diag_out_*",
+                    "**/_diag_out_*",
+                    "_diag_out_*/**",
+                    "_backups",
+                    "backup",
+                    ".backup",
+                    "_old",
+                    "_restore"
+                ]
 }

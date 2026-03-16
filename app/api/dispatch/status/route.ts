@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +38,7 @@ export async function POST(req: Request) {
     const driverId = String(body.driver_id ?? "").trim();
     const status = String(body.status ?? "").trim();
     let normalizedStatus = status;
-    if (normalizedStatus === "accepted") {
-      normalizedStatus = "assigned";
-    }
+    
 
     if (!status) {
       return NextResponse.json(
@@ -155,7 +153,7 @@ const updatePayload: Record<string, any> = {
 
     if (effectiveDriverId && mapped) {
       const { error: drvErr } = await supabase
-        .from("driver_locations")
+        .from("driver_locations_latest")
         .update({ status: mapped, updated_at: new Date().toISOString() })
         .eq("driver_id", effectiveDriverId);
 

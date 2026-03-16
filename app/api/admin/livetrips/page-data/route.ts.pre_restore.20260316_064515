@@ -1,29 +1,3 @@
-# PATCH-JRIDE_LIVETRIPS_PAGE_DATA_ADAPTIVE_BOOKINGS_SELECT_V2_PS5SAFE.ps1
-param(
-  [Parameter(Mandatory = $true)]
-  [string]$ProjRoot
-)
-
-$ErrorActionPreference = "Stop"
-
-Write-Host "== PATCH JRIDE LIVETRIPS PAGE-DATA ADAPTIVE BOOKINGS SELECT V2 (PS5-safe) =="
-
-$target = Join-Path $ProjRoot "app\api\admin\livetrips\page-data\route.ts"
-if (!(Test-Path $target)) {
-  throw "Target file not found: $target"
-}
-
-$backupDir = Join-Path $ProjRoot "_patch_bak"
-if (!(Test-Path $backupDir)) {
-  New-Item -ItemType Directory -Path $backupDir | Out-Null
-}
-
-$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$backup = Join-Path $backupDir ("route.ts.bak.LIVETRIPS_PAGE_DATA_ADAPTIVE_BOOKINGS_SELECT_V2." + $stamp)
-Copy-Item $target $backup -Force
-Write-Host "[OK] Backup: $backup"
-
-$content = @'
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -75,7 +49,7 @@ async function selectBookingsAdaptive(supabase: ReturnType<typeof supabaseAdmin>
     "assigned_driver_id",
     "created_at",
     "updated_at",
-    "town"
+    "town",
   ];
 
   const removedColumns: string[] = [];
@@ -83,16 +57,9 @@ async function selectBookingsAdaptive(supabase: ReturnType<typeof supabaseAdmin>
   let lastErrorMessage = "";
 
   for (let attempt = 0; attempt < baseColumns.length; attempt++) {
-    const activeColumns = baseColumns.filter((c) => removedColumns.indexOf(c) === -1);
-
+    const activeColumns = baseColumns.filter((c) => !removedColumns.includes(c));
     if (!activeColumns.length) {
-      return {
-        ok: false,
-        data: [] as Json[],
-        warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", "NO_SELECTABLE_BOOKINGS_COLUMNS"]),
-        activeColumns,
-        removedColumns
-      };
+      return { ok: false, data: [] as Json[], warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", "NO_SELECTABLE_BOOKINGS_COLUMNS"]), activeColumns, removedColumns };
     }
 
     const { data, error } = await supabase
@@ -102,54 +69,18 @@ async function selectBookingsAdaptive(supabase: ReturnType<typeof supabaseAdmin>
       .limit(300);
 
     if (!error) {
-      return {
-        ok: true,
-        data: (data || []) as Json[],
-        warnings,
-        activeColumns,
-        removedColumns
-      };
+      return { ok: true, data: (data || []) as Json[], warnings, activeColumns, removedColumns };
     }
 
     const msg = String(error.message || "");
     lastErrorMessage = msg;
-
     const missingCol = parseMissingBookingsColumn(msg);
-    if (!missingCol) {
-      console.error("PAGE_DATA_BOOKINGS_QUERY_ERROR", {
-        message: msg,
-        activeColumns
-      });
-      return {
-        ok: false,
-        data: [] as Json[],
-        warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", msg]),
-        activeColumns,
-        removedColumns
-      };
-    }
-
-    if (removedColumns.indexOf(missingCol) !== -1) {
-      console.error("PAGE_DATA_BOOKINGS_QUERY_REPEAT_MISSING_COLUMN", {
-        message: msg,
-        missingCol,
-        activeColumns
-      });
-      return {
-        ok: false,
-        data: [] as Json[],
-        warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", msg]),
-        activeColumns,
-        removedColumns
-      };
+    if (!missingCol || removedColumns.includes(missingCol)) {
+      return { ok: false, data: [] as Json[], warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", msg]), activeColumns, removedColumns };
     }
 
     removedColumns.push(missingCol);
     warnings.push("BOOKINGS_COLUMN_SKIPPED:" + missingCol);
-
-    console.warn("PAGE_DATA_BOOKINGS_COLUMN_SKIPPED", {
-      missingCol
-    });
   }
 
   return {
@@ -157,28 +88,50 @@ async function selectBookingsAdaptive(supabase: ReturnType<typeof supabaseAdmin>
     data: [] as Json[],
     warnings: warnings.concat(["BOOKINGS_QUERY_FAILED", lastErrorMessage || "ADAPTIVE_SELECT_EXHAUSTED"]),
     activeColumns: [] as string[],
-    removedColumns
+    removedColumns,
   };
 }
 
 async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   const bookingRes = await selectBookingsAdaptive(supabase);
-
   if (!bookingRes.ok) {
     return {
       trips: [] as Json[],
       warnings: bookingRes.warnings || [],
       debugSelect: bookingRes.activeColumns || [],
-      removedColumns: bookingRes.removedColumns || []
+      removedColumns: bookingRes.removedColumns || [],
     };
   }
 
   const trips = bookingRes.data.map(normalizeTrip);
+  const bookingCodes = Array.from(new Set(trips.map((t: any) => String(t.booking_code || "").trim()).filter(Boolean)));
+
+  let offersByBooking: Record<string, any> = {};
+  const warnings = [...(bookingRes.warnings || [])];
+
+  if (bookingCodes.length) {
+    const { data: offers, error: offersError } = await supabase
+      .from("dispatch_driver_offers")
+      .select("booking_code,driver_id,offer_rank,status,expires_at,offered_at,responded_at,response_source")
+      .in("booking_code", bookingCodes)
+      .order("offered_at", { ascending: false });
+
+    if (offersError) {
+      warnings.push("OFFERS_QUERY_FAILED:" + String(offersError.message || "unknown"));
+    } else {
+      for (const row of offers || []) {
+        const code = String((row as any).booking_code || "").trim();
+        if (!code || offersByBooking[code]) continue;
+        offersByBooking[code] = row;
+      }
+    }
+  }
 
   const driverIds = Array.from(
     new Set(
       trips
         .map((t: any) => String(t.assigned_driver_id || t.driver_id || "").trim())
+        .concat(Object.values(offersByBooking).map((o: any) => String(o?.driver_id || "").trim()))
         .filter(Boolean)
     )
   );
@@ -191,43 +144,50 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
       .in("id", driverIds);
 
     if (driversError) {
-      console.error("PAGE_DATA_DRIVERS_QUERY_ERROR", {
-        message: driversError.message
-      });
+      warnings.push("DRIVERS_QUERY_FAILED:" + String(driversError.message || "unknown"));
     } else {
-      driversById = Object.fromEntries(
-        (drivers || []).map((d: any) => [String(d.id), d])
-      );
+      driversById = Object.fromEntries((drivers || []).map((d: any) => [String(d.id), d]));
     }
   }
 
   const enriched = trips.map((t: any) => {
-    const did = String(t.assigned_driver_id || t.driver_id || "").trim();
-    const d = did ? driversById[did] : null;
+    const assignedDriverId = String(t.assigned_driver_id || t.driver_id || "").trim();
+    const assignedDriver = assignedDriverId ? driversById[assignedDriverId] : null;
+    const offer = offersByBooking[String(t.booking_code || "").trim()] || null;
+    const offerDriverId = String(offer?.driver_id || "").trim();
+    const offerDriver = offerDriverId ? driversById[offerDriverId] : null;
 
     return {
       ...t,
-      driver_name: d?.driver_name ?? null,
-      driver_status: d?.driver_status ?? null,
-      zone_id: d?.zone_id ?? null,
-      toda_name: d?.toda_name ?? null,
-      wallet_balance: d?.wallet_balance ?? null
+      driver_name: assignedDriver?.driver_name ?? null,
+      driver_status: assignedDriver?.driver_status ?? null,
+      zone_id: assignedDriver?.zone_id ?? null,
+      toda_name: assignedDriver?.toda_name ?? null,
+      wallet_balance: assignedDriver?.wallet_balance ?? null,
+      current_offer_driver_id: offer?.driver_id ?? null,
+      current_offer_driver_name: offerDriver?.driver_name ?? null,
+      current_offer_status: offer?.status ?? null,
+      current_offer_rank: offer?.offer_rank ?? null,
+      current_offer_expires_at: offer?.expires_at ?? null,
+      current_offer_offered_at: offer?.offered_at ?? null,
+      current_offer_responded_at: offer?.responded_at ?? null,
+      current_offer_response_source: offer?.response_source ?? null,
     };
   });
 
   return {
     trips: enriched,
-    warnings: bookingRes.warnings || [],
+    warnings,
     debugSelect: bookingRes.activeColumns || [],
-    removedColumns: bookingRes.removedColumns || []
+    removedColumns: bookingRes.removedColumns || [],
   };
 }
 
-async function tryLoadZones(supabase: ReturnType<typeof supabaseAdmin>) {
+async function tryLoadZones(_supabase: ReturnType<typeof supabaseAdmin>) {
   return {
     zones: [] as ZoneRow[],
     zoneSource: null as string | null,
-    warnings: ["ZONES_SCHEMA_PROBE_DISABLED"]
+    warnings: ["ZONES_SCHEMA_PROBE_DISABLED"],
   };
 }
 
@@ -237,11 +197,7 @@ export async function GET(req: Request) {
     const debug = url.searchParams.get("debug") === "1";
     const supabase = supabaseAdmin();
 
-    const [bookingsRes, zonesRes] = await Promise.all([
-      loadBookings(supabase),
-      tryLoadZones(supabase)
-    ]);
-
+    const [bookingsRes, zonesRes] = await Promise.all([loadBookings(supabase), tryLoadZones(supabase)]);
     const warnings = [...bookingsRes.warnings, ...zonesRes.warnings];
 
     const payload: Json = {
@@ -250,41 +206,22 @@ export async function GET(req: Request) {
       trips: bookingsRes.trips,
       bookings: bookingsRes.trips,
       data: bookingsRes.trips,
-      warnings
+      warnings,
     };
 
     if (debug) {
       payload.debug = {
         tripCount: bookingsRes.trips.length,
         zoneCount: zonesRes.zones.length,
-        note: "Direct bookings query with adaptive missing-column removal; information_schema probing disabled",
+        note: "Bookings + latest dispatch offer per booking",
         bookingsSelectColumns: bookingsRes.debugSelect || [],
-        removedBookingColumns: bookingsRes.removedColumns || []
+        removedBookingColumns: bookingsRes.removedColumns || [],
       };
     }
 
     return NextResponse.json(payload, { status: 200 });
   } catch (err: any) {
     console.error("PAGE_DATA_UNEXPECTED", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "PAGE_DATA_UNEXPECTED",
-        message: err?.message ?? "Unexpected error",
-        zones: [],
-        trips: [],
-        bookings: [],
-        data: []
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "PAGE_DATA_UNEXPECTED", message: err?.message ?? "Unexpected error", zones: [], trips: [], bookings: [], data: [] }, { status: 500 });
   }
 }
-'@
-
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($target, $content, $utf8NoBom)
-
-Write-Host "[OK] Wrote: $target"
-Write-Host ""
-Write-Host "Run build next."
