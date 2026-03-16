@@ -626,7 +626,7 @@ export async function POST(req: Request) {
     // best-effort set status requested
     await supabase.from("bookings").update({ status: "requested" }).eq("id", String(booking.id));
 
-    /* PHASE2D_SKIP_ASSIGN_FOR_TAKEOUT */
+            /* PHASE2D_SKIP_ASSIGN_FOR_TAKEOUT */
     // Phase 6H2: CALL DISPATCH ASSIGN (single source of truth, includes busy lock)
     const baseUrl = await getBaseUrlFromHeaders(req);
     let assign: any = { ok: false, note: "Assignment skipped." };
@@ -651,15 +651,29 @@ export async function POST(req: Request) {
           parsed = rawText ? JSON.parse(rawText) : null;
         } catch {}
 
-        assign = {
-          ok: resp.ok,
-          status: resp.status,
-          statusText: resp.statusText,
-          url: assignUrl,
-          payload: assignPayload,
-          responseText: rawText,
-          responseJson: parsed,
-        };
+        if (parsed && parsed.code === "INVALID_DRIVER_ID") {
+          assign = {
+            ok: true,
+            skipped: true,
+            reason: "no_driver_id",
+            status: resp.status,
+            statusText: resp.statusText,
+            url: assignUrl,
+            payload: assignPayload,
+            responseText: rawText,
+            responseJson: parsed,
+          };
+        } else {
+          assign = {
+            ok: resp.ok,
+            status: resp.status,
+            statusText: resp.statusText,
+            url: assignUrl,
+            payload: assignPayload,
+            responseText: rawText,
+            responseJson: parsed,
+          };
+        }
       } catch (err: any) {
         assign = {
           ok: false,
@@ -670,22 +684,10 @@ export async function POST(req: Request) {
           booking_id: String(booking.id),
         };
       }
-    },
-          body: JSON.stringify({ booking_id: String(booking.id) }),
-        });
-        const j = await resp.json().catch(() => ({}));
-if (j && (j as any).code === "INVALID_DRIVER_ID") {
-  assign = { ok: true, skipped: true, reason: "no_driver_id" };
-} else {
-  assign = normalizeAssignResult(j);
-}
-      } catch (err: any) {
-        assign = { ok: false, note: "Assign call failed: " + String(err?.message || err) };
-      }
     } else {
       assign = { ok: true, skipped: true, reason: "takeout_booking" };
     }
-/* PHASE2D_SKIP_ASSIGN_FOR_TAKEOUT_END */// re-read booking for final status/driver_id
+    /* PHASE2D_SKIP_ASSIGN_FOR_TAKEOUT_END */// re-read booking for final status/driver_id
     const reread = await supabase.from("bookings").select("*").eq("id", String(booking.id)).maybeSingle();
     if (!reread.error && reread.data) booking = reread.data;
 
