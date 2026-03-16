@@ -40,20 +40,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "NOT_ALLOWED", message: "Booking status not allowed for fare proposal.", status: st }, { status: 409 });
     }
 
-    // Write proposed_fare; set status to 'fare_proposed' (driver accepted), passenger will accept/decline next.
+    // Step 1: always save fare payload first.
+    const safePayload = {
+      driver_id,
+      proposed_fare: proposed,
+      updated_at: new Date().toISOString(),
+    };
+
     const { error: upErr } = await supabase
       .from("bookings")
-      .update({
-        driver_id,
-        proposed_fare: proposed,
-        updated_at: new Date().toISOString(),
-        status: "fare_proposed",
-      })
+      .update(safePayload)
       .eq("id", b.id);
 
-    if (upErr) return NextResponse.json({ ok: false, error: "DB_UPDATE_ERROR", message: upErr.message }, { status: 500 });
+    if (upErr) {
+      return NextResponse.json({ ok: false, error: "DB_UPDATE_ERROR", message: upErr.message }, { status: 500 });
+    }
 
-    return NextResponse.json({ ok: true, booking_id: b.id, booking_code: b.booking_code, proposed_fare: proposed }, { status: 200 });
+    // Step 2: try status transition separately so fare still saves even if DB status constraint blocks it.
+    let statusWarning: string | null = null;
+
+    const { error: statusErr } = await supabase
+      .from("bookings")
+      .update({ status: "fare_proposed" })
+      .eq("id", b.id);
+
+    if (statusErr) {
+      console.warn("FARE_PROPOSE_STATUS_BLOCKED", statusErr.message);
+      statusWarning = "STATUS_UPDATE_BLOCKED: " + statusErr.message;
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        booking_id: b.id,
+        booking_code: b.booking_code,
+        proposed_fare: proposed,
+        statusWarning,
+      },
+      { status: 200 }
+    );
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: "SERVER_ERROR", message: String(e?.message ?? e) }, { status: 500 });
   }
