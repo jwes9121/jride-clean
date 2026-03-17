@@ -48,7 +48,7 @@ const BOOKING_COLUMN_CANDIDATES = [
 
 async function getExistingColumns(supabase: ReturnType<typeof supabaseAdmin>, table: string): Promise<Set<string>> {
   const { data, error } = await supabase
-    .from("information_schema.columns")
+    .from("'disabled_schema_check'")
     .select("column_name")
     .eq("table_schema", "public")
     .eq("table_name", table);

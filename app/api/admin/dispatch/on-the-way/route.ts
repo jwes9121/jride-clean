@@ -16,6 +16,23 @@ export async function POST(req: Request) {
     );
   }
 
+    // --- AUTO ADVANCE BEFORE ON_THE_WAY ---
+  const { data: b } = await supabase
+    .from("bookings")
+    .select("status, passenger_fare_response, verified_fare")
+    .eq("id", bookingId)
+    .single();
+
+  if (b) {
+    if (b.status === "assigned" && b.passenger_fare_response === "accepted") {
+      await supabase.from("bookings").update({ status: "fare_proposed" }).eq("id", bookingId);
+      await supabase.from("bookings").update({ status: "ready" }).eq("id", bookingId);
+    }
+    if (b.status === "fare_proposed" && b.passenger_fare_response === "accepted") {
+      await supabase.from("bookings").update({ status: "ready" }).eq("id", bookingId);
+    }
+  }
+  // --- END AUTO ADVANCE ---
   const { error } = await supabase
     .from("bookings")
     .update({ status: "on_the_way" })

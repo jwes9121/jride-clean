@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +38,9 @@ export async function POST(req: Request) {
     const driverId = String(body.driver_id ?? "").trim();
     const status = String(body.status ?? "").trim();
     let normalizedStatus = status;
+    if (normalizedStatus === "accepted") {
+      normalizedStatus = "assigned";
+    }
     
 
     if (!status) {
