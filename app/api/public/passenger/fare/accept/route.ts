@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     // Lock fare by setting verified_fare = COALESCE(verified_fare, proposed_fare).
     const { data: b, error: bErr } = await supabase
       .from("bookings")
-      .select("id, created_by_user_id, proposed_fare, verified_fare, passenger_fare_response")
+      .select("id, status, created_by_user_id, proposed_fare, verified_fare, passenger_fare_response")
       .eq("id", booking_id)
       .single();
 
@@ -26,6 +26,28 @@ export async function POST(req: Request) {
     if (!b) return NextResponse.json({ ok: false, error: "Booking not found" }, { status: 404 });
     if (String(b.created_by_user_id || "") !== String(user.id)) {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    }
+
+    const curStatus = String((b as any).status || "").trim().toLowerCase();
+    const hasProposedFare = Number((b as any).proposed_fare ?? 0) > 0;
+
+    // Compatibility step:
+    // If the booking is still assigned but already has a proposed fare,
+    // move it to fare_proposed first so the next transition to ready is lifecycle-safe.
+    if (curStatus === "assigned" && hasProposedFare) {
+      const { error: preErr } = await supabase
+        .from("bookings")
+        .update({ status: "fare_proposed" })
+        .eq("id", booking_id);
+
+      if (preErr) {
+        return NextResponse.json(
+          { ok: false, error: "FARE_ACCEPT_PREP_STATUS_FAILED", message: preErr.message },
+          { status: 500 }
+        );
+      }
+
+      try { (b as any).status = "fare_proposed"; } catch (_: any) {}
     }
 
     const { data: upd, error: uErr } = await supabase
