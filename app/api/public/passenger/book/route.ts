@@ -98,12 +98,15 @@ function normalizeAssignResult(j: any) {
   const src = j || {};
   const ok =
     !!src.ok ||
+    !!src.success ||
     !!src.assign_ok ||
     !!src.update_ok ||
     !!src.notify_ok ||
     !!src.assigned_driver_id ||
+    !!src.assignedDriverId ||
     !!src.driver_id ||
-    !!src.toDriverId;
+    !!src.toDriverId ||
+    !!src.chosen_driver_id;
 
   return {
     ...src,
@@ -633,8 +636,12 @@ export async function POST(req: Request) {
 
     if (!isTakeout) {
       try {
-        const assignUrl = `${baseUrl}/api/dispatch/assign`;
-        const assignPayload = { booking_id: String(booking.id) };
+        const assignUrl = `${baseUrl}/api/dispatch/auto-assign`;
+        const assignPayload = {
+          bookingId: String(booking.id),
+          pickupLat: Number(body.pickup_lat),
+          pickupLng: Number(body.pickup_lng),
+        };
 
         const resp = await fetch(assignUrl, {
           method: "POST",
@@ -769,13 +776,17 @@ export async function POST(req: Request) {
   const baseUrl = await getBaseUrlFromHeaders(req);
   let assign: any = { ok: false, note: "Assignment skipped." };
   try {
-    const resp = await fetch(`${baseUrl}/api/dispatch/assign`, {
+    const resp = await fetch(`${baseUrl}/api/dispatch/auto-assign`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-jride-admin-secret": process.env.JRIDE_ADMIN_SECRET || "",
       },
-      body: JSON.stringify({ booking_id: String(booking.id) }),
+      body: JSON.stringify({
+        bookingId: String(booking.id),
+        pickupLat: Number(body.pickup_lat),
+        pickupLng: Number(body.pickup_lng),
+      }),
     });
     const j = await resp.json().catch(() => ({}));
 if (j && (j as any).code === "INVALID_DRIVER_ID") {
