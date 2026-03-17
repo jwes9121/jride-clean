@@ -1,3 +1,51 @@
+param(
+  [string]$WebRoot = "C:\Users\jwes9\Desktop\jride-clean-fresh"
+)
+
+$ErrorActionPreference = "Stop"
+
+function Write-Utf8NoBom {
+  param(
+    [string]$Path,
+    [string]$Content
+  )
+  $dir = Split-Path -Parent $Path
+  if ($dir -and !(Test-Path $dir)) {
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+  }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
+function Backup-File {
+  param(
+    [string]$Path,
+    [string]$Tag
+  )
+  if (!(Test-Path $Path)) { throw "Missing file: $Path" }
+  $dir = Split-Path -Parent $Path
+  $bakDir = Join-Path $dir "_patch_bak"
+  if (!(Test-Path $bakDir)) {
+    New-Item -ItemType Directory -Path $bakDir -Force | Out-Null
+  }
+  $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+  $name = Split-Path $Path -Leaf
+  $bak = Join-Path $bakDir "$name.bak.$Tag.$stamp"
+  Copy-Item $Path $bak -Force
+  return $bak
+}
+
+Write-Host "== FIX JRIDE PASSENGER FARE ACCEPT ROUTE CLEAN V1 (PS5-safe) =="
+
+$target = Join-Path $WebRoot "app\api\public\passenger\fare\accept\route.ts"
+if (!(Test-Path $target)) {
+  throw "Target file not found: $target"
+}
+
+$bak = Backup-File -Path $target -Tag "FARE_ACCEPT_ROUTE_CLEAN_V1"
+Write-Host "[OK] Backup: $bak" -ForegroundColor Green
+
+$content = @'
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
@@ -56,3 +104,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
+'@
+
+Write-Utf8NoBom -Path $target -Content $content
+Write-Host "[OK] Rewrote: $target" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next:" -ForegroundColor Cyan
+Write-Host "1) npm run build"
+Write-Host "2) Test passenger fare accept again"
