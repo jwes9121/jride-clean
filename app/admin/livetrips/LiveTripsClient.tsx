@@ -256,7 +256,7 @@ export default function LiveTripsClient() {
         const arr = normalizeDriverRows(rawRows);
         if (Array.isArray(arr) && arr.length) {
           setDrivers(arr);
-          setDriversDebug(loaded from  ());
+          setDriversDebug("loaded from " + url + " (" + arr.length + ")");
           return;
         }
       } catch {
