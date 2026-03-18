@@ -24,6 +24,7 @@ export type DriverLocation = {
 
 export interface LiveTripsMapProps {
   trips: LiveTrip[];
+  drivers?: any[];
   drivers?: DriverLocation[];
   selectedTripId: string | null;
   stuckTripIds: Set<string>; // external optional stuck set
@@ -35,6 +36,36 @@ function num(v: any): number | null {
   if (typeof v === "number" && !Number.isNaN(v)) return v;
   const n = parseFloat(String(v));
   return Number.isFinite(n) ? n : null;
+}
+
+function driverFeedCoord(driver: any): LngLatTuple | null {
+  const lat =
+    num(driver?.lat) ??
+    num(driver?.latitude) ??
+    num(driver?.driver_lat) ??
+    num(driver?.current_lat);
+  const lng =
+    num(driver?.lng) ??
+    num(driver?.longitude) ??
+    num(driver?.driver_lng) ??
+    num(driver?.current_lng);
+  if (lat != null && lng != null) return [lng, lat];
+  return null;
+}
+
+function driverFeedKey(driver: any): string {
+  return String(driver?.driver_id ?? driver?.id ?? driver?.uuid ?? "");
+}
+
+function driverFeedStatus(driver: any): string {
+  return String(driver?.effective_status ?? driver?.status ?? "").trim().toLowerCase();
+}
+
+function driverFeedOnline(driver: any): boolean {
+  const s = driverFeedStatus(driver);
+  if (s === "stale") return false;
+  if (typeof driver?.assign_online_eligible === "boolean") return !!driver.assign_online_eligible;
+  return ["online", "available", "idle", "waiting", "assigned", "on_the_way", "on_trip"].includes(s);
 }
 
 // ---------- Coordinate helpers ----------
@@ -251,6 +282,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const [mapReady, setMapReady] = useState(false);
 
   const driverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const liveDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const routeIdsRef = useRef<Set<string>>(new Set());
@@ -421,12 +453,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
       const etaSeconds =
         num(tRaw.pickup_eta_seconds) ??
-        (num(tRaw.pickup_eta_minutes) != null
-          ? ((num(tRaw.pickup_eta_minutes) as number) * 60)
+        (num(tRaw.pickup_eta_minutes) != null ? ((num(tRaw.pickup_eta_minutes) as number) * 60)
           : null) ??
         num(tRaw.eta_pickup_seconds) ??
-        (num(tRaw.eta_pickup_minutes) != null
-          ? ((num(tRaw.eta_pickup_minutes) as number) * 60)
+        (num(tRaw.eta_pickup_minutes) != null ? ((num(tRaw.eta_pickup_minutes) as number) * 60)
           : null);
 
       if (etaSeconds != null) {
@@ -542,7 +572,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const raw = visibleTrips[i] as any;
       const id = String(raw.id ?? raw.bookingCode ?? i);
 
-      const driverReal = getDriverReal(raw);
+          const matchedDriver = (drivers || []).find(
+      (d: any) => String(d?.driver_id ?? d?.id ?? "") === String(raw?.driver_id ?? raw?.driverId ?? "")
+    );
+    const driverReal = driverFeedCoord(matchedDriver) ?? getDriverReal(raw);
       const driverDisplay = getDriverDisplay(driverReal);
       const pickup = getPickup(raw);
       const drop = getDropoff(raw);
@@ -734,6 +767,52 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
     standaloneDriverMarkersRef.current = nextStandalone;
   }, [drivers, mapReady]);
+  // ===== AUTHORITATIVE LIVE DRIVER FEED =====
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!mapReady) return;
+
+    const nextLive: Record<string, mapboxgl.Marker> = {};
+
+    for (const raw of drivers || []) {
+      const id = driverFeedKey(raw);
+      if (!id) continue;
+
+      const coord = driverFeedCoord(raw);
+      if (!coord) continue;
+
+      let marker = liveDriverMarkersRef.current[id];
+      if (!marker) {
+        const el = document.createElement("div");
+        el.style.width = "14px";
+        el.style.height = "14px";
+        el.style.borderRadius = "9999px";
+        el.style.border = "2px solid #ffffff";
+        el.style.boxShadow = "0 0 0 1px rgba(0,0,0,0.15)";
+        marker = new mapboxgl.Marker(el).setLngLat(coord).addTo(map);
+      } else {
+        marker.setLngLat(coord);
+      }
+
+      const el = marker.getElement() as HTMLDivElement;
+      el.style.backgroundColor = driverFeedOnline(raw) ? "#16a34a" : "#9ca3af";
+      el.title = [
+        raw?.name ?? "Driver",
+        driverFeedStatus(raw) || "unknown",
+        raw?.town ?? raw?.zone ?? "",
+      ].filter(Boolean).join(" ??? ");
+
+      nextLive[id] = marker;
+    }
+
+    for (const [id, marker] of Object.entries(liveDriverMarkersRef.current)) {
+      if (!nextLive[id]) marker.remove();
+    }
+
+    liveDriverMarkersRef.current = nextLive;
+  }, [drivers, mapReady]);
+
   // ===== AUTO-FOLLOW =====
   useEffect(() => {
     const map = mapRef.current;
@@ -744,7 +823,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     ) as any | undefined;
     if (!raw) return;
 
-    const driverReal = getDriverReal(raw);
+        const matchedDriver = (drivers || []).find(
+      (d: any) => String(d?.driver_id ?? d?.id ?? "") === String(raw?.driver_id ?? raw?.driverId ?? "")
+    );
+    const driverReal = driverFeedCoord(matchedDriver) ?? getDriverReal(raw);
     const pickup = getPickup(raw);
     const drop = getDropoff(raw);
 
@@ -806,8 +888,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                 Avg pickup ETA
               </span>
               <span className="text-sm font-bold">
-                {kpi.avgPickupEtaSeconds == null
-                  ? "--"
+                {kpi.avgPickupEtaSeconds == null ? "--"
                   : `${Math.round(kpi.avgPickupEtaSeconds / 60)} min`}
               </span>
             </div>
@@ -845,8 +926,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                     }
                     className={[
                       "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
-                      isActive
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                      isActive ? "border-emerald-500 bg-emerald-50 text-emerald-800"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
                     ].join(" ")}
                   >
@@ -854,8 +934,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                     <span
                       className={[
                         "rounded-full px-1 text-[10px]",
-                        isActive
-                          ? "bg-emerald-600 text-white"
+                        isActive ? "bg-emerald-600 text-white"
                           : "bg-slate-100 text-slate-700",
                       ].join(" ")}
                     >
@@ -903,24 +982,21 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500">To pickup</span>
                 <span className="font-medium">
-                  {selectedOverview.distToPickup == null
-                    ? "--"
+                  {selectedOverview.distToPickup == null ? "--"
                     : `${(selectedOverview.distToPickup / 1000).toFixed(2)} km`}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">To dropoff</span>
                 <span className="font-medium">
-                  {selectedOverview.distToDrop == null
-                    ? "--"
+                  {selectedOverview.distToDrop == null ? "--"
                     : `${(selectedOverview.distToDrop / 1000).toFixed(2)} km`}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Last update</span>
                 <span className="font-medium">
-                  {selectedOverview.lastUpdate
-                    ? String(selectedOverview.lastUpdate)
+                  {selectedOverview.lastUpdate ? String(selectedOverview.lastUpdate)
                     : "-"}
                 </span>
               </div>
@@ -928,8 +1004,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
             <DispatchActionPanel
               selectedTrip={
-                selectedTrip && selectedTrip.id
-                  ? {
+                selectedTrip && selectedTrip.id ? {
                       id: String(selectedTrip.id),
                       booking_code:
                         selectedTrip.bookingCode ?? selectedOverview.bookingCode,
