@@ -189,8 +189,7 @@ export async function GET() {
         assign_cutoff_minutes: assignCutoffMinutes,
         assign_fresh: assignFresh,
         assign_online_eligible: assignOnlineEligible,
-        assign_eligible: assignEligible
-      };
+        assign_eligible: assignEligible};
     });
 
     return NextResponse.json(
