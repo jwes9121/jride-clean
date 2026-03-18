@@ -76,14 +76,6 @@ type DriverRow = {
   name?: string
   phone?: string
   town?: string
-  effective_status?: string | null;
-  age_seconds?: number | null;
-  is_stale?: boolean | null;
-  assign_fresh?: boolean | null;
-  assign_online_eligible?: boolean | null;
-  assign_eligible?: boolean | null;
-  vehicle_type?: string | null;
-  plate_number?: string | null;
 };
 
 type PageData = {
@@ -238,6 +230,9 @@ export default function LiveTripsClient() {
     const endpoints = [
       "/api/admin/driver-locations",
       "/api/admin/driver_locations",
+      "/api/admin/drivers",
+      "/api/driver-locations",
+      "/api/driver_locations",
     ];
 
     for (const url of endpoints) {
@@ -245,27 +240,19 @@ export default function LiveTripsClient() {
         const r = await fetch(url, { cache: "no-store" });
         if (!r.ok) continue;
         const j = await r.json().catch(() => ({} as any));
+        const arr = parseDriversFromPayload(j);
 
-        const rawRows =
-          safeArray<any>(j.drivers) ||
-          safeArray<any>(j.data) ||
-          safeArray<any>(j.rows) ||
-          safeArray<any>(j["0"]) ||
-          (Array.isArray(j) ? (j as any[]) : []);
-
-        const arr = normalizeDriverRows(rawRows);
-        if (Array.isArray(arr) && arr.length) {
+        if (arr.length) {
           setDrivers(arr);
           setDriversDebug("loaded from " + url + " (" + arr.length + ")");
           return;
         }
       } catch {
-        // try next endpoint
       }
     }
 
     setDrivers([]);
-    setDriversDebug("No drivers loaded from authoritative admin driver-locations endpoints.");
+    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
   }
 
   useEffect(() => {
@@ -345,7 +332,8 @@ return () => clearInterval(t);
 
   const mapTrips = useMemo(() => {
     if (viewMode === "drivers") {
-      return selectedTripId ? allTrips.filter((t) => normTripId(t) === selectedTripId)
+      return selectedTripId
+        ? allTrips.filter((t) => normTripId(t) === selectedTripId)
         : visibleTrips.slice(0, 50);
     }
     return visibleTrips;
@@ -573,8 +561,10 @@ return (
         <div className="rounded-lg border">
           <div className="p-3 border-b flex items-center justify-between">
             <div className="font-semibold">
-              {viewMode === "drivers" ? "Drivers view"
-                : viewMode === "trips" ? "Trips view"
+              {viewMode === "drivers"
+                ? "Drivers view"
+                : viewMode === "trips"
+                ? "Trips view"
                 : "Dispatch view (Requested + Assigned + On the way)"}
             </div>
             <div className="text-xs text-gray-600">
@@ -644,11 +634,13 @@ return (
                           <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
 <td className="p-2">{formatLastSeen(d.age_seconds)}</td>
 <td className="p-2">
-  {(d as any).assign_eligible ? <span className="text-green-600 font-medium">Yes</span>
+  {(d as any).assign_eligible
+    ? <span className="text-green-600 font-medium">Yes</span>
     : <span className="text-gray-400">No</span>}
 </td>
 <td className="p-2">
-  {(d as any).is_stale ? <span className="text-red-600 font-medium">Yes</span>
+  {(d as any).is_stale
+    ? <span className="text-red-600 font-medium">Yes</span>
     : <span className="text-green-600">No</span>}
 </td>
                         </tr>
