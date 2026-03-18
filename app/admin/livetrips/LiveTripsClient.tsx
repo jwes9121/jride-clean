@@ -621,7 +621,7 @@ return (
                           <td className="p-2 font-medium">{labelOrDash(d.name)}</td>
                           <td className="p-2">{labelOrDash(d.phone)}</td>
                           <td className="p-2">{labelOrDash(d.town)}</td>
-                          <td className="p-2">{labelOrDash(d.status)}</td>
+                          <td className="p-2">{labelOrDash((d as any).effective_status ?? d.status)}</td>
                           <td className="p-2">
                             {trip ? (
                               <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
@@ -825,7 +825,7 @@ return (
                   <option value="">Select driver</option>
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
-                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + (d.status ? " - " + d.status : "")).trim();
+                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + ((d as any).effective_status ? " - " + (d as any).effective_status : "")).trim();
                     
 
 return (
@@ -869,7 +869,7 @@ return (
                     lng: Number(d.lng ?? 0),
                     zone: String(d.town || "Unknown"),
                     homeTown: String(d.town || "Unknown"),
-                    status: String(d.status || ""),
+                    status: String((d as any).effective_status || d.status || ""),
                   })) as any}
                   zoneStats={zoneStats}
                   onAssign={async (driverId) => {
