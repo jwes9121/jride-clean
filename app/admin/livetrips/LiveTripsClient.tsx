@@ -67,6 +67,7 @@ type DriverRow = {
   lat?: number
   lng?: number
   status?: string
+  effective_status?: string
   updated_at?: string
 
   age_seconds?: number
