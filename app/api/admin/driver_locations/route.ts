@@ -162,7 +162,7 @@ export async function GET() {
       const ageSeconds = ageSecondsFromIso(updatedAt);
       const isStale = ageSeconds == null ? true : ageSeconds > staleAfterSeconds;
       const rawStatus = String(row.status ?? "").trim().toLowerCase();
-      const effectiveStatus = rawStatus;
+      const effectiveStatus = isStale ? "offline" : rawStatus;
       const assignFresh = ageSeconds == null ? false : ageSeconds <= assignCutoffSeconds;
       const assignOnlineEligible = onlineLike.has(rawStatus);
       const assignEligible = assignFresh && assignOnlineEligible;
