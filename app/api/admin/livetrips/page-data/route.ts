@@ -65,10 +65,14 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
 
   const rows = Array.isArray(data) ? data : [];
   const filteredRows = excludeQuarantinedTrips(rows);
+  const normalizedTrips = filteredRows.map((row: any) => normalizeTrip(row));
   const usedColumns = rows.length ? Object.keys(normalizeKeys(rows[0])) : ([] as string[]);
 
   return {
-    trips: filteredRows.map((row: any) => normalizeTrip(row)),
+    // LIVETRIPS_STRICT_TRIPS_SOURCE_V1
+    trips: normalizedTrips,
+    bookings: normalizedTrips,
+    data: normalizedTrips,
     usedColumns,
     warnings: [] as string[],
   };
@@ -122,12 +126,14 @@ export async function GET(req: Request) {
 
     const warnings = [...bookingsRes.warnings, ...zonesRes.warnings];
 
+    const canonicalTrips = Array.isArray(bookingsRes.trips) ? bookingsRes.trips : [];
+
     const payload: Json = {
       ok: true,
       zones: zonesRes.zones,
-      trips: bookingsRes.trips,
-      bookings: bookingsRes.trips,
-      data: bookingsRes.trips,
+      trips: canonicalTrips,
+      bookings: canonicalTrips,
+      data: canonicalTrips,
       warnings,
     };
 

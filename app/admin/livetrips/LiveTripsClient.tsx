@@ -111,19 +111,11 @@ function safeArray<T>(v: any): T[] {
 }
 
 function parseTripsFromPageData(j: any): TripRow[] {
+  // LIVETRIPS_STRICT_TRIPS_SOURCE_V3
+  // Only accept the canonical trips array from page-data.
   if (!j) return [];
-  const candidates = [
-    j.trips,
-    j.bookings,
-    j.data,
-    j["0"],
-    Array.isArray(j) ? j : null,
-  ];
-  for (const c of candidates) {
-    const arr = safeArray<TripRow>(c);
-    if (arr.length) return arr;
-  }
-  return [];
+  if (!Array.isArray(j.trips)) return [];
+  return safeArray<TripRow>(j.trips);
 }
 
 function parseDriversFromPayload(j: any): DriverRow[] {
