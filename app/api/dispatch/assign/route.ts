@@ -90,7 +90,76 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "BOOKING_NOT_FOUND" }, { status: 404 });
     }
 
-    if (driverId === fromDriverId) {
+    
+    // ===== DRIVER ELIGIBILITY GUARD (LIVE PRESENCE) =====
+    try {
+      const { data: locRows, error: locErr } = await supabase
+        .from("driver_locations")
+        .select("driver_id, status, updated_at")
+        .eq("driver_id", driverId)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      if (locErr) {
+        console.error("DISPATCH_ASSIGN_DRIVER_LOCATION_READ_ERROR", locErr);
+        return NextResponse.json(
+          { error: "DISPATCH_ASSIGN_DRIVER_LOCATION_READ_ERROR", message: locErr.message },
+          { status: 500 }
+        );
+      }
+
+      const loc = (locRows ?? [])[0] as any;
+
+      if (!loc) {
+        return NextResponse.json(
+          { error: "DRIVER_LOCATION_NOT_FOUND", driverId },
+          { status: 409 }
+        );
+      }
+
+      const updatedAtMs = new Date(loc.updated_at ?? 0).getTime();
+      const ageSeconds = Number.isFinite(updatedAtMs)
+        ? Math.floor((Date.now() - updatedAtMs) / 1000)
+        : 999999;
+
+      const STALE_THRESHOLD_SEC = 60;
+      const isStale = ageSeconds > STALE_THRESHOLD_SEC;
+
+      const rawStatus = String(loc.status ?? "").trim().toLowerCase();
+      const effectiveStatus = isStale ? "offline" : rawStatus;
+
+      const assignEligible =
+        !isStale &&
+        (
+          effectiveStatus === "online" ||
+          effectiveStatus === "available" ||
+          effectiveStatus === "idle" ||
+          effectiveStatus === "waiting"
+        );
+
+      if (!assignEligible) {
+        return NextResponse.json(
+          {
+            error: "DRIVER_NOT_ELIGIBLE",
+            driverId,
+            effectiveStatus,
+            isStale,
+            ageSeconds,
+          },
+          { status: 409 }
+        );
+      }
+    } catch (e: any) {
+      console.error("DISPATCH_ASSIGN_DRIVER_LOCATION_THROWN", e);
+      return NextResponse.json(
+        {
+          error: "DISPATCH_ASSIGN_DRIVER_LOCATION_THROWN",
+          message: e?.message ?? "Unexpected driver eligibility error",
+        },
+        { status: 500 }
+      );
+    }
+if (driverId === fromDriverId) {
       return NextResponse.json(
         {
           ok: true,
