@@ -23,6 +23,11 @@ function normalizeKeys(row: Json): Json {
   return out;
 }
 
+const LIVETRIPS_QUARANTINED_BOOKING_CODES = new Set<string>([
+  "JR-UI-20260318082937-9869",
+  "JR-UI-20260318055904-5903",
+]);
+
 function normalizeTrip(row: Json): Json {
   const r = normalizeKeys(row);
   return {
@@ -33,6 +38,13 @@ function normalizeTrip(row: Json): Json {
     zone: r.zone ?? r.town ?? r.zone_name ?? null,
     status: r.status ?? "pending",
   };
+}
+
+function excludeQuarantinedTrips(rows: Json[]): Json[] {
+  return rows.filter((row: any) => {
+    const code = String(row?.booking_code ?? row?.bookingCode ?? "").trim();
+    return !LIVETRIPS_QUARANTINED_BOOKING_CODES.has(code);
+  });
 }
 
 async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
@@ -52,10 +64,11 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   }
 
   const rows = Array.isArray(data) ? data : [];
+  const filteredRows = excludeQuarantinedTrips(rows);
   const usedColumns = rows.length ? Object.keys(normalizeKeys(rows[0])) : ([] as string[]);
 
   return {
-    trips: rows.map((row: any) => normalizeTrip(row)),
+    trips: filteredRows.map((row: any) => normalizeTrip(row)),
     usedColumns,
     warnings: [] as string[],
   };
