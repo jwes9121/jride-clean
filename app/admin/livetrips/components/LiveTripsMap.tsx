@@ -135,14 +135,12 @@ function getAllCoords(trip: any): LngLatTuple[] {
  *    - 3+       => second-to-last coord
  */
 function getDriverReal(trip: any): LngLatTuple | null {
+  // DISABLE_DRIVER_COORD_FALLBACKS_V2
+  // Only trust explicit driver_* coordinates.
+  // Do not infer driver position from pickup/dropoff/other trip coordinates.
   const explicit = getExplicitDriver(trip);
   if (explicit) return explicit;
-
-  const coords = getAllCoords(trip);
-  if (!coords.length) return null;
-  if (coords.length === 1) return coords[0];
-  if (coords.length === 2) return coords[1];
-  return coords[coords.length - 2];
+  return null;
 }
 
 /**
