@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +53,15 @@ function toPhilippineTime(input: string | null | undefined) {
 
 function ageSecondsFromIso(input: string | null | undefined) {
   if (!input) return null;
-  const ms = Date.now() - new Date(input).getTime();
-  if (!Number.isFinite(ms)) return null;
+
+  const parsed = Date.parse(input); // strict ISO parsing
+
+  if (!Number.isFinite(parsed)) return null;
+
+  const now = Date.now();
+
+  const ms = now - parsed;
+
   return Math.max(0, Math.floor(ms / 1000));
 }
 
