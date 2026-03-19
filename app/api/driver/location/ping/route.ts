@@ -131,9 +131,7 @@ export async function POST(req: Request) {
 
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return json(400, { ok: false, code: "MISSING_LAT_LNG" });
-    }
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
     const status = norm(body?.status ?? "online") || "online";
     const town = String(body?.town ?? "").trim();
@@ -185,12 +183,15 @@ export async function POST(req: Request) {
     // Only write columns that exist: driver_id, lat, lng, status, town, updated_at.
     const upsertPayload: any = {
       driver_id,
-      lat,
-      lng,
       status,
       town: town || null,
       updated_at: nowIso,
     };
+
+    if (hasCoords) {
+      upsertPayload.lat = lat;
+      upsertPayload.lng = lng;
+    }
 
     const { error: upErr } = await supabase
       .from("driver_locations")
