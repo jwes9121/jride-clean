@@ -227,28 +227,37 @@ export default function LiveTripsClient() {
     }
   }
 
-  async function loadDrivers() {
+    async function loadDrivers() {
+    const ts = Date.now();
     const endpoints = [
-      "/api/admin/driver-locations",
-      "/api/admin/driver_locations",
-      "/api/admin/drivers",
-      "/api/driver-locations",
-      "/api/driver_locations",
+      "/api/admin/driver_locations?t=" + ts,
+      "/api/admin/driver-locations?t=" + ts,
+      "/api/admin/drivers?t=" + ts,
+      "/api/driver_locations?t=" + ts,
+      "/api/driver-locations?t=" + ts,
     ];
 
     for (const url of endpoints) {
       try {
-        const r = await fetch(url, { cache: "no-store" });
+        const r = await fetch(url, {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        });
         if (!r.ok) continue;
         const j = await r.json().catch(() => ({} as any));
+
         const arr = parseDriversFromPayload(j);
 
-        if (arr.length) {
+        if (Array.isArray(arr) && arr.length) {
           setDrivers(arr);
-          setDriversDebug("loaded from " + url + " (" + arr.length + ")");
+          setDriversDebug("loaded from " + url.split("?")[0] + " (" + arr.length + ")");
           return;
         }
       } catch {
+        // try next endpoint
       }
     }
 

@@ -1,3 +1,33 @@
+# PATCH-JRIDE_LIVETRIPS_PAGEDATA_ROUTE_FULL_REPLACE_V1_PS5SAFE.ps1
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$WebRoot
+)
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m) { throw $m }
+function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
+function Info($m) { Write-Host "[INFO] $m" -ForegroundColor Cyan }
+
+if (-not (Test-Path -LiteralPath $WebRoot)) {
+  Fail "WebRoot not found: $WebRoot"
+}
+
+$target = Join-Path $WebRoot "app\api\admin\livetrips\page-data\route.ts"
+if (-not (Test-Path -LiteralPath $target)) {
+  Fail "Target file not found: $target"
+}
+
+$backupDir = Join-Path $WebRoot "app\api\admin\livetrips\page-data\_patch_bak"
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backup = Join-Path $backupDir ("route.ts.bak.PAGEDATA_FULL_REPLACE_V1." + $stamp)
+Copy-Item -LiteralPath $target -Destination $backup -Force
+Ok "Backup: $backup"
+
+$newContent = @'
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -145,3 +175,40 @@ export async function GET(req: Request) {
     );
   }
 }
+'@
+
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, $newContent, $utf8NoBom)
+Ok "Replaced: $target"
+
+$verify = Get-Content -LiteralPath $target -Raw
+
+$markers = @(
+  'function normalizeKeys(row: Json): Json',
+  '.from("bookings")',
+  '.select("*")',
+  'async function tryLoadZones',
+  'BOOKINGS_SELECT_FAILED'
+)
+
+$missing = @()
+foreach ($m in $markers) {
+  if ($verify.IndexOf($m) -lt 0) { $missing += $m }
+}
+
+if ($verify.IndexOf("getExistingColumns") -ge 0) {
+  $missing += "getExistingColumns still present"
+}
+if ($verify.IndexOf("'disabled_schema_check'") -ge 0) {
+  $missing += "'disabled_schema_check' still present"
+}
+if ($verify.IndexOf("BOOKINGS_SCHEMA_NOT_READABLE") -ge 0) {
+  $missing += "BOOKINGS_SCHEMA_NOT_READABLE still present"
+}
+
+if ($missing.Count -gt 0) {
+  Fail ("Verification failed. Missing or invalid markers: " + ($missing -join ", "))
+}
+
+Ok "Verification passed."
+Info "Now run: npm run build"
