@@ -1,3 +1,33 @@
+# PATCH-JRIDE_LIVETRIPSCLIENT_REALTIME_LOCALSTATE_V1_PS5SAFE.ps1
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$WebRoot
+)
+
+$ErrorActionPreference = "Stop"
+
+function Fail($m) { throw $m }
+function Ok($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
+function Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
+function Info($m) { Write-Host "[INFO] $m" -ForegroundColor Cyan }
+
+if (-not (Test-Path -LiteralPath $WebRoot)) {
+  Fail "WebRoot not found: $WebRoot"
+}
+
+$target = Join-Path $WebRoot "app\admin\livetrips\LiveTripsClient.tsx"
+if (-not (Test-Path -LiteralPath $target)) {
+  Fail "Target file not found: $target"
+}
+
+$backupDir = Join-Path $WebRoot "_patch_bak"
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backup = Join-Path $backupDir ("LiveTripsClient.tsx.bak.REALTIME_LOCALSTATE_V1." + $stamp)
+Copy-Item -LiteralPath $target -Destination $backup -Force
+Ok "Backup: $backup"
+
+$newContent = @'
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1034,3 +1064,33 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+'@
+
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, $newContent, $utf8NoBom)
+Ok "Replaced: $target"
+
+$verify = Get-Content -LiteralPath $target -Raw
+$markers = @(
+  'POLL_MS_FOREGROUND = 5000',
+  'POLL_MS_BACKGROUND = 15000',
+  'eventsPerSecond: 2',
+  'channel("livetrips-driver_locations-localstate")',
+  'channel("livetrips-bookings-localstate")',
+  'mergeDriverRows(prev, {',
+  'setAllTrips((prev) => mergeTripRows(prev, patch));',
+  'document.visibilityState === "visible" ? POLL_MS_FOREGROUND : POLL_MS_BACKGROUND',
+  'refreshAll("manual")'
+)
+
+$missing = @()
+foreach ($m in $markers) {
+  if ($verify.IndexOf($m) -lt 0) { $missing += $m }
+}
+
+if ($missing.Count -gt 0) {
+  Fail ("Verification failed. Missing markers: " + ($missing -join ", "))
+}
+
+Ok "Verification passed."
+Info "Now run: npm run build"
