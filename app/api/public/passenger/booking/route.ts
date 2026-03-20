@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
@@ -17,7 +18,14 @@ export async function GET(req: Request) {
     if (!bookingCode) {
       return NextResponse.json(
         { ok: false, error: "MISSING_BOOKING_CODE" },
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
@@ -45,8 +53,19 @@ export async function GET(req: Request) {
           ok: false,
           error: "BOOKING_READ_FAILED",
           message: error.message,
+          debug: {
+            supabase_url: process.env.SUPABASE_URL || null,
+            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+          },
         },
-        { status: 500 }
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
@@ -54,8 +73,22 @@ export async function GET(req: Request) {
 
     if (!booking) {
       return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404 }
+        {
+          ok: false,
+          error: "BOOKING_NOT_FOUND",
+          debug: {
+            supabase_url: process.env.SUPABASE_URL || null,
+            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+          },
+        },
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
@@ -71,21 +104,46 @@ export async function GET(req: Request) {
       driver_name = (rideRow as any).driver_name ?? null;
     }
 
-    return NextResponse.json({
-      ok: true,
-      booking: {
-        ...booking,
-        driver_name,
+    return NextResponse.json(
+      {
+        ok: true,
+        booking: {
+          ...booking,
+          driver_name,
+        },
+        debug: {
+          supabase_url: process.env.SUPABASE_URL || null,
+          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+        },
       },
-    });
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (e: any) {
     return NextResponse.json(
       {
         ok: false,
         error: "SERVER_ERROR",
         message: String(e?.message ?? e),
+        debug: {
+          supabase_url: process.env.SUPABASE_URL || null,
+          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+        },
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
     );
   }
 }
