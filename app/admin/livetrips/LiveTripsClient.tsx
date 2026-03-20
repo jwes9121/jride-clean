@@ -340,7 +340,6 @@ export default function LiveTripsClient() {
     };
 
     const onVisibilityChange = () => {
-      refreshAllRef.current?.("visibility").catch(() => {});
       schedule();
     };
 
