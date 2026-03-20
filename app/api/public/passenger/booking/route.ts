@@ -1,141 +1,95 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/utils/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-function getAdminClientOrNull() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createAdminClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-type Resp = {
-  ok: boolean;
-  code?: string;
-  message?: string;
-  signed_in?: boolean;
-  booking?: any;
-};
-
-function json(status: number, body: Resp) {
-  return NextResponse.json(body, { status });
-}
-
-const ACTIVE_STATUSES = [
-  "pending",
-  "searching",
-  "requested",
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "ready",
-  "on_the_way",
-  "arrived",
-  "enroute",
-  "on_trip",
-];
-
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
-    const supabase = await createServerClient();
-    const url = new URL(req.url);
-    const bookingCode = String(url.searchParams.get("code") || "").trim();
+    const supabase = supabaseAdmin();
+    const { searchParams } = new URL(req.url);
 
-    let booking: any = null;
-    let error: any = null;
-    let signedIn = false;
+    const bookingCode = String(
+      searchParams.get("code") ||
+      searchParams.get("booking_code") ||
+      ""
+    ).trim();
 
-    if (bookingCode) {
-      const res = await supabase
-        .from("bookings")
-        .select(
-          [
-            "id",
-            "booking_code",
-            "status",
-            "driver_id",
-            "assigned_driver_id",
-            "created_at",
-            "updated_at",
-            "created_by_user_id",
-            "proposed_fare",
-            "passenger_fare_response",
-          ].join(",")
-        )
-        .eq("booking_code", bookingCode)
-        .maybeSingle();
-
-      booking = res.data;
-      error = res.error;
-      signedIn = true;
-    } else {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData?.user;
-
-      if (!user) {
-        return json(200, { ok: true, signed_in: false, booking: null });
-      }
-
-      signedIn = true;
-      const res = await supabase
-        .from("bookings")
-        .select(
-          [
-            "id",
-            "booking_code",
-            "status",
-            "driver_id",
-            "assigned_driver_id",
-            "created_at",
-            "updated_at",
-            "created_by_user_id",
-            "proposed_fare",
-            "passenger_fare_response",
-          ].join(",")
-        )
-        .eq("created_by_user_id", user.id)
-        .in("status", ACTIVE_STATUSES)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      booking = res.data;
-      error = res.error;
+    if (!bookingCode) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_BOOKING_CODE" },
+        { status: 400 }
+      );
     }
 
+    // 1) Canonical booking read
+    const { data: booking, error } = await supabase
+      .from("bookings")
+      .select(`
+        id,
+        booking_code,
+        status,
+        driver_id,
+        assigned_driver_id,
+        created_at,
+        updated_at,
+        created_by_user_id,
+        proposed_fare,
+        passenger_fare_response
+      `)
+      .eq("booking_code", bookingCode)
+      .maybeSingle();
+
     if (error) {
-      return json(500, {
-        ok: false,
-        code: "DB_ERROR",
-        message: String(error.message || error),
-        signed_in: signedIn,
-      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BOOKING_READ_FAILED",
+          message: error.message,
+        },
+        { status: 500 }
+      );
     }
 
     if (!booking) {
-      return json(404, {
-        ok: false,
-        code: "NOT_FOUND",
-        message: "Booking not found",
-        signed_in: signedIn,
-      });
+      return NextResponse.json(
+        { ok: false, error: "BOOKING_NOT_FOUND" },
+        { status: 404 }
+      );
     }
 
-    return json(200, {
+    // 2) Driver display hydration from factual read model
+    let driver_name: string | null = null;
+
+    if (booking.id) {
+      const { data: rideRow, error: rideErr } = await supabase
+        .from("dispatch_rides_view")
+        .select("driver_name")
+        .eq("booking_id", booking.id)
+        .maybeSingle();
+
+      if (!rideErr && rideRow) {
+        driver_name = (rideRow as any).driver_name ?? null;
+      }
+    }
+
+    // 3) Return enriched payload without changing existing shape
+    const enriched = {
+      ...booking,
+      driver_name,
+    };
+
+    return NextResponse.json({
       ok: true,
-      signed_in: signedIn,
-      booking,
+      booking: enriched,
     });
   } catch (e: any) {
-    return json(500, {
-      ok: false,
-      code: "ERROR",
-      message: String(e?.message || e),
-      signed_in: true,
-    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "SERVER_ERROR",
+        message: String(e?.message ?? e),
+      },
+      { status: 500 }
+    );
   }
 }
