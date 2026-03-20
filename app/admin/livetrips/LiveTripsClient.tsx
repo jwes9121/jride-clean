@@ -242,6 +242,7 @@ export default function LiveTripsClient() {
 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshAllRef = useRef<((source?: string) => Promise<void>) | null>(null);
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const channelsRef = useRef<RealtimeChannel[]>([]);
 
@@ -314,8 +315,12 @@ export default function LiveTripsClient() {
   }, [loadPage, loadDrivers]);
 
   useEffect(() => {
-    refreshAll("initial").catch(() => {});
+    refreshAllRef.current = refreshAll;
   }, [refreshAll]);
+
+  useEffect(() => {
+    refreshAllRef.current?.("initial").catch(() => {});
+  }, []);
 
   useEffect(() => {
     const clearTimer = () => {
@@ -329,13 +334,13 @@ export default function LiveTripsClient() {
       clearTimer();
       const ms = document.visibilityState === "visible" ? POLL_MS_FOREGROUND : POLL_MS_BACKGROUND;
       pollTimerRef.current = setTimeout(async () => {
-        await refreshAll("poll");
+        await refreshAllRef.current?.("poll");
         schedule();
       }, ms);
     };
 
     const onVisibilityChange = () => {
-      refreshAll("visibility").catch(() => {});
+      refreshAllRef.current?.("visibility").catch(() => {});
       schedule();
     };
 
@@ -346,7 +351,7 @@ export default function LiveTripsClient() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearTimer();
     };
-  }, [refreshAll]);
+  }, []);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
