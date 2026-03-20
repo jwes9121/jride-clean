@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import supabase from "@/lib/supabaseClient";
 
-// Haversine distance in km between two lat/lng pairs
+// AUTO_ASSIGN_ONLINE_FRESH_ONLY_V1
+
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -21,11 +22,9 @@ function str(x: any) {
   return String(x ?? "").trim();
 }
 
-// STEP 5C pickup fee matrix (PHP) - emergency only
 function computeEmergencyPickupFeePhp(distKm: number) {
   const FREE_KM = 1.5;
   if (!Number.isFinite(distKm) || distKm <= FREE_KM) return 0;
-
   if (distKm <= 2.0) return 20;
   if (distKm <= 2.5) return 40;
   if (distKm <= 3.0) return 50;
@@ -35,11 +34,15 @@ function computeEmergencyPickupFeePhp(distKm: number) {
   return 50 + steps * 10;
 }
 
-// Best-effort update for OPTIONAL fields only.
-// Do NOT use this for lifecycle-critical fields like status/assignment.
+function isFresh(updatedAt: any, maxAgeSeconds: number): boolean {
+  const t = new Date(String(updatedAt ?? "")).getTime();
+  if (!Number.isFinite(t)) return false;
+  const ageMs = Date.now() - t;
+  return ageMs >= 0 && ageMs <= maxAgeSeconds * 1000;
+}
+
 async function updateBookingBestEffort(bookingId: string, base: any, extras: any) {
   const attempts: any[] = [];
-
   attempts.push({ ...base, ...extras });
 
   const dropKeys = [
@@ -94,10 +97,9 @@ export async function POST(req: Request) {
     const pickupLng = Number(body.pickupLng);
 
     if (!bookingId || Number.isNaN(pickupLat) || Number.isNaN(pickupLng)) {
-      return NextResponse.json({ error: "MISSING_FIELDS" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "MISSING_FIELDS" }, { status: 400 });
     }
 
-    // ===== STEP 5B: Emergency cross-town mode (town gate) =====
     let isEmergency = body?.is_emergency === true || body?.isEmergency === true;
     let bookingTown = "";
 
@@ -109,9 +111,7 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (!bookingReadError && bk) {
-        if ((bk as any)?.is_emergency === true) {
-          isEmergency = true;
-        }
+        if ((bk as any)?.is_emergency === true) isEmergency = true;
 
         const candidatesTown: any[] = [
           (bk as any)?.pickup_town,
@@ -130,11 +130,8 @@ export async function POST(req: Request) {
         }
       }
     } catch {
-      // safe fallback
     }
-    // ===== END STEP 5B =====
 
-    // 1) Load driver locations
     const { data: driverRows, error: driverLocationsError } = await supabase
       .from("driver_locations")
       .select("driver_id, lat, lng, status, updated_at, town");
@@ -145,22 +142,33 @@ export async function POST(req: Request) {
     }
 
     if (!driverRows || driverRows.length === 0) {
-      return NextResponse.json({ error: "NO_DRIVERS" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "NO_DRIVERS" }, { status: 400 });
     }
 
-    // 2) Candidates: any driver with coords, not explicitly on_trip
+    const FRESH_SECONDS = 120;
+
     const candidates = (driverRows as any[]).filter((row: any) => {
       if (row?.lat == null || row?.lng == null) return false;
+
       const statusText = str(row?.status).toLowerCase();
-      if (statusText === "on_trip") return false;
+      if (statusText !== "online") return false;
+
+      if (!isFresh(row?.updated_at, FRESH_SECONDS)) return false;
+
       return true;
     });
 
     if (candidates.length === 0) {
-      return NextResponse.json({ error: "NO_AVAILABLE_DRIVER" }, { status: 400 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "NO_ELIGIBLE_DRIVERS",
+          freshness_seconds: FRESH_SECONDS,
+        },
+        { status: 409 }
+      );
     }
 
-    // 2.5) Town gate (normal mode only)
     let filteredCandidates = candidates;
     if (!isEmergency && bookingTown) {
       const bt = bookingTown.toLowerCase();
@@ -168,7 +176,6 @@ export async function POST(req: Request) {
       filteredCandidates = sameTown.length > 0 ? sameTown : candidates;
     }
 
-    // 3) Find nearest by haversine distance
     let best: any = null;
     let bestDistanceKm = Infinity;
 
@@ -181,18 +188,15 @@ export async function POST(req: Request) {
     }
 
     if (!best) {
-      return NextResponse.json({ error: "NO_DRIVER_FOUND" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "NO_DRIVER_FOUND" }, { status: 400 });
     }
 
-    // ===== STEP 5C: pickup fee (emergency only) =====
     const pickup_distance_km = Number(bestDistanceKm);
     const free_pickup_km = 1.5;
     const emergency_pickup_fee_php = isEmergency
       ? computeEmergencyPickupFeePhp(pickup_distance_km)
       : 0;
-    // ===== END STEP 5C =====
 
-    // 4) CRITICAL WRITE: assignment + lifecycle state must be atomic
     const criticalUpdate = {
       assigned_driver_id: best.driver_id,
       driver_id: best.driver_id,
@@ -215,7 +219,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5) OPTIONAL write: persist distance/fee fields best-effort only
     const optionalExtras = {
       pickup_distance_km,
       pickup_distance: pickup_distance_km,
@@ -235,26 +238,22 @@ export async function POST(req: Request) {
       ok: true,
       assignedDriverId: best.driver_id,
       status: "assigned",
-
-      // STEP 5B/5C info for UI
       is_emergency: isEmergency,
       bookingTown: bookingTown || null,
       pickup_distance_km,
       free_pickup_km,
       emergency_pickup_fee_php,
-
-      // Debug counts
-      candidates_total: candidates.length,
+      candidates_total: driverRows.length,
+      candidates_online_fresh: candidates.length,
       candidates_used: filteredCandidates.length,
-
-      // Optional persistence note
+      freshness_seconds: FRESH_SECONDS,
       persisted: true,
       persistence_warning: (optionalUpdateResult as any)?.warning || null,
     });
   } catch (err: any) {
     console.error("auto-assign error", err);
     return NextResponse.json(
-      { error: err?.message ?? "SERVER_ERROR" },
+      { ok: false, error: err?.message ?? "SERVER_ERROR" },
       { status: 500 }
     );
   }
