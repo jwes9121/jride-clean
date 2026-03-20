@@ -40,11 +40,7 @@ export async function GET(req: Request) {
 
     if (error) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_READ_FAILED",
-          message: error.message,
-        },
+        { ok: false, error: "BOOKING_READ_FAILED", message: error.message },
         { status: 500 }
       );
     }
@@ -56,29 +52,27 @@ export async function GET(req: Request) {
       );
     }
 
+    // ✅ CORRECT SOURCE: dispatch_rides_v1
     let driver_name: string | null = null;
 
-    if (booking.booking_code) {
-      const { data: rideRow, error: rideErr } = await supabase
-        .from("dispatch_rides_view")
-        .select("driver_name")
-        .eq("booking_code", booking.booking_code)
-        .maybeSingle();
+    const { data: rideRow, error: rideErr } = await supabase
+      .from("dispatch_rides_v1")
+      .select("driver_name")
+      .eq("booking_code", booking.booking_code)
+      .maybeSingle();
 
-      if (!rideErr && rideRow) {
-        driver_name = (rideRow as any).driver_name ?? null;
-      }
+    if (!rideErr && rideRow) {
+      driver_name = (rideRow as any).driver_name ?? null;
     }
-
-    const enriched = {
-      ...booking,
-      driver_name,
-    };
 
     return NextResponse.json({
       ok: true,
-      booking: enriched,
+      booking: {
+        ...booking,
+        driver_name,
+      },
     });
+
   } catch (e: any) {
     return NextResponse.json(
       {
