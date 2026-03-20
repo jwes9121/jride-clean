@@ -37,11 +37,11 @@ export async function POST(req: Request) {
     const bookingCode = String(body.bookingCode ?? body.booking_code ?? "").trim();
     const driverId = String(body.driver_id ?? "").trim();
     const status = String(body.status ?? "").trim();
+
     let normalizedStatus = status;
     if (normalizedStatus === "accepted") {
       normalizedStatus = "assigned";
     }
-    
 
     if (!status) {
       return NextResponse.json(
@@ -85,22 +85,6 @@ export async function POST(req: Request) {
     }
 
     const booking = rows?.[0];
-const currentStatus = String(booking?.status ?? "").toLowerCase();
-const nextStatus = String(normalizedStatus ?? "").toLowerCase();
-
-// HARD GUARD: prevent illegal completion
-if (nextStatus === "completed" && currentStatus !== "on_trip") {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "INVALID_COMPLETION_FLOW",
-      message: `Cannot complete from status ${currentStatus}`,
-      bookingId: booking?.id,
-      bookingCode: booking?.booking_code,
-    },
-    { status: 400 }
-  );
-}
 
     if (!booking?.id) {
       return NextResponse.json(
@@ -115,7 +99,42 @@ if (nextStatus === "completed" && currentStatus !== "on_trip") {
         { status: 404 }
       );
     }
-const updatePayload: Record<string, any> = {
+
+    const currentStatus = String(booking?.status ?? "").toLowerCase();
+    const nextStatus = String(normalizedStatus ?? "").toLowerCase();
+
+    // HARD GUARD: prevent illegal completion
+    if (nextStatus === "completed" && currentStatus !== "on_trip") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "INVALID_COMPLETION_FLOW",
+          message: `Cannot complete from status ${currentStatus}`,
+          bookingId: booking?.id,
+          bookingCode: booking?.booking_code,
+        },
+        { status: 400 }
+      );
+    }
+
+    // NO-OP GUARD: do not rewrite same status
+    if (currentStatus === nextStatus) {
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: true,
+          reason: "STATUS_UNCHANGED",
+          status: currentStatus,
+          bookingId: booking?.id,
+          bookingCode: booking?.booking_code,
+          driverId: String(booking?.driver_id ?? driverId ?? "").trim() || null,
+          assignedDriverId: String(booking?.assigned_driver_id ?? "").trim() || null,
+        },
+        { status: 200 }
+      );
+    }
+
+    const updatePayload: Record<string, any> = {
       status: normalizedStatus,
       updated_at: new Date().toISOString(),
     };
@@ -132,6 +151,27 @@ const updatePayload: Record<string, any> = {
       .select("id, booking_code, status, driver_id, assigned_driver_id");
 
     if (upErr) {
+      const msg = String(upErr.message || "");
+
+      if (
+        msg.includes("INVALID_STATUS_TRANSITION") ||
+        msg.includes("INVALID_COMPLETION_FLOW")
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "INVALID_COMPLETION_FLOW",
+            message: msg,
+            bookingId,
+            bookingCode,
+            driverId,
+            status: normalizedStatus,
+            matchedBookingId: booking.id,
+          },
+          { status: 400 }
+        );
+      }
+
       console.error("DISPATCH_STATUS_DB_ERROR", upErr);
       return NextResponse.json(
         {
@@ -149,21 +189,6 @@ const updatePayload: Record<string, any> = {
     }
 
     const updated = updatedRows?.[0];
-// ============================================
-// AUDIT LOG (NON-BLOCKING)
-// ============================================
-try {
-  await supabase.from("booking_status_audit").insert({
-    booking_id: updated.id,
-    old_status: booking.status,
-    new_status: updated.status,
-    source: "dispatch/status",
-    actor_type: "system",
-    actor_id: driverId || null,
-  });
-} catch (auditErr) {
-  console.error("BOOKING_STATUS_AUDIT_ERROR", auditErr);
-}
 
     if (!updated?.id) {
       return NextResponse.json(
@@ -178,6 +203,22 @@ try {
         },
         { status: 500 }
       );
+    }
+
+    // ============================================
+    // AUDIT LOG (NON-BLOCKING)
+    // ============================================
+    try {
+      await supabase.from("booking_status_audit").insert({
+        booking_id: updated.id,
+        old_status: booking.status,
+        new_status: updated.status,
+        source: "dispatch/status",
+        actor_type: "system",
+        actor_id: driverId || null,
+      });
+    } catch (auditErr) {
+      console.error("BOOKING_STATUS_AUDIT_ERROR", auditErr);
     }
 
     const effectiveDriverId =
