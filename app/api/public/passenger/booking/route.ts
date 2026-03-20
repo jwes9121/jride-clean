@@ -21,7 +21,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // 1) Canonical booking read
     const { data: booking, error } = await supabase
       .from("bookings")
       .select(`
@@ -57,14 +56,13 @@ export async function GET(req: Request) {
       );
     }
 
-    // 2) Driver display hydration from factual read model
     let driver_name: string | null = null;
 
-    if (booking.id) {
+    if (booking.booking_code) {
       const { data: rideRow, error: rideErr } = await supabase
         .from("dispatch_rides_view")
         .select("driver_name")
-        .eq("booking_id", booking.id)
+        .eq("booking_code", booking.booking_code)
         .maybeSingle();
 
       if (!rideErr && rideRow) {
@@ -72,7 +70,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // 3) Return enriched payload without changing existing shape
     const enriched = {
       ...booking,
       driver_name,
