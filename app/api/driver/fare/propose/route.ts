@@ -64,11 +64,17 @@ export async function POST(req: Request) {
       .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response")
       .limit(1);
 
-    selectQuery = bookingId ? selectQuery.eq("id", bookingId) : selectQuery.eq("booking_code", bookingCode);
+    selectQuery = bookingId
+      ? selectQuery.eq("id", bookingId)
+      : selectQuery.eq("booking_code", bookingCode);
 
     const { data: bookingRows, error: bookingError } = await selectQuery;
+
     if (bookingError) {
-      return NextResponse.json({ ok: false, error: "DB_SELECT_ERROR", message: bookingError.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "DB_SELECT_ERROR", message: bookingError.message },
+        { status: 500 }
+      );
     }
 
     const booking = bookingRows?.[0] as any;
@@ -111,13 +117,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const effectiveDriverId = pickFirstString([requestedDriverId, currentAssignedDriverId, currentDriverId]);
-    const nowIso = new Date().toISOString();
+    const effectiveDriverId = pickFirstString([
+      requestedDriverId,
+      currentAssignedDriverId,
+      currentDriverId,
+    ]);
+
     const updatePayload: Record<string, any> = {
       proposed_fare: proposedFare,
       passenger_fare_response: null,
       status: "fare_proposed",
-      updated_at: nowIso,
     };
 
     if (effectiveDriverId) {
@@ -125,18 +134,33 @@ export async function POST(req: Request) {
       updatePayload.assigned_driver_id = effectiveDriverId;
     }
 
-    const { data: updatedRows, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", booking.id)
-      .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response, updated_at")
-      .limit(1);
+      .eq("id", booking.id);
 
     if (updateError) {
-      return NextResponse.json({ ok: false, error: "DB_UPDATE_ERROR", message: updateError.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "DB_UPDATE_ERROR", message: updateError.message, payload: updatePayload },
+        { status: 500 }
+      );
     }
 
-    const updated = updatedRows?.[0] as any;
+    const { data: rereadRows, error: rereadError } = await supabase
+      .from("bookings")
+      .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response, updated_at")
+      .eq("id", booking.id)
+      .limit(1);
+
+    if (rereadError) {
+      return NextResponse.json(
+        { ok: false, error: "DB_REREAD_ERROR", message: rereadError.message },
+        { status: 500 }
+      );
+    }
+
+    const updated = rereadRows?.[0] as any;
+
     return NextResponse.json(
       {
         ok: true,
@@ -152,6 +176,9 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: "SERVER_ERROR", message: String(e?.message ?? e) }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "SERVER_ERROR", message: String(e?.message ?? e) },
+      { status: 500 }
+    );
   }
 }
