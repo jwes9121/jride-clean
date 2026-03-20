@@ -141,7 +141,12 @@ export async function POST(req: Request) {
 
     if (updateError) {
       return NextResponse.json(
-        { ok: false, error: "DB_UPDATE_ERROR", message: updateError.message, payload: updatePayload },
+        {
+          ok: false,
+          error: "DB_UPDATE_ERROR",
+          message: updateError.message,
+          payload: updatePayload,
+        },
         { status: 500 }
       );
     }
