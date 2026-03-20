@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +85,22 @@ export async function POST(req: Request) {
     }
 
     const booking = rows?.[0];
+const currentStatus = String(booking?.status ?? "").toLowerCase();
+const nextStatus = String(normalizedStatus ?? "").toLowerCase();
+
+// HARD GUARD: prevent illegal completion
+if (nextStatus === "completed" && currentStatus !== "on_trip") {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "INVALID_COMPLETION_FLOW",
+      message: `Cannot complete from status ${currentStatus}`,
+      bookingId: booking?.id,
+      bookingCode: booking?.booking_code,
+    },
+    { status: 400 }
+  );
+}
 
     if (!booking?.id) {
       return NextResponse.json(
@@ -133,6 +149,21 @@ const updatePayload: Record<string, any> = {
     }
 
     const updated = updatedRows?.[0];
+// ============================================
+// AUDIT LOG (NON-BLOCKING)
+// ============================================
+try {
+  await supabase.from("booking_status_audit").insert({
+    booking_id: updated.id,
+    old_status: booking.status,
+    new_status: updated.status,
+    source: "dispatch/status",
+    actor_type: "system",
+    actor_id: driverId || null,
+  });
+} catch (auditErr) {
+  console.error("BOOKING_STATUS_AUDIT_ERROR", auditErr);
+}
 
     if (!updated?.id) {
       return NextResponse.json(
