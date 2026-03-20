@@ -1,15 +1,18 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-
+import { NextRequest, NextResponse } from "next/server";
+import { createClient as createServerClient } from "@/utils/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient } from "@/utils/supabase/server";
 
+export const dynamic = "force-dynamic";
 
-function getServiceRoleClient() {
+function getAdminClientOrNull() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createAdminClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createAdminClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
+
 type Resp = {
   ok: boolean;
   code?: string;
@@ -22,15 +25,6 @@ function json(status: number, body: Resp) {
   return NextResponse.json(body, { status });
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createClient();
-
-    const url = new URL(req.url);
-const bookingCode = String(url.searchParams.get("code") || "").trim();
-
-// If code is missing, try to discover the passenger's latest ACTIVE booking via session.
-// If no session, we still return ok=true but signed_in=false (UI can fall back to "new booking" mode).
 const ACTIVE_STATUSES = [
   "pending",
   "searching",
@@ -42,94 +36,99 @@ const ACTIVE_STATUSES = [
   "on_the_way",
   "arrived",
   "enroute",
-  "on_trip"
+  "on_trip",
 ];
 
-    // Polling must NOT require auth.
-    // Booking ownership is already enforced during booking creation.
-    let b: any = null;
-let error: any = null;
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = await createServerClient();
+    const url = new URL(req.url);
+    const bookingCode = String(url.searchParams.get("code") || "").trim();
 
-if (bookingCode) {
-  const res = await supabase
-    .from("bookings")
-    .select(
-      `
-          id,
-          booking_code,
-          status,
-          driver_id,
-          assigned_driver_id,
-          created_at,
-          updated_at,
-          created_by_user_id,
-          proposed_fare,
-          passenger_fare_response
-          `
-    )
-    .eq("booking_code", bookingCode)
-    .maybeSingle();
+    let booking: any = null;
+    let error: any = null;
+    let signedIn = false;
 
-  b = res.data;
-  error = res.error;
-} else {
-  // Discover latest active booking for this signed-in passenger.
-  const { data: userData } = await supabase.auth.getUser();
-  const user = userData?.user;
+    if (bookingCode) {
+      const res = await supabase
+        .from("bookings")
+        .select(
+          [
+            "id",
+            "booking_code",
+            "status",
+            "driver_id",
+            "assigned_driver_id",
+            "created_at",
+            "updated_at",
+            "created_by_user_id",
+            "proposed_fare",
+            "passenger_fare_response",
+          ].join(",")
+        )
+        .eq("booking_code", bookingCode)
+        .maybeSingle();
 
-  if (!user) {
-    return json(200, { ok: true, signed_in: true, booking: null });
-  }
+      booking = res.data;
+      error = res.error;
+      signedIn = true;
+    } else {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData?.user;
 
-  const res = await supabase
-    .from("bookings")
-    .select(
-      `
-          id,
-          booking_code,
-          status,
-          driver_id,
-          assigned_driver_id,
-          created_at,
-          updated_at,
-          created_by_user_id,
-          proposed_fare,
-          passenger_fare_response
-          `
-    )
-    .eq("created_by_user_id", user.id)
-    .in("status", ACTIVE_STATUSES)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+      if (!user) {
+        return json(200, { ok: true, signed_in: false, booking: null });
+      }
 
-  b = res.data;
-  error = res.error;
-}
+      signedIn = true;
+      const res = await supabase
+        .from("bookings")
+        .select(
+          [
+            "id",
+            "booking_code",
+            "status",
+            "driver_id",
+            "assigned_driver_id",
+            "created_at",
+            "updated_at",
+            "created_by_user_id",
+            "proposed_fare",
+            "passenger_fare_response",
+          ].join(",")
+        )
+        .eq("created_by_user_id", user.id)
+        .in("status", ACTIVE_STATUSES)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      booking = res.data;
+      error = res.error;
+    }
 
     if (error) {
       return json(500, {
         ok: false,
         code: "DB_ERROR",
         message: String(error.message || error),
-        signed_in: true,
+        signed_in: signedIn,
       });
     }
 
-    if (!b) {
+    if (!booking) {
       return json(404, {
         ok: false,
         code: "NOT_FOUND",
         message: "Booking not found",
-        signed_in: true,
+        signed_in: signedIn,
       });
     }
 
-    // If booking exists, treat as signed in for polling purposes.
     return json(200, {
       ok: true,
-      signed_in: true,
-      booking: b,
+      signed_in: signedIn,
+      booking,
     });
   } catch (e: any) {
     return json(500, {
@@ -140,4 +139,3 @@ if (bookingCode) {
     });
   }
 }
-

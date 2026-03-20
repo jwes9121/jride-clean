@@ -1,51 +1,55 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { POST as canonicalFareProposePost } from "@/app/api/driver/fare/propose/route";
 
-function isUuidLike(s: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || "").trim());
+export const dynamic = "force-dynamic";
+
+type Body = {
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  driverId?: string | null;
+  fare?: number | string | null;
+  proposed_fare?: number | string | null;
+};
+
+function first(values: any[]): string {
+  for (const value of values) {
+    const s = String(value ?? "").trim();
+    if (s) return s;
+  }
+  return "";
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const driver_id = String(body?.driver_id || "").trim();
-    const booking_id = String(body?.booking_id || "").trim();
-    const booking_code = String(body?.booking_code || "").trim();
-    const proposed_fare = Number(body?.proposed_fare);
+    const body = (await req.json().catch(() => ({}))) as Body;
+    const payload = {
+      driver_id: first([body.driverId]),
+      booking_id: first([body.bookingId]),
+      booking_code: first([body.bookingCode]),
+      proposed_fare: body.proposed_fare ?? body.fare,
+    };
 
-    if (!driver_id || !isUuidLike(driver_id)) {
-      return NextResponse.json({ ok: false, code: "INVALID_DRIVER_ID" }, { status: 400 });
-    }
-    if ((!booking_id || !isUuidLike(booking_id)) && !booking_code) {
-      return NextResponse.json({ ok: false, code: "MISSING_BOOKING" }, { status: 400 });
-    }
-    if (!Number.isFinite(proposed_fare) || proposed_fare <= 0) {
-      return NextResponse.json({ ok: false, code: "INVALID_FARE" }, { status: 400 });
-    }
-
-    const supabase = supabaseAdmin();
-
-    let q = supabase.from("bookings").update({
-      proposed_fare,
-      status: "fare_proposed",
-      driver_id,
-      assigned_driver_id: driver_id,
-      updated_at: new Date().toISOString(),
+    const forwarded = new Request(req.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    q = booking_id ? q.eq("id", booking_id) : q.eq("booking_code", booking_code);
+    const response = await canonicalFareProposePost(forwarded);
+    const data = await response.json().catch(() => ({}));
 
-    const { data, error } = await q
-      .select("id, booking_code, status, proposed_fare, driver_id, assigned_driver_id, updated_at")
-      .limit(1);
-
-    if (error) {
-      return NextResponse.json({ ok: false, code: "DB_ERROR", message: error.message }, { status: 500 });
-    }
-
-    const row = Array.isArray(data) && data.length ? data[0] : null;
-    return NextResponse.json({ ok: true, booking: row });
+    return NextResponse.json(
+      {
+        ...data,
+        compatibility_route: "driver/fare-offer",
+        canonical_route: "driver/fare/propose",
+      },
+      { status: response.status }
+    );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, code: "SERVER_ERROR", message: String(e?.message || e) }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "FARE_OFFER_FATAL", message: String(e?.message ?? e) },
+      { status: 500 }
+    );
   }
 }

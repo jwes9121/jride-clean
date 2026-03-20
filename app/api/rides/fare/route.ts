@@ -1,51 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { POST as canonicalFareProposePost } from "@/app/api/driver/fare/propose/route";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: { persistSession: false },
-});
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({} as any));
 
-    const bookingCode: string | undefined = body?.bookingCode;
-    const fare: number | undefined = body?.fare;
+    const bookingCode = String(body?.bookingCode ?? body?.booking_code ?? "").trim();
+    const fare = Number(body?.fare ?? body?.proposed_fare);
 
-    if (!bookingCode || typeof fare !== "number") {
+    if (!bookingCode || !Number.isFinite(fare)) {
       return NextResponse.json(
         { ok: false, error: "MISSING_OR_INVALID_FIELDS" },
         { status: 400 }
       );
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("bookings")
-      .update({
+    const forwarded = new Request(req.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        booking_code: bookingCode,
         proposed_fare: fare,
-        status: "fare_proposed",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("booking_code", bookingCode)
-      .select("*")
-      .single();
+      }),
+    });
 
-    if (error) {
-      console.error("FARE_UPDATE_ERROR", error);
-      return NextResponse.json(
-        { ok: false, error: "DB_ERROR_UPDATE", details: error.message },
-        { status: 500 }
-      );
-    }
+    const response = await canonicalFareProposePost(forwarded);
+    const data = await response.json().catch(() => ({}));
 
-    return NextResponse.json({ ok: true, booking: data });
-  } catch (err: any) {
-    console.error("FARE_ROUTE_ERROR", err);
     return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR" },
+      {
+        ...data,
+        compatibility_route: "rides/fare",
+        canonical_route: "driver/fare/propose",
+      },
+      { status: response.status }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: "SERVER_ERROR", message: String(err?.message ?? err) },
       { status: 500 }
     );
   }

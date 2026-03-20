@@ -4,78 +4,150 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 
 type Body = {
-  driver_id?: string;
-  booking_id?: string;
-  booking_code?: string;
-  proposed_fare?: number;
+  driver_id?: string | null;
+  driverId?: string | null;
+  booking_id?: string | null;
+  bookingId?: string | null;
+  booking_code?: string | null;
+  bookingCode?: string | null;
+  proposed_fare?: number | string | null;
 };
+
+function pickFirstString(values: any[]): string {
+  for (const value of values) {
+    const s = String(value ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function normalizeStatus(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function parseMoney(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+}
+
+const ALLOWED_STATUSES = new Set([
+  "pending",
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "on_trip",
+]);
 
 export async function POST(req: Request) {
   try {
     const supabase = supabaseAdmin();
     const body = (await req.json().catch(() => ({}))) as Body;
 
-    const driver_id = String(body.driver_id ?? "").trim();
-    const booking_id = String(body.booking_id ?? "").trim();
-    const booking_code = String(body.booking_code ?? "").trim();
+    const requestedDriverId = pickFirstString([body.driver_id, body.driverId]);
+    const bookingId = pickFirstString([body.booking_id, body.bookingId]);
+    const bookingCode = pickFirstString([body.booking_code, body.bookingCode]);
+    const proposedFare = parseMoney(body.proposed_fare);
 
-    const proposed = Number(body.proposed_fare);
-    if (!driver_id) return NextResponse.json({ ok: false, error: "MISSING_DRIVER_ID" }, { status: 400 });
-    if (!booking_id && !booking_code) return NextResponse.json({ ok: false, error: "MISSING_BOOKING_ID" }, { status: 400 });
-    if (!Number.isFinite(proposed) || proposed < 0) return NextResponse.json({ ok: false, error: "INVALID_PROPOSED_FARE" }, { status: 400 });
-
-    // Select booking
-    let sel = supabase.from("bookings").select("id,status,driver_id,booking_code").limit(1);
-    sel = booking_id ? sel.eq("id", booking_id) : sel.eq("booking_code", booking_code);
-
-    const { data: rows, error: selErr } = await sel;
-    if (selErr) return NextResponse.json({ ok: false, error: "DB_SELECT_ERROR", message: selErr.message }, { status: 500 });
-    const b = rows?.[0];
-    if (!b?.id) return NextResponse.json({ ok: false, error: "BOOKING_NOT_FOUND" }, { status: 404 });
-
-    // Only allow proposing fare when booking is in an "assignable/active" state
-    const st = String(b.status ?? "").toLowerCase();
-    const allowed = ["assigned", "accepted", "pending", "on_the_way", "arrived", "on_trip"];
-    if (st && !allowed.includes(st)) {
-      return NextResponse.json({ ok: false, error: "NOT_ALLOWED", message: "Booking status not allowed for fare proposal.", status: st }, { status: 409 });
+    if (!bookingId && !bookingCode) {
+      return NextResponse.json({ ok: false, error: "MISSING_BOOKING_ID" }, { status: 400 });
     }
 
-    // Step 1: always save fare payload first.
-    const safePayload = {
-      driver_id,
-      proposed_fare: proposed,
-      updated_at: new Date().toISOString(),
+    if (!Number.isFinite(proposedFare) || proposedFare < 0) {
+      return NextResponse.json({ ok: false, error: "INVALID_PROPOSED_FARE" }, { status: 400 });
+    }
+
+    let selectQuery = supabase
+      .from("bookings")
+      .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response")
+      .limit(1);
+
+    selectQuery = bookingId ? selectQuery.eq("id", bookingId) : selectQuery.eq("booking_code", bookingCode);
+
+    const { data: bookingRows, error: bookingError } = await selectQuery;
+    if (bookingError) {
+      return NextResponse.json({ ok: false, error: "DB_SELECT_ERROR", message: bookingError.message }, { status: 500 });
+    }
+
+    const booking = bookingRows?.[0] as any;
+    if (!booking?.id) {
+      return NextResponse.json({ ok: false, error: "BOOKING_NOT_FOUND" }, { status: 404 });
+    }
+
+    const currentStatus = normalizeStatus(booking.status);
+    if (currentStatus && !ALLOWED_STATUSES.has(currentStatus)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "NOT_ALLOWED",
+          message: "Booking status not allowed for fare proposal.",
+          status: currentStatus,
+        },
+        { status: 409 }
+      );
+    }
+
+    const currentDriverId = pickFirstString([booking.driver_id]);
+    const currentAssignedDriverId = pickFirstString([booking.assigned_driver_id]);
+
+    if (
+      requestedDriverId &&
+      currentAssignedDriverId &&
+      requestedDriverId !== currentAssignedDriverId &&
+      currentStatus !== "pending"
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_MISMATCH",
+          message: "Requested driver does not match the booking's assigned driver.",
+          booking_driver_id: currentDriverId || null,
+          assigned_driver_id: currentAssignedDriverId || null,
+          requested_driver_id: requestedDriverId,
+        },
+        { status: 409 }
+      );
+    }
+
+    const effectiveDriverId = pickFirstString([requestedDriverId, currentAssignedDriverId, currentDriverId]);
+    const nowIso = new Date().toISOString();
+    const updatePayload: Record<string, any> = {
+      proposed_fare: proposedFare,
+      passenger_fare_response: null,
+      status: "fare_proposed",
+      updated_at: nowIso,
     };
 
-    const { error: upErr } = await supabase
-      .from("bookings")
-      .update(safePayload)
-      .eq("id", b.id);
-
-    if (upErr) {
-      return NextResponse.json({ ok: false, error: "DB_UPDATE_ERROR", message: upErr.message }, { status: 500 });
+    if (effectiveDriverId) {
+      updatePayload.driver_id = effectiveDriverId;
+      updatePayload.assigned_driver_id = effectiveDriverId;
     }
 
-    // Step 2: try status transition separately so fare still saves even if DB status constraint blocks it.
-    let statusWarning: string | null = null;
-
-    const { error: statusErr } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("bookings")
-      .update({ status: "fare_proposed" })
-      .eq("id", b.id);
+      .update(updatePayload)
+      .eq("id", booking.id)
+      .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response, updated_at")
+      .limit(1);
 
-    if (statusErr) {
-      console.warn("FARE_PROPOSE_STATUS_BLOCKED", statusErr.message);
-      statusWarning = "STATUS_UPDATE_BLOCKED: " + statusErr.message;
+    if (updateError) {
+      return NextResponse.json({ ok: false, error: "DB_UPDATE_ERROR", message: updateError.message }, { status: 500 });
     }
 
+    const updated = updatedRows?.[0] as any;
     return NextResponse.json(
       {
         ok: true,
-        booking_id: b.id,
-        booking_code: b.booking_code,
-        proposed_fare: proposed,
-        statusWarning,
+        booking_id: updated?.id ?? booking.id,
+        booking_code: updated?.booking_code ?? booking.booking_code,
+        driver_id: updated?.driver_id ?? effectiveDriverId ?? null,
+        assigned_driver_id: updated?.assigned_driver_id ?? effectiveDriverId ?? null,
+        proposed_fare: updated?.proposed_fare ?? proposedFare,
+        passenger_fare_response: updated?.passenger_fare_response ?? null,
+        status: updated?.status ?? "fare_proposed",
+        canonical_route: "driver/fare/propose",
       },
       { status: 200 }
     );

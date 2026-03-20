@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { POST as canonicalFareProposePost } from "@/app/api/driver/fare/propose/route";
 
 export const dynamic = "force-dynamic";
 
@@ -11,56 +11,70 @@ type Body = {
   convenienceFee?: number | string | null;
 };
 
-function num(x: any, d: number) {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : d;
+function pickString(values: any[]): string {
+  for (const value of values) {
+    const s = String(value ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function toNumber(value: any, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export async function POST(req: Request) {
   try {
-    const supabase = supabaseAdmin();
     const body = (await req.json().catch(() => ({}))) as Body;
 
-    const bookingId = String(body.bookingId ?? "").trim();
-    const bookingCode = String(body.bookingCode ?? "").trim();
-    const driverId = String(body.driverId ?? "").trim();
+    const bookingId = pickString([body.bookingId]);
+    const bookingCode = pickString([body.bookingCode]);
+    const driverId = pickString([body.driverId]);
+    const baseFare = toNumber(body.fare, NaN);
 
-    if (!driverId) return NextResponse.json({ ok: false, code: "MISSING_DRIVER_ID" }, { status: 400 });
+    if (!driverId) {
+      return NextResponse.json({ ok: false, code: "MISSING_DRIVER_ID" }, { status: 400 });
+    }
     if (!bookingId && !bookingCode) {
       return NextResponse.json({ ok: false, code: "MISSING_BOOKING_IDENTIFIER" }, { status: 400 });
     }
-
-    const baseFare = num(body.fare, NaN);
     if (!Number.isFinite(baseFare) || baseFare <= 0) {
       return NextResponse.json({ ok: false, code: "INVALID_FARE" }, { status: 400 });
     }
 
-    const conv = num(body.convenienceFee, 15);
-    const total = Math.round((baseFare + conv) * 100) / 100;
+    const convenienceFee = toNumber(body.convenienceFee, 15);
+    const totalFare = Math.round((baseFare + convenienceFee) * 100) / 100;
 
-    let q = supabase.from("bookings").update({
-      proposed_fare: total,
-      passenger_fare_response: null,
-      driver_id: driverId,
-      assigned_driver_id: driverId,
-      assigned_at: new Date().toISOString(),
-      status: "fare_proposed",
-      updated_at: new Date().toISOString(),
+    const forwarded = new Request(req.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        driver_id: driverId,
+        booking_id: bookingId,
+        booking_code: bookingCode,
+        proposed_fare: totalFare,
+      }),
     });
 
-    q = bookingId ? q.eq("id", bookingId) : q.eq("booking_code", bookingCode);
+    const response = await canonicalFareProposePost(forwarded);
+    const data = await response.json().catch(() => ({}));
 
-    const { data, error } = await q
-      .select("id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
-      .limit(1);
-
-    if (error) {
-      return NextResponse.json({ ok: false, code: "FARE_OFFER_DB_ERROR", message: error.message }, { status: 500 });
-    }
-
-    const row = Array.isArray(data) && data.length ? data[0] : null;
-    return NextResponse.json({ ok: true, booking: row, total_fare: total, base_fare: baseFare, convenience_fee: conv });
+    return NextResponse.json(
+      {
+        ...data,
+        total_fare: totalFare,
+        base_fare: baseFare,
+        convenience_fee: convenienceFee,
+        compatibility_route: "dispatch/fare/offer",
+        canonical_route: "driver/fare/propose",
+      },
+      { status: response.status }
+    );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, code: "FARE_OFFER_FATAL", message: String(e?.message ?? e) }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, code: "FARE_OFFER_FATAL", message: String(e?.message ?? e) },
+      { status: 500 }
+    );
   }
 }
