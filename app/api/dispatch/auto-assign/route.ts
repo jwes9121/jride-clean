@@ -3,7 +3,7 @@ import supabase from "@/lib/supabaseClient";
 
 // Haversine distance in km between two lat/lng pairs
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
@@ -26,26 +26,22 @@ function computeEmergencyPickupFeePhp(distKm: number) {
   const FREE_KM = 1.5;
   if (!Number.isFinite(distKm) || distKm <= FREE_KM) return 0;
 
-  // Tiered (tunable later)
   if (distKm <= 2.0) return 20;
   if (distKm <= 2.5) return 40;
   if (distKm <= 3.0) return 50;
 
-  // >3.0km: 50 + 10 per additional 0.5km (rounded up)
   const extraKm = distKm - 3.0;
   const steps = Math.ceil(extraKm / 0.5);
   return 50 + steps * 10;
 }
 
-// Best-effort update without assuming columns exist.
-// We'll try a few payload shapes; if a column is missing, we fall back.
+// Best-effort update for OPTIONAL fields only.
+// Do NOT use this for lifecycle-critical fields like status/assignment.
 async function updateBookingBestEffort(bookingId: string, base: any, extras: any) {
   const attempts: any[] = [];
 
-  // Attempt 1: include everything
   attempts.push({ ...base, ...extras });
 
-  // Attempt 2: remove common distance/fee fields one by one (if schema differs)
   const dropKeys = [
     "pickup_distance_km",
     "pickup_distance",
@@ -65,22 +61,28 @@ async function updateBookingBestEffort(bookingId: string, base: any, extras: any
     }
   }
 
-  // Final attempt: base only
   attempts.push({ ...base });
 
   for (const payload of attempts) {
     const { error } = await supabase.from("bookings").update(payload).eq("id", bookingId);
     if (!error) return { ok: true, payloadUsed: payload };
+
     const msg = String((error as any)?.message ?? "");
-    // If error is NOT missing-column related, stop and surface it.
     const missingCol =
       msg.toLowerCase().includes("does not exist") ||
       msg.toLowerCase().includes("column") ||
       msg.toLowerCase().includes("unknown column");
-    if (!missingCol) return { ok: false, error: msg };
-    // else keep trying with fewer fields
+
+    if (!missingCol) {
+      return { ok: false, error: msg };
+    }
   }
-  return { ok: true, payloadUsed: base, warning: "Columns for distance/fee not found; persisted base update only." };
+
+  return {
+    ok: true,
+    payloadUsed: base,
+    warning: "Columns for distance/fee not found; persisted base update only.",
+  };
 }
 
 export async function POST(req: Request) {
@@ -100,32 +102,31 @@ export async function POST(req: Request) {
     let bookingTown = "";
 
     try {
-      const { data: bk, error: bkErr } = await supabase
+      const { data: bk, error: bookingReadError } = await supabase
         .from("bookings")
         .select("*")
         .eq("id", bookingId)
         .maybeSingle();
 
-      if (!bkErr && bk) {
-        // @ts-ignore
-        if (!isEmergency && (bk as any)?.is_emergency === true) isEmergency = true;
+      if (!bookingReadError && bk) {
+        if ((bk as any)?.is_emergency === true) {
+          isEmergency = true;
+        }
 
         const candidatesTown: any[] = [
-          // @ts-ignore
           (bk as any)?.pickup_town,
-          // @ts-ignore
           (bk as any)?.town,
-          // @ts-ignore
           (bk as any)?.passenger_town,
-          // @ts-ignore
           (bk as any)?.pickupTown,
-          // @ts-ignore
           (bk as any)?.pickup_town_name,
         ];
 
         for (const t of candidatesTown) {
           const s = str(t);
-          if (s) { bookingTown = s; break; }
+          if (s) {
+            bookingTown = s;
+            break;
+          }
         }
       }
     } catch {
@@ -134,13 +135,13 @@ export async function POST(req: Request) {
     // ===== END STEP 5B =====
 
     // 1) Load driver locations
-    const { data: driverRows, error: locError } = await supabase
+    const { data: driverRows, error: driverLocationsError } = await supabase
       .from("driver_locations")
       .select("driver_id, lat, lng, status, updated_at, town");
 
-    if (locError) {
-      console.error("driver_locations error", locError);
-      throw locError;
+    if (driverLocationsError) {
+      console.error("driver_locations error", driverLocationsError);
+      throw driverLocationsError;
     }
 
     if (!driverRows || driverRows.length === 0) {
@@ -159,7 +160,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "NO_AVAILABLE_DRIVER" }, { status: 400 });
     }
 
-    // 2.5) STEP 5B Town gate (normal mode only)
+    // 2.5) Town gate (normal mode only)
     let filteredCandidates = candidates;
     if (!isEmergency && bookingTown) {
       const bt = bookingTown.toLowerCase();
@@ -186,17 +187,36 @@ export async function POST(req: Request) {
     // ===== STEP 5C: pickup fee (emergency only) =====
     const pickup_distance_km = Number(bestDistanceKm);
     const free_pickup_km = 1.5;
-    const emergency_pickup_fee_php = isEmergency ? computeEmergencyPickupFeePhp(pickup_distance_km) : 0;
+    const emergency_pickup_fee_php = isEmergency
+      ? computeEmergencyPickupFeePhp(pickup_distance_km)
+      : 0;
     // ===== END STEP 5C =====
 
-    // 4) Update booking with assigned driver (best-effort persist fee/distance)
-    const baseUpdate = {
+    // 4) CRITICAL WRITE: assignment + lifecycle state must be atomic
+    const criticalUpdate = {
       assigned_driver_id: best.driver_id,
+      driver_id: best.driver_id,
       status: "assigned",
     };
 
-    const extraUpdate = {
-      // Attempt common column names; best-effort helper will drop missing ones.
+    const { error: criticalWriteError } = await supabase
+      .from("bookings")
+      .update(criticalUpdate)
+      .eq("id", bookingId);
+
+    if (criticalWriteError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ASSIGN_FAILED",
+          details: criticalWriteError.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    // 5) OPTIONAL write: persist distance/fee fields best-effort only
+    const optionalExtras = {
       pickup_distance_km,
       pickup_distance: pickup_distance_km,
       pickup_distance_m: Math.round(pickup_distance_km * 1000),
@@ -206,14 +226,15 @@ export async function POST(req: Request) {
       is_emergency: isEmergency,
     };
 
-    const upd = await updateBookingBestEffort(bookingId, baseUpdate, extraUpdate);
-    if (!upd.ok) {
-      return NextResponse.json({ ok: false, error: upd.error || "UPDATE_FAILED" }, { status: 500 });
+    const optionalUpdateResult = await updateBookingBestEffort(bookingId, {}, optionalExtras);
+    if (!optionalUpdateResult.ok) {
+      console.warn("[auto-assign] optional booking update failed", optionalUpdateResult.error);
     }
 
     return NextResponse.json({
       ok: true,
       assignedDriverId: best.driver_id,
+      status: "assigned",
 
       // STEP 5B/5C info for UI
       is_emergency: isEmergency,
@@ -226,12 +247,15 @@ export async function POST(req: Request) {
       candidates_total: candidates.length,
       candidates_used: filteredCandidates.length,
 
-      // Best-effort persistence note
-      persisted: upd.payloadUsed ? true : true,
-      persistence_warning: (upd as any)?.warning || null,
+      // Optional persistence note
+      persisted: true,
+      persistence_warning: (optionalUpdateResult as any)?.warning || null,
     });
   } catch (err: any) {
     console.error("auto-assign error", err);
-    return NextResponse.json({ error: err?.message ?? "SERVER_ERROR" }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message ?? "SERVER_ERROR" },
+      { status: 500 }
+    );
   }
 }
