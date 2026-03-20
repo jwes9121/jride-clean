@@ -106,40 +106,59 @@ export default function WalletAdjustAdminPage() {
     }
   }
 
-  async function applyDriverAdjust() {
-    setBusy(true);
-    setResp(null);
+async function applyDriverAdjust() {
+  setBusy(true);
+  setResp(null);
 
-    const id = driverId.trim();
-    const rawAmt = toNum(amount);
+  const id = driverId.trim();
+  const rawAmt = toNum(amount);
 
-    try {
-      const payload: AnyObj = {
-        kind: "driver_adjust",
-        driver_id: id,
-        amount: rawAmt,
-        reason_mode: reasonMode,
-        reason: reason.trim() || "manual_adjust",
-        created_by: createdBy.trim() || "admin",
-        method: "gcash",
-        external_ref: externalRef.trim() || receiptRef.trim() || null,
-        request_id: null,
-      };
+  try {
+    let finalReceipt = receiptRef.trim();
 
-      const res = await fetch("/api/wallet/adjust", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
+    if (!finalReceipt) {
+      const d = new Date();
+      const yy = d.getFullYear().toString();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mi = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      const rand = Math.random().toString(16).slice(2, 6);
 
-      const json = await res.json();
-      setResp(json);
-    } catch (e: any) {
-      setResp({ ok: false, error: e?.message || String(e) });
-    } finally {
-      setBusy(false);
+      finalReceipt = `JRIDE-WALLET-${yy}${mm}${dd}-${hh}${mi}${ss}-${rand}`;
+
+      setReceiptRef(finalReceipt);
+      if (!externalRef.trim()) setExternalRef(finalReceipt);
     }
+
+    const payload: AnyObj = {
+      kind: "driver_adjust",
+      driver_id: id,
+      amount: rawAmt,
+      reason_mode: reasonMode,
+      reason: reason.trim() || "manual_adjust",
+      created_by: createdBy.trim() || "admin",
+      method: "gcash",
+      external_ref: externalRef.trim() || finalReceipt,
+      request_id: null,
+    };
+
+    const res = await fetch("/api/wallet/adjust", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    setResp(json);
+
+  } catch (e: any) {
+    setResp({ ok: false, error: e?.message || String(e) });
+  } finally {
+    setBusy(false);
   }
+}
 
   return (
     <div className="p-6">
