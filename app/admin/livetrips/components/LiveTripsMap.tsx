@@ -174,6 +174,14 @@ function distanceMeters(a: LngLatTuple, b: LngLatTuple): number {
     );
   return R * c;
 }
+// LIVETRIPSMAP_STABLE_CAMERA_AND_DRIVER_INITIALS_V3
+function getDriverInitials(name?: string): string {
+  const s = String(name ?? "").trim();
+  if (!s) return "?";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 /**
  * Road-following route via Mapbox Directions.
@@ -254,6 +262,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const routeIdsRef = useRef<Set<string>>(new Set());
   const standaloneDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const lastFollowRef = useRef<LngLatTuple | null>(null);
+  const autoFollowedSelectionRef = useRef<string | null>(null);
 
   // Audio for problem-trip alerts
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -693,16 +702,27 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const isOnline = ["available", "online", "idle", "assigned", "on_the_way", "on_trip"].includes(statusLower);
 
       let marker = standaloneDriverMarkersRef.current[id];
+      const initials = getDriverInitials((d as any).name);
+
       if (!marker) {
         const el = document.createElement("div");
-        el.style.width = "18px";
-        el.style.height = "18px";
+        el.style.width = "22px";
+        el.style.height = "22px";
         el.style.borderRadius = "9999px";
         el.style.border = "2px solid #ffffff";
         el.style.boxShadow = "0 1px 4px rgba(0,0,0,0.35)";
         el.style.transform = "translate(-50%, -50%)";
         el.style.cursor = "pointer";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.fontSize = "10px";
+        el.style.fontWeight = "700";
+        el.style.lineHeight = "1";
+        el.style.color = "#ffffff";
+        el.style.userSelect = "none";
         el.style.backgroundColor = isStale ? "#94a3b8" : isOnline ? "#2563eb" : "#64748b";
+        el.textContent = initials;
         el.title = [
           (d as any).name ?? id,
           (d as any).status ?? "",
@@ -714,6 +734,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         marker.setLngLat([lng, lat]);
         const el = marker.getElement();
         el.style.backgroundColor = isStale ? "#94a3b8" : isOnline ? "#2563eb" : "#64748b";
+        el.textContent = initials;
         el.title = [
           (d as any).name ?? id,
           (d as any).status ?? "",
@@ -732,10 +753,19 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
     standaloneDriverMarkersRef.current = nextStandalone;
   }, [drivers, mapReady]);
-  // ===== AUTO-FOLLOW =====
+    // ===== AUTO-FOLLOW =====
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedTripId) return;
+    if (!map) return;
+
+    if (!selectedTripId) {
+      autoFollowedSelectionRef.current = null;
+      return;
+    }
+
+    if (autoFollowedSelectionRef.current === selectedTripId) {
+      return;
+    }
 
     const raw = trips.find(
       (t: any) => String((t as any).id ?? (t as any).bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
@@ -749,12 +779,8 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     const target: LngLatTuple | null = driverReal ?? drop ?? pickup ?? null;
     if (!target) return;
 
-    if (lastFollowRef.current) {
-      const dist = distanceMeters(lastFollowRef.current, target);
-      if (dist < 30) return;
-    }
-
     lastFollowRef.current = target;
+    autoFollowedSelectionRef.current = selectedTripId;
 
     map.flyTo({
       center: target,
@@ -762,7 +788,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       speed: 1.2,
       essential: true,
     });
-  }, [selectedTripId, trips]);
+    }, [selectedTripId, trips]);
 
   // ===== RENDER =====
   return (
