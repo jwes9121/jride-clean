@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,12 @@ const LIVETRIPS_QUARANTINED_BOOKING_CODES = new Set<string>([
   "JR-UI-20260318082937-9869",
   "JR-UI-20260318055904-5903",
 ]);
+const LIVETRIPS_ALLOWED_TRIP_STATUSES = new Set<string>([
+  "requested",
+  "assigned",
+  "on_the_way",
+]);
+
 
 function normalizeTrip(row: Json): Json {
   const r = normalizeKeys(row);
@@ -36,7 +42,7 @@ function normalizeTrip(row: Json): Json {
     pickup_label: r.pickup_label ?? r.from_label ?? r.fromLabel ?? null,
     dropoff_label: r.dropoff_label ?? r.to_label ?? r.toLabel ?? null,
     zone: r.zone ?? r.town ?? r.zone_name ?? null,
-    status: r.status ?? "pending",
+    status: r.status ?? null,
   };
 }
 
@@ -46,11 +52,18 @@ function excludeQuarantinedTrips(rows: Json[]): Json[] {
     return !LIVETRIPS_QUARANTINED_BOOKING_CODES.has(code);
   });
 }
+function filterDispatchEligibleTrips(rows: Json[]): Json[] {
+  return rows.filter((row: any) => {
+    const status = String(row?.status ?? "").trim().toLowerCase();
+    return LIVETRIPS_ALLOWED_TRIP_STATUSES.has(status);
+  });
+}
 
 async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
+    .in("status", ["requested", "assigned", "on_the_way"])
     .order("updated_at", { ascending: false, nullsFirst: false })
     .limit(300);
 
@@ -65,7 +78,9 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
 
   const rows = Array.isArray(data) ? data : [];
   const filteredRows = excludeQuarantinedTrips(rows);
-  const normalizedTrips = filteredRows.map((row: any) => normalizeTrip(row));
+  const normalizedTrips = filterDispatchEligibleTrips(
+    filteredRows.map((row: any) => normalizeTrip(row))
+  );
   const usedColumns = rows.length ? Object.keys(normalizeKeys(rows[0])) : ([] as string[]);
 
   return {
