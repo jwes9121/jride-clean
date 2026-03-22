@@ -21,116 +21,109 @@ type BookingRow = {
 const ASSIGN_FRESHNESS_SECONDS = 10;
 const SCAN_LIMIT = 5;
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json().catch(() => ({}));
-    const supabase = supabaseAdmin();
-
-    // Mode: scan waiting bookings
-    if (body?.mode === "scan_pending") {
-      const { data: bookings, error } = await supabase
-        .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, status, driver_id")
-        .eq("status", "requested")
-        .is("driver_id", null)
-        .order("created_at", { ascending: true })
-        .limit(SCAN_LIMIT);
-
-      if (error) {
-        return NextResponse.json(
-          { ok: false, error: "BOOKINGS_SCAN_FAILED", message: error.message },
-          { status: 500 }
-        );
-      }
-
-      const results: Array<{
-        booking_id: string;
-        booking_code: string | null;
-        assigned: boolean;
-        driver_id?: string | null;
-        reason?: string;
-      }> = [];
-
-      for (const booking of (bookings || []) as BookingRow[]) {
-        const result = await matchSingle(supabase, booking);
-        results.push({
-          booking_id: booking.id,
-          booking_code: booking.booking_code ?? null,
-          assigned: !!result.assigned,
-          driver_id: result.driver_id ?? null,
-          reason: result.reason,
-        });
-      }
-
-      return NextResponse.json({
-        ok: true,
-        mode: "scan_pending",
-        scanned: bookings?.length || 0,
-        results,
-      });
-    }
-
-    // Mode: single booking
-    const bookingId = String(body?.bookingId || "").trim();
-    if (!bookingId) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_ID" },
-        { status: 400 }
-      );
-    }
-
-    const { data: booking, error: bookingError } = await supabase
-      .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, status, driver_id")
-      .eq("id", bookingId)
-      .single();
-
-    if (bookingError) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_READ_FAILED", message: bookingError.message },
-        { status: 500 }
-      );
-    }
-
-    if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404 }
-      );
-    }
-
-    const result = await matchSingle(supabase, booking as BookingRow);
-
-    return NextResponse.json({
-      ok: true,
-      mode: "single",
-      result,
-    });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "AUTO_ASSIGN_FAILED", message: String(e?.message || e) },
-      { status: 500 }
-    );
-  }
+function norm(v: any): string {
+  return String(v ?? "").trim().toLowerCase();
 }
 
-async function matchSingle(supabase: any, booking: BookingRow): Promise<{
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+function json(body: any, status = 200) {
+  return NextResponse.json(body, { status });
+}
+
+function modeNormalized(v: any): "scan_requested" | "single" | "unknown" {
+  const m = norm(v);
+  if (m === "scan_requested") return "scan_requested";
+  if (m === "scan_pending") return "scan_requested"; // legacy alias
+  if (m === "single") return "single";
+  return "unknown";
+}
+
+function buildBaseDebug(extra?: Record<string, any>) {
+  return {
+    freshness_seconds_threshold: ASSIGN_FRESHNESS_SECONDS,
+    scan_limit: SCAN_LIMIT,
+    timestamp: isoNow(),
+    ...(extra || {}),
+  };
+}
+
+function compareDrivers(a: DriverRow, b: DriverRow): number {
+  const aMs = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+  const bMs = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+
+  if (aMs !== bMs) return bMs - aMs; // freshest first
+  return String(a.driver_id || "").localeCompare(String(b.driver_id || ""));
+}
+
+type MatchDebug = {
+  booking_id: string | null;
+  booking_code: string | null;
+  booking_status_seen: string | null;
+  booking_driver_id_seen: string | null;
+  scanned_driver_count: number;
+  rejected_wrong_status_count: number;
+  rejected_missing_updated_at_count: number;
+  rejected_invalid_updated_at_count: number;
+  rejected_stale_count: number;
+  eligible_count: number;
+  chosen_driver_id: string | null;
+  freshness_seconds_threshold: number;
+};
+
+async function matchSingle(
+  supabase: any,
+  booking: BookingRow
+): Promise<{
   assigned: boolean;
   driver_id?: string | null;
   booking_code?: string | null;
   reason?: string;
+  decision: "assigned" | "skipped" | "blocked";
+  debug: MatchDebug;
 }> {
+  const debug: MatchDebug = {
+    booking_id: booking?.id ?? null,
+    booking_code: booking?.booking_code ?? null,
+    booking_status_seen: booking?.status ? String(booking.status) : null,
+    booking_driver_id_seen: booking?.driver_id ? String(booking.driver_id) : null,
+    scanned_driver_count: 0,
+    rejected_wrong_status_count: 0,
+    rejected_missing_updated_at_count: 0,
+    rejected_invalid_updated_at_count: 0,
+    rejected_stale_count: 0,
+    eligible_count: 0,
+    chosen_driver_id: null,
+    freshness_seconds_threshold: ASSIGN_FRESHNESS_SECONDS,
+  };
+
   if (!booking?.id) {
-    return { assigned: false, reason: "INVALID_BOOKING" };
+    return {
+      assigned: false,
+      reason: "INVALID_BOOKING",
+      decision: "blocked",
+      debug,
+    };
   }
 
-  // Only assign waiting bookings with no driver
-  if (String(booking.status || "").trim().toLowerCase() !== "requested") {
-    return { assigned: false, reason: "BOOKING_NOT_REQUESTED" };
+  if (norm(booking.status) !== "requested") {
+    return {
+      assigned: false,
+      reason: "BOOKING_NOT_REQUESTED",
+      decision: "blocked",
+      debug,
+    };
   }
 
   if (booking.driver_id) {
-    return { assigned: false, reason: "BOOKING_ALREADY_ASSIGNED" };
+    return {
+      assigned: false,
+      reason: "BOOKING_ALREADY_ASSIGNED",
+      decision: "blocked",
+      debug,
+    };
   }
 
   const nowMs = Date.now();
@@ -140,39 +133,63 @@ async function matchSingle(supabase: any, booking: BookingRow): Promise<{
     .select("driver_id, status, updated_at, lat, lng");
 
   if (driversError) {
-    return { assigned: false, reason: "DRIVER_SCAN_FAILED" };
+    return {
+      assigned: false,
+      reason: "DRIVER_SCAN_FAILED",
+      decision: "blocked",
+      debug,
+    };
   }
 
-  const eligible = ((drivers || []) as DriverRow[]).filter((d: DriverRow) => {
-    // Hard block if not explicitly online
-    if (String(d.status || "").trim().toLowerCase() !== "online") {
-      return false;
+  const allDrivers = (drivers || []) as DriverRow[];
+  debug.scanned_driver_count = allDrivers.length;
+
+  const eligible: DriverRow[] = [];
+
+  for (const d of allDrivers) {
+    const st = norm(d.status);
+
+    if (st !== "online") {
+      debug.rejected_wrong_status_count++;
+      continue;
     }
 
-    // Hard block if no recent ping
     if (!d.updated_at) {
-      return false;
+      debug.rejected_missing_updated_at_count++;
+      continue;
     }
 
     const updatedMs = new Date(d.updated_at).getTime();
     if (!Number.isFinite(updatedMs)) {
-      return false;
+      debug.rejected_invalid_updated_at_count++;
+      continue;
     }
 
     const ageSec = (nowMs - updatedMs) / 1000;
     if (ageSec > ASSIGN_FRESHNESS_SECONDS) {
-      return false;
+      debug.rejected_stale_count++;
+      continue;
     }
 
-    return true;
-  });
-
-  if (eligible.length === 0) {
-    return { assigned: false, reason: "NO_ELIGIBLE_DRIVERS" };
+    eligible.push(d);
   }
 
-  // Keep current simple behavior: first eligible driver
+  eligible.sort(compareDrivers);
+  debug.eligible_count = eligible.length;
+
+  if (eligible.length === 0) {
+    return {
+      assigned: false,
+      reason: "NO_ELIGIBLE_DRIVERS",
+      decision: "skipped",
+      debug,
+    };
+  }
+
   const chosen = eligible[0];
+  debug.chosen_driver_id = chosen.driver_id;
+
+  const nowIso = isoNow();
 
   const { error: updateError } = await supabase
     .from("bookings")
@@ -180,20 +197,162 @@ async function matchSingle(supabase: any, booking: BookingRow): Promise<{
       driver_id: chosen.driver_id,
       assigned_driver_id: chosen.driver_id,
       status: "assigned",
-      assigned_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      assigned_at: nowIso,
+      updated_at: nowIso,
     })
     .eq("id", booking.id)
     .eq("status", "requested")
     .is("driver_id", null);
 
   if (updateError) {
-    return { assigned: false, reason: "BOOKING_UPDATE_FAILED" };
+    return {
+      assigned: false,
+      reason: "BOOKING_UPDATE_FAILED",
+      decision: "blocked",
+      debug,
+    };
   }
 
   return {
     assigned: true,
     driver_id: chosen.driver_id,
     booking_code: booking.booking_code ?? null,
+    decision: "assigned",
+    debug,
   };
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const supabase = supabaseAdmin();
+
+    const mode = modeNormalized(body?.mode);
+
+    if (mode === "scan_requested") {
+      const { data: bookings, error } = await supabase
+        .from("bookings")
+        .select("id, booking_code, pickup_lat, pickup_lng, status, driver_id")
+        .eq("status", "requested")
+        .is("driver_id", null)
+        .order("created_at", { ascending: true })
+        .limit(SCAN_LIMIT);
+
+      if (error) {
+        return json({
+          ok: false,
+          error: "BOOKINGS_SCAN_FAILED",
+          message: error.message,
+          mode: "scan_requested",
+          debug: buildBaseDebug(),
+        }, 500);
+      }
+
+      const scanRows = (bookings || []) as BookingRow[];
+      const results: Array<{
+        booking_id: string;
+        booking_code: string | null;
+        assigned: boolean;
+        decision: "assigned" | "skipped" | "blocked";
+        driver_id: string | null;
+        reason: string | null;
+        debug: MatchDebug;
+      }> = [];
+
+      let assigned_count = 0;
+      let skipped_count = 0;
+      let blocked_count = 0;
+
+      for (const booking of scanRows) {
+        const result = await matchSingle(supabase, booking);
+
+        if (result.decision === "assigned") assigned_count++;
+        else if (result.decision === "skipped") skipped_count++;
+        else blocked_count++;
+
+        results.push({
+          booking_id: booking.id,
+          booking_code: booking.booking_code ?? null,
+          assigned: !!result.assigned,
+          decision: result.decision,
+          driver_id: result.driver_id ?? null,
+          reason: result.reason ?? null,
+          debug: result.debug,
+        });
+      }
+
+      return json({
+        ok: true,
+        mode: "scan_requested",
+        accepted_legacy_mode_name: norm(body?.mode) === "scan_pending",
+        scanned_bookings_count: scanRows.length,
+        assigned_count,
+        skipped_count,
+        blocked_count,
+        results,
+        debug: buildBaseDebug({
+          booking_status_target: "requested",
+          booking_driver_target: "driver_id is null",
+        }),
+      });
+    }
+
+    const bookingId = String(body?.bookingId || "").trim();
+    if (!bookingId) {
+      return json({
+        ok: false,
+        error: "MISSING_BOOKING_ID",
+        mode: "single",
+        debug: buildBaseDebug(),
+      }, 400);
+    }
+
+    const { data: booking, error: bookingError } = await supabase
+      .from("bookings")
+      .select("id, booking_code, pickup_lat, pickup_lng, status, driver_id")
+      .eq("id", bookingId)
+      .single();
+
+    if (bookingError) {
+      return json({
+        ok: false,
+        error: "BOOKING_READ_FAILED",
+        message: bookingError.message,
+        mode: "single",
+        booking_id: bookingId,
+        debug: buildBaseDebug(),
+      }, 500);
+    }
+
+    if (!booking) {
+      return json({
+        ok: false,
+        error: "BOOKING_NOT_FOUND",
+        mode: "single",
+        booking_id: bookingId,
+        debug: buildBaseDebug(),
+      }, 404);
+    }
+
+    const result = await matchSingle(supabase, booking as BookingRow);
+
+    return json({
+      ok: true,
+      mode: "single",
+      booking_id: booking.id,
+      booking_code: booking.booking_code ?? null,
+      assigned: !!result.assigned,
+      decision: result.decision,
+      driver_id: result.driver_id ?? null,
+      reason: result.reason ?? null,
+      debug: result.debug,
+    });
+  } catch (e: any) {
+    return json({
+      ok: false,
+      error: "AUTO_ASSIGN_FAILED",
+      message: String(e?.message || e),
+      debug: buildBaseDebug(),
+    }, 500);
+  }
 }
