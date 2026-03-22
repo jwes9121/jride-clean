@@ -1,260 +1,88 @@
 import { NextResponse } from "next/server";
-import supabase from "@/lib/supabaseClient";
-
-// AUTO_ASSIGN_ONLINE_FRESH_ONLY_V1
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function str(x: any) {
-  return String(x ?? "").trim();
-}
-
-function computeEmergencyPickupFeePhp(distKm: number) {
-  const FREE_KM = 1.5;
-  if (!Number.isFinite(distKm) || distKm <= FREE_KM) return 0;
-  if (distKm <= 2.0) return 20;
-  if (distKm <= 2.5) return 40;
-  if (distKm <= 3.0) return 50;
-
-  const extraKm = distKm - 3.0;
-  const steps = Math.ceil(extraKm / 0.5);
-  return 50 + steps * 10;
-}
-
-function isFresh(updatedAt: any, maxAgeSeconds: number): boolean {
-  const t = new Date(String(updatedAt ?? "")).getTime();
-  if (!Number.isFinite(t)) return false;
-  const ageMs = Date.now() - t;
-  return ageMs >= 0 && ageMs <= maxAgeSeconds * 1000;
-}
-
-async function updateBookingBestEffort(bookingId: string, base: any, extras: any) {
-  const attempts: any[] = [];
-  attempts.push({ ...base, ...extras });
-
-  const dropKeys = [
-    "pickup_distance_km",
-    "pickup_distance",
-    "pickup_distance_m",
-    "pickup_surcharge_php",
-    "pickup_extra_fee_php",
-    "emergency_pickup_fee_php",
-  ];
-
-  for (let i = 0; i < dropKeys.length; i++) {
-    const k = dropKeys[i];
-    const prev = attempts[attempts.length - 1];
-    if (prev && Object.prototype.hasOwnProperty.call(prev, k)) {
-      const next: any = { ...prev };
-      delete next[k];
-      attempts.push(next);
-    }
-  }
-
-  attempts.push({ ...base });
-
-  for (const payload of attempts) {
-    const { error } = await supabase.from("bookings").update(payload).eq("id", bookingId);
-    if (!error) return { ok: true, payloadUsed: payload };
-
-    const msg = String((error as any)?.message ?? "");
-    const missingCol =
-      msg.toLowerCase().includes("does not exist") ||
-      msg.toLowerCase().includes("column") ||
-      msg.toLowerCase().includes("unknown column");
-
-    if (!missingCol) {
-      return { ok: false, error: msg };
-    }
-  }
-
-  return {
-    ok: true,
-    payloadUsed: base,
-    warning: "Columns for distance/fee not found; persisted base update only.",
-  };
-}
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
   try {
-    const body: any = await req.json().catch(() => ({}));
+    const body = await req.json();
+    const supabase = supabaseAdmin();
 
-    const bookingId = str(body.bookingId);
-    const pickupLat = Number(body.pickupLat);
-    const pickupLng = Number(body.pickupLng);
+    // =========================================================
+    // MODE: SCAN PENDING BOOKINGS
+    // =========================================================
+    if (body?.mode === "scan_pending") {
 
-    if (!bookingId || Number.isNaN(pickupLat) || Number.isNaN(pickupLng)) {
-      return NextResponse.json({ ok: false, error: "MISSING_FIELDS" }, { status: 400 });
-    }
-
-    let isEmergency = body?.is_emergency === true || body?.isEmergency === true;
-    let bookingTown = "";
-
-    try {
-      const { data: bk, error: bookingReadError } = await supabase
+      const { data: bookings } = await supabase
         .from("bookings")
-        .select("*")
-        .eq("id", bookingId)
-        .maybeSingle();
+        .select("id, booking_code, pickup_lat, pickup_lng")
+        .in("status", ["requested"])
+        .limit(5);
 
-      if (!bookingReadError && bk) {
-        if ((bk as any)?.is_emergency === true) isEmergency = true;
-
-        const candidatesTown: any[] = [
-          (bk as any)?.pickup_town,
-          (bk as any)?.town,
-          (bk as any)?.passenger_town,
-          (bk as any)?.pickupTown,
-          (bk as any)?.pickup_town_name,
-        ];
-
-        for (const t of candidatesTown) {
-          const s = str(t);
-          if (s) {
-            bookingTown = s;
-            break;
-          }
-        }
+      for (const b of bookings || []) {
+        await matchSingle(supabase, b);
       }
-    } catch {
+
+      return NextResponse.json({ ok: true, scanned: bookings?.length || 0 });
     }
 
-    const { data: driverRows, error: driverLocationsError } = await supabase
-      .from("driver_locations")
-      .select("driver_id, lat, lng, status, updated_at, town");
-
-    if (driverLocationsError) {
-      console.error("driver_locations error", driverLocationsError);
-      throw driverLocationsError;
+    // =========================================================
+    // MODE: SINGLE BOOKING (EXISTING FLOW)
+    // =========================================================
+    if (!body?.bookingId) {
+      return NextResponse.json({ ok: false, error: "MISSING_BOOKING_ID" }, { status: 400 });
     }
 
-    if (!driverRows || driverRows.length === 0) {
-      return NextResponse.json({ ok: false, error: "NO_DRIVERS" }, { status: 400 });
-    }
-
-    const FRESH_SECONDS = 120;
-
-    const candidates = (driverRows as any[]).filter((row: any) => {
-      if (row?.lat == null || row?.lng == null) return false;
-
-      const statusText = str(row?.status).toLowerCase();
-      if (statusText !== "online") return false;
-
-      if (!isFresh(row?.updated_at, FRESH_SECONDS)) return false;
-
-      return true;
-    });
-
-    if (candidates.length === 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "NO_ELIGIBLE_DRIVERS",
-          freshness_seconds: FRESH_SECONDS,
-        },
-        { status: 409 }
-      );
-    }
-
-    let filteredCandidates = candidates;
-    if (!isEmergency && bookingTown) {
-      const bt = bookingTown.toLowerCase();
-      const sameTown = candidates.filter((d: any) => str(d?.town).toLowerCase() === bt);
-      filteredCandidates = sameTown.length > 0 ? sameTown : candidates;
-    }
-
-    let best: any = null;
-    let bestDistanceKm = Infinity;
-
-    for (const d of filteredCandidates) {
-      const distKm = haversine(pickupLat, pickupLng, Number(d.lat), Number(d.lng));
-      if (distKm < bestDistanceKm) {
-        bestDistanceKm = distKm;
-        best = d;
-      }
-    }
-
-    if (!best) {
-      return NextResponse.json({ ok: false, error: "NO_DRIVER_FOUND" }, { status: 400 });
-    }
-
-    const pickup_distance_km = Number(bestDistanceKm);
-    const free_pickup_km = 1.5;
-    const emergency_pickup_fee_php = isEmergency
-      ? computeEmergencyPickupFeePhp(pickup_distance_km)
-      : 0;
-
-    const criticalUpdate = {
-      assigned_driver_id: best.driver_id,
-      driver_id: best.driver_id,
-      status: "assigned",
-    };
-
-    const { error: criticalWriteError } = await supabase
+    const { data: booking } = await supabase
       .from("bookings")
-      .update(criticalUpdate)
-      .eq("id", bookingId);
+      .select("id, booking_code, pickup_lat, pickup_lng")
+      .eq("id", body.bookingId)
+      .single();
 
-    if (criticalWriteError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "ASSIGN_FAILED",
-          details: criticalWriteError.message,
-        },
-        { status: 500 }
-      );
+    if (!booking) {
+      return NextResponse.json({ ok: false, error: "BOOKING_NOT_FOUND" }, { status: 404 });
     }
 
-    const optionalExtras = {
-      pickup_distance_km,
-      pickup_distance: pickup_distance_km,
-      pickup_distance_m: Math.round(pickup_distance_km * 1000),
-      pickup_surcharge_php: emergency_pickup_fee_php,
-      pickup_extra_fee_php: emergency_pickup_fee_php,
-      emergency_pickup_fee_php,
-      is_emergency: isEmergency,
-    };
+    const result = await matchSingle(supabase, booking);
 
-    const optionalUpdateResult = await updateBookingBestEffort(bookingId, {}, optionalExtras);
-    if (!optionalUpdateResult.ok) {
-      console.warn("[auto-assign] optional booking update failed", optionalUpdateResult.error);
-    }
+    return NextResponse.json({ ok: true, result });
 
-    return NextResponse.json({
-      ok: true,
-      assignedDriverId: best.driver_id,
-      status: "assigned",
-      is_emergency: isEmergency,
-      bookingTown: bookingTown || null,
-      pickup_distance_km,
-      free_pickup_km,
-      emergency_pickup_fee_php,
-      candidates_total: driverRows.length,
-      candidates_online_fresh: candidates.length,
-      candidates_used: filteredCandidates.length,
-      freshness_seconds: FRESH_SECONDS,
-      persisted: true,
-      persistence_warning: (optionalUpdateResult as any)?.warning || null,
-    });
-  } catch (err: any) {
-    console.error("auto-assign error", err);
-    return NextResponse.json(
-      { ok: false, error: err?.message ?? "SERVER_ERROR" },
-      { status: 500 }
-    );
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
+}
+
+async function matchSingle(supabase: any, booking: any) {
+
+  const now = new Date();
+
+  const { data: drivers } = await supabase
+    .from("driver_locations")
+    .select("driver_id, status, updated_at, lat, lng")
+    .eq("status", "online");
+
+  if (!drivers || drivers.length === 0) return { assigned: false };
+
+  const eligible = drivers.filter(d => {
+    const updated = new Date(d.updated_at);
+    const ageSec = (now.getTime() - updated.getTime()) / 1000;
+    return ageSec <= 120; // strict freshness
+  });
+
+  if (eligible.length === 0) return { assigned: false };
+
+  const chosen = eligible[0];
+
+  await supabase
+    .from("bookings")
+    .update({
+      driver_id: chosen.driver_id,
+      status: "assigned",
+      assigned_at: new Date().toISOString()
+    })
+    .eq("id", booking.id);
+
+  return {
+    assigned: true,
+    driver_id: chosen.driver_id,
+    booking_code: booking.booking_code
+  };
 }

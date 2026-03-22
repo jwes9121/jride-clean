@@ -72,7 +72,7 @@ async function enforceDeviceLockPing(opts: {
 
   const same = active === reqDevice;
 
-  // âœ… SAME device: always refresh heartbeat so it never deadlocks
+  // Ã¢Å“â€¦ SAME device: always refresh heartbeat so it never deadlocks
   if (same) {
     const { error: hbErr } = await supabase
       .from("driver_device_locks")
@@ -179,7 +179,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // âœ… IMPORTANT: driver_locations schema does NOT include device_id.
+    // Ã¢Å“â€¦ IMPORTANT: driver_locations schema does NOT include device_id.
     // Only write columns that exist: driver_id, lat, lng, status, town, updated_at.
     const upsertPayload: any = {
       driver_id,
