@@ -223,6 +223,7 @@ async function matchSingle(
 }
 
 export async function POST(req: Request) {
+  console.log("[DISPATCH_TRACE] auto_assign:start", { at: new Date().toISOString() });
   try {
     const body = await req.json().catch(() => ({}));
     const supabase = supabaseAdmin();
@@ -239,7 +240,15 @@ export async function POST(req: Request) {
         .limit(SCAN_LIMIT);
 
       if (error) {
-        return json({
+              console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
+      return json({
           ok: false,
           error: "BOOKINGS_SCAN_FAILED",
           message: error.message,
@@ -281,6 +290,14 @@ export async function POST(req: Request) {
         });
       }
 
+            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
       return json({
         ok: true,
         mode: "scan_requested",
@@ -299,6 +316,14 @@ export async function POST(req: Request) {
 
     const bookingId = String(body?.bookingId || "").trim();
     if (!bookingId) {
+            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
       return json({
         ok: false,
         error: "MISSING_BOOKING_ID",
@@ -314,6 +339,14 @@ export async function POST(req: Request) {
       .single();
 
     if (bookingError) {
+            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
       return json({
         ok: false,
         error: "BOOKING_READ_FAILED",
@@ -325,6 +358,14 @@ export async function POST(req: Request) {
     }
 
     if (!booking) {
+            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
       return json({
         ok: false,
         error: "BOOKING_NOT_FOUND",
@@ -334,9 +375,25 @@ export async function POST(req: Request) {
       }, 404);
     }
 
-    const result = await matchSingle(supabase, booking as BookingRow);
+        const result = await matchSingle(supabase, booking as BookingRow);
+    console.log("[DISPATCH_TRACE] auto_assign:single_result", {
+      booking_id: booking.id,
+      booking_code: booking.booking_code ?? null,
+      decision: result.decision,
+      reason: result.reason ?? null,
+      driver_id: result.driver_id ?? null,
+      debug: result.debug
+    });
 
-    return json({
+          console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
+      return json({
       ok: true,
       mode: "single",
       booking_id: booking.id,
@@ -348,7 +405,15 @@ export async function POST(req: Request) {
       debug: result.debug,
     });
   } catch (e: any) {
-    return json({
+          console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+        mode: "scan_requested",
+        scanned_bookings_count,
+        assigned_count,
+        skipped_count,
+        blocked_count
+      });
+
+      return json({
       ok: false,
       error: "AUTO_ASSIGN_FAILED",
       message: String(e?.message || e),

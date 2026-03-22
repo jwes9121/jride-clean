@@ -162,6 +162,8 @@ async function triggerRetryAutoAssign(baseUrl: string) {
 }
 
 export async function POST(req: Request) {
+  const __trace_started_at = new Date().toISOString();
+  console.log("[DISPATCH_TRACE] ping:start", { at: __trace_started_at });
   try {
     const body = await req.json().catch(() => ({}));
 
@@ -294,6 +296,13 @@ export async function POST(req: Request) {
       });
     }
 
+        console.log("[DISPATCH_TRACE] ping:upsert_result", {
+      driver_id,
+      previous_status: previousStatus || null,
+      current_status: status,
+      coords_source: typeof coordsSource !== "undefined" ? coordsSource : null
+    });
+
     const becameOnline = previousStatus !== "online" && status === "online";
 
     let retryResult: any = {
@@ -312,6 +321,14 @@ export async function POST(req: Request) {
 
       retryResult = await triggerRetryAutoAssign(BASE_URL);
     }
+
+        console.log("[DISPATCH_TRACE] ping:retry_result", {
+      driver_id,
+      became_online: becameOnline,
+      retry_triggered: !!(retryResult?.attempted),
+      retry_ok: !!(retryResult?.ok),
+      retry_status: retryResult?.status ?? null
+    });
 
     return json(200, {
       ok: true,
