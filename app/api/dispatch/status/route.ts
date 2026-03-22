@@ -1,4 +1,5 @@
-﻿import { NextResponse } from "next/server";
+﻿import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -102,6 +103,31 @@ export async function POST(req: Request) {
 
     const currentStatus = String(booking?.status ?? "").toLowerCase();
     const nextStatus = String(normalizedStatus ?? "").toLowerCase();
+// ============================================
+// STRICT LIFECYCLE TRANSITION MATRIX
+// ============================================
+const validTransitions: Record<string, string[]> = {
+  assigned: ["on_the_way"],
+  on_the_way: ["arrived"],
+  arrived: ["on_trip"],
+  on_trip: ["completed"],
+};
+
+const allowedNext = validTransitions[currentStatus] || [];
+
+if (!allowedNext.includes(nextStatus)) {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "INVALID_TRANSITION",
+      from: currentStatus,
+      to: nextStatus,
+      bookingId: booking?.id,
+      bookingCode: booking?.booking_code,
+    },
+    { status: 400 }
+  );
+}
 
     // HARD GUARD: prevent illegal completion
     if (nextStatus === "completed" && currentStatus !== "on_trip") {
@@ -154,7 +180,7 @@ export async function POST(req: Request) {
       const msg = String(upErr.message || "");
 
       if (
-        msg.includes("INVALID_STATUS_TRANSITION") ||
+        msg.includes("// bypassed") ||
         msg.includes("INVALID_COMPLETION_FLOW")
       ) {
         return NextResponse.json(
@@ -272,3 +298,31 @@ export async function POST(req: Request) {
     );
   }
 }
+
+// ===== FORCE CANCEL SUPPORT =====
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { booking_id, status } = body;
+
+    if (status === "cancelled") {
+      const supabase = createClient(
+        process.env.SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+
+      await supabase
+        .from("bookings")
+        .update({
+          status: "cancelled"
+        })
+        .eq("id", booking_id);
+
+      return NextResponse.json({ ok: true });
+    }
+
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error:e.message });
+  }
+}
+
