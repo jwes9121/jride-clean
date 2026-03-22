@@ -72,11 +72,16 @@ export async function POST(req: Request) {
     }
 
     if (action === "reject") {
+      const excludedDriverId =
+        booking.driver_id ||
+        booking.assigned_driver_id ||
+        null;
+
       const { error } = await supabase
         .from("bookings")
         .update({
           passenger_fare_response: "rejected",
-          status: "assigned",
+          status: "requested",
           driver_id: null,
           assigned_driver_id: null,
           assigned_at: null,
@@ -112,7 +117,10 @@ export async function POST(req: Request) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ bookingId: booking.id }),
+        body: JSON.stringify({
+          bookingId: booking.id,
+          exclude_driver_ids: excludedDriverId ? [excludedDriverId] : [],
+        }),
       });
 
       let reassignJson: any = null;
@@ -126,6 +134,7 @@ export async function POST(req: Request) {
         ok: true,
         rejected: true,
         reassigned: reassignRes.ok,
+        excluded_driver_id: excludedDriverId,
         reassign_status: reassignRes.status,
         reassign_result: reassignJson,
       }, { status: 200 });

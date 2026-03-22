@@ -68,14 +68,17 @@ type MatchDebug = {
   rejected_missing_updated_at_count: number;
   rejected_invalid_updated_at_count: number;
   rejected_stale_count: number;
+  rejected_excluded_count: number;
   eligible_count: number;
   chosen_driver_id: string | null;
   freshness_seconds_threshold: number;
+  excluded_driver_ids: string[];
 };
 
 async function matchSingle(
   supabase: any,
-  booking: BookingRow
+  booking: BookingRow,
+  excludeDriverIds: string[]
 ): Promise<{
   assigned: boolean;
   driver_id?: string | null;
@@ -84,6 +87,8 @@ async function matchSingle(
   decision: "assigned" | "skipped" | "blocked";
   debug: MatchDebug;
 }> {
+  const excluded = (excludeDriverIds || []).map((x) => String(x || "").trim()).filter(Boolean);
+
   const debug: MatchDebug = {
     booking_id: booking?.id ?? null,
     booking_code: booking?.booking_code ?? null,
@@ -94,9 +99,11 @@ async function matchSingle(
     rejected_missing_updated_at_count: 0,
     rejected_invalid_updated_at_count: 0,
     rejected_stale_count: 0,
+    rejected_excluded_count: 0,
     eligible_count: 0,
     chosen_driver_id: null,
     freshness_seconds_threshold: ASSIGN_FRESHNESS_SECONDS,
+    excluded_driver_ids: excluded,
   };
 
   if (!booking?.id) {
@@ -148,6 +155,11 @@ async function matchSingle(
 
   for (const d of allDrivers) {
     const st = norm(d.status);
+
+    if (excluded.includes(String(d.driver_id || "").trim())) {
+      debug.rejected_excluded_count++;
+      continue;
+    }
 
     if (st !== "online") {
       debug.rejected_wrong_status_count++;
@@ -230,6 +242,9 @@ export async function POST(req: Request) {
     const supabase = supabaseAdmin();
 
     const mode = modeNormalized(body?.mode);
+    const excludeDriverIds: string[] = Array.isArray(body?.exclude_driver_ids)
+      ? body.exclude_driver_ids.map((x: any) => String(x || "").trim()).filter(Boolean)
+      : [];
 
     if (mode === "scan_requested") {
       const { data: bookings, error } = await supabase
@@ -267,7 +282,7 @@ export async function POST(req: Request) {
       }> = [];
 
       for (const booking of scanRows) {
-        const result = await matchSingle(supabase, booking);
+        const result = await matchSingle(supabase, booking, excludeDriverIds);
 
         if (result.decision === "assigned") assigned_count++;
         else if (result.decision === "skipped") skipped_count++;
@@ -290,6 +305,7 @@ export async function POST(req: Request) {
         assigned_count,
         skipped_count,
         blocked_count,
+        exclude_driver_ids: excludeDriverIds,
       });
 
       return json({
@@ -300,6 +316,7 @@ export async function POST(req: Request) {
         assigned_count,
         skipped_count,
         blocked_count,
+        exclude_driver_ids: excludeDriverIds,
         results,
         debug: buildBaseDebug({
           booking_status_target: "requested",
@@ -345,7 +362,7 @@ export async function POST(req: Request) {
       }, 404);
     }
 
-    const result = await matchSingle(supabase, booking as BookingRow);
+    const result = await matchSingle(supabase, booking as BookingRow, excludeDriverIds);
 
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
@@ -353,6 +370,7 @@ export async function POST(req: Request) {
       decision: result.decision,
       reason: result.reason ?? null,
       driver_id: result.driver_id ?? null,
+      exclude_driver_ids: excludeDriverIds,
       debug: result.debug,
     });
 
@@ -365,6 +383,7 @@ export async function POST(req: Request) {
       decision: result.decision,
       driver_id: result.driver_id ?? null,
       reason: result.reason ?? null,
+      exclude_driver_ids: excludeDriverIds,
       debug: result.debug,
     });
   } catch (e: any) {
