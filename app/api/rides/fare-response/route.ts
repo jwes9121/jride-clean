@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function envAny(names: string[]): string {
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
         .from("bookings")
         .update({
           passenger_fare_response: "rejected",
-          status: "requested",
+          status: "assigned",
           driver_id: null,
           assigned_driver_id: null,
           assigned_at: null,
