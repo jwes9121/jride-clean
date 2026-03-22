@@ -168,9 +168,9 @@ export async function POST(req: Request) {
     const driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
     if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
 
-    const lat = Number(body?.lat);
-    const lng = Number(body?.lng);
-    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+    const incomingLat = Number(body?.lat);
+    const incomingLng = Number(body?.lng);
+    const hasIncomingCoords = Number.isFinite(incomingLat) && Number.isFinite(incomingLng);
 
     const status = norm(body?.status ?? "online") || "online";
     const town = String(body?.town ?? "").trim();
@@ -220,7 +220,7 @@ export async function POST(req: Request) {
 
     const { data: prevLoc, error: prevLocErr } = await supabase
       .from("driver_locations")
-      .select("status")
+      .select("id, status, lat, lng")
       .eq("driver_id", driver_id)
       .maybeSingle();
 
@@ -234,16 +234,46 @@ export async function POST(req: Request) {
 
     const previousStatus = norm((prevLoc as any)?.status ?? "");
 
+    let finalLat: number | null = null;
+    let finalLng: number | null = null;
+    let coordsSource = "incoming";
+
+    if (hasIncomingCoords) {
+      finalLat = incomingLat;
+      finalLng = incomingLng;
+      coordsSource = "incoming";
+    } else {
+      const prevLat = Number((prevLoc as any)?.lat);
+      const prevLng = Number((prevLoc as any)?.lng);
+      const hasPrevCoords = Number.isFinite(prevLat) && Number.isFinite(prevLng);
+
+      if (hasPrevCoords) {
+        finalLat = prevLat;
+        finalLng = prevLng;
+        coordsSource = "previous_row";
+      }
+    }
+
+    if (!Number.isFinite(finalLat as any) || !Number.isFinite(finalLng as any)) {
+      return json(400, {
+        ok: false,
+        code: "MISSING_COORDS_AND_NO_PREVIOUS_LOCATION",
+        driver_id,
+        previous_status: previousStatus || null,
+      });
+    }
+
     const upsertPayload: any = {
       driver_id,
+      lat: finalLat,
+      lng: finalLng,
       status,
       town: town || null,
       updated_at: nowIso,
     };
 
-    if (hasCoords) {
-      upsertPayload.lat = lat;
-      upsertPayload.lng = lng;
+    if ((prevLoc as any)?.id) {
+      upsertPayload.id = (prevLoc as any).id;
     }
 
     const { error: upErr } = await supabase
@@ -255,7 +285,12 @@ export async function POST(req: Request) {
         ok: false,
         code: "INSERT_FAILED",
         message: upErr.message,
-        detail: { upsert_error: upErr.message },
+        detail: {
+          driver_id,
+          has_incoming_coords: hasIncomingCoords,
+          used_previous_coords: !hasIncomingCoords,
+          sent_id: !!upsertPayload.id,
+        },
       });
     }
 
@@ -290,6 +325,9 @@ export async function POST(req: Request) {
       town: town || null,
       claimed: !!(lock as any).claimed,
       active_device_id: (lock as any).active_device_id,
+      coords_source: coordsSource,
+      lat: finalLat,
+      lng: finalLng,
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
