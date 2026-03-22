@@ -54,7 +54,7 @@ function compareDrivers(a: DriverRow, b: DriverRow): number {
   const aMs = a.updated_at ? new Date(a.updated_at).getTime() : 0;
   const bMs = b.updated_at ? new Date(b.updated_at).getTime() : 0;
 
-  if (aMs !== bMs) return bMs - aMs; // freshest first
+  if (aMs !== bMs) return bMs - aMs;
   return String(a.driver_id || "").localeCompare(String(b.driver_id || ""));
 }
 
@@ -224,6 +224,7 @@ async function matchSingle(
 
 export async function POST(req: Request) {
   console.log("[DISPATCH_TRACE] auto_assign:start", { at: new Date().toISOString() });
+
   try {
     const body = await req.json().catch(() => ({}));
     const supabase = supabaseAdmin();
@@ -240,15 +241,7 @@ export async function POST(req: Request) {
         .limit(SCAN_LIMIT);
 
       if (error) {
-              console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
-        mode: "scan_requested",
-        scanned_bookings_count: scanRows.length,
-        assigned_count,
-        skipped_count,
-        blocked_count
-      });
-
-      return json({
+        return json({
           ok: false,
           error: "BOOKINGS_SCAN_FAILED",
           message: error.message,
@@ -258,6 +251,11 @@ export async function POST(req: Request) {
       }
 
       const scanRows = (bookings || []) as BookingRow[];
+
+      let assigned_count = 0;
+      let skipped_count = 0;
+      let blocked_count = 0;
+
       const results: Array<{
         booking_id: string;
         booking_code: string | null;
@@ -267,10 +265,6 @@ export async function POST(req: Request) {
         reason: string | null;
         debug: MatchDebug;
       }> = [];
-
-      let assigned_count = 0;
-      let skipped_count = 0;
-      let blocked_count = 0;
 
       for (const booking of scanRows) {
         const result = await matchSingle(supabase, booking);
@@ -290,12 +284,12 @@ export async function POST(req: Request) {
         });
       }
 
-            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
+      console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
         scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
-        blocked_count
+        blocked_count,
       });
 
       return json({
@@ -316,14 +310,6 @@ export async function POST(req: Request) {
 
     const bookingId = String(body?.bookingId || "").trim();
     if (!bookingId) {
-            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
-        mode: "scan_requested",
-        scanned_bookings_count: scanRows.length,
-        assigned_count,
-        skipped_count,
-        blocked_count
-      });
-
       return json({
         ok: false,
         error: "MISSING_BOOKING_ID",
@@ -339,14 +325,6 @@ export async function POST(req: Request) {
       .single();
 
     if (bookingError) {
-            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
-        mode: "scan_requested",
-        scanned_bookings_count: scanRows.length,
-        assigned_count,
-        skipped_count,
-        blocked_count
-      });
-
       return json({
         ok: false,
         error: "BOOKING_READ_FAILED",
@@ -358,14 +336,6 @@ export async function POST(req: Request) {
     }
 
     if (!booking) {
-            console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
-        mode: "scan_requested",
-        scanned_bookings_count: scanRows.length,
-        assigned_count,
-        skipped_count,
-        blocked_count
-      });
-
       return json({
         ok: false,
         error: "BOOKING_NOT_FOUND",
@@ -375,25 +345,18 @@ export async function POST(req: Request) {
       }, 404);
     }
 
-        const result = await matchSingle(supabase, booking as BookingRow);
+    const result = await matchSingle(supabase, booking as BookingRow);
+
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
       booking_code: booking.booking_code ?? null,
       decision: result.decision,
       reason: result.reason ?? null,
       driver_id: result.driver_id ?? null,
-      debug: result.debug
+      debug: result.debug,
     });
 
-          console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
-        mode: "scan_requested",
-        scanned_bookings_count: scanRows.length,
-        assigned_count,
-        skipped_count,
-        blocked_count
-      });
-
-      return json({
+    return json({
       ok: true,
       mode: "single",
       booking_id: booking.id,
@@ -405,15 +368,7 @@ export async function POST(req: Request) {
       debug: result.debug,
     });
   } catch (e: any) {
-          console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
-        mode: "scan_requested",
-        scanned_bookings_count: scanRows.length,
-        assigned_count,
-        skipped_count,
-        blocked_count
-      });
-
-      return json({
+    return json({
       ok: false,
       error: "AUTO_ASSIGN_FAILED",
       message: String(e?.message || e),
