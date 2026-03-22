@@ -242,7 +242,7 @@ export async function POST(req: Request) {
       if (error) {
               console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
@@ -292,7 +292,7 @@ export async function POST(req: Request) {
 
             console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
@@ -318,7 +318,7 @@ export async function POST(req: Request) {
     if (!bookingId) {
             console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
@@ -341,7 +341,7 @@ export async function POST(req: Request) {
     if (bookingError) {
             console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
@@ -360,7 +360,7 @@ export async function POST(req: Request) {
     if (!booking) {
             console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
@@ -387,7 +387,7 @@ export async function POST(req: Request) {
 
           console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
@@ -407,7 +407,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
           console.log("[DISPATCH_TRACE] auto_assign:scan_summary", {
         mode: "scan_requested",
-        scanned_bookings_count,
+        scanned_bookings_count: scanRows.length,
         assigned_count,
         skipped_count,
         blocked_count
