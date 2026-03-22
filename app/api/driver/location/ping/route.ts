@@ -28,7 +28,6 @@ function pickDeviceId(req: Request, body: any): string {
   const fromBody = String(body?.device_id ?? body?.deviceId ?? "");
   if (fromBody && fromBody.trim()) return normDeviceId(fromBody);
 
-  // fallback (not ideal, but deterministic)
   const ua = String(req.headers.get("user-agent") ?? "").slice(0, 160);
   const xff = String(req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   const seed = (ua + "|" + xff).trim();
@@ -72,7 +71,6 @@ async function enforceDeviceLockPing(opts: {
 
   const same = active === reqDevice;
 
-  // Ã¢Å“â€¦ SAME device: always refresh heartbeat so it never deadlocks
   if (same) {
     const { error: hbErr } = await supabase
       .from("driver_device_locks")
@@ -84,7 +82,6 @@ async function enforceDeviceLockPing(opts: {
     return { ok: true, claimed: false, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
-  // If forcing takeover, require driver to be OFFLINE in driver_locations
   if (!same && forceTakeover) {
     const { data: loc, error: locErr } = await supabase
       .from("driver_locations")
@@ -106,12 +103,10 @@ async function enforceDeviceLockPing(opts: {
     }
   }
 
-  // Different device and NOT forcing takeover: block while lock is "fresh"
   if (!forceTakeover && ageSec < staleSeconds) {
     return { ok: false, conflict: true, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
-  // Lock is stale OR takeover allowed
   const { error: upErr } = await supabase
     .from("driver_device_locks")
     .update({ device_id: reqDevice, last_seen: nowIso })
@@ -120,6 +115,50 @@ async function enforceDeviceLockPing(opts: {
   if (upErr) throw new Error("driver_device_locks update failed: " + upErr.message);
 
   return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
+}
+
+async function triggerRetryAutoAssign(baseUrl: string) {
+  if (!baseUrl || !String(baseUrl).trim()) {
+    return {
+      attempted: false,
+      ok: false,
+      skipped: true,
+      reason: "BASE_URL_MISSING",
+    };
+  }
+
+  const url = String(baseUrl).replace(/\/+$/, "") + "/api/dispatch/retry-auto-assign";
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+
+    let body: any = null;
+    try {
+      body = await res.json();
+    } catch (_) {
+      body = null;
+    }
+
+    return {
+      attempted: true,
+      ok: res.ok,
+      status: res.status,
+      body,
+      url,
+    };
+  } catch (e: any) {
+    return {
+      attempted: true,
+      ok: false,
+      status: 0,
+      error: String(e?.message ?? e),
+      url,
+    };
+  }
 }
 
 export async function POST(req: Request) {
@@ -179,8 +218,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // Ã¢Å“â€¦ IMPORTANT: driver_locations schema does NOT include device_id.
-    // Only write columns that exist: driver_id, lat, lng, status, town, updated_at.
+    const { data: prevLoc, error: prevLocErr } = await supabase
+      .from("driver_locations")
+      .select("status")
+      .eq("driver_id", driver_id)
+      .maybeSingle();
+
+    if (prevLocErr) {
+      return json(500, {
+        ok: false,
+        code: "PREV_DRIVER_LOCATION_LOOKUP_FAILED",
+        message: prevLocErr.message,
+      });
+    }
+
+    const previousStatus = norm((prevLoc as any)?.status ?? "");
+
     const upsertPayload: any = {
       driver_id,
       status,
@@ -206,10 +259,34 @@ export async function POST(req: Request) {
       });
     }
 
+    const becameOnline = previousStatus !== "online" && status === "online";
+
+    let retryResult: any = {
+      attempted: false,
+      ok: false,
+      skipped: true,
+      reason: "NOT_ONLINE_EDGE",
+    };
+
+    if (becameOnline) {
+      const BASE_URL = envAny([
+        "INTERNAL_BASE_URL",
+        "NEXT_PUBLIC_BASE_URL",
+        "NEXTAUTH_URL",
+      ]);
+
+      retryResult = await triggerRetryAutoAssign(BASE_URL);
+    }
+
     return json(200, {
       ok: true,
       driver_id,
       status,
+      previous_status: previousStatus || null,
+      became_online: becameOnline,
+      retry_triggered: !!(retryResult?.attempted),
+      retry_ok: !!(retryResult?.ok),
+      retry_result: retryResult,
       town: town || null,
       claimed: !!(lock as any).claimed,
       active_device_id: (lock as any).active_device_id,
