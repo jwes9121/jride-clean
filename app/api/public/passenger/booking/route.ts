@@ -1,38 +1,31 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
-    const supabaseUrl =
-      process.env.SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    const supabaseKey =
-      process.env.SUPABASE_ANON_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "ENV_MISSING",
-          message: "Missing SUPABASE env vars",
-        },
-        { status: 500 }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
+    const supabase = supabaseAdmin();
     const { searchParams } = new URL(req.url);
-    const bookingCode = searchParams.get("code");
+
+    const bookingCode = String(
+      searchParams.get("code") ||
+      searchParams.get("booking_code") ||
+      ""
+    ).trim();
 
     if (!bookingCode) {
       return NextResponse.json(
-        { ok: false, error: "MISSING_CODE" },
-        { status: 400 }
+        { ok: false, error: "MISSING_BOOKING_CODE" },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
@@ -49,6 +42,7 @@ export async function GET(req: Request) {
         created_by_user_id,
         proposed_fare,
         passenger_fare_response,
+        verified_fare,
         driver_to_pickup_km,
         pickup_distance_fee,
         trip_distance_km,
@@ -67,8 +61,19 @@ export async function GET(req: Request) {
           ok: false,
           error: "BOOKING_READ_FAILED",
           message: error.message,
+          debug: {
+            supabase_url: process.env.SUPABASE_URL || null,
+            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+          },
         },
-        { status: 500 }
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
@@ -76,67 +81,94 @@ export async function GET(req: Request) {
 
     if (!booking) {
       return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404 }
+        {
+          ok: false,
+          error: "BOOKING_NOT_FOUND",
+          debug: {
+            supabase_url: process.env.SUPABASE_URL || null,
+            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+          },
+        },
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
     let driver_name: string | null = null;
-
-    const pickup_lat = (booking as any).pickup_lat ?? null;
-    const pickup_lng = (booking as any).pickup_lng ?? null;
-    const dropoff_lat = (booking as any).dropoff_lat ?? null;
-    const dropoff_lng = (booking as any).dropoff_lng ?? null;
-
     let driver_lat: number | null = null;
     let driver_lng: number | null = null;
 
-    const driver_to_pickup_km =
-      (booking as any).driver_to_pickup_km ?? null;
-
-    const pickup_distance_fee =
-      (booking as any).pickup_distance_fee ?? null;
-
-    const trip_distance_km =
-      (booking as any).trip_distance_km ?? null;
-
-    if (booking.driver_id) {
+    if ((booking as any).driver_id) {
       const { data: driverLoc } = await supabase
         .from("driver_locations_latest")
         .select("lat, lng")
-        .eq("driver_id", booking.driver_id)
+        .eq("driver_id", (booking as any).driver_id)
         .maybeSingle();
 
       if (driverLoc) {
-        driver_lat = driverLoc.lat ?? null;
-        driver_lng = driverLoc.lng ?? null;
+        driver_lat = (driverLoc as any).lat ?? null;
+        driver_lng = (driverLoc as any).lng ?? null;
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      booking: {
-        ...booking,
-        driver_name,
-        driver_lat,
-        driver_lng,
-        pickup_lat,
-        pickup_lng,
-        dropoff_lat,
-        dropoff_lng,
-        driver_to_pickup_km,
-        pickup_distance_fee,
-        trip_distance_km,
+    const { data: rideRow, error: rideErr } = await supabase
+      .from("dispatch_rides_v1")
+      .select("driver_name")
+      .eq("booking_code", (booking as any).booking_code)
+      .maybeSingle();
+
+    if (!rideErr && rideRow) {
+      driver_name = (rideRow as any).driver_name ?? null;
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        booking: {
+          ...booking,
+          driver_name,
+          driver_lat,
+          driver_lng,
+        },
+        debug: {
+          supabase_url: process.env.SUPABASE_URL || null,
+          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+        },
       },
-    });
-  } catch (err: any) {
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
+  } catch (e: any) {
     return NextResponse.json(
       {
         ok: false,
-        error: "UNEXPECTED_ERROR",
-        message: err?.message ?? "unknown",
+        error: "SERVER_ERROR",
+        message: String(e?.message ?? e),
+        debug: {
+          supabase_url: process.env.SUPABASE_URL || null,
+          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
+        },
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
     );
   }
 }
