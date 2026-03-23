@@ -3,13 +3,29 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
-
 export async function GET(req: Request) {
   try {
+    const supabaseUrl =
+      process.env.SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const supabaseKey =
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ENV_MISSING",
+          message: "Missing SUPABASE env vars",
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const { searchParams } = new URL(req.url);
     const bookingCode = searchParams.get("code");
 
@@ -20,7 +36,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // ✅ SOURCE OF TRUTH = bookings table
     const { data: bookingRows, error } = await supabase
       .from("bookings")
       .select(`
@@ -66,7 +81,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // ✅ BASE VALUES (from bookings)
     let driver_name: string | null = null;
 
     const pickup_lat = (booking as any).pickup_lat ?? null;
@@ -86,7 +100,6 @@ export async function GET(req: Request) {
     const trip_distance_km =
       (booking as any).trip_distance_km ?? null;
 
-    // ✅ DRIVER LOCATION (REAL SOURCE)
     if (booking.driver_id) {
       const { data: driverLoc } = await supabase
         .from("driver_locations_latest")
