@@ -125,9 +125,59 @@ export async function POST(req: Request) {
       currentDriverId,
     ]);
 
-    const driver_to_pickup_km = 0; // TODO: replace with real distance
-const pickup_distance_fee = 0; // TODO: replace with computed fee
+    
+    // ============================================
+    // COMPUTE DRIVER TO PICKUP DISTANCE
+    // ============================================
+    let driver_to_pickup_km = 0;
+    let pickup_distance_fee = 0;
 
+    try {
+      const { data: bookingCoords } = await supabase
+        .from("bookings")
+        .select("pickup_lat, pickup_lng")
+        .eq("id", booking.id)
+        .single();
+
+      const { data: driverLoc } = await supabase
+        .from("driver_locations_latest")
+        .select("lat, lng")
+        .eq("driver_id", effectiveDriverId)
+        .single();
+
+      if (
+        bookingCoords?.pickup_lat &&
+        bookingCoords?.pickup_lng &&
+        driverLoc?.lat &&
+        driverLoc?.lng
+      ) {
+        const toRad = (v: number) => (v * Math.PI) / 180;
+
+        const R = 6371; // km
+        const dLat = toRad(driverLoc.lat - bookingCoords.pickup_lat);
+        const dLng = toRad(driverLoc.lng - bookingCoords.pickup_lng);
+
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(bookingCoords.pickup_lat)) *
+            Math.cos(toRad(driverLoc.lat)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        driver_to_pickup_km = Math.round(R * c * 10) / 10;
+
+        // PRICING RULE
+        if (driver_to_pickup_km > 1.5) {
+          const excess = driver_to_pickup_km - 1.5;
+          const blocks = Math.ceil(excess / 0.5);
+          pickup_distance_fee = blocks * 10;
+        }
+      }
+    } catch (e) {
+      console.error("DISTANCE_COMPUTE_FAILED", e);
+    }
 const updatePayload: Record<string, any> = {
   driver_to_pickup_km,
   pickup_distance_fee,
@@ -194,3 +244,5 @@ const updatePayload: Record<string, any> = {
     );
   }
 }
+
+
