@@ -96,19 +96,44 @@ export async function GET(req: Request) {
     }
 
     let driver_name: string | null = null;
-    let driver_to_pickup_km: number | null = (booking as any).driver_to_pickup_km ?? null;
-    let pickup_distance_fee: number | null = (booking as any).pickup_distance_fee ?? null;
-    let trip_distance_km: number | null = (booking as any).trip_distance_km ?? null;
+let driver_lat: number | null = null;
+let driver_lng: number | null = null;
+let pickup_lat: number | null = null;
+let pickup_lng: number | null = null;
+let dropoff_lat: number | null = null;
+let dropoff_lng: number | null = null;
+
+let driver_to_pickup_km: number | null = (booking as any).driver_to_pickup_km ?? null;
+let pickup_distance_fee: number | null = (booking as any).pickup_distance_fee ?? null;
+let trip_distance_km: number | null = (booking as any).trip_distance_km ?? null;
 
     const { data: rideRow, error: rideErr } = await supabase
       .from("dispatch_rides_v1")
-      .select("driver_name, driver_to_pickup_km, pickup_distance_fee")
+      .select(`
+  driver_name,
+  driver_lat,
+  driver_lng,
+  pickup_lat,
+  pickup_lng,
+  dropoff_lat,
+  dropoff_lng,
+  driver_to_pickup_km,
+  pickup_distance_fee
+`)
       .eq("booking_code", booking.booking_code)
       .maybeSingle();
 
     if (!rideErr && rideRow) {
-      driver_name = (rideRow as any).driver_name ?? null;
-    }
+  driver_name = (rideRow as any).driver_name ?? null;
+  driver_lat = (rideRow as any).driver_lat ?? null;
+  driver_lng = (rideRow as any).driver_lng ?? null;
+
+  pickup_lat = (rideRow as any).pickup_lat ?? null;
+  pickup_lng = (rideRow as any).pickup_lng ?? null;
+
+  dropoff_lat = (rideRow as any).dropoff_lat ?? null;
+  dropoff_lng = (rideRow as any).dropoff_lng ?? null;
+}
 
     return NextResponse.json(
       {
@@ -116,9 +141,15 @@ export async function GET(req: Request) {
         booking: {
           ...booking,
           driver_name,
-          driver_to_pickup_km,
-          pickup_distance_fee,
-          trip_distance_km,
+driver_lat,
+driver_lng,
+pickup_lat,
+pickup_lng,
+dropoff_lat,
+dropoff_lng,
+driver_to_pickup_km,
+pickup_distance_fee,
+trip_distance_km,
         },
         debug: {
           supabase_url: process.env.SUPABASE_URL || null,
@@ -156,6 +187,7 @@ export async function GET(req: Request) {
     );
   }
 }
+
 
 
 
