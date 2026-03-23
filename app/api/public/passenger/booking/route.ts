@@ -93,6 +93,8 @@ export async function GET(req: Request) {
     }
 
     let driver_name: string | null = null;
+    let driver_to_pickup_km: number | null = null;
+    let pickup_distance_fee: number | null = null;
 
     const { data: rideRow, error: rideErr } = await supabase
       .from("dispatch_rides_v1")
@@ -102,6 +104,8 @@ export async function GET(req: Request) {
 
     if (!rideErr && rideRow) {
       driver_name = (rideRow as any).driver_name ?? null;
+      driver_to_pickup_km = (rideRow as any).driver_to_pickup_km ?? null;
+      pickup_distance_fee = (rideRow as any).pickup_distance_fee ?? null;
     }
 
     return NextResponse.json(
@@ -110,6 +114,8 @@ export async function GET(req: Request) {
         booking: {
           ...booking,
           driver_name,
+          driver_to_pickup_km,
+          pickup_distance_fee,
         },
         debug: {
           supabase_url: process.env.SUPABASE_URL || null,
