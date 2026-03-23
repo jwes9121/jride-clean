@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -125,7 +125,12 @@ export async function POST(req: Request) {
       currentDriverId,
     ]);
 
-    const updatePayload: Record<string, any> = {
+    const driver_to_pickup_km = 0; // TODO: replace with real distance
+const pickup_distance_fee = 0; // TODO: replace with computed fee
+
+const updatePayload: Record<string, any> = {
+  driver_to_pickup_km,
+  pickup_distance_fee,
       proposed_fare: proposedFare,
       passenger_fare_response: null,
       status: "fare_proposed",
