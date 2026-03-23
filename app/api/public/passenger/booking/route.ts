@@ -1,34 +1,26 @@
-﻿import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
 
 export async function GET(req: Request) {
   try {
-    const supabase = supabaseAdmin();
     const { searchParams } = new URL(req.url);
-
-    const bookingCode = String(
-      searchParams.get("code") ||
-      searchParams.get("booking_code") ||
-      ""
-    ).trim();
+    const bookingCode = searchParams.get("code");
 
     if (!bookingCode) {
       return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_CODE" },
-        {
-          status: 400,
-          headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        }
+        { ok: false, error: "MISSING_CODE" },
+        { status: 400 }
       );
     }
 
+    // ✅ SOURCE OF TRUTH = bookings table
     const { data: bookingRows, error } = await supabase
       .from("bookings")
       .select(`
@@ -44,7 +36,11 @@ export async function GET(req: Request) {
         passenger_fare_response,
         driver_to_pickup_km,
         pickup_distance_fee,
-        trip_distance_km
+        trip_distance_km,
+        pickup_lat,
+        pickup_lng,
+        dropoff_lat,
+        dropoff_lng
       `)
       .eq("booking_code", bookingCode)
       .order("updated_at", { ascending: false })
@@ -56,19 +52,8 @@ export async function GET(req: Request) {
           ok: false,
           error: "BOOKING_READ_FAILED",
           message: error.message,
-          debug: {
-            supabase_url: process.env.SUPABASE_URL || null,
-            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-          },
         },
-        {
-          status: 500,
-          headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        }
+        { status: 500 }
       );
     }
 
@@ -76,118 +61,69 @@ export async function GET(req: Request) {
 
     if (!booking) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_NOT_FOUND",
-          debug: {
-            supabase_url: process.env.SUPABASE_URL || null,
-            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-          },
-        },
-        {
-          status: 404,
-          headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        }
+        { ok: false, error: "BOOKING_NOT_FOUND" },
+        { status: 404 }
       );
     }
 
+    // ✅ BASE VALUES (from bookings)
     let driver_name: string | null = null;
-let driver_lat: number | null = null;
-let driver_lng: number | null = null;
-let pickup_lat: number | null = null;
-let pickup_lng: number | null = null;
-let dropoff_lat: number | null = null;
-let dropoff_lng: number | null = null;
 
-let driver_to_pickup_km: number | null = (booking as any).driver_to_pickup_km ?? null;
-let pickup_distance_fee: number | null = (booking as any).pickup_distance_fee ?? null;
-let trip_distance_km: number | null = (booking as any).trip_distance_km ?? null;
+    const pickup_lat = (booking as any).pickup_lat ?? null;
+    const pickup_lng = (booking as any).pickup_lng ?? null;
+    const dropoff_lat = (booking as any).dropoff_lat ?? null;
+    const dropoff_lng = (booking as any).dropoff_lng ?? null;
 
-    const { data: rideRow, error: rideErr } = await supabase
-      .from("dispatch_rides_v1")
-      .select(`
-  driver_name,
-  driver_lat,
-  driver_lng,
-  pickup_lat,
-  pickup_lng,
-  dropoff_lat,
-  dropoff_lng,
-  driver_to_pickup_km,
-  pickup_distance_fee
-`)
-      .eq("booking_code", booking.booking_code)
-      .maybeSingle();
+    let driver_lat: number | null = null;
+    let driver_lng: number | null = null;
 
-    if (!rideErr && rideRow) {
-  driver_name = (rideRow as any).driver_name ?? null;
-  driver_lat = (rideRow as any).driver_lat ?? null;
-  driver_lng = (rideRow as any).driver_lng ?? null;
+    const driver_to_pickup_km =
+      (booking as any).driver_to_pickup_km ?? null;
 
-  pickup_lat = (rideRow as any).pickup_lat ?? null;
-  pickup_lng = (rideRow as any).pickup_lng ?? null;
+    const pickup_distance_fee =
+      (booking as any).pickup_distance_fee ?? null;
 
-  dropoff_lat = (rideRow as any).dropoff_lat ?? null;
-  dropoff_lng = (rideRow as any).dropoff_lng ?? null;
-}
+    const trip_distance_km =
+      (booking as any).trip_distance_km ?? null;
 
-    return NextResponse.json(
-      {
-        ok: true,
-        booking: {
-          ...booking,
-          driver_name,
-driver_lat,
-driver_lng,
-pickup_lat,
-pickup_lng,
-dropoff_lat,
-dropoff_lng,
-driver_to_pickup_km,
-pickup_distance_fee,
-trip_distance_km,
-        },
-        debug: {
-          supabase_url: process.env.SUPABASE_URL || null,
-          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-        },
-      },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
+    // ✅ DRIVER LOCATION (REAL SOURCE)
+    if (booking.driver_id) {
+      const { data: driverLoc } = await supabase
+        .from("driver_locations_latest")
+        .select("lat, lng")
+        .eq("driver_id", booking.driver_id)
+        .maybeSingle();
+
+      if (driverLoc) {
+        driver_lat = driverLoc.lat ?? null;
+        driver_lng = driverLoc.lng ?? null;
       }
-    );
-  } catch (e: any) {
+    }
+
+    return NextResponse.json({
+      ok: true,
+      booking: {
+        ...booking,
+        driver_name,
+        driver_lat,
+        driver_lng,
+        pickup_lat,
+        pickup_lng,
+        dropoff_lat,
+        dropoff_lng,
+        driver_to_pickup_km,
+        pickup_distance_fee,
+        trip_distance_km,
+      },
+    });
+  } catch (err: any) {
     return NextResponse.json(
       {
         ok: false,
-        error: "SERVER_ERROR",
-        message: String(e?.message ?? e),
-        debug: {
-          supabase_url: process.env.SUPABASE_URL || null,
-          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-        },
+        error: "UNEXPECTED_ERROR",
+        message: err?.message ?? "unknown",
       },
-      {
-        status: 500,
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      }
+      { status: 500 }
     );
   }
 }
-
-
-
-
