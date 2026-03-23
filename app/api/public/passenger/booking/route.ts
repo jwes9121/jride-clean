@@ -41,7 +41,10 @@ export async function GET(req: Request) {
         updated_at,
         created_by_user_id,
         proposed_fare,
-        passenger_fare_response
+        passenger_fare_response,
+        driver_to_pickup_km,
+        pickup_distance_fee,
+        trip_distance_km
       `)
       .eq("booking_code", bookingCode)
       .order("updated_at", { ascending: false })
@@ -153,5 +156,6 @@ export async function GET(req: Request) {
     );
   }
 }
+
 
 
