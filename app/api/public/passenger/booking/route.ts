@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -96,7 +96,7 @@ export async function GET(req: Request) {
 
     const { data: rideRow, error: rideErr } = await supabase
       .from("dispatch_rides_v1")
-      .select("driver_name")
+      .select("driver_name, driver_to_pickup_km, pickup_distance_fee")
       .eq("booking_code", booking.booking_code)
       .maybeSingle();
 
@@ -147,3 +147,4 @@ export async function GET(req: Request) {
     );
   }
 }
+
