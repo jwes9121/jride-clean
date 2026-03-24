@@ -85,7 +85,8 @@ export default function RidePage() {
 
       if (!res.ok || !json?.ok) {
         setBooking(null);
-        setActiveCode(cleanCode);
+        setActiveCode("");
+        setStoredCode("");
         setErr(json?.error === "BOOKING_NOT_FOUND" ? "Booking not found." : "Unable to load booking.");
         return;
       }
