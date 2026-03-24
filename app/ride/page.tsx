@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 /**
- * app/ride/page.tsx â€” Reconstructed passenger booking + tracking page
+ * app/ride/page.tsx — Reconstructed passenger booking + tracking page
  *
  * Source: morning zip UX blueprint + current backend contracts
  * Backend contracts (source of truth):
@@ -208,7 +208,7 @@ function statusMessage(stRaw: any): string {
   if (st === "on_trip") return "Trip is now in progress.";
   if (st === "completed") return "Trip completed successfully.";
   if (st === "cancelled") return "This trip was cancelled.";
-  return "Updating trip statusâ€¦";
+  return "Updating trip status...";
 }
 
 function statusTone(stRaw: any): "blue" | "amber" | "green" | "red" | "slate" {
@@ -1351,7 +1351,7 @@ export default function RidePage() {
             <div className="flex items-center gap-2">
               <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">JRide Passenger</div>
               <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 sm:inline-flex">
-                {authLoading ? "Checking sessionâ€¦" : authed ? `Signed in${accountName ? ` Â· ${accountName}` : ""}` : "Guest"}
+                {authLoading ? "Checking session..." : authed ? `Signed in${accountName ? ` · ${accountName}` : ""}` : "Guest"}
               </div>
               {authed ? (
                 <button
@@ -1416,7 +1416,7 @@ export default function RidePage() {
                   <div>Fare: {money(liveFare)}</div>
                   {(livePickupFee != null && livePickupFee > 0) || (typeof lb?.driver_to_pickup_km === "number" && Number.isFinite(lb?.driver_to_pickup_km)) ? (
                     <div>
-                      Pickup: {km(lb?.driver_to_pickup_km)} â€¢ {livePickupFee != null ? money(livePickupFee) : "--"}
+                      Pickup: {km(lb?.driver_to_pickup_km)} • {livePickupFee != null ? money(livePickupFee) : "--"}
                     </div>
                   ) : null}
                   {livePlatformFee != null && <div>Platform fee: {money(livePlatformFee)}</div>}
@@ -1468,7 +1468,7 @@ export default function RidePage() {
               <div className="text-sm">Drop-off: {tripToLabel || "--"}</div>
               <div className="text-sm">Town: {tripTown || "--"}</div>
               <div className="text-sm">Status: {normStatus(liveStatus) || "--"}</div>
-              <div className="text-sm">Driver: {driverName || (lb?.driver_id ? (String(lb.driver_id).substring(0, 8) + "â€¦") : "Searchingâ€¦")}</div>
+              <div className="text-sm">Driver: {driverName || (lb?.driver_id ? (String(lb.driver_id).substring(0, 8) + "...") : "Searching...")}</div>
               <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
             </div>
 
@@ -1497,7 +1497,7 @@ export default function RidePage() {
                   <div>Pickup: {tripFromLabel || "--"}</div>
                   <div>Drop-off: {tripToLabel || "--"}</div>
                   <div>Fare: {hasFare ? money(liveFare) : "--"}</div>
-                  <div>Pickup: {km(lb?.driver_to_pickup_km)} â€¢ {livePickupFee != null ? money(livePickupFee) : "--"}</div>
+                  <div>Pickup: {km(lb?.driver_to_pickup_km)} • {livePickupFee != null ? money(livePickupFee) : "--"}</div>
                   <div>Platform fee: {livePlatformFee != null ? money(livePlatformFee) : "--"}</div>
                   <div>Total: {hasLiveTotal ? money(liveTotal) : "--"}{totalIsFallback ? " (fallback)" : ""}</div>
                   <div>Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
@@ -1516,7 +1516,7 @@ export default function RidePage() {
                         "Pickup: " + (tripFromLabel || "--"),
                         "Drop-off: " + (tripToLabel || "--"),
                         "Fare: " + (hasFare ? money(liveFare) : "--"),
-                        "Pickup: " + km(lb?.driver_to_pickup_km) + " â€¢ " + (livePickupFee != null ? money(livePickupFee) : "--"),
+                        "Pickup: " + km(lb?.driver_to_pickup_km) + " • " + (livePickupFee != null ? money(livePickupFee) : "--"),
                         "Platform fee: " + (livePlatformFee != null ? money(livePlatformFee) : "--"),
                         "Total: " + (hasLiveTotal ? money(liveTotal) : "--") + (totalIsFallback ? " (fallback)" : ""),
                         "Driver to pickup: " + km(lb?.driver_to_pickup_km),
@@ -1700,7 +1700,7 @@ export default function RidePage() {
               <label className="text-xs font-medium">Pickup location</label>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
-                placeholder="Search pickupâ€¦"
+                placeholder="Search pickup..."
                 value={fromLabel}
                 onFocus={() => setActiveGeoField("from")}
                 onChange={(e) => { setFromLabel(e.target.value); setActiveGeoField("from"); }}
@@ -1713,7 +1713,7 @@ export default function RidePage() {
               <label className="text-xs font-medium">Drop-off location</label>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
-                placeholder="Search destinationâ€¦"
+                placeholder="Search destination..."
                 value={toLabel}
                 onFocus={() => setActiveGeoField("to")}
                 onChange={(e) => { setToLabel(e.target.value); setActiveGeoField("to"); }}
@@ -1761,7 +1761,7 @@ export default function RidePage() {
                     <div key={mapResetKey} ref={mapDivRef} className="w-full h-72 rounded-2xl border border-emerald-100 shadow-inner bg-white" />
                     {routeInfo && (
                       <div className="text-xs opacity-70">
-                        Route: {(routeInfo.distance_m / 1000).toFixed(1)} km Â· ~{Math.ceil(routeInfo.duration_s / 60)} min
+                        Route: {(routeInfo.distance_m / 1000).toFixed(1)} km · ~{Math.ceil(routeInfo.duration_s / 60)} min
                       </div>
                     )}
                   </div>
@@ -1805,7 +1805,7 @@ export default function RidePage() {
               disabled={!allowSubmit}
               className="w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {busy ? "Bookingâ€¦" : "Request Ride"}
+              {busy ? "Booking..." : "Request Ride"}
             </button>
 
             {/* Result */}
@@ -1835,10 +1835,10 @@ export default function RidePage() {
                         <div className="space-y-1">
                           <div className="text-sm font-semibold text-slate-900">{trip.from_label || "--"} â†’ {trip.to_label || "--"}</div>
                           <div className="text-xs text-slate-500">
-                            {fmtDate(trip.completed_at || trip.updated_at || trip.saved_at)} â€¢ {trip.driver_name || "Driver pending"} â€¢ {trip.status}
+                            {fmtDate(trip.completed_at || trip.updated_at || trip.saved_at)} • {trip.driver_name || "Driver pending"} • {trip.status}
                           </div>
                           <div className="text-xs text-slate-600">
-                            Code: <span className="font-mono">{trip.booking_code}</span> â€¢ Total: {typeof trip.total === "number" ? money(trip.total) : "--"}
+                            Code: <span className="font-mono">{trip.booking_code}</span> • Total: {typeof trip.total === "number" ? money(trip.total) : "--"}
                           </div>
                         </div>
                         <div className="flex gap-2">
