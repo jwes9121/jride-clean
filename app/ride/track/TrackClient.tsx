@@ -22,13 +22,11 @@ export default function TrackClient({ code }: { code?: string }) {
   const [data, setData] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [raw, setRaw] = useState<any>(null);
 
   async function fetchBooking() {
     if (!code) {
-      setErr("Missing booking code");
+      setErr("Missing booking code.");
       setData(null);
-      setRaw(null);
       return;
     }
 
@@ -42,18 +40,21 @@ export default function TrackClient({ code }: { code?: string }) {
       );
 
       const json = await res.json();
-      setRaw(json);
 
       if (!res.ok || !json?.ok) {
         setData(null);
-        setErr(json?.error || json?.message || `BOOKING_FETCH_FAILED (${res.status})`);
+        if (json?.error === "BOOKING_NOT_FOUND") {
+          setErr("Booking not found.");
+        } else {
+          setErr("Unable to load booking right now.");
+        }
         return;
       }
 
       setData(json.booking ?? null);
-    } catch (e: any) {
+    } catch {
       setData(null);
-      setErr(String(e?.message || e || "BOOKING_FETCH_FAILED"));
+      setErr("Unable to load booking right now.");
     } finally {
       setLoading(false);
     }
@@ -65,12 +66,12 @@ export default function TrackClient({ code }: { code?: string }) {
     return () => clearInterval(t);
   }, [code]);
 
-  const proposedFare = data?.verified_fare ?? data?.proposed_fare ?? null;
+  const shownFare = data?.verified_fare ?? data?.proposed_fare ?? null;
   const pickupFee = data?.pickup_distance_fee ?? null;
   const fee =
     typeof data?.convenience_fee === "number" ? data.convenience_fee : 15;
   const total =
-    (typeof proposedFare === "number" ? proposedFare : 0) +
+    (typeof shownFare === "number" ? shownFare : 0) +
     (typeof pickupFee === "number" ? pickupFee : 0) +
     fee;
 
@@ -78,9 +79,7 @@ export default function TrackClient({ code }: { code?: string }) {
     <div className="mx-auto max-w-3xl p-4 space-y-4">
       <div className="rounded-xl border border-black/10 bg-white p-4">
         <div className="text-sm font-semibold">Tracking</div>
-        <div className="text-xs opacity-70">
-          Code: {code || "--"}
-        </div>
+        <div className="text-xs opacity-70">Code: {code || "--"}</div>
       </div>
 
       {loading ? (
@@ -91,7 +90,7 @@ export default function TrackClient({ code }: { code?: string }) {
 
       {err ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Error: {err}
+          {err}
         </div>
       ) : null}
 
@@ -99,7 +98,7 @@ export default function TrackClient({ code }: { code?: string }) {
         <div className="rounded-xl border border-black/10 bg-white p-4 space-y-2">
           <div>Status: {data.status ?? "--"}</div>
           <div>Driver: {data.driver_name ?? "--"}</div>
-          <div>Fare: {money(proposedFare)}</div>
+          <div>Fare: {money(shownFare)}</div>
           <div>Pickup distance fee: {money(pickupFee)}</div>
           <div>
             Driver to pickup:{" "}
@@ -115,15 +114,6 @@ export default function TrackClient({ code }: { code?: string }) {
           </div>
           <div>Platform fee: {money(fee)}</div>
           <div className="font-semibold">Total: {money(total)}</div>
-        </div>
-      ) : null}
-
-      {!loading && !data && raw ? (
-        <div className="rounded-xl border border-black/10 bg-white p-4">
-          <div className="text-sm font-semibold">API response</div>
-          <pre className="mt-2 overflow-auto text-xs whitespace-pre-wrap">
-            {JSON.stringify(raw, null, 2)}
-          </pre>
         </div>
       ) : null}
     </div>

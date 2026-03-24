@@ -11,8 +11,8 @@ export async function GET(req: Request) {
 
     const bookingCode = String(
       searchParams.get("code") ||
-      searchParams.get("booking_code") ||
-      ""
+        searchParams.get("booking_code") ||
+        ""
     ).trim();
 
     if (!bookingCode) {
@@ -61,10 +61,6 @@ export async function GET(req: Request) {
           ok: false,
           error: "BOOKING_READ_FAILED",
           message: error.message,
-          debug: {
-            supabase_url: process.env.SUPABASE_URL || null,
-            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-          },
         },
         {
           status: 500,
@@ -84,10 +80,6 @@ export async function GET(req: Request) {
         {
           ok: false,
           error: "BOOKING_NOT_FOUND",
-          debug: {
-            supabase_url: process.env.SUPABASE_URL || null,
-            next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-          },
         },
         {
           status: 404,
@@ -136,10 +128,6 @@ export async function GET(req: Request) {
           driver_lat,
           driver_lng,
         },
-        debug: {
-          supabase_url: process.env.SUPABASE_URL || null,
-          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-        },
       },
       {
         status: 200,
@@ -156,10 +144,6 @@ export async function GET(req: Request) {
         ok: false,
         error: "SERVER_ERROR",
         message: String(e?.message ?? e),
-        debug: {
-          supabase_url: process.env.SUPABASE_URL || null,
-          next_public_supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL || null,
-        },
       },
       {
         status: 500,
