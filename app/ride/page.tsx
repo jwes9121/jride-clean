@@ -450,9 +450,8 @@ export default function RidePage() {
   const walletBlocked = walletOk === false || walletLocked;
   const bookingActive = !!activeCode;
 
-  const allowSubmit =
-    !busy && !unverifiedBlocked && !walletBlocked && !bookingActive &&
-    pilotTownAllowed && geoOrLocalOk && feesAck &&
+  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked && !bookingActive &&
+    pilotTownAllowed && geoOrLocalOk && feesAck &&    !!norm(signedInPassengerName || passengerName) &&
     !!norm(toLabel) && numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -464,7 +463,7 @@ export default function RidePage() {
     let alive = true;
     (async () => {
       try {
-        const r = await fetch("/api/public/auth/session", { method: "GET", cache: "no-store" });
+        const r = await fetch("/api/public/auth/session", { method: "GET", credentials: "include", cache: "no-store" });
         const j: any = await r.json().catch(() => null);
         if (!alive) return;
         const isAuthed = !!(j?.authed || j?.ok || j?.user || j?.session);
@@ -515,6 +514,7 @@ export default function RidePage() {
         j?.user?.full_name ??
         j?.user?.display_name ??
         j?.user?.passenger_name ??
+        j?.user?.passengerName ??
         j?.profile?.full_name ??
         j?.profile?.name ??
         j?.profile?.display_name ??
@@ -523,6 +523,7 @@ export default function RidePage() {
         j?.session?.user?.full_name ??
         j?.data?.user?.name ??
         j?.data?.user?.full_name ??
+        j?.name ??
         ""
       );
     }
@@ -1744,7 +1745,7 @@ export default function RidePage() {
                   if (signedInPassengerName) return;
                   setPassengerName(e.target.value);
                 }}
-                readOnly={!!signedInPassengerName}
+                readOnly={!!norm(signedInPassengerName)}
               />
               {signedInPassengerName ? (
                 <div className="mt-1 text-xs text-slate-500">
@@ -1860,7 +1861,7 @@ export default function RidePage() {
             {/* Fees acknowledgement */}
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm space-y-2">
               <div className="text-xs text-slate-700">
-                Fare, pickup distance fee, platform fee, and total are backend-driven. Review the quote before you proceed.
+                Pickup is FREE within 1.5 km. A small fee applies beyond that. Review your total fare before confirming.
               </div>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
@@ -1869,7 +1870,7 @@ export default function RidePage() {
                   onChange={(e) => setFeesAck(e.target.checked)}
                   className="rounded"
                 />
-                I understand the fees
+                I understand the fare shown
               </label>
             </div>
 
