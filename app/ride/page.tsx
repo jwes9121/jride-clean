@@ -22,7 +22,6 @@ import { useRouter } from "next/navigation";
 
 const STORAGE_KEY = "jride_active_booking_code";
 const LOCAL_VERIFY_KEY = "jride.local_verify_code";
-const PLATFORM_FEE = 15;
 const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
 
 const STATUS_STEPS = ["requested", "assigned", "on_the_way", "arrived", "on_trip", "completed"] as const;
@@ -117,6 +116,20 @@ function money(v?: number | null): string {
 function km(v?: number | null): string {
   if (typeof v !== "number" || !Number.isFinite(v)) return "--";
   return v.toFixed(1) + " km";
+}
+
+function fmtDate(v?: string | null): string {
+  const s = norm(v);
+  if (!s) return "--";
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return s;
+  return d.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function normStatus(s: any): string { return String(s || "").trim().toLowerCase(); }
@@ -1040,6 +1053,8 @@ export default function RidePage() {
         dropoff_lat: numOrNull(dropLat),
         dropoff_lng: numOrNull(dropLng),
         service: "ride",
+        vehicle_type: vehicleType,
+        passenger_count: pax,
         local_verification_code: hasLocalVerify() ? localVerify : undefined,
       });
 
@@ -1107,14 +1122,44 @@ export default function RidePage() {
   const bannerMsg = activeCode ? statusMessage(liveStatus) : "";
   const bannerTn = activeCode ? statusTone(liveStatus) : "slate";
 
-  // Live booking fare values (from backend only)
+  // Live booking values (backend fields only)
   const lb = liveBooking as any;
   const liveFare = lb ? (lb.verified_fare ?? lb.proposed_fare ?? null) : null;
   const livePickupFee = lb?.pickup_distance_fee ?? null;
-  const liveTotal = (typeof liveFare === "number" ? liveFare : 0) + (typeof livePickupFee === "number" ? livePickupFee : 0) + PLATFORM_FEE;
+  const livePlatformFee = typeof lb?.platform_fee === "number" && Number.isFinite(lb?.platform_fee) ? lb.platform_fee : null;
+  const liveTotal =
+    typeof lb?.total_fare === "number" && Number.isFinite(lb?.total_fare)
+      ? lb.total_fare
+      : typeof lb?.total_amount === "number" && Number.isFinite(lb?.total_amount)
+      ? lb.total_amount
+      : typeof lb?.grand_total === "number" && Number.isFinite(lb?.grand_total)
+      ? lb.grand_total
+      : null;
   const hasFare = typeof liveFare === "number" && Number.isFinite(liveFare);
+  const hasLiveTotal = typeof liveTotal === "number" && Number.isFinite(liveTotal);
   const isFareProposed = normStatus(liveStatus) === "fare_proposed";
   const driverName = norm(lb?.driver_name || "");
+  const tripFromLabel = norm(lb?.from_label || fromLabel || "");
+  const tripToLabel = norm(lb?.to_label || toLabel || "");
+  const tripPassengerName = norm(lb?.passenger_name || passengerName || "");
+  const tripTown = norm(lb?.town || town || "");
+  const completedAt = norm(lb?.completed_at || (normStatus(liveStatus) === "completed" ? lb?.updated_at : "") || "");
+  const cancelledAt = norm(lb?.cancelled_at || (normStatus(liveStatus) === "cancelled" ? lb?.updated_at : "") || "");
+  const eligibilityRows = [
+    { label: "Verified", value: verified ? "YES" : "NO" },
+    { label: "Night gate", value: nightGate ? "ACTIVE" : "INACTIVE" },
+    { label: "Wallet", value: walletBlocked ? (walletLocked ? "LOCKED" : "BLOCKED") : "OK" },
+    { label: "Location", value: geoPermission !== "granted" ? "PERMISSION REQUIRED" : geoInsideIfugao === true ? "INSIDE IFUGAO" : "OUTSIDE IFUGAO" },
+    { label: "Town", value: pilotTownAllowed ? "PILOT ALLOWED" : "NOT ALLOWED" },
+  ];
+  const blockingReason =
+    unverifiedBlocked ? "Verification required. Complete verification before booking." :
+    walletBlocked ? ("Wallet blocked. " + (walletLocked ? "Wallet is locked." : "Maintain the required wallet balance.")) :
+    !geoOrLocalOk ? (geoPermission !== "granted" ? "Location permission required." : "Booking is allowed only inside Ifugao.") :
+    !pilotTownAllowed ? "Selected town is not yet enabled for booking." :
+    !norm(toLabel) || numOrNull(dropLat) === null || numOrNull(dropLng) === null ? "Select a valid drop-off location." :
+    !feesAck ? "Acknowledge the booking fees before requesting a ride." :
+    "";
 
   return (
     <main className="min-h-screen bg-white">
@@ -1152,8 +1197,15 @@ export default function RidePage() {
                 {livePickupFee != null && livePickupFee > 0 && (
                   <div className="text-xs opacity-70">Pickup distance fee: {money(livePickupFee)}</div>
                 )}
-                <div className="text-xs opacity-70">Platform fee: {money(PLATFORM_FEE)}</div>
-                <div className="text-sm font-semibold">Total to pay: {money(liveTotal)}</div>
+                {livePlatformFee != null && (
+                  <div className="text-xs opacity-70">Platform fee: {money(livePlatformFee)}</div>
+                )}
+                <div className="text-sm font-semibold">
+                  Total to pay: {hasLiveTotal ? money(liveTotal) : "--"}
+                </div>
+                {!hasLiveTotal && (
+                  <div className="text-[11px] opacity-70">Waiting for backend total.</div>
+                )}
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={fareAccept}
@@ -1181,8 +1233,10 @@ export default function RidePage() {
                 {livePickupFee != null && livePickupFee > 0 && (
                   <div className="text-sm">Pickup distance fee: {money(livePickupFee)}</div>
                 )}
-                <div className="text-sm">Platform fee: {money(PLATFORM_FEE)}</div>
-                <div className="text-sm font-semibold">Total: {money(liveTotal)}</div>
+                {livePlatformFee != null && (
+                  <div className="text-sm">Platform fee: {money(livePlatformFee)}</div>
+                )}
+                <div className="text-sm font-semibold">Total: {hasLiveTotal ? money(liveTotal) : "--"}</div>
               </div>
             )}
 
@@ -1193,6 +1247,18 @@ export default function RidePage() {
                 <div className="text-xs opacity-70">Fare will be proposed by your driver.</div>
               </div>
             )}
+
+            {/* Trip summary */}
+            <div className="rounded-lg border border-black/10 p-3 space-y-1">
+              <div className="text-sm font-semibold">Trip summary</div>
+              <div className="text-sm">Booking code: <span className="font-mono">{activeCode}</span></div>
+              <div className="text-sm">Passenger: {tripPassengerName || "--"}</div>
+              <div className="text-sm">Pickup: {tripFromLabel || "--"}</div>
+              <div className="text-sm">Drop-off: {tripToLabel || "--"}</div>
+              <div className="text-sm">Town: {tripTown || "--"}</div>
+              <div className="text-sm">Status: {normStatus(liveStatus) || "--"}</div>
+              <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
+            </div>
 
             {/* Driver info */}
             <div className="rounded-lg border border-black/10 p-3 space-y-1">
@@ -1211,14 +1277,65 @@ export default function RidePage() {
               <div className="text-xs text-red-600 opacity-70">{liveErr}</div>
             )}
 
-            {/* Clear booking */}
+            {/* Completed / cancelled receipt */}
             {(normStatus(liveStatus) === "completed" || normStatus(liveStatus) === "cancelled") && (
-              <button
-                onClick={handleClear}
-                className="rounded-lg border border-black/10 px-4 py-2 text-sm"
-              >
-                New booking
-              </button>
+              <div className="rounded-xl border border-black/10 p-4 space-y-3">
+                <div className="text-sm font-semibold">
+                  {normStatus(liveStatus) === "completed" ? "Trip receipt" : "Trip summary"}
+                </div>
+                <div className="grid grid-cols-1 gap-1 text-sm">
+                  <div>Booking code: <span className="font-mono">{activeCode}</span></div>
+                  <div>Status: {normStatus(liveStatus) || "--"}</div>
+                  <div>Passenger: {tripPassengerName || "--"}</div>
+                  <div>Driver: {driverName || "--"}</div>
+                  <div>Pickup: {tripFromLabel || "--"}</div>
+                  <div>Drop-off: {tripToLabel || "--"}</div>
+                  <div>Fare: {hasFare ? money(liveFare) : "--"}</div>
+                  <div>Pickup distance fee: {livePickupFee != null ? money(livePickupFee) : "--"}</div>
+                  <div>Platform fee: {livePlatformFee != null ? money(livePlatformFee) : "--"}</div>
+                  <div>Total: {hasLiveTotal ? money(liveTotal) : "--"}</div>
+                  <div>Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
+                  <div>Trip distance: {km(lb?.trip_distance_km)}</div>
+                  <div>{normStatus(liveStatus) === "completed" ? "Completed" : "Cancelled"}: {fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt)}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={async () => {
+                      const receiptText = [
+                        "JRide receipt",
+                        "Booking code: " + activeCode,
+                        "Status: " + (normStatus(liveStatus) || "--"),
+                        "Passenger: " + (tripPassengerName || "--"),
+                        "Driver: " + (driverName || "--"),
+                        "Pickup: " + (tripFromLabel || "--"),
+                        "Drop-off: " + (tripToLabel || "--"),
+                        "Fare: " + (hasFare ? money(liveFare) : "--"),
+                        "Pickup distance fee: " + (livePickupFee != null ? money(livePickupFee) : "--"),
+                        "Platform fee: " + (livePlatformFee != null ? money(livePlatformFee) : "--"),
+                        "Total: " + (hasLiveTotal ? money(liveTotal) : "--"),
+                        "Driver to pickup: " + km(lb?.driver_to_pickup_km),
+                        "Trip distance: " + km(lb?.trip_distance_km),
+                        (normStatus(liveStatus) === "completed" ? "Completed: " : "Cancelled: ") + fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt),
+                      ].join("\n");
+                      try {
+                        await navigator.clipboard.writeText(receiptText);
+                        setResult("RECEIPT_COPIED");
+                      } catch (e: any) {
+                        setResult("COPY_FAILED: " + String(e?.message || e));
+                      }
+                    }}
+                    className="rounded-lg border border-black/10 px-4 py-2 text-sm"
+                  >
+                    Copy receipt
+                  </button>
+                  <button
+                    onClick={handleClear}
+                    className="rounded-lg border border-black/10 px-4 py-2 text-sm"
+                  >
+                    New booking
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -1229,6 +1346,27 @@ export default function RidePage() {
         {!activeCode && (
           <div className="space-y-4">
             <h1 className="text-2xl font-semibold">Book a Ride</h1>
+
+            {/* Eligibility status */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-sm font-semibold">Booking eligibility</div>
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {eligibilityRows.map((row) => (
+                  <div key={row.label} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="opacity-60">{row.label}</div>
+                    <div className="font-semibold">{row.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Blocking reason */}
+            {!!blockingReason && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-1">
+                <div className="text-sm font-semibold text-red-900">Booking blocked</div>
+                <div className="text-xs text-red-800">{blockingReason}</div>
+              </div>
+            )}
 
             {/* Geo gate warning */}
             {!geoOrLocalOk && (
@@ -1427,7 +1565,7 @@ export default function RidePage() {
             {/* Fees acknowledgement */}
             <div className="rounded-lg border border-black/10 p-3 space-y-2">
               <div className="text-xs text-slate-700">
-                A platform fee of PHP {PLATFORM_FEE} applies. Additional pickup distance fees may apply if the driver is far from your location.
+                Fare, pickup distance fee, platform fee, and total are backend-driven. Review the quote before you proceed.
               </div>
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input

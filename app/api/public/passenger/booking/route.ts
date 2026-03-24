@@ -13,7 +13,7 @@ function noStoreHeaders() {
   };
 }
 
-const BOOKING_SELECT = `
+const BOOKING_SELECT_BASE = `
   id,
   booking_code,
   status,
@@ -22,6 +22,10 @@ const BOOKING_SELECT = `
   created_at,
   updated_at,
   created_by_user_id,
+  passenger_name,
+  town,
+  from_label,
+  to_label,
   proposed_fare,
   passenger_fare_response,
   verified_fare,
@@ -33,6 +37,51 @@ const BOOKING_SELECT = `
   dropoff_lat,
   dropoff_lng
 `;
+
+const BOOKING_SELECT_WITH_RECEIPT = `
+  id,
+  booking_code,
+  status,
+  driver_id,
+  assigned_driver_id,
+  created_at,
+  updated_at,
+  created_by_user_id,
+  passenger_name,
+  town,
+  from_label,
+  to_label,
+  proposed_fare,
+  passenger_fare_response,
+  verified_fare,
+  driver_to_pickup_km,
+  pickup_distance_fee,
+  trip_distance_km,
+  pickup_lat,
+  pickup_lng,
+  dropoff_lat,
+  dropoff_lng,
+  platform_fee,
+  total_fare,
+  completed_at,
+  cancelled_at
+`;
+
+async function readBookingWithFallback(
+  supabase: any,
+  queryBuilderFactory: (selectClause: string) => any
+) {
+  const attempts = [BOOKING_SELECT_WITH_RECEIPT, BOOKING_SELECT_BASE];
+  let lastError: any = null;
+
+  for (const selectClause of attempts) {
+    const res = await queryBuilderFactory(selectClause);
+    if (!res?.error) return res;
+    lastError = res.error;
+  }
+
+  return { data: null, error: lastError };
+}
 
 const ACTIVE_STATUSES = [
   "requested",
@@ -62,12 +111,14 @@ export async function GET(req: Request) {
     let booking: any = null;
 
     if (bookingCode) {
-      const { data: bookingRows, error } = await supabase
-        .from("bookings")
-        .select(BOOKING_SELECT)
-        .eq("booking_code", bookingCode)
-        .order("updated_at", { ascending: false })
-        .limit(1);
+      const { data: bookingRows, error } = await readBookingWithFallback(supabase, (selectClause) =>
+        supabase
+          .from("bookings")
+          .select(selectClause)
+          .eq("booking_code", bookingCode)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+      );
 
       if (error) {
         return NextResponse.json(
@@ -93,13 +144,15 @@ export async function GET(req: Request) {
 
       const userId = userRes.user.id;
 
-      const { data: bookingRows, error } = await supabase
-        .from("bookings")
-        .select(BOOKING_SELECT)
-        .eq("created_by_user_id", userId)
-        .in("status", ACTIVE_STATUSES)
-        .order("updated_at", { ascending: false })
-        .limit(1);
+      const { data: bookingRows, error } = await readBookingWithFallback(supabase, (selectClause) =>
+        supabase
+          .from("bookings")
+          .select(selectClause)
+          .eq("created_by_user_id", userId)
+          .in("status", ACTIVE_STATUSES)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+      );
 
       if (error) {
         return NextResponse.json(
