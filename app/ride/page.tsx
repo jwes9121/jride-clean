@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 
 const STORAGE_KEY = "jride_active_booking_code";
 const LOCAL_VERIFY_KEY = "jride.local_verify_code";
+const HISTORY_KEY = "jride.passenger_recent_trips.v1";
 const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
 
 const STATUS_STEPS = ["requested", "assigned", "on_the_way", "arrived", "on_trip", "completed"] as const;
@@ -78,6 +79,25 @@ type GeoFeature = {
   raw?: any;
 };
 
+type RecentTrip = {
+  booking_code: string;
+  status: string;
+  passenger_name?: string;
+  driver_name?: string;
+  from_label?: string;
+  to_label?: string;
+  town?: string;
+  fare?: number | null;
+  pickup_distance_fee?: number | null;
+  platform_fee?: number | null;
+  total?: number | null;
+  driver_to_pickup_km?: number | null;
+  trip_distance_km?: number | null;
+  completed_at?: string | null;
+  updated_at?: string | null;
+  saved_at: string;
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 function stored_get(): string {
@@ -91,6 +111,42 @@ function stored_set(code: string) {
     if (code) localStorage.setItem(STORAGE_KEY, code);
     else localStorage.removeItem(STORAGE_KEY);
   } catch {}
+}
+
+function readRecentTrips(): RecentTrip[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return parsed
+      .filter((it: any) => it && typeof it.booking_code === "string")
+      .filter((it: any) => {
+        const when = new Date(String(it.saved_at || it.completed_at || it.updated_at || 0)).getTime();
+        return Number.isFinite(when) && now - when <= 7 * 24 * 60 * 60 * 1000;
+      })
+      .sort((a: any, b: any) => {
+        const ta = new Date(String(a.saved_at || a.completed_at || a.updated_at || 0)).getTime() || 0;
+        const tb = new Date(String(b.saved_at || b.completed_at || b.updated_at || 0)).getTime() || 0;
+        return tb - ta;
+      })
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentTrips(items: RecentTrip[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, 10)));
+  } catch {}
+}
+
+function upsertRecentTrip(item: RecentTrip) {
+  const existing = readRecentTrips().filter((it) => it.booking_code !== item.booking_code);
+  saveRecentTrips([item, ...existing]);
 }
 
 function numOrNull(s: string): number | null {
@@ -150,7 +206,7 @@ function statusMessage(stRaw: any): string {
   if (st === "on_the_way") return "Driver is on the way to your pickup point.";
   if (st === "arrived") return "Driver has arrived at the pickup point.";
   if (st === "on_trip") return "Trip is now in progress.";
-  if (st === "completed") return "Trip completed.";
+  if (st === "completed") return "Trip completed successfully.";
   if (st === "cancelled") return "This trip was cancelled.";
   return "Updating trip status…";
 }
@@ -234,8 +290,8 @@ function StatusStepper({ status }: { status: string }) {
 
   if (st === "cancelled") {
     return (
-      <div className="mt-3">
-        <span className="inline-flex items-center rounded-full bg-red-600 text-white px-3 py-1 text-xs font-semibold">
+      <div className="mt-4">
+        <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
           Cancelled
         </span>
       </div>
@@ -243,39 +299,36 @@ function StatusStepper({ status }: { status: string }) {
   }
 
   return (
-    <div className="mt-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="mt-4 overflow-x-auto">
+      <div className="flex min-w-[720px] items-center gap-2 pb-1">
         {STATUS_STEPS.map((s, i) => {
           const done = idx >= 0 && i < idx;
           const now = idx >= 0 && i === idx;
-
           const bubble =
-            "inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold " +
-            (now ? "bg-blue-600 text-white" : done ? "bg-black/70 text-white" : "bg-slate-200 text-slate-700");
-
-          const label = "text-[11px] " + (now ? "font-semibold" : done ? "opacity-80" : "opacity-50");
-
+            "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold shadow-sm " +
+            (now
+              ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+              : done
+              ? "bg-slate-800 text-white"
+              : "bg-slate-100 text-slate-500 border border-slate-200");
+          const label =
+            "whitespace-nowrap text-[11px] " +
+            (now ? "font-semibold text-slate-900" : done ? "text-slate-700" : "text-slate-400");
           const pretty =
             s === "on_the_way" ? "On the way" :
             s === "on_trip" ? "On trip" :
-            (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, " ");
-
+            s.charAt(0).toUpperCase() + s.slice(1);
           return (
-            <div key={s} className="flex items-center gap-2">
-              <div className={bubble}>{i + 1}</div>
-              <div className={label}>{pretty}</div>
-              {i < STATUS_STEPS.length - 1 && (
-                <div className={"w-6 h-[2px] " + (done ? "bg-black/40" : "bg-black/10")} />
-              )}
-            </div>
+            <React.Fragment key={s}>
+              <div className="flex items-center gap-2">
+                <span className={bubble}>{i + 1}</span>
+                <span className={label}>{pretty}</span>
+              </div>
+              {i < STATUS_STEPS.length - 1 && <div className="h-px min-w-[28px] flex-1 bg-slate-200" />}
+            </React.Fragment>
           );
         })}
       </div>
-      {idx < 0 && (
-        <div className="mt-2 text-xs opacity-70">
-          Status: <span className="font-mono">{st || "(loading)"}</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -336,6 +389,8 @@ export default function RidePage() {
   // ─── Verification panel ────────────────────────────────────────
   const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const [recentTrips, setRecentTrips] = React.useState<RecentTrip[]>([]);
+  const [mapResetKey, setMapResetKey] = React.useState(0);
 
   // ─── Mapbox geocode state ──────────────────────────────────────
   const sessionTokenRef = React.useRef("");
@@ -351,7 +406,7 @@ export default function RidePage() {
   const toDebounceRef = React.useRef<any>(null);
 
   // ─── Map picker state ──────────────────────────────────────────
-  const [showMapPicker, setShowMapPicker] = React.useState(false);
+  const [showMapPicker, setShowMapPicker] = React.useState(true);
   const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
   const pickModeRef = React.useRef<"pickup" | "dropoff">(pickMode);
   React.useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
@@ -472,6 +527,10 @@ export default function RidePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  React.useEffect(() => {
+    setRecentTrips(readRecentTrips());
+  }, []);
+
   // Cross-browser resume: if no activeCode, try server for latest active booking
   React.useEffect(() => {
     if (activeCode) return;
@@ -521,6 +580,36 @@ export default function RidePage() {
     pollRef.current = setInterval(tick, 3000);
     return () => { cancelled = true; if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [activeCode]);
+
+
+  React.useEffect(() => {
+    const st = normStatus(liveStatus);
+    if (!activeCode || !liveBooking || (st !== "completed" && st !== "cancelled")) return;
+    const b: any = liveBooking;
+    const item: RecentTrip = {
+      booking_code: activeCode,
+      status: st,
+      passenger_name: norm(b?.passenger_name || passengerName || ""),
+      driver_name: norm(b?.driver_name || ""),
+      from_label: norm(b?.from_label || fromLabel || ""),
+      to_label: norm(b?.to_label || toLabel || ""),
+      town: norm(b?.town || town || ""),
+      fare: typeof (b?.verified_fare ?? b?.proposed_fare) === "number" ? (b?.verified_fare ?? b?.proposed_fare) : null,
+      pickup_distance_fee: typeof b?.pickup_distance_fee === "number" ? b.pickup_distance_fee : null,
+      platform_fee: typeof b?.platform_fee === "number" ? b.platform_fee : null,
+      total:
+        typeof b?.total_fare === "number" ? b.total_fare :
+        typeof b?.total_amount === "number" ? b.total_amount :
+        typeof b?.grand_total === "number" ? b.grand_total : null,
+      driver_to_pickup_km: typeof b?.driver_to_pickup_km === "number" ? b.driver_to_pickup_km : null,
+      trip_distance_km: typeof b?.trip_distance_km === "number" ? b.trip_distance_km : null,
+      completed_at: norm(b?.completed_at || ""),
+      updated_at: norm(b?.updated_at || ""),
+      saved_at: new Date().toISOString(),
+    };
+    upsertRecentTrip(item);
+    setRecentTrips(readRecentTrips());
+  }, [activeCode, liveBooking, liveStatus, passengerName, fromLabel, toLabel, town]);
 
   // Debounced geocoding for pickup
   React.useEffect(() => {
@@ -988,17 +1077,54 @@ export default function RidePage() {
   // ─── Clear booking ─────────────────────────────────────────────
 
   function handleClear() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    try { routeAbortRef.current?.abort?.(); } catch {}
+    try { pickupMarkerRef.current?.remove?.(); dropoffMarkerRef.current?.remove?.(); } catch {}
+    try { if (mapRef.current) mapRef.current.remove(); } catch {}
+    pickupMarkerRef.current = null;
+    dropoffMarkerRef.current = null;
+    mapRef.current = null;
+    routeGeoRef.current = { type: "FeatureCollection", features: [] };
+
+    const g = getTownGeo(town);
     setActiveCode("");
     setLiveBooking(null);
     setLiveStatus("");
     setLiveErr("");
     setResult("");
+    setFareBusy(false);
     stored_set("");
+
+    setShowVerifyPanel(false);
+    setCopied(false);
+    setActiveGeoField(null);
+    setGeoFrom([]);
+    setGeoTo([]);
+    setGeoErr("");
+    setShowMapPicker(true);
+    setPickMode("pickup");
+    setRouteInfo(null);
+    setFeesAck(false);
+
+    if (g) {
+      setPickupLng(String(g.center[0]));
+      setPickupLat(String(g.center[1]));
+      setFromLabel(norm(town) + " Town Proper");
+      setDropLng("");
+      setDropLat("");
+      setToLabel("");
+      townAppliedRef.current = "";
+      pickupTouchedRef.current = false;
+    }
+
+    setMapResetKey((v) => v + 1);
+
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.delete("code");
       url.searchParams.delete("booking_code");
       window.history.replaceState({}, "", url.pathname);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
@@ -1178,17 +1304,17 @@ export default function RidePage() {
     "";
 
   return (
-    <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-2xl p-4 space-y-4">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#f7faf9_0%,#f4f7f6_100%)] text-slate-900">
+      <div className="mx-auto max-w-3xl px-4 py-6 space-y-5">
 
         {/* ── Status banner ── */}
         {activeCode && bannerMsg && (
           <div className={
-            "rounded-xl border p-3 text-sm " +
+            "rounded-2xl border p-4 text-sm shadow-[0_10px_30px_rgba(15,23,42,0.05)] " +
             (bannerTn === "amber" ? "border-amber-300 bg-amber-50 text-amber-900" :
-             bannerTn === "green" ? "border-green-300 bg-green-50 text-green-900" :
+             bannerTn === "green" ? "border-emerald-200 bg-emerald-50 text-emerald-900" :
              bannerTn === "red" ? "border-red-300 bg-red-50 text-red-900" :
-             bannerTn === "blue" ? "border-blue-300 bg-blue-50 text-blue-900" :
+             bannerTn === "blue" ? "border-emerald-200 bg-emerald-50/70 text-emerald-950" :
              "border-slate-300 bg-slate-50 text-slate-800")
           }>
             <div className="font-semibold">Current trip status</div>
@@ -1216,7 +1342,7 @@ export default function RidePage() {
                     {isFareProposed ? "Driver proposed fare" : "Trip fare summary"}
                   </div>
                   <div className="mt-1 text-xs opacity-70">
-                    {isFareProposed ? "Accept to proceed or request a new quote." : "Fare, pickup fee, and total shown for this trip."}
+                    {isFareProposed ? "Accept to continue or request a new quote." : "Fare, pickup fee, and total shown for this trip."}
                   </div>
                 </div>
                 <div className="space-y-1 text-sm">
@@ -1242,14 +1368,14 @@ export default function RidePage() {
                     <button
                       onClick={fareAccept}
                       disabled={fareBusy}
-                      className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                      className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] hover:bg-emerald-400 disabled:opacity-50"
                     >
                       Accept fare
                     </button>
                     <button
                       onClick={fareReject}
                       disabled={fareBusy}
-                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
                       Reject / new quote
                     </button>
@@ -1260,14 +1386,14 @@ export default function RidePage() {
 
             {/* Estimated total (no fare yet) */}
             {!hasFare && (
-              <div className="rounded-lg border border-black/10 p-3 space-y-1">
+              <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] space-y-1">
                 <div className="text-sm font-semibold">Estimated total</div>
                 <div className="text-xs opacity-70">Fare will be proposed by your driver.</div>
               </div>
             )}
 
             {/* Trip summary */}
-            <div className="rounded-lg border border-black/10 p-3 space-y-1">
+            <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] space-y-1">
               <div className="text-sm font-semibold">Trip summary</div>
               <div className="text-sm">Booking code: <span className="font-mono">{activeCode}</span></div>
               <div className="text-sm">Passenger: {tripPassengerName || "--"}</div>
@@ -1275,17 +1401,12 @@ export default function RidePage() {
               <div className="text-sm">Drop-off: {tripToLabel || "--"}</div>
               <div className="text-sm">Town: {tripTown || "--"}</div>
               <div className="text-sm">Status: {normStatus(liveStatus) || "--"}</div>
+              <div className="text-sm">Driver: {driverName || (lb?.driver_id ? (String(lb.driver_id).substring(0, 8) + "…") : "Searching…")}</div>
               <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
             </div>
 
-            {/* Driver info */}
-            <div className="rounded-lg border border-black/10 p-3 space-y-1">
-              <div className="text-sm font-semibold">Driver</div>
-              <div className="text-sm">{driverName || (lb?.driver_id ? (String(lb.driver_id).substring(0, 8) + "…") : "Searching…")}</div>
-            </div>
-
             {/* Trip metrics */}
-            <div className="rounded-lg border border-black/10 p-3 space-y-1">
+            <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] space-y-1">
               <div className="text-sm font-semibold">Trip details</div>
               <div className="text-sm">Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
               <div className="text-sm">Trip distance: {km(lb?.trip_distance_km)}</div>
@@ -1297,7 +1418,7 @@ export default function RidePage() {
 
             {/* Completed / cancelled receipt */}
             {(normStatus(liveStatus) === "completed" || normStatus(liveStatus) === "cancelled") && (
-              <div className="rounded-xl border border-black/10 p-4 space-y-3">
+              <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.07)] space-y-3">
                 <div className="text-sm font-semibold">
                   {normStatus(liveStatus) === "completed" ? "Trip receipt" : "Trip summary"}
                 </div>
@@ -1342,13 +1463,13 @@ export default function RidePage() {
                         setResult("COPY_FAILED: " + String(e?.message || e));
                       }
                     }}
-                    className="rounded-lg border border-black/10 px-4 py-2 text-sm"
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Copy receipt
                   </button>
                   <button
                     onClick={handleClear}
-                    className="rounded-lg border border-black/10 px-4 py-2 text-sm"
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     New booking
                   </button>
@@ -1363,10 +1484,10 @@ export default function RidePage() {
         {/* ═══════════════════════════════════════════════════════ */}
         {!activeCode && (
           <div className="space-y-4">
-            <h1 className="text-2xl font-semibold">Book a Ride</h1>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-3xl font-semibold tracking-tight text-slate-950">Book a Ride</h1><p className="mt-1 text-sm text-slate-500">Fast, secure, and trackable rides with a cleaner premium booking flow.</p></div><div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">JRide Passenger</div></div>
 
             {/* Eligibility status */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)]">
               <div className="text-sm font-semibold">Booking eligibility</div>
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 {eligibilityRows.map((row) => (
@@ -1380,7 +1501,7 @@ export default function RidePage() {
 
             {/* Blocking reason */}
             {!!blockingReason && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-1">
+              <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-sm space-y-1">
                 <div className="text-sm font-semibold text-red-900">Booking blocked</div>
                 <div className="text-xs text-red-800">{blockingReason}</div>
               </div>
@@ -1388,7 +1509,7 @@ export default function RidePage() {
 
             {/* Geo gate warning */}
             {!geoOrLocalOk && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm space-y-2">
                 <div className="text-sm font-semibold text-amber-900">
                   {geoPermission !== "granted" ? "Location permission required" : "Outside Ifugao"}
                 </div>
@@ -1399,7 +1520,7 @@ export default function RidePage() {
                 </div>
                 <button
                   onClick={promptGeoFromClick}
-                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-500"
+                  className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-400"
                 >
                   Enable location
                 </button>
@@ -1409,7 +1530,7 @@ export default function RidePage() {
 
             {/* Unverified block */}
             {unverifiedBlocked && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2">
+              <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-sm space-y-2">
                 <div className="text-sm font-semibold text-red-900">Verification required</div>
                 <div className="text-xs text-red-800">
                   Your account is not verified. Ride booking is restricted until verification is approved.
@@ -1417,7 +1538,7 @@ export default function RidePage() {
                 </div>
                 <button
                   onClick={() => setShowVerifyPanel(!showVerifyPanel)}
-                  className="rounded-lg border border-red-300 px-3 py-1.5 text-xs text-red-800 hover:bg-red-100"
+                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
                 >
                   {showVerifyPanel ? "Hide verification" : "Request verification"}
                 </button>
@@ -1426,12 +1547,12 @@ export default function RidePage() {
 
             {/* Verify panel */}
             {showVerifyPanel && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-2">
                 <div className="text-sm font-semibold">Verification Request</div>
                 <pre className="text-xs bg-white border border-slate-200 rounded p-2 overflow-x-auto whitespace-pre-wrap">{verifyRequestText()}</pre>
                 <button
                   onClick={copyVerifyRequest}
-                  className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
+                  className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-400"
                 >
                   {copied ? "Copied!" : "Copy to clipboard"}
                 </button>
@@ -1440,7 +1561,7 @@ export default function RidePage() {
 
             {/* Wallet block */}
             {walletBlocked && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+              <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-sm">
                 <div className="text-sm font-semibold text-red-900">Wallet requirement not met</div>
                 <div className="text-xs text-red-800">
                   Balance: {String(canInfo?.wallet_balance ?? "N/A")} |
@@ -1454,7 +1575,7 @@ export default function RidePage() {
             <div>
               <label className="text-xs font-medium">Town</label>
               <select
-                className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                 value={town}
                 onChange={(e) => setTown(e.target.value)}
               >
@@ -1469,7 +1590,7 @@ export default function RidePage() {
             <div>
               <label className="text-xs font-medium">Your name</label>
               <input
-                className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                 placeholder="Name"
                 value={passengerName}
                 onChange={(e) => setPassengerName(e.target.value)}
@@ -1481,7 +1602,7 @@ export default function RidePage() {
               <div>
                 <label className="text-xs font-medium">Vehicle</label>
                 <select
-                  className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                   value={vehicleType}
                   onChange={(e) => {
                     const v = e.target.value as "tricycle" | "motorcycle";
@@ -1499,7 +1620,7 @@ export default function RidePage() {
                   type="number"
                   min={1}
                   max={vehicleType === "motorcycle" ? 1 : 4}
-                  className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                   value={passengerCount}
                   onChange={(e) => setPassengerCount(clampPax(vehicleType, e.target.value))}
                 />
@@ -1510,7 +1631,7 @@ export default function RidePage() {
             <div>
               <label className="text-xs font-medium">Pickup location</label>
               <input
-                className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                 placeholder="Search pickup…"
                 value={fromLabel}
                 onFocus={() => setActiveGeoField("from")}
@@ -1523,7 +1644,7 @@ export default function RidePage() {
             <div>
               <label className="text-xs font-medium">Drop-off location</label>
               <input
-                className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                 placeholder="Search destination…"
                 value={toLabel}
                 onFocus={() => setActiveGeoField("to")}
@@ -1546,7 +1667,7 @@ export default function RidePage() {
                 <button
                   type="button"
                   onClick={() => setShowMapPicker(!showMapPicker)}
-                  className="rounded-lg border border-black/10 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
                   {showMapPicker ? "Hide map" : "Pick on map"}
                 </button>
@@ -1557,19 +1678,19 @@ export default function RidePage() {
                       <button
                         type="button"
                         onClick={() => setPickMode("pickup")}
-                        className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (pickMode === "pickup" ? "bg-green-600 text-white" : "border border-black/10")}
+                        className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (pickMode === "pickup" ? "bg-emerald-500 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-700")}
                       >
                         Set pickup
                       </button>
                       <button
                         type="button"
                         onClick={() => setPickMode("dropoff")}
-                        className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (pickMode === "dropoff" ? "bg-red-600 text-white" : "border border-black/10")}
+                        className={"rounded-lg px-3 py-1.5 text-xs font-medium " + (pickMode === "dropoff" ? "bg-slate-800 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-700")}
                       >
                         Set drop-off
                       </button>
                     </div>
-                    <div ref={mapDivRef} className="w-full h-64 rounded-lg border border-black/10" />
+                    <div key={mapResetKey} ref={mapDivRef} className="w-full h-72 rounded-2xl border border-emerald-100 shadow-inner bg-white" />
                     {routeInfo && (
                       <div className="text-xs opacity-70">
                         Route: {(routeInfo.distance_m / 1000).toFixed(1)} km · ~{Math.ceil(routeInfo.duration_s / 60)} min
@@ -1581,7 +1702,7 @@ export default function RidePage() {
             )}
 
             {/* Fees acknowledgement */}
-            <div className="rounded-lg border border-black/10 p-3 space-y-2">
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm space-y-2">
               <div className="text-xs text-slate-700">
                 Fare, pickup distance fee, platform fee, and total are backend-driven. Review the quote before you proceed.
               </div>
@@ -1600,7 +1721,7 @@ export default function RidePage() {
             <div>
               <label className="text-xs font-medium">Local verification code (optional)</label>
               <input
-                className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                 placeholder="Enter code if provided"
                 value={localVerify}
                 onChange={(e) => {
@@ -1614,7 +1735,7 @@ export default function RidePage() {
             <button
               onClick={submit}
               disabled={!allowSubmit}
-              className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy ? "Booking…" : "Request Ride"}
             </button>
@@ -1622,7 +1743,7 @@ export default function RidePage() {
             {/* Result */}
             {result && (
               <div className={
-                "rounded-lg border p-3 text-sm " +
+                "rounded-2xl border p-4 text-sm shadow-sm " +
                 (result.startsWith("BOOKED_OK") ? "border-green-200 bg-green-50 text-green-900" : "border-red-200 bg-red-50 text-red-700")
               }>
                 {result.startsWith("BOOKED_OK")
@@ -1632,6 +1753,63 @@ export default function RidePage() {
             )}
 
             {canInfoErr && <div className="text-xs text-red-600 opacity-70">{canInfoErr}</div>}
+
+            {recentTrips.length > 0 && (
+              <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Recent trips</div>
+                  <div className="text-xs text-slate-500">Last 7 days on this device, up to 10 trips.</div>
+                </div>
+                <div className="space-y-2">
+                  {recentTrips.map((trip) => (
+                    <div key={trip.booking_code} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold text-slate-900">{trip.from_label || "--"} → {trip.to_label || "--"}</div>
+                          <div className="text-xs text-slate-500">
+                            {fmtDate(trip.completed_at || trip.updated_at || trip.saved_at)} • {trip.driver_name || "Driver pending"} • {trip.status}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            Code: <span className="font-mono">{trip.booking_code}</span> • Total: {typeof trip.total === "number" ? money(trip.total) : "--"}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              stored_set(trip.booking_code);
+                              setActiveCode(trip.booking_code);
+                              if (typeof window !== "undefined") {
+                                const url = new URL(window.location.href);
+                                url.searchParams.set("code", trip.booking_code);
+                                window.history.replaceState({}, "", url.toString());
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }
+                            }}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            View receipt
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleClear();
+                              setTown(trip.town || town);
+                              setPassengerName((prev) => prev || trip.passenger_name || "");
+                              setFromLabel(trip.from_label || "");
+                              setToLabel(trip.to_label || "");
+                            }}
+                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-400"
+                          >
+                            Book again
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
