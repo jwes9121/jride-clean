@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createClient } from "@/utils/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,9 +13,44 @@ function noStoreHeaders() {
   };
 }
 
+const BOOKING_SELECT = `
+  id,
+  booking_code,
+  status,
+  driver_id,
+  assigned_driver_id,
+  created_at,
+  updated_at,
+  created_by_user_id,
+  proposed_fare,
+  passenger_fare_response,
+  verified_fare,
+  driver_to_pickup_km,
+  pickup_distance_fee,
+  trip_distance_km,
+  pickup_lat,
+  pickup_lng,
+  dropoff_lat,
+  dropoff_lng
+`;
+
+const ACTIVE_STATUSES = [
+  "requested",
+  "pending",
+  "searching",
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "on_trip",
+];
+
 export async function GET(req: Request) {
   try {
     const supabase = supabaseAdmin();
+    const sessionSupabase = createClient();
     const { searchParams } = new URL(req.url);
 
     const bookingCode = String(
@@ -23,37 +59,12 @@ export async function GET(req: Request) {
         ""
     ).trim();
 
-    const userId = String(
-      searchParams.get("uid") ||
-        searchParams.get("user_id") ||
-        ""
-    ).trim();
-
     let booking: any = null;
 
     if (bookingCode) {
       const { data: bookingRows, error } = await supabase
         .from("bookings")
-        .select(`
-          id,
-          booking_code,
-          status,
-          driver_id,
-          assigned_driver_id,
-          created_at,
-          updated_at,
-          created_by_user_id,
-          proposed_fare,
-          passenger_fare_response,
-          verified_fare,
-          driver_to_pickup_km,
-          pickup_distance_fee,
-          trip_distance_km,
-          pickup_lat,
-          pickup_lng,
-          dropoff_lat,
-          dropoff_lng
-        `)
+        .select(BOOKING_SELECT)
         .eq("booking_code", bookingCode)
         .order("updated_at", { ascending: false })
         .limit(1);
@@ -70,42 +81,23 @@ export async function GET(req: Request) {
       }
 
       booking = bookingRows?.[0] ?? null;
-    } else if (userId) {
+    } else {
+      const { data: userRes, error: userErr } = await sessionSupabase.auth.getUser();
+
+      if (userErr || !userRes?.user) {
+        return NextResponse.json(
+          { ok: false, error: "MISSING_BOOKING_CODE" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+
+      const userId = userRes.user.id;
+
       const { data: bookingRows, error } = await supabase
         .from("bookings")
-        .select(`
-          id,
-          booking_code,
-          status,
-          driver_id,
-          assigned_driver_id,
-          created_at,
-          updated_at,
-          created_by_user_id,
-          proposed_fare,
-          passenger_fare_response,
-          verified_fare,
-          driver_to_pickup_km,
-          pickup_distance_fee,
-          trip_distance_km,
-          pickup_lat,
-          pickup_lng,
-          dropoff_lat,
-          dropoff_lng
-        `)
+        .select(BOOKING_SELECT)
         .eq("created_by_user_id", userId)
-        .in("status", [
-          "requested",
-          "pending",
-          "searching",
-          "assigned",
-          "accepted",
-          "fare_proposed",
-          "ready",
-          "on_the_way",
-          "arrived",
-          "on_trip",
-        ])
+        .in("status", ACTIVE_STATUSES)
         .order("updated_at", { ascending: false })
         .limit(1);
 
@@ -121,11 +113,6 @@ export async function GET(req: Request) {
       }
 
       booking = bookingRows?.[0] ?? null;
-    } else {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_CODE" },
-        { status: 400, headers: noStoreHeaders() }
-      );
     }
 
     if (!booking) {

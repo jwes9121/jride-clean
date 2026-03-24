@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 const JRIDE_ACTIVE_BOOKING_KEY = "jride_active_booking_code";
-const JRIDE_ACTIVE_USER_KEY = "jride_passenger_user_id";
 
 function getLocal(key: string) {
   if (typeof window === "undefined") return "";
@@ -53,14 +52,14 @@ export default function RidePage() {
 
         const savedCode = getLocal(JRIDE_ACTIVE_BOOKING_KEY);
         if (savedCode) {
-          const res = await fetch(
+          const savedRes = await fetch(
             `/api/public/passenger/booking?code=${encodeURIComponent(savedCode)}&ts=${Date.now()}`,
             { cache: "no-store" }
           );
-          const json = await res.json().catch(() => null);
+          const savedJson = await savedRes.json().catch(() => null);
 
-          if (!cancelled && res.ok && json?.ok && json?.booking?.booking_code) {
-            const realCode = String(json.booking.booking_code).trim();
+          if (!cancelled && savedRes.ok && savedJson?.ok && savedJson?.booking?.booking_code) {
+            const realCode = String(savedJson.booking.booking_code).trim();
             setInput(realCode);
             setBookingCode(realCode);
             setLocal(JRIDE_ACTIVE_BOOKING_KEY, realCode);
@@ -70,21 +69,18 @@ export default function RidePage() {
           setLocal(JRIDE_ACTIVE_BOOKING_KEY, "");
         }
 
-        const uid = getLocal(JRIDE_ACTIVE_USER_KEY);
-        if (uid) {
-          const res = await fetch(
-            `/api/public/passenger/booking?uid=${encodeURIComponent(uid)}&ts=${Date.now()}`,
-            { cache: "no-store" }
-          );
-          const json = await res.json().catch(() => null);
+        const autoRes = await fetch(
+          `/api/public/passenger/booking?ts=${Date.now()}`,
+          { cache: "no-store" }
+        );
+        const autoJson = await autoRes.json().catch(() => null);
 
-          if (!cancelled && res.ok && json?.ok && json?.booking?.booking_code) {
-            const realCode = String(json.booking.booking_code).trim();
-            setInput(realCode);
-            setBookingCode(realCode);
-            setLocal(JRIDE_ACTIVE_BOOKING_KEY, realCode);
-            return;
-          }
+        if (!cancelled && autoRes.ok && autoJson?.ok && autoJson?.booking?.booking_code) {
+          const realCode = String(autoJson.booking.booking_code).trim();
+          setInput(realCode);
+          setBookingCode(realCode);
+          setLocal(JRIDE_ACTIVE_BOOKING_KEY, realCode);
+          return;
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -92,6 +88,7 @@ export default function RidePage() {
     }
 
     bootstrap();
+
     return () => {
       cancelled = true;
     };
