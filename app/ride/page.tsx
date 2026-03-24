@@ -349,6 +349,8 @@ export default function RidePage() {
   // â”€â”€â”€ Core state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [town, setTown] = React.useState("Lagawe");
   const [passengerName, setPassengerName] = React.useState("");
+  const [signedInPassengerName, setSignedInPassengerName] = React.useState("");
+  const [isPassengerSignedIn, setIsPassengerSignedIn] = React.useState(false);
   const [fromLabel, setFromLabel] = React.useState("Lagawe Town Proper");
   const [toLabel, setToLabel] = React.useState("");
   const [pickupLat, setPickupLat] = React.useState("16.7999");
@@ -504,7 +506,81 @@ export default function RidePage() {
     router.push("/passenger-login");
   }
 
-  // Town change â†’ reset coords to town center
+    React.useEffect(() => {
+    let alive = true;
+
+    function pickName(j: any): string {
+      return norm(
+        j?.user?.name ??
+        j?.user?.full_name ??
+        j?.user?.display_name ??
+        j?.user?.passenger_name ??
+        j?.profile?.full_name ??
+        j?.profile?.name ??
+        j?.profile?.display_name ??
+        j?.profile?.passenger_name ??
+        j?.session?.user?.name ??
+        j?.session?.user?.full_name ??
+        j?.data?.user?.name ??
+        j?.data?.user?.full_name ??
+        ""
+      );
+    }
+
+    (async () => {
+      try {
+        const r = await fetch("/api/public/auth/session", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const j: any = await r.json().catch(() => null);
+        const sessionName = pickName(j);
+
+        if (!alive) return;
+
+        if (sessionName) {
+          setIsPassengerSignedIn(true);
+          setSignedInPassengerName(sessionName);
+          setPassengerName((prev) => norm(prev) || sessionName);
+          return;
+        }
+
+        try {
+          const recent = readRecentTrips();
+          const fallbackName = norm(
+            recent?.[0]?.passenger_name ??
+            recent?.find((it: any) => norm(it?.passenger_name))?.passenger_name ??
+            ""
+          );
+
+          if (fallbackName) {
+            setPassengerName((prev) => norm(prev) || fallbackName);
+          }
+        } catch {}
+      } catch {
+        if (!alive) return;
+        try {
+          const recent = readRecentTrips();
+          const fallbackName = norm(
+            recent?.[0]?.passenger_name ??
+            recent?.find((it: any) => norm(it?.passenger_name))?.passenger_name ??
+            ""
+          );
+
+          if (fallbackName) {
+            setPassengerName((prev) => norm(prev) || fallbackName);
+          }
+        } catch {}
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+// Town change â†’ reset coords to town center
   React.useEffect(() => {
     const g = getTownGeo(town);
     const key = norm(town).toLowerCase();
@@ -1319,7 +1395,7 @@ export default function RidePage() {
   const driverName = norm(lb?.driver_name || "");
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
   const tripToLabel = norm(lb?.to_label || toLabel || "");
-  const tripPassengerName = norm(lb?.passenger_name || passengerName || "");
+  const tripPassengerName = norm(lb?.passenger_name || signedInPassengerName || passengerName || "");
   const tripTown = norm(lb?.town || town || "");
   const completedAt = norm(lb?.completed_at || (normStatus(liveStatus) === "completed" ? lb?.updated_at : "") || "");
   const cancelledAt = norm(lb?.cancelled_at || (normStatus(liveStatus) === "cancelled" ? lb?.updated_at : "") || "");
@@ -1656,13 +1732,25 @@ export default function RidePage() {
             <div>
               <label className="text-xs font-medium">Your name</label>
               <input
-                className={"mt-1 w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm " + (authed ? "border-emerald-100 bg-emerald-50/40 text-slate-700" : "border-slate-200 bg-white")}
+                className={[
+                  "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm",
+                  signedInPassengerName
+                    ? "border-emerald-200 bg-emerald-50/50 text-slate-700"
+                    : "border-slate-200 bg-white"
+                ].join(" ")}
                 placeholder="Name"
-                value={passengerName}
-                readOnly={authed}
-                onChange={(e) => setPassengerName(e.target.value)}
+                value={signedInPassengerName || passengerName}
+                onChange={(e) => {
+                  if (signedInPassengerName) return;
+                  setPassengerName(e.target.value);
+                }}
+                readOnly={!!signedInPassengerName}
               />
-              <div className="mt-1 text-[11px] text-slate-500">{authed ? "Autofilled from your signed-in passenger account." : "Enter the name that should appear on the booking."}</div>
+              {signedInPassengerName ? (
+                <div className="mt-1 text-xs text-slate-500">
+                  Autofilled from your signed-in passenger account.
+                </div>
+              ) : null}
             </div>
 
             {/* Vehicle type + pax */}
