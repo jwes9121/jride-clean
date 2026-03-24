@@ -17,7 +17,15 @@ export async function GET() {
       );
     }
 
-    const role = (user.user_metadata as any)?.role ?? null;
+    const meta = (user.user_metadata ?? {}) as any;
+
+    const fullName =
+      meta.full_name ??
+      meta.name ??
+      meta.display_name ??
+      null;
+
+    const role = meta.role ?? null;
 
     return NextResponse.json(
       {
@@ -27,7 +35,9 @@ export async function GET() {
         user: {
           id: user.id,
           email: user.email ?? null,
-          phone: (user as any).phone ?? null
+          phone: (user as any).phone ?? null,
+          name: fullName,
+          full_name: fullName
         }
       },
       { status: 200, headers }
