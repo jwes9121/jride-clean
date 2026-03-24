@@ -2,6 +2,26 @@
 
 import { useEffect, useState } from "react";
 
+const JRIDE_ACTIVE_BOOKING_KEY = "jride_active_booking_code";
+const JRIDE_ACTIVE_USER_KEY = "jride_passenger_user_id";
+
+function getLocal(key: string) {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(window.localStorage.getItem(key) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function setLocal(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {}
+}
+
 function readUrlCode() {
   if (typeof window === "undefined") return "";
   const url = new URL(window.location.href);
@@ -15,24 +35,79 @@ function readUrlCode() {
 export default function RidePage() {
   const [input, setInput] = useState("");
   const [bookingCode, setBookingCode] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const urlCode = readUrlCode();
-    if (urlCode) {
-      setInput(urlCode);
-      setBookingCode(urlCode);
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        const urlCode = readUrlCode();
+        if (urlCode) {
+          if (cancelled) return;
+          setInput(urlCode);
+          setBookingCode(urlCode);
+          setLocal(JRIDE_ACTIVE_BOOKING_KEY, urlCode);
+          return;
+        }
+
+        const savedCode = getLocal(JRIDE_ACTIVE_BOOKING_KEY);
+        if (savedCode) {
+          const res = await fetch(
+            `/api/public/passenger/booking?code=${encodeURIComponent(savedCode)}&ts=${Date.now()}`,
+            { cache: "no-store" }
+          );
+          const json = await res.json().catch(() => null);
+
+          if (!cancelled && res.ok && json?.ok && json?.booking?.booking_code) {
+            const realCode = String(json.booking.booking_code).trim();
+            setInput(realCode);
+            setBookingCode(realCode);
+            setLocal(JRIDE_ACTIVE_BOOKING_KEY, realCode);
+            return;
+          }
+
+          setLocal(JRIDE_ACTIVE_BOOKING_KEY, "");
+        }
+
+        const uid = getLocal(JRIDE_ACTIVE_USER_KEY);
+        if (uid) {
+          const res = await fetch(
+            `/api/public/passenger/booking?uid=${encodeURIComponent(uid)}&ts=${Date.now()}`,
+            { cache: "no-store" }
+          );
+          const json = await res.json().catch(() => null);
+
+          if (!cancelled && res.ok && json?.ok && json?.booking?.booking_code) {
+            const realCode = String(json.booking.booking_code).trim();
+            setInput(realCode);
+            setBookingCode(realCode);
+            setLocal(JRIDE_ACTIVE_BOOKING_KEY, realCode);
+            return;
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function handleTrack() {
     const code = input.trim();
     if (!code) return;
     setBookingCode(code);
+    setLocal(JRIDE_ACTIVE_BOOKING_KEY, code);
   }
 
   function handleClear() {
     setInput("");
     setBookingCode("");
+    setLocal(JRIDE_ACTIVE_BOOKING_KEY, "");
   }
 
   return (
@@ -51,6 +126,7 @@ export default function RidePage() {
           <button
             onClick={handleTrack}
             className="rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white"
+            disabled={loading}
           >
             Track
           </button>
@@ -58,6 +134,7 @@ export default function RidePage() {
           <button
             onClick={handleClear}
             className="rounded-lg border border-black/10 px-3 py-2 text-sm"
+            disabled={loading}
           >
             Clear
           </button>
