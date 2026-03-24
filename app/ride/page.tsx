@@ -1127,7 +1127,7 @@ export default function RidePage() {
   const liveFare = lb ? (lb.verified_fare ?? lb.proposed_fare ?? null) : null;
   const livePickupFee = lb?.pickup_distance_fee ?? null;
   const livePlatformFee = typeof lb?.platform_fee === "number" && Number.isFinite(lb?.platform_fee) ? lb.platform_fee : null;
-  const liveTotal =
+  const backendLiveTotal =
     typeof lb?.total_fare === "number" && Number.isFinite(lb?.total_fare)
       ? lb.total_fare
       : typeof lb?.total_amount === "number" && Number.isFinite(lb?.total_amount)
@@ -1136,7 +1136,23 @@ export default function RidePage() {
       ? lb.grand_total
       : null;
   const hasFare = typeof liveFare === "number" && Number.isFinite(liveFare);
+  const fallbackLiveTotal =
+    hasFare
+      ? (liveFare as number) +
+        (typeof livePickupFee === "number" && Number.isFinite(livePickupFee) ? livePickupFee : 0) +
+        (typeof livePlatformFee === "number" && Number.isFinite(livePlatformFee) ? livePlatformFee : 0)
+      : null;
+  const liveTotal =
+    typeof backendLiveTotal === "number" && Number.isFinite(backendLiveTotal)
+      ? backendLiveTotal
+      : typeof fallbackLiveTotal === "number" && Number.isFinite(fallbackLiveTotal)
+      ? fallbackLiveTotal
+      : null;
   const hasLiveTotal = typeof liveTotal === "number" && Number.isFinite(liveTotal);
+  const totalIsFallback =
+    !(typeof backendLiveTotal === "number" && Number.isFinite(backendLiveTotal)) &&
+    typeof fallbackLiveTotal === "number" &&
+    Number.isFinite(fallbackLiveTotal);
   const isFareProposed = normStatus(liveStatus) === "fare_proposed";
   const driverName = norm(lb?.driver_name || "");
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
@@ -1189,54 +1205,56 @@ export default function RidePage() {
             {/* Stepper */}
             {liveStatus && <StatusStepper status={liveStatus} />}
 
-            {/* Fare proposal with accept/reject */}
-            {isFareProposed && hasFare && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
-                <div className="text-sm font-semibold text-amber-900">Fare Proposed</div>
-                <div className="text-lg font-bold">{money(liveFare)}</div>
-                {livePickupFee != null && livePickupFee > 0 && (
-                  <div className="text-xs opacity-70">Pickup distance fee: {money(livePickupFee)}</div>
-                )}
-                {livePlatformFee != null && (
-                  <div className="text-xs opacity-70">Platform fee: {money(livePlatformFee)}</div>
-                )}
-                <div className="text-sm font-semibold">
-                  Total to pay: {hasLiveTotal ? money(liveTotal) : "--"}
+            {/* Money card */}
+            {hasFare && (
+              <div className={
+                "rounded-xl border p-4 space-y-3 " +
+                (isFareProposed ? "border-amber-200 bg-amber-50/50" : "border-black/10 bg-white")
+              }>
+                <div>
+                  <div className={"text-sm font-semibold " + (isFareProposed ? "text-amber-900" : "text-slate-900")}>
+                    {isFareProposed ? "Driver proposed fare" : "Trip fare summary"}
+                  </div>
+                  <div className="mt-1 text-xs opacity-70">
+                    {isFareProposed ? "Accept to proceed or request a new quote." : "Fare, pickup fee, and total shown for this trip."}
+                  </div>
                 </div>
-                {!hasLiveTotal && (
-                  <div className="text-[11px] opacity-70">Waiting for backend total.</div>
-                )}
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={fareAccept}
-                    disabled={fareBusy}
-                    className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
-                  >
-                    Accept fare
-                  </button>
-                  <button
-                    onClick={fareReject}
-                    disabled={fareBusy}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                  >
-                    Reject / new quote
-                  </button>
+                <div className="space-y-1 text-sm">
+                  <div>Fare: {money(liveFare)}</div>
+                  {(livePickupFee != null && livePickupFee > 0) || (typeof lb?.driver_to_pickup_km === "number" && Number.isFinite(lb?.driver_to_pickup_km)) ? (
+                    <div>
+                      Pickup: {km(lb?.driver_to_pickup_km)} • {livePickupFee != null ? money(livePickupFee) : "--"}
+                    </div>
+                  ) : null}
+                  {livePlatformFee != null && <div>Platform fee: {money(livePlatformFee)}</div>}
                 </div>
-              </div>
-            )}
-
-            {/* Fare summary (non-proposal states) */}
-            {!isFareProposed && hasFare && (
-              <div className="rounded-lg border border-black/10 p-3 space-y-1">
-                <div className="text-sm font-semibold">Total to pay</div>
-                <div className="text-sm">Fare: {money(liveFare)}</div>
-                {livePickupFee != null && livePickupFee > 0 && (
-                  <div className="text-sm">Pickup distance fee: {money(livePickupFee)}</div>
+                <div className="border-t border-black/10 pt-3">
+                  <div className="text-base font-bold">Total to pay: {hasLiveTotal ? money(liveTotal) : "--"}</div>
+                  {totalIsFallback && (
+                    <div className="mt-1 text-[11px] opacity-70">Shown as display fallback while backend total is unavailable.</div>
+                  )}
+                  {!hasLiveTotal && (
+                    <div className="mt-1 text-[11px] opacity-70">Waiting for backend total.</div>
+                  )}
+                </div>
+                {isFareProposed && (
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={fareAccept}
+                      disabled={fareBusy}
+                      className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      Accept fare
+                    </button>
+                    <button
+                      onClick={fareReject}
+                      disabled={fareBusy}
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                    >
+                      Reject / new quote
+                    </button>
+                  </div>
                 )}
-                {livePlatformFee != null && (
-                  <div className="text-sm">Platform fee: {money(livePlatformFee)}</div>
-                )}
-                <div className="text-sm font-semibold">Total: {hasLiveTotal ? money(liveTotal) : "--"}</div>
               </div>
             )}
 
@@ -1291,9 +1309,9 @@ export default function RidePage() {
                   <div>Pickup: {tripFromLabel || "--"}</div>
                   <div>Drop-off: {tripToLabel || "--"}</div>
                   <div>Fare: {hasFare ? money(liveFare) : "--"}</div>
-                  <div>Pickup distance fee: {livePickupFee != null ? money(livePickupFee) : "--"}</div>
+                  <div>Pickup: {km(lb?.driver_to_pickup_km)} • {livePickupFee != null ? money(livePickupFee) : "--"}</div>
                   <div>Platform fee: {livePlatformFee != null ? money(livePlatformFee) : "--"}</div>
-                  <div>Total: {hasLiveTotal ? money(liveTotal) : "--"}</div>
+                  <div>Total: {hasLiveTotal ? money(liveTotal) : "--"}{totalIsFallback ? " (fallback)" : ""}</div>
                   <div>Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
                   <div>Trip distance: {km(lb?.trip_distance_km)}</div>
                   <div>{normStatus(liveStatus) === "completed" ? "Completed" : "Cancelled"}: {fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt)}</div>
@@ -1310,9 +1328,9 @@ export default function RidePage() {
                         "Pickup: " + (tripFromLabel || "--"),
                         "Drop-off: " + (tripToLabel || "--"),
                         "Fare: " + (hasFare ? money(liveFare) : "--"),
-                        "Pickup distance fee: " + (livePickupFee != null ? money(livePickupFee) : "--"),
+                        "Pickup: " + km(lb?.driver_to_pickup_km) + " • " + (livePickupFee != null ? money(livePickupFee) : "--"),
                         "Platform fee: " + (livePlatformFee != null ? money(livePlatformFee) : "--"),
-                        "Total: " + (hasLiveTotal ? money(liveTotal) : "--"),
+                        "Total: " + (hasLiveTotal ? money(liveTotal) : "--") + (totalIsFallback ? " (fallback)" : ""),
                         "Driver to pickup: " + km(lb?.driver_to_pickup_km),
                         "Trip distance: " + km(lb?.trip_distance_km),
                         (normStatus(liveStatus) === "completed" ? "Completed: " : "Cancelled: ") + fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt),
