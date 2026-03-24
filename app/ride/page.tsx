@@ -36,16 +36,20 @@ export default function RidePage() {
   const [activeCode, setActiveCode] = useState("");
 
   useEffect(() => {
-  const urlCode = readUrlCode();
-  const stored = getStoredCode();
-  const code = urlCode || stored;
+    const urlCode = readUrlCode();
+    if (urlCode) {
+      setInput(urlCode);
+      setActiveCode(urlCode);
+      setStoredCode(urlCode);
+      return;
+    }
 
-  if (code) {
-    setInput(code);
-    setActiveCode(code);
-    setStoredCode(code);
-  }
-}, []);
+    const stored = getStoredCode();
+    if (stored) {
+      setInput(stored);
+      setActiveCode(stored);
+    }
+  }, []);
 
   function handleTrack() {
     const code = input.trim();
@@ -90,11 +94,12 @@ export default function RidePage() {
         </div>
       </div>
 
-      {true && (
+      {activeCode && (
         <iframe
           key={activeCode}
           src={`/ride/track?code=${encodeURIComponent(activeCode)}`}
           className="h-[600px] w-full rounded-xl border border-black/10"
+          title="JRide Tracking"
         />
       )}
     </div>
