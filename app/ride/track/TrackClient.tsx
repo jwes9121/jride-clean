@@ -8,6 +8,7 @@ type Booking = {
   driver_name?: string;
   proposed_fare?: number;
   convenience_fee?: number;
+  pickup_distance_km?: number; // optional if backend adds later
 };
 
 function money(v?: number) {
@@ -108,8 +109,13 @@ export default function TrackClient({ code }: { code?: string }) {
                 Total to pay: {money(paxTotal)}
               </div>
 
+              {/* ✅ TRANSPARENCY WITHOUT FAKE MATH */}
+              <div className="text-xs text-orange-600">
+                Note: Final fare may vary depending on driver distance from pickup.
+              </div>
+
               <div className="text-xs opacity-60">
-                This is the full amount you will pay if you accept.
+                You will only be charged the confirmed total after acceptance.
               </div>
             </div>
 
