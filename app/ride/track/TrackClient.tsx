@@ -8,7 +8,8 @@ type Booking = {
   driver_name?: string;
   proposed_fare?: number;
   convenience_fee?: number;
-  pickup_distance_km?: number; // optional if backend adds later
+  pickup_distance_fee?: number;
+  driver_to_pickup_km?: number;
 };
 
 function money(v?: number) {
@@ -67,9 +68,13 @@ export default function TrackClient({ code }: { code?: string }) {
   }, [code]);
 
   const proposedFare = data?.proposed_fare;
+  const pickupFee = data?.pickup_distance_fee;
   const fee = data?.convenience_fee ?? 15;
-  const paxTotal =
-    typeof proposedFare === "number" ? proposedFare + fee : undefined;
+
+  const total =
+    (proposedFare ?? 0) +
+    (pickupFee ?? 0) +
+    fee;
 
   return (
     <div className="mx-auto max-w-3xl p-4 space-y-4">
@@ -100,22 +105,27 @@ export default function TrackClient({ code }: { code?: string }) {
                 </span>
               </div>
 
+              {typeof pickupFee === "number" && (
+                <div className="text-orange-600">
+                  Pickup distance fee:{" "}
+                  <span className="font-semibold">
+                    {money(pickupFee)}
+                  </span>
+                  {typeof data?.driver_to_pickup_km === "number" && (
+                    <span className="ml-2 text-xs opacity-60">
+                      ({data.driver_to_pickup_km.toFixed(1)} km)
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div>
                 Platform fee:{" "}
                 <span className="font-semibold">{money(fee)}</span>
               </div>
 
               <div className="text-base font-semibold">
-                Total to pay: {money(paxTotal)}
-              </div>
-
-              {/* ✅ TRANSPARENCY WITHOUT FAKE MATH */}
-              <div className="text-xs text-orange-600">
-                Note: Final fare may vary depending on driver distance from pickup.
-              </div>
-
-              <div className="text-xs opacity-60">
-                You will only be charged the confirmed total after acceptance.
+                Total to pay: {money(total)}
               </div>
             </div>
 
