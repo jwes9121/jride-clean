@@ -2,33 +2,37 @@
 
 import { useEffect, useState } from "react";
 
-export default function RidePage() {
-  const [bookingCode, setBookingCode] = useState("");
-  const [input, setInput] = useState("");
+function readUrlCode() {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  return String(
+    url.searchParams.get("code") ||
+      url.searchParams.get("booking_code") ||
+      ""
+  ).trim();
+}
 
-  // ✅ Restore from localStorage
+export default function RidePage() {
+  const [input, setInput] = useState("");
+  const [bookingCode, setBookingCode] = useState("");
+
   useEffect(() => {
-    const saved = localStorage.getItem("jride_active_booking_code");
-    if (saved) {
-      setBookingCode(saved);
-      setInput(saved);
+    const urlCode = readUrlCode();
+    if (urlCode) {
+      setInput(urlCode);
+      setBookingCode(urlCode);
     }
   }, []);
 
   function handleTrack() {
-    if (!input.trim()) return;
-
     const code = input.trim();
+    if (!code) return;
     setBookingCode(code);
-
-    // ✅ persist
-    localStorage.setItem("jride_active_booking_code", code);
   }
 
   function handleClear() {
-    setBookingCode("");
     setInput("");
-    localStorage.removeItem("jride_active_booking_code");
+    setBookingCode("");
   }
 
   return (
@@ -60,11 +64,12 @@ export default function RidePage() {
         </div>
       </div>
 
-      {/* ✅ Load TrackClient only when code exists */}
       {bookingCode ? (
         <iframe
+          key={bookingCode}
           src={`/ride/track?code=${encodeURIComponent(bookingCode)}`}
-          className="w-full h-[600px] border border-black/10 rounded-xl"
+          className="h-[600px] w-full rounded-xl border border-black/10"
+          title="JRide Tracking"
         />
       ) : null}
     </div>
