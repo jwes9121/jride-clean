@@ -180,7 +180,6 @@ export async function POST(req: Request) {
   dropoff_lng: dropoffLng,
   service_type: vehicleType,
   passenger_count: passengerCount,
-  notes: notes || null,
   created_by_user_id: createdByUserId,
   customer_status: "pending",
 };
