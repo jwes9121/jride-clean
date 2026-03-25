@@ -1,15 +1,15 @@
-﻿"use client";
+"use client";
 
 /**
- * app/ride/page.tsx — Reconstructed passenger booking + tracking page
+ * app/ride/page.tsx - Reconstructed passenger booking + tracking page
  *
  * Source: morning zip UX blueprint + current backend contracts
  * Backend contracts (source of truth):
- *   POST /api/public/passenger/book        â†’ { ok, booking_code, booking, assign }
- *   GET  /api/public/passenger/booking?code=...  â†’ { ok, booking: { ...fields, driver_name, driver_lat, driver_lng } }
- *   GET  /api/public/passenger/can-book?town=...&pickup_lat=...&pickup_lng=... â†’ CanBookInfo
- *   POST /api/public/passenger/fare/accept  â†’ { booking_id }
- *   POST /api/public/passenger/fare/reject  â†’ { booking_id }
+ *   POST /api/public/passenger/book        -> { ok, booking_code, booking, assign }
+ *   GET  /api/public/passenger/booking?code=...  -> { ok, booking: { ...fields, driver_name, driver_lat, driver_lng } }
+ *   GET  /api/public/passenger/can-book?town=...&pickup_lat=...&pickup_lng=... -> CanBookInfo
+ *   POST /api/public/passenger/fare/accept  -> { booking_id }
+ *   POST /api/public/passenger/fare/reject  -> { booking_id }
  *
  * No frontend fare computation. Fares displayed from backend only.
  * No admin/dispatcher route changes.
@@ -18,7 +18,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Constants
 
 const STORAGE_KEY = "jride_active_booking_code";
 const LOCAL_VERIFY_KEY = "jride.local_verify_code";
@@ -52,7 +52,7 @@ const LOCAL_LANDMARKS: Record<string, Array<{ name: string; center: [number, num
   ],
 };
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Types
 
 type CanBookInfo = {
   ok?: boolean;
@@ -98,7 +98,7 @@ type RecentTrip = {
   saved_at: string;
 };
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Helpers
 
 function stored_get(): string {
   if (typeof window === "undefined") return "";
@@ -263,7 +263,7 @@ function clampPax(v: string, raw: string): string {
   return String(Math.min(n, max));
 }
 
-// â”€â”€â”€ HTTP helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HTTP helpers
 
 async function getJson(url: string) {
   const r = await fetch(url, { method: "GET", cache: "no-store" });
@@ -282,7 +282,7 @@ async function postJson(url: string, body: any) {
   return { ok: r.ok, status: r.status, json: j };
 }
 
-// â”€â”€â”€ Status stepper component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Status stepper component
 
 function StatusStepper({ status }: { status: string }) {
   const st = normStatus(status);
@@ -333,9 +333,7 @@ function StatusStepper({ status }: { status: string }) {
   );
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MAIN PAGE COMPONENT
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export default function RidePage() {
   const router = useRouter();
@@ -343,10 +341,10 @@ export default function RidePage() {
   const [authed, setAuthed] = React.useState(false);
   const [accountName, setAccountName] = React.useState("");
 
-  // â”€â”€â”€ Mapbox token â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Mapbox token
   const MAPBOX_TOKEN = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "") as string;
 
-  // â”€â”€â”€ Core state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Core state
   const [town, setTown] = React.useState("Lagawe");
   const [passengerName, setPassengerName] = React.useState("");
   const [signedInPassengerName, setSignedInPassengerName] = React.useState("");
@@ -364,23 +362,23 @@ export default function RidePage() {
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState("");
 
-  // â”€â”€â”€ Can-book preflight â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Can-book preflight
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
   const [canInfoErr, setCanInfoErr] = React.useState("");
 
-  // â”€â”€â”€ Geo gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Geo gate
   const [geoPermission, setGeoPermission] = React.useState<"unknown" | "granted" | "denied">("unknown");
   const [geoInsideIfugao, setGeoInsideIfugao] = React.useState<boolean | null>(null);
   const [geoLat, setGeoLat] = React.useState<number | null>(null);
   const [geoLng, setGeoLng] = React.useState<number | null>(null);
   const [geoGateErr, setGeoGateErr] = React.useState("");
 
-  // â”€â”€â”€ Local verification code â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Local verification code
   const [localVerify, setLocalVerify] = React.useState("");
 
   function hasLocalVerify(): boolean { return !!norm(localVerify); }
 
-  // â”€â”€â”€ Live tracking state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Live tracking state
   const [activeCode, setActiveCode] = React.useState(() => stored_get());
   const [liveStatus, setLiveStatus] = React.useState("");
   const [liveBooking, setLiveBooking] = React.useState<any | null>(null);
@@ -388,16 +386,16 @@ export default function RidePage() {
   const pollRef = React.useRef<any>(null);
   const [fareBusy, setFareBusy] = React.useState(false);
 
-  // â”€â”€â”€ Fees acknowledgement â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Fees acknowledgement
   const [feesAck, setFeesAck] = React.useState(false);
 
-  // â”€â”€â”€ Verification panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Verification panel
   const [showVerifyPanel, setShowVerifyPanel] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [recentTrips, setRecentTrips] = React.useState<RecentTrip[]>([]);
   const [mapResetKey, setMapResetKey] = React.useState(0);
 
-  // â”€â”€â”€ Mapbox geocode state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Mapbox geocode state
   const sessionTokenRef = React.useRef("");
   if (!sessionTokenRef.current) {
     sessionTokenRef.current = "sess_" + Math.random().toString(36).slice(2) + "_" + Date.now().toString(36);
@@ -410,7 +408,7 @@ export default function RidePage() {
   const fromDebounceRef = React.useRef<any>(null);
   const toDebounceRef = React.useRef<any>(null);
 
-  // â”€â”€â”€ Map picker state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Map picker state
   const [showMapPicker, setShowMapPicker] = React.useState(true);
   const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
   const pickModeRef = React.useRef<"pickup" | "dropoff">(pickMode);
@@ -433,9 +431,7 @@ export default function RidePage() {
   const pickupTouchedRef = React.useRef(false);
   const townAppliedRef = React.useRef("");
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DERIVED STATE
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   const verified = !!canInfo?.verified;
   const nightGate = !!canInfo?.nightGate;
@@ -450,13 +446,17 @@ export default function RidePage() {
   const walletBlocked = walletOk === false || walletLocked;
   const bookingActive = !!activeCode;
 
-  const allowSubmit = !busy && !unverifiedBlocked && !walletBlocked && !bookingActive &&
-    pilotTownAllowed && geoOrLocalOk && feesAck &&    !!norm(signedInPassengerName || passengerName) &&
-    !!norm(toLabel) && numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
-
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    const allowSubmit =
+    !!fromLabel.trim() &&
+    numOrNull(pickupLat) !== null &&
+    numOrNull(pickupLng) !== null &&
+    !!toLabel.trim() &&
+    numOrNull(dropLat) !== null &&
+    numOrNull(dropLng) !== null &&
+    !!passengerName.trim() &&
+    feesAck &&
+    !busy;
   // EFFECTS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   // Auto-fill passenger name from session and local history
   React.useEffect(() => {
@@ -581,7 +581,7 @@ export default function RidePage() {
       alive = false;
     };
   }, []);
-// Town change â†’ reset coords to town center
+// Town change -> reset coords to town center
   React.useEffect(() => {
     const g = getTownGeo(town);
     const key = norm(town).toLowerCase();
@@ -846,9 +846,7 @@ export default function RidePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showMapPicker, pickupLat, pickupLng, dropLat, dropLng, MAPBOX_TOKEN]);
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FUNCTIONS
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   async function refreshCanBook() {
     setCanInfoErr("");
@@ -946,7 +944,7 @@ export default function RidePage() {
     }
   }
 
-  // â”€â”€â”€ Mapbox geocoding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Mapbox geocoding
 
   function buildQuery(label: string): string {
     const q = norm(label);
@@ -1072,7 +1070,7 @@ export default function RidePage() {
     }
   }
 
-  // â”€â”€â”€ Route preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Route preview
 
   function ensureRouteLayer(map: any) {
     try {
@@ -1133,7 +1131,7 @@ export default function RidePage() {
     }
   }
 
-  // â”€â”€â”€ Fare accept/reject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Fare accept/reject
 
   async function fareAccept() {
     const b = liveBooking as any;
@@ -1155,7 +1153,7 @@ export default function RidePage() {
     } catch {} finally { setFareBusy(false); }
   }
 
-  // â”€â”€â”€ Verification helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Verification helpers
 
   function verifyRequestText(): string {
     return [
@@ -1187,7 +1185,7 @@ export default function RidePage() {
     }
   }
 
-  // â”€â”€â”€ Clear booking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Clear booking
 
   function handleClear() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -1241,7 +1239,7 @@ export default function RidePage() {
     }
   }
 
-  // â”€â”€â”€ Submit booking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Submit booking
 
   async function submit() {
     setResult("");
@@ -1285,12 +1283,13 @@ export default function RidePage() {
       const book = await postJson("/api/public/passenger/book", {
         passenger_name: passengerName,
         town,
-        from_label: fromLabel,
-        to_label: toLabel,
+        pickup_label: fromLabel,
+        dropoff_label: toLabel,
         pickup_lat: numOrNull(pickupLat),
         pickup_lng: numOrNull(pickupLng),
         dropoff_lat: numOrNull(dropLat),
         dropoff_lng: numOrNull(dropLng),
+        fees_acknowledged: feesAck,
         service: "ride",
         vehicle_type: vehicleType,
         passenger_count: pax,
@@ -1307,7 +1306,7 @@ export default function RidePage() {
       const code = norm(bj.booking?.booking_code || bj.booking_code || "");
       setResult("BOOKED_OK" + (code ? " | Code: " + code : ""));
 
-      // â”€â”€ HANDOFF: store code + start tracking â”€â”€
+      // HANDOFF: store code + start tracking
       if (code) {
         stored_set(code);
         setActiveCode(code);
@@ -1329,7 +1328,7 @@ export default function RidePage() {
     }
   }
 
-  // â”€â”€â”€ Geo suggestion list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Geo suggestion list
 
   function renderGeoList(field: "from" | "to") {
     const items = field === "from" ? geoFrom : geoTo;
@@ -1354,9 +1353,7 @@ export default function RidePage() {
     );
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // RENDER
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   const bannerMsg = activeCode ? statusMessage(liveStatus) : "";
   const bannerTn = activeCode ? statusTone(liveStatus) : "slate";
@@ -1428,7 +1425,7 @@ export default function RidePage() {
             <div className="flex items-center gap-2">
               <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">JRide Passenger</div>
               <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 sm:inline-flex">
-                {authLoading ? "Checking session..." : authed ? `Signed in${accountName ? ` · ${accountName}` : ""}` : "Guest"}
+                {authLoading ? "Checking session..." : authed ? `Signed in${accountName ? ` | ${accountName}` : ""}` : "Guest"}
               </div>
               {authed ? (
                 <button
@@ -1451,7 +1448,7 @@ export default function RidePage() {
           </div>
         </div>
 
-        {/* â”€â”€ Status banner â”€â”€ */}
+        {/* Status banner */}
         {activeCode && bannerMsg && (
           <div className={
             "rounded-2xl border p-4 text-sm shadow-[0_10px_30px_rgba(15,23,42,0.05)] " +
@@ -1469,7 +1466,7 @@ export default function RidePage() {
           </div>
         )}
 
-        {/* â”€â”€ Live tracking section â”€â”€ */}
+        {/* Live tracking section */}
         {activeCode && (
           <div className="space-y-4">
             {/* Stepper */}
@@ -1493,7 +1490,7 @@ export default function RidePage() {
                   <div>Fare: {money(liveFare)}</div>
                   {(livePickupFee != null && livePickupFee > 0) || (typeof lb?.driver_to_pickup_km === "number" && Number.isFinite(lb?.driver_to_pickup_km)) ? (
                     <div>
-                      Pickup: {km(lb?.driver_to_pickup_km)} • {livePickupFee != null ? money(livePickupFee) : "--"}
+                      Pickup: {km(lb?.driver_to_pickup_km)} | {livePickupFee != null ? money(livePickupFee) : "--"}
                     </div>
                   ) : null}
                   {livePlatformFee != null && <div>Platform fee: {money(livePlatformFee)}</div>}
@@ -1574,7 +1571,7 @@ export default function RidePage() {
                   <div>Pickup: {tripFromLabel || "--"}</div>
                   <div>Drop-off: {tripToLabel || "--"}</div>
                   <div>Fare: {hasFare ? money(liveFare) : "--"}</div>
-                  <div>Pickup: {km(lb?.driver_to_pickup_km)} • {livePickupFee != null ? money(livePickupFee) : "--"}</div>
+                  <div>Pickup: {km(lb?.driver_to_pickup_km)} | {livePickupFee != null ? money(livePickupFee) : "--"}</div>
                   <div>Platform fee: {livePlatformFee != null ? money(livePlatformFee) : "--"}</div>
                   <div>Total: {hasLiveTotal ? money(liveTotal) : "--"}{totalIsFallback ? " (fallback)" : ""}</div>
                   <div>Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
@@ -1593,7 +1590,7 @@ export default function RidePage() {
                         "Pickup: " + (tripFromLabel || "--"),
                         "Drop-off: " + (tripToLabel || "--"),
                         "Fare: " + (hasFare ? money(liveFare) : "--"),
-                        "Pickup: " + km(lb?.driver_to_pickup_km) + " • " + (livePickupFee != null ? money(livePickupFee) : "--"),
+                        "Pickup: " + km(lb?.driver_to_pickup_km) + " | " + (livePickupFee != null ? money(livePickupFee) : "--"),
                         "Platform fee: " + (livePlatformFee != null ? money(livePlatformFee) : "--"),
                         "Total: " + (hasLiveTotal ? money(liveTotal) : "--") + (totalIsFallback ? " (fallback)" : ""),
                         "Driver to pickup: " + km(lb?.driver_to_pickup_km),
@@ -1623,9 +1620,7 @@ export default function RidePage() {
           </div>
         )}
 
-        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         {/* BOOKING FORM (hidden when tracking active booking) */}
-        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         {!activeCode && (
           <div className="space-y-4">
 
@@ -1850,7 +1845,7 @@ export default function RidePage() {
                     <div key={mapResetKey} ref={mapDivRef} className="w-full h-72 rounded-2xl border border-emerald-100 shadow-inner bg-white" />
                     {routeInfo && (
                       <div className="text-xs opacity-70">
-                        Route: {(routeInfo.distance_m / 1000).toFixed(1)} km · ~{Math.ceil(routeInfo.duration_s / 60)} min
+                        Route: {(routeInfo.distance_m / 1000).toFixed(1)} km | ~{Math.ceil(routeInfo.duration_s / 60)} min
                       </div>
                     )}
                   </div>
@@ -1922,12 +1917,12 @@ export default function RidePage() {
                     <div key={trip.booking_code} className="rounded-3xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold text-slate-900">{trip.from_label || "--"} â†’ {trip.to_label || "--"}</div>
+                          <div className="text-sm font-semibold text-slate-900">{trip.from_label || "--"} {"->"} {trip.to_label || "--"}</div>
                           <div className="text-xs text-slate-500">
-                            {fmtDate(trip.completed_at || trip.updated_at || trip.saved_at)} • {trip.driver_name || "Driver pending"} • {trip.status}
+                            {fmtDate(trip.completed_at || trip.updated_at || trip.saved_at)} | {trip.driver_name || "Driver pending"} | {trip.status}
                           </div>
                           <div className="text-xs text-slate-600">
-                            Code: <span className="font-mono">{trip.booking_code}</span> • Total: {typeof trip.total === "number" ? money(trip.total) : "--"}
+                            Code: <span className="font-mono">{trip.booking_code}</span> | Total: {typeof trip.total === "number" ? money(trip.total) : "--"}
                           </div>
                         </div>
                         <div className="flex gap-2">
