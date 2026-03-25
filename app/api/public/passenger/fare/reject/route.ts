@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       driver_id: null,
       assigned_driver_id: null,
       assigned_at: null,
-      status: "requested",
+      status: "searching",
     };
 
     const { error: updateErr } = await supabase
@@ -119,13 +119,27 @@ export async function POST(req: Request) {
       );
     }
 
+    let reassignResult: any = null;
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase.rpc(
+        "assign_nearest_driver_for_booking",
+        { p_booking_code: (booking as any).booking_code }
+      );
+
+      reassignResult = rpcErr
+        ? { ok: false, error: rpcErr.message }
+        : rpcData;
+    } catch (e: any) {
+      reassignResult = { ok: false, error: String(e?.message ?? e) };
+    }
+
     return NextResponse.json(
       {
         ok: true,
         booking_code: (booking as any).booking_code,
         booking_id: (booking as any).id,
-        status: "requested",
-        reassigned: false,
+        status: "searching",
+        reassign: reassignResult,
       },
       { status: 200, headers: noStoreHeaders() }
     );
