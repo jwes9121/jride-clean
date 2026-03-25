@@ -1,249 +1,226 @@
 ﻿import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createClient } from "@/utils/supabase/server";
 
-export const dynamic = "force-dynamic";
-
-// DRIVER_FARE_PROPOSE_HARD_REPLACE_V2
-
-type Body = {
-  driver_id?: string | null;
-  driverId?: string | null;
-  booking_id?: string | null;
-  bookingId?: string | null;
-  booking_code?: string | null;
-  bookingCode?: string | null;
+type ProposeBody = {
+  booking_code?: string;
+  booking_id?: string;
   proposed_fare?: number | string | null;
 };
 
-function pickFirstString(values: any[]): string {
-  for (const value of values) {
-    const s = String(value ?? "").trim();
-    if (s) return s;
-  }
-  return "";
+function text(v: unknown): string {
+  return String(v ?? "").trim();
 }
 
-function normalizeStatus(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
+function num(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
-function parseMoney(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+function noStoreHeaders() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
 }
 
-const ALLOWED_STATUSES = new Set([
-  "pending",
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "ready",
-  "on_the_way",
-  "arrived",
-  "on_trip",
-]);
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
+}
+
+function pickupDistanceFee(km: number): number {
+  const freeKm = 1.5;
+  const chargeable = Math.max(0, km - freeKm);
+  return Math.round(chargeable * 20);
+}
 
 export async function POST(req: Request) {
   try {
-    const supabase = supabaseAdmin();
-    const body = (await req.json().catch(() => ({}))) as Body;
+    const supabase = createClient();
+    const body = (await req.json().catch(() => ({}))) as ProposeBody;
 
-    const requestedDriverId = pickFirstString([body.driver_id, body.driverId]);
-    const bookingId = pickFirstString([body.booking_id, body.bookingId]);
-    const bookingCode = pickFirstString([body.booking_code, body.bookingCode]);
-    const proposedFare = parseMoney(body.proposed_fare);
+    const bookingCode = text(body.booking_code);
+    const bookingId = text(body.booking_id);
+    const proposedFare = num(body.proposed_fare);
 
-    if (!bookingId && !bookingCode) {
-      return NextResponse.json({ ok: false, error: "MISSING_BOOKING_ID" }, { status: 400 });
+    if (!bookingCode && !bookingId) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_BOOKING_CODE" },
+        { status: 400, headers: noStoreHeaders() }
+      );
     }
 
-    if (!Number.isFinite(proposedFare) || proposedFare < 0) {
-      return NextResponse.json({ ok: false, error: "INVALID_PROPOSED_FARE" }, { status: 400 });
+    if (proposedFare == null || proposedFare <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_PROPOSED_FARE" },
+        { status: 400, headers: noStoreHeaders() }
+      );
     }
 
-    let selectQuery = supabase
+    const { data: userRes, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userRes?.user) {
+      return NextResponse.json(
+        { ok: false, error: "NOT_AUTHED", message: "Not signed in." },
+        { status: 401, headers: noStoreHeaders() }
+      );
+    }
+
+    const driverId = userRes.user.id;
+
+    let query = supabase
       .from("bookings")
-      .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response")
+      .select("*")
       .limit(1);
 
-    selectQuery = bookingId
-      ? selectQuery.eq("id", bookingId)
-      : selectQuery.eq("booking_code", bookingCode);
-
-    const { data: bookingRows, error: bookingError } = await selectQuery;
-
-    if (bookingError) {
-      return NextResponse.json(
-        { ok: false, error: "DB_SELECT_ERROR", message: bookingError.message },
-        { status: 500 }
-      );
+    if (bookingCode) {
+      query = query.eq("booking_code", bookingCode);
+    } else {
+      query = query.eq("id", bookingId);
     }
 
-    const booking = bookingRows?.[0] as any;
-    if (!booking?.id) {
-      return NextResponse.json({ ok: false, error: "BOOKING_NOT_FOUND" }, { status: 404 });
-    }
+    query = query.or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`);
 
-    const currentStatus = normalizeStatus(booking.status);
-    if (currentStatus && !ALLOWED_STATUSES.has(currentStatus)) {
+    const { data: rows, error: bookingErr } = await query;
+
+    if (bookingErr) {
       return NextResponse.json(
         {
           ok: false,
-          error: "NOT_ALLOWED",
-          message: "Booking status not allowed for fare proposal.",
+          error: "BOOKING_READ_FAILED",
+          message: bookingErr.message,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    const booking = rows?.[0] ?? null;
+
+    if (!booking) {
+      return NextResponse.json(
+        { ok: false, error: "BOOKING_NOT_FOUND" },
+        { status: 404, headers: noStoreHeaders() }
+      );
+    }
+
+    const currentStatus = text((booking as any).status).toLowerCase();
+    if (!["assigned", "accepted"].includes(currentStatus)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "INVALID_STATUS",
+          message: "Fare can only be proposed from assigned or accepted state.",
           status: currentStatus,
         },
-        { status: 409 }
+        { status: 409, headers: noStoreHeaders() }
       );
     }
 
-    const currentDriverId = pickFirstString([booking.driver_id]);
-    const currentAssignedDriverId = pickFirstString([booking.assigned_driver_id]);
+    const pickupLat = Number((booking as any).pickup_lat ?? NaN);
+    const pickupLng = Number((booking as any).pickup_lng ?? NaN);
 
-    if (
-      requestedDriverId &&
-      currentAssignedDriverId &&
-      requestedDriverId !== currentAssignedDriverId &&
-      currentStatus !== "pending"
-    ) {
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "DRIVER_MISMATCH",
-          message: "Requested driver does not match the booking's assigned driver.",
-          booking_driver_id: currentDriverId || null,
-          assigned_driver_id: currentAssignedDriverId || null,
-          requested_driver_id: requestedDriverId,
-        },
-        { status: 409 }
+        { ok: false, error: "MISSING_PICKUP_COORDS" },
+        { status: 400, headers: noStoreHeaders() }
       );
     }
 
-    const effectiveDriverId = pickFirstString([
-      requestedDriverId,
-      currentAssignedDriverId,
-      currentDriverId,
-    ]);
+    const effectiveDriverId =
+      (booking as any).assigned_driver_id || (booking as any).driver_id || driverId;
 
-    
-    // ============================================
-    // COMPUTE DRIVER TO PICKUP DISTANCE
-    // ============================================
-    let driver_to_pickup_km = 0;
-    let pickup_distance_fee = 0;
+    let driverLat: number | null = null;
+    let driverLng: number | null = null;
 
-    try {
-      const { data: bookingCoords } = await supabase
-        .from("bookings")
-        .select("pickup_lat, pickup_lng")
-        .eq("id", booking.id)
-        .single();
+    const { data: driverLoc } = await supabase
+      .from("driver_locations_latest")
+      .select("lat,lng")
+      .eq("driver_id", effectiveDriverId)
+      .maybeSingle();
 
-      const { data: driverLoc } = await supabase
-        .from("driver_locations_latest")
-        .select("lat, lng")
-        .eq("driver_id", effectiveDriverId)
-        .single();
-
-      if (
-        bookingCoords?.pickup_lat &&
-        bookingCoords?.pickup_lng &&
-        driverLoc?.lat &&
-        driverLoc?.lng
-      ) {
-        const toRad = (v: number) => (v * Math.PI) / 180;
-
-        const R = 6371; // km
-        const dLat = toRad(driverLoc.lat - bookingCoords.pickup_lat);
-        const dLng = toRad(driverLoc.lng - bookingCoords.pickup_lng);
-
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(toRad(bookingCoords.pickup_lat)) *
-            Math.cos(toRad(driverLoc.lat)) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2);
-
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        driver_to_pickup_km = Math.round(R * c * 10) / 10;
-
-        // PRICING RULE
-        if (driver_to_pickup_km > 1.5) {
-          const excess = driver_to_pickup_km - 1.5;
-          const blocks = Math.ceil(excess / 0.5);
-          pickup_distance_fee = blocks * 10;
-        }
+    if (driverLoc) {
+      const lat = Number((driverLoc as any).lat ?? NaN);
+      const lng = Number((driverLoc as any).lng ?? NaN);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        driverLat = lat;
+        driverLng = lng;
       }
-    } catch (e) {
-      console.error("DISTANCE_COMPUTE_FAILED", e);
     }
-const updatePayload: Record<string, any> = {
-  driver_to_pickup_km,
-  pickup_distance_fee,
+
+    let driverToPickupKm: number | null = null;
+    let pickupFee = 0;
+
+    if (driverLat != null && driverLng != null) {
+      driverToPickupKm = Number(
+        haversineKm(driverLat, driverLng, pickupLat, pickupLng).toFixed(1)
+      );
+      pickupFee = pickupDistanceFee(driverToPickupKm);
+    }
+
+    const updatePayload: Record<string, unknown> = {
       proposed_fare: proposedFare,
       passenger_fare_response: null,
+      driver_to_pickup_km: driverToPickupKm,
+      pickup_distance_fee: pickupFee,
       status: "fare_proposed",
     };
 
-    if (effectiveDriverId) {
+    if (!(booking as any).driver_id) {
       updatePayload.driver_id = effectiveDriverId;
+    }
+    if (!(booking as any).assigned_driver_id) {
       updatePayload.assigned_driver_id = effectiveDriverId;
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateErr } = await supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", booking.id);
+      .eq("id", (booking as any).id);
 
-    if (updateError) {
+    if (updateErr) {
       return NextResponse.json(
         {
           ok: false,
-          error: "DB_UPDATE_ERROR",
-          message: updateError.message,
-          payload: updatePayload,
+          error: "FARE_PROPOSE_UPDATE_FAILED",
+          message: updateErr.message,
         },
-        { status: 500 }
+        { status: 500, headers: noStoreHeaders() }
       );
     }
 
-    const { data: rereadRows, error: rereadError } = await supabase
-      .from("bookings")
-      .select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, passenger_fare_response, updated_at")
-      .eq("id", booking.id)
-      .limit(1);
-
-    if (rereadError) {
-      return NextResponse.json(
-        { ok: false, error: "DB_REREAD_ERROR", message: rereadError.message },
-        { status: 500 }
-      );
-    }
-
-    const updated = rereadRows?.[0] as any;
+    const totalFare = proposedFare + pickupFee;
 
     return NextResponse.json(
       {
         ok: true,
-        booking_id: updated?.id ?? booking.id,
-        booking_code: updated?.booking_code ?? booking.booking_code,
-        driver_id: updated?.driver_id ?? effectiveDriverId ?? null,
-        assigned_driver_id: updated?.assigned_driver_id ?? effectiveDriverId ?? null,
-        proposed_fare: updated?.proposed_fare ?? proposedFare,
-        passenger_fare_response: updated?.passenger_fare_response ?? null,
-        status: updated?.status ?? "fare_proposed",
-        canonical_route: "driver/fare/propose",
+        booking_code: (booking as any).booking_code,
+        booking_id: (booking as any).id,
+        status: "fare_proposed",
+        proposed_fare: proposedFare,
+        driver_to_pickup_km: driverToPickupKm,
+        pickup_distance_fee: pickupFee,
+        total_fare: totalFare,
       },
-      { status: 200 }
+      { status: 200, headers: noStoreHeaders() }
     );
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR", message: String(e?.message ?? e) },
-      { status: 500 }
+      {
+        ok: false,
+        error: "SERVER_ERROR",
+        message: String(e?.message ?? e),
+      },
+      { status: 500, headers: noStoreHeaders() }
     );
   }
 }
-
-
-

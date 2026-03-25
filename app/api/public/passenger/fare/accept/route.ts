@@ -77,30 +77,33 @@ export async function POST(req: Request) {
       );
     }
 
-    const status = text((booking as any).status).toLowerCase();
-    if (status !== "fare_proposed") {
+    const currentStatus = text((booking as any).status).toLowerCase();
+    if (currentStatus !== "fare_proposed") {
       return NextResponse.json(
         {
           ok: false,
           error: "INVALID_STATUS",
           message: "Fare can only be accepted while booking is in fare_proposed state.",
-          status,
+          status: currentStatus,
         },
         { status: 409, headers: noStoreHeaders() }
       );
     }
 
-    const proposedFareRaw = (booking as any).proposed_fare;
-    const proposedFare =
-      typeof proposedFareRaw === "number"
-        ? proposedFareRaw
-        : Number(proposedFareRaw ?? 0);
+    const proposedFareRaw = Number((booking as any).proposed_fare ?? NaN);
+    if (!Number.isFinite(proposedFareRaw) || proposedFareRaw <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_PROPOSED_FARE" },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
 
-    const verifiedFare = Number.isFinite(proposedFare) ? proposedFare : 0;
+    const pickupFeeRaw = Number((booking as any).pickup_distance_fee ?? 0);
+    const pickupFee = Number.isFinite(pickupFeeRaw) ? pickupFeeRaw : 0;
 
     const updatePayload: Record<string, unknown> = {
       passenger_fare_response: "accepted",
-      verified_fare: verifiedFare,
+      verified_fare: proposedFareRaw,
       verified_at: new Date().toISOString(),
       verified_by: "passenger",
       verified_reason: "accepted_by_passenger",
@@ -123,23 +126,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const pickupFeeRaw = (booking as any).pickup_distance_fee;
-    const pickupFee =
-      typeof pickupFeeRaw === "number"
-        ? pickupFeeRaw
-        : Number(pickupFeeRaw ?? 0);
-
-    const totalFare =
-      (Number.isFinite(verifiedFare) ? verifiedFare : 0) +
-      (Number.isFinite(pickupFee) ? pickupFee : 0);
+    const totalFare = proposedFareRaw + pickupFee;
 
     return NextResponse.json(
       {
         ok: true,
         booking_code: (booking as any).booking_code,
         booking_id: (booking as any).id,
-        verified_fare: verifiedFare,
-        pickup_distance_fee: Number.isFinite(pickupFee) ? pickupFee : 0,
+        verified_fare: proposedFareRaw,
+        pickup_distance_fee: pickupFee,
         total_fare: totalFare,
         status: "ready",
       },
