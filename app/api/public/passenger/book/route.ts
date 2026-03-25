@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-type Json = Record<string, any>;
+type BookBody = {
+  town?: string;
+  pickup_label?: string;
+  dropoff_label?: string;
+  pickup_lat?: number | string | null;
+  pickup_lng?: number | string | null;
+  dropoff_lat?: number | string | null;
+  dropoff_lng?: number | string | null;
+  vehicle_type?: string;
+  passenger_count?: number | string | null;
+  notes?: string;
+  fees_acknowledged?: boolean;
+};
 
 function text(v: any): string {
   return String(v ?? "").trim();
@@ -12,369 +24,176 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
-function mobileBookSecretOk(req: Request): boolean {
-  const got = text(req.headers.get("x-jride-mobile-book-secret"));
-  const expected = text(process.env.JRIDE_MOBILE_BOOK_SECRET);
-  return !!expected && got === expected;
+function bookingCodeNow(): string {
+  const d = new Date();
+  const stamp =
+    d.getFullYear().toString() +
+    pad2(d.getMonth() + 1) +
+    pad2(d.getDate()) +
+    pad2(d.getHours()) +
+    pad2(d.getMinutes()) +
+    pad2(d.getSeconds());
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `JR-UI-${stamp}-${rand}`;
 }
 
 async function frGetUserAndVerified(supabase: ReturnType<typeof createClient>) {
   const { data } = await supabase.auth.getUser();
   const user = data?.user ?? null;
-
-  if (!user?.id) {
-    return { user: null, verified: false };
-  }
-
   let verified = false;
 
-  try {
-    const pv = await supabase
-      .from("passenger_verifications")
-      .select("status")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const s = text((pv.data as any)?.status).toLowerCase();
-    if (s === "approved_admin" || s === "approved" || s === "verified") {
-      verified = true;
-    }
-  } catch {}
-
-  if (!verified) {
+  if (user?.id) {
     try {
-      const pr = await supabase
-        .from("passenger_verification_requests")
+      const pv = await supabase
+        .from("passenger_verifications")
         .select("status")
-        .eq("passenger_id", user.id)
+        .eq("user_id", user.id)
         .maybeSingle();
-
-      const s = text((pr.data as any)?.status).toLowerCase();
-      if (s === "approved_admin" || s === "approved" || s === "verified") {
-        verified = true;
-      }
+      const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
+      verified = s === "approved_admin";
     } catch {}
-  }
 
-  if (!verified) {
-    try {
-      const truthy = (v: any) =>
-        v === true ||
-        (typeof v === "string" &&
-          v.trim().toLowerCase() !== "" &&
-          v.trim().toLowerCase() !== "false" &&
-          v.trim().toLowerCase() !== "0" &&
-          v.trim().toLowerCase() !== "no") ||
-        (typeof v === "number" && v > 0);
-
-      const tries: Array<["auth_user_id" | "user_id", string]> = [
-        ["auth_user_id", user.id],
-        ["user_id", user.id],
-      ];
-
-      for (const [col, val] of tries) {
-        const r = await supabase
-          .from("passengers")
-          .select("is_verified,verified,verification_tier")
-          .eq(col, val)
-          .limit(1)
+    if (!verified) {
+      try {
+        const pr = await supabase
+          .from("passenger_verification_requests")
+          .select("status")
+          .eq("passenger_id", user.id)
           .maybeSingle();
+        const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
+        verified = s === "approved_admin";
+      } catch {}
+    }
 
-        if (!r.error && r.data) {
-          const row: any = r.data;
-          verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
-          if (verified) break;
+    if (!verified) {
+      try {
+        const truthy = (v: any) =>
+          v === true ||
+          (typeof v === "string" &&
+            v.trim().toLowerCase() !== "" &&
+            v.trim().toLowerCase() !== "false" &&
+            v.trim().toLowerCase() !== "0" &&
+            v.trim().toLowerCase() !== "no") ||
+          (typeof v === "number" && v > 0);
+
+        const selV = "is_verified,verified,verification_tier";
+        const tries: Array<["auth_user_id" | "user_id", string]> = [
+          ["auth_user_id", user.id],
+          ["user_id", user.id],
+        ];
+
+        for (const [col, val] of tries) {
+          const r = await supabase.from("passengers").select(selV).eq(col, val).limit(1).maybeSingle();
+          if (!r.error && r.data) {
+            const row: any = r.data;
+            verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
+            if (verified) break;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
   return { user, verified };
 }
 
-async function lookupVerifiedByUserId(
-  supabase: ReturnType<typeof createClient>,
-  userId: string
-) {
-  let verified = false;
-
-  try {
-    const pv = await supabase
-      .from("passenger_verifications")
-      .select("status")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const s = text((pv.data as any)?.status).toLowerCase();
-    if (s === "approved_admin" || s === "approved" || s === "verified") {
-      verified = true;
-    }
-  } catch {}
-
-  if (!verified) {
-    try {
-      const pr = await supabase
-        .from("passenger_verification_requests")
-        .select("status")
-        .eq("passenger_id", userId)
-        .maybeSingle();
-
-      const s = text((pr.data as any)?.status).toLowerCase();
-      if (s === "approved_admin" || s === "approved" || s === "verified") {
-        verified = true;
-      }
-    } catch {}
-  }
-
-  if (!verified) {
-    try {
-      const truthy = (v: any) =>
-        v === true ||
-        (typeof v === "string" &&
-          v.trim().toLowerCase() !== "" &&
-          v.trim().toLowerCase() !== "false" &&
-          v.trim().toLowerCase() !== "0" &&
-          v.trim().toLowerCase() !== "no") ||
-        (typeof v === "number" && v > 0);
-
-      const tries: Array<["auth_user_id" | "user_id", string]> = [
-        ["auth_user_id", userId],
-        ["user_id", userId],
-      ];
-
-      for (const [col, val] of tries) {
-        const r = await supabase
-          .from("passengers")
-          .select("is_verified,verified,verification_tier")
-          .eq(col, val)
-          .limit(1)
-          .maybeSingle();
-
-        if (!r.error && r.data) {
-          const row: any = r.data;
-          verified = truthy(row.is_verified) || truthy(row.verified) || truthy(row.verification_tier);
-          if (verified) break;
-        }
-      }
-    } catch {}
-  }
-
-  return verified;
-}
-
-async function resolveBookActor(
-  supabase: ReturnType<typeof createClient>,
-  req: Request,
-  body: Json
-) {
-  const uv = await frGetUserAndVerified(supabase);
-  if (uv.user?.id) {
-    return {
-      userId: String(uv.user.id),
-      verified: !!uv.verified,
-      source: "web_session" as const,
-    };
-  }
-
-  if (mobileBookSecretOk(req)) {
-    const uid = text(body?.created_by_user_id || body?.user_id);
-    if (uid) {
-      const verified = await lookupVerifiedByUserId(supabase, uid);
-      return {
-        userId: uid,
-        verified,
-        source: "android_mobile_secret" as const,
-      };
-    }
-  }
-
-  return {
-    userId: "",
-    verified: false,
-    source: "none" as const,
-  };
-}
-
-function phtHourNow(): number {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    hour12: false,
-    hour: "2-digit",
-  });
-  return parseInt(fmt.format(new Date()), 10);
+function jrideNightGateBypass(): boolean {
+  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
 }
 
 async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
-  const uv = await frGetUserAndVerified(supabase);
+  const uv = await frGetUserAndVerified(supabase as any);
   if (!uv.user?.id) {
-    return NextResponse.json(
-      { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-      { status: 401 }
-    );
+    return NextResponse.json({ ok: false, code: "NOT_AUTHED", message: "Not signed in." }, { status: 401 });
   }
 
-  const hour = phtHourNow();
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour12: false, hour: "2-digit" });
+  const hour = parseInt(fmt.format(new Date()), 10);
   const nightGate = hour >= 20 || hour < 5;
 
   if (nightGate && !uv.verified && !jrideNightGateBypass()) {
-    throw {
-      code: "NIGHT_GATE_UNVERIFIED",
-      message: "Booking is restricted from 8PM to 5AM unless verified.",
-      status: 403,
-    };
+    throw { code: "NIGHT_GATE_UNVERIFIED", message: "Booking is restricted from 8PM to 5AM unless verified.", status: 403 };
   }
 
-  return { ok: true };
-}
-
-function bookingCodeNow() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const stamp =
-    d.getFullYear().toString() +
-    pad(d.getMonth() + 1) +
-    pad(d.getDate()) +
-    pad(d.getHours()) +
-    pad(d.getMinutes()) +
-    pad(d.getSeconds());
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `JR-UI-${stamp}-${rand}`;
+  return { ok: true, userId: uv.user.id, verified: uv.verified };
 }
 
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
-    const body = (await req.json().catch(() => ({}))) as Json;
-
-    const actor = await resolveBookActor(supabase, req, body);
-    const createdByUserId = actor.userId || null;
-    const isVerified = !!actor.verified;
-
-    if (!createdByUserId) {
-      return NextResponse.json(
-        { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401 }
-      );
-    }
-
-    try {
-      if (actor.source === "web_session") {
-        const canRes: any = await canBookOrThrow(supabase);
-        if (canRes && typeof (canRes as any).headers?.get === "function") {
-          return canRes;
-        }
-      } else {
-        const hour = phtHourNow();
-        const nightGate = hour >= 20 || hour < 5;
-
-        if (nightGate && !isVerified && !jrideNightGateBypass()) {
-          return NextResponse.json(
-            {
-              ok: false,
-              code: "NIGHT_GATE_UNVERIFIED",
-              message: "Booking is restricted from 8PM to 5AM unless verified.",
-            },
-            { status: 403 }
-          );
-        }
-      }
-    } catch (e: any) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: e.code || "CAN_BOOK_FAILED",
-          message: e.message || "Not allowed",
-        },
-        { status: e.status || 403 }
-      );
-    }
+    const body = (await req.json().catch(() => ({}))) as BookBody;
 
     const town = text(body.town);
-    const passengerName = text(body.passenger_name || body.full_name);
-    const vehicleType = text(body.vehicle_type || body.vehicle || "tricycle");
+    const pickupLabel = text(body.pickup_label);
+    const dropoffLabel = text(body.dropoff_label);
+    const pickupLat = num(body.pickup_lat);
+    const pickupLng = num(body.pickup_lng);
+    const dropoffLat = num(body.dropoff_lat);
+    const dropoffLng = num(body.dropoff_lng);
+    const vehicleType = text(body.vehicle_type || "tricycle");
     const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
-
-    const pickupLabel = text(body.pickup_label || body.from_label || body.pickup || body.from);
-    const dropoffLabel = text(body.dropoff_label || body.to_label || body.dropoff || body.to);
-
-    const pickupLat = num(body.pickup_lat ?? body.from_lat ?? body.origin_lat);
-    const pickupLng = num(body.pickup_lng ?? body.from_lng ?? body.origin_lng);
-    const dropoffLat = num(body.dropoff_lat ?? body.to_lat ?? body.destination_lat ?? body.dest_lat);
-    const dropoffLng = num(body.dropoff_lng ?? body.to_lng ?? body.destination_lng ?? body.dest_lng);
-
     const notes = text(body.notes);
     const feesAcknowledged = !!body.fees_acknowledged;
 
     if (!town) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_TOWN", message: "Town is required." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, code: "MISSING_TOWN", message: "Town is required." }, { status: 400 });
     }
-
     if (!pickupLabel || pickupLat == null || pickupLng == null) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_PICKUP", message: "Pickup location is required." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, code: "MISSING_PICKUP", message: "Pickup location is required." }, { status: 400 });
     }
-
     if (!dropoffLabel || dropoffLat == null || dropoffLng == null) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_DROPOFF", message: "Drop-off location is required." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, code: "MISSING_DROPOFF", message: "Drop-off location is required." }, { status: 400 });
     }
-
     if (!feesAcknowledged) {
       return NextResponse.json(
-        {
-          ok: false,
-          code: "FARE_NOTICE_REQUIRED",
-          message: "Please acknowledge the fare notice before requesting a ride.",
-        },
+        { ok: false, code: "ACK_REQUIRED", message: "You must acknowledge the fee notice first." },
         { status: 400 }
       );
     }
 
-    const booking_code = bookingCodeNow();
+    const canRes: any = await canBookOrThrow(supabase as any);
+    if (canRes && typeof canRes.headers?.get === "function") {
+      return canRes;
+    }
 
-    const insertRow: Json = {
-      booking_code,
-      status: "pending",
+    const createdByUserId = String((canRes as any).userId || "").trim();
+    if (!createdByUserId) {
+      return NextResponse.json({ ok: false, code: "NOT_AUTHED", message: "Not signed in." }, { status: 401 });
+    }
+
+    const bookingCode = bookingCodeNow();
+
+    const insert: Record<string, any> = {
+      booking_code: bookingCode,
+      status: "requested",
       town,
-      passenger_name: passengerName || null,
-      vehicle_type: vehicleType || "tricycle",
-      passenger_count: passengerCount,
       pickup_label: pickupLabel,
       dropoff_label: dropoffLabel,
       pickup_lat: pickupLat,
       pickup_lng: pickupLng,
       dropoff_lat: dropoffLat,
       dropoff_lng: dropoffLng,
+      vehicle_type: vehicleType,
+      passenger_count: passengerCount,
       notes: notes || null,
       created_by_user_id: createdByUserId,
       customer_status: "pending",
     };
 
-    const { data, error } = await supabase
+    const { data: booking, error } = await supabase
       .from("bookings")
-      .insert(insertRow)
+      .insert(insert)
       .select("*")
       .single();
 
     if (error) {
       return NextResponse.json(
-        {
-          ok: false,
-          code: "BOOKING_INSERT_FAILED",
-          message: error.message || "Booking insert failed.",
-        },
+        { ok: false, code: "BOOKING_INSERT_FAILED", message: error.message || "Booking insert failed." },
         { status: 500 }
       );
     }
@@ -382,8 +201,8 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         ok: true,
-        booking_code,
-        booking: data,
+        booking_code: bookingCode,
+        booking,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
@@ -391,10 +210,10 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         ok: false,
-        code: "BOOK_ROUTE_FAILED",
+        code: e?.code || "BOOK_ROUTE_FAILED",
         message: e?.message || "Unknown error",
       },
-      { status: 500, headers: { "Cache-Control": "no-store, max-age=0" } }
+      { status: e?.status || 500, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   }
 }
