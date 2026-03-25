@@ -3,8 +3,15 @@ import { createClient } from "@/utils/supabase/server";
 
 type ProposeBody = {
   booking_code?: string;
+  bookingCode?: string;
   booking_id?: string;
+  bookingId?: string;
   proposed_fare?: number | string | null;
+  fare?: number | string | null;
+  driver_id?: string;
+  driverId?: string;
+  user_id?: string;
+  userId?: string;
 };
 
 function text(v: unknown): string {
@@ -50,9 +57,9 @@ export async function POST(req: Request) {
     const supabase = createClient();
     const body = (await req.json().catch(() => ({}))) as ProposeBody;
 
-    const bookingCode = text(body.booking_code);
-    const bookingId = text(body.booking_id);
-    const proposedFare = num(body.proposed_fare);
+    const bookingCode = text(body.booking_code || body.bookingCode);
+    const bookingId = text(body.booking_id || body.bookingId);
+    const proposedFare = num(body.proposed_fare ?? body.fare);
 
     if (!bookingCode && !bookingId) {
       return NextResponse.json(
@@ -68,15 +75,25 @@ export async function POST(req: Request) {
       );
     }
 
+    let effectiveDriverId = "";
+
     const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !userRes?.user) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401, headers: noStoreHeaders() }
+    if (!userErr && userRes?.user?.id) {
+      effectiveDriverId = userRes.user.id;
+    }
+
+    if (!effectiveDriverId) {
+      effectiveDriverId = text(
+        body.driver_id || body.driverId || body.user_id || body.userId
       );
     }
 
-    const driverId = userRes.user.id;
+    if (!effectiveDriverId) {
+      return NextResponse.json(
+        { ok: false, error: "NOT_AUTHED", message: "Missing driver identity." },
+        { status: 401, headers: noStoreHeaders() }
+      );
+    }
 
     let query = supabase
       .from("bookings")
@@ -88,8 +105,6 @@ export async function POST(req: Request) {
     } else {
       query = query.eq("id", bookingId);
     }
-
-    query = query.or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`);
 
     const { data: rows, error: bookingErr } = await query;
 
@@ -110,6 +125,24 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { ok: false, error: "BOOKING_NOT_FOUND" },
         { status: 404, headers: noStoreHeaders() }
+      );
+    }
+
+    const assignedDriverId = text((booking as any).assigned_driver_id);
+    const bookingDriverId = text((booking as any).driver_id);
+
+    if (
+      effectiveDriverId !== assignedDriverId &&
+      effectiveDriverId !== bookingDriverId
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_NOT_ASSIGNED",
+          assigned_driver_id: assignedDriverId || null,
+          driver_id: bookingDriverId || null,
+        },
+        { status: 403, headers: noStoreHeaders() }
       );
     }
 
@@ -135,9 +168,6 @@ export async function POST(req: Request) {
         { status: 400, headers: noStoreHeaders() }
       );
     }
-
-    const effectiveDriverId =
-      (booking as any).assigned_driver_id || (booking as any).driver_id || driverId;
 
     let driverLat: number | null = null;
     let driverLng: number | null = null;
@@ -173,14 +203,9 @@ export async function POST(req: Request) {
       driver_to_pickup_km: driverToPickupKm,
       pickup_distance_fee: pickupFee,
       status: "fare_proposed",
+      assigned_driver_id: assignedDriverId || effectiveDriverId,
+      driver_id: bookingDriverId || effectiveDriverId,
     };
-
-    if (!(booking as any).driver_id) {
-      updatePayload.driver_id = effectiveDriverId;
-    }
-    if (!(booking as any).assigned_driver_id) {
-      updatePayload.assigned_driver_id = effectiveDriverId;
-    }
 
     const { error: updateErr } = await supabase
       .from("bookings")
