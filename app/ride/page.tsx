@@ -8,8 +8,8 @@
  *   POST /api/public/passenger/book        -> { ok, booking_code, booking, assign }
  *   GET  /api/public/passenger/booking?code=...  -> { ok, booking: { ...fields, driver_name, driver_lat, driver_lng } }
  *   GET  /api/public/passenger/can-book?town=...&pickup_lat=...&pickup_lng=... -> CanBookInfo
- *   POST /api/public/passenger/fare/accept  -> { booking_id }
- *   POST /api/public/passenger/fare/reject  -> { booking_id }
+ *   POST /api/public/passenger/fare/accept  -> { booking_code | booking_id }
+ *   POST /api/public/passenger/fare/reject  -> { booking_code | booking_id }
  *
  * No frontend fare computation. Fares displayed from backend only.
  * No admin/dispatcher route changes.
@@ -669,21 +669,56 @@ export default function RidePage() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     let cancelled = false;
 
+    function clearMissingOrCancelled(reason: string) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      stored_set("");
+      setActiveCode("");
+      setLiveBooking(null);
+      setLiveStatus("");
+      setLiveErr("");
+      setFareBusy(false);
+      setResult(reason);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("code");
+        url.searchParams.delete("booking_code");
+        window.history.replaceState({}, "", url.pathname);
+      }
+    }
+
     async function tick() {
       if (cancelled) return;
       try {
         setLiveErr("");
         const resp = await getJson("/api/public/passenger/booking?code=" + encodeURIComponent(activeCode));
         if (!resp.ok) {
-          setLiveErr("BOOKING_POLL_FAILED: " + norm(resp.json?.message || resp.json?.error || "HTTP " + resp.status));
+          const errCode = norm(resp.json?.error || "");
+          const errMsg = norm(resp.json?.message || resp.json?.error || "HTTP " + resp.status);
+          if (resp.status === 404 || errCode === "BOOKING_NOT_FOUND") {
+            clearMissingOrCancelled("PREVIOUS_TRIP_CLEARED");
+            return;
+          }
+          setLiveErr("BOOKING_POLL_FAILED: " + errMsg);
           return;
         }
-        const b = (resp.json?.booking || resp.json) as any;
-        setLiveBooking(b);
-        setLiveStatus(norm(b?.status || ""));
 
-        const terminal = norm(b?.status) === "completed" || norm(b?.status) === "cancelled";
-        if (terminal && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        const b = (resp.json?.booking || resp.json) as any;
+        const nextStatus = norm(b?.status || "");
+        setLiveBooking(b);
+        setLiveStatus(nextStatus);
+
+        if (nextStatus === "cancelled") {
+          clearMissingOrCancelled("TRIP_CANCELLED");
+          return;
+        }
+
+        if (nextStatus === "completed" && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
       } catch (e: any) {
         setLiveErr("BOOKING_POLL_ERROR: " + String(e?.message || e));
       }
