@@ -168,23 +168,24 @@ export async function POST(req: Request) {
 
     const bookingCode = bookingCodeNow();
 
-    const insert: Record<string, any> = {
-      booking_code: bookingCode,
-      status: "requested",
-      town,
-      pickup_label: pickupLabel,
-      dropoff_label: dropoffLabel,
-      pickup_lat: pickupLat,
-      pickup_lng: pickupLng,
-      dropoff_lat: dropoffLat,
-      dropoff_lng: dropoffLng,
-      vehicle_type: vehicleType,
-      passenger_count: passengerCount,
-      notes: notes || null,
-      created_by_user_id: createdByUserId,
-      customer_status: "pending",
-    };
+  const insert: Record<string, any> = {
+  booking_code: bookingCode,
+  status: "requested",
+  town,
+  from_label: pickupLabel,
+  to_label: dropoffLabel,
+  pickup_lat: pickupLat,
+  pickup_lng: pickupLng,
+  dropoff_lat: dropoffLat,
+  dropoff_lng: dropoffLng,
+  service_type: vehicleType,
+  passenger_count: passengerCount,
+  notes: notes || null,
+  created_by_user_id: createdByUserId,
+  customer_status: "pending",
+};
 
+       
     const { data: booking, error } = await supabase
       .from("bookings")
       .insert(insert)
