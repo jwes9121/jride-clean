@@ -299,8 +299,8 @@ function StatusStepper({ status }: { status: string }) {
   }
 
   return (
-    <div className="mt-4 overflow-x-auto">
-      <div className="flex min-w-[720px] items-center gap-2 pb-1">
+    <div className="mt-4">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-3 pb-1">
         {STATUS_STEPS.map((s, i) => {
           const done = idx >= 0 && i < idx;
           const now = idx >= 0 && i === idx;
@@ -1577,7 +1577,7 @@ export default function RidePage() {
               <div className="text-sm">Drop-off: {tripToLabel || "--"}</div>
               <div className="text-sm">Town: {tripTown || "--"}</div>
               <div className="text-sm">Status: {normStatus(liveStatus) || "--"}</div>
-              <div className="text-sm">Driver: {driverName || (lb?.driver_id ? (String(lb.driver_id).substring(0, 8) + "...") : "Searching...")}</div>
+              <div className="text-sm">Driver: {driverName || (lb?.driver_id ? "Assigned" : "Searching...")}</div>
               <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
             </div>
 
