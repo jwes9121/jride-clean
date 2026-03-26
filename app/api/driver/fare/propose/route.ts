@@ -75,17 +75,15 @@ export async function POST(req: Request) {
       );
     }
 
-    let effectiveDriverId = "";
-
-    const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    if (!userErr && userRes?.user?.id) {
-      effectiveDriverId = userRes.user.id;
-    }
+    let effectiveDriverId = text(
+      body.driver_id || body.driverId || body.user_id || body.userId
+    );
 
     if (!effectiveDriverId) {
-      effectiveDriverId = text(
-        body.driver_id || body.driverId || body.user_id || body.userId
-      );
+      const { data: userRes } = await supabase.auth.getUser();
+      if (userRes?.user?.id) {
+        effectiveDriverId = userRes.user.id;
+      }
     }
 
     if (!effectiveDriverId) {
@@ -95,10 +93,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let query = supabase
-      .from("bookings")
-      .select("*")
-      .limit(1);
+    let query = supabase.from("bookings").select("*").limit(1);
 
     if (bookingCode) {
       query = query.eq("booking_code", bookingCode);
@@ -141,6 +136,7 @@ export async function POST(req: Request) {
           error: "DRIVER_NOT_ASSIGNED",
           assigned_driver_id: assignedDriverId || null,
           driver_id: bookingDriverId || null,
+          effective_driver_id: effectiveDriverId || null,
         },
         { status: 403, headers: noStoreHeaders() }
       );
