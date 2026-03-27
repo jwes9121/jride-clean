@@ -26,13 +26,17 @@ function normalizeKeys(row: Json): Json {
 const LIVETRIPS_QUARANTINED_BOOKING_CODES = new Set<string>([
   "JR-UI-20260318082937-9869",
   "JR-UI-20260318055904-5903",
+  "JR-UI-20260326184941-8351",
+  "JR-UI-20260326091251-2694",
 ]);
+
 const LIVETRIPS_ALLOWED_TRIP_STATUSES = new Set<string>([
   "requested",
   "assigned",
   "on_the_way",
 ]);
 
+const QUERY_STATUS_FILTER = ["requested", "assigned", "on_the_way"];
 
 function normalizeTrip(row: Json): Json {
   const r = normalizeKeys(row);
@@ -52,6 +56,7 @@ function excludeQuarantinedTrips(rows: Json[]): Json[] {
     return !LIVETRIPS_QUARANTINED_BOOKING_CODES.has(code);
   });
 }
+
 function filterDispatchEligibleTrips(rows: Json[]): Json[] {
   return rows.filter((row: any) => {
     const status = String(row?.status ?? "").trim().toLowerCase();
@@ -63,7 +68,7 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
-    .in("status", ["requested", "assigned", "on_the_way"])
+    .in("status", QUERY_STATUS_FILTER)
     .order("updated_at", { ascending: false, nullsFirst: false })
     .limit(300);
 
@@ -71,6 +76,7 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
     console.error("PAGE_DATA_BOOKINGS_ERROR", error);
     return {
       trips: [] as Json[],
+      rawRows: [] as Json[],
       usedColumns: [] as string[],
       warnings: ["BOOKINGS_SELECT_FAILED:" + error.message],
     };
@@ -84,10 +90,10 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   const usedColumns = rows.length ? Object.keys(normalizeKeys(rows[0])) : ([] as string[]);
 
   return {
-    // LIVETRIPS_STRICT_TRIPS_SOURCE_V1
     trips: normalizedTrips,
     bookings: normalizedTrips,
     data: normalizedTrips,
+    rawRows: rows,
     usedColumns,
     warnings: [] as string[],
   };
@@ -128,6 +134,16 @@ async function tryLoadZones(supabase: ReturnType<typeof supabaseAdmin>) {
   return { zones: [] as ZoneRow[], zoneSource: null as string | null, warnings };
 }
 
+function getSupabaseUrlHost(): string {
+  try {
+    const raw = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    if (!raw) return "NOT_SET";
+    return new URL(raw).hostname;
+  } catch {
+    return "PARSE_ERROR";
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -142,9 +158,17 @@ export async function GET(req: Request) {
     const warnings = [...bookingsRes.warnings, ...zonesRes.warnings];
 
     const canonicalTrips = Array.isArray(bookingsRes.trips) ? bookingsRes.trips : [];
+    const rawRows = Array.isArray(bookingsRes.rawRows) ? bookingsRes.rawRows : [];
 
     const payload: Json = {
       ok: true,
+      source: "page-data-route",
+      env: {
+        supabase_url_host: getSupabaseUrlHost(),
+      },
+      firstTripIds: rawRows.slice(0, 5).map((r: any) => r?.id ?? null),
+      firstTripCodes: rawRows.slice(0, 5).map((r: any) => r?.booking_code ?? r?.bookingCode ?? null),
+      queryStatusFilter: QUERY_STATUS_FILTER,
       zones: zonesRes.zones,
       trips: canonicalTrips,
       bookings: canonicalTrips,
@@ -158,6 +182,7 @@ export async function GET(req: Request) {
         zoneSource: zonesRes.zoneSource,
         tripCount: bookingsRes.trips.length,
         zoneCount: zonesRes.zones.length,
+        rawRowCount: rawRows.length,
         note: "bookings and zones are loaded via select(*) in this build",
       };
     }
@@ -168,6 +193,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         ok: false,
+        source: "page-data-route",
         error: "PAGE_DATA_UNEXPECTED",
         message: err?.message ?? "Unexpected error",
         zones: [],
