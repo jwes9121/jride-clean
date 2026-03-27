@@ -232,7 +232,7 @@ export async function POST(req: Request) {
 
     const insert: Record<string, any> = {
       booking_code: bookingCode,
-      status: "requested",
+      status: "searching",
       town,
       from_label: pickupLabel,
       to_label: dropoffLabel,
