@@ -71,7 +71,8 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
-    .in("status", QUERY_STATUS_FILTER)
+    .neq("status", "cancelled")
+    .neq("status", "completed")
     .order("updated_at", { ascending: false, nullsFirst: false })
     .limit(300);
 
@@ -86,7 +87,16 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   }
 
   const rows = Array.isArray(data) ? data : [];
-  const filteredRows = excludeQuarantinedTrips(rows);
+
+  // Hard safety filter after fetch.
+  // This prevents cancelled/completed/stale rows from leaking into LiveTrips
+  // even if the upstream result snapshot is inconsistent.
+  const hardFilteredRows = rows.filter((row: any) => {
+    const status = String(row?.status ?? "").trim().toLowerCase();
+    return status === "requested" || status === "assigned" || status === "on_the_way";
+  });
+
+  const filteredRows = excludeQuarantinedTrips(hardFilteredRows);
   const normalizedTrips = filterDispatchEligibleTrips(
     filteredRows.map((row: any) => normalizeTrip(row))
   );
