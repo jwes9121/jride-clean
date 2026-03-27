@@ -94,6 +94,8 @@ const ACTIVE_STATUSES = [
   "on_the_way",
   "arrived",
   "on_trip",
+  "completed",
+  "cancelled"
 ];
 
 export async function GET(req: Request) {
