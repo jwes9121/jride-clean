@@ -38,6 +38,9 @@ const LIVETRIPS_ALLOWED_TRIP_STATUSES = new Set<string>([
 
 const QUERY_STATUS_FILTER = ["requested", "assigned", "on_the_way"];
 
+// TEMP DEBUG PROBE
+const PROBE_BOOKING_ID = "8b83b021-1991-4266-b715-50a6d92d72a7";
+
 function normalizeTrip(row: Json): Json {
   const r = normalizeKeys(row);
   return {
@@ -134,6 +137,20 @@ async function tryLoadZones(supabase: ReturnType<typeof supabaseAdmin>) {
   return { zones: [] as ZoneRow[], zoneSource: null as string | null, warnings };
 }
 
+async function loadProbe(supabase: ReturnType<typeof supabaseAdmin>) {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at, updated_at")
+    .eq("id", PROBE_BOOKING_ID)
+    .maybeSingle();
+
+  return {
+    probeId: PROBE_BOOKING_ID,
+    probeRow: data ?? null,
+    probeError: error?.message ?? null,
+  };
+}
+
 function getSupabaseUrlHost(): string {
   try {
     const raw = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -150,9 +167,10 @@ export async function GET(req: Request) {
     const debug = url.searchParams.get("debug") === "1";
     const supabase = supabaseAdmin();
 
-    const [bookingsRes, zonesRes] = await Promise.all([
+    const [bookingsRes, zonesRes, probeRes] = await Promise.all([
       loadBookings(supabase),
       tryLoadZones(supabase),
+      loadProbe(supabase),
     ]);
 
     const warnings = [...bookingsRes.warnings, ...zonesRes.warnings];
@@ -174,6 +192,11 @@ export async function GET(req: Request) {
       bookings: canonicalTrips,
       data: canonicalTrips,
       warnings,
+      probe: {
+        id: probeRes.probeId,
+        row: probeRes.probeRow,
+        error: probeRes.probeError,
+      },
     };
 
     if (debug) {
@@ -200,6 +223,11 @@ export async function GET(req: Request) {
         trips: [],
         bookings: [],
         data: [],
+        probe: {
+          id: PROBE_BOOKING_ID,
+          row: null,
+          error: err?.message ?? "Unexpected error",
+        },
       },
       { status: 500 }
     );
