@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 type BookBody = {
   town?: string;
@@ -61,126 +61,26 @@ function getBearerToken(req: Request): string | null {
   return token || null;
 }
 
-async function getTokenUserAndVerified(
-  supabase: ReturnType<typeof createClient>,
-  accessToken: string
-) {
-  const { data, error } = await supabase.auth.getUser(accessToken);
-  if (error || !data?.user?.id) {
-    return { user: null, verified: false };
-  }
-
-  const user = data.user;
-  let verified = false;
-
-  try {
-    const pv = await supabase
-      .from("passenger_verifications")
-      .select("status")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
-    verified = s === "approved_admin";
-  } catch {}
-
-  if (!verified) {
-    try {
-      const pr = await supabase
-        .from("passenger_verification_requests")
-        .select("status")
-        .eq("passenger_id", user.id)
-        .maybeSingle();
-
-      const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
-      verified = s === "approved_admin";
-    } catch {}
-  }
-
-  if (!verified) {
-    try {
-      const truthy = (v: unknown) =>
-        v === true ||
-        (typeof v === "string" &&
-          v.trim().toLowerCase() !== "" &&
-          v.trim().toLowerCase() !== "false" &&
-          v.trim().toLowerCase() !== "0" &&
-          v.trim().toLowerCase() !== "no") ||
-        (typeof v === "number" && v > 0);
-
-      const selV = "is_verified,verified,verification_tier";
-      const tries: Array<["auth_user_id" | "user_id", string]> = [
-        ["auth_user_id", user.id],
-        ["user_id", user.id],
-      ];
-
-      for (const [col, val] of tries) {
-        const r = await supabase
-          .from("passengers")
-          .select(selV)
-          .eq(col, val)
-          .limit(1)
-          .maybeSingle();
-
-        if (!r.error && r.data) {
-          const row: any = r.data;
-          verified =
-            truthy(row.is_verified) ||
-            truthy(row.verified) ||
-            truthy(row.verification_tier);
-
-          if (verified) break;
-        }
-      }
-    } catch {}
-  }
-
-  return { user, verified };
-}
-
-function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "")
-    .trim()
-    .toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
-async function canBookOrThrow(
-  supabase: ReturnType<typeof createClient>,
-  accessToken: string
-) {
-  const uv = await getTokenUserAndVerified(supabase, accessToken);
-
-  if (!uv.user?.id) {
-    return NextResponse.json(
-      { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-      { status: 401 }
-    );
-  }
-
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    hour12: false,
-    hour: "2-digit",
-  });
-
-  const hour = parseInt(fmt.format(new Date()), 10);
-  const nightGate = hour >= 20 || hour < 5;
-
-  if (nightGate && !uv.verified && !jrideNightGateBypass()) {
-    throw {
-      code: "NIGHT_GATE_UNVERIFIED",
-      message: "Booking is restricted from 8PM to 5AM unless verified.",
-      status: 403,
-    };
-  }
-
-  return { ok: true, userId: uv.user.id, verified: uv.verified };
+/**
+ * CRITICAL FIX:
+ * Bind access token to Supabase client so RLS sees auth.uid()
+ */
+function createUserClient(accessToken: string) {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    }
+  );
 }
 
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
     const accessToken = getBearerToken(req);
 
     if (!accessToken) {
@@ -190,19 +90,39 @@ export async function POST(req: Request) {
       );
     }
 
+    const supabase = createUserClient(accessToken);
+
+    const { data: userData, error: userError } =
+      await supabase.auth.getUser();
+
+    if (userError || !userData?.user?.id) {
+      return NextResponse.json(
+        { ok: false, code: "NOT_AUTHED", message: "Invalid user session." },
+        { status: 401 }
+      );
+    }
+
+    const userId = userData.user.id;
+
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
     const town = text(body.town);
     const pickupLabel = text(body.from_label || body.pickup_label);
     const dropoffLabel = text(body.to_label || body.dropoff_label);
-    const vehicleType = text(body.service_type || body.vehicle_type || "tricycle");
+    const vehicleType = text(
+      body.service_type || body.vehicle_type || "tricycle"
+    );
 
     const pickupLat = num(body.pickup_lat);
     const pickupLng = num(body.pickup_lng);
     const dropoffLat = num(body.dropoff_lat);
     const dropoffLng = num(body.dropoff_lng);
 
-    const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
+    const passengerCount = Math.max(
+      1,
+      Math.floor(num(body.passenger_count) ?? 1)
+    );
+
     const feesAcknowledged = !!body.fees_acknowledged;
 
     if (!town) {
@@ -214,14 +134,22 @@ export async function POST(req: Request) {
 
     if (!pickupLabel || pickupLat == null || pickupLng == null) {
       return NextResponse.json(
-        { ok: false, code: "MISSING_PICKUP", message: "Pickup location is required." },
+        {
+          ok: false,
+          code: "MISSING_PICKUP",
+          message: "Pickup location is required.",
+        },
         { status: 400 }
       );
     }
 
     if (!dropoffLabel || dropoffLat == null || dropoffLng == null) {
       return NextResponse.json(
-        { ok: false, code: "MISSING_DROPOFF", message: "Drop-off location is required." },
+        {
+          ok: false,
+          code: "MISSING_DROPOFF",
+          message: "Drop-off location is required.",
+        },
         { status: 400 }
       );
     }
@@ -237,22 +165,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const canRes: any = await canBookOrThrow(supabase as any, accessToken);
-    if (canRes && typeof canRes.headers?.get === "function") {
-      return canRes;
-    }
-
-    const createdByUserId = String((canRes as any).userId || "").trim();
-    if (!createdByUserId) {
-      return NextResponse.json(
-        { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401 }
-      );
-    }
-
     const bookingCode = bookingCodeNow();
 
-    const insert: Record<string, any> = {
+    const insert = {
       booking_code: bookingCode,
       status: "searching",
       town,
@@ -264,7 +179,7 @@ export async function POST(req: Request) {
       dropoff_lng: dropoffLng,
       service_type: vehicleType,
       passenger_count: passengerCount,
-      created_by_user_id: createdByUserId,
+      created_by_user_id: userId,
       customer_status: "pending",
     };
 
@@ -279,7 +194,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           code: "BOOKING_INSERT_FAILED",
-          message: error.message || "Booking insert failed.",
+          message: error.message,
         },
         { status: 500 }
       );
@@ -300,7 +215,7 @@ export async function POST(req: Request) {
         code: e?.code || "BOOK_ROUTE_FAILED",
         message: e?.message || "Unknown error",
       },
-      { status: e?.status || 500, headers: { "Cache-Control": "no-store, max-age=0" } }
+      { status: e?.status || 500 }
     );
   }
 }
