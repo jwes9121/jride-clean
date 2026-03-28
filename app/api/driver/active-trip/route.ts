@@ -14,6 +14,114 @@ function parseDateMs(v: any): number | null {
   }
 }
 
+function text(v: unknown): string {
+  return String(v ?? "").trim();
+}
+
+function num(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function firstNonBlank(...values: unknown[]): string | null {
+  for (const value of values) {
+    const s = text(value);
+    if (s) return s;
+  }
+  return null;
+}
+
+function secondsToMinutes(v: unknown): number | null {
+  const seconds = num(v);
+  if (seconds == null || seconds <= 0) return null;
+  return Math.ceil(seconds / 60);
+}
+
+function buildRouteContract(row: Record<string, any>) {
+  return {
+    distance_km:
+      num(row.driver_to_pickup_km) ??
+      num(row.pickup_distance_km) ??
+      null,
+    eta_minutes:
+      num(row.pickup_eta_minutes) ??
+      num(row.eta_pickup_minutes) ??
+      secondsToMinutes(row.pickup_eta_seconds) ??
+      secondsToMinutes(row.eta_pickup_seconds) ??
+      null,
+    trip_km:
+      num(row.trip_distance_km) ??
+      num(row.route_trip_km) ??
+      null,
+  };
+}
+
+function mergeCompatTrip(
+  trip: Record<string, any>,
+  driver: Record<string, any> | null,
+  driverLocation: Record<string, any> | null,
+  route: { distance_km: number | null; eta_minutes: number | null; trip_km: number | null }
+) {
+  const out: Record<string, any> = { ...trip };
+
+  if (driver) {
+    const driverId = firstNonBlank(driver.id, driver.driver_id);
+    const driverName = firstNonBlank(driver.name, driver.full_name, driver.callsign);
+    const driverPhone = firstNonBlank(driver.phone);
+    const driverTown = firstNonBlank(driver.town, driver.municipality);
+
+    if (driverId) {
+      out.driver_id = driverId;
+      out.assigned_driver_id = out.assigned_driver_id || driverId;
+    }
+    if (driverName) {
+      out.driver_name = driverName;
+      out.driverName = driverName;
+      out.driver_full_name = driverName;
+    }
+    if (driverPhone) {
+      out.driver_phone = driverPhone;
+      out.driverPhone = driverPhone;
+    }
+    if (driverTown) {
+      out.driver_town = driverTown;
+    }
+  }
+
+  if (driverLocation) {
+    const lat = num(driverLocation.lat);
+    const lng = num(driverLocation.lng);
+    const updatedAt = firstNonBlank(driverLocation.updated_at);
+
+    if (lat != null) {
+      out.driver_lat = lat;
+      out.driverLat = lat;
+    }
+    if (lng != null) {
+      out.driver_lng = lng;
+      out.driverLng = lng;
+    }
+    if (updatedAt) {
+      out.driver_last_seen_at = updatedAt;
+    }
+  }
+
+  if (route.distance_km != null) {
+    out.driver_to_pickup_km = route.distance_km;
+    out.driverToPickupKm = route.distance_km;
+  }
+  if (route.eta_minutes != null) {
+    out.pickup_eta_minutes = route.eta_minutes;
+    out.pickupEtaMinutes = route.eta_minutes;
+  }
+  if (route.trip_km != null) {
+    out.trip_distance_km = route.trip_km;
+    out.tripDistanceKm = route.trip_km;
+  }
+
+  return out;
+}
+
 function getAdminClient() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -24,7 +132,6 @@ function getAdminClient() {
 }
 
 function allow(req: Request) {
-  // Accept both legacy and current driver-secret headers.
   const want = String(
     process.env.DRIVER_PING_SECRET ||
     process.env.JRIDE_DRIVER_SECRET ||
@@ -37,7 +144,7 @@ function allow(req: Request) {
     ""
   ).trim();
 
-  if (!want) return true; // if not set, allow (dev)
+  if (!want) return true;
   return Boolean(got) && got === want;
 }
 
@@ -58,8 +165,7 @@ export async function GET(req: Request) {
     }
 
     const supabase = getAdminClient();
-
-    const activeStatuses = ["assigned","accepted","fare_proposed","on_the_way","arrived","on_trip","ready"];
+    const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip", "ready"];
 
     function hasFareEvidence(r: any): boolean {
       const pf = (r as any)?.proposed_fare;
@@ -67,9 +173,11 @@ export async function GET(req: Request) {
       const pr = (r as any)?.passenger_fare_response;
       return pf != null || vf != null || pr != null;
     }
+
     function isMovementState(st: string): boolean {
       return st === "on_the_way" || st === "arrived" || st === "on_trip";
     }
+
     function isReadyButNotAccepted(r: any): boolean {
       const st = String((r as any)?.status ?? "");
       if (st !== "ready") return false;
@@ -89,13 +197,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "DB_ERROR", message: error.message }, { status: 500 });
     }
 
-    const rows: any[] = Array.isArray(data) ? (data as any[]) : [];
+    const rows: any[] = Array.isArray(data) ? data : [];
 
     if (rows.length === 0) {
       return NextResponse.json({
         ok: true,
         driver_id: driverId,
         trip: null,
+        driver: null,
+        driver_location: null,
+        route: null,
         note: "NO_ACTIVE_TRIP",
         active_statuses: activeStatuses,
       });
@@ -107,7 +218,6 @@ export async function GET(req: Request) {
 
     let picked: any = null;
 
-    // 1) Prefer non-assigned states first
     for (const r of rows) {
       const st = String((r as any)?.status ?? "");
       if (!st || st === "assigned") continue;
@@ -117,7 +227,6 @@ export async function GET(req: Request) {
       break;
     }
 
-    // 2) Else allow recent assigned
     if (!picked) {
       for (const r of rows) {
         const st = String((r as any)?.status ?? "");
@@ -130,13 +239,68 @@ export async function GET(req: Request) {
       }
     }
 
-    const trip = picked || null;
+    const rawTrip = picked || null;
+    if (!rawTrip) {
+      return NextResponse.json({
+        ok: true,
+        driver_id: driverId,
+        trip: null,
+        driver: null,
+        driver_location: null,
+        route: null,
+        note: "NO_ACTIVE_TRIP",
+        active_statuses: activeStatuses,
+        assigned_max_age_minutes: ASSIGNED_MAX_AGE_MINUTES,
+      });
+    }
+
+    const { data: driverProfile } = await supabase
+      .from("driver_profiles")
+      .select("driver_id, full_name, callsign, municipality, phone")
+      .eq("driver_id", driverId)
+      .maybeSingle();
+
+    const driver = driverProfile
+      ? {
+          id: firstNonBlank((driverProfile as any).driver_id, driverId),
+          name: firstNonBlank((driverProfile as any).full_name, (driverProfile as any).callsign),
+          phone: firstNonBlank((driverProfile as any).phone),
+          town: firstNonBlank((driverProfile as any).municipality),
+        }
+      : {
+          id: driverId,
+          name: null,
+          phone: null,
+          town: null,
+        };
+
+    const { data: latestLocation } = await supabase
+      .from("driver_locations_latest")
+      .select("driver_id, latitude, longitude, updated_at")
+      .eq("driver_id", driverId)
+      .maybeSingle();
+
+    const driverLocation = latestLocation
+      ? {
+          driver_id: firstNonBlank((latestLocation as any).driver_id, driverId),
+          lat: num((latestLocation as any).latitude),
+          lng: num((latestLocation as any).longitude),
+          updated_at: firstNonBlank((latestLocation as any).updated_at),
+        }
+      : null;
+
+    const route = buildRouteContract(rawTrip as Record<string, any>);
+    const trip = mergeCompatTrip(rawTrip as Record<string, any>, driver, driverLocation, route);
 
     return NextResponse.json({
       ok: true,
       driver_id: driverId,
       trip,
-      note: trip ? "ACTIVE_TRIP_FOUND" : "NO_ACTIVE_TRIP",
+      booking: trip,
+      driver,
+      driver_location: driverLocation,
+      route,
+      note: "ACTIVE_TRIP_FOUND",
       active_statuses: activeStatuses,
       assigned_max_age_minutes: ASSIGNED_MAX_AGE_MINUTES,
     });
