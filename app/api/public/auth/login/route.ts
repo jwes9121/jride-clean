@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
     const email_raw = String(body?.email ?? "").trim();
     const password = String(body?.password ?? "").trim();
 
-    if (!password || password.length < 6) return bad("Password must be at least 6 characters.");
+    if (!password || password.length < 6) {
+      return bad("Password must be at least 6 characters.");
+    }
 
     let email = "";
     let phone = "";
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
     if (phone_raw) {
       phone = normPhone(phone_raw);
       if (!/^\+63\d{10}$/.test(phone)) {
-        return bad("Phone must be a valid PH number (e.g., 09xxxxxxxxx or +639xxxxxxxxx).");
+        return bad("Phone must be a valid PH number.");
       }
       email = phoneToInternalEmail(phone);
     } else if (email_raw) {
@@ -54,7 +56,6 @@ export async function POST(req: NextRequest) {
       return bad("Phone or email is required.");
     }
 
-    // IMPORTANT: SSR cookie-aware client (writes auth cookies)
     const supabase = createClient();
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -64,21 +65,24 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       const msg = String(error.message || "Login failed.");
-      const low = msg.toLowerCase();
-      if (low.includes("invalid") || low.includes("credentials")) {
-        return bad("Invalid phone/email or password.", 401);
-      }
       return bad(msg, 401);
     }
 
     const userId = data?.user?.id ?? null;
+    const accessToken = data?.session?.access_token ?? null;
+
+    if (!accessToken) {
+      return bad("Missing access token from auth provider.", 500);
+    }
 
     return NextResponse.json({
       ok: true,
       user_id: userId,
       phone: phone || null,
       email_used: email,
+      access_token: accessToken
     });
+
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Login failed." },

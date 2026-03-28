@@ -4,12 +4,12 @@ import { createClient } from "@/utils/supabase/server";
 type BookBody = {
   town?: string;
 
-  // legacy web/android request names
+  // legacy request names kept for compatibility
   pickup_label?: string;
   dropoff_label?: string;
   vehicle_type?: string;
 
-  // canonical aligned request names
+  // canonical request names
   from_label?: string;
   to_label?: string;
   service_type?: string;
@@ -22,6 +22,7 @@ type BookBody = {
   passenger_count?: number | string | null;
   fees_acknowledged?: boolean;
 
+  // accepted but NOT trusted for auth
   passenger_name?: string;
   full_name?: string;
   user_id?: string;
@@ -56,73 +57,85 @@ function bookingCodeNow(): string {
   return `JR-UI-${stamp}-${rand}`;
 }
 
-async function frGetUserAndVerified(supabase: ReturnType<typeof createClient>) {
-  const { data } = await supabase.auth.getUser();
-  const user = data?.user ?? null;
+function getBearerToken(req: Request): string | null {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7).trim();
+  return token || null;
+}
+
+async function getTokenUserAndVerified(
+  supabase: ReturnType<typeof createClient>,
+  accessToken: string
+) {
+  const { data, error } = await supabase.auth.getUser(accessToken);
+  if (error || !data?.user?.id) {
+    return { user: null, verified: false };
+  }
+
+  const user = data.user;
   let verified = false;
 
-  if (user?.id) {
+  try {
+    const pv = await supabase
+      .from("passenger_verifications")
+      .select("status")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
+    verified = s === "approved_admin";
+  } catch {}
+
+  if (!verified) {
     try {
-      const pv = await supabase
-        .from("passenger_verifications")
+      const pr = await supabase
+        .from("passenger_verification_requests")
         .select("status")
-        .eq("user_id", user.id)
+        .eq("passenger_id", user.id)
         .maybeSingle();
 
-      const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
+      const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
       verified = s === "approved_admin";
     } catch {}
+  }
 
-    if (!verified) {
-      try {
-        const pr = await supabase
-          .from("passenger_verification_requests")
-          .select("status")
-          .eq("passenger_id", user.id)
+  if (!verified) {
+    try {
+      const truthy = (v: unknown) =>
+        v === true ||
+        (typeof v === "string" &&
+          v.trim().toLowerCase() !== "" &&
+          v.trim().toLowerCase() !== "false" &&
+          v.trim().toLowerCase() !== "0" &&
+          v.trim().toLowerCase() !== "no") ||
+        (typeof v === "number" && v > 0);
+
+      const selV = "is_verified,verified,verification_tier";
+      const tries: Array<["auth_user_id" | "user_id", string]> = [
+        ["auth_user_id", user.id],
+        ["user_id", user.id],
+      ];
+
+      for (const [col, val] of tries) {
+        const r = await supabase
+          .from("passengers")
+          .select(selV)
+          .eq(col, val)
+          .limit(1)
           .maybeSingle();
 
-        const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
-        verified = s === "approved_admin";
-      } catch {}
-    }
+        if (!r.error && r.data) {
+          const row: any = r.data;
+          verified =
+            truthy(row.is_verified) ||
+            truthy(row.verified) ||
+            truthy(row.verification_tier);
 
-    if (!verified) {
-      try {
-        const truthy = (v: unknown) =>
-          v === true ||
-          (typeof v === "string" &&
-            v.trim().toLowerCase() !== "" &&
-            v.trim().toLowerCase() !== "false" &&
-            v.trim().toLowerCase() !== "0" &&
-            v.trim().toLowerCase() !== "no") ||
-          (typeof v === "number" && v > 0);
-
-        const selV = "is_verified,verified,verification_tier";
-        const tries: Array<["auth_user_id" | "user_id", string]> = [
-          ["auth_user_id", user.id],
-          ["user_id", user.id],
-        ];
-
-        for (const [col, val] of tries) {
-          const r = await supabase
-            .from("passengers")
-            .select(selV)
-            .eq(col, val)
-            .limit(1)
-            .maybeSingle();
-
-          if (!r.error && r.data) {
-            const row: any = r.data;
-            verified =
-              truthy(row.is_verified) ||
-              truthy(row.verified) ||
-              truthy(row.verification_tier);
-
-            if (verified) break;
-          }
+          if (verified) break;
         }
-      } catch {}
-    }
+      }
+    } catch {}
   }
 
   return { user, verified };
@@ -135,8 +148,11 @@ function jrideNightGateBypass(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
-async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
-  const uv = await frGetUserAndVerified(supabase as any);
+async function canBookOrThrow(
+  supabase: ReturnType<typeof createClient>,
+  accessToken: string
+) {
+  const uv = await getTokenUserAndVerified(supabase, accessToken);
 
   if (!uv.user?.id) {
     return NextResponse.json(
@@ -168,6 +184,15 @@ async function canBookOrThrow(supabase: ReturnType<typeof createClient>) {
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
+    const accessToken = getBearerToken(req);
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { ok: false, code: "NOT_AUTHED", message: "Missing bearer token." },
+        { status: 401 }
+      );
+    }
+
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
     const town = text(body.town);
@@ -215,7 +240,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const canRes: any = await canBookOrThrow(supabase as any);
+    const canRes: any = await canBookOrThrow(supabase as any, accessToken);
     if (canRes && typeof canRes.headers?.get === "function") {
       return canRes;
     }
