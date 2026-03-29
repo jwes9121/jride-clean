@@ -59,6 +59,7 @@ function buildRouteContract(row: Record<string, any>) {
     distance_km:
       num(row.driver_to_pickup_km) ??
       num(row.pickup_distance_km) ??
+      num(row.pickup_distance_fee) ??
       null,
     eta_minutes:
       num(row.pickup_eta_minutes) ??
