@@ -1,26 +1,28 @@
-'use client'
+import TrackClient from "./track/TrackClient";
+import SimpleBookRide from "./SimpleBookRide";
 
-import { useSearchParams } from 'next/navigation'
-import TrackClient from './track/TrackClient'
-import SimpleBookRide from './SimpleBookRide'
+type RidePageProps = {
+  searchParams?: {
+    booking_code?: string;
+    code?: string;
+  };
+};
 
-export default function RidePage() {
-  const params = useSearchParams()
-  const code = params.get('booking_code')
+export default function RidePage({ searchParams }: RidePageProps) {
+  const bookingCode =
+    (searchParams?.booking_code || searchParams?.code || "").trim();
 
-  // NO BOOKING â†’ SHOW BOOKING UI
-  if (!code) {
+  if (!bookingCode) {
     return (
       <div className="p-4">
         <SimpleBookRide />
       </div>
-    )
+    );
   }
 
-  // WITH BOOKING â†’ TRACK
   return (
     <div className="p-4">
-      <TrackClient code={code} />
+      <TrackClient code={bookingCode} />
     </div>
-  )
+  );
 }
