@@ -2,28 +2,35 @@
 
 import { useEffect, useState } from "react";
 
-type Booking = {
+type TrackResponse = {
+  ok?: boolean;
   booking_code?: string | null;
   status?: string | null;
-  driver_name?: string | null;
+  driver?: {
+    id?: string | null;
+    name?: string | null;
+    phone?: string | null;
+  } | null;
+  route?: {
+    distance_km?: number | null;
+    eta_minutes?: number | null;
+    trip_km?: number | null;
+  } | null;
   proposed_fare?: number | null;
   verified_fare?: number | null;
-  convenience_fee?: number | null;
-  pickup_distance_fee?: number | null;
-  driver_to_pickup_km?: number | null;
-  trip_distance_km?: number | null;
+  message?: string | null;
 };
 
 function money(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `PHP ${v}` : "--";
+  return typeof v === "number" && Number.isFinite(v) ? `PHP ${v.toFixed(2)}` : "--";
 }
 
 export default function TrackClient({ code }: { code?: string }) {
-  const [data, setData] = useState<Booking | null>(null);
+  const [data, setData] = useState<TrackResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  async function fetchBooking() {
+  async function fetchTrack() {
     if (!code) {
       setErr("Missing booking code.");
       setData(null);
@@ -35,45 +42,32 @@ export default function TrackClient({ code }: { code?: string }) {
 
     try {
       const res = await fetch(
-        `/api/public/passenger/booking?code=${encodeURIComponent(code)}&ts=${Date.now()}`,
+        `/api/passenger/track?booking_code=${encodeURIComponent(code)}&ts=${Date.now()}`,
         { cache: "no-store" }
       );
 
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
 
       if (!res.ok || !json?.ok) {
         setData(null);
-        if (json?.error === "BOOKING_NOT_FOUND") {
-          setErr("Booking not found.");
-        } else {
-          setErr("Unable to load booking right now.");
-        }
+        setErr(json?.message || "Unable to load trip tracking.");
         return;
       }
 
-      setData(json.booking ?? null);
+      setData(json);
     } catch {
       setData(null);
-      setErr("Unable to load booking right now.");
+      setErr("Unable to load trip tracking.");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchBooking();
-    const t = setInterval(fetchBooking, 3000);
+    fetchTrack();
+    const t = setInterval(fetchTrack, 3000);
     return () => clearInterval(t);
   }, [code]);
-
-  const shownFare = data?.verified_fare ?? data?.proposed_fare ?? null;
-  const pickupFee = data?.pickup_distance_fee ?? null;
-  const fee =
-    typeof data?.convenience_fee === "number" ? data.convenience_fee : 15;
-  const total =
-    (typeof shownFare === "number" ? shownFare : 0) +
-    (typeof pickupFee === "number" ? pickupFee : 0) +
-    fee;
 
   return (
     <div className="mx-auto max-w-3xl p-4 space-y-4">
@@ -84,7 +78,7 @@ export default function TrackClient({ code }: { code?: string }) {
 
       {loading ? (
         <div className="rounded-xl border border-black/10 bg-white p-4 text-sm">
-          Loading booking...
+          Loading tracking...
         </div>
       ) : null}
 
@@ -97,23 +91,29 @@ export default function TrackClient({ code }: { code?: string }) {
       {data ? (
         <div className="rounded-xl border border-black/10 bg-white p-4 space-y-2">
           <div>Status: {data.status ?? "--"}</div>
-          <div>Driver: {data.driver_name ?? "--"}</div>
-          <div>Fare: {money(shownFare)}</div>
-          <div>Pickup distance fee: {money(pickupFee)}</div>
+          <div>Driver: {data.driver?.name ?? "--"}</div>
+          <div>Phone: {data.driver?.phone ?? "--"}</div>
           <div>
-            Driver to pickup:{" "}
-            {typeof data.driver_to_pickup_km === "number"
-              ? `${data.driver_to_pickup_km.toFixed(1)} km`
+            Pickup distance:{" "}
+            {typeof data.route?.distance_km === "number"
+              ? `${data.route.distance_km.toFixed(1)} km`
+              : "--"}
+          </div>
+          <div>
+            ETA:{" "}
+            {typeof data.route?.eta_minutes === "number"
+              ? `${Math.round(data.route.eta_minutes)} min`
               : "--"}
           </div>
           <div>
             Trip distance:{" "}
-            {typeof data.trip_distance_km === "number"
-              ? `${data.trip_distance_km.toFixed(1)} km`
+            {typeof data.route?.trip_km === "number"
+              ? `${data.route.trip_km.toFixed(1)} km`
               : "--"}
           </div>
-          <div>Platform fee: {money(fee)}</div>
-          <div className="font-semibold">Total: {money(total)}</div>
+          <div className="font-semibold">
+            Fare: {money(data.verified_fare ?? data.proposed_fare ?? null)}
+          </div>
         </div>
       ) : null}
     </div>
