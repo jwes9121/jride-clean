@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -196,7 +196,7 @@ export async function GET() {
         assign_cutoff_minutes: assignCutoffMinutes,
         assign_fresh: assignFresh,
         assign_online_eligible: assignOnlineEligible,
-        assign_eligible: assignOnlineEligible};
+        assign_eligible: assignEligible};
     });
 
     return NextResponse.json(
