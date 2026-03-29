@@ -40,12 +40,6 @@ function firstNonBlank(...values: unknown[]): string | null {
   return null;
 }
 
-function secondsToMinutes(v: unknown): number | null {
-  const seconds = num(v);
-  if (seconds == null || seconds <= 0) return null;
-  return Math.ceil(seconds / 60);
-}
-
 function createBearerClient(token: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
   const supabaseAnonKey =
@@ -70,47 +64,47 @@ function createBearerClient(token: string) {
 
 async function getAuthenticatedUser(req: Request) {
   const token = getBearerToken(req);
+
   if (!token) {
-    return { user: null, token: null as string | null, auth_source: "none" as const };
+    return {
+      user: null,
+      token: null as string | null,
+      auth_source: "none" as const,
+    };
   }
 
   const client = createBearerClient(token);
   const { data, error } = await client.auth.getUser();
 
   if (error || !data?.user?.id) {
-    return { user: null, token, auth_source: "none" as const };
+    return {
+      user: null,
+      token,
+      auth_source: "none" as const,
+    };
   }
 
-  return { user: data.user, token, auth_source: "bearer" as const };
+  return {
+    user: data.user,
+    token,
+    auth_source: "bearer" as const,
+  };
 }
 
 function buildRouteMetrics(
   booking: Record<string, unknown>,
   driverLocation: { lat: number | null; lng: number | null } | null
 ) {
-  let pickupDistanceKm =
-    num(booking.driver_to_pickup_km) ??
-    null;
-
-  let etaMinutes =
-    num(booking.pickup_eta_minutes) ??
-    num(booking.eta_pickup_minutes) ??
-    secondsToMinutes(booking.pickup_eta_seconds) ??
-    secondsToMinutes(booking.eta_pickup_seconds) ??
-    null;
-
-  let tripDistanceKm =
-    num(booking.trip_distance_km) ??
-    num(booking.route_trip_km) ??
-    null;
-
   const pickupLat = num(booking.pickup_lat);
   const pickupLng = num(booking.pickup_lng);
   const dropoffLat = num(booking.dropoff_lat);
   const dropoffLng = num(booking.dropoff_lng);
 
+  let pickupDistanceKm: number | null = null;
+  let tripDistanceKm: number | null = null;
+  let etaMinutes: number | null = null;
+
   if (
-    pickupDistanceKm == null &&
     driverLocation?.lat != null &&
     driverLocation?.lng != null &&
     pickupLat != null &&
@@ -122,7 +116,6 @@ function buildRouteMetrics(
   }
 
   if (
-    tripDistanceKm == null &&
     pickupLat != null &&
     pickupLng != null &&
     dropoffLat != null &&
@@ -133,7 +126,7 @@ function buildRouteMetrics(
     );
   }
 
-  if (etaMinutes == null && pickupDistanceKm != null && pickupDistanceKm > 0) {
+  if (pickupDistanceKm != null && pickupDistanceKm > 0) {
     etaMinutes = Math.ceil((pickupDistanceKm / 20) * 60);
   }
 
@@ -191,13 +184,6 @@ export async function GET(req: NextRequest) {
           "driver_status",
           "customer_status",
           "created_by_user_id",
-          "driver_to_pickup_km",
-          "pickup_eta_minutes",
-          "pickup_eta_seconds",
-          "eta_pickup_minutes",
-          "eta_pickup_seconds",
-          "trip_distance_km",
-          "route_trip_km",
         ].join(",")
       )
       .eq("booking_code", bookingCode)
