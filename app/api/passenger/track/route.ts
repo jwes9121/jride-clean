@@ -1,7 +1,5 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+﻿import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-
-import { createClient } from "@/utils/supabase/server";
 
 function text(v: unknown): string {
   return String(v ?? "").trim();
@@ -19,25 +17,19 @@ function getBearerToken(req: Request): string | null {
   return token || null;
 }
 
-async function getRequestUser(
-  supabase: ReturnType<typeof createClient>,
-  req: Request
-) {
-  const bearer = getBearerToken(req);
-
-  if (bearer) {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data?.user?.id) {
-      return { user: data.user, auth_source: "bearer" as const };
-    }
-  }
-
-  const { data, error } = await supabase.auth.getUser();
-  if (!error && data?.user?.id) {
-    return { user: data.user, auth_source: "session" as const };
-  }
-
-  return { user: null, auth_source: "none" as const };
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
 }
 
 function firstNonBlank(...values: unknown[]): string | null {
@@ -54,89 +46,103 @@ function secondsToMinutes(v: unknown): number | null {
   return Math.ceil(seconds / 60);
 }
 
-function buildRouteContract(row: Record<string, any>) {
-  return {
-    distance_km:
-      num(row.driver_to_pickup_km) ??
-      num(row.pickup_distance_km) ??
-      null,
-    eta_minutes:
-      num(row.pickup_eta_minutes) ??
-      num(row.eta_pickup_minutes) ??
-      secondsToMinutes(row.pickup_eta_seconds) ??
-      secondsToMinutes(row.eta_pickup_seconds) ??
-      null,
-    trip_km:
-      num(row.trip_distance_km) ??
-      num(row.route_trip_km) ??
-      null,
-  };
+function createBearerClient(token: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase URL or anon key");
+  }
+
+  return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
-function mergeCompatBooking(
-  booking: Record<string, any>,
-  driver: Record<string, any> | null,
-  driverLocation: Record<string, any> | null,
-  route: { distance_km: number | null; eta_minutes: number | null; trip_km: number | null }
+async function getAuthenticatedUser(req: Request) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return { user: null, token: null as string | null, auth_source: "none" as const };
+  }
+
+  const client = createBearerClient(token);
+  const { data, error } = await client.auth.getUser();
+
+  if (error || !data?.user?.id) {
+    return { user: null, token, auth_source: "none" as const };
+  }
+
+  return { user: data.user, token, auth_source: "bearer" as const };
+}
+
+function buildRouteMetrics(
+  booking: Record<string, unknown>,
+  driverLocation: { lat: number | null; lng: number | null } | null
 ) {
-  const out: Record<string, any> = { ...booking };
+  let pickupDistanceKm =
+    num(booking.driver_to_pickup_km) ??
+    num(booking.pickup_distance_km) ??
+    null;
 
-  if (driver) {
-    const driverId = firstNonBlank(driver.id, driver.driver_id);
-    const driverName = firstNonBlank(driver.name, driver.full_name, driver.callsign);
-    const driverPhone = firstNonBlank(driver.phone);
-    const driverTown = firstNonBlank(driver.town, driver.municipality);
+  let etaMinutes =
+    num(booking.pickup_eta_minutes) ??
+    num(booking.eta_pickup_minutes) ??
+    secondsToMinutes(booking.pickup_eta_seconds) ??
+    secondsToMinutes(booking.eta_pickup_seconds) ??
+    null;
 
-    if (driverId) {
-      out.driver_id = driverId;
-      out.assigned_driver_id = out.assigned_driver_id || driverId;
-    }
-    if (driverName) {
-      out.driver_name = driverName;
-      out.driverName = driverName;
-      out.driver_full_name = driverName;
-    }
-    if (driverPhone) {
-      out.driver_phone = driverPhone;
-      out.driverPhone = driverPhone;
-    }
-    if (driverTown) {
-      out.driver_town = driverTown;
-    }
+  let tripDistanceKm =
+    num(booking.trip_distance_km) ??
+    num(booking.route_trip_km) ??
+    null;
+
+  const pickupLat = num(booking.pickup_lat);
+  const pickupLng = num(booking.pickup_lng);
+  const dropoffLat = num(booking.dropoff_lat);
+  const dropoffLng = num(booking.dropoff_lng);
+
+  if (
+    pickupDistanceKm == null &&
+    driverLocation?.lat != null &&
+    driverLocation?.lng != null &&
+    pickupLat != null &&
+    pickupLng != null
+  ) {
+    pickupDistanceKm = Number(
+      haversineKm(driverLocation.lat, driverLocation.lng, pickupLat, pickupLng).toFixed(1)
+    );
   }
 
-  if (driverLocation) {
-    const lat = num(driverLocation.lat);
-    const lng = num(driverLocation.lng);
-    const updatedAt = firstNonBlank(driverLocation.updated_at);
-
-    if (lat != null) {
-      out.driver_lat = lat;
-      out.driverLat = lat;
-    }
-    if (lng != null) {
-      out.driver_lng = lng;
-      out.driverLng = lng;
-    }
-    if (updatedAt) {
-      out.driver_last_seen_at = updatedAt;
-    }
+  if (
+    tripDistanceKm == null &&
+    pickupLat != null &&
+    pickupLng != null &&
+    dropoffLat != null &&
+    dropoffLng != null
+  ) {
+    tripDistanceKm = Number(
+      haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(1)
+    );
   }
 
-  if (route.distance_km != null) {
-    out.driver_to_pickup_km = route.distance_km;
-    out.driverToPickupKm = route.distance_km;
-  }
-  if (route.eta_minutes != null) {
-    out.pickup_eta_minutes = route.eta_minutes;
-    out.pickupEtaMinutes = route.eta_minutes;
-  }
-  if (route.trip_km != null) {
-    out.trip_distance_km = route.trip_km;
-    out.tripDistanceKm = route.trip_km;
+  if (etaMinutes == null && pickupDistanceKm != null && pickupDistanceKm > 0) {
+    etaMinutes = Math.ceil((pickupDistanceKm / 20) * 60);
   }
 
-  return out;
+  return {
+    distance_km: pickupDistanceKm,
+    eta_minutes: etaMinutes,
+    trip_km: tripDistanceKm,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -151,17 +157,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const supabase = createClient();
-    const auth = await getRequestUser(supabase as any, req);
+    const auth = await getAuthenticatedUser(req);
 
-    if (!auth.user?.id) {
+    if (!auth.user?.id || !auth.token) {
       return NextResponse.json(
         { ok: false, error: "Not authenticated" },
         { status: 401 }
       );
     }
 
-    const { data: booking, error: bookingError } = await supabase
+    const dbClient = createBearerClient(auth.token);
+
+    const { data: booking, error: bookingError } = await dbClient
       .from("bookings")
       .select(
         [
@@ -186,8 +193,13 @@ export async function GET(req: NextRequest) {
           "customer_status",
           "created_by_user_id",
           "driver_to_pickup_km",
-          "pickup_distance_fee",
-          "trip_distance_km"
+          "pickup_distance_km",
+          "pickup_eta_minutes",
+          "pickup_eta_seconds",
+          "eta_pickup_minutes",
+          "eta_pickup_seconds",
+          "trip_distance_km",
+          "route_trip_km",
         ].join(",")
       )
       .eq("booking_code", bookingCode)
@@ -208,69 +220,79 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const bookingRow = booking as Record<string, any>;
+    const bookingRow = booking as unknown as Record<string, unknown>;
     const driverId = firstNonBlank(bookingRow.driver_id, bookingRow.assigned_driver_id);
 
-    let driver: Record<string, any> | null = null;
-    let driverLocation: Record<string, any> | null = null;
+    let driverName: string | null = null;
+    let driverPhone: string | null = null;
+    let driverLocation: { lat: number | null; lng: number | null } | null = null;
 
     if (driverId) {
-      const { data: driverProfile } = await supabase
+      const { data: driverProfile } = await dbClient
         .from("driver_profiles")
-        .select("driver_id, full_name, callsign, municipality, phone")
+        .select("driver_id, full_name, callsign, phone")
         .eq("driver_id", driverId)
         .maybeSingle();
 
       if (driverProfile) {
-        driver = {
-          id: firstNonBlank((driverProfile as any).driver_id, driverId),
-          name: firstNonBlank((driverProfile as any).full_name, (driverProfile as any).callsign),
-          phone: firstNonBlank((driverProfile as any).phone),
-          town: firstNonBlank((driverProfile as any).municipality),
-        };
-      } else {
-        driver = {
-          id: driverId,
-          name: null,
-          phone: null,
-          town: null,
-        };
+        const row = driverProfile as unknown as Record<string, unknown>;
+        driverName = firstNonBlank(row.full_name, row.callsign);
+        driverPhone = firstNonBlank(row.phone);
       }
 
-      const { data: latestLocation } = await supabase
+      const { data: latestLocation } = await dbClient
         .from("driver_locations_latest")
-        .select("driver_id, latitude, longitude, updated_at")
+        .select("latitude, longitude, updated_at")
         .eq("driver_id", driverId)
         .maybeSingle();
 
       if (latestLocation) {
+        const row = latestLocation as unknown as Record<string, unknown>;
         driverLocation = {
-          driver_id: firstNonBlank((latestLocation as any).driver_id, driverId),
-          lat: num((latestLocation as any).latitude),
-          lng: num((latestLocation as any).longitude),
-          updated_at: firstNonBlank((latestLocation as any).updated_at),
+          lat: num(row.latitude),
+          lng: num(row.longitude),
         };
       }
     }
 
-    const route = buildRouteContract(bookingRow);
-    const bookingCompat = mergeCompatBooking(bookingRow, driver, driverLocation, route);
+    const route = buildRouteMetrics(bookingRow, driverLocation);
+    const fare = num(bookingRow.verified_fare) ?? num(bookingRow.proposed_fare) ?? 0;
 
     return NextResponse.json(
       {
         ok: true,
-        auth_source: auth.auth_source,
-        booking: bookingCompat,
-        trip: bookingCompat,
-        driver,
-        driver_location: driverLocation,
-        route,
+        booking_code: text(bookingRow.booking_code),
+        status: text(bookingRow.status),
+        driver: {
+          id: driverId,
+          name: driverName,
+          phone: driverPhone,
+        },
+        route: {
+          distance_km: route.distance_km ?? 0,
+          eta_minutes: route.eta_minutes ?? 0,
+          trip_km: route.trip_km ?? 0,
+        },
+        proposed_fare: num(bookingRow.proposed_fare),
+        verified_fare: num(bookingRow.verified_fare),
+        fare,
+        driver_name: driverName,
+        driver_phone: driverPhone,
+        pickup_distance_km: route.distance_km ?? 0,
+        eta_minutes: route.eta_minutes ?? 0,
+        trip_distance_km: route.trip_km ?? 0,
       },
-      { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      }
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json(
-      { ok: false, error: e?.message || "Unknown error" },
+      { ok: false, error: message },
       { status: 500 }
     );
   }
