@@ -1,334 +1,248 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
-type TrackPayload = {
-  ok?: boolean;
-  booking_code?: string | null;
-  status?: string | null;
-  driver?: {
-    id?: string | null;
-    name?: string | null;
-    phone?: string | null;
-  } | null;
-  route?: {
-    distance_km?: number | null;
-    eta_minutes?: number | null;
-    trip_km?: number | null;
-  } | null;
-  proposed_fare?: number | null;
-  verified_fare?: number | null;
-  fare?: number | null;
-  driver_name?: string | null;
-  driver_phone?: string | null;
-  pickup_distance_km?: number | null;
-  eta_minutes?: number | null;
-  trip_distance_km?: number | null;
-  message?: string | null;
-};
-
-function money(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? "PHP " + v.toFixed(2) : "--";
-}
-
-function metricKm(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? v.toFixed(1) + " km" : "--";
-}
-
-function metricMin(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? Math.round(v) + " min" : "--";
-}
-
-// Read stored access token (set by login page)
-function getAccessToken(): string | null {
-  try {
-    // Primary: stored by login page
-    const t = localStorage.getItem("jride_access_token");
-    if (t && t.length > 20) return t;
-
-    // Fallback: Supabase default storage key pattern
-    const keys = Object.keys(localStorage);
-    for (const k of keys) {
-      if (k.startsWith("sb-") && k.endsWith("-auth-token")) {
-        try {
-          const parsed = JSON.parse(localStorage.getItem(k) || "");
-          const tok = parsed?.access_token || parsed?.currentSession?.access_token;
-          if (tok && tok.length > 20) return tok;
-        } catch {}
-      }
-    }
-  } catch {}
-  return null;
-}
-
+/* ── constants ─────────────────────────────────────────── */
 const STATUS_STEPS = [
-  "searching",
-  "requested",
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "ready",
-  "on_the_way",
-  "arrived",
-  "on_trip",
-  "completed",
+  { key: "searching", label: "Searching" },
+  { key: "assigned", label: "Assigned" },
+  { key: "accepted", label: "Accepted" },
+  { key: "fare_proposed", label: "Fare Proposed" },
+  { key: "ready", label: "Ready" },
+  { key: "on_the_way", label: "On the Way" },
+  { key: "arrived", label: "Arrived" },
+  { key: "on_trip", label: "On Trip" },
+  { key: "completed", label: "Completed" },
 ];
+/* ── helpers ───────────────────────────────────────────── */
+function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("jride_access_token") || null;
+}
 
+function getSavedBookingCode(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("jride_active_booking_code") || null;
+}
+
+function saveBookingCode(code: string) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("jride_active_booking_code", code);
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const t = getAccessToken();
+  return t ? { Authorization: "Bearer " + t } : {};
+}
+
+/* ── types ─────────────────────────────────────────────── */
+interface TrackData {
+  ok: boolean;
+  status?: string;
+  booking_code?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  pickup_distance_km?: number;
+  eta_minutes?: number;
+  trip_distance_km?: number;
+  fare?: number;
+  proposed_fare?: number;
+  verified_fare?: number;
+  driver?: { name?: string; phone?: string };
+  route?: { distance_km?: number; eta_minutes?: number; trip_km?: number };
+}
+
+/* ── component ─────────────────────────────────────────── */
 export default function RidePage() {
-  const [data, setData] = useState<TrackPayload | null>(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  const code = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const url = new URL(window.location.href);
-    return (
-      url.searchParams.get("booking_code") ||
-      url.searchParams.get("code") ||
-      localStorage.getItem("jride_active_booking_code") ||
-      ""
-    ).trim();
-  }, []);
+  const [bookingCode, setBookingCode] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(true);
+  const [track, setTrack] = useState<TrackData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  /* ── Step 1: resolve booking code ───────────────────── */
   useEffect(() => {
-    let cancelled = false;
-
-    async function fetchTrack() {
-      if (!code) {
-        setErr("Missing booking code.");
+    async function resolve() {
+      // Priority 1: URL param
+      const fromUrl = searchParams.get("booking_code") || searchParams.get("code");
+      if (fromUrl) {
+        saveBookingCode(fromUrl);
+        setBookingCode(fromUrl);
+        setResolving(false);
         return;
       }
 
-      // Only show loading on first fetch
-      if (pollCount === 0) setLoading(true);
-      setErr("");
+      // Priority 2: localStorage
+      const fromStorage = getSavedBookingCode();
+      if (fromStorage) {
+        setBookingCode(fromStorage);
+        setResolving(false);
+        // sync URL
+        router.replace("/ride?booking_code=" + encodeURIComponent(fromStorage));
+        return;
+      }
 
-      try {
-        const token = getAccessToken();
-
-        if (!token) {
-          setErr("Not signed in. Please log in first.");
-          setData(null);
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(
-          "/api/passenger/track?booking_code=" + encodeURIComponent(code) + "&ts=" + Date.now(),
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: "Bearer " + token,
-            },
+      // Priority 3: latest-booking API
+      const token = getAccessToken();
+      if (token) {
+        try {
+          const res = await fetch("/api/passenger/latest-booking", {
+            headers: authHeaders(),
+          });
+          if (res.ok) {
+            const j = await res.json();
+            if (j.ok && j.booking_code) {
+              saveBookingCode(j.booking_code);
+              setBookingCode(j.booking_code);
+              setResolving(false);
+              router.replace("/ride?booking_code=" + encodeURIComponent(j.booking_code));
+              return;
+            }
           }
-        );
-
-        if (cancelled) return;
-
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok || !json?.ok) {
-          if (res.status === 401) {
-            // Token expired - clear and prompt re-login
-            try { localStorage.removeItem("jride_access_token"); } catch {}
-            setErr("Session expired. Please log in again.");
-          } else {
-            setErr(json?.error || json?.message || "Unable to load trip tracking.");
-          }
-          setData(null);
-        } else {
-          setData(json);
-          setErr("");
-        }
-      } catch {
-        if (!cancelled) {
-          setErr("Network error. Retrying...");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setPollCount((c) => c + 1);
+        } catch (_) {
+          /* fall through */
         }
       }
+
+      setError("No active booking found. Please book a ride first.");
+      setResolving(false);
     }
+    resolve();
+  }, [searchParams, router]);
 
+  /* ── Step 2: poll /api/passenger/track ──────────────── */
+  const fetchTrack = useCallback(async () => {
+    if (!bookingCode) return;
+    const token = getAccessToken();
+    if (!token) {
+      setError("Please log in to view your trip.");
+      return;
+    }
+    try {
+      const res = await fetch(
+        "/api/passenger/track?booking_code=" + encodeURIComponent(bookingCode),
+        { headers: { Authorization: "Bearer " + token } }
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j.error || "Unable to load trip tracking.");
+        return;
+      }
+      const data: TrackData = await res.json();
+      setTrack(data);
+      setError(null);
+
+      // stop polling once completed or cancelled
+      if (data.status === "completed" || data.status === "cancelled") {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      }
+    } catch (e: any) {
+      setError("Network error. Retrying...");
+    }
+  }, [bookingCode]);
+
+  useEffect(() => {
+    if (!bookingCode) return;
     fetchTrack();
-    const t = setInterval(fetchTrack, 4000);
-
+    intervalRef.current = setInterval(fetchTrack, 5000);
     return () => {
-      cancelled = true;
-      clearInterval(t);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [code]);
+  }, [bookingCode, fetchTrack]);
 
-  // Derive display values from both nested and flat fields
-  const driverName = data?.driver?.name || data?.driver_name || null;
-  const driverPhone = data?.driver?.phone || data?.driver_phone || null;
-  const pickupKm = data?.route?.distance_km ?? data?.pickup_distance_km ?? null;
-  const eta = data?.route?.eta_minutes ?? data?.eta_minutes ?? null;
-  const tripKm = data?.route?.trip_km ?? data?.trip_distance_km ?? null;
-  const fare = data?.fare ?? data?.verified_fare ?? data?.proposed_fare ?? null;
-  const status = (data?.status || "").trim();
+  /* ── derived display values ─────────────────────────── */
+  const status = track?.status || "--";
+  const driverName = track?.driver_name || track?.driver?.name || "--";
+  const driverPhone = track?.driver_phone || track?.driver?.phone || "--";
+  const pickupKm = track?.pickup_distance_km ?? track?.route?.distance_km ?? null;
+  const eta = track?.eta_minutes ?? track?.route?.eta_minutes ?? null;
+  const tripKm = track?.trip_distance_km ?? track?.route?.trip_km ?? null;
+  const fare = track?.fare ?? track?.verified_fare ?? track?.proposed_fare ?? null;
 
-  const currentIndex = STATUS_STEPS.indexOf(status);
-  const isCompleted = status === "completed";
-  const isCancelled = status === "cancelled" || status === "canceled";
+  const stepIndex = STATUS_STEPS.findIndex((s) => s.key === status);
+
+  /* ── render ─────────────────────────────────────────── */
+  if (resolving) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <p>Loading trip...</p>
+      </div>
+    );
+  }
+
+  if (error && !track) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", flexDirection: "column", gap: 16 }}>
+        <p style={{ color: "#c00", fontSize: 18 }}>{error}</p>
+        <a href="/passenger-login" style={{ color: "#0066cc" }}>Go to Login</a>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-xl p-4 space-y-4">
+    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif" }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Trip Tracking</h1>
+      <p style={{ color: "#666", marginBottom: 24 }}>Booking: {bookingCode}</p>
 
-        {/* Header */}
-        <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-lg font-semibold">Trip Tracking</div>
-              <div className="text-xs opacity-60 mt-0.5">Code: {code || "--"}</div>
-            </div>
-            {status ? (
-              <div
-                className={
-                  "rounded-full px-3 py-1 text-xs font-semibold " +
-                  (isCompleted
-                    ? "bg-emerald-100 text-emerald-800"
-                    : isCancelled
-                    ? "bg-red-100 text-red-800"
-                    : "bg-blue-100 text-blue-800")
-                }
-              >
-                {status.replaceAll("_", " ").toUpperCase()}
+      {/* ── status progress ── */}
+      <div style={{ marginBottom: 24 }}>
+        {STATUS_STEPS.map((step, i) => {
+          const done = i <= stepIndex;
+          const active = i === stepIndex;
+          return (
+            <div key={step.key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: "50%",
+                background: done ? (active ? "#0066cc" : "#4caf50") : "#ddd",
+                color: "#fff", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700,
+              }}>
+                {done ? "\u2713" : i + 1}
               </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Status Steps */}
-        {data && !isCancelled ? (
-          <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm">
-            <div className="text-xs font-semibold mb-2 opacity-60">PROGRESS</div>
-            <div className="grid grid-cols-5 gap-1">
-              {STATUS_STEPS.map((s, i) => (
-                <div
-                  key={s}
-                  className={
-                    "rounded px-1 py-1.5 text-center text-[10px] leading-tight font-medium " +
-                    (i < currentIndex
-                      ? "bg-emerald-600 text-white"
-                      : i === currentIndex
-                      ? "bg-emerald-500 text-white ring-2 ring-emerald-300"
-                      : "bg-gray-100 text-gray-400")
-                  }
-                >
-                  {s.replaceAll("_", " ")}
-                </div>
-              ))}
+              <span style={{ fontWeight: active ? 700 : 400, color: done ? "#222" : "#999" }}>
+                {step.label}
+              </span>
             </div>
-          </div>
-        ) : null}
-
-        {/* Loading */}
-        {loading ? (
-          <div className="rounded-xl border border-black/10 bg-white p-4 text-sm text-center opacity-70">
-            Loading trip tracking...
-          </div>
-        ) : null}
-
-        {/* Error */}
-        {err && !loading ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-            <div className="text-sm text-red-700">{err}</div>
-            {err.includes("log in") ? (
-              <a
-                href="/passenger-login"
-                className="mt-2 inline-block text-sm font-semibold text-blue-600 underline"
-              >
-                Go to login
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* Trip Details */}
-        {data ? (
-          <div className="rounded-xl border border-black/10 bg-white p-4 shadow-sm space-y-3">
-            <div className="text-xs font-semibold opacity-60 mb-1">TRIP DETAILS</div>
-
-            {/* Driver */}
-            <div className="flex items-center justify-between border-b border-black/5 pb-2">
-              <div className="text-sm opacity-60">Driver</div>
-              <div className="text-sm font-medium">{driverName || "Waiting for driver..."}</div>
-            </div>
-
-            {driverPhone ? (
-              <div className="flex items-center justify-between border-b border-black/5 pb-2">
-                <div className="text-sm opacity-60">Phone</div>
-                <a href={"tel:" + driverPhone} className="text-sm font-medium text-blue-600 underline">
-                  {driverPhone}
-                </a>
-              </div>
-            ) : null}
-
-            {/* Metrics */}
-            <div className="grid grid-cols-3 gap-3 pt-1">
-              <div className="text-center">
-                <div className="text-xs opacity-50">Pickup</div>
-                <div className="text-sm font-semibold">{metricKm(pickupKm)}</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xs opacity-50">ETA</div>
-                <div className="text-sm font-semibold">{metricMin(eta)}</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xs opacity-50">Trip</div>
-                <div className="text-sm font-semibold">{metricKm(tripKm)}</div>
-              </div>
-            </div>
-
-            {/* Fare */}
-            <div className="flex items-center justify-between pt-2 border-t border-black/5">
-              <div className="text-sm opacity-60">Fare</div>
-              <div className="text-lg font-bold">{money(fare)}</div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Completed State */}
-        {isCompleted ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-            <div className="text-lg font-semibold text-emerald-800">Trip Completed</div>
-            <div className="text-sm text-emerald-700 mt-1">
-              Thank you for riding with JRide!
-            </div>
-            <a
-              href="/passenger"
-              className="mt-3 inline-block rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-            >
-              Back to Dashboard
-            </a>
-          </div>
-        ) : null}
-
-        {/* Cancelled State */}
-        {isCancelled ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-            <div className="text-lg font-semibold text-red-800">Trip Cancelled</div>
-            <a
-              href="/ride"
-              className="mt-3 inline-block rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-500"
-            >
-              Book Another Ride
-            </a>
-          </div>
-        ) : null}
-
-        {/* Back link */}
-        <div className="text-center pt-2">
-          <a href="/passenger" className="text-xs opacity-50 hover:opacity-80 underline">
-            Back to dashboard
-          </a>
-        </div>
+          );
+        })}
       </div>
-    </main>
+
+      {/* ── details grid ── */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+        background: "#f8f8f8", borderRadius: 10, padding: 16, marginBottom: 24,
+      }}>
+        <Detail label="Status" value={status} />
+        <Detail label="Driver" value={driverName} />
+        <Detail label="Phone" value={driverPhone} />
+        <Detail label="Pickup Distance" value={pickupKm !== null ? pickupKm.toFixed(1) + " km" : "--"} />
+        <Detail label="ETA" value={eta !== null ? eta + " min" : "--"} />
+        <Detail label="Trip Distance" value={tripKm !== null ? tripKm.toFixed(1) + " km" : "--"} />
+        <Detail label="Fare" value={fare !== null ? "R " + fare.toFixed(0) : "--"} />
+      </div>
+
+      {error && <p style={{ color: "#c00", fontSize: 14 }}>{error}</p>}
+
+      {status === "completed" && (
+        <div style={{ textAlign: "center", padding: 16, background: "#e8f5e9", borderRadius: 10 }}>
+          <p style={{ fontWeight: 700, color: "#2e7d32", fontSize: 18, marginBottom: 4 }}>Trip Completed</p>
+          <p style={{ color: "#555" }}>Fare: R {fare !== null ? fare.toFixed(0) : "--"}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: "#888", textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 600 }}>{value}</div>
+    </div>
   );
 }
