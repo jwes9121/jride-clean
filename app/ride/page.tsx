@@ -22,15 +22,31 @@ type TrackPayload = {
 };
 
 function money(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `PHP ${v.toFixed(2)}` : "--";
+  return typeof v === "number" ? `PHP ${v.toFixed(2)}` : "--";
 }
 
 function metricKm(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)} km` : "--";
+  return typeof v === "number" ? `${v.toFixed(1)} km` : "--";
 }
 
 function metricMin(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)} min` : "--";
+  return typeof v === "number" ? `${Math.round(v)} min` : "--";
+}
+
+// 🔥 CRITICAL: extract access token from localStorage
+function getAccessToken(): string | null {
+  try {
+    const raw = localStorage.getItem("sb-access-token");
+    if (raw) return raw;
+
+    // fallback: Supabase session
+    const supa = localStorage.getItem("supabase.auth.token");
+    if (supa) {
+      const parsed = JSON.parse(supa);
+      return parsed?.currentSession?.access_token || null;
+    }
+  } catch {}
+  return null;
 }
 
 export default function RidePage() {
@@ -53,44 +69,45 @@ export default function RidePage() {
 
     async function fetchTrack() {
       if (!code) {
-        if (!cancelled) {
-          setErr("Missing booking code.");
-          setData(null);
-          setLoading(false);
-        }
+        setErr("Missing booking code.");
         return;
       }
 
-      if (!cancelled) {
-        setLoading(true);
-        setErr("");
-      }
+      setLoading(true);
+      setErr("");
 
       try {
+        const token = getAccessToken();
+
+        if (!token) {
+          setErr("Not authenticated");
+          setData(null);
+          return;
+        }
+
         const res = await fetch(
           `/api/passenger/track?booking_code=${encodeURIComponent(code)}&ts=${Date.now()}`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
         );
 
         const json = await res.json().catch(() => null);
 
-        if (!cancelled) {
-          if (!res.ok || !json?.ok) {
-            setData(null);
-            setErr(json?.message || "Unable to load trip tracking.");
-          } else {
-            setData(json);
-          }
+        if (!res.ok || !json?.ok) {
+          setData(null);
+          setErr(json?.error || "Unable to load trip tracking.");
+        } else {
+          setData(json);
         }
       } catch {
-        if (!cancelled) {
-          setData(null);
-          setErr("Unable to load trip tracking.");
-        }
+        setErr("Unable to load trip tracking.");
+        setData(null);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     }
 
@@ -119,7 +136,7 @@ export default function RidePage() {
 
   return (
     <div className="mx-auto max-w-xl p-4">
-      <div className="mb-4 rounded-xl border border-black/10 bg-white p-4">
+      <div className="mb-4 rounded-xl border bg-white p-4">
         <div className="text-sm font-semibold">Trip Tracking</div>
         <div className="text-xs opacity-70">Code: {code || "--"}</div>
       </div>
@@ -142,43 +159,25 @@ export default function RidePage() {
         ))}
       </div>
 
-      {loading ? (
-        <div className="mb-4 rounded-xl border border-black/10 bg-white p-4 text-sm">
-          Loading trip tracking...
-        </div>
-      ) : null}
+      {loading && <div>Loading...</div>}
 
-      {err ? (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      {err && (
+        <div className="text-red-600 text-sm mb-4">
           {err}
         </div>
-      ) : null}
+      )}
 
-      {data ? (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-black/10 bg-white p-4 space-y-2">
-            <div>Status: {data.status || "--"}</div>
-            <div>Driver: {data.driver?.name || "--"}</div>
-            <div>Phone: {data.driver?.phone || "--"}</div>
-            <div>Pickup distance: {metricKm(data.route?.distance_km)}</div>
-            <div>ETA: {metricMin(data.route?.eta_minutes)}</div>
-            <div>Trip distance: {metricKm(data.route?.trip_km)}</div>
-            <div>Fare: {money(data.verified_fare ?? data.proposed_fare ?? null)}</div>
-          </div>
-
-          {data.status === "completed" ? (
-            <div className="space-y-2">
-              <button className="w-full rounded bg-green-500 p-3 text-white">
-                Book Again
-              </button>
-              <button className="w-full rounded bg-gray-600 p-3 text-white">
-                View Receipt
-              </button>
-            </div>
-          ) : null}
+      {data && (
+        <div className="space-y-2">
+          <div>Status: {data.status}</div>
+          <div>Driver: {data.driver?.name || "--"}</div>
+          <div>Phone: {data.driver?.phone || "--"}</div>
+          <div>Pickup: {metricKm(data.route?.distance_km)}</div>
+          <div>ETA: {metricMin(data.route?.eta_minutes)}</div>
+          <div>Trip: {metricKm(data.route?.trip_km)}</div>
+          <div>Fare: {money(data.verified_fare ?? data.proposed_fare)}</div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
-// vercel rebuild trigger
