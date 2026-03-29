@@ -1,183 +1,131 @@
-"use client";
+'use client'
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from 'react'
 
-type TrackPayload = {
-  ok?: boolean;
-  booking_code?: string | null;
-  status?: string | null;
-  driver?: {
-    id?: string | null;
-    name?: string | null;
-    phone?: string | null;
-  } | null;
-  route?: {
-    distance_km?: number | null;
-    eta_minutes?: number | null;
-    trip_km?: number | null;
-  } | null;
-  proposed_fare?: number | null;
-  verified_fare?: number | null;
-  message?: string | null;
-};
-
-function money(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `PHP ${v.toFixed(2)}` : "--";
+type Booking = {
+  booking_code: string
+  status: string
+  pickup_lat: number
+  pickup_lng: number
+  driver_lat?: number
+  driver_lng?: number
+  proposed_fare?: number
 }
 
-function metricKm(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)} km` : "--";
-}
-
-function metricMin(v?: number | null) {
-  return typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)} min` : "--";
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
 }
 
 export default function RidePage() {
-  const [data, setData] = useState<TrackPayload | null>(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const code = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const url = new URL(window.location.href);
-    return (
-      url.searchParams.get("booking_code") ||
-      url.searchParams.get("code") ||
-      ""
-    ).trim();
-  }, []);
+  const [booking, setBooking] = useState<Booking | null>(null)
+  const [distance, setDistance] = useState<number | null>(null)
+  const [eta, setEta] = useState<number | null>(null)
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function fetchTrack() {
-      if (!code) {
-        if (!cancelled) {
-          setErr("Missing booking code.");
-          setData(null);
-          setLoading(false);
-        }
-        return;
-      }
-
-      if (!cancelled) {
-        setLoading(true);
-        setErr("");
-      }
-
-      try {
-        const res = await fetch(
-          `/api/passenger/track?booking_code=${encodeURIComponent(code)}&ts=${Date.now()}`,
-          { cache: "no-store" }
-        );
-
-        const json = await res.json().catch(() => null);
-
-        if (!cancelled) {
-          if (!res.ok || !json?.ok) {
-            setData(null);
-            setErr(json?.message || "Unable to load trip tracking.");
-          } else {
-            setData(json);
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setData(null);
-          setErr("Unable to load trip tracking.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+    const fetchBooking = async () => {
+      const res = await fetch('/api/public/passenger/booking')
+      const data = await res.json()
+      if (data?.booking) setBooking(data.booking)
     }
 
-    fetchTrack();
-    const t = setInterval(fetchTrack, 3000);
+    fetchBooking()
+    const interval = setInterval(fetchBooking, 3000)
+    return () => clearInterval(interval)
+  }, [])
 
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [code]);
+  useEffect(() => {
+    if (
+      booking?.driver_lat &&
+      booking?.driver_lng &&
+      booking?.pickup_lat &&
+      booking?.pickup_lng
+    ) {
+      const d = haversine(
+        booking.driver_lat,
+        booking.driver_lng,
+        booking.pickup_lat,
+        booking.pickup_lng
+      )
+      setDistance(d)
+
+      // avg speed 25km/h
+      const etaMin = (d / 25) * 60
+      setEta(Math.round(etaMin))
+    }
+  }, [booking])
 
   const statusSteps = [
-    "searching",
-    "assigned",
-    "accepted",
-    "fare_proposed",
-    "ready",
-    "on_the_way",
-    "arrived",
-    "on_trip",
-    "completed",
-  ];
+    'requested',
+    'assigned',
+    'on_the_way',
+    'arrived',
+    'on_trip',
+    'completed',
+  ]
 
-  const currentIndex = statusSteps.indexOf((data?.status || "").trim());
+  const currentIndex = statusSteps.indexOf(booking?.status || '')
 
   return (
-    <div className="mx-auto max-w-xl p-4">
-      <div className="mb-4 rounded-xl border border-black/10 bg-white p-4">
-        <div className="text-sm font-semibold">Trip Tracking</div>
-        <div className="text-xs opacity-70">Code: {code || "--"}</div>
-      </div>
+    <div className="p-4 max-w-xl mx-auto">
 
-      <div className="mb-4 grid grid-cols-3 gap-2">
+      {/* STATUS BAR */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
         {statusSteps.map((s, i) => (
           <div
             key={s}
-            className={
-              "rounded p-2 text-center text-xs " +
-              (i < currentIndex
-                ? "bg-emerald-700 text-white"
-                : i === currentIndex
-                ? "bg-emerald-500 text-white"
-                : "bg-gray-700 text-gray-300")
-            }
+            className={`text-center p-2 rounded text-xs ${
+              i === currentIndex
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-700 text-gray-300'
+            }`}
           >
-            {s.replaceAll("_", " ")}
+            {s.replaceAll('_', ' ')}
           </div>
         ))}
       </div>
 
-      {loading ? (
-        <div className="mb-4 rounded-xl border border-black/10 bg-white p-4 text-sm">
-          Loading trip tracking...
+      {/* DRIVER DISTANCE */}
+      {distance && (
+        <div className="mb-2 text-sm">
+          Driver distance: {distance.toFixed(2)} km
         </div>
-      ) : null}
+      )}
 
-      {err ? (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {err}
+      {/* ETA */}
+      {eta && (
+        <div className="mb-4 text-sm">
+          ETA: {eta} min
         </div>
-      ) : null}
+      )}
 
-      {data ? (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-black/10 bg-white p-4 space-y-2">
-            <div>Status: {data.status || "--"}</div>
-            <div>Driver: {data.driver?.name || "--"}</div>
-            <div>Phone: {data.driver?.phone || "--"}</div>
-            <div>Pickup distance: {metricKm(data.route?.distance_km)}</div>
-            <div>ETA: {metricMin(data.route?.eta_minutes)}</div>
-            <div>Trip distance: {metricKm(data.route?.trip_km)}</div>
-            <div>Fare: {money(data.verified_fare ?? data.proposed_fare ?? null)}</div>
-          </div>
-
-          {data.status === "completed" ? (
-            <div className="space-y-2">
-              <button className="w-full rounded bg-green-500 p-3 text-white">
-                Book Again
-              </button>
-              <button className="w-full rounded bg-gray-600 p-3 text-white">
-                View Receipt
-              </button>
-            </div>
-          ) : null}
+      {/* FARE */}
+      {booking?.proposed_fare && (
+        <div className="text-lg font-bold mb-4">
+          PHP {booking.proposed_fare.toFixed(2)}
         </div>
-      ) : null}
+      )}
+
+      {/* ACTIONS */}
+      {booking?.status === 'completed' && (
+        <div className="space-y-2">
+          <button className="w-full bg-green-500 p-3 rounded">
+            Book Again
+          </button>
+          <button className="w-full bg-gray-600 p-3 rounded">
+            View Receipt
+          </button>
+        </div>
+      )}
     </div>
-  );
+  )
 }
