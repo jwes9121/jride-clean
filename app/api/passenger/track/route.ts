@@ -90,7 +90,6 @@ function buildRouteMetrics(
 ) {
   let pickupDistanceKm =
     num(booking.driver_to_pickup_km) ??
-    num(booking.pickup_distance_km) ??
     null;
 
   let etaMinutes =
@@ -193,7 +192,6 @@ export async function GET(req: NextRequest) {
           "customer_status",
           "created_by_user_id",
           "driver_to_pickup_km",
-          "pickup_distance_km",
           "pickup_eta_minutes",
           "pickup_eta_seconds",
           "eta_pickup_minutes",
