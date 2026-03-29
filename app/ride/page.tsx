@@ -16,6 +16,8 @@ const STATUS_STEPS = [
   { key: "completed", label: "Completed" },
 ];
 
+const TERMINAL_STATUSES = ["completed", "cancelled", "canceled", "rejected"];
+
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -38,6 +40,13 @@ function saveBookingCode(code: string) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem("jride_active_booking_code", code);
+  } catch {}
+}
+
+function clearSavedBookingCode() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("jride_active_booking_code");
   } catch {}
 }
 
@@ -135,11 +144,13 @@ export default function RidePage() {
             return;
           }
         } catch {
-          // fall through to final error
+          // fall through
         }
       }
 
       if (!cancelled) {
+        clearSavedBookingCode();
+        setTrack(null);
         setError("No active booking found. Please book a ride first.");
         setResolving(false);
       }
@@ -159,6 +170,7 @@ export default function RidePage() {
     if (!token) {
       setError("Please log in to view your trip.");
       setTrack(null);
+      clearSavedBookingCode();
       return;
     }
 
@@ -185,8 +197,15 @@ export default function RidePage() {
       setTrack(json);
       setError(null);
 
-      const status = String(json?.status || "").trim().toLowerCase();
-      if (status === "completed" || status === "cancelled" || status === "canceled") {
+      const normalizedStatus = String(json?.status || "").trim().toLowerCase();
+
+      if (TERMINAL_STATUSES.includes(normalizedStatus)) {
+        clearSavedBookingCode();
+      } else if (json?.booking_code) {
+        saveBookingCode(String(json.booking_code).trim());
+      }
+
+      if (normalizedStatus === "completed" || normalizedStatus === "cancelled" || normalizedStatus === "canceled" || normalizedStatus === "rejected") {
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
@@ -246,8 +265,8 @@ export default function RidePage() {
         }}
       >
         <p style={{ color: "#c00", fontSize: 18 }}>{error}</p>
-        <a href="/passenger-login" style={{ color: "#0066cc" }}>
-          Go to Login
+        <a href="/passenger" style={{ color: "#0066cc" }}>
+          Back to Dashboard
         </a>
       </div>
     );
@@ -356,9 +375,12 @@ export default function RidePage() {
           >
             Trip Completed
           </p>
-          <p style={{ color: "#555" }}>
+          <p style={{ color: "#555", marginBottom: 12 }}>
             Fare: {fare !== null && Number.isFinite(fare) ? "PHP " + fare.toFixed(2) : "--"}
           </p>
+          <a href="/passenger" style={{ color: "#0066cc" }}>
+            Back to Dashboard
+          </a>
         </div>
       ) : null}
     </div>

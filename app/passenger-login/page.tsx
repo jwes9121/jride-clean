@@ -17,19 +17,21 @@ export default function PassengerLoginPage() {
     e.preventDefault();
     setMsg(null);
     setLoading(true);
+
     try {
       const res = await fetch("/api/public/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, password }),
       });
+
       const j = await res.json().catch(() => ({}));
+
       if (!res.ok || !j?.ok) {
         setMsg(j?.error || "Login failed.");
         return;
       }
 
-      // CRITICAL: store access_token so /ride page can use bearer auth
       if (j.access_token) {
         try {
           localStorage.setItem("jride_access_token", j.access_token);
@@ -37,7 +39,9 @@ export default function PassengerLoginPage() {
       }
 
       setMsg("Login OK. Redirecting...");
-      setTimeout(() => router.push("/passenger"), 250);
+      setTimeout(() => {
+        router.push("/passenger");
+      }, 250);
     } catch (err: any) {
       setMsg(err?.message || "Login failed.");
     } finally {
