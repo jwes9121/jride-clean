@@ -19,7 +19,10 @@ function text(v: unknown): string {
 }
 
 function num(v: unknown): number | null {
-  const n = Number(v);
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === "null") return null;
+  const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
 
