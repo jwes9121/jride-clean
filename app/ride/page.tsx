@@ -189,6 +189,14 @@ function numOrNull(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function numValue(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const s = norm(v);
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 function toNum(v: string, fallback: number): number {
   const n = numOrNull(v);
   return n === null ? fallback : n;
@@ -353,6 +361,13 @@ function statusTone(statusRaw: unknown): "blue" | "amber" | "green" | "red" | "s
   return "slate";
 }
 
+function prettyStatusLabel(s: string): string {
+  if (s === "fare_proposed") return "Fare proposed";
+  if (s === "on_the_way") return "On the way";
+  if (s === "on_trip") return "On trip";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function StatusStepper({ status }: { status: string }) {
   const st = normStatus(status);
   const idx = statusIndex(st);
@@ -368,40 +383,40 @@ function StatusStepper({ status }: { status: string }) {
   }
 
   return (
-    <div className="mt-4 overflow-x-auto">
-      <div className="flex min-w-[720px] items-center gap-2 pb-1">
+    <div className="mt-4">
+      <div className="grid grid-cols-3 gap-2 md:grid-cols-5 xl:grid-cols-9">
         {STATUS_STEPS.map((s, i) => {
           const done = idx >= 0 && i < idx;
           const now = idx >= 0 && i === idx;
-          const bubble =
-            "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold shadow-sm " +
-            (now
-              ? "bg-emerald-500 text-white ring-4 ring-emerald-100"
+
+          const boxClass = [
+            "rounded-2xl border px-2 py-3 text-center shadow-sm",
+            now
+              ? "border-emerald-300 bg-emerald-50"
+              : done
+              ? "border-slate-300 bg-slate-50"
+              : "border-slate-200 bg-white",
+          ].join(" ");
+
+          const bubbleClass = [
+            "mx-auto inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold",
+            now
+              ? "bg-emerald-500 text-white"
               : done
               ? "bg-slate-800 text-white"
-              : "border border-slate-200 bg-slate-100 text-slate-500");
-          const label =
-            "whitespace-nowrap text-[11px] " +
-            (now ? "font-semibold text-slate-900" : done ? "text-slate-700" : "text-slate-400");
-          const pretty =
-            s === "on_the_way"
-              ? "On the way"
-              : s === "on_trip"
-              ? "On trip"
-              : s === "fare_proposed"
-              ? "Fare proposed"
-              : s === "ready"
-              ? "Ready"
-              : s.charAt(0).toUpperCase() + s.slice(1);
+              : "border border-slate-200 bg-slate-100 text-slate-500",
+          ].join(" ");
+
+          const labelClass = [
+            "mt-2 block text-[11px] leading-tight",
+            now ? "font-semibold text-slate-900" : done ? "text-slate-700" : "text-slate-400",
+          ].join(" ");
 
           return (
-            <React.Fragment key={s}>
-              <div className="flex items-center gap-2">
-                <span className={bubble}>{i + 1}</span>
-                <span className={label}>{pretty}</span>
-              </div>
-              {i < STATUS_STEPS.length - 1 && <div className="h-px min-w-[28px] flex-1 bg-slate-200" />}
-            </React.Fragment>
+            <div key={s} className={boxClass}>
+              <span className={bubbleClass}>{i + 1}</span>
+              <span className={labelClass}>{prettyStatusLabel(s)}</span>
+            </div>
           );
         })}
       </div>
@@ -768,6 +783,23 @@ export default function RidePage() {
     if (!activeCode || !liveBooking || !["completed", "cancelled", "rejected"].includes(st)) return;
 
     const b = liveBooking;
+
+    const recentFare =
+      numValue(b?.verified_fare) ??
+      numValue(b?.proposed_fare) ??
+      numValue(b?.fare) ??
+      null;
+
+    const recentTotal =
+      numValue(b?.total_fare) ??
+      numValue(b?.total_amount) ??
+      numValue(b?.grand_total) ??
+      (recentFare != null
+        ? recentFare +
+          (numValue(b?.pickup_distance_fee) ?? 0) +
+          (numValue(b?.platform_fee) ?? 0)
+        : null);
+
     const item: RecentTrip = {
       booking_code: activeCode,
       status: st,
@@ -776,19 +808,12 @@ export default function RidePage() {
       from_label: norm(b?.from_label || fromLabel || ""),
       to_label: norm(b?.to_label || toLabel || ""),
       town: norm(b?.town || town || ""),
-      fare: typeof (b?.verified_fare ?? b?.proposed_fare) === "number" ? (b?.verified_fare ?? b?.proposed_fare) : null,
-      pickup_distance_fee: typeof b?.pickup_distance_fee === "number" ? b.pickup_distance_fee : null,
-      platform_fee: typeof b?.platform_fee === "number" ? b.platform_fee : null,
-      total:
-        typeof b?.total_fare === "number"
-          ? b.total_fare
-          : typeof b?.total_amount === "number"
-          ? b.total_amount
-          : typeof b?.grand_total === "number"
-          ? b.grand_total
-          : null,
-      driver_to_pickup_km: typeof b?.driver_to_pickup_km === "number" ? b.driver_to_pickup_km : null,
-      trip_distance_km: typeof b?.trip_distance_km === "number" ? b.trip_distance_km : null,
+      fare: recentFare,
+      pickup_distance_fee: numValue(b?.pickup_distance_fee),
+      platform_fee: numValue(b?.platform_fee),
+      total: recentTotal,
+      driver_to_pickup_km: numValue(b?.driver_to_pickup_km),
+      trip_distance_km: numValue(b?.trip_distance_km),
       completed_at: norm(b?.completed_at || ""),
       updated_at: norm(b?.updated_at || ""),
       saved_at: new Date().toISOString(),
@@ -1538,40 +1563,35 @@ export default function RidePage() {
   const bannerTn = activeCode ? statusTone(liveStatus) : "slate";
 
   const lb = liveBooking as TrackPayload | null;
-  const liveFare = lb ? (lb.verified_fare ?? lb.proposed_fare ?? lb.fare ?? null) : null;
-  const livePickupFee = lb?.pickup_distance_fee ?? null;
-  const livePlatformFee = typeof lb?.platform_fee === "number" && Number.isFinite(lb.platform_fee) ? lb.platform_fee : null;
+
+  const proposedFareValue = numValue(lb?.proposed_fare);
+  const verifiedFareValue = numValue(lb?.verified_fare);
+  const payloadFareValue = numValue(lb?.fare);
+
+  // Canonical one-architecture precedence:
+  // verified_fare -> proposed_fare -> fare
+  const liveFare = verifiedFareValue ?? proposedFareValue ?? payloadFareValue ?? null;
+
+  const livePickupFee = numValue(lb?.pickup_distance_fee);
+  const livePlatformFee = numValue(lb?.platform_fee);
 
   const backendLiveTotal =
-    typeof lb?.total_fare === "number" && Number.isFinite(lb.total_fare)
-      ? lb.total_fare
-      : typeof lb?.total_amount === "number" && Number.isFinite(lb.total_amount)
-      ? lb.total_amount
-      : typeof lb?.grand_total === "number" && Number.isFinite(lb.grand_total)
-      ? lb.grand_total
-      : null;
-
-  const hasFare = typeof liveFare === "number" && Number.isFinite(liveFare);
+    numValue(lb?.total_fare) ??
+    numValue(lb?.total_amount) ??
+    numValue(lb?.grand_total);
 
   const fallbackLiveTotal =
-    hasFare
-      ? (liveFare as number) +
-        (typeof livePickupFee === "number" && Number.isFinite(livePickupFee) ? livePickupFee : 0) +
-        (typeof livePlatformFee === "number" && Number.isFinite(livePlatformFee) ? livePlatformFee : 0)
+    liveFare != null
+      ? liveFare + (livePickupFee ?? 0) + (livePlatformFee ?? 0)
       : null;
 
-  const liveTotal =
-    typeof backendLiveTotal === "number" && Number.isFinite(backendLiveTotal)
-      ? backendLiveTotal
-      : typeof fallbackLiveTotal === "number" && Number.isFinite(fallbackLiveTotal)
-      ? fallbackLiveTotal
-      : null;
+  const liveTotal = backendLiveTotal ?? fallbackLiveTotal;
+  const hasFare = liveFare != null;
+  const hasLiveTotal = liveTotal != null;
 
-  const hasLiveTotal = typeof liveTotal === "number" && Number.isFinite(liveTotal);
   const totalIsFallback =
-    !(typeof backendLiveTotal === "number" && Number.isFinite(backendLiveTotal)) &&
-    typeof fallbackLiveTotal === "number" &&
-    Number.isFinite(fallbackLiveTotal);
+    backendLiveTotal == null &&
+    fallbackLiveTotal != null;
 
   const isFareProposed = normStatus(liveStatus) === "fare_proposed";
   const driverName = norm(lb?.driver_name || "");
@@ -1695,9 +1715,9 @@ export default function RidePage() {
                 <div className="space-y-1 text-sm">
                   <div>Fare: {money(liveFare)}</div>
                   {(livePickupFee != null && livePickupFee > 0) ||
-                  (typeof lb?.driver_to_pickup_km === "number" && Number.isFinite(lb.driver_to_pickup_km)) ? (
+                  (numValue(lb?.driver_to_pickup_km) != null) ? (
                     <div>
-                      Pickup: {km(lb?.driver_to_pickup_km)} | {livePickupFee != null ? money(livePickupFee) : "--"}
+                      Pickup: {km(numValue(lb?.driver_to_pickup_km))} | {livePickupFee != null ? money(livePickupFee) : "--"}
                     </div>
                   ) : null}
                   {livePlatformFee != null && <div>Platform fee: {money(livePlatformFee)}</div>}
@@ -1753,8 +1773,8 @@ export default function RidePage() {
 
             <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] space-y-1">
               <div className="text-sm font-semibold">Trip details</div>
-              <div className="text-sm">Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
-              <div className="text-sm">Trip distance: {km(lb?.trip_distance_km)}</div>
+              <div className="text-sm">Driver to pickup: {km(numValue(lb?.driver_to_pickup_km))}</div>
+              <div className="text-sm">Trip distance: {km(numValue(lb?.trip_distance_km))}</div>
             </div>
 
             {liveErr && <div className="text-xs text-red-600 opacity-70">{liveErr}</div>}
@@ -1774,15 +1794,15 @@ export default function RidePage() {
                   <div>Drop-off: {tripToLabel || "--"}</div>
                   <div>Fare: {hasFare ? money(liveFare) : "--"}</div>
                   <div>
-                    Pickup: {km(lb?.driver_to_pickup_km)} | {livePickupFee != null ? money(livePickupFee) : "--"}
+                    Pickup: {km(numValue(lb?.driver_to_pickup_km))} | {livePickupFee != null ? money(livePickupFee) : "--"}
                   </div>
                   <div>Platform fee: {livePlatformFee != null ? money(livePlatformFee) : "--"}</div>
                   <div>
                     Total: {hasLiveTotal ? money(liveTotal) : "--"}
                     {totalIsFallback ? " (fallback)" : ""}
                   </div>
-                  <div>Driver to pickup: {km(lb?.driver_to_pickup_km)}</div>
-                  <div>Trip distance: {km(lb?.trip_distance_km)}</div>
+                  <div>Driver to pickup: {km(numValue(lb?.driver_to_pickup_km))}</div>
+                  <div>Trip distance: {km(numValue(lb?.trip_distance_km))}</div>
                   <div>
                     {normStatus(liveStatus) === "completed" ? "Completed" : "Cancelled"}:{" "}
                     {fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt)}
@@ -1801,11 +1821,11 @@ export default function RidePage() {
                         `Pickup: ${tripFromLabel || "--"}`,
                         `Drop-off: ${tripToLabel || "--"}`,
                         `Fare: ${hasFare ? money(liveFare) : "--"}`,
-                        `Pickup: ${km(lb?.driver_to_pickup_km)} | ${livePickupFee != null ? money(livePickupFee) : "--"}`,
+                        `Pickup: ${km(numValue(lb?.driver_to_pickup_km))} | ${livePickupFee != null ? money(livePickupFee) : "--"}`,
                         `Platform fee: ${livePlatformFee != null ? money(livePlatformFee) : "--"}`,
                         `Total: ${hasLiveTotal ? money(liveTotal) : "--"}${totalIsFallback ? " (fallback)" : ""}`,
-                        `Driver to pickup: ${km(lb?.driver_to_pickup_km)}`,
-                        `Trip distance: ${km(lb?.trip_distance_km)}`,
+                        `Driver to pickup: ${km(numValue(lb?.driver_to_pickup_km))}`,
+                        `Trip distance: ${km(numValue(lb?.trip_distance_km))}`,
                         `${normStatus(liveStatus) === "completed" ? "Completed" : "Cancelled"}: ${fmtDate(
                           normStatus(liveStatus) === "completed" ? completedAt : cancelledAt
                         )}`,
