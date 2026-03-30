@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -32,11 +32,27 @@ const LIVETRIPS_QUARANTINED_BOOKING_CODES = new Set<string>([
 
 const LIVETRIPS_ALLOWED_TRIP_STATUSES = new Set<string>([
   "requested",
+  "searching",
   "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
   "on_the_way",
+  "arrived",
+  "on_trip",
 ]);
 
-const QUERY_STATUS_FILTER = ["requested", "assigned", "on_the_way"];
+const QUERY_STATUS_FILTER = [
+  "requested",
+  "searching",
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "on_trip",
+];
 
 // TEMP DEBUG PROBE
 const PROBE_BOOKING_ID = "8b83b021-1991-4266-b715-50a6d92d72a7";
@@ -93,7 +109,7 @@ async function loadBookings(supabase: ReturnType<typeof supabaseAdmin>) {
   // even if the upstream result snapshot is inconsistent.
   const hardFilteredRows = rows.filter((row: any) => {
     const status = String(row?.status ?? "").trim().toLowerCase();
-    return status === "requested" || status === "assigned" || status === "on_the_way";
+    return LIVETRIPS_ALLOWED_TRIP_STATUSES.has(status);
   });
 
   const filteredRows = excludeQuarantinedTrips(hardFilteredRows);

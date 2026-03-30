@@ -84,6 +84,26 @@ const STUCK_THRESHOLDS_MIN = {
 const POLL_MS_FOREGROUND = 5000;
 const POLL_MS_BACKGROUND = 15000;
 
+const LIVETRIPS_PENDING_STATUSES = [
+  "requested",
+  "searching",
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+];
+
+const LIVETRIPS_ACTIVE_STATUSES = [
+  "on_the_way",
+  "arrived",
+  "on_trip",
+];
+
+const LIVETRIPS_DISPATCH_STATUSES = [
+  ...LIVETRIPS_PENDING_STATUSES,
+  ...LIVETRIPS_ACTIVE_STATUSES,
+];
+
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
@@ -128,7 +148,7 @@ function minutesSince(iso?: string | null): number {
 }
 
 function isActiveTripStatus(s: string) {
-  return ["requested", "assigned", "on_the_way", "on_trip"].includes(s);
+  return LIVETRIPS_DISPATCH_STATUSES.includes(s);
 }
 
 function computeIsProblem(t: TripRow): boolean {
@@ -151,9 +171,16 @@ type ViewMode = "dispatch" | "trips" | "drivers";
 type FilterKey =
   | "all"
   | "dispatch"
+  | "pending"
+  | "active"
   | "requested"
+  | "searching"
   | "assigned"
+  | "accepted"
+  | "fare_proposed"
+  | "ready"
   | "on_the_way"
+  | "arrived"
   | "on_trip"
   | "completed"
   | "cancelled"
@@ -447,25 +474,44 @@ export default function LiveTripsClient() {
     const c = {
       all: allTrips.length,
       dispatch: 0,
+      pending: 0,
+      active: 0,
       requested: 0,
+      searching: 0,
       assigned: 0,
+      accepted: 0,
+      fare_proposed: 0,
+      ready: 0,
       on_the_way: 0,
+      arrived: 0,
       on_trip: 0,
       completed: 0,
       cancelled: 0,
       problem: 0,
     };
+
     for (const t of allTrips) {
       const s = normStatus(t.status);
+
       if (s === "requested") c.requested++;
+      if (s === "searching") c.searching++;
       if (s === "assigned") c.assigned++;
+      if (s === "accepted") c.accepted++;
+      if (s === "fare_proposed") c.fare_proposed++;
+      if (s === "ready") c.ready++;
       if (s === "on_the_way") c.on_the_way++;
+      if (s === "arrived") c.arrived++;
       if (s === "on_trip") c.on_trip++;
       if (s === "completed") c.completed++;
       if (s === "cancelled") c.cancelled++;
-      if (["requested", "assigned", "on_the_way"].includes(s)) c.dispatch++;
+
+      if (LIVETRIPS_PENDING_STATUSES.includes(s)) c.pending++;
+      if (LIVETRIPS_ACTIVE_STATUSES.includes(s)) c.active++;
+      if (LIVETRIPS_DISPATCH_STATUSES.includes(s)) c.dispatch++;
+
       if (computeIsProblem(t)) c.problem++;
     }
+
     return c;
   }, [allTrips]);
 
@@ -476,7 +522,11 @@ export default function LiveTripsClient() {
     if (f === "all") {
       out = allTrips.slice();
     } else if (f === "dispatch") {
-      out = allTrips.filter((t) => ["requested", "assigned", "on_the_way"].includes(normStatus(t.status)));
+      out = allTrips.filter((t) => LIVETRIPS_DISPATCH_STATUSES.includes(normStatus(t.status)));
+    } else if (f === "pending") {
+      out = allTrips.filter((t) => LIVETRIPS_PENDING_STATUSES.includes(normStatus(t.status)));
+    } else if (f === "active") {
+      out = allTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status)));
     } else if (f === "problem") {
       out = allTrips.filter((t) => stuckTripIds.has(normTripId(t)));
     } else {
@@ -527,7 +577,7 @@ export default function LiveTripsClient() {
         const driverTrips = allTrips.filter((t) => String(t.assigned_driver_id || t.driver_id || "") === driverId);
         const activeTrip = driverTrips.find((t) => {
           const s = normStatus(t.status);
-          return ["requested", "assigned", "on_the_way", "on_trip"].includes(s);
+          return LIVETRIPS_DISPATCH_STATUSES.includes(s);
         }) || null;
 
         return {
@@ -565,7 +615,7 @@ export default function LiveTripsClient() {
     if (mode === "dispatch") {
       setTripFilter("dispatch");
     } else if (mode === "trips") {
-      setTripFilter("all");
+      setTripFilter("pending");
     }
     setTimeout(() => {
       if (tableRef.current) {
@@ -664,19 +714,42 @@ export default function LiveTripsClient() {
       {viewMode !== "drivers" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {viewMode === "trips" ? (
-            <button className={pillClass(tripFilter === "all")} onClick={() => setFilterAndFocus("all")}>
-              All trips <span className="text-xs opacity-80">{counts.all}</span>
-            </button>
+            <>
+              <button className={pillClass(tripFilter === "pending")} onClick={() => setFilterAndFocus("pending")}>
+                Pending tickets <span className="text-xs opacity-80">{counts.pending}</span>
+              </button>
+              <button className={pillClass(tripFilter === "active")} onClick={() => setFilterAndFocus("active")}>
+                Active trips <span className="text-xs opacity-80">{counts.active}</span>
+              </button>
+              <button className={pillClass(tripFilter === "all")} onClick={() => setFilterAndFocus("all")}>
+                All trips <span className="text-xs opacity-80">{counts.all}</span>
+              </button>
+            </>
           ) : null}
 
           <button className={pillClass(tripFilter === "requested")} onClick={() => setFilterAndFocus("requested")}>
             Requested <span className="text-xs opacity-80">{counts.requested}</span>
           </button>
+          <button className={pillClass(tripFilter === "searching")} onClick={() => setFilterAndFocus("searching")}>
+            Searching <span className="text-xs opacity-80">{counts.searching}</span>
+          </button>
           <button className={pillClass(tripFilter === "assigned")} onClick={() => setFilterAndFocus("assigned")}>
             Assigned <span className="text-xs opacity-80">{counts.assigned}</span>
           </button>
+          <button className={pillClass(tripFilter === "accepted")} onClick={() => setFilterAndFocus("accepted")}>
+            Accepted <span className="text-xs opacity-80">{counts.accepted}</span>
+          </button>
+          <button className={pillClass(tripFilter === "fare_proposed")} onClick={() => setFilterAndFocus("fare_proposed")}>
+            Fare proposed <span className="text-xs opacity-80">{counts.fare_proposed}</span>
+          </button>
+          <button className={pillClass(tripFilter === "ready")} onClick={() => setFilterAndFocus("ready")}>
+            Ready <span className="text-xs opacity-80">{counts.ready}</span>
+          </button>
           <button className={pillClass(tripFilter === "on_the_way")} onClick={() => setFilterAndFocus("on_the_way")}>
             On the way <span className="text-xs opacity-80">{counts.on_the_way}</span>
+          </button>
+          <button className={pillClass(tripFilter === "arrived")} onClick={() => setFilterAndFocus("arrived")}>
+            Arrived <span className="text-xs opacity-80">{counts.arrived}</span>
           </button>
           <button className={pillClass(tripFilter === "on_trip")} onClick={() => setFilterAndFocus("on_trip")}>
             On trip <span className="text-xs opacity-80">{counts.on_trip}</span>
@@ -722,7 +795,7 @@ export default function LiveTripsClient() {
                 ? "Drivers view"
                 : viewMode === "trips"
                 ? "Trips view"
-                : "Dispatch view (Requested + Assigned + On the way)"}
+                : "Dispatch view (Requested + Searching + Assigned + Accepted + Fare proposed + Ready + On the way + Arrived + On trip)"}
             </div>
             <div className="text-xs text-gray-600">
               {viewMode === "drivers" ? (drivers.length + " shown") : (visibleTrips.length + " shown")}
