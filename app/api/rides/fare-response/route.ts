@@ -44,7 +44,7 @@ function createAdminClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Missing Supabase URL or service role key");
+    throw new Error("Missing Supabase service role env");
   }
 
   return createSupabaseClient(supabaseUrl, serviceRoleKey, {
@@ -82,7 +82,6 @@ export async function POST(req: NextRequest) {
     }
 
     const authClient = createAuthClient(token);
-    const adminClient = createAdminClient();
 
     const {
       data: { user },
@@ -91,7 +90,11 @@ export async function POST(req: NextRequest) {
 
     if (authError || !user?.id) {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
+        {
+          ok: false,
+          error: "NOT_AUTHED",
+          message: authError?.message || "Invalid bearer token.",
+        },
         { status: 401, headers: noStoreHeaders() }
       );
     }
@@ -120,6 +123,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "INVALID_RESPONSE" },
         { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    let adminClient;
+    try {
+      adminClient = createAdminClient();
+    } catch (e: any) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ADMIN_CLIENT_INIT_FAILED",
+          message: String(e?.message || e),
+        },
+        { status: 500, headers: noStoreHeaders() }
       );
     }
 
@@ -172,10 +189,6 @@ export async function POST(req: NextRequest) {
     if (responseValue === "accepted") {
       const proposedFare = Number((booking as any).proposed_fare ?? NaN);
       const pickupFee = Number((booking as any).pickup_distance_fee ?? 0);
-      const totalFare =
-        Number.isFinite(proposedFare) && proposedFare > 0
-          ? proposedFare + (Number.isFinite(pickupFee) ? pickupFee : 0)
-          : null;
 
       const updatePayload: Record<string, unknown> = {
         passenger_fare_response: "accepted",
@@ -184,9 +197,6 @@ export async function POST(req: NextRequest) {
 
       if (Number.isFinite(proposedFare) && proposedFare > 0) {
         updatePayload.verified_fare = proposedFare;
-      }
-      if (totalFare != null) {
-        updatePayload.total_fare = totalFare;
       }
 
       const { error: updateError } = await adminClient
@@ -200,6 +210,7 @@ export async function POST(req: NextRequest) {
             ok: false,
             error: "FARE_ACCEPT_UPDATE_FAILED",
             message: updateError.message,
+            booking_id: (booking as any).id,
           },
           { status: 500, headers: noStoreHeaders() }
         );
@@ -214,7 +225,6 @@ export async function POST(req: NextRequest) {
           status: "ready",
           verified_fare: Number.isFinite(proposedFare) ? proposedFare : null,
           pickup_distance_fee: Number.isFinite(pickupFee) ? pickupFee : 0,
-          total_fare: totalFare,
         },
         { status: 200, headers: noStoreHeaders() }
       );
@@ -229,7 +239,6 @@ export async function POST(req: NextRequest) {
       verified_fare: null,
       driver_to_pickup_km: null,
       pickup_distance_fee: 0,
-      total_fare: null,
     };
 
     const { error: rejectError } = await adminClient
@@ -243,6 +252,7 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: "FARE_REJECT_UPDATE_FAILED",
           message: rejectError.message,
+          booking_id: (booking as any).id,
         },
         { status: 500, headers: noStoreHeaders() }
       );
@@ -263,7 +273,7 @@ export async function POST(req: NextRequest) {
       {
         ok: false,
         error: "SERVER_ERROR",
-        message: String(e?.message ?? e),
+        message: String(e?.message || e),
       },
       { status: 500, headers: noStoreHeaders() }
     );
