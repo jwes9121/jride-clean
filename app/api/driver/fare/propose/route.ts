@@ -88,7 +88,7 @@ export async function POST(req: Request) {
 
     if (!effectiveDriverId) {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED" },
+        { ok: false, error: "NOT_AUTHED", message: "Missing driver identity." },
         { status: 401, headers: noStoreHeaders() }
       );
     }
@@ -103,17 +103,67 @@ export async function POST(req: Request) {
 
     const { data: rows, error: bookingErr } = await query;
 
-    if (bookingErr || !rows?.length) {
+    if (bookingErr) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BOOKING_READ_FAILED",
+          message: bookingErr.message,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    const booking = rows?.[0] ?? null;
+
+    if (!booking) {
       return NextResponse.json(
         { ok: false, error: "BOOKING_NOT_FOUND" },
         { status: 404, headers: noStoreHeaders() }
       );
     }
 
-    const booking = rows[0];
+    const assignedDriverId = text((booking as any).assigned_driver_id);
+    const bookingDriverId = text((booking as any).driver_id);
 
-    const pickupLat = Number(booking.pickup_lat ?? NaN);
-    const pickupLng = Number(booking.pickup_lng ?? NaN);
+    if (
+      effectiveDriverId !== assignedDriverId &&
+      effectiveDriverId !== bookingDriverId
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_NOT_ASSIGNED",
+          assigned_driver_id: assignedDriverId || null,
+          driver_id: bookingDriverId || null,
+          effective_driver_id: effectiveDriverId || null,
+        },
+        { status: 403, headers: noStoreHeaders() }
+      );
+    }
+
+    const currentStatus = text((booking as any).status).toLowerCase();
+    if (!["assigned", "accepted"].includes(currentStatus)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "INVALID_STATUS",
+          message: "Fare can only be proposed from assigned or accepted state.",
+          status: currentStatus,
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
+    const pickupLat = Number((booking as any).pickup_lat ?? NaN);
+    const pickupLng = Number((booking as any).pickup_lng ?? NaN);
+
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_PICKUP_COORDS" },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
 
     let driverLat: number | null = null;
     let driverLng: number | null = null;
@@ -125,8 +175,8 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (driverLoc) {
-      const lat = Number(driverLoc.lat ?? NaN);
-      const lng = Number(driverLoc.lng ?? NaN);
+      const lat = Number((driverLoc as any).lat ?? NaN);
+      const lng = Number((driverLoc as any).lng ?? NaN);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         driverLat = lat;
         driverLng = lng;
@@ -145,7 +195,7 @@ export async function POST(req: Request) {
 
     const totalFare = proposedFare + pickupFee;
 
-    const updatePayload = {
+    const updatePayload: Record<string, unknown> = {
       proposed_fare: proposedFare,
       verified_fare: null,
       passenger_fare_response: null,
@@ -153,43 +203,79 @@ export async function POST(req: Request) {
       pickup_distance_fee: pickupFee,
       total_fare: totalFare,
       status: "fare_proposed",
+      assigned_driver_id: assignedDriverId || effectiveDriverId,
+      driver_id: bookingDriverId || effectiveDriverId,
     };
 
     const { error: updateErr } = await supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", booking.id);
+      .eq("id", (booking as any).id);
 
     if (updateErr) {
       return NextResponse.json(
-        { ok: false, error: "UPDATE_FAILED", message: updateErr.message },
+        {
+          ok: false,
+          error: "FARE_PROPOSE_UPDATE_FAILED",
+          message: updateErr.message,
+        },
         { status: 500, headers: noStoreHeaders() }
       );
     }
 
-    // 🔥 CRITICAL: RE-READ AFTER UPDATE
-    const { data: fresh } = await supabase
+    // Safe re-read. Do not crash if it fails.
+    const { data: freshRows, error: freshErr } = await supabase
       .from("bookings")
-      .select("*")
-      .eq("id", booking.id)
-      .single();
+      .select(
+        "id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_to_pickup_km, pickup_distance_fee, total_fare"
+      )
+      .eq("id", (booking as any).id)
+      .limit(1);
+
+    const fresh = freshRows?.[0] ?? null;
+
+    if (freshErr || !fresh) {
+      return NextResponse.json(
+        {
+          ok: true,
+          booking_code: (booking as any).booking_code,
+          booking_id: (booking as any).id,
+          status: "fare_proposed",
+          proposed_fare: proposedFare,
+          verified_fare: null,
+          passenger_fare_response: null,
+          driver_to_pickup_km: driverToPickupKm,
+          pickup_distance_fee: pickupFee,
+          total_fare: totalFare,
+          reread_warning: freshErr?.message || "REREAD_NOT_AVAILABLE",
+        },
+        { status: 200, headers: noStoreHeaders() }
+      );
+    }
 
     return NextResponse.json(
       {
         ok: true,
-        booking_code: fresh.booking_code,
-        status: fresh.status,
-        proposed_fare: fresh.proposed_fare,
-        pickup_distance_fee: fresh.pickup_distance_fee,
-        total_fare: fresh.total_fare,
-        driver_to_pickup_km: fresh.driver_to_pickup_km,
+        booking_code: (fresh as any).booking_code,
+        booking_id: (fresh as any).id,
+        status: (fresh as any).status,
+        proposed_fare: num((fresh as any).proposed_fare),
+        verified_fare: num((fresh as any).verified_fare),
+        passenger_fare_response: text((fresh as any).passenger_fare_response) || null,
+        driver_to_pickup_km: num((fresh as any).driver_to_pickup_km),
+        pickup_distance_fee: num((fresh as any).pickup_distance_fee) ?? 0,
+        total_fare: num((fresh as any).total_fare),
       },
       { status: 200, headers: noStoreHeaders() }
     );
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR", message: String(e?.message ?? e) },
-      { status: 500 }
+      {
+        ok: false,
+        error: "SERVER_ERROR",
+        message: String(e?.message ?? e),
+      },
+      { status: 500, headers: noStoreHeaders() }
     );
   }
 }
