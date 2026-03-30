@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type ProposeBody = {
@@ -51,8 +51,14 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 function pickupDistanceFee(km: number): number {
   const freeKm = 1.5;
-  const chargeable = Math.max(0, km - freeKm);
-  return Math.round(chargeable * 20);
+  const blockKm = 0.5;
+  const feePerBlock = 20;
+
+  const chargeableKm = Math.max(0, km - freeKm);
+  if (chargeableKm <= 0) return 0;
+
+  const blocks = Math.ceil(chargeableKm / blockKm);
+  return blocks * feePerBlock;
 }
 
 export async function POST(req: Request) {
