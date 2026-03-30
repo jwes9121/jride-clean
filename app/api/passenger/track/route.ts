@@ -40,8 +40,9 @@ function firstNonBlank(...values: unknown[]): string | null {
   return null;
 }
 
-function createBearerClient(token: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+function createAuthClient(token: string) {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
@@ -62,6 +63,24 @@ function createBearerClient(token: string) {
   });
 }
 
+function createAdminClient() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Missing Supabase URL or service role key");
+  }
+
+  return createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
 async function getAuthenticatedUser(req: Request) {
   const token = getBearerToken(req);
 
@@ -69,25 +88,22 @@ async function getAuthenticatedUser(req: Request) {
     return {
       user: null,
       token: null as string | null,
-      auth_source: "none" as const,
     };
   }
 
-  const client = createBearerClient(token);
+  const client = createAuthClient(token);
   const { data, error } = await client.auth.getUser();
 
   if (error || !data?.user?.id) {
     return {
       user: null,
       token,
-      auth_source: "none" as const,
     };
   }
 
   return {
     user: data.user,
     token,
-    auth_source: "bearer" as const,
   };
 }
 
@@ -100,11 +116,12 @@ function buildRouteMetrics(
   const dropoffLat = num(booking.dropoff_lat);
   const dropoffLng = num(booking.dropoff_lng);
 
-  let pickupDistanceKm: number | null = null;
+  let pickupDistanceKm = num(booking.driver_to_pickup_km);
   let tripDistanceKm: number | null = null;
   let etaMinutes: number | null = null;
 
   if (
+    pickupDistanceKm == null &&
     driverLocation?.lat != null &&
     driverLocation?.lng != null &&
     pickupLat != null &&
@@ -158,37 +175,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const dbClient = createBearerClient(auth.token);
+    const adminClient = createAdminClient();
 
-    const { data: booking, error: bookingError } = await dbClient
+    const { data: bookingRows, error: bookingError } = await adminClient
       .from("bookings")
-      .select(
-        [
-          "id",
-          "booking_code",
-          "status",
-          "town",
-          "from_label",
-          "to_label",
-          "pickup_lat",
-          "pickup_lng",
-          "dropoff_lat",
-          "dropoff_lng",
-          "created_at",
-          "updated_at",
-          "assigned_driver_id",
-          "driver_id",
-          "proposed_fare",
-          "verified_fare",
-          "passenger_fare_response",
-          "driver_status",
-          "customer_status",
-          "created_by_user_id",
-        ].join(",")
-      )
+      .select("*")
       .eq("booking_code", bookingCode)
       .eq("created_by_user_id", auth.user.id)
-      .maybeSingle();
+      .limit(1);
 
     if (bookingError) {
       return NextResponse.json(
@@ -197,6 +191,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const booking = bookingRows?.[0] ?? null;
+
     if (!booking) {
       return NextResponse.json(
         { ok: false, error: "Booking not found" },
@@ -204,7 +200,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const bookingRow = booking as unknown as Record<string, unknown>;
+    const bookingRow = booking as Record<string, unknown>;
     const driverId = firstNonBlank(bookingRow.driver_id, bookingRow.assigned_driver_id);
 
     let driverName: string | null = null;
@@ -212,59 +208,84 @@ export async function GET(req: NextRequest) {
     let driverLocation: { lat: number | null; lng: number | null } | null = null;
 
     if (driverId) {
-      const { data: driverProfile } = await dbClient
+      const { data: driverProfiles } = await adminClient
         .from("driver_profiles")
-        .select("driver_id, full_name, callsign, phone")
+        .select("*")
         .eq("driver_id", driverId)
-        .maybeSingle();
+        .limit(1);
+
+      const driverProfile = driverProfiles?.[0] ?? null;
 
       if (driverProfile) {
-        const row = driverProfile as unknown as Record<string, unknown>;
+        const row = driverProfile as Record<string, unknown>;
         driverName = firstNonBlank(row.full_name, row.callsign);
         driverPhone = firstNonBlank(row.phone);
       }
 
-      const { data: latestLocation } = await dbClient
+      const { data: latestLocations } = await adminClient
         .from("driver_locations_latest")
-        .select("latitude, longitude, updated_at")
+        .select("*")
         .eq("driver_id", driverId)
-        .maybeSingle();
+        .limit(1);
+
+      const latestLocation = latestLocations?.[0] ?? null;
 
       if (latestLocation) {
-        const row = latestLocation as unknown as Record<string, unknown>;
+        const row = latestLocation as Record<string, unknown>;
         driverLocation = {
-          lat: num(row.latitude),
-          lng: num(row.longitude),
+          lat: num(row.lat) ?? num(row.latitude),
+          lng: num(row.lng) ?? num(row.longitude),
         };
       }
     }
 
     const route = buildRouteMetrics(bookingRow, driverLocation);
-    const fare = num(bookingRow.verified_fare) ?? num(bookingRow.proposed_fare) ?? 0;
+
+    const proposedFare = num(bookingRow.proposed_fare);
+    const verifiedFare = num(bookingRow.verified_fare);
+    const pickupDistanceFee = num(bookingRow.pickup_distance_fee) ?? 0;
+    const totalFareStored = num(bookingRow.total_fare);
+    const fare = verifiedFare ?? proposedFare ?? null;
+    const totalFare =
+      totalFareStored ??
+      (fare != null ? fare + pickupDistanceFee : null);
 
     return NextResponse.json(
       {
         ok: true,
+        id: text(bookingRow.id),
+        booking_id: text(bookingRow.id),
         booking_code: text(bookingRow.booking_code),
         status: text(bookingRow.status),
+        town: text(bookingRow.town),
+        from_label: text(bookingRow.from_label || bookingRow.pickup_label),
+        to_label: text(bookingRow.to_label || bookingRow.dropoff_label),
+        passenger_name: text(bookingRow.passenger_name),
+        passenger_fare_response: text(bookingRow.passenger_fare_response),
         driver: {
           id: driverId,
           name: driverName,
           phone: driverPhone,
         },
         route: {
-          distance_km: route.distance_km ?? 0,
-          eta_minutes: route.eta_minutes ?? 0,
-          trip_km: route.trip_km ?? 0,
+          distance_km: route.distance_km,
+          eta_minutes: route.eta_minutes,
+          trip_km: route.trip_km,
         },
-        proposed_fare: num(bookingRow.proposed_fare),
-        verified_fare: num(bookingRow.verified_fare),
+        proposed_fare: proposedFare,
+        verified_fare: verifiedFare,
+        pickup_distance_fee: pickupDistanceFee,
+        total_fare: totalFare,
         fare,
         driver_name: driverName,
         driver_phone: driverPhone,
-        pickup_distance_km: route.distance_km ?? 0,
-        eta_minutes: route.eta_minutes ?? 0,
-        trip_distance_km: route.trip_km ?? 0,
+        driver_to_pickup_km: route.distance_km,
+        pickup_distance_km: route.distance_km,
+        eta_minutes: route.eta_minutes,
+        trip_distance_km: route.trip_km,
+        updated_at: text(bookingRow.updated_at),
+        completed_at: text(bookingRow.completed_at),
+        cancelled_at: text(bookingRow.cancelled_at),
       },
       {
         status: 200,
