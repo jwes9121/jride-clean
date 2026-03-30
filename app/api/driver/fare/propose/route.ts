@@ -193,15 +193,12 @@ export async function POST(req: Request) {
       pickupFee = pickupDistanceFee(driverToPickupKm);
     }
 
-    const totalFare = proposedFare + pickupFee;
-
     const updatePayload: Record<string, unknown> = {
       proposed_fare: proposedFare,
       verified_fare: null,
       passenger_fare_response: null,
       driver_to_pickup_km: driverToPickupKm,
       pickup_distance_fee: pickupFee,
-      total_fare: totalFare,
       status: "fare_proposed",
       assigned_driver_id: assignedDriverId || effectiveDriverId,
       driver_id: bookingDriverId || effectiveDriverId,
@@ -223,11 +220,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Safe re-read. Do not crash if it fails.
     const { data: freshRows, error: freshErr } = await supabase
       .from("bookings")
       .select(
-        "id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_to_pickup_km, pickup_distance_fee, total_fare"
+        "id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_to_pickup_km, pickup_distance_fee"
       )
       .eq("id", (booking as any).id)
       .limit(1);
@@ -246,7 +242,7 @@ export async function POST(req: Request) {
           passenger_fare_response: null,
           driver_to_pickup_km: driverToPickupKm,
           pickup_distance_fee: pickupFee,
-          total_fare: totalFare,
+          total_fare: proposedFare + pickupFee,
           reread_warning: freshErr?.message || "REREAD_NOT_AVAILABLE",
         },
         { status: 200, headers: noStoreHeaders() }
@@ -264,7 +260,9 @@ export async function POST(req: Request) {
         passenger_fare_response: text((fresh as any).passenger_fare_response) || null,
         driver_to_pickup_km: num((fresh as any).driver_to_pickup_km),
         pickup_distance_fee: num((fresh as any).pickup_distance_fee) ?? 0,
-        total_fare: num((fresh as any).total_fare),
+        total_fare:
+          (num((fresh as any).proposed_fare) ?? 0) +
+          (num((fresh as any).pickup_distance_fee) ?? 0),
       },
       { status: 200, headers: noStoreHeaders() }
     );
