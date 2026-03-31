@@ -104,6 +104,8 @@ const LIVETRIPS_DISPATCH_STATUSES = [
   ...LIVETRIPS_ACTIVE_STATUSES,
 ];
 
+const DUMMY_DRIVER_ID = "00000000-0000-4000-8000-000000000001";
+
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
@@ -202,6 +204,24 @@ function normalizeTripRow(t: any): TripRow {
   };
 }
 
+function isDummyDriverTrip(t?: TripRow | null): boolean {
+  const driverId = String(t?.driver_id || "").trim();
+  const assignedDriverId = String(t?.assigned_driver_id || "").trim();
+  return driverId === DUMMY_DRIVER_ID || assignedDriverId === DUMMY_DRIVER_ID;
+}
+
+function shouldKeepTripInLiveTrips(t?: TripRow | null): boolean {
+  if (!t) return false;
+  const s = normStatus(t.status);
+  if (!LIVETRIPS_DISPATCH_STATUSES.includes(s)) return false;
+  if (isDummyDriverTrip(t)) return false;
+  return true;
+}
+
+function filterLiveTrips(rows: TripRow[]): TripRow[] {
+  return rows.filter((row) => shouldKeepTripInLiveTrips(normalizeTripRow(row)));
+}
+
 function mergeTripRows(prev: TripRow[], incoming: TripRow): TripRow[] {
   const row = normalizeTripRow(incoming);
   const key = normTripId(row);
@@ -211,7 +231,8 @@ function mergeTripRows(prev: TripRow[], incoming: TripRow): TripRow[] {
   const idx = next.findIndex((t) => normTripId(t) === key);
 
   const deleted = String((incoming as any)?._deleted ?? "").toLowerCase() === "true";
-  if (deleted) {
+  const keep = shouldKeepTripInLiveTrips(row);
+  if (deleted || !keep) {
     if (idx >= 0) next.splice(idx, 1);
     return next;
   }
@@ -284,7 +305,7 @@ export default function LiveTripsClient() {
     const j: PageData = await r.json().catch(() => ({} as any));
 
     const z = safeArray<ZoneRow>(j.zones);
-    const trips = parseTripsFromPageData(j).map(normalizeTripRow);
+    const trips = filterLiveTrips(parseTripsFromPageData(j).map(normalizeTripRow));
 
     setZones(z);
     setAllTrips(trips);
