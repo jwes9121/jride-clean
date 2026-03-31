@@ -1,4 +1,4 @@
-﻿import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 function text(v: unknown): string {
@@ -109,7 +109,7 @@ async function getAuthenticatedUser(req: Request) {
   };
 }
 
-function buildRouteMetrics(
+function buildLiveRouteMetrics(
   booking: Record<string, unknown>,
   driverLocation: { lat: number | null; lng: number | null } | null
 ) {
@@ -118,18 +118,20 @@ function buildRouteMetrics(
   const dropoffLat = num(booking.dropoff_lat);
   const dropoffLng = num(booking.dropoff_lng);
 
-  let pickupDistanceKm = num(booking.driver_to_pickup_km);
+  const storedDriverToPickupKm = num(booking.driver_to_pickup_km);
+
+  let liveDriverToPickupKm = storedDriverToPickupKm;
   let tripDistanceKm: number | null = null;
   let etaMinutes: number | null = null;
 
   if (
-    pickupDistanceKm == null &&
+    liveDriverToPickupKm == null &&
     driverLocation?.lat != null &&
     driverLocation?.lng != null &&
     pickupLat != null &&
     pickupLng != null
   ) {
-    pickupDistanceKm = Number(
+    liveDriverToPickupKm = Number(
       haversineKm(driverLocation.lat, driverLocation.lng, pickupLat, pickupLng).toFixed(1)
     );
   }
@@ -145,14 +147,14 @@ function buildRouteMetrics(
     );
   }
 
-  if (pickupDistanceKm != null && pickupDistanceKm > 0) {
-    etaMinutes = Math.ceil((pickupDistanceKm / 20) * 60);
+  if (liveDriverToPickupKm != null && liveDriverToPickupKm > 0) {
+    etaMinutes = Math.ceil((liveDriverToPickupKm / 20) * 60);
   }
 
   return {
-    distance_km: pickupDistanceKm,
-    eta_minutes: etaMinutes,
+    live_driver_to_pickup_km: liveDriverToPickupKm,
     trip_km: tripDistanceKm,
+    eta_minutes: etaMinutes,
   };
 }
 
@@ -241,7 +243,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const route = buildRouteMetrics(bookingRow, driverLocation);
+    const liveRoute = buildLiveRouteMetrics(bookingRow, driverLocation);
 
     const status = text(bookingRow.status).toLowerCase();
     const proposedFare = num(bookingRow.proposed_fare);
@@ -251,7 +253,10 @@ export async function GET(req: NextRequest) {
       verifiedFare = null;
     }
 
-    const pickupDistanceFee = num(bookingRow.pickup_distance_fee) ?? 0;
+    const storedDriverToPickupKm = num(bookingRow.driver_to_pickup_km);
+    const storedPickupDistanceFee = num(bookingRow.pickup_distance_fee) ?? 0;
+    const storedTripDistanceKm = num(bookingRow.trip_distance_km);
+    const tripDistanceKm = storedTripDistanceKm ?? liveRoute.trip_km;
 
     let totalFareStored = num(bookingRow.total_fare);
     if (status === "fare_proposed" && totalFareStored === 0 && proposedFare != null) {
@@ -261,7 +266,7 @@ export async function GET(req: NextRequest) {
     const fare = verifiedFare ?? proposedFare ?? null;
     const totalFare =
       totalFareStored ??
-      (fare != null ? fare + pickupDistanceFee : null);
+      (fare != null ? fare + storedPickupDistanceFee : null);
 
     return NextResponse.json(
       {
@@ -281,21 +286,21 @@ export async function GET(req: NextRequest) {
           phone: driverPhone,
         },
         route: {
-          distance_km: route.distance_km,
-          eta_minutes: route.eta_minutes,
-          trip_km: route.trip_km,
+          distance_km: liveRoute.live_driver_to_pickup_km,
+          eta_minutes: liveRoute.eta_minutes,
+          trip_km: tripDistanceKm,
         },
         proposed_fare: proposedFare,
         verified_fare: verifiedFare,
-        pickup_distance_fee: pickupDistanceFee,
+        pickup_distance_fee: storedPickupDistanceFee,
         total_fare: totalFare,
         fare,
         driver_name: driverName,
         driver_phone: driverPhone,
-        driver_to_pickup_km: route.distance_km,
-        pickup_distance_km: route.distance_km,
-        eta_minutes: route.eta_minutes,
-        trip_distance_km: route.trip_km,
+        driver_to_pickup_km: storedDriverToPickupKm,
+        pickup_distance_km: storedDriverToPickupKm,
+        eta_minutes: liveRoute.eta_minutes,
+        trip_distance_km: tripDistanceKm,
         updated_at: text(bookingRow.updated_at),
         completed_at: text(bookingRow.completed_at),
         cancelled_at: text(bookingRow.cancelled_at),
