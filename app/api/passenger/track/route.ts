@@ -6,7 +6,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// 🔴 STRICT STATUS NORMALIZATION
 function normalizeStatus(raw: string | null): string {
   const s = (raw || "").toLowerCase().trim();
 
@@ -14,78 +13,71 @@ function normalizeStatus(raw: string | null): string {
     case "searching":
     case "requested":
       return "pending";
-
     case "driver_assigned":
       return "assigned";
-
     case "accepted_by_driver":
       return "accepted";
-
     case "en_route":
       return "on_the_way";
-
     case "in_progress":
       return "on_trip";
-
     default:
       return s;
   }
 }
 
-// 🔴 SAFE NUMBER
-function num(v: any): number | null {
+function num(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const n = Number(v);
-  return isNaN(n) ? null : n;
+  return Number.isFinite(n) ? n : null;
 }
 
-// 🔴 REMOVE NULL KEYS
-function clean(obj: any) {
-  const out: any = {};
-  for (const k in obj) {
-    if (obj[k] !== null && obj[k] !== undefined) {
-      out[k] = obj[k];
+function clean(obj: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== null && v !== undefined) {
+      out[k] = v;
     }
   }
   return out;
 }
 
+function addMoney(a: number | null, b: number | null): number | null {
+  if (a === null && b === null) return null;
+  return (a ?? 0) + (b ?? 0);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const bookingCode = searchParams.get("booking_code");
+    const bookingCode = searchParams.get("booking_code")?.trim();
 
     if (!bookingCode) {
-      return NextResponse.json({
-        ok: false,
-        error: "MISSING_BOOKING_CODE"
-      }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "MISSING_BOOKING_CODE" },
+        { status: 400 }
+      );
     }
 
-    // 🔴 AUTH — TOKEN ONLY
     const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
     if (!token) {
-      return NextResponse.json({
-        ok: false,
-        error: "NOT_AUTHENTICATED"
-      }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "NOT_AUTHENTICATED" },
+        { status: 401 }
+      );
     }
 
-    const {
-      data: userData,
-      error: userErr
-    } = await supabase.auth.getUser(token);
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
 
     if (userErr || !userData?.user) {
-      return NextResponse.json({
-        ok: false,
-        error: "INVALID_TOKEN"
-      }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "INVALID_TOKEN" },
+        { status: 401 }
+      );
     }
 
-    // 🔴 FETCH BOOKING
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
       .select(`
@@ -102,20 +94,39 @@ export async function GET(req: NextRequest) {
         pickup_eta_minutes,
         proposed_fare,
         pickup_distance_fee,
-        platform_fee,
-        total_fare
+        created_by_user_id
       `)
       .eq("booking_code", bookingCode)
       .single();
 
-    if (bookingErr || !booking) {
-      return NextResponse.json({
-        ok: false,
-        error: "BOOKING_NOT_FOUND"
-      }, { status: 404 });
+    if (bookingErr) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BOOKING_QUERY_FAILED",
+          details: bookingErr.message,
+        },
+        { status: 500 }
+      );
     }
 
-    // 🔴 FETCH DRIVER
+    if (!booking) {
+      return NextResponse.json(
+        { ok: false, error: "BOOKING_NOT_FOUND" },
+        { status: 404 }
+      );
+    }
+
+    if (
+      booking.created_by_user_id &&
+      booking.created_by_user_id !== userData.user.id
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "BOOKING_NOT_FOUND" },
+        { status: 404 }
+      );
+    }
+
     let driverName: string | null = null;
     let driverPhone: string | null = null;
 
@@ -124,7 +135,7 @@ export async function GET(req: NextRequest) {
         .from("drivers")
         .select("full_name, phone")
         .eq("id", booking.driver_id)
-        .single();
+        .maybeSingle();
 
       if (driver) {
         driverName = driver.full_name || null;
@@ -132,9 +143,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 🔴 FINAL RESPONSE (STRICT CONTRACT)
+    const proposedFare = num(booking.proposed_fare);
+    const pickupDistanceFee = num(booking.pickup_distance_fee);
+    const totalFare = addMoney(proposedFare, pickupDistanceFee);
+
     const response = clean({
       ok: true,
+      id: booking.id,
       booking_code: booking.booking_code,
       status: normalizeStatus(booking.status),
 
@@ -143,6 +158,7 @@ export async function GET(req: NextRequest) {
       to_label: booking.to_label,
 
       driver_id: booking.driver_id,
+      assigned_driver_id: booking.assigned_driver_id,
       driver_name: driverName,
       driver_phone: driverPhone,
 
@@ -150,18 +166,19 @@ export async function GET(req: NextRequest) {
       trip_distance_km: num(booking.trip_distance_km),
       pickup_eta_minutes: num(booking.pickup_eta_minutes),
 
-      proposed_fare: num(booking.proposed_fare),
-      pickup_distance_fee: num(booking.pickup_distance_fee),
-      platform_fee: num(booking.platform_fee),
-      total_fare: num(booking.total_fare)
+      proposed_fare: proposedFare,
+      pickup_distance_fee: pickupDistanceFee,
+      total_fare: totalFare,
     });
 
     return NextResponse.json(response);
-
   } catch (err: any) {
-    return NextResponse.json({
-      ok: false,
-      error: err.message || "UNKNOWN_ERROR"
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: err?.message || "UNKNOWN_ERROR",
+      },
+      { status: 500 }
+    );
   }
 }
