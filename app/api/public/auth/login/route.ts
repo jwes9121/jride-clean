@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
 
-    const phone_raw = String(body?.phone ?? "").trim();
-    const email_raw = String(body?.email ?? "").trim();
+    const phoneRaw = String(body?.phone ?? "").trim();
+    const emailRaw = String(body?.email ?? "").trim();
     const password = String(body?.password ?? "").trim();
 
     if (!password || password.length < 6) {
@@ -44,14 +44,14 @@ export async function POST(req: NextRequest) {
     let email = "";
     let phone = "";
 
-    if (phone_raw) {
-      phone = normPhone(phone_raw);
+    if (phoneRaw) {
+      phone = normPhone(phoneRaw);
       if (!/^\+63\d{10}$/.test(phone)) {
         return bad("Phone must be a valid PH number.");
       }
       email = phoneToInternalEmail(phone);
-    } else if (email_raw) {
-      email = email_raw;
+    } else if (emailRaw) {
+      email = emailRaw;
     } else {
       return bad("Phone or email is required.");
     }
@@ -64,25 +64,35 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      const msg = String(error.message || "Login failed.");
-      return bad(msg, 401);
+      return bad(String(error.message || "Login failed."), 401);
     }
 
-    const userId = data?.user?.id ?? null;
-    const accessToken = data?.session?.access_token ?? null;
+    const user = data?.user ?? null;
+    const session = data?.session ?? null;
+    const accessToken = session?.access_token ?? null;
 
-    if (!accessToken) {
-      return bad("Missing access token from auth provider.", 500);
+    if (!user || !accessToken) {
+      return bad("Missing authenticated user or access token.", 500);
     }
+
+    const meta = (user.user_metadata ?? {}) as any;
+
+    const fullName =
+      meta.full_name ??
+      meta.name ??
+      meta.display_name ??
+      null;
 
     return NextResponse.json({
       ok: true,
-      user_id: userId,
-      phone: phone || null,
+      user_id: user.id,
+      phone: phone || (user as any).phone || null,
+      email: user.email ?? email,
       email_used: email,
+      full_name: fullName,
+      name: fullName,
       access_token: accessToken
     });
-
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Login failed." },
