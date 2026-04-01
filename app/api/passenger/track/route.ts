@@ -35,9 +35,7 @@ function num(v: unknown): number | null {
 function clean(obj: Record<string, unknown>) {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (v !== null && v !== undefined) {
-      out[k] = v;
-    }
+    if (v !== null && v !== undefined) out[k] = v;
   }
   return out;
 }
@@ -56,25 +54,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { ok: false, error: "MISSING_BOOKING_CODE" },
         { status: 400 }
-      );
-    }
-
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-
-    if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHENTICATED" },
-        { status: 401 }
-      );
-    }
-
-    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-
-    if (userErr || !userData?.user) {
-      return NextResponse.json(
-        { ok: false, error: "INVALID_TOKEN" },
-        { status: 401 }
       );
     }
 
@@ -111,16 +90,6 @@ export async function GET(req: NextRequest) {
     }
 
     if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404 }
-      );
-    }
-
-    if (
-      booking.created_by_user_id &&
-      booking.created_by_user_id !== userData.user.id
-    ) {
       return NextResponse.json(
         { ok: false, error: "BOOKING_NOT_FOUND" },
         { status: 404 }
