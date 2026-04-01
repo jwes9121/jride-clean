@@ -13,7 +13,6 @@ export default function ErrandPage() {
 
   function submitInterest(e: React.FormEvent) {
     e.preventDefault();
-    // Teaser only: no backend yet (safe, no assumptions about tables/functions).
     setSubmitted(true);
     setTimeout(() => {
       setOpen(false);
@@ -26,17 +25,14 @@ export default function ErrandPage() {
 
   return (
     <main className="min-h-screen relative overflow-hidden bg-[#05070b] text-white">
-      {/* Background */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 opacity-60 bg-[radial-gradient(1000px_600px_at_50%_30%,rgba(56,189,248,0.18),transparent_55%),radial-gradient(900px_600px_at_20%_80%,rgba(34,197,94,0.14),transparent_55%),radial-gradient(900px_600px_at_80%_75%,rgba(249,115,22,0.14),transparent_55%)]" />
         <div className="absolute inset-0 opacity-[0.08] bg-[linear-gradient(to_bottom,transparent,rgba(255,255,255,0.06),transparent)]" />
         <div className="absolute inset-0 opacity-[0.06] bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[length:42px_42px]" />
       </div>
 
-      {/* Content */}
       <div className="relative z-10 p-6">
         <div className="max-w-5xl mx-auto">
-          {/* Top bar */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center">
@@ -57,7 +53,6 @@ export default function ErrandPage() {
             </button>
           </div>
 
-          {/* Hero */}
           <div className="mt-10">
             <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-200">
               <span className="h-2 w-2 rounded-full bg-orange-300 animate-pulse" />
@@ -92,12 +87,10 @@ export default function ErrandPage() {
             </div>
 
             <div className="mt-3 text-xs text-white/55">
-              Status: <span className="text-white/80 font-semibold">In Development</span> •
-              Initial rollout planned per town (Ifugao).
+              Status: <span className="text-white/80 font-semibold">In Development</span> • Initial rollout planned per town (Ifugao).
             </div>
           </div>
 
-          {/* Feature cards */}
           <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <TeaserCard title="Grocery pickup" desc="Palengke runs, store purchases, quick refills." icon="🛒" accent="blue" />
             <TeaserCard title="Pharmacy runs" desc="Medicine pickup & delivery for your family." icon="💊" accent="green" />
@@ -105,7 +98,6 @@ export default function ErrandPage() {
             <TeaserCard title="Parcel drop-off" desc="Send or receive small packages safely." icon="📦" accent="orange" />
           </div>
 
-          {/* How it will work */}
           <div className="mt-10 grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-5">
               <h2 className="text-lg font-semibold">How it will work</h2>
@@ -140,20 +132,15 @@ export default function ErrandPage() {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="mt-10 pb-8 text-xs text-white/45">
             J-RIDE • Ride. Eat. Repeat. • Errands Teaser Page
           </div>
         </div>
       </div>
 
-      {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/70"
-            onClick={() => setOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/70" onClick={() => setOpen(false)} />
           <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-[#0a0f18] p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -211,7 +198,7 @@ export default function ErrandPage() {
               </button>
 
               <div className="text-[11px] text-white/45">
-                When you’re ready, we’ll wire this to Supabase (errand_interest table) with zero impact on ride booking.
+                When you’re ready, we’ll wire this to Supabase with zero impact on ride booking.
               </div>
             </form>
           </div>
