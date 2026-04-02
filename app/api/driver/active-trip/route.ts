@@ -64,6 +64,48 @@ function mergeCompatTrip(
 ) {
   const out: Record<string, any> = { ...trip };
 
+  const passengerName = firstNonBlank(
+    trip.passenger_name,
+    trip.customer_name,
+    trip.rider_name
+  );
+  if (passengerName) {
+    out.passenger_name = passengerName;
+    out.passengerName = passengerName;
+  }
+
+  const fromLabel = firstNonBlank(
+    trip.from_label,
+    trip.pickup_label,
+    trip.fromLabel,
+    trip.pickup
+  );
+  if (fromLabel) {
+    out.from_label = fromLabel;
+    out.fromLabel = fromLabel;
+    out.pickup_label = out.pickup_label || fromLabel;
+    out.pickupLabel = out.pickupLabel || fromLabel;
+  }
+
+  const toLabel = firstNonBlank(
+    trip.to_label,
+    trip.dropoff_label,
+    trip.toLabel,
+    trip.dropoff
+  );
+  if (toLabel) {
+    out.to_label = toLabel;
+    out.toLabel = toLabel;
+    out.dropoff_label = out.dropoff_label || toLabel;
+    out.dropoffLabel = out.dropoffLabel || toLabel;
+  }
+
+  const bookingCode = firstNonBlank(trip.booking_code, trip.code);
+  if (bookingCode) {
+    out.booking_code = bookingCode;
+    out.code = out.code || bookingCode;
+  }
+
   if (driver) {
     const driverId = firstNonBlank(driver.id, driver.driver_id);
     const driverName = firstNonBlank(driver.name, driver.full_name, driver.callsign);
@@ -168,9 +210,9 @@ export async function GET(req: Request) {
     const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip", "ready"];
 
     function hasFareEvidence(r: any): boolean {
-      const pf = (r as any)?.proposed_fare;
-      const vf = (r as any)?.verified_fare;
-      const pr = (r as any)?.passenger_fare_response;
+      const pf = r?.proposed_fare;
+      const vf = r?.verified_fare;
+      const pr = r?.passenger_fare_response;
       return pf != null || vf != null || pr != null;
     }
 
@@ -179,9 +221,9 @@ export async function GET(req: Request) {
     }
 
     function isReadyButNotAccepted(r: any): boolean {
-      const st = String((r as any)?.status ?? "");
+      const st = String(r?.status ?? "");
       if (st !== "ready") return false;
-      const pr = String((r as any)?.passenger_fare_response ?? "").toLowerCase();
+      const pr = String(r?.passenger_fare_response ?? "").toLowerCase();
       return pr !== "accepted";
     }
 
@@ -204,6 +246,7 @@ export async function GET(req: Request) {
         ok: true,
         driver_id: driverId,
         trip: null,
+        booking: null,
         driver: null,
         driver_location: null,
         route: null,
@@ -219,7 +262,7 @@ export async function GET(req: Request) {
     let picked: any = null;
 
     for (const r of rows) {
-      const st = String((r as any)?.status ?? "");
+      const st = String(r?.status ?? "");
       if (!st || st === "assigned") continue;
       if (isMovementState(st) && !hasFareEvidence(r)) continue;
       if (isReadyButNotAccepted(r)) continue;
@@ -229,9 +272,9 @@ export async function GET(req: Request) {
 
     if (!picked) {
       for (const r of rows) {
-        const st = String((r as any)?.status ?? "");
+        const st = String(r?.status ?? "");
         if (st !== "assigned") continue;
-        const t = parseDateMs((r as any)?.updated_at) ?? parseDateMs((r as any)?.created_at);
+        const t = parseDateMs(r?.updated_at) ?? parseDateMs(r?.created_at);
         if (t && (now - t) <= assignedMaxAgeMs) {
           picked = r;
           break;
@@ -245,6 +288,7 @@ export async function GET(req: Request) {
         ok: true,
         driver_id: driverId,
         trip: null,
+        booking: null,
         driver: null,
         driver_location: null,
         route: null,
@@ -262,10 +306,10 @@ export async function GET(req: Request) {
 
     const driver = driverProfile
       ? {
-          id: firstNonBlank((driverProfile as any).driver_id, driverId),
-          name: firstNonBlank((driverProfile as any).full_name, (driverProfile as any).callsign),
-          phone: firstNonBlank((driverProfile as any).phone),
-          town: firstNonBlank((driverProfile as any).municipality),
+          id: firstNonBlank(driverProfile.driver_id, driverId),
+          name: firstNonBlank(driverProfile.full_name, driverProfile.callsign),
+          phone: firstNonBlank(driverProfile.phone),
+          town: firstNonBlank(driverProfile.municipality),
         }
       : {
           id: driverId,
@@ -282,10 +326,10 @@ export async function GET(req: Request) {
 
     const driverLocation = latestLocation
       ? {
-          driver_id: firstNonBlank((latestLocation as any).driver_id, driverId),
-          lat: num((latestLocation as any).latitude),
-          lng: num((latestLocation as any).longitude),
-          updated_at: firstNonBlank((latestLocation as any).updated_at),
+          driver_id: firstNonBlank(latestLocation.driver_id, driverId),
+          lat: num(latestLocation.latitude),
+          lng: num(latestLocation.longitude),
+          updated_at: firstNonBlank(latestLocation.updated_at),
         }
       : null;
 
