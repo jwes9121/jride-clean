@@ -1,46 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
-import { POST as canonicalFareProposePost } from "@/app/api/driver/fare/propose/route";
+import { NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
+function noStoreHeaders() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
+}
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
+    const bodyText = await req.text().catch(() => "{}");
 
-    const bookingCode = String(body?.bookingCode ?? body?.booking_code ?? "").trim();
-    const fare = Number(body?.fare ?? body?.proposed_fare);
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://app.jride.net";
 
-    if (!bookingCode || !Number.isFinite(fare)) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_OR_INVALID_FIELDS" },
-        { status: 400 }
-      );
-    }
+    const targetUrl = baseUrl.replace(/\/+$/, "") + "/api/driver/fare/propose";
 
-    const forwarded = new Request(req.url, {
+    const upstream = await fetch(targetUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        booking_code: bookingCode,
-        proposed_fare: fare,
-      }),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(req.headers.get("authorization")
+          ? { Authorization: req.headers.get("authorization") as string }
+          : {}),
+        ...(req.headers.get("x-jride-driver-secret")
+          ? { "x-jride-driver-secret": req.headers.get("x-jride-driver-secret") as string }
+          : {}),
+      },
+      body: bodyText,
+      cache: "no-store",
     });
 
-    const response = await canonicalFareProposePost(forwarded);
-    const data = await response.json().catch(() => ({}));
+    const data = await upstream.json().catch(() => ({}));
 
-    return NextResponse.json(
-      {
-        ...data,
-        compatibility_route: "rides/fare",
-        canonical_route: "driver/fare/propose",
-      },
-      { status: response.status }
-    );
+    return NextResponse.json(data, {
+      status: upstream.status,
+      headers: noStoreHeaders(),
+    });
   } catch (err: any) {
     return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR", message: String(err?.message ?? err) },
-      { status: 500 }
+      {
+        ok: false,
+        error: "RIDES_FARE_FORWARD_FAILED",
+        message: String(err?.message ?? err),
+      },
+      {
+        status: 500,
+        headers: noStoreHeaders(),
+      }
     );
   }
 }
