@@ -7,14 +7,19 @@ function n(v: unknown): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
+function s(v: unknown): string | null {
+  const x = String(v ?? "").trim();
+  return x.length > 0 ? x : null;
+}
+
 function statusOf(raw: unknown): string {
-  const s = String(raw ?? "").trim().toLowerCase();
-  if (s === "requested" || s === "searching") return "pending";
-  if (s === "driver_assigned") return "assigned";
-  if (s === "accepted_by_driver") return "accepted";
-  if (s === "en_route") return "on_the_way";
-  if (s === "in_progress") return "on_trip";
-  return s;
+  const s0 = String(raw ?? "").trim().toLowerCase();
+  if (s0 === "requested" || s0 === "searching") return "pending";
+  if (s0 === "driver_assigned") return "assigned";
+  if (s0 === "accepted_by_driver") return "accepted";
+  if (s0 === "en_route") return "on_the_way";
+  if (s0 === "in_progress") return "on_trip";
+  return s0;
 }
 
 function getBearerToken(req: NextRequest): string | null {
@@ -98,7 +103,8 @@ export async function GET(req: NextRequest) {
     const authSupabase = createAnonSupabase();
     const serviceSupabase = createServiceSupabase();
 
-    const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
+    const { data: userRes, error: userErr } =
+      await authSupabase.auth.getUser(accessToken);
     const user = userRes?.user ?? null;
 
     if (userErr || !user?.id) {
@@ -112,8 +118,8 @@ export async function GET(req: NextRequest) {
       .from("bookings")
       .select("*")
       .eq("booking_code", bookingCode)
-      .eq("created_by_user_id", user.id)
-      .limit(1);
+      .limit(1)
+      .maybeSingle();
 
     if (bookingRes.error) {
       return NextResponse.json(
@@ -126,7 +132,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const booking = bookingRes.data?.[0];
+    const booking = bookingRes.data;
     if (!booking) {
       return NextResponse.json(
         { ok: false, error: "BOOKING_NOT_FOUND" },
@@ -134,26 +140,40 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const bookingOwnerId = s((booking as any).created_by_user_id);
+    if (!bookingOwnerId || bookingOwnerId !== user.id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "NOT_BOOKING_OWNER",
+          message: "This booking does not belong to the authenticated passenger.",
+        },
+        { status: 403, headers: noStoreHeaders() }
+      );
+    }
+
     const driverId = booking.driver_id ?? booking.assigned_driver_id ?? null;
 
-    let driverName: string | null = null;
-    let driverPhone: string | null = null;
+    let driverName: string | null =
+      s((booking as any).driver_name) ||
+      s((booking as any).driver_full_name) ||
+      null;
+    let driverPhone: string | null =
+      s((booking as any).driver_phone) || null;
     let driverLat: number | null = null;
     let driverLng: number | null = null;
 
     if (driverId) {
       const driverRes = await serviceSupabase
         .from("drivers")
-        .select("id,full_name,phone")
+        .select("id, full_name, phone")
         .eq("id", driverId)
-        .limit(1);
+        .limit(1)
+        .maybeSingle();
 
-      if (!driverRes.error) {
-        const driver = driverRes.data?.[0];
-        if (driver) {
-          driverName = driver.full_name ?? null;
-          driverPhone = driver.phone ?? null;
-        }
+      if (!driverRes.error && driverRes.data) {
+        driverName = driverName ?? s(driverRes.data.full_name);
+        driverPhone = driverPhone ?? s(driverRes.data.phone);
       }
 
       const driverLocRes = await serviceSupabase
@@ -168,11 +188,15 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const proposedFare = n(booking.proposed_fare);
-    const pickupDistanceFee = n(booking.pickup_distance_fee);
+    const proposedFare = n((booking as any).proposed_fare);
+    const verifiedFare = n((booking as any).verified_fare);
+    const pickupDistanceFee = n((booking as any).pickup_distance_fee);
+    const platformFee = n((booking as any).platform_fee);
     const totalFare =
       n((booking as any).total_fare) ??
-      ((proposedFare ?? 0) + (pickupDistanceFee ?? 0));
+      n((booking as any).total_amount) ??
+      n((booking as any).grand_total) ??
+      ((proposedFare ?? 0) + (pickupDistanceFee ?? 0) + (platformFee ?? 0));
 
     return NextResponse.json(
       {
@@ -197,19 +221,26 @@ export async function GET(req: NextRequest) {
         driver_lat: driverLat,
         driver_lng: driverLng,
 
-        driver_to_pickup_km: n(booking.driver_to_pickup_km),
-        trip_distance_km: n(booking.trip_distance_km),
+        driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
+        trip_distance_km: n((booking as any).trip_distance_km),
         pickup_eta_minutes:
           n((booking as any).pickup_eta_minutes) ??
           n((booking as any).eta_minutes),
 
         proposed_fare: proposedFare,
+        verified_fare: verifiedFare,
         pickup_distance_fee: pickupDistanceFee,
+        platform_fee: platformFee,
         total_fare: totalFare,
+        total_amount: n((booking as any).total_amount) ?? totalFare,
+        grand_total: n((booking as any).grand_total) ?? totalFare,
 
         passenger_fare_response: booking.passenger_fare_response ?? null,
+        created_by_user_id: bookingOwnerId,
         created_at: booking.created_at ?? null,
         updated_at: booking.updated_at ?? null,
+        completed_at: (booking as any).completed_at ?? null,
+        cancelled_at: (booking as any).cancelled_at ?? null,
       },
       { status: 200, headers: noStoreHeaders() }
     );
