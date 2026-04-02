@@ -36,7 +36,7 @@ function json(body: any, status = 200) {
 function modeNormalized(v: any): "scan_requested" | "single" | "unknown" {
   const m = norm(v);
   if (m === "scan_requested") return "scan_requested";
-  if (m === "scan_pending") return "scan_requested"; // legacy alias
+  if (m === "scan_pending") return "scan_requested";
   if (m === "single") return "single";
   return "unknown";
 }
@@ -256,13 +256,16 @@ export async function POST(req: Request) {
         .limit(SCAN_LIMIT);
 
       if (error) {
-        return json({
-          ok: false,
-          error: "BOOKINGS_SCAN_FAILED",
-          message: error.message,
-          mode: "scan_requested",
-          debug: buildBaseDebug(),
-        }, 500);
+        return json(
+          {
+            ok: false,
+            error: "BOOKINGS_SCAN_FAILED",
+            message: error.message,
+            mode: "scan_requested",
+            debug: buildBaseDebug(),
+          },
+          500
+        );
       }
 
       const scanRows = (bookings || []) as BookingRow[];
@@ -325,14 +328,29 @@ export async function POST(req: Request) {
       });
     }
 
+    if (mode !== "single") {
+      return json(
+        {
+          ok: false,
+          error: "INVALID_MODE",
+          mode: String(body?.mode ?? ""),
+          debug: buildBaseDebug(),
+        },
+        400
+      );
+    }
+
     const bookingId = String(body?.bookingId || "").trim();
     if (!bookingId) {
-      return json({
-        ok: false,
-        error: "MISSING_BOOKING_ID",
-        mode: "single",
-        debug: buildBaseDebug(),
-      }, 400);
+      return json(
+        {
+          ok: false,
+          error: "MISSING_BOOKING_ID",
+          mode: "single",
+          debug: buildBaseDebug(),
+        },
+        400
+      );
     }
 
     const { data: booking, error: bookingError } = await supabase
@@ -342,24 +360,30 @@ export async function POST(req: Request) {
       .single();
 
     if (bookingError) {
-      return json({
-        ok: false,
-        error: "BOOKING_READ_FAILED",
-        message: bookingError.message,
-        mode: "single",
-        booking_id: bookingId,
-        debug: buildBaseDebug(),
-      }, 500);
+      return json(
+        {
+          ok: false,
+          error: "BOOKING_READ_FAILED",
+          message: bookingError.message,
+          mode: "single",
+          booking_id: bookingId,
+          debug: buildBaseDebug(),
+        },
+        500
+      );
     }
 
     if (!booking) {
-      return json({
-        ok: false,
-        error: "BOOKING_NOT_FOUND",
-        mode: "single",
-        booking_id: bookingId,
-        debug: buildBaseDebug(),
-      }, 404);
+      return json(
+        {
+          ok: false,
+          error: "BOOKING_NOT_FOUND",
+          mode: "single",
+          booking_id: bookingId,
+          debug: buildBaseDebug(),
+        },
+        404
+      );
     }
 
     const result = await matchSingle(supabase, booking as BookingRow, excludeDriverIds);
@@ -387,11 +411,14 @@ export async function POST(req: Request) {
       debug: result.debug,
     });
   } catch (e: any) {
-    return json({
-      ok: false,
-      error: "AUTO_ASSIGN_FAILED",
-      message: String(e?.message || e),
-      debug: buildBaseDebug(),
-    }, 500);
+    return json(
+      {
+        ok: false,
+        error: "AUTO_ASSIGN_FAILED",
+        message: String(e?.message || e),
+        debug: buildBaseDebug(),
+      },
+      500
+    );
   }
 }

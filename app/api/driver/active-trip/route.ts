@@ -38,14 +38,8 @@ function noStoreHeaders() {
 }
 
 function createAnonSupabase() {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.SUPABASE_URL ||
-    "";
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    "";
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
   if (!url || !anonKey) {
     throw new Error("Missing Supabase anon client environment variables.");
@@ -60,13 +54,8 @@ function createAnonSupabase() {
 }
 
 function createServiceSupabase() {
-  const url =
-    process.env.SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "";
-  const serviceRole =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "";
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
   if (!url || !serviceRole) {
     throw new Error("Missing Supabase service role environment variables.");
@@ -80,18 +69,84 @@ function createServiceSupabase() {
   });
 }
 
+async function resolveDriverIds(serviceSupabase: any, user: any): Promise<string[]> {
+  const ids = new Set<string>();
+  const authUserId = s(user?.id);
+  const email = s(user?.email);
+
+  if (authUserId) ids.add(authUserId);
+
+  if (email) {
+    const profileRes = await serviceSupabase
+      .from("driver_profiles")
+      .select("driver_id")
+      .eq("email", email)
+      .limit(10);
+
+    if (!profileRes.error) {
+      for (const row of profileRes.data || []) {
+        const driverId = s((row as any).driver_id);
+        if (driverId) ids.add(driverId);
+      }
+    }
+  }
+
+  return Array.from(ids);
+}
+
+async function enrichDriverIdentity(serviceSupabase: any, driverId: string | null) {
+  let driverName: string | null = null;
+  let driverPhone: string | null = null;
+  let driverLat: number | null = null;
+  let driverLng: number | null = null;
+
+  if (!driverId) {
+    return { driverName, driverPhone, driverLat, driverLng };
+  }
+
+  const driverRes = await serviceSupabase
+    .from("drivers")
+    .select("id, driver_name")
+    .eq("id", driverId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!driverRes.error && driverRes.data) {
+    driverName = driverName ?? s((driverRes.data as any).driver_name);
+  }
+
+  const driverProfileRes = await serviceSupabase
+    .from("driver_profiles")
+    .select("driver_id, full_name, callsign, phone")
+    .eq("driver_id", driverId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!driverProfileRes.error && driverProfileRes.data) {
+    driverName =
+      driverName ??
+      s((driverProfileRes.data as any).full_name) ??
+      s((driverProfileRes.data as any).callsign);
+
+    driverPhone = driverPhone ?? s((driverProfileRes.data as any).phone);
+  }
+
+  const driverLocRes = await serviceSupabase
+    .from("driver_locations_latest")
+    .select("lat,lng")
+    .eq("driver_id", driverId)
+    .maybeSingle();
+
+  if (!driverLocRes.error && driverLocRes.data) {
+    driverLat = n((driverLocRes.data as any).lat);
+    driverLng = n((driverLocRes.data as any).lng);
+  }
+
+  return { driverName, driverPhone, driverLat, driverLng };
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const bookingCode = searchParams.get("booking_code")?.trim();
-
-    if (!bookingCode) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_CODE" },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
-
     const accessToken = getBearerToken(req);
     if (!accessToken) {
       return NextResponse.json(
@@ -103,8 +158,7 @@ export async function GET(req: NextRequest) {
     const authSupabase = createAnonSupabase();
     const serviceSupabase = createServiceSupabase();
 
-    const { data: userRes, error: userErr } =
-      await authSupabase.auth.getUser(accessToken);
+    const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
     const user = userRes?.user ?? null;
 
     if (userErr || !user?.id) {
@@ -114,10 +168,30 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const candidateDriverIds = await resolveDriverIds(serviceSupabase, user);
+    if (candidateDriverIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "DRIVER_ID_NOT_RESOLVED" },
+        { status: 403, headers: noStoreHeaders() }
+      );
+    }
+
+    const activeStatuses = [
+      "assigned",
+      "accepted",
+      "fare_proposed",
+      "ready",
+      "on_the_way",
+      "arrived",
+      "on_trip",
+    ];
+
     const bookingRes = await serviceSupabase
       .from("bookings")
       .select("*")
-      .eq("booking_code", bookingCode)
+      .in("status", activeStatuses)
+      .or(`driver_id.in.(${candidateDriverIds.join(",")}),assigned_driver_id.in.(${candidateDriverIds.join(",")})`)
+      .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -135,78 +209,13 @@ export async function GET(req: NextRequest) {
     const booking = bookingRes.data;
     if (!booking) {
       return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404, headers: noStoreHeaders() }
-      );
-    }
-
-    const bookingOwnerId = s((booking as any).created_by_user_id);
-    if (!bookingOwnerId || bookingOwnerId !== user.id) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "NOT_BOOKING_OWNER",
-          message: "This booking does not belong to the authenticated passenger.",
-        },
-        { status: 403, headers: noStoreHeaders() }
+        { ok: true, active_trip: null },
+        { status: 200, headers: noStoreHeaders() }
       );
     }
 
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
-
-    let driverName: string | null =
-      s((booking as any).driver_name) ||
-      s((booking as any).driver_full_name) ||
-      null;
-
-    let driverPhone: string | null =
-      s((booking as any).driver_phone) ||
-      null;
-
-    let driverLat: number | null = null;
-    let driverLng: number | null = null;
-
-    if (driverId) {
-      const driverRes = await serviceSupabase
-        .from("drivers")
-        .select("id, driver_name")
-        .eq("id", driverId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!driverRes.error && driverRes.data) {
-        driverName = driverName ?? s((driverRes.data as any).driver_name);
-      }
-
-      const driverProfileRes = await serviceSupabase
-        .from("driver_profiles")
-        .select("driver_id, full_name, callsign, phone")
-        .eq("driver_id", driverId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!driverProfileRes.error && driverProfileRes.data) {
-        driverName =
-          driverName ??
-          s((driverProfileRes.data as any).full_name) ??
-          s((driverProfileRes.data as any).callsign);
-
-        driverPhone =
-          driverPhone ??
-          s((driverProfileRes.data as any).phone);
-      }
-
-      const driverLocRes = await serviceSupabase
-        .from("driver_locations_latest")
-        .select("lat,lng")
-        .eq("driver_id", driverId)
-        .maybeSingle();
-
-      if (!driverLocRes.error && driverLocRes.data) {
-        driverLat = n((driverLocRes.data as any).lat);
-        driverLng = n((driverLocRes.data as any).lng);
-      }
-    }
+    const identity = await enrichDriverIdentity(serviceSupabase, driverId);
 
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
@@ -221,46 +230,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        id: booking.id,
-        booking_code: booking.booking_code,
-        status: statusOf((booking as any).status),
-
-        town: s((booking as any).town),
-        from_label: s((booking as any).from_label),
-        to_label: s((booking as any).to_label),
-
-        pickup_lat: n((booking as any).pickup_lat),
-        pickup_lng: n((booking as any).pickup_lng),
-        dropoff_lat: n((booking as any).dropoff_lat),
-        dropoff_lng: n((booking as any).dropoff_lng),
-
-        driver_id: s((booking as any).driver_id),
-        assigned_driver_id: s((booking as any).assigned_driver_id),
-        driver_name: driverName,
-        driver_phone: driverPhone,
-        driver_lat: driverLat,
-        driver_lng: driverLng,
-
-        driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
-        trip_distance_km: n((booking as any).trip_distance_km),
-        pickup_eta_minutes:
-          n((booking as any).pickup_eta_minutes) ??
-          n((booking as any).eta_minutes),
-
-        proposed_fare: proposedFare,
-        verified_fare: verifiedFare,
-        pickup_distance_fee: pickupDistanceFee,
-        platform_fee: platformFee,
-        total_fare: totalFare,
-        total_amount: n((booking as any).total_amount) ?? totalFare,
-        grand_total: n((booking as any).grand_total) ?? totalFare,
-
-        passenger_fare_response: s((booking as any).passenger_fare_response),
-        created_by_user_id: bookingOwnerId,
-        created_at: s((booking as any).created_at),
-        updated_at: s((booking as any).updated_at),
-        completed_at: s((booking as any).completed_at),
-        cancelled_at: s((booking as any).cancelled_at),
+        active_trip: {
+          id: (booking as any).id,
+          booking_code: (booking as any).booking_code,
+          status: statusOf((booking as any).status),
+          town: s((booking as any).town),
+          from_label: s((booking as any).from_label),
+          to_label: s((booking as any).to_label),
+          pickup_lat: n((booking as any).pickup_lat),
+          pickup_lng: n((booking as any).pickup_lng),
+          dropoff_lat: n((booking as any).dropoff_lat),
+          dropoff_lng: n((booking as any).dropoff_lng),
+          passenger_name: s((booking as any).passenger_name),
+          driver_id: driverId,
+          assigned_driver_id: s((booking as any).assigned_driver_id),
+          driver_name: identity.driverName,
+          driver_phone: identity.driverPhone,
+          driver_lat: identity.driverLat,
+          driver_lng: identity.driverLng,
+          driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
+          trip_distance_km: n((booking as any).trip_distance_km),
+          pickup_eta_minutes:
+            n((booking as any).pickup_eta_minutes) ??
+            n((booking as any).eta_minutes),
+          proposed_fare: proposedFare,
+          verified_fare: verifiedFare,
+          pickup_distance_fee: pickupDistanceFee,
+          platform_fee: platformFee,
+          total_fare: totalFare,
+          total_amount: n((booking as any).total_amount) ?? totalFare,
+          grand_total: n((booking as any).grand_total) ?? totalFare,
+          passenger_fare_response: s((booking as any).passenger_fare_response),
+          created_by_user_id: s((booking as any).created_by_user_id),
+          created_at: s((booking as any).created_at),
+          updated_at: s((booking as any).updated_at),
+          completed_at: s((booking as any).completed_at),
+          cancelled_at: s((booking as any).cancelled_at),
+        },
+        resolved_driver_ids: candidateDriverIds,
       },
       { status: 200, headers: noStoreHeaders() }
     );
@@ -268,7 +275,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: "TRACK_ROUTE_CRASH",
+        error: "ACTIVE_TRIP_ROUTE_CRASH",
         details: err?.message ?? "UNKNOWN_ERROR",
       },
       { status: 500, headers: noStoreHeaders() }

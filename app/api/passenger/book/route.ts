@@ -3,23 +3,18 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 type BookBody = {
   town?: string;
-
   pickup_label?: string;
   dropoff_label?: string;
   vehicle_type?: string;
-
   from_label?: string;
   to_label?: string;
   service_type?: string;
-
   pickup_lat?: number | string | null;
   pickup_lng?: number | string | null;
   dropoff_lat?: number | string | null;
   dropoff_lng?: number | string | null;
-
   passenger_count?: number | string | null;
   fees_acknowledged?: boolean;
-
   passenger_name?: string;
   full_name?: string;
   user_id?: string;
@@ -34,8 +29,9 @@ function text(v: unknown): string {
 }
 
 function num(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+  if (v === null || v === undefined || v === "") return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
 }
 
 function pad2(n: number): string {
@@ -63,15 +59,18 @@ function getBearerToken(req: Request): string | null {
 }
 
 function createUserClient(accessToken: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
   if (!url || !anon) {
     throw new Error("SUPABASE_ENV_MISSING");
   }
 
   return createSupabaseClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
     global: {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -102,6 +101,26 @@ function envAny(names: string[]): string {
     const v = process.env[n];
     if (v && String(v).trim()) return String(v).trim();
   }
+  return "";
+}
+
+function userDisplayName(user: any): string {
+  const direct = [
+    user?.user_metadata?.full_name,
+    user?.user_metadata?.name,
+    user?.user_metadata?.display_name,
+    user?.user_metadata?.passenger_name,
+    user?.raw_user_meta_data?.full_name,
+    user?.raw_user_meta_data?.name,
+    user?.raw_user_meta_data?.display_name,
+    user?.email,
+  ];
+
+  for (const v of direct) {
+    const s = text(v);
+    if (s) return s;
+  }
+
   return "";
 }
 
@@ -149,7 +168,6 @@ async function getTokenUserAndVerified(supabase: any) {
           v.trim().toLowerCase() !== "no") ||
         (typeof v === "number" && v > 0);
 
-      const selV = "is_verified,verified,verification_tier";
       const tries: Array<["auth_user_id" | "user_id", string]> = [
         ["auth_user_id", user.id],
         ["user_id", user.id],
@@ -158,7 +176,7 @@ async function getTokenUserAndVerified(supabase: any) {
       for (const [col, val] of tries) {
         const r = await supabase
           .from("passengers")
-          .select(selV)
+          .select("is_verified,verified,verification_tier")
           .eq(col, val)
           .limit(1)
           .maybeSingle();
@@ -180,9 +198,7 @@ async function getTokenUserAndVerified(supabase: any) {
 }
 
 function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "")
-    .trim()
-    .toLowerCase();
+  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "").trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
@@ -213,16 +229,17 @@ async function canBookOrThrow(supabase: any) {
     };
   }
 
-  return { ok: true, userId: uv.user.id, verified: uv.verified };
+  return {
+    ok: true,
+    userId: uv.user.id,
+    verified: uv.verified,
+    user: uv.user,
+  };
 }
 
-async function triggerRetryAutoAssign(req: Request) {
+async function triggerSingleAutoAssign(req: Request, bookingId: string) {
   const baseUrl = normalizeBaseUrl(
-    envAny([
-      "INTERNAL_BASE_URL",
-      "NEXTAUTH_URL",
-      "NEXT_PUBLIC_BASE_URL",
-    ]) || requestOrigin(req)
+    envAny(["INTERNAL_BASE_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_BASE_URL"]) || requestOrigin(req)
   );
 
   if (!baseUrl) {
@@ -234,13 +251,14 @@ async function triggerRetryAutoAssign(req: Request) {
     };
   }
 
-  const url = `${baseUrl}/api/dispatch/retry-auto-assign`;
+  const url = `${baseUrl}/api/dispatch/auto-assign`;
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
+      body: JSON.stringify({ mode: "single", bookingId }),
     });
 
     let body: any = null;
@@ -333,13 +351,18 @@ export async function POST(req: Request) {
       return canRes;
     }
 
-    const createdByUserId = String((canRes as any).userId || "").trim();
+    const createdByUserId = text((canRes as any).userId);
     if (!createdByUserId) {
       return NextResponse.json(
         { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
         { status: 401 }
       );
     }
+
+    const passengerName =
+      text(body.passenger_name) ||
+      text(body.full_name) ||
+      userDisplayName((canRes as any).user);
 
     const bookingCode = bookingCodeNow();
 
@@ -358,6 +381,10 @@ export async function POST(req: Request) {
       created_by_user_id: createdByUserId,
       customer_status: "pending",
     };
+
+    if (passengerName) {
+      insert.passenger_name = passengerName;
+    }
 
     if (notes) {
       insert.notes = notes;
@@ -380,14 +407,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const retryResult = await triggerRetryAutoAssign(req);
+    const bookingId = text((booking as any)?.id);
+    const autoAssign = bookingId
+      ? await triggerSingleAutoAssign(req, bookingId)
+      : {
+          attempted: false,
+          ok: false,
+          skipped: true,
+          reason: "BOOKING_ID_MISSING_AFTER_INSERT",
+        };
 
     return NextResponse.json(
       {
         ok: true,
         booking_code: bookingCode,
         booking,
-        retry_auto_assign: retryResult,
+        auto_assign: autoAssign,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
