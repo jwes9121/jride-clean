@@ -39,8 +39,7 @@ function noStoreHeaders() {
 
 function createAnonSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
   if (!url || !anonKey) {
     throw new Error("Missing Supabase anon client environment variables.");
@@ -70,40 +69,24 @@ function createServiceSupabase() {
   });
 }
 
-function deriveFareSummary(booking: any) {
-  const proposedFare = n(booking?.proposed_fare);
-  const verifiedFare = n(booking?.verified_fare);
-  const pickupDistanceFee = n(booking?.pickup_distance_fee);
-  const baseFee = n(booking?.base_fee);
-  const distanceFare = n(booking?.distance_fare);
-
-  const displayFare = verifiedFare ?? proposedFare;
-  const totalFare =
-    displayFare !== null
-      ? displayFare + (pickupDistanceFee ?? 0)
-      : null;
-
-  return {
-    proposedFare,
-    verifiedFare,
-    pickupDistanceFee,
-    baseFee,
-    distanceFare,
-    totalFare,
-    fareReady: displayFare !== null,
-  };
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
 }
 
-function deriveStageHints(status: string, fareReady: boolean) {
-  const waitingForDriverProposal =
-    !fareReady &&
-    (status === "assigned" || status === "accepted");
-
-  return {
-    waiting_for_driver_proposal: waitingForDriverProposal,
-    fare_ready: fareReady,
-    pickup_metrics_ready: !waitingForDriverProposal,
-  };
+function estimateEtaMinutes(distanceKm: number | null): number | null {
+  if (distanceKm == null || distanceKm <= 0) return null;
+  return Math.max(1, Math.ceil((distanceKm / 25) * 60));
 }
 
 export async function GET(req: NextRequest) {
@@ -177,7 +160,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const normalizedStatus = statusOf((booking as any).status);
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
     let driverName: string | null =
@@ -186,6 +168,7 @@ export async function GET(req: NextRequest) {
       null;
 
     let driverPhone: string | null = s((booking as any).driver_phone) || null;
+
     let driverLat: number | null = null;
     let driverLng: number | null = null;
 
@@ -229,24 +212,48 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const fare = deriveFareSummary(booking as any);
-    const hints = deriveStageHints(normalizedStatus, fare.fareReady);
+    const pickupLat = n((booking as any).pickup_lat);
+    const pickupLng = n((booking as any).pickup_lng);
+    const dropoffLat = n((booking as any).dropoff_lat);
+    const dropoffLng = n((booking as any).dropoff_lng);
+
+    let driverToPickupKm = n((booking as any).driver_to_pickup_km);
+    if (driverToPickupKm == null && driverLat != null && driverLng != null && pickupLat != null && pickupLng != null) {
+      driverToPickupKm = Number(haversineKm(driverLat, driverLng, pickupLat, pickupLng).toFixed(1));
+    }
+
+    let tripDistanceKm = n((booking as any).trip_distance_km);
+    if (tripDistanceKm == null && pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
+      tripDistanceKm = Number(haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(2));
+    }
+
+    const pickupEtaMinutes =
+      n((booking as any).pickup_eta_minutes) ??
+      n((booking as any).eta_minutes) ??
+      estimateEtaMinutes(driverToPickupKm);
+
+    const proposedFare = n((booking as any).proposed_fare);
+    const verifiedFare = n((booking as any).verified_fare);
+    const pickupDistanceFee = n((booking as any).pickup_distance_fee);
+    const totalFare =
+      n((booking as any).total_fare) ??
+      ((proposedFare ?? verifiedFare ?? 0) + (pickupDistanceFee ?? 0));
 
     return NextResponse.json(
       {
         ok: true,
         id: booking.id,
         booking_code: booking.booking_code,
-        status: normalizedStatus,
+        status: statusOf((booking as any).status),
 
         town: s((booking as any).town),
         from_label: s((booking as any).from_label),
         to_label: s((booking as any).to_label),
 
-        pickup_lat: n((booking as any).pickup_lat),
-        pickup_lng: n((booking as any).pickup_lng),
-        dropoff_lat: n((booking as any).dropoff_lat),
-        dropoff_lng: n((booking as any).dropoff_lng),
+        pickup_lat: pickupLat,
+        pickup_lng: pickupLng,
+        dropoff_lat: dropoffLat,
+        dropoff_lng: dropoffLng,
 
         driver_id: s((booking as any).driver_id),
         assigned_driver_id: s((booking as any).assigned_driver_id),
@@ -255,20 +262,20 @@ export async function GET(req: NextRequest) {
         driver_lat: driverLat,
         driver_lng: driverLng,
 
-        driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
-        trip_distance_km: n((booking as any).trip_distance_km),
-        pickup_eta_minutes: null,
+        driver_to_pickup_km: driverToPickupKm,
+        trip_distance_km: tripDistanceKm,
+        pickup_eta_minutes: pickupEtaMinutes,
 
-        proposed_fare: fare.proposedFare,
-        verified_fare: fare.verifiedFare,
-        pickup_distance_fee: fare.pickupDistanceFee,
-        base_fee: fare.baseFee,
-        distance_fare: fare.distanceFare,
-        total_fare: fare.totalFare,
+        proposed_fare: proposedFare,
+        verified_fare: verifiedFare,
+        pickup_distance_fee: pickupDistanceFee,
+        base_fee: n((booking as any).base_fee),
+        distance_fare: n((booking as any).distance_fare),
+        total_fare: totalFare,
 
-        fare_ready: hints.fare_ready,
-        pickup_metrics_ready: hints.pickup_metrics_ready,
-        waiting_for_driver_proposal: hints.waiting_for_driver_proposal,
+        fare_ready: proposedFare != null || verifiedFare != null,
+        pickup_metrics_ready: driverToPickupKm != null,
+        waiting_for_driver_proposal: proposedFare == null && verifiedFare == null,
 
         passenger_fare_response: s((booking as any).passenger_fare_response),
         created_by_user_id: bookingOwnerId,
@@ -279,12 +286,12 @@ export async function GET(req: NextRequest) {
       },
       { status: 200, headers: noStoreHeaders() }
     );
-  } catch (err: any) {
+  } catch (e: any) {
     return NextResponse.json(
       {
         ok: false,
         error: "TRACK_ROUTE_CRASH",
-        details: err?.message ?? "UNKNOWN_ERROR",
+        details: String(e?.message ?? e),
       },
       { status: 500, headers: noStoreHeaders() }
     );

@@ -61,6 +61,11 @@ function pickupDistanceFee(km: number): number {
   return blocks * feePerBlock;
 }
 
+function estimateEtaMinutes(distanceKm: number | null): number | null {
+  if (distanceKm == null || distanceKm <= 0) return null;
+  return Math.max(1, Math.ceil((distanceKm / 25) * 60));
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
@@ -166,6 +171,8 @@ export async function POST(req: Request) {
 
     const pickupLat = Number((booking as any).pickup_lat ?? NaN);
     const pickupLng = Number((booking as any).pickup_lng ?? NaN);
+    const dropoffLat = Number((booking as any).dropoff_lat ?? NaN);
+    const dropoffLng = Number((booking as any).dropoff_lng ?? NaN);
 
     if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
       return NextResponse.json(
@@ -202,12 +209,27 @@ export async function POST(req: Request) {
       pickupFee = pickupDistanceFee(driverToPickupKm);
     }
 
+    let tripDistanceKm: number | null = null;
+    if (
+      Number.isFinite(pickupLat) &&
+      Number.isFinite(pickupLng) &&
+      Number.isFinite(dropoffLat) &&
+      Number.isFinite(dropoffLng)
+    ) {
+      tripDistanceKm = Number(
+        haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(2)
+      );
+    }
+
+    const etaMinutes = estimateEtaMinutes(driverToPickupKm);
+
     const updatePayload: Record<string, unknown> = {
       proposed_fare: proposedFare,
       verified_fare: null,
       passenger_fare_response: null,
       driver_to_pickup_km: driverToPickupKm,
       pickup_distance_fee: pickupFee,
+      trip_distance_km: tripDistanceKm,
       status: "fare_proposed",
       assigned_driver_id: assignedDriverId || effectiveDriverId,
       driver_id: bookingDriverId || effectiveDriverId,
@@ -232,7 +254,7 @@ export async function POST(req: Request) {
     const { data: freshRows, error: freshErr } = await supabase
       .from("bookings")
       .select(
-        "id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_to_pickup_km, pickup_distance_fee"
+        "id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_to_pickup_km, pickup_distance_fee, trip_distance_km"
       )
       .eq("id", (booking as any).id)
       .limit(1);
@@ -250,7 +272,9 @@ export async function POST(req: Request) {
           verified_fare: null,
           passenger_fare_response: null,
           driver_to_pickup_km: driverToPickupKm,
+          pickup_eta_minutes: etaMinutes,
           pickup_distance_fee: pickupFee,
+          trip_distance_km: tripDistanceKm,
           total_fare: proposedFare + pickupFee,
           reread_warning: freshErr?.message || "REREAD_NOT_AVAILABLE",
         },
@@ -268,7 +292,9 @@ export async function POST(req: Request) {
         verified_fare: num((fresh as any).verified_fare),
         passenger_fare_response: text((fresh as any).passenger_fare_response) || null,
         driver_to_pickup_km: num((fresh as any).driver_to_pickup_km),
+        pickup_eta_minutes: etaMinutes,
         pickup_distance_fee: num((fresh as any).pickup_distance_fee) ?? 0,
+        trip_distance_km: num((fresh as any).trip_distance_km),
         total_fare:
           (num((fresh as any).proposed_fare) ?? 0) +
           (num((fresh as any).pickup_distance_fee) ?? 0),
