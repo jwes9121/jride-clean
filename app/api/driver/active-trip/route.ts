@@ -39,7 +39,8 @@ function noStoreHeaders() {
 
 function createAnonSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
   if (!url || !anonKey) {
     throw new Error("Missing Supabase anon client environment variables.");
@@ -69,80 +70,76 @@ function createServiceSupabase() {
   });
 }
 
-async function resolveDriverIds(serviceSupabase: any, user: any): Promise<string[]> {
-  const ids = new Set<string>();
-  const authUserId = s(user?.id);
-  const email = s(user?.email);
+function deriveFareSummary(booking: any) {
+  const proposedFare = n(booking?.proposed_fare);
+  const verifiedFare = n(booking?.verified_fare);
+  const pickupDistanceFee = n(booking?.pickup_distance_fee);
+  const baseFee = n(booking?.base_fee);
+  const distanceFare = n(booking?.distance_fare);
 
-  if (authUserId) ids.add(authUserId);
+  const displayFare = verifiedFare ?? proposedFare;
+  const totalFare =
+    displayFare !== null
+      ? displayFare + (pickupDistanceFee ?? 0)
+      : null;
 
-  if (email) {
-    const profileRes = await serviceSupabase
-      .from("driver_profiles")
-      .select("driver_id")
-      .eq("email", email)
-      .limit(10);
-
-    if (!profileRes.error) {
-      for (const row of profileRes.data || []) {
-        const driverId = s((row as any).driver_id);
-        if (driverId) ids.add(driverId);
-      }
-    }
-  }
-
-  return Array.from(ids);
+  return {
+    proposedFare,
+    verifiedFare,
+    pickupDistanceFee,
+    baseFee,
+    distanceFare,
+    totalFare,
+    fareReady: displayFare !== null,
+  };
 }
 
-async function enrichDriverIdentity(serviceSupabase: any, driverId: string | null) {
-  let driverName: string | null = null;
-  let driverPhone: string | null = null;
-  let driverLat: number | null = null;
-  let driverLng: number | null = null;
+function deriveStageHints(status: string, fareReady: boolean) {
+  const waitingForDriverProposal =
+    !fareReady &&
+    (status === "assigned" || status === "accepted");
 
-  if (!driverId) {
-    return { driverName, driverPhone, driverLat, driverLng };
-  }
+  return {
+    waiting_for_driver_proposal: waitingForDriverProposal,
+    fare_ready: fareReady,
+    pickup_metrics_ready: !waitingForDriverProposal,
+  };
+}
 
-  const driverRes = await serviceSupabase
-    .from("drivers")
-    .select("id, driver_name")
-    .eq("id", driverId)
-    .limit(1)
-    .maybeSingle();
-
-  if (!driverRes.error && driverRes.data) {
-    driverName = driverName ?? s((driverRes.data as any).driver_name);
-  }
-
-  const driverProfileRes = await serviceSupabase
+async function resolveDriverId(serviceSupabase: any, authUserId: string): Promise<string | null> {
+  const directProfile = await serviceSupabase
     .from("driver_profiles")
-    .select("driver_id, full_name, callsign, phone")
-    .eq("driver_id", driverId)
+    .select("driver_id")
+    .eq("driver_id", authUserId)
     .limit(1)
     .maybeSingle();
 
-  if (!driverProfileRes.error && driverProfileRes.data) {
-    driverName =
-      driverName ??
-      s((driverProfileRes.data as any).full_name) ??
-      s((driverProfileRes.data as any).callsign);
-
-    driverPhone = driverPhone ?? s((driverProfileRes.data as any).phone);
+  if (!directProfile.error && directProfile.data?.driver_id) {
+    return s(directProfile.data.driver_id);
   }
 
-  const driverLocRes = await serviceSupabase
-    .from("driver_locations_latest")
-    .select("lat,lng")
-    .eq("driver_id", driverId)
+  const authUser = await serviceSupabase
+    .from("auth_users_view")
+    .select("email")
+    .eq("id", authUserId)
+    .limit(1)
     .maybeSingle();
 
-  if (!driverLocRes.error && driverLocRes.data) {
-    driverLat = n((driverLocRes.data as any).lat);
-    driverLng = n((driverLocRes.data as any).lng);
+  const email = s((authUser.data as any)?.email);
+  if (!email) return null;
+
+  const byEmail = await serviceSupabase
+    .from("driver_profiles")
+    .select("driver_id")
+    .eq("email", email)
+    .limit(1)
+    .maybeSingle();
+
+  if (!byEmail.error && byEmail.data?.driver_id) {
+    return s(byEmail.data.driver_id);
   }
 
-  return { driverName, driverPhone, driverLat, driverLng };
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -168,29 +165,27 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const candidateDriverIds = await resolveDriverIds(serviceSupabase, user);
-    if (candidateDriverIds.length === 0) {
+    const driverId = await resolveDriverId(serviceSupabase, user.id);
+    if (!driverId) {
       return NextResponse.json(
-        { ok: false, error: "DRIVER_ID_NOT_RESOLVED" },
-        { status: 403, headers: noStoreHeaders() }
+        { ok: false, error: "DRIVER_NOT_FOUND", message: "No driver profile found for token user." },
+        { status: 404, headers: noStoreHeaders() }
       );
     }
-
-    const activeStatuses = [
-      "assigned",
-      "accepted",
-      "fare_proposed",
-      "ready",
-      "on_the_way",
-      "arrived",
-      "on_trip",
-    ];
 
     const bookingRes = await serviceSupabase
       .from("bookings")
       .select("*")
-      .in("status", activeStatuses)
-      .or(`driver_id.in.(${candidateDriverIds.join(",")}),assigned_driver_id.in.(${candidateDriverIds.join(",")})`)
+      .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
+      .in("status", [
+        "assigned",
+        "accepted",
+        "fare_proposed",
+        "ready",
+        "on_the_way",
+        "arrived",
+        "on_trip",
+      ])
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -214,26 +209,47 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
-    const identity = await enrichDriverIdentity(serviceSupabase, driverId);
+    let driverName: string | null = null;
+    let driverPhone: string | null = null;
+    let driverLat: number | null = null;
+    let driverLng: number | null = null;
 
-    const proposedFare = n((booking as any).proposed_fare);
-    const verifiedFare = n((booking as any).verified_fare);
-    const pickupDistanceFee = n((booking as any).pickup_distance_fee);
-    const platformFee = n((booking as any).platform_fee);
-    const totalFare =
-      n((booking as any).total_fare) ??
-      n((booking as any).total_amount) ??
-      n((booking as any).grand_total) ??
-      ((proposedFare ?? 0) + (pickupDistanceFee ?? 0) + (platformFee ?? 0));
+    const driverProfileRes = await serviceSupabase
+      .from("driver_profiles")
+      .select("driver_id, full_name, callsign, phone")
+      .eq("driver_id", driverId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!driverProfileRes.error && driverProfileRes.data) {
+      driverName =
+        s((driverProfileRes.data as any).full_name) ??
+        s((driverProfileRes.data as any).callsign);
+      driverPhone = s((driverProfileRes.data as any).phone);
+    }
+
+    const driverLocRes = await serviceSupabase
+      .from("driver_locations_latest")
+      .select("lat,lng")
+      .eq("driver_id", driverId)
+      .maybeSingle();
+
+    if (!driverLocRes.error && driverLocRes.data) {
+      driverLat = n((driverLocRes.data as any).lat);
+      driverLng = n((driverLocRes.data as any).lng);
+    }
+
+    const normalizedStatus = statusOf((booking as any).status);
+    const fare = deriveFareSummary(booking as any);
+    const hints = deriveStageHints(normalizedStatus, fare.fareReady);
 
     return NextResponse.json(
       {
         ok: true,
         active_trip: {
-          id: (booking as any).id,
-          booking_code: (booking as any).booking_code,
-          status: statusOf((booking as any).status),
+          id: booking.id,
+          booking_code: booking.booking_code,
+          status: normalizedStatus,
           town: s((booking as any).town),
           from_label: s((booking as any).from_label),
           to_label: s((booking as any).to_label),
@@ -242,32 +258,29 @@ export async function GET(req: NextRequest) {
           dropoff_lat: n((booking as any).dropoff_lat),
           dropoff_lng: n((booking as any).dropoff_lng),
           passenger_name: s((booking as any).passenger_name),
-          driver_id: driverId,
-          assigned_driver_id: s((booking as any).assigned_driver_id),
-          driver_name: identity.driverName,
-          driver_phone: identity.driverPhone,
-          driver_lat: identity.driverLat,
-          driver_lng: identity.driverLng,
+          passenger_count: n((booking as any).passenger_count),
+          driver_id: s((booking as any).driver_id) ?? driverId,
+          assigned_driver_id: s((booking as any).assigned_driver_id) ?? driverId,
+          driver_name: driverName,
+          driver_phone: driverPhone,
+          driver_lat: driverLat,
+          driver_lng: driverLng,
           driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
           trip_distance_km: n((booking as any).trip_distance_km),
-          pickup_eta_minutes:
-            n((booking as any).pickup_eta_minutes) ??
-            n((booking as any).eta_minutes),
-          proposed_fare: proposedFare,
-          verified_fare: verifiedFare,
-          pickup_distance_fee: pickupDistanceFee,
-          platform_fee: platformFee,
-          total_fare: totalFare,
-          total_amount: n((booking as any).total_amount) ?? totalFare,
-          grand_total: n((booking as any).grand_total) ?? totalFare,
+          pickup_eta_minutes: null,
+          proposed_fare: fare.proposedFare,
+          verified_fare: fare.verifiedFare,
+          pickup_distance_fee: fare.pickupDistanceFee,
+          base_fee: fare.baseFee,
+          distance_fare: fare.distanceFare,
+          total_fare: fare.totalFare,
+          fare_ready: hints.fare_ready,
+          pickup_metrics_ready: hints.pickup_metrics_ready,
+          waiting_for_driver_proposal: hints.waiting_for_driver_proposal,
           passenger_fare_response: s((booking as any).passenger_fare_response),
-          created_by_user_id: s((booking as any).created_by_user_id),
           created_at: s((booking as any).created_at),
           updated_at: s((booking as any).updated_at),
-          completed_at: s((booking as any).completed_at),
-          cancelled_at: s((booking as any).cancelled_at),
         },
-        resolved_driver_ids: candidateDriverIds,
       },
       { status: 200, headers: noStoreHeaders() }
     );
