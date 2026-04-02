@@ -39,35 +39,16 @@ function noStoreHeaders() {
 
 function createAnonSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-
-  if (!url || !anonKey) {
-    throw new Error("Missing Supabase anon client environment variables.");
-  }
-
-  return createSupabaseClient(url, anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+  if (!url || !anonKey) throw new Error("Missing Supabase anon client environment variables.");
+  return createSupabaseClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 function createServiceSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-  if (!url || !serviceRole) {
-    throw new Error("Missing Supabase service role environment variables.");
-  }
-
-  return createSupabaseClient(url, serviceRole, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
+  if (!url || !serviceRole) throw new Error("Missing Supabase service role environment variables.");
+  return createSupabaseClient(url, serviceRole, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
 function deriveFareSummary(booking: any) {
@@ -76,13 +57,8 @@ function deriveFareSummary(booking: any) {
   const pickupDistanceFee = n(booking?.pickup_distance_fee);
   const baseFee = n(booking?.base_fee);
   const distanceFare = n(booking?.distance_fare);
-
   const displayFare = verifiedFare ?? proposedFare;
-  const totalFare =
-    displayFare !== null
-      ? displayFare + (pickupDistanceFee ?? 0)
-      : null;
-
+  const totalFare = displayFare !== null ? displayFare + (pickupDistanceFee ?? 0) : null;
   return {
     proposedFare,
     verifiedFare,
@@ -95,10 +71,7 @@ function deriveFareSummary(booking: any) {
 }
 
 function deriveStageHints(status: string, fareReady: boolean) {
-  const waitingForDriverProposal =
-    !fareReady &&
-    (status === "assigned" || status === "accepted");
-
+  const waitingForDriverProposal = !fareReady && (status === "assigned" || status === "accepted");
   return {
     waiting_for_driver_proposal: waitingForDriverProposal,
     fare_ready: fareReady,
@@ -106,7 +79,7 @@ function deriveStageHints(status: string, fareReady: boolean) {
   };
 }
 
-async function resolveDriverId(serviceSupabase: any, authUserId: string): Promise<string | null> {
+async function resolveDriverIdFromBearer(serviceSupabase: any, authUserId: string): Promise<string | null> {
   const directProfile = await serviceSupabase
     .from("driver_profiles")
     .select("driver_id")
@@ -142,33 +115,46 @@ async function resolveDriverId(serviceSupabase: any, authUserId: string): Promis
   return null;
 }
 
+function isDriverSecretAuthorized(req: NextRequest): boolean {
+  const provided = s(req.headers.get("x-jride-driver-secret"));
+  const expected = s(process.env.DRIVER_PING_SECRET) ?? s(process.env.NEXT_PUBLIC_DRIVER_PING_SECRET);
+  if (!provided || !expected) return false;
+  return provided === expected;
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const accessToken = getBearerToken(req);
-    if (!accessToken) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401, headers: noStoreHeaders() }
-      );
-    }
-
-    const authSupabase = createAnonSupabase();
     const serviceSupabase = createServiceSupabase();
+    const accessToken = getBearerToken(req);
 
-    const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
-    const user = userRes?.user ?? null;
+    let driverId: string | null = null;
+    let authMode: "bearer" | "driver_secret" | null = null;
 
-    if (userErr || !user?.id) {
+    if (accessToken) {
+      const authSupabase = createAnonSupabase();
+      const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
+      const user = userRes?.user ?? null;
+      if (userErr || !user?.id) {
+        return NextResponse.json(
+          { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
+          { status: 401, headers: noStoreHeaders() }
+        );
+      }
+      driverId = await resolveDriverIdFromBearer(serviceSupabase, user.id);
+      authMode = "bearer";
+    } else if (isDriverSecretAuthorized(req)) {
+      driverId = s(req.nextUrl.searchParams.get("driver_id"));
+      authMode = "driver_secret";
+    } else {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
+        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token or valid driver secret." },
         { status: 401, headers: noStoreHeaders() }
       );
     }
 
-    const driverId = await resolveDriverId(serviceSupabase, user.id);
     if (!driverId) {
       return NextResponse.json(
-        { ok: false, error: "DRIVER_NOT_FOUND", message: "No driver profile found for token user." },
+        { ok: false, error: "DRIVER_NOT_FOUND", message: authMode === "driver_secret" ? "Missing driver_id query parameter." : "No driver profile found for token user." },
         { status: 404, headers: noStoreHeaders() }
       );
     }
@@ -177,26 +163,14 @@ export async function GET(req: NextRequest) {
       .from("bookings")
       .select("*")
       .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
-      .in("status", [
-        "assigned",
-        "accepted",
-        "fare_proposed",
-        "ready",
-        "on_the_way",
-        "arrived",
-        "on_trip",
-      ])
+      .in("status", ["assigned", "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip"])
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (bookingRes.error) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_QUERY_FAILED",
-          details: bookingRes.error.message,
-        },
+        { ok: false, error: "BOOKING_QUERY_FAILED", details: bookingRes.error.message },
         { status: 500, headers: noStoreHeaders() }
       );
     }
@@ -204,7 +178,7 @@ export async function GET(req: NextRequest) {
     const booking = bookingRes.data;
     if (!booking) {
       return NextResponse.json(
-        { ok: true, active_trip: null },
+        { ok: true, trip: null, active_trip: null },
         { status: 200, headers: noStoreHeaders() }
       );
     }
@@ -222,9 +196,7 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (!driverProfileRes.error && driverProfileRes.data) {
-      driverName =
-        s((driverProfileRes.data as any).full_name) ??
-        s((driverProfileRes.data as any).callsign);
+      driverName = s((driverProfileRes.data as any).full_name) ?? s((driverProfileRes.data as any).callsign);
       driverPhone = s((driverProfileRes.data as any).phone);
     }
 
@@ -243,54 +215,51 @@ export async function GET(req: NextRequest) {
     const fare = deriveFareSummary(booking as any);
     const hints = deriveStageHints(normalizedStatus, fare.fareReady);
 
+    const trip = {
+      id: booking.id,
+      booking_id: booking.id,
+      booking_code: booking.booking_code,
+      code: booking.booking_code,
+      status: normalizedStatus,
+      town: s((booking as any).town),
+      from_label: s((booking as any).from_label),
+      to_label: s((booking as any).to_label),
+      pickup_lat: n((booking as any).pickup_lat),
+      pickup_lng: n((booking as any).pickup_lng),
+      dropoff_lat: n((booking as any).dropoff_lat),
+      dropoff_lng: n((booking as any).dropoff_lng),
+      passenger_name: s((booking as any).passenger_name),
+      passenger_count: n((booking as any).passenger_count),
+      driver_id: s((booking as any).driver_id) ?? driverId,
+      assigned_driver_id: s((booking as any).assigned_driver_id) ?? driverId,
+      driver_name: driverName,
+      driver_phone: driverPhone,
+      driver_lat: driverLat,
+      driver_lng: driverLng,
+      driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
+      trip_distance_km: n((booking as any).trip_distance_km),
+      pickup_eta_minutes: null,
+      proposed_fare: fare.proposedFare,
+      verified_fare: fare.verifiedFare,
+      pickup_distance_fee: fare.pickupDistanceFee,
+      base_fee: fare.baseFee,
+      distance_fare: fare.distanceFare,
+      total_fare: fare.totalFare,
+      fare_ready: hints.fare_ready,
+      pickup_metrics_ready: hints.pickup_metrics_ready,
+      waiting_for_driver_proposal: hints.waiting_for_driver_proposal,
+      passenger_fare_response: s((booking as any).passenger_fare_response),
+      created_at: s((booking as any).created_at),
+      updated_at: s((booking as any).updated_at),
+    };
+
     return NextResponse.json(
-      {
-        ok: true,
-        active_trip: {
-          id: booking.id,
-          booking_code: booking.booking_code,
-          status: normalizedStatus,
-          town: s((booking as any).town),
-          from_label: s((booking as any).from_label),
-          to_label: s((booking as any).to_label),
-          pickup_lat: n((booking as any).pickup_lat),
-          pickup_lng: n((booking as any).pickup_lng),
-          dropoff_lat: n((booking as any).dropoff_lat),
-          dropoff_lng: n((booking as any).dropoff_lng),
-          passenger_name: s((booking as any).passenger_name),
-          passenger_count: n((booking as any).passenger_count),
-          driver_id: s((booking as any).driver_id) ?? driverId,
-          assigned_driver_id: s((booking as any).assigned_driver_id) ?? driverId,
-          driver_name: driverName,
-          driver_phone: driverPhone,
-          driver_lat: driverLat,
-          driver_lng: driverLng,
-          driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
-          trip_distance_km: n((booking as any).trip_distance_km),
-          pickup_eta_minutes: null,
-          proposed_fare: fare.proposedFare,
-          verified_fare: fare.verifiedFare,
-          pickup_distance_fee: fare.pickupDistanceFee,
-          base_fee: fare.baseFee,
-          distance_fare: fare.distanceFare,
-          total_fare: fare.totalFare,
-          fare_ready: hints.fare_ready,
-          pickup_metrics_ready: hints.pickup_metrics_ready,
-          waiting_for_driver_proposal: hints.waiting_for_driver_proposal,
-          passenger_fare_response: s((booking as any).passenger_fare_response),
-          created_at: s((booking as any).created_at),
-          updated_at: s((booking as any).updated_at),
-        },
-      },
+      { ok: true, trip, active_trip: trip, auth_mode: authMode },
       { status: 200, headers: noStoreHeaders() }
     );
   } catch (err: any) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "ACTIVE_TRIP_ROUTE_CRASH",
-        details: err?.message ?? "UNKNOWN_ERROR",
-      },
+      { ok: false, error: "ACTIVE_TRIP_ROUTE_CRASH", details: err?.message ?? "UNKNOWN_ERROR" },
       { status: 500, headers: noStoreHeaders() }
     );
   }
