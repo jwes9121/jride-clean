@@ -1,357 +1,277 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
-function isUuidLike(s: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s || "").trim());
+function n(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
 }
 
-function parseDateMs(v: any): number | null {
-  try {
-    const t = Date.parse(String(v || ""));
-    return Number.isFinite(t) ? t : null;
-  } catch {
-    return null;
-  }
+function s(v: unknown): string | null {
+  const x = String(v ?? "").trim();
+  return x.length > 0 ? x : null;
 }
 
-function text(v: unknown): string {
-  return String(v ?? "").trim();
+function statusOf(raw: unknown): string {
+  const s0 = String(raw ?? "").trim().toLowerCase();
+  if (s0 === "requested" || s0 === "searching") return "pending";
+  if (s0 === "driver_assigned") return "assigned";
+  if (s0 === "accepted_by_driver") return "accepted";
+  if (s0 === "en_route") return "on_the_way";
+  if (s0 === "in_progress") return "on_trip";
+  return s0;
 }
 
-function num(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function getBearerToken(req: NextRequest): string | null {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7).trim();
+  return token || null;
 }
 
-function firstNonBlank(...values: unknown[]): string | null {
-  for (const value of values) {
-    const s = text(value);
-    if (s) return s;
-  }
-  return null;
-}
-
-function secondsToMinutes(v: unknown): number | null {
-  const seconds = num(v);
-  if (seconds == null || seconds <= 0) return null;
-  return Math.ceil(seconds / 60);
-}
-
-function buildRouteContract(row: Record<string, any>) {
+function noStoreHeaders() {
   return {
-    distance_km:
-      num(row.driver_to_pickup_km) ??
-      num(row.pickup_distance_km) ??
-      null,
-    eta_minutes:
-      num(row.pickup_eta_minutes) ??
-      num(row.eta_pickup_minutes) ??
-      secondsToMinutes(row.pickup_eta_seconds) ??
-      secondsToMinutes(row.eta_pickup_seconds) ??
-      null,
-    trip_km:
-      num(row.trip_distance_km) ??
-      num(row.route_trip_km) ??
-      null,
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
   };
 }
 
-function mergeCompatTrip(
-  trip: Record<string, any>,
-  driver: Record<string, any> | null,
-  driverLocation: Record<string, any> | null,
-  route: { distance_km: number | null; eta_minutes: number | null; trip_km: number | null }
-) {
-  const out: Record<string, any> = { ...trip };
+function createAnonSupabase() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    "";
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    "";
 
-  const passengerName = firstNonBlank(
-    trip.passenger_name,
-    trip.customer_name,
-    trip.rider_name
-  );
-  if (passengerName) {
-    out.passenger_name = passengerName;
-    out.passengerName = passengerName;
+  if (!url || !anonKey) {
+    throw new Error("Missing Supabase anon client environment variables.");
   }
 
-  const fromLabel = firstNonBlank(
-    trip.from_label,
-    trip.pickup_label,
-    trip.fromLabel,
-    trip.pickup
-  );
-  if (fromLabel) {
-    out.from_label = fromLabel;
-    out.fromLabel = fromLabel;
-    out.pickup_label = out.pickup_label || fromLabel;
-    out.pickupLabel = out.pickupLabel || fromLabel;
-  }
-
-  const toLabel = firstNonBlank(
-    trip.to_label,
-    trip.dropoff_label,
-    trip.toLabel,
-    trip.dropoff
-  );
-  if (toLabel) {
-    out.to_label = toLabel;
-    out.toLabel = toLabel;
-    out.dropoff_label = out.dropoff_label || toLabel;
-    out.dropoffLabel = out.dropoffLabel || toLabel;
-  }
-
-  const bookingCode = firstNonBlank(trip.booking_code, trip.code);
-  if (bookingCode) {
-    out.booking_code = bookingCode;
-    out.code = out.code || bookingCode;
-  }
-
-  if (driver) {
-    const driverId = firstNonBlank(driver.id, driver.driver_id);
-    const driverName = firstNonBlank(driver.name, driver.full_name, driver.callsign);
-    const driverPhone = firstNonBlank(driver.phone);
-    const driverTown = firstNonBlank(driver.town, driver.municipality);
-
-    if (driverId) {
-      out.driver_id = driverId;
-      out.assigned_driver_id = out.assigned_driver_id || driverId;
-    }
-    if (driverName) {
-      out.driver_name = driverName;
-      out.driverName = driverName;
-      out.driver_full_name = driverName;
-    }
-    if (driverPhone) {
-      out.driver_phone = driverPhone;
-      out.driverPhone = driverPhone;
-    }
-    if (driverTown) {
-      out.driver_town = driverTown;
-    }
-  }
-
-  if (driverLocation) {
-    const lat = num(driverLocation.lat);
-    const lng = num(driverLocation.lng);
-    const updatedAt = firstNonBlank(driverLocation.updated_at);
-
-    if (lat != null) {
-      out.driver_lat = lat;
-      out.driverLat = lat;
-    }
-    if (lng != null) {
-      out.driver_lng = lng;
-      out.driverLng = lng;
-    }
-    if (updatedAt) {
-      out.driver_last_seen_at = updatedAt;
-    }
-  }
-
-  if (route.distance_km != null) {
-    out.driver_to_pickup_km = route.distance_km;
-    out.driverToPickupKm = route.distance_km;
-  }
-  if (route.eta_minutes != null) {
-    out.pickup_eta_minutes = route.eta_minutes;
-    out.pickupEtaMinutes = route.eta_minutes;
-  }
-  if (route.trip_km != null) {
-    out.trip_distance_km = route.trip_km;
-    out.tripDistanceKm = route.trip_km;
-  }
-
-  return out;
+  return createSupabaseClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
-function getAdminClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!url || !key) {
-    throw new Error("Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+function createServiceSupabase() {
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const serviceRole =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
+
+  if (!url || !serviceRole) {
+    throw new Error("Missing Supabase service role environment variables.");
   }
-  return createClient(url, key, { auth: { persistSession: false } });
+
+  return createSupabaseClient(url, serviceRole, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
-function allow(req: Request) {
-  const want = String(
-    process.env.DRIVER_PING_SECRET ||
-    process.env.JRIDE_DRIVER_SECRET ||
-    ""
-  ).trim();
-
-  const got = String(
-    req.headers.get("x-driver-ping-secret") ||
-    req.headers.get("x-jride-driver-secret") ||
-    ""
-  ).trim();
-
-  if (!want) return true;
-  return Boolean(got) && got === want;
-}
-
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    if (!allow(req)) {
-      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-    }
+    const { searchParams } = new URL(req.url);
+    const bookingCode = searchParams.get("booking_code")?.trim();
 
-    const u = new URL(req.url);
-    const driverId = String(u.searchParams.get("driver_id") || "").trim();
-
-    if (!driverId || !isUuidLike(driverId)) {
+    if (!bookingCode) {
       return NextResponse.json(
-        { ok: false, error: "INVALID_DRIVER_ID", message: "driver_id is required (uuid)." },
-        { status: 400 }
+        { ok: false, error: "MISSING_BOOKING_CODE" },
+        { status: 400, headers: noStoreHeaders() }
       );
     }
 
-    const supabase = getAdminClient();
-    const activeStatuses = ["assigned", "accepted", "fare_proposed", "on_the_way", "arrived", "on_trip", "ready"];
-
-    function hasFareEvidence(r: any): boolean {
-      const pf = r?.proposed_fare;
-      const vf = r?.verified_fare;
-      const pr = r?.passenger_fare_response;
-      return pf != null || vf != null || pr != null;
+    const accessToken = getBearerToken(req);
+    if (!accessToken) {
+      return NextResponse.json(
+        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token." },
+        { status: 401, headers: noStoreHeaders() }
+      );
     }
 
-    function isMovementState(st: string): boolean {
-      return st === "on_the_way" || st === "arrived" || st === "on_trip";
+    const authSupabase = createAnonSupabase();
+    const serviceSupabase = createServiceSupabase();
+
+    const { data: userRes, error: userErr } =
+      await authSupabase.auth.getUser(accessToken);
+    const user = userRes?.user ?? null;
+
+    if (userErr || !user?.id) {
+      return NextResponse.json(
+        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
+        { status: 401, headers: noStoreHeaders() }
+      );
     }
 
-    function isReadyButNotAccepted(r: any): boolean {
-      const st = String(r?.status ?? "");
-      if (st !== "ready") return false;
-      const pr = String(r?.passenger_fare_response ?? "").toLowerCase();
-      return pr !== "accepted";
-    }
-
-    const { data, error } = await supabase
+    const bookingRes = await serviceSupabase
       .from("bookings")
       .select("*")
-      .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
-      .in("status", activeStatuses)
-      .order("created_at", { ascending: false })
-      .limit(10);
+      .eq("booking_code", bookingCode)
+      .limit(1)
+      .maybeSingle();
 
-    if (error) {
-      return NextResponse.json({ ok: false, error: "DB_ERROR", message: error.message }, { status: 500 });
+    if (bookingRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BOOKING_QUERY_FAILED",
+          details: bookingRes.error.message,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
     }
 
-    const rows: any[] = Array.isArray(data) ? data : [];
-
-    if (rows.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        driver_id: driverId,
-        trip: null,
-        booking: null,
-        driver: null,
-        driver_location: null,
-        route: null,
-        note: "NO_ACTIVE_TRIP",
-        active_statuses: activeStatuses,
-      });
+    const booking = bookingRes.data;
+    if (!booking) {
+      return NextResponse.json(
+        { ok: false, error: "BOOKING_NOT_FOUND" },
+        { status: 404, headers: noStoreHeaders() }
+      );
     }
 
-    const now = Date.now();
-    const ASSIGNED_MAX_AGE_MINUTES = 90;
-    const assignedMaxAgeMs = ASSIGNED_MAX_AGE_MINUTES * 60 * 1000;
-
-    let picked: any = null;
-
-    for (const r of rows) {
-      const st = String(r?.status ?? "");
-      if (!st || st === "assigned") continue;
-      if (isMovementState(st) && !hasFareEvidence(r)) continue;
-      if (isReadyButNotAccepted(r)) continue;
-      picked = r;
-      break;
+    const bookingOwnerId = s((booking as any).created_by_user_id);
+    if (!bookingOwnerId || bookingOwnerId !== user.id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "NOT_BOOKING_OWNER",
+          message: "This booking does not belong to the authenticated passenger.",
+        },
+        { status: 403, headers: noStoreHeaders() }
+      );
     }
 
-    if (!picked) {
-      for (const r of rows) {
-        const st = String(r?.status ?? "");
-        if (st !== "assigned") continue;
-        const t = parseDateMs(r?.updated_at) ?? parseDateMs(r?.created_at);
-        if (t && (now - t) <= assignedMaxAgeMs) {
-          picked = r;
-          break;
-        }
+    const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
+
+    let driverName: string | null =
+      s((booking as any).driver_name) ||
+      s((booking as any).driver_full_name) ||
+      null;
+
+    let driverPhone: string | null =
+      s((booking as any).driver_phone) ||
+      null;
+
+    let driverLat: number | null = null;
+    let driverLng: number | null = null;
+
+    if (driverId) {
+      const driverRes = await serviceSupabase
+        .from("drivers")
+        .select("id, driver_name")
+        .eq("id", driverId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!driverRes.error && driverRes.data) {
+        driverName = driverName ?? s((driverRes.data as any).driver_name);
+      }
+
+      const driverProfileRes = await serviceSupabase
+        .from("driver_profiles")
+        .select("driver_id, full_name, callsign, phone")
+        .eq("driver_id", driverId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!driverProfileRes.error && driverProfileRes.data) {
+        driverName =
+          driverName ??
+          s((driverProfileRes.data as any).full_name) ??
+          s((driverProfileRes.data as any).callsign);
+
+        driverPhone =
+          driverPhone ??
+          s((driverProfileRes.data as any).phone);
+      }
+
+      const driverLocRes = await serviceSupabase
+        .from("driver_locations_latest")
+        .select("lat,lng")
+        .eq("driver_id", driverId)
+        .maybeSingle();
+
+      if (!driverLocRes.error && driverLocRes.data) {
+        driverLat = n((driverLocRes.data as any).lat);
+        driverLng = n((driverLocRes.data as any).lng);
       }
     }
 
-    const rawTrip = picked || null;
-    if (!rawTrip) {
-      return NextResponse.json({
-        ok: true,
-        driver_id: driverId,
-        trip: null,
-        booking: null,
-        driver: null,
-        driver_location: null,
-        route: null,
-        note: "NO_ACTIVE_TRIP",
-        active_statuses: activeStatuses,
-        assigned_max_age_minutes: ASSIGNED_MAX_AGE_MINUTES,
-      });
-    }
+    const proposedFare = n((booking as any).proposed_fare);
+    const verifiedFare = n((booking as any).verified_fare);
+    const pickupDistanceFee = n((booking as any).pickup_distance_fee);
+    const platformFee = n((booking as any).platform_fee);
+    const totalFare =
+      n((booking as any).total_fare) ??
+      n((booking as any).total_amount) ??
+      n((booking as any).grand_total) ??
+      ((proposedFare ?? 0) + (pickupDistanceFee ?? 0) + (platformFee ?? 0));
 
-    const { data: driverProfile } = await supabase
-      .from("driver_profiles")
-      .select("driver_id, full_name, callsign, municipality, phone")
-      .eq("driver_id", driverId)
-      .maybeSingle();
-
-    const driver = driverProfile
-      ? {
-          id: firstNonBlank(driverProfile.driver_id, driverId),
-          name: firstNonBlank(driverProfile.full_name, driverProfile.callsign),
-          phone: firstNonBlank(driverProfile.phone),
-          town: firstNonBlank(driverProfile.municipality),
-        }
-      : {
-          id: driverId,
-          name: null,
-          phone: null,
-          town: null,
-        };
-
-    const { data: latestLocation } = await supabase
-      .from("driver_locations_latest")
-      .select("driver_id, latitude, longitude, updated_at")
-      .eq("driver_id", driverId)
-      .maybeSingle();
-
-    const driverLocation = latestLocation
-      ? {
-          driver_id: firstNonBlank(latestLocation.driver_id, driverId),
-          lat: num(latestLocation.latitude),
-          lng: num(latestLocation.longitude),
-          updated_at: firstNonBlank(latestLocation.updated_at),
-        }
-      : null;
-
-    const route = buildRouteContract(rawTrip as Record<string, any>);
-    const trip = mergeCompatTrip(rawTrip as Record<string, any>, driver, driverLocation, route);
-
-    return NextResponse.json({
-      ok: true,
-      driver_id: driverId,
-      trip,
-      booking: trip,
-      driver,
-      driver_location: driverLocation,
-      route,
-      note: "ACTIVE_TRIP_FOUND",
-      active_statuses: activeStatuses,
-      assigned_max_age_minutes: ASSIGNED_MAX_AGE_MINUTES,
-    });
-  } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) },
-      { status: 500 }
+      {
+        ok: true,
+        id: booking.id,
+        booking_code: booking.booking_code,
+        status: statusOf((booking as any).status),
+
+        town: s((booking as any).town),
+        from_label: s((booking as any).from_label),
+        to_label: s((booking as any).to_label),
+
+        pickup_lat: n((booking as any).pickup_lat),
+        pickup_lng: n((booking as any).pickup_lng),
+        dropoff_lat: n((booking as any).dropoff_lat),
+        dropoff_lng: n((booking as any).dropoff_lng),
+
+        driver_id: s((booking as any).driver_id),
+        assigned_driver_id: s((booking as any).assigned_driver_id),
+        driver_name: driverName,
+        driver_phone: driverPhone,
+        driver_lat: driverLat,
+        driver_lng: driverLng,
+
+        driver_to_pickup_km: n((booking as any).driver_to_pickup_km),
+        trip_distance_km: n((booking as any).trip_distance_km),
+        pickup_eta_minutes:
+          n((booking as any).pickup_eta_minutes) ??
+          n((booking as any).eta_minutes),
+
+        proposed_fare: proposedFare,
+        verified_fare: verifiedFare,
+        pickup_distance_fee: pickupDistanceFee,
+        platform_fee: platformFee,
+        total_fare: totalFare,
+        total_amount: n((booking as any).total_amount) ?? totalFare,
+        grand_total: n((booking as any).grand_total) ?? totalFare,
+
+        passenger_fare_response: s((booking as any).passenger_fare_response),
+        created_by_user_id: bookingOwnerId,
+        created_at: s((booking as any).created_at),
+        updated_at: s((booking as any).updated_at),
+        completed_at: s((booking as any).completed_at),
+        cancelled_at: s((booking as any).cancelled_at),
+      },
+      { status: 200, headers: noStoreHeaders() }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "TRACK_ROUTE_CRASH",
+        details: err?.message ?? "UNKNOWN_ERROR",
+      },
+      { status: 500, headers: noStoreHeaders() }
     );
   }
 }

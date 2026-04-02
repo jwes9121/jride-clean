@@ -152,28 +152,48 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const driverId = booking.driver_id ?? booking.assigned_driver_id ?? null;
+    const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
     let driverName: string | null =
       s((booking as any).driver_name) ||
       s((booking as any).driver_full_name) ||
       null;
+
     let driverPhone: string | null =
-      s((booking as any).driver_phone) || null;
+      s((booking as any).driver_phone) ||
+      null;
+
     let driverLat: number | null = null;
     let driverLng: number | null = null;
 
     if (driverId) {
       const driverRes = await serviceSupabase
         .from("drivers")
-        .select("id, full_name, phone")
+        .select("id, driver_name")
         .eq("id", driverId)
         .limit(1)
         .maybeSingle();
 
       if (!driverRes.error && driverRes.data) {
-        driverName = driverName ?? s(driverRes.data.full_name);
-        driverPhone = driverPhone ?? s(driverRes.data.phone);
+        driverName = driverName ?? s((driverRes.data as any).driver_name);
+      }
+
+      const driverProfileRes = await serviceSupabase
+        .from("driver_profiles")
+        .select("driver_id, full_name, callsign, phone")
+        .eq("driver_id", driverId)
+        .limit(1)
+        .maybeSingle();
+
+      if (!driverProfileRes.error && driverProfileRes.data) {
+        driverName =
+          driverName ??
+          s((driverProfileRes.data as any).full_name) ??
+          s((driverProfileRes.data as any).callsign);
+
+        driverPhone =
+          driverPhone ??
+          s((driverProfileRes.data as any).phone);
       }
 
       const driverLocRes = await serviceSupabase
@@ -203,19 +223,19 @@ export async function GET(req: NextRequest) {
         ok: true,
         id: booking.id,
         booking_code: booking.booking_code,
-        status: statusOf(booking.status),
+        status: statusOf((booking as any).status),
 
-        town: booking.town ?? null,
-        from_label: booking.from_label ?? null,
-        to_label: booking.to_label ?? null,
+        town: s((booking as any).town),
+        from_label: s((booking as any).from_label),
+        to_label: s((booking as any).to_label),
 
-        pickup_lat: n(booking.pickup_lat),
-        pickup_lng: n(booking.pickup_lng),
-        dropoff_lat: n(booking.dropoff_lat),
-        dropoff_lng: n(booking.dropoff_lng),
+        pickup_lat: n((booking as any).pickup_lat),
+        pickup_lng: n((booking as any).pickup_lng),
+        dropoff_lat: n((booking as any).dropoff_lat),
+        dropoff_lng: n((booking as any).dropoff_lng),
 
-        driver_id: booking.driver_id ?? null,
-        assigned_driver_id: booking.assigned_driver_id ?? null,
+        driver_id: s((booking as any).driver_id),
+        assigned_driver_id: s((booking as any).assigned_driver_id),
         driver_name: driverName,
         driver_phone: driverPhone,
         driver_lat: driverLat,
@@ -235,12 +255,12 @@ export async function GET(req: NextRequest) {
         total_amount: n((booking as any).total_amount) ?? totalFare,
         grand_total: n((booking as any).grand_total) ?? totalFare,
 
-        passenger_fare_response: booking.passenger_fare_response ?? null,
+        passenger_fare_response: s((booking as any).passenger_fare_response),
         created_by_user_id: bookingOwnerId,
-        created_at: booking.created_at ?? null,
-        updated_at: booking.updated_at ?? null,
-        completed_at: (booking as any).completed_at ?? null,
-        cancelled_at: (booking as any).cancelled_at ?? null,
+        created_at: s((booking as any).created_at),
+        updated_at: s((booking as any).updated_at),
+        completed_at: s((booking as any).completed_at),
+        cancelled_at: s((booking as any).cancelled_at),
       },
       { status: 200, headers: noStoreHeaders() }
     );
