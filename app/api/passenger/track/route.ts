@@ -89,6 +89,27 @@ function estimateEtaMinutes(distanceKm: number | null): number | null {
   return Math.max(1, Math.ceil((distanceKm / 25) * 60));
 }
 
+function isTerminalStatus(raw: unknown): boolean {
+  const s0 = String(raw ?? "").trim().toLowerCase();
+  return s0 === "completed" || s0 === "cancelled";
+}
+
+function isCorruptedStaleBookingRow(booking: any): boolean {
+  const status = String(booking?.status ?? "").trim().toLowerCase();
+  const driverId = s(booking?.driver_id);
+  const assignedDriverId = s(booking?.assigned_driver_id);
+  const proposedFare = n(booking?.proposed_fare);
+  const verifiedFare = n(booking?.verified_fare);
+  const passengerFareResponse = s(booking?.passenger_fare_response);
+
+  return (
+    (status === "requested" || status === "searching") &&
+    !driverId &&
+    !assignedDriverId &&
+    (proposedFare != null || verifiedFare != null || passengerFareResponse != null)
+  );
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -151,13 +172,35 @@ export async function GET(req: NextRequest) {
     }
 
     const bookingOwnerId = s((booking as any).created_by_user_id);
-
-    // Unified read-tracking rule:
-    // keep token auth required, but do not hard-block tracking solely because
-    // created_by_user_id differs across web / Android / legacy session flows.
-    // This endpoint is read-only and keyed by booking_code.
     const isOwner = !!bookingOwnerId && bookingOwnerId === user.id;
     const accessMode = isOwner ? "owner" : "tracking_fallback";
+
+    if (isTerminalStatus((booking as any).status)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BOOKING_NOT_ACTIVE",
+          message: "This booking is already in a terminal state.",
+          booking_code: booking.booking_code,
+          status: statusOf((booking as any).status),
+          completed_at: s((booking as any).completed_at),
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
+    if (isCorruptedStaleBookingRow(booking)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "STALE_BOOKING_STATE",
+          message: "This booking is in a stale invalid state and must not be tracked as active.",
+          booking_code: booking.booking_code,
+          status: statusOf((booking as any).status),
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
 
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
@@ -282,7 +325,6 @@ export async function GET(req: NextRequest) {
         created_at: s((booking as any).created_at),
         updated_at: s((booking as any).updated_at),
         completed_at: s((booking as any).completed_at),
-        cancelled_at: s((booking as any).cancelled_at),
       },
       { status: 200, headers: noStoreHeaders() }
     );
