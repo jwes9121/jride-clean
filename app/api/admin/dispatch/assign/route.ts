@@ -1,81 +1,86 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
-function isWalletLockError(msg: string) {
-  const m = (msg || "").toUpperCase();
-  return m.includes("WALLET_LOCK:");
-}
+const ACTIVE_STATUSES = [
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "on_trip",
+];
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const supabase = createRouteHandlerClient({ cookies });
+
     const body = await req.json();
-    const bookingId: string | undefined = body.bookingId;
-    const pickupLat: number | null | undefined = body.pickupLat;
-    const pickupLng: number | null | undefined = body.pickupLng;
+    const bookingCode = body?.bookingCode;
+    const driverId = body?.driverId;
 
-    if (!bookingId) {
-      return NextResponse.json({ error: "Missing bookingId" }, { status: 400 });
+    if (!bookingCode || !driverId) {
+      return NextResponse.json({ ok: false, error: "Missing params" }, { status: 400 });
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // 🔒 CHECK: driver already has active booking
+    const { data: existing, error: existingError } = await supabase
+      .from("bookings")
+      .select("id, booking_code, status")
+      .eq("driver_id", driverId)
+      .in("status", ACTIVE_STATUSES)
+      .limit(1);
 
-    if (!supabaseUrl || !serviceKey) {
-      console.error("ASSIGN_ROUTE: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env.");
-      return NextResponse.json(
-        { error: "Server configuration error (Supabase env vars missing)." },
-        { status: 500 }
-      );
+    if (existingError) {
+      return NextResponse.json({ ok: false, error: existingError.message }, { status: 500 });
     }
 
-    const supabase = createClient(supabaseUrl, serviceKey);
-
-    let driverId: string | null = null;
-
-    // Try auto-assign only if we have coordinates
-    if (pickupLat != null && pickupLng != null) {
-      const { data, error: rpcError } = await supabase.rpc(
-        "select_next_available_driver",
-        { pickup_lat: pickupLat, pickup_lng: pickupLng }
-      );
-
-      if (rpcError) {
-        console.error("ASSIGN_ROUTE RPC ERROR:", rpcError);
-      } else {
-        driverId = (data as string | null) ?? null;
-      }
+    if (existing && existing.length > 0) {
+      return NextResponse.json({
+        ok: false,
+        error: "driver_busy",
+        active_booking: existing[0],
+      }, { status: 409 });
     }
 
-    // Update booking (DB trigger enforces wallet lock)
+    // 🔒 VALIDATE booking exists and is assignable
+    const { data: booking, error: bookingError } = await supabase
+      .from("bookings")
+      .select("id, status")
+      .eq("booking_code", bookingCode)
+      .single();
+
+    if (bookingError || !booking) {
+      return NextResponse.json({ ok: false, error: "booking_not_found" }, { status: 404 });
+    }
+
+    if (booking.status !== "pending") {
+      return NextResponse.json({
+        ok: false,
+        error: "invalid_booking_state",
+        current_status: booking.status,
+      }, { status: 409 });
+    }
+
+    // ✅ ASSIGN
     const { error: updateError } = await supabase
       .from("bookings")
       .update({
-        status: "assigned",
+        driver_id: driverId,
         assigned_driver_id: driverId,
+        status: "assigned",
+        assigned_at: new Date().toISOString(),
       })
-      .eq("id", bookingId);
+      .eq("booking_code", bookingCode);
 
     if (updateError) {
-      const msg = updateError.message || "Update failed";
-      console.error("ASSIGN_ROUTE UPDATE ERROR:", updateError);
-
-      // Wallet lock => return 409 so UI can show a clear message
-      if (isWalletLockError(msg)) {
-        return NextResponse.json(
-          { error: "wallet_locked", message: msg, driverId },
-          { status: 409 }
-        );
-      }
-
-      return NextResponse.json({ error: msg }, { status: 500 });
+      return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, driverId });
+    return NextResponse.json({ ok: true });
+
   } catch (err: any) {
-    console.error("ASSIGN_ROUTE FATAL ERROR:", err);
-    return NextResponse.json(
-      { error: err?.message ?? "Unexpected server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
