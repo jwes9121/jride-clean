@@ -78,11 +78,17 @@ async function resolvePassengerFromBearer(req: NextRequest) {
   };
 }
 
-function buildTripSummary(row: any) {
+function buildTripSummary(row: any, driverNameById: Record<string, string>) {
   const verifiedFare = num(row?.verified_fare);
   const proposedFare = num(row?.proposed_fare);
   const pickupDistanceFee = num(row?.pickup_distance_fee) ?? 0;
   const totalFare = (verifiedFare ?? proposedFare ?? 0) + pickupDistanceFee;
+
+  const assignedDriverId = text(row?.assigned_driver_id);
+  const resolvedDriverName =
+    assignedDriverId && driverNameById[assignedDriverId]
+      ? driverNameById[assignedDriverId]
+      : null;
 
   return {
     id: text(row?.id) || null,
@@ -91,8 +97,7 @@ function buildTripSummary(row: any) {
     town: text(row?.town) || null,
     pickup_label: text(row?.from_label) || null,
     dropoff_label: text(row?.to_label) || null,
-    assigned_driver_id: text(row?.assigned_driver_id) || null,
-    driver_name: null,
+    driver_name: resolvedDriverName,
     passenger_name: text(row?.passenger_name) || null,
     proposed_fare: proposedFare,
     verified_fare: verifiedFare,
@@ -162,6 +167,35 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const driverIds = Array.from(
+      new Set(
+        (tripRows ?? [])
+          .map((row: any) => text(row?.assigned_driver_id))
+          .filter((v): v is string => Boolean(v))
+      )
+    );
+
+    let driverNameById: Record<string, string> = {};
+
+    if (driverIds.length > 0) {
+      try {
+        const { data: driverRows } = await supabase
+          .from("driver_profiles")
+          .select("driver_id, full_name")
+          .in("driver_id", driverIds);
+
+        for (const row of driverRows ?? []) {
+          const id = text((row as any)?.driver_id);
+          const name = text((row as any)?.full_name);
+          if (id && name) {
+            driverNameById[id] = name;
+          }
+        }
+      } catch {
+        driverNameById = {};
+      }
+    }
+
     return NextResponse.json(
       {
         ok: true,
@@ -172,7 +206,9 @@ export async function GET(req: NextRequest) {
           email: text(profile?.email) || authRes.email || null,
           saved_address_count: savedAddressCount,
         },
-        recent_trips: (tripRows ?? []).map(buildTripSummary),
+        recent_trips: (tripRows ?? []).map((row: any) =>
+          buildTripSummary(row, driverNameById)
+        ),
       },
       { status: 200, headers: noStoreHeaders() }
     );
