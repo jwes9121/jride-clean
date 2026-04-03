@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
 function noStoreHeaders() {
@@ -41,7 +41,7 @@ function getSupabase() {
 }
 
 async function resolvePassengerFromBearer(req: NextRequest) {
-  const auth = text(req.headers.get("authorization"));
+  const auth = text(req.headers.authorization);
   if (!auth.toLowerCase().startsWith("bearer ")) {
     return {
       ok: false as const,
@@ -91,7 +91,8 @@ function buildTripSummary(row: any) {
     town: text(row?.town) || null,
     pickup_label: text(row?.from_label) || null,
     dropoff_label: text(row?.to_label) || null,
-    driver_name: text(row?.driver_name) || null,
+    assigned_driver_id: text(row?.assigned_driver_id) || null,
+    driver_name: null,
     passenger_name: text(row?.passenger_name) || null,
     proposed_fare: proposedFare,
     verified_fare: verifiedFare,
@@ -102,14 +103,11 @@ function buildTripSummary(row: any) {
   };
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest, res: NextResponse) {
   try {
     const authRes = await resolvePassengerFromBearer(req);
     if (!authRes.ok) {
-      return NextResponse.json(authRes, {
-        status: 401,
-        headers: noStoreHeaders(),
-      });
+      return res.status(401).setHeader("Cache-Control", "no-store").json(authRes);
     }
 
     const supabase = getSupabase();
@@ -144,45 +142,36 @@ export async function GET(req: NextRequest) {
     const { data: tripRows, error: tripErr } = await supabase
       .from("bookings")
       .select(
-        "id, booking_code, status, town, from_label, to_label, driver_name, passenger_name, proposed_fare, verified_fare, pickup_distance_fee, created_at, updated_at"
+        "id, booking_code, status, town, from_label, to_label, assigned_driver_id, passenger_name, proposed_fare, verified_fare, pickup_distance_fee, created_at, updated_at"
       )
       .eq("created_by_user_id", authRes.userId)
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (tripErr) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "TRIP_HISTORY_READ_FAILED",
-          message: tripErr.message,
-        },
-        { status: 500, headers: noStoreHeaders() }
-      );
+      return res.status(500).setHeader("Cache-Control", "no-store").json({
+        ok: false,
+        error: "TRIP_HISTORY_READ_FAILED",
+        message: tripErr.message,
+      });
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        profile: {
-          user_id: authRes.userId,
-          full_name: text(profile?.full_name) || null,
-          phone: text(profile?.phone) || authRes.phone || null,
-          email: text(profile?.email) || authRes.email || null,
-          saved_address_count: savedAddressCount,
-        },
-        recent_trips: (tripRows ?? []).map(buildTripSummary),
+    return res.status(200).setHeader("Cache-Control", "no-store").json({
+      ok: true,
+      profile: {
+        user_id: authRes.userId,
+        full_name: text(profile?.full_name) || null,
+        phone: text(profile?.phone) || authRes.phone || null,
+        email: text(profile?.email) || authRes.email || null,
+        saved_address_count: savedAddressCount,
       },
-      { status: 200, headers: noStoreHeaders() }
-    );
+      recent_trips: (tripRows ?? []).map(buildTripSummary),
+    });
   } catch (err: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "PASSENGER_PROFILE_ROUTE_FAILED",
-        message: String(err?.message ?? err),
-      },
-      { status: 500, headers: noStoreHeaders() }
-    );
+    return res.status(500).setHeader("Cache-Control", "no-store").json({
+      ok: false,
+      error: "PASSENGER_PROFILE_ROUTE_FAILED",
+      message: String(err?.message ?? err),
+    });
   }
 }
