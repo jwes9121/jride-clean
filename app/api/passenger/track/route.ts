@@ -112,8 +112,10 @@ export async function GET(req: NextRequest) {
     const authSupabase = createAnonSupabase();
     const serviceSupabase = createServiceSupabase();
 
-    const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
-    const user = userRes?.user ?? null;
+    const {
+      data: { user },
+      error: userErr,
+    } = await authSupabase.auth.getUser(accessToken);
 
     if (userErr || !user?.id) {
       return NextResponse.json(
@@ -149,16 +151,13 @@ export async function GET(req: NextRequest) {
     }
 
     const bookingOwnerId = s((booking as any).created_by_user_id);
-    if (!bookingOwnerId || bookingOwnerId !== user.id) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "NOT_BOOKING_OWNER",
-          message: "This booking does not belong to the authenticated passenger.",
-        },
-        { status: 403, headers: noStoreHeaders() }
-      );
-    }
+
+    // Unified read-tracking rule:
+    // keep token auth required, but do not hard-block tracking solely because
+    // created_by_user_id differs across web / Android / legacy session flows.
+    // This endpoint is read-only and keyed by booking_code.
+    const isOwner = !!bookingOwnerId && bookingOwnerId === user.id;
+    const accessMode = isOwner ? "owner" : "tracking_fallback";
 
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
@@ -242,6 +241,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
+        access_mode: accessMode,
         id: booking.id,
         booking_code: booking.booking_code,
         status: statusOf((booking as any).status),
