@@ -125,9 +125,9 @@ export async function GET(req: NextRequest) {
 
     try {
       const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone, email")
-        .eq("id", authRes.userId)
+        .from("passenger_profiles")
+        .select("user_id, full_name, phone, email")
+        .eq("user_id", authRes.userId)
         .limit(1);
 
       profile = data?.[0] ?? null;
