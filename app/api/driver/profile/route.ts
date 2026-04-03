@@ -1,5 +1,13 @@
-﻿import { NextRequest, NextResponse } from "@vercel/node";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
+function noStoreHeaders() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
+}
 
 function text(v: unknown): string {
   return String(v ?? "").trim();
@@ -35,7 +43,7 @@ function getSupabase() {
 async function resolveDriverIdentity(req: NextRequest) {
   const supabase = getSupabase();
 
-  const auth = text(req.headers.authorization);
+  const auth = text(req.headers.get("authorization"));
   if (auth.toLowerCase().startsWith("bearer ")) {
     const token = auth.slice(7).trim();
     if (token) {
@@ -77,11 +85,11 @@ async function resolveDriverIdentity(req: NextRequest) {
     }
   }
 
-  const secret = text(req.headers["x-jride-driver-secret"]);
+  const secret = text(req.headers.get("x-jride-driver-secret"));
   const expectedSecret = text(
     process.env.DRIVER_PING_SECRET || process.env.NEXT_PUBLIC_DRIVER_PING_SECRET
   );
-  const driverId = text((req.query?.driver_id as string) || "");
+  const driverId = text(req.nextUrl.searchParams.get("driver_id"));
 
   if (driverId && secret && expectedSecret && secret === expectedSecret) {
     return {
@@ -123,11 +131,14 @@ function buildTripSummary(row: any) {
   };
 }
 
-export async function GET(req: NextRequest, res: NextResponse) {
+export async function GET(req: NextRequest) {
   try {
     const authRes = await resolveDriverIdentity(req);
     if (!authRes.ok) {
-      return res.status(401).setHeader("Cache-Control", "no-store").json(authRes);
+      return NextResponse.json(authRes, {
+        status: 401,
+        headers: noStoreHeaders(),
+      });
     }
 
     const supabase = getSupabase();
@@ -155,7 +166,7 @@ export async function GET(req: NextRequest, res: NextResponse) {
         .eq("driver_id", authRes.driverId)
         .limit(1);
 
-        wallet = data?.[0] ?? null;
+      wallet = data?.[0] ?? null;
     } catch {
       wallet = null;
     }
@@ -170,33 +181,42 @@ export async function GET(req: NextRequest, res: NextResponse) {
       .limit(10);
 
     if (tripErr) {
-      return res.status(500).setHeader("Cache-Control", "no-store").json({
-        ok: false,
-        error: "DRIVER_TRIP_HISTORY_READ_FAILED",
-        message: tripErr.message,
-      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_TRIP_HISTORY_READ_FAILED",
+          message: tripErr.message,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
     }
 
-    return res.status(200).setHeader("Cache-Control", "no-store").json({
-      ok: true,
-      profile: {
-        driver_id: authRes.driverId,
-        full_name: text(profileRow?.full_name) || null,
-        town: text(profileRow?.municipality) || null,
-        phone: text(profileRow?.phone) || null,
-        email: text(profileRow?.email) || null,
-        wallet_balance: num(wallet?.balance) ?? 0,
-        wallet_min_required: num(wallet?.min_required_balance) ?? 0,
-        wallet_locked: Boolean(wallet?.locked),
-        wallet_status: text(wallet?.status) || null,
+    return NextResponse.json(
+      {
+        ok: true,
+        profile: {
+          driver_id: authRes.driverId,
+          full_name: text(profileRow?.full_name) || null,
+          town: text(profileRow?.municipality) || null,
+          phone: text(profileRow?.phone) || null,
+          email: text(profileRow?.email) || null,
+          wallet_balance: num(wallet?.balance) ?? 0,
+          wallet_min_required: num(wallet?.min_required_balance) ?? 0,
+          wallet_locked: Boolean(wallet?.locked),
+          wallet_status: text(wallet?.status) || null,
+        },
+        recent_trips: (tripRows ?? []).map(buildTripSummary),
       },
-      recent_trips: (tripRows ?? []).map(buildTripSummary),
-    });
+      { status: 200, headers: noStoreHeaders() }
+    );
   } catch (err: any) {
-    return res.status(500).setHeader("Cache-Control", "no-store").json({
-      ok: false,
-      error: "DRIVER_PROFILE_ROUTE_FAILED",
-      message: String(err?.message ?? err),
-    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "DRIVER_PROFILE_ROUTE_FAILED",
+        message: String(err?.message ?? err),
+      },
+      { status: 500, headers: noStoreHeaders() }
+    );
   }
 }
