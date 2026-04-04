@@ -277,9 +277,11 @@ export async function GET(req: NextRequest) {
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
     const pickupDistanceFee = n((booking as any).pickup_distance_fee);
-    const totalFare =
-      n((booking as any).total_fare) ??
-      ((proposedFare ?? verifiedFare ?? 0) + (pickupDistanceFee ?? 0));
+    const storedTotalFare = n((booking as any).total_fare);
+    const fareReady = proposedFare != null || verifiedFare != null;
+    const totalFare = fareReady
+      ? storedTotalFare ?? ((proposedFare ?? verifiedFare ?? 0) + (pickupDistanceFee ?? 0))
+      : null;
 
     return NextResponse.json(
       {
@@ -316,9 +318,9 @@ export async function GET(req: NextRequest) {
         distance_fare: n((booking as any).distance_fare),
         total_fare: totalFare,
 
-        fare_ready: proposedFare != null || verifiedFare != null,
+        fare_ready: fareReady,
         pickup_metrics_ready: driverToPickupKm != null,
-        waiting_for_driver_proposal: proposedFare == null && verifiedFare == null,
+        waiting_for_driver_proposal: !fareReady,
 
         passenger_fare_response: s((booking as any).passenger_fare_response),
         created_by_user_id: bookingOwnerId,
