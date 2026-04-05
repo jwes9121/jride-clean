@@ -7,6 +7,7 @@ type DriverRow = {
   updated_at: string | null;
   lat: number | null;
   lng: number | null;
+  town?: string | null;
 };
 
 type BookingRow = {
@@ -14,8 +15,10 @@ type BookingRow = {
   booking_code: string | null;
   pickup_lat: number | null;
   pickup_lng: number | null;
+  town?: string | null;
   status?: string | null;
   driver_id?: string | null;
+  is_emergency?: boolean | null;
 };
 
 const ASSIGN_FRESHNESS_SECONDS = 10;
@@ -23,6 +26,16 @@ const SCAN_LIMIT = 5;
 
 function norm(v: any): string {
   return String(v ?? "").trim().toLowerCase();
+}
+
+function text(v: any): string {
+  return String(v ?? "").trim();
+}
+
+function num(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function isoNow(): string {
@@ -50,7 +63,57 @@ function buildBaseDebug(extra?: Record<string, any>) {
   };
 }
 
-function compareDrivers(a: DriverRow, b: DriverRow): number {
+function getNearbyTowns(town: string): string[] {
+  const map: Record<string, string[]> = {
+    Lagawe: ["Lamut", "Hingyon"],
+    Lamut: ["Lagawe", "Kiangan"],
+    Hingyon: ["Lagawe"],
+    Banaue: ["Hingyon"],
+  };
+  return map[town] || [];
+}
+
+function allowedTownsForBooking(bookingTown: string, emergencyMode: boolean): string[] {
+  const town = text(bookingTown);
+  if (!town) return [];
+  if (!emergencyMode) return [town];
+  return [town, ...getNearbyTowns(town)];
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const r = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
+}
+
+function compareDrivers(a: DriverRow, b: DriverRow, pickupLat: number | null, pickupLng: number | null): number {
+  const aLat = num(a.lat);
+  const aLng = num(a.lng);
+  const bLat = num(b.lat);
+  const bLng = num(b.lng);
+
+  const aHasCoords = aLat != null && aLng != null && pickupLat != null && pickupLng != null;
+  const bHasCoords = bLat != null && bLng != null && pickupLat != null && pickupLng != null;
+
+  if (aHasCoords && bHasCoords) {
+    const aKm = haversineKm(aLat as number, aLng as number, pickupLat as number, pickupLng as number);
+    const bKm = haversineKm(bLat as number, bLng as number, pickupLat as number, pickupLng as number);
+    if (aKm !== bKm) return aKm - bKm;
+  } else if (aHasCoords && !bHasCoords) {
+    return -1;
+  } else if (!aHasCoords && bHasCoords) {
+    return 1;
+  }
+
   const aMs = a.updated_at ? new Date(a.updated_at).getTime() : 0;
   const bMs = b.updated_at ? new Date(b.updated_at).getTime() : 0;
 
@@ -63,14 +126,20 @@ type MatchDebug = {
   booking_code: string | null;
   booking_status_seen: string | null;
   booking_driver_id_seen: string | null;
+  booking_town_seen: string | null;
+  emergency_mode: boolean;
+  allowed_towns: string[];
   scanned_driver_count: number;
   rejected_wrong_status_count: number;
   rejected_missing_updated_at_count: number;
   rejected_invalid_updated_at_count: number;
   rejected_stale_count: number;
   rejected_excluded_count: number;
+  rejected_wrong_town_count: number;
   eligible_count: number;
   chosen_driver_id: string | null;
+  chosen_driver_town: string | null;
+  chosen_driver_distance_km: number | null;
   freshness_seconds_threshold: number;
   excluded_driver_ids: string[];
 };
@@ -88,20 +157,31 @@ async function matchSingle(
   debug: MatchDebug;
 }> {
   const excluded = (excludeDriverIds || []).map((x) => String(x || "").trim()).filter(Boolean);
+  const bookingTown = text(booking?.town);
+  const emergencyMode = !!booking?.is_emergency;
+  const allowedTowns = allowedTownsForBooking(bookingTown, emergencyMode);
+  const pickupLat = num(booking?.pickup_lat);
+  const pickupLng = num(booking?.pickup_lng);
 
   const debug: MatchDebug = {
     booking_id: booking?.id ?? null,
     booking_code: booking?.booking_code ?? null,
     booking_status_seen: booking?.status ? String(booking.status) : null,
     booking_driver_id_seen: booking?.driver_id ? String(booking.driver_id) : null,
+    booking_town_seen: bookingTown || null,
+    emergency_mode: emergencyMode,
+    allowed_towns: allowedTowns,
     scanned_driver_count: 0,
     rejected_wrong_status_count: 0,
     rejected_missing_updated_at_count: 0,
     rejected_invalid_updated_at_count: 0,
     rejected_stale_count: 0,
     rejected_excluded_count: 0,
+    rejected_wrong_town_count: 0,
     eligible_count: 0,
     chosen_driver_id: null,
+    chosen_driver_town: null,
+    chosen_driver_distance_km: null,
     freshness_seconds_threshold: ASSIGN_FRESHNESS_SECONDS,
     excluded_driver_ids: excluded,
   };
@@ -133,11 +213,29 @@ async function matchSingle(
     };
   }
 
+  if (!bookingTown) {
+    return {
+      assigned: false,
+      reason: "BOOKING_TOWN_MISSING",
+      decision: "blocked",
+      debug,
+    };
+  }
+
+  if (allowedTowns.length === 0) {
+    return {
+      assigned: false,
+      reason: "NO_ALLOWED_TOWNS",
+      decision: "blocked",
+      debug,
+    };
+  }
+
   const nowMs = Date.now();
 
   const { data: drivers, error: driversError } = await supabase
     .from("driver_locations")
-    .select("driver_id, status, updated_at, lat, lng");
+    .select("driver_id, status, updated_at, lat, lng, town");
 
   if (driversError) {
     return {
@@ -151,10 +249,12 @@ async function matchSingle(
   const allDrivers = (drivers || []) as DriverRow[];
   debug.scanned_driver_count = allDrivers.length;
 
+  const allowedTownSet = new Set(allowedTowns.map((x) => text(x).toLowerCase()));
   const eligible: DriverRow[] = [];
 
   for (const d of allDrivers) {
     const st = norm(d.status);
+    const driverTown = text(d.town).toLowerCase();
 
     if (excluded.includes(String(d.driver_id || "").trim())) {
       debug.rejected_excluded_count++;
@@ -163,6 +263,11 @@ async function matchSingle(
 
     if (st !== "online") {
       debug.rejected_wrong_status_count++;
+      continue;
+    }
+
+    if (!driverTown || !allowedTownSet.has(driverTown)) {
+      debug.rejected_wrong_town_count++;
       continue;
     }
 
@@ -186,13 +291,13 @@ async function matchSingle(
     eligible.push(d);
   }
 
-  eligible.sort(compareDrivers);
+  eligible.sort((a, b) => compareDrivers(a, b, pickupLat, pickupLng));
   debug.eligible_count = eligible.length;
 
   if (eligible.length === 0) {
     return {
       assigned: false,
-      reason: "NO_ELIGIBLE_DRIVERS",
+      reason: emergencyMode ? "NO_ELIGIBLE_DRIVERS_IN_EMERGENCY_TOWNS" : "NO_ELIGIBLE_LOCAL_DRIVERS",
       decision: "skipped",
       debug,
     };
@@ -200,6 +305,15 @@ async function matchSingle(
 
   const chosen = eligible[0];
   debug.chosen_driver_id = chosen.driver_id;
+  debug.chosen_driver_town = text(chosen.town) || null;
+
+  const chosenLat = num(chosen.lat);
+  const chosenLng = num(chosen.lng);
+  if (chosenLat != null && chosenLng != null && pickupLat != null && pickupLng != null) {
+    debug.chosen_driver_distance_km = Number(
+      haversineKm(chosenLat, chosenLng, pickupLat, pickupLng).toFixed(2)
+    );
+  }
 
   const nowIso = isoNow();
 
@@ -249,7 +363,7 @@ export async function POST(req: Request) {
     if (mode === "scan_requested") {
       const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, status, driver_id")
+        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency")
         .eq("status", "requested")
         .is("driver_id", null)
         .order("created_at", { ascending: true })
@@ -324,6 +438,7 @@ export async function POST(req: Request) {
         debug: buildBaseDebug({
           booking_status_target: "requested",
           booking_driver_target: "driver_id is null",
+          booking_town_rule: "same town only unless booking.is_emergency = true",
         }),
       });
     }
@@ -355,7 +470,7 @@ export async function POST(req: Request) {
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, status, driver_id")
+      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency")
       .eq("id", bookingId)
       .single();
 
