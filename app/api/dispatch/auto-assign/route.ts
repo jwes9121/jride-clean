@@ -95,6 +95,11 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return r * c;
 }
 
+function isAssignableSearchingState(status: any): boolean {
+  const s = norm(status);
+  return s === "requested" || s === "searching";
+}
+
 function compareDrivers(a: DriverRow, b: DriverRow, pickupLat: number | null, pickupLng: number | null): number {
   const aLat = num(a.lat);
   const aLng = num(a.lng);
@@ -195,10 +200,10 @@ async function matchSingle(
     };
   }
 
-  if (norm(booking.status) !== "requested") {
+  if (!isAssignableSearchingState(booking.status)) {
     return {
       assigned: false,
-      reason: "BOOKING_NOT_REQUESTED",
+      reason: "BOOKING_NOT_ASSIGNABLE",
       decision: "blocked",
       debug,
     };
@@ -327,7 +332,7 @@ async function matchSingle(
       updated_at: nowIso,
     })
     .eq("id", booking.id)
-    .eq("status", "requested")
+    .in("status", ["requested", "searching"])
     .is("driver_id", null);
 
   if (updateError) {
@@ -364,7 +369,7 @@ export async function POST(req: Request) {
       const { data: bookings, error } = await supabase
         .from("bookings")
         .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency")
-        .eq("status", "requested")
+        .in("status", ["requested", "searching"])
         .is("driver_id", null)
         .order("created_at", { ascending: true })
         .limit(SCAN_LIMIT);
@@ -436,7 +441,7 @@ export async function POST(req: Request) {
         exclude_driver_ids: excludeDriverIds,
         results,
         debug: buildBaseDebug({
-          booking_status_target: "requested",
+          booking_status_target: "requested or searching",
           booking_driver_target: "driver_id is null",
           booking_town_rule: "same town only unless booking.is_emergency = true",
         }),
