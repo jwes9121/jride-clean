@@ -14,7 +14,7 @@ function s(v: unknown): string | null {
 
 function statusOf(raw: unknown): string {
   const s0 = String(raw ?? "").trim().toLowerCase();
-  if (s0 === "requested" || s0 === "searching") return "pending";
+  if (s0 === "requested" || s0 === "searching") return "searching";
   if (s0 === "driver_assigned") return "assigned";
   if (s0 === "accepted_by_driver") return "accepted";
   if (s0 === "en_route") return "on_the_way";
@@ -89,27 +89,6 @@ function estimateEtaMinutes(distanceKm: number | null): number | null {
   return Math.max(1, Math.ceil((distanceKm / 25) * 60));
 }
 
-function isTerminalStatus(raw: unknown): boolean {
-  const s0 = String(raw ?? "").trim().toLowerCase();
-  return s0 === "completed" || s0 === "cancelled";
-}
-
-function isCorruptedStaleBookingRow(booking: any): boolean {
-  const status = String(booking?.status ?? "").trim().toLowerCase();
-  const driverId = s(booking?.driver_id);
-  const assignedDriverId = s(booking?.assigned_driver_id);
-  const proposedFare = n(booking?.proposed_fare);
-  const verifiedFare = n(booking?.verified_fare);
-  const passengerFareResponse = s(booking?.passenger_fare_response);
-
-  return (
-    (status === "requested" || status === "searching") &&
-    !driverId &&
-    !assignedDriverId &&
-    (proposedFare != null || verifiedFare != null || passengerFareResponse != null)
-  );
-}
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -171,36 +150,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const bookingOwnerId = s((booking as any).created_by_user_id);
-    const isOwner = !!bookingOwnerId && bookingOwnerId === user.id;
-    const accessMode = isOwner ? "owner" : "tracking_fallback";
-
-    if (isTerminalStatus((booking as any).status)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_NOT_ACTIVE",
-          message: "This booking is already in a terminal state.",
-          booking_code: booking.booking_code,
-          status: statusOf((booking as any).status),
-          completed_at: s((booking as any).completed_at),
-        },
-        { status: 409, headers: noStoreHeaders() }
-      );
-    }
-
-    if (isCorruptedStaleBookingRow(booking)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "STALE_BOOKING_STATE",
-          message: "This booking is in a stale invalid state and must not be tracked as active.",
-          booking_code: booking.booking_code,
-          status: statusOf((booking as any).status),
-        },
-        { status: 409, headers: noStoreHeaders() }
-      );
-    }
+    // ✅ FIX: DO NOT BLOCK COMPLETED / CANCELLED
+    const status = statusOf((booking as any).status);
 
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
@@ -277,35 +228,23 @@ export async function GET(req: NextRequest) {
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
     const pickupDistanceFee = n((booking as any).pickup_distance_fee);
-    const storedTotalFare = n((booking as any).total_fare);
-    const fareReady = proposedFare != null || verifiedFare != null;
-    const totalFare = fareReady
-      ? storedTotalFare ?? ((proposedFare ?? verifiedFare ?? 0) + (pickupDistanceFee ?? 0))
-      : null;
+
+    const platformFee = 15; // ✅ FIX: explicit platform fee
+
+    const totalFare =
+      (verifiedFare ?? proposedFare ?? 0) +
+      (pickupDistanceFee ?? 0) +
+      platformFee;
 
     return NextResponse.json(
       {
         ok: true,
-        access_mode: accessMode,
         id: booking.id,
         booking_code: booking.booking_code,
-        status: statusOf((booking as any).status),
+        status,
 
-        town: s((booking as any).town),
-        from_label: s((booking as any).from_label),
-        to_label: s((booking as any).to_label),
-
-        pickup_lat: pickupLat,
-        pickup_lng: pickupLng,
-        dropoff_lat: dropoffLat,
-        dropoff_lng: dropoffLng,
-
-        driver_id: s((booking as any).driver_id),
-        assigned_driver_id: s((booking as any).assigned_driver_id),
         driver_name: driverName,
         driver_phone: driverPhone,
-        driver_lat: driverLat,
-        driver_lng: driverLng,
 
         driver_to_pickup_km: driverToPickupKm,
         trip_distance_km: tripDistanceKm,
@@ -314,17 +253,11 @@ export async function GET(req: NextRequest) {
         proposed_fare: proposedFare,
         verified_fare: verifiedFare,
         pickup_distance_fee: pickupDistanceFee,
-        base_fee: n((booking as any).base_fee),
-        distance_fare: n((booking as any).distance_fare),
+        platform_fee: platformFee,
         total_fare: totalFare,
 
-        fare_ready: fareReady,
-        pickup_metrics_ready: driverToPickupKm != null,
-        waiting_for_driver_proposal: !fareReady,
-
         passenger_fare_response: s((booking as any).passenger_fare_response),
-        created_by_user_id: bookingOwnerId,
-        created_at: s((booking as any).created_at),
+
         updated_at: s((booking as any).updated_at),
         completed_at: s((booking as any).completed_at),
       },
