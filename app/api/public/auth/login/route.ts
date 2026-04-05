@@ -33,8 +33,9 @@ function bad(msg: string, status = 400) {
   );
 }
 
-function cleanDeviceId(raw: unknown): string {
-  return String(raw ?? "").trim();
+function cleanDeviceId(raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  return v || null;
 }
 
 function cleanPlatform(raw: unknown): string {
@@ -159,10 +160,6 @@ export async function POST(req: NextRequest) {
       return bad("Password must be at least 6 characters.");
     }
 
-    if (!deviceId) {
-      return bad("Missing device_id.");
-    }
-
     let email = "";
     let phone = "";
 
@@ -199,33 +196,41 @@ export async function POST(req: NextRequest) {
 
     const rpcSupabase = createAnonSupabase();
 
-    const claimRes = await rpcSupabase.rpc("jride_passenger_claim_device_session", {
-      p_user_id: user.id,
-      p_device_id: deviceId,
-      p_platform: platform,
-      p_app_version: appVersion,
-      p_device_label: deviceLabel,
-    });
+    let claim: any = null;
+    let promoEnsure: any = null;
 
-    if (claimRes.error) {
-      return bad("Device session claim failed: " + claimRes.error.message, 500);
-    }
+    if (deviceId) {
+      const claimRes = await rpcSupabase.rpc("jride_passenger_claim_device_session", {
+        p_user_id: user.id,
+        p_device_id: deviceId,
+        p_platform: platform,
+        p_app_version: appVersion,
+        p_device_label: deviceLabel,
+      });
 
-    const claim = claimRes.data as any;
-    if (!claim?.ok) {
-      return bad(String(claim?.error || "Device session claim failed."), 403);
+      if (claimRes.error) {
+        return bad("Device session claim failed: " + claimRes.error.message, 500);
+      }
+
+      claim = claimRes.data as any;
+
+      if (!claim?.ok) {
+        return bad(String(claim?.error || "Device session claim failed."), 403);
+      }
     }
 
     const verified = await computeVerified(rpcSupabase, user);
 
-    const promoEnsureRes = await rpcSupabase.rpc("jride_promo_ensure_android_credit", {
-      p_user_id: user.id,
-      p_device_id: deviceId,
-      p_is_verified: verified,
-      p_program_code: "ANDROID_FIRST_RIDE_40",
-    });
+    if (deviceId) {
+      const promoEnsureRes = await rpcSupabase.rpc("jride_promo_ensure_android_credit", {
+        p_user_id: user.id,
+        p_device_id: deviceId,
+        p_is_verified: verified,
+        p_program_code: "ANDROID_FIRST_RIDE_40",
+      });
 
-    const promoEnsure = !promoEnsureRes.error ? (promoEnsureRes.data as any) : null;
+      promoEnsure = !promoEnsureRes.error ? (promoEnsureRes.data as any) : null;
+    }
 
     const meta = (user.user_metadata ?? {}) as any;
     const fullName =
@@ -245,13 +250,15 @@ export async function POST(req: NextRequest) {
         name: fullName,
         access_token: accessToken,
         device_id: deviceId,
-        device_session: {
-          action: claim?.action ?? null,
-          session_id: claim?.session_id ?? null,
-          auth_version: claim?.auth_version ?? null,
-        },
+        device_session: deviceId
+          ? {
+              action: claim?.action ?? null,
+              session_id: claim?.session_id ?? null,
+              auth_version: claim?.auth_version ?? null,
+            }
+          : null,
         verified,
-        promo: promoEnsure && promoEnsure.ok ? promoEnsure : null,
+        promo: deviceId && promoEnsure && promoEnsure.ok ? promoEnsure : null,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
