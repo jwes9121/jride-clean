@@ -1,274 +1,94 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-type Body = {
-  bookingId?: string | null;
-  bookingCode?: string | null;
-  driverId?: string | null;
-  override?: boolean | null;
-  source?: string | null;
-};
+function getNearbyTowns(town: string): string[] {
+  const map: Record<string, string[]> = {
+    Lagawe: ["Lamut", "Hingyon"],
+    Lamut: ["Lagawe", "Kiangan"],
+    Hingyon: ["Lagawe"],
+    Banaue: ["Hingyon"],
+  };
 
-function normalizeStatus(s: unknown): string {
-  return String(s ?? "").trim().toLowerCase();
+  return map[town] || [];
 }
 
-function isTerminalStatus(s: string): boolean {
-  return s === "on_trip" || s === "completed" || s === "cancelled";
-}
-
-function isPostAcceptStatus(s: string): boolean {
-  return (
-    s === "accepted" ||
-    s === "fare_proposed" ||
-    s === "ready" ||
-    s === "on_the_way" ||
-    s === "arrived"
-  );
-}
-
-function nextAssignableStatus(current: string): string {
-  const s = normalizeStatus(current);
-  if (!s) return "assigned";
-  if (
-    s === "new" ||
-    s === "pending" ||
-    s === "searching" ||
-    s === "unassigned" ||
-    s === "queued" ||
-    s === "assigning"
-  ) {
-    return "assigned";
-  }
-  return s;
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = supabaseAdmin();
-    const body = (await req.json().catch(() => ({}))) as Body;
+    const body = await req.json();
+    const { booking_id, emergency_mode } = body;
 
-    const bookingId = String(body.bookingId ?? "").trim();
-    const bookingCode = String(body.bookingCode ?? "").trim();
-    const driverId = String(body.driverId ?? "").trim();
-    const override = body.override === true;
-    const source = String(body.source ?? (override ? "override" : "unknown")).trim();
-
-    if (!driverId) {
-      return NextResponse.json({ error: "MISSING_DRIVER_ID" }, { status: 400 });
-    }
-    if (!bookingId && !bookingCode) {
-      return NextResponse.json({ error: "MISSING_BOOKING_IDENTIFIER" }, { status: 400 });
+    if (!booking_id) {
+      return NextResponse.json({ ok: false, error: "missing_booking_id" }, { status: 400 });
     }
 
-    let readQ = supabase
+    const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at")
-      .limit(1);
+      .select("*")
+      .eq("id", booking_id)
+      .single();
 
-    if (bookingId) readQ = readQ.eq("id", bookingId);
-    else readQ = readQ.eq("booking_code", bookingCode);
-
-    const { data: curRows, error: curErr } = await readQ;
-    if (curErr) {
-      console.error("DISPATCH_ASSIGN_READ_ERROR", curErr);
-      return NextResponse.json(
-        { error: "DISPATCH_ASSIGN_READ_ERROR", message: curErr.message },
-        { status: 500 }
-      );
+    if (bookingError || !booking) {
+      return NextResponse.json({ ok: false, error: "booking_not_found" }, { status: 404 });
     }
 
-    const cur = (curRows ?? [])[0] as any;
-    const currentStatus = normalizeStatus(cur?.status);
-    const fromDriverId = String(cur?.assigned_driver_id ?? cur?.driver_id ?? "").trim();
-    const resolvedBookingId = String(cur?.id ?? "").trim();
-    const resolvedBookingCode = String(cur?.booking_code ?? bookingCode ?? "").trim();
+    let townsToSearch: string[] = [];
 
-    if (!resolvedBookingId) {
-      return NextResponse.json({ error: "BOOKING_NOT_FOUND" }, { status: 404 });
+    if (!emergency_mode) {
+      townsToSearch = [booking.town];
+    } else {
+      const nearby = getNearbyTowns(booking.town);
+      townsToSearch = [booking.town, ...nearby];
     }
 
-    
-    // ===== DRIVER ELIGIBILITY GUARD (LIVE PRESENCE) =====
-    try {
-      const { data: locRows, error: locErr } = await supabase
-        .from("driver_locations")
-        .select("driver_id, status, updated_at")
-        .eq("driver_id", driverId)
-        .order("updated_at", { ascending: false })
-        .limit(1);
+    const { data: drivers, error: driverError } = await supabase
+      .from("driver_locations")
+      .select("driver_id, lat, lng, town, updated_at")
+      .in("town", townsToSearch)
+      .eq("status", "online");
 
-      if (locErr) {
-        console.error("DISPATCH_ASSIGN_DRIVER_LOCATION_READ_ERROR", locErr);
-        return NextResponse.json(
-          { error: "DISPATCH_ASSIGN_DRIVER_LOCATION_READ_ERROR", message: locErr.message },
-          { status: 500 }
-        );
-      }
-
-      const loc = (locRows ?? [])[0] as any;
-
-      if (!loc) {
-        return NextResponse.json(
-          { error: "DRIVER_LOCATION_NOT_FOUND", driverId },
-          { status: 409 }
-        );
-      }
-
-      const updatedAtMs = new Date(loc.updated_at ?? 0).getTime();
-      const ageSeconds = Number.isFinite(updatedAtMs)
-        ? Math.floor((Date.now() - updatedAtMs) / 1000)
-        : 999999;
-
-      const STALE_THRESHOLD_SEC = 60;
-      const isStale = ageSeconds > STALE_THRESHOLD_SEC;
-
-      const rawStatus = String(loc.status ?? "").trim().toLowerCase();
-      const effectiveStatus = isStale ? "offline" : rawStatus;
-
-      const assignEligible =
-        !isStale &&
-        (
-          effectiveStatus === "online" ||
-          effectiveStatus === "available" ||
-          effectiveStatus === "idle" ||
-          effectiveStatus === "waiting"
-        );
-
-      if (!assignEligible) {
-        return NextResponse.json(
-          {
-            error: "DRIVER_NOT_ELIGIBLE",
-            driverId,
-            effectiveStatus,
-            isStale,
-            ageSeconds,
-          },
-          { status: 409 }
-        );
-      }
-    } catch (e: any) {
-      console.error("DISPATCH_ASSIGN_DRIVER_LOCATION_THROWN", e);
-      return NextResponse.json(
-        {
-          error: "DISPATCH_ASSIGN_DRIVER_LOCATION_THROWN",
-          message: e?.message ?? "Unexpected driver eligibility error",
-        },
-        { status: 500 }
-      );
-    }
-if (driverId === fromDriverId) {
-      return NextResponse.json(
-        {
-          ok: true,
-          bookingId: resolvedBookingId,
-          bookingCode: resolvedBookingCode,
-          fromDriverId: fromDriverId || null,
-          toDriverId: driverId,
-          status: currentStatus || null,
-          assignedAt: cur?.assigned_at ?? null,
-          noChange: true,
-        },
-        { status: 200 }
-      );
+    if (driverError) {
+      return NextResponse.json({ ok: false, error: "driver_query_failed" }, { status: 500 });
     }
 
-    if (isTerminalStatus(currentStatus)) {
-      return NextResponse.json(
-        {
-          error: "ASSIGN_LOCKED",
-          message: `Assignment locked when status='${currentStatus}'.`,
-        },
-        { status: 409 }
-      );
-    }
-
-    if (isPostAcceptStatus(currentStatus) && !override) {
-      return NextResponse.json(
-        {
-          error: "ASSIGN_REQUIRES_OVERRIDE",
-          message: `Reassignment after accept requires override when status='${currentStatus}'.`,
-        },
-        { status: 409 }
-      );
-    }
-
-    const nowIso = new Date().toISOString();
-    const nextStatus = override ? currentStatus || "assigned" : nextAssignableStatus(currentStatus);
-
-    const updatePayload: Record<string, any> = {
-      driver_id: driverId,
-      assigned_driver_id: driverId,
-      assigned_at: nowIso,
-      updated_at: nowIso,
-    };
-
-    if (nextStatus) updatePayload.status = nextStatus;
-
-    const { data: updRows, error: updErr } = await supabase
-      .from("bookings")
-      .update(updatePayload)
-      .eq("id", resolvedBookingId)
-      .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at")
-      .limit(1);
-
-    if (updErr) {
-      console.error("DISPATCH_ASSIGN_DB_ERROR", updErr);
-      return NextResponse.json(
-        { error: "DISPATCH_ASSIGN_DB_ERROR", message: updErr.message },
-        { status: 500 }
-      );
-    }
-
-    const upd = (updRows ?? [])[0] as any;
-    if (!upd?.id) {
-      return NextResponse.json(
-        { error: "ASSIGN_NO_ROWS", message: "No rows updated (identifier mismatch)." },
-        { status: 409 }
-      );
-    }
-
-    try {
-      await supabase.from("booking_assignment_log").insert({
-        booking_id: resolvedBookingId || null,
-        booking_code: resolvedBookingCode || null,
-        from_driver_id: fromDriverId || null,
-        to_driver_id: driverId,
-        source,
-        actor: "admin",
-        note: override ? `Override used from status='${currentStatus || "unknown"}'` : null,
+    if (!drivers || drivers.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        reason: emergency_mode ? "no_drivers_even_in_emergency" : "no_local_drivers",
+        town: booking.town,
       });
-    } catch (e) {
-      console.warn("ASSIGN_LOG_INSERT_FAILED", e);
     }
 
-    try {
-      const { error: syncErr } = await supabase.rpc("sync_drivers_from_bookings");
-      if (syncErr) console.warn("SYNC_DRIVERS_FROM_BOOKINGS_FAILED", syncErr);
-    } catch (e) {
-      console.warn("SYNC_DRIVERS_FROM_BOOKINGS_THROWN", e);
+    const selectedDriver = drivers[0];
+    const nowIso = new Date().toISOString();
+
+    const { error: assignError } = await supabase
+      .from("bookings")
+      .update({
+        driver_id: selectedDriver.driver_id,
+        assigned_driver_id: selectedDriver.driver_id,
+        status: "assigned",
+        assigned_at: nowIso,
+        is_emergency: !!emergency_mode,
+        updated_at: nowIso,
+      })
+      .eq("id", booking.id);
+
+    if (assignError) {
+      return NextResponse.json({ ok: false, error: "assignment_failed" }, { status: 500 });
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        bookingId: resolvedBookingId,
-        bookingCode: resolvedBookingCode,
-        fromDriverId: fromDriverId || null,
-        toDriverId: driverId,
-        status: String(upd.status ?? nextStatus ?? currentStatus ?? "assigned"),
-        assignedAt: upd?.assigned_at ?? nowIso,
-        override,
-      },
-      { status: 200 }
-    );
-  } catch (err: any) {
-    console.error("DISPATCH_ASSIGN_UNEXPECTED", err);
-    return NextResponse.json(
-      { error: "DISPATCH_ASSIGN_UNEXPECTED", message: err?.message ?? "Unexpected error" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      ok: true,
+      driver_id: selectedDriver.driver_id,
+      emergency_mode: !!emergency_mode,
+      towns_considered: townsToSearch,
+    });
+  } catch {
+    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
   }
 }
