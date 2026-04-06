@@ -150,9 +150,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ✅ FIX: DO NOT BLOCK COMPLETED / CANCELLED
     const status = statusOf((booking as any).status);
-
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
     let driverName: string | null =
@@ -161,7 +159,6 @@ export async function GET(req: NextRequest) {
       null;
 
     let driverPhone: string | null = s((booking as any).driver_phone) || null;
-
     let driverLat: number | null = null;
     let driverLng: number | null = null;
 
@@ -228,41 +225,54 @@ export async function GET(req: NextRequest) {
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
     const pickupDistanceFee = n((booking as any).pickup_distance_fee);
-
-    const platformFee = 15; // ✅ FIX: explicit platform fee
-
+    const platformFee = 15;
+    const fare = verifiedFare ?? proposedFare;
     const totalFare =
-      (verifiedFare ?? proposedFare ?? 0) +
-      (pickupDistanceFee ?? 0) +
-      platformFee;
+      fare == null
+        ? null
+        : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2));
 
-    return NextResponse.json(
-      {
-        ok: true,
-        id: booking.id,
-        booking_code: booking.booking_code,
-        status,
+    const payload = {
+      ok: true,
+      id: booking.id,
+      booking_id: booking.id,
+      booking_code: booking.booking_code,
+      status,
+      town: s((booking as any).town),
+      from_label: s((booking as any).from_label),
+      to_label: s((booking as any).to_label),
+      passenger_name: s((booking as any).passenger_name),
+      passenger_count: n((booking as any).passenger_count),
+      driver_id: driverId,
+      assigned_driver_id: s((booking as any).assigned_driver_id),
+      driver_name: driverName,
+      driver_phone: driverPhone,
+      driver_lat: driverLat,
+      driver_lng: driverLng,
+      pickup_lat: pickupLat,
+      pickup_lng: pickupLng,
+      dropoff_lat: dropoffLat,
+      dropoff_lng: dropoffLng,
+      driver_to_pickup_km: driverToPickupKm,
+      trip_distance_km: tripDistanceKm,
+      pickup_eta_minutes: pickupEtaMinutes,
+      eta_minutes: pickupEtaMinutes,
+      proposed_fare: proposedFare,
+      verified_fare: verifiedFare,
+      fare,
+      pickup_distance_fee: pickupDistanceFee,
+      platform_fee: platformFee,
+      total_fare: totalFare,
+      total_amount: totalFare,
+      grand_total: totalFare,
+      passenger_fare_response: s((booking as any).passenger_fare_response),
+      created_at: s((booking as any).created_at),
+      updated_at: s((booking as any).updated_at),
+      completed_at: s((booking as any).completed_at),
+      cancelled_at: s((booking as any).cancelled_at),
+    };
 
-        driver_name: driverName,
-        driver_phone: driverPhone,
-
-        driver_to_pickup_km: driverToPickupKm,
-        trip_distance_km: tripDistanceKm,
-        pickup_eta_minutes: pickupEtaMinutes,
-
-        proposed_fare: proposedFare,
-        verified_fare: verifiedFare,
-        pickup_distance_fee: pickupDistanceFee,
-        platform_fee: platformFee,
-        total_fare: totalFare,
-
-        passenger_fare_response: s((booking as any).passenger_fare_response),
-
-        updated_at: s((booking as any).updated_at),
-        completed_at: s((booking as any).completed_at),
-      },
-      { status: 200, headers: noStoreHeaders() }
-    );
+    return NextResponse.json(payload, { status: 200, headers: noStoreHeaders() });
   } catch (e: any) {
     return NextResponse.json(
       {
