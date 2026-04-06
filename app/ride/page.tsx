@@ -1600,6 +1600,9 @@ export default function RidePage() {
   const bannerMsg = activeCode ? statusMessage(liveStatus) : "";
   const bannerTn = activeCode ? statusTone(liveStatus) : "slate";
 
+  const hasPickupPoint = numOrNull(pickupLat) !== null && numOrNull(pickupLng) !== null;
+  const hasDropoffPoint = numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
+
   const lb = liveBooking as TrackPayload | null;
 
   const proposedFareValue = numValue(lb?.proposed_fare);
@@ -2101,10 +2104,13 @@ export default function RidePage() {
                           "rounded-lg px-3 py-1.5 text-xs font-medium " +
                           (pickMode === "pickup"
                             ? "bg-emerald-500 text-white shadow-sm"
+                            : hasPickupPoint
+                            ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
                             : "border border-slate-200 bg-white text-slate-700")
                         }
+                        title={hasPickupPoint ? "Pickup point is set" : "Choose pickup point on the map"}
                       >
-                        Set pickup
+                        {hasPickupPoint && pickMode !== "pickup" ? "Pickup set" : "Set pickup"}
                       </button>
                       <button
                         type="button"
@@ -2112,11 +2118,14 @@ export default function RidePage() {
                         className={
                           "rounded-lg px-3 py-1.5 text-xs font-medium " +
                           (pickMode === "dropoff"
-                            ? "bg-slate-800 text-white shadow-sm"
+                            ? "bg-red-500 text-white shadow-sm"
+                            : hasDropoffPoint
+                            ? "border border-red-200 bg-red-50 text-red-700"
                             : "border border-slate-200 bg-white text-slate-700")
                         }
+                        title={hasDropoffPoint ? "Drop-off point is set" : "Choose drop-off point on the map"}
                       >
-                        Set drop-off
+                        {hasDropoffPoint && pickMode !== "dropoff" ? "Drop-off set" : "Set drop-off"}
                       </button>
                     </div>
 
