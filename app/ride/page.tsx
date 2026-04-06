@@ -1634,27 +1634,6 @@ export default function RidePage() {
     backendLiveTotal == null &&
     fallbackLiveTotal != null;
 
-  const pickupRuleFreeKm = 1.5;
-  const pickupRuleBlockMeters = 500;
-  const pickupRuleBlockFee = 20;
-  const driverToPickupKmValue = numValue(lb?.driver_to_pickup_km);
-  const chargeablePickupKm =
-    driverToPickupKmValue != null
-      ? Math.max(0, Number((driverToPickupKmValue - pickupRuleFreeKm).toFixed(2)))
-      : null;
-  const chargeablePickupMeters =
-    chargeablePickupKm != null
-      ? Math.max(0, Math.ceil(chargeablePickupKm * 1000))
-      : null;
-  const pickupFeeBlocks =
-    chargeablePickupMeters != null
-      ? Math.ceil(chargeablePickupMeters / pickupRuleBlockMeters)
-      : null;
-  const expectedPickupFee =
-    pickupFeeBlocks != null
-      ? pickupFeeBlocks * pickupRuleBlockFee
-      : null;
-
   const isFareProposed = normStatus(liveStatus) === "fare_proposed";
   const driverName = norm(lb?.driver_name || "");
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
@@ -1784,27 +1763,6 @@ export default function RidePage() {
                   ) : null}
                   {livePlatformFee != null && <div>Platform fee: {money(livePlatformFee)}</div>}
                 </div>
-
-                {(driverToPickupKmValue != null || livePickupFee != null) && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-700">
-                    <div className="font-semibold text-slate-900">Pickup fee transparency</div>
-                    <div className="mt-1">First {pickupRuleFreeKm.toFixed(1)} km is free.</div>
-                    <div>Beyond that: PHP {pickupRuleBlockFee} per {pickupRuleBlockMeters} meters.</div>
-                    <div className="mt-1">Driver to pickup: {km(driverToPickupKmValue)}</div>
-                    <div>
-                      Chargeable pickup distance: {chargeablePickupKm != null ? `${chargeablePickupKm.toFixed(2)} km` : "--"}
-                    </div>
-                    <div>
-                      Charge blocks: {pickupFeeBlocks != null ? `${pickupFeeBlocks} x PHP ${pickupRuleBlockFee}` : "--"}
-                    </div>
-                    <div>
-                      Expected pickup fee by rule: {expectedPickupFee != null ? money(expectedPickupFee) : "--"}
-                    </div>
-                    <div>
-                      Stored pickup fee: {livePickupFee != null ? money(livePickupFee) : "--"}
-                    </div>
-                  </div>
-                )}
 
                 <div className="border-t border-black/10 pt-3">
                   <div className="text-base font-bold">Total to pay: {hasLiveTotal ? money(liveTotal) : "--"}</div>
@@ -2143,11 +2101,11 @@ export default function RidePage() {
                         type="button"
                         onClick={() => setPickMode("pickup")}
                         className={
-                          "rounded-lg px-3 py-1.5 text-xs font-medium " +
+                          "rounded-lg px-3 py-1.5 text-xs font-semibold " +
                           (pickMode === "pickup"
                             ? "bg-emerald-500 text-white shadow-sm"
                             : hasPickupPoint
-                            ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                            ? "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm"
                             : "border border-slate-200 bg-white text-slate-700")
                         }
                         title={hasPickupPoint ? "Pickup point is set" : "Choose pickup point on the map"}
@@ -2158,11 +2116,11 @@ export default function RidePage() {
                         type="button"
                         onClick={() => setPickMode("dropoff")}
                         className={
-                          "rounded-lg px-3 py-1.5 text-xs font-medium " +
+                          "rounded-lg px-3 py-1.5 text-xs font-semibold " +
                           (pickMode === "dropoff"
                             ? "bg-red-500 text-white shadow-sm"
                             : hasDropoffPoint
-                            ? "border border-red-200 bg-red-50 text-red-700"
+                            ? "border border-red-300 bg-red-100 text-red-800 shadow-sm"
                             : "border border-slate-200 bg-white text-slate-700")
                         }
                         title={hasDropoffPoint ? "Drop-off point is set" : "Choose drop-off point on the map"}
