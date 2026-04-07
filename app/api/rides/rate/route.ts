@@ -65,7 +65,7 @@ async function getSignedInUser(req: NextRequest) {
   return { user, token, error: null };
 }
 
-async function loadOwnedBooking(service: ReturnType<typeof createClient>, bookingId: string, bookingCode: string, userId: string) {
+async function loadOwnedBooking(service: any, bookingId: string, bookingCode: string, userId: string) {
   let query = service
     .from("bookings")
     .select("id, booking_code, status, driver_id, created_by_user_id")
@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
     const { data: existing, error: ratingError } = await service
       .from("trip_ratings")
       .select("id, rating, feedback, created_at")
-      .eq("booking_id", (booking as any).id)
+      .eq("booking_id", booking.id)
       .limit(1)
       .maybeSingle();
 
@@ -130,24 +130,24 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const status = text((booking as any).status).toLowerCase();
+    const status = text(booking.status).toLowerCase();
     const alreadyRated = !!existing;
     const canRate = status === "completed" && !alreadyRated;
 
     return NextResponse.json(
       {
         ok: true,
-        booking_id: text((booking as any).id),
-        booking_code: text((booking as any).booking_code),
+        booking_id: text(booking.id),
+        booking_code: text(booking.booking_code),
         booking_status: status,
         can_rate: canRate,
         already_rated: alreadyRated,
         rating: existing
           ? {
-              id: text((existing as any).id),
-              rating: Number((existing as any).rating || 0),
-              feedback: text((existing as any).feedback),
-              created_at: (existing as any).created_at || null,
+              id: text(existing.id),
+              rating: Number(existing.rating || 0),
+              feedback: text(existing.feedback),
+              created_at: existing.created_at || null,
             }
           : null,
       },
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const status = text((booking as any).status).toLowerCase();
+    const status = text(booking.status).toLowerCase();
     if (status !== "completed") {
       return NextResponse.json(
         { ok: false, error: "NOT_COMPLETED" },
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
     const { data: existing, error: existingError } = await service
       .from("trip_ratings")
       .select("id")
-      .eq("booking_id", (booking as any).id)
+      .eq("booking_id", booking.id)
       .limit(1)
       .maybeSingle();
 
@@ -245,9 +245,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: insertError } = await service.from("trip_ratings").insert({
-      booking_id: (booking as any).id,
-      booking_code: text((booking as any).booking_code),
-      driver_id: (booking as any).driver_id || null,
+      booking_id: booking.id,
+      booking_code: text(booking.booking_code),
+      driver_id: booking.driver_id || null,
       passenger_id: auth.user.id,
       rating,
       feedback,
@@ -263,8 +263,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        booking_id: text((booking as any).id),
-        booking_code: text((booking as any).booking_code),
+        booking_id: text(booking.id),
+        booking_code: text(booking.booking_code),
         rating,
         feedback,
       },

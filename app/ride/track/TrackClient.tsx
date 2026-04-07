@@ -102,6 +102,25 @@ function statusMessage(statusRaw: unknown): string {
   return "Updating trip status...";
 }
 
+type RatingSnapshot = {
+  id?: string | null;
+  rating?: number | null;
+  feedback?: string | null;
+  created_at?: string | null;
+};
+
+type RatingCheckResponse = {
+  ok?: boolean;
+  booking_id?: string | null;
+  booking_code?: string | null;
+  booking_status?: string | null;
+  can_rate?: boolean;
+  already_rated?: boolean;
+  rating?: RatingSnapshot | null;
+  error?: string | null;
+  message?: string | null;
+};
+
 function statusTone(statusRaw: unknown): "blue" | "amber" | "green" | "red" | "slate" {
   const st = normStatus(statusRaw);
   if (["searching", "assigned", "accepted", "ready", "on_the_way", "on_trip"].includes(st)) return "blue";
@@ -116,6 +135,13 @@ export default function TrackClient({ code }: { code?: string }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [fareBusy, setFareBusy] = useState(false);
+  const [ratingCheckLoading, setRatingCheckLoading] = useState(false);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingErr, setRatingErr] = useState("");
+  const [ratingInfo, setRatingInfo] = useState<RatingCheckResponse | null>(null);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingFeedback, setRatingFeedback] = useState("");
+  const [ratingThanks, setRatingThanks] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -156,6 +182,97 @@ export default function TrackClient({ code }: { code?: string }) {
       setErr("Unable to load trip tracking.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshRatingState(bookingCode: string) {
+    const trimmedCode = String(bookingCode || "").trim();
+    if (!trimmedCode) {
+      setRatingInfo(null);
+      setRatingErr("");
+      setRatingThanks(false);
+      return;
+    }
+
+    setRatingCheckLoading(true);
+    setRatingErr("");
+
+    try {
+      const token = getToken();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`/api/rides/rate?booking_code=${encodeURIComponent(trimmedCode)}`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => null)) as RatingCheckResponse | null;
+
+      if (!res.ok || !json?.ok) {
+        setRatingInfo(null);
+        setRatingThanks(false);
+        setRatingErr(json?.message || json?.error || "Unable to load survey status.");
+        return;
+      }
+
+      setRatingInfo(json);
+      if (json?.rating?.rating && Number.isFinite(Number(json.rating.rating))) {
+        setRatingValue(Math.max(1, Math.min(5, Number(json.rating.rating))));
+      } else {
+        setRatingValue(5);
+      }
+      setRatingFeedback(String(json?.rating?.feedback || "").trim());
+      setRatingThanks(!!json?.already_rated);
+    } catch {
+      setRatingInfo(null);
+      setRatingThanks(false);
+      setRatingErr("Unable to load survey status.");
+    } finally {
+      setRatingCheckLoading(false);
+    }
+  }
+
+  async function submitRating() {
+    const trimmedCode = String(code || "").trim();
+    if (!trimmedCode) {
+      setRatingErr("Missing booking code.");
+      return;
+    }
+
+    setRatingSubmitting(true);
+    setRatingErr("");
+
+    try {
+      const token = getToken();
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch("/api/rides/rate", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          booking_code: trimmedCode,
+          rating: ratingValue,
+          feedback: ratingFeedback.slice(0, 120),
+        }),
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        setRatingErr(json?.message || json?.error || "Unable to submit survey.");
+        return;
+      }
+
+      setRatingFeedback(String(ratingFeedback || "").slice(0, 120));
+      setRatingThanks(true);
+      await refreshRatingState(trimmedCode);
+    } catch {
+      setRatingErr("Unable to submit survey.");
+    } finally {
+      setRatingSubmitting(false);
     }
   }
 
@@ -220,6 +337,16 @@ export default function TrackClient({ code }: { code?: string }) {
   }, [code]);
 
   const liveStatus = normStatus(data?.status);
+
+  useEffect(() => {
+    if (liveStatus === "completed" && code) {
+      refreshRatingState(code);
+      return;
+    }
+    setRatingInfo(null);
+    setRatingErr("");
+    setRatingThanks(false);
+  }, [liveStatus, code]);
 
   const driverName = useMemo(() => {
     const flat = String(data?.driver_name || "").trim();
@@ -394,7 +521,7 @@ export default function TrackClient({ code }: { code?: string }) {
           </div>
 
           {["completed", "cancelled", "rejected"].includes(liveStatus) ? (
-            <div className="rounded-xl border border-black/10 bg-white p-4 space-y-2">
+            <div className="rounded-xl border border-black/10 bg-white p-4 space-y-3">
               <div className="text-sm font-semibold">{liveStatus === "completed" ? "Trip receipt" : "Trip summary"}</div>
               <div>Driver: {driverName}</div>
               <div>Fare: {money(liveFare)}</div>
@@ -407,6 +534,73 @@ export default function TrackClient({ code }: { code?: string }) {
                 {liveStatus === "completed" ? "Completed" : "Cancelled"}:{" "}
                 {fmtDate(liveStatus === "completed" ? data.completed_at : data.cancelled_at || data.updated_at)}
               </div>
+
+              {liveStatus === "completed" ? (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 space-y-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Rate your driver</div>
+                    <div className="text-xs text-slate-500">1 star is lowest, 5 stars is highest. Help us improve our services.</div>
+                  </div>
+
+                  {ratingCheckLoading ? (
+                    <div className="text-xs text-slate-500">Checking survey status...</div>
+                  ) : ratingInfo?.already_rated && ratingInfo?.rating ? (
+                    <div className="space-y-1 text-sm text-slate-700">
+                      <div>Your rating: {String(ratingInfo.rating.rating || "--")} / 5</div>
+                      <div>Feedback: {String(ratingInfo.rating.feedback || "").trim() || "--"}</div>
+                      <div className="text-xs text-slate-500">Submitted: {fmtDate(ratingInfo.rating.created_at)}</div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const active = ratingValue === star;
+                          return (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setRatingValue(star)}
+                              className={
+                                "rounded-xl px-3 py-2 text-sm font-semibold shadow-sm " +
+                                (active
+                                  ? "bg-emerald-500 text-white"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50")
+                              }
+                            >
+                              {star} star{star > 1 ? "s" : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div>
+                        <textarea
+                          className="min-h-[96px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
+                          placeholder="Help us improve our services"
+                          value={ratingFeedback}
+                          maxLength={120}
+                          onChange={(e) => setRatingFeedback(e.target.value.slice(0, 120))}
+                        />
+                        <div className="mt-1 text-right text-[11px] text-slate-500">{ratingFeedback.length}/120</div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={submitRating}
+                          disabled={ratingSubmitting || !!ratingCheckLoading || ratingInfo?.can_rate === false}
+                          className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-400 disabled:opacity-50"
+                        >
+                          {ratingSubmitting ? "Submitting..." : "Submit rating"}
+                        </button>
+                        {ratingThanks ? <span className="text-xs text-emerald-700">Thank you for your feedback.</span> : null}
+                      </div>
+                    </>
+                  )}
+
+                  {ratingErr ? <div className="text-xs text-red-600">{ratingErr}</div> : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </>

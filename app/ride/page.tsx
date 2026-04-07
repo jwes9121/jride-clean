@@ -148,6 +148,25 @@ type TrackPayload = {
   booking_id?: string | null;
 };
 
+type RatingSnapshot = {
+  id?: string | null;
+  rating?: number | null;
+  feedback?: string | null;
+  created_at?: string | null;
+};
+
+type RatingCheckResponse = {
+  ok?: boolean;
+  booking_id?: string | null;
+  booking_code?: string | null;
+  booking_status?: string | null;
+  can_rate?: boolean;
+  already_rated?: boolean;
+  rating?: RatingSnapshot | null;
+  error?: string | null;
+  message?: string | null;
+};
+
 function norm(v: unknown): string {
   return String(v ?? "").trim();
 }
@@ -470,6 +489,14 @@ export default function RidePage() {
   const [copied, setCopied] = React.useState(false);
   const [recentTrips, setRecentTrips] = React.useState<RecentTrip[]>([]);
   const [mapResetKey, setMapResetKey] = React.useState(0);
+
+  const [ratingCheckLoading, setRatingCheckLoading] = React.useState(false);
+  const [ratingSubmitting, setRatingSubmitting] = React.useState(false);
+  const [ratingErr, setRatingErr] = React.useState("");
+  const [ratingInfo, setRatingInfo] = React.useState<RatingCheckResponse | null>(null);
+  const [ratingValue, setRatingValue] = React.useState(5);
+  const [ratingFeedback, setRatingFeedback] = React.useState("");
+  const [ratingThanks, setRatingThanks] = React.useState(false);
 
   const sessionTokenRef = React.useRef("");
   if (!sessionTokenRef.current) {
@@ -861,6 +888,17 @@ export default function RidePage() {
     setRecentTrips(readRecentTrips());
   }, [activeCode, liveBooking, liveStatus, passengerName, fromLabel, toLabel, town]);
 
+
+  React.useEffect(() => {
+    if (normStatus(liveStatus) !== "completed" || !activeCode) {
+      setRatingInfo(null);
+      setRatingErr("");
+      setRatingThanks(false);
+      return;
+    }
+
+    refreshRatingState(activeCode);
+  }, [activeCode, liveStatus]);
   React.useEffect(() => {
     if (activeGeoField !== "from") return;
     if (fromDebounceRef.current) clearTimeout(fromDebounceRef.current);
@@ -1381,6 +1419,83 @@ export default function RidePage() {
     }
   }
 
+  async function refreshRatingState(bookingCode: string) {
+    const code = norm(bookingCode);
+    if (!code) {
+      setRatingInfo(null);
+      setRatingErr("");
+      setRatingThanks(false);
+      return;
+    }
+
+    setRatingCheckLoading(true);
+    setRatingErr("");
+
+    try {
+      const resp = await getJsonAuth(`/api/rides/rate?booking_code=${encodeURIComponent(code)}`);
+      const json = (resp.json || {}) as RatingCheckResponse;
+
+      if (!resp.ok || json?.ok === false) {
+        setRatingInfo(null);
+        setRatingThanks(false);
+        setRatingErr(norm(json?.message || json?.error || `HTTP ${resp.status}`));
+        return;
+      }
+
+      setRatingInfo(json);
+      if (json?.rating?.rating && Number.isFinite(Number(json.rating.rating))) {
+        setRatingValue(Math.max(1, Math.min(5, Number(json.rating.rating))));
+      } else {
+        setRatingValue(5);
+      }
+      setRatingFeedback(norm(json?.rating?.feedback || ""));
+      setRatingThanks(!!json?.already_rated);
+    } catch (e: any) {
+      setRatingInfo(null);
+      setRatingThanks(false);
+      setRatingErr(String(e?.message || e));
+    } finally {
+      setRatingCheckLoading(false);
+    }
+  }
+
+  async function submitRating() {
+    const bookingCode = norm(activeCode);
+    if (!bookingCode) {
+      setRatingErr("Missing booking code.");
+      return;
+    }
+
+    const trimmedFeedback = ratingFeedback.slice(0, 120);
+    setRatingSubmitting(true);
+    setRatingErr("");
+
+    try {
+      const resp = await postJson(
+        "/api/rides/rate",
+        {
+          booking_code: bookingCode,
+          rating: ratingValue,
+          feedback: trimmedFeedback,
+        },
+        true
+      );
+
+      if (!resp.ok || resp.json?.ok === false) {
+        setRatingErr(norm(resp.json?.message || resp.json?.error || `HTTP ${resp.status}`));
+        return;
+      }
+
+      setRatingFeedback(trimmedFeedback);
+      setRatingThanks(true);
+      await refreshRatingState(bookingCode);
+    } catch (e: any) {
+      setRatingErr(String(e?.message || e));
+    } finally {
+      setRatingSubmitting(false);
+    }
+  }
+
   function verifyRequestText(): string {
     return [
       "JRIDE VERIFICATION REQUEST",
@@ -1849,6 +1964,73 @@ export default function RidePage() {
                     {fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt)}
                   </div>
                 </div>
+
+                {normStatus(liveStatus) === "completed" && (
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm space-y-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Rate your driver</div>
+                      <div className="text-xs text-slate-500">1 star is lowest, 5 stars is highest. Help us improve our services.</div>
+                    </div>
+
+                    {ratingCheckLoading ? (
+                      <div className="text-xs text-slate-500">Checking survey status...</div>
+                    ) : ratingInfo?.already_rated && ratingInfo?.rating ? (
+                      <div className="space-y-1 text-sm text-slate-700">
+                        <div>Your rating: {String(ratingInfo.rating.rating || "--")} / 5</div>
+                        <div>Feedback: {norm(ratingInfo.rating.feedback) || "--"}</div>
+                        <div className="text-xs text-slate-500">Submitted: {fmtDate(ratingInfo.rating.created_at)}</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => {
+                            const active = ratingValue === star;
+                            return (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setRatingValue(star)}
+                                className={
+                                  "rounded-xl px-3 py-2 text-sm font-semibold shadow-sm " +
+                                  (active
+                                    ? "bg-emerald-500 text-white"
+                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50")
+                                }
+                              >
+                                {star} star{star > 1 ? "s" : ""}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div>
+                          <textarea
+                            className="min-h-[96px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
+                            placeholder="Help us improve our services"
+                            value={ratingFeedback}
+                            maxLength={120}
+                            onChange={(e) => setRatingFeedback(e.target.value.slice(0, 120))}
+                          />
+                          <div className="mt-1 text-right text-[11px] text-slate-500">{ratingFeedback.length}/120</div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={submitRating}
+                            disabled={ratingSubmitting || !!ratingCheckLoading || ratingInfo?.can_rate === false}
+                            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] hover:bg-emerald-400 disabled:opacity-50"
+                          >
+                            {ratingSubmitting ? "Submitting..." : "Submit rating"}
+                          </button>
+                          {ratingThanks ? <span className="text-xs text-emerald-700">Thank you for your feedback.</span> : null}
+                        </div>
+                      </>
+                    )}
+
+                    {ratingErr ? <div className="text-xs text-red-600">{ratingErr}</div> : null}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                   <button
