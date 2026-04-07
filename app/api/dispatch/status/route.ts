@@ -1,197 +1,92 @@
-﻿import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextRequest, NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
-}
-
-type DispatchStatusBody = {
-  bookingId?: string | null;
-  bookingCode?: string | null;
-  status?: string | null;
-  driverId?: string | null;
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  assigned: ["accepted"],
+  accepted: ["fare_proposed"],
+  fare_proposed: ["ready"],
+  ready: ["on_the_way"],
+  on_the_way: ["arrived"],
+  arrived: ["on_trip"],
+  on_trip: ["completed"],
 };
 
-const CANONICAL_LIFECYCLE_STATUSES = new Set<string>([
-  "requested",
-  "searching",
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "ready",
-  "on_the_way",
-  "arrived",
-  "on_trip",
-  "completed",
-  "cancelled",
-]);
-
-function normalizeStatus(input: unknown): string {
-  return String(input ?? "").trim().toLowerCase();
+function clean(v: any): string {
+  return typeof v === "string" ? v.trim() : "";
 }
 
-function pickBookingKey(body: DispatchStatusBody) {
-  const bookingId = String(body.bookingId ?? "").trim();
-  const bookingCode = String(body.bookingCode ?? "").trim();
-  return { bookingId, bookingCode };
+function getAdminClient(req: NextRequest) {
+  const headerSecret = clean(req.headers.get("x-jride-driver-secret"));
+  const expected = clean(process.env.DRIVER_PING_SECRET);
+
+  if (!headerSecret || headerSecret !== expected) return null;
+
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) return null;
+
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = supabaseAdmin();
-    const body = (await req.json().catch(() => ({}))) as DispatchStatusBody;
+    const body = await req.json();
 
-    const { bookingId, bookingCode } = pickBookingKey(body);
-    const normalizedStatus = normalizeStatus(body.status);
-    const requestedDriverId = String(body.driverId ?? "").trim() || null;
+    const bookingCode = clean(body?.bookingCode || body?.booking_code);
+    const bookingId = clean(body?.bookingId || body?.booking_id);
+    const nextStatus = clean(body?.status || body?.newStatus).toLowerCase();
 
-    if (!bookingId && !bookingCode) {
-      return NextResponse.json(
-        { ok: false, code: "BOOKING_KEY_REQUIRED", message: "Missing bookingId or bookingCode." },
-        { status: 400, headers: noStoreHeaders() }
-      );
+    if ((!bookingCode && !bookingId) || !nextStatus) {
+      return NextResponse.json({ ok: false, error: "missing_params" }, { status: 400 });
     }
 
-    if (!normalizedStatus) {
-      return NextResponse.json(
-        { ok: false, code: "STATUS_REQUIRED", message: "Missing status." },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
+    const routeClient = createRouteHandlerClient({ cookies });
+    const adminClient = getAdminClient(req);
+    const supabase = adminClient ?? routeClient;
 
-    if (!CANONICAL_LIFECYCLE_STATUSES.has(normalizedStatus)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "INVALID_STATUS",
-          message: `Unsupported lifecycle status: ${normalizedStatus}`,
-        },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
+    let query = supabase.from("bookings").select("id, booking_code, status").limit(1);
 
-    let bookingQuery = supabase
-      .from("bookings")
-      .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at, updated_at")
-      .limit(1);
-
-    if (bookingId) {
-      bookingQuery = bookingQuery.eq("id", bookingId);
+    if (bookingCode) {
+      query = query.eq("booking_code", bookingCode);
     } else {
-      bookingQuery = bookingQuery.eq("booking_code", bookingCode);
+      query = query.eq("id", bookingId);
     }
 
-    const { data: booking, error: bookingError } = await bookingQuery.single();
+    const { data: booking, error } = await query.single();
 
-    if (bookingError || !booking) {
+    if (error || !booking) {
+      return NextResponse.json({ ok: false, error: "booking_not_found" }, { status: 404 });
+    }
+
+    const current = clean(booking.status).toLowerCase();
+    const allowed = ALLOWED_TRANSITIONS[current] || [];
+
+    if (!allowed.includes(nextStatus)) {
       return NextResponse.json(
-        {
-          ok: false,
-          code: "BOOKING_NOT_FOUND",
-          message: bookingError?.message || "Booking not found.",
-        },
-        { status: 404, headers: noStoreHeaders() }
+        { ok: false, error: "invalid_transition", from: current, to: nextStatus },
+        { status: 409 }
       );
     }
 
-    const existingDriverId =
-      String((booking as any).driver_id ?? "").trim() ||
-      String((booking as any).assigned_driver_id ?? "").trim() ||
-      null;
-
-    const effectiveDriverId = requestedDriverId || existingDriverId || null;
-
-    const updatePayload: Record<string, any> = {
-      status: normalizedStatus,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Lifecycle ownership only:
-    // - assignment should already be handled by /api/dispatch/assign
-    // - but preserve driver linkage for accepted/fare/later lifecycle statuses
-    if (
-      effectiveDriverId &&
-      [
-        "assigned",
-        "accepted",
-        "fare_proposed",
-        "ready",
-        "on_the_way",
-        "arrived",
-        "on_trip",
-        "completed",
-      ].includes(normalizedStatus)
-    ) {
-      updatePayload.driver_id = effectiveDriverId;
-      updatePayload.assigned_driver_id = effectiveDriverId;
-
-      if (normalizedStatus === "assigned" && !(booking as any).assigned_at) {
-        updatePayload.assigned_at = new Date().toISOString();
-      }
-    }
-
-    // Clear assignment on terminal cancellation/search reset states
-    if (["cancelled", "searching", "requested"].includes(normalizedStatus)) {
-      updatePayload.driver_id = null;
-      updatePayload.assigned_driver_id = null;
-      updatePayload.assigned_at = null;
-    }
-
-    const { data: updated, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from("bookings")
-      .update(updatePayload)
-      .eq("id", (booking as any).id)
-      .select(
-        "id, booking_code, status, driver_id, assigned_driver_id, assigned_at, updated_at, proposed_fare, verified_fare"
-      )
-      .single();
+      .update({
+        status: nextStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", booking.id);
 
     if (updateError) {
-      const msg = String(updateError.message || "STATUS_UPDATE_FAILED");
-      const lower = msg.toLowerCase();
-
-      if (lower.includes("invalid_transition") || lower.includes("invalid transition")) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "INVALID_TRANSITION",
-            from: String((booking as any).status ?? ""),
-            to: normalizedStatus,
-            message: msg,
-          },
-          { status: 400, headers: noStoreHeaders() }
-        );
-      }
-
-      return NextResponse.json(
-        { ok: false, code: "STATUS_UPDATE_FAILED", message: msg },
-        { status: 500, headers: noStoreHeaders() }
-      );
+      return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        booking: updated,
-        status: (updated as any)?.status ?? normalizedStatus,
-      },
-      { status: 200, headers: noStoreHeaders() }
-    );
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: "DISPATCH_STATUS_UNEXPECTED",
-        message: String(e?.message || e || "Unexpected error"),
-      },
-      { status: 500, headers: noStoreHeaders() }
-    );
+    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
 }
