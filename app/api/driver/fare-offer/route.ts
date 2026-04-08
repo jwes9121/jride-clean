@@ -1,55 +1,57 @@
 import { NextResponse } from "next/server";
-import { POST as canonicalFareProposePost } from "@/app/api/driver/fare/propose/route";
 
-export const dynamic = "force-dynamic";
-
-type Body = {
-  bookingId?: string | null;
-  bookingCode?: string | null;
-  driverId?: string | null;
-  fare?: number | string | null;
-  proposed_fare?: number | string | null;
-};
-
-function first(values: any[]): string {
-  for (const value of values) {
-    const s = String(value ?? "").trim();
-    if (s) return s;
-  }
-  return "";
+function noStoreHeaders() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  };
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as Body;
-    const payload = {
-      driver_id: first([body.driverId]),
-      booking_id: first([body.bookingId]),
-      booking_code: first([body.bookingCode]),
-      proposed_fare: body.proposed_fare ?? body.fare,
-    };
+    const bodyText = await req.text().catch(() => "{}");
 
-    const forwarded = new Request(req.url, {
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://app.jride.net";
+
+    const targetUrl = baseUrl.replace(/\/+$/, "") + "/api/driver/fare/propose";
+
+    const upstream = await fetch(targetUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(req.headers.get("authorization")
+          ? { Authorization: req.headers.get("authorization") as string }
+          : {}),
+        ...(req.headers.get("x-jride-driver-secret")
+          ? { "x-jride-driver-secret": req.headers.get("x-jride-driver-secret") as string }
+          : {}),
+      },
+      body: bodyText,
+      cache: "no-store",
     });
 
-    const response = await canonicalFareProposePost(forwarded);
-    const data = await response.json().catch(() => ({}));
+    const data = await upstream.json().catch(() => ({}));
 
+    return NextResponse.json(data, {
+      status: upstream.status,
+      headers: noStoreHeaders(),
+    });
+  } catch (err: any) {
     return NextResponse.json(
       {
-        ...data,
-        compatibility_route: "driver/fare-offer",
-        canonical_route: "driver/fare/propose",
+        ok: false,
+        error: "DRIVER_FARE_OFFER_FORWARD_FAILED",
+        message: String(err?.message ?? err),
       },
-      { status: response.status }
-    );
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "FARE_OFFER_FATAL", message: String(e?.message ?? e) },
-      { status: 500 }
+      {
+        status: 500,
+        headers: noStoreHeaders(),
+      }
     );
   }
 }

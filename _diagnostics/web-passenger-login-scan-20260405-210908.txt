@@ -1,0 +1,168 @@
+JRide Web Passenger Login Scan
+RepoRoot: C:\Users\jwes9\Desktop\jride-clean-fresh
+Generated: 2026-04-05 21:09:08
+
+====================================================================================================
+DIRECTORY LISTING: app\api\public\passenger
+====================================================================================================
+DIR   app\api\public\passenger\book
+DIR   app\api\public\passenger\booking
+DIR   app\api\public\passenger\can-book
+DIR   app\api\public\passenger\dev-login
+DIR   app\api\public\passenger\fare
+DIR   app\api\public\passenger\free-ride
+DIR   app\api\public\passenger\verification
+
+====================================================================================================
+DIRECTORY LISTING: app\api\public
+====================================================================================================
+DIR   app\api\public\auth
+DIR   app\api\public\passenger
+
+====================================================================================================
+TOP APP DIRECTORY SNAPSHOT
+====================================================================================================
+DIR   app\(authed)
+DIR   app\[token]
+DIR   app\account-deletion
+DIR   app\actions
+DIR   app\admin
+DIR   app\api
+DIR   app\auth
+FILE  app\auth-impl.ts
+DIR   app\callback-info
+DIR   app\components
+DIR   app\dash
+DIR   app\delivery
+DIR   app\diagnostics
+DIR   app\dispatch
+DIR   app\dispatcher
+DIR   app\driver
+DIR   app\errand
+DIR   app\errands
+FILE  app\error.tsx
+FILE  app\globals.css
+FILE  app\head.tsx
+DIR   app\history
+DIR   app\landing
+FILE  app\layout.tsx
+DIR   app\mapbox-token
+DIR   app\mobile-app
+FILE  app\not-found.tsx
+DIR   app\offline
+DIR   app\orders
+FILE  app\page.tsx
+DIR   app\passenger
+DIR   app\passenger-login
+DIR   app\passenger-signup
+DIR   app\plain
+DIR   app\profile
+FILE  app\providers.tsx
+FILE  app\pwa-register.ts
+DIR   app\request
+DIR   app\reset-password
+DIR   app\ride
+DIR   app\rider
+DIR   app\takeout
+DIR   app\test
+DIR   app\tricycle-rideshare
+DIR   app\types
+DIR   app\vendor
+DIR   app\vendor-orders
+DIR   app\verification
+DIR   app\verify
+DIR   app\wallet
+DIR   app\website
+DIR   app\whoami
+
+====================================================================================================
+FILES BY NAME PATTERN
+====================================================================================================
+.next\types\app\admin\dispatch-action\route.ts
+.next\types\app\api\admin\active-trips\route.ts
+.next\types\app\api\admin\assignment-log\route.ts
+.next\types\app\api\admin\audit\route.ts
+.next\types\app\api\admin\auto-assign\route.ts
+.next\types\app\api\admin\complete-trip\route.ts
+.next\types\app\api\admin\debug-livetrips\route.ts
+.next\types\app\api\admin\dispatch\assign\route.ts
+.next\types\app\api\admin\dispatch\audit\route.ts
+.next\types\app\api\admin\dispatch\drop-off\route.ts
+.next\types\app\api\admin\dispatch\on-the-way\route.ts
+.next\types\app\api\admin\dispatch\start-trip\route.ts
+.next\types\app\api\admin\driver_locations\route.ts
+.next\types\app\api\admin\driver-device-lock\reset\route.ts
+.next\types\app\api\admin\driver-locations\route.ts
+.next\types\app\api\admin\driver-payouts\auto-approve\route.ts
+.next\types\app\api\admin\driver-payouts\export\route.ts
+.next\types\app\api\admin\driver-payouts\route.ts
+.next\types\app\api\admin\drivers\route.ts
+.next\types\app\api\admin\fare-override\route.ts
+.next\types\app\api\admin\livetrips\actions\route.ts
+.next\types\app\api\admin\livetrips\apply-fare\route.ts
+.next\types\app\api\admin\livetrips\backfill-takeout\route.ts
+.next\types\app\api\admin\livetrips\booking-map\route.ts
+.next\types\app\api\admin\livetrips\dispatch-actions\route.ts
+.next\types\app\api\admin\livetrips\drivers-summary\route.ts
+.next\types\app\api\admin\livetrips\manual-assign\route.ts
+.next\types\app\api\admin\livetrips\page-data\route.ts
+.next\types\app\api\admin\livetrips\pending\route.ts
+.next\types\app\api\admin\livetrips\purge-broken\route.ts
+.next\types\app\api\admin\livetrips\route.ts
+.next\types\app\api\admin\livetrips\summary\route.ts
+.next\types\app\api\admin\livetrips\update-status\route.ts
+.next\types\app\api\admin\manual-assign\route.ts
+.next\types\app\api\admin\ops\wallet-reconciliation\route.ts
+.next\types\app\api\admin\passenger-verifications\approve\route.ts
+.next\types\app\api\admin\passenger-verifications\decide\route.ts
+.next\types\app\api\admin\passenger-verifications\forward\route.ts
+.next\types\app\api\admin\passenger-verifications\pending\route.ts
+.next\types\app\api\admin\passenger-verifications\reject\route.ts
+.next\types\app\api\admin\pax-mismatches\route.ts
+.next\types\app\api\admin\payouts\approve\route.ts
+.next\types\app\api\admin\payouts\reject\route.ts
+.next\types\app\api\admin\reassign\route.ts
+.next\types\app\api\admin\reassign\suggest\route.ts
+.next\types\app\api\admin\reassign-audit\export\route.ts
+.next\types\app\api\admin\reassign-audit\route.ts
+.next\types\app\api\admin\reassign-suggest\route.ts
+.next\types\app\api\admin\reconcile-wallets\fix\route.ts
+.next\types\app\api\admin\reconcile-wallets\route.ts
+.next\types\app\api\admin\reports\lgu-driver\route.ts
+.next\types\app\api\admin\reports\lgu-vendor\route.ts
+.next\types\app\api\admin\reports\stuck-drivers\route.ts
+.next\types\app\api\admin\stuck-trips\ack\route.ts
+.next\types\app\api\admin\stuck-trips\route.ts
+.next\types\app\api\admin\stuck-trips\snooze\route.ts
+.next\types\app\api\admin\update-trip-status\route.ts
+.next\types\app\api\admin\user-roles\route.ts
+.next\types\app\api\admin\vendor\settle-wallet\route.ts
+.next\types\app\api\admin\vendor-menu-items\route.ts
+.next\types\app\api\admin\vendor-payouts\route.ts
+.next\types\app\api\admin\vendor-payouts-summary\route.ts
+.next\types\app\api\admin\vendors\route.ts
+.next\types\app\api\admin\verification\decide\route.ts
+.next\types\app\api\admin\verification\file-url\route.ts
+.next\types\app\api\admin\verification\forward\route.ts
+.next\types\app\api\admin\verification\pending\route.ts
+.next\types\app\api\admin\wallet\adjust\route.ts
+.next\types\app\api\admin\wallet\drivers\route.ts
+.next\types\app\api\admin\wallet\drivers-list\route.ts
+.next\types\app\api\admin\wallet\driver-summary\route.ts
+.next\types\app\api\admin\wallet\transactions\route.ts
+.next\types\app\api\admin\wallet\vendor-summary\route.ts
+.next\types\app\api\admin\zone-capacity\route.ts
+.next\types\app\api\auth\[...nextauth]\route.ts
+.next\types\app\api\bookings\propose\route.ts
+.next\types\app\api\bookings\respond\route.ts
+.next\types\app\api\bookings\route.ts
+.next\types\app\api\debug\supabase\route.ts
+.next\types\app\api\debug-auth-env\route.ts
+.next\types\app\api\diag\auth-env\route.ts
+.next\types\app\api\diag\book-headers\route.ts
+.next\types\app\api\diag\envdump\route.ts
+.next\types\app\api\dispatch\assign\route.ts
+.next\types\app\api\dispatch\auto-assign\route.ts
+.next\types\app\api\dispatch\bookings\route.ts
+.next\types\app\api\dispatch\bookings\update-town\route.ts
+.next\types\app\api\dispatch\drivers\route.ts

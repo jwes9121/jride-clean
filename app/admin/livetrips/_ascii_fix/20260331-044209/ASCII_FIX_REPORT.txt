@@ -1,0 +1,6 @@
+﻿JRIDE LIVETRIPSCLIENT BOM-ONLY FIX
+Generated: 2026-03-31 04:42:09
+File: C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+Result: BOM_REMOVED
+RemainingBytesGT127: 0
+Backup: C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\_ascii_fix\20260331-044209\LiveTripsClient.tsx.bak

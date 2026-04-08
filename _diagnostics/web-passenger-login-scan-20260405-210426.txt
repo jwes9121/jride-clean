@@ -1,0 +1,80 @@
+JRide Web Passenger Login Scan
+RepoRoot: C:\Users\jwes9\Desktop\jride-clean-fresh
+Generated: 2026-04-05 21:04:26
+
+====================================================================================================
+DIRECTORY LISTING: app\api\public\passenger
+====================================================================================================
+DIR   app\api\public\passenger\book
+DIR   app\api\public\passenger\booking
+DIR   app\api\public\passenger\can-book
+DIR   app\api\public\passenger\dev-login
+DIR   app\api\public\passenger\fare
+DIR   app\api\public\passenger\free-ride
+DIR   app\api\public\passenger\verification
+
+====================================================================================================
+DIRECTORY LISTING: app\api\public
+====================================================================================================
+DIR   app\api\public\auth
+DIR   app\api\public\passenger
+
+====================================================================================================
+TOP APP DIRECTORY SNAPSHOT
+====================================================================================================
+DIR   app\(authed)
+DIR   app\[token]
+DIR   app\account-deletion
+DIR   app\actions
+DIR   app\admin
+DIR   app\api
+DIR   app\auth
+FILE  app\auth-impl.ts
+DIR   app\callback-info
+DIR   app\components
+DIR   app\dash
+DIR   app\delivery
+DIR   app\diagnostics
+DIR   app\dispatch
+DIR   app\dispatcher
+DIR   app\driver
+DIR   app\errand
+DIR   app\errands
+FILE  app\error.tsx
+FILE  app\globals.css
+FILE  app\head.tsx
+DIR   app\history
+DIR   app\landing
+FILE  app\layout.tsx
+DIR   app\mapbox-token
+DIR   app\mobile-app
+FILE  app\not-found.tsx
+DIR   app\offline
+DIR   app\orders
+FILE  app\page.tsx
+DIR   app\passenger
+DIR   app\passenger-login
+DIR   app\passenger-signup
+DIR   app\plain
+DIR   app\profile
+FILE  app\providers.tsx
+FILE  app\pwa-register.ts
+DIR   app\request
+DIR   app\reset-password
+DIR   app\ride
+DIR   app\rider
+DIR   app\takeout
+DIR   app\test
+DIR   app\tricycle-rideshare
+DIR   app\types
+DIR   app\vendor
+DIR   app\vendor-orders
+DIR   app\verification
+DIR   app\verify
+DIR   app\wallet
+DIR   app\website
+DIR   app\whoami
+
+====================================================================================================
+FILES BY NAME PATTERN
+====================================================================================================
