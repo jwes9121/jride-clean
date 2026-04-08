@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 
@@ -320,6 +320,16 @@ export default function AdminControlCenter() {
   <RatingsSnapshot />
 </div>
 
+
+{/* === TRIP ANALYTICS === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Trip Analytics</h2>
+  </div>
+
+  <TripAnalytics />
+</div>
+
 </main>
   );
 }
@@ -394,3 +404,58 @@ function RatingsSnapshot() {
     </div>
   );
 }
+
+
+type TripAnalyticsRow = {
+  town: string;
+  total_trips: number;
+  total_revenue: number;
+};
+
+type TripAnalyticsResponse = {
+  ok?: boolean;
+  rows?: TripAnalyticsRow[];
+};
+
+function TripAnalytics() {
+  const [data, setData] = React.useState<TripAnalyticsResponse | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/admin/analytics/trips", { cache: "no-store" })
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => setData({ ok: false }));
+  }, []);
+
+  if (!data || !data.ok) {
+    return <div className="text-xs text-slate-400">Loading...</div>;
+  }
+
+  const rows = data.rows || [];
+
+  return (
+    <div className="text-xs">
+      <table className="w-full border text-left">
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="p-2 border">Town</th>
+            <th className="p-2 border">Trips</th>
+            <th className="p-2 border">Revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className="p-2 border">{r.town}</td>
+              <td className="p-2 border">{r.total_trips}</td>
+              <td className="p-2 border">
+                PHP {Number(r.total_revenue || 0).toFixed(2)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
