@@ -342,6 +342,17 @@ export default function AdminControlCenter() {
 </div>
 
 
+
+{/* === LOW-RATED DRIVER WATCHLIST === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Low-rated Driver Watchlist</h2>
+    <span className="text-xs text-slate-400">Drivers needing coaching or quality review</span>
+  </div>
+
+  <LowRatedDriverWatchlist />
+</div>
+
 </main>
   );
 }
@@ -551,6 +562,94 @@ function DriverPerformanceAnalytics() {
                 {r.average_rating != null ? Number(r.average_rating).toFixed(2) : "-"}
               </td>
               <td className="border p-2">{Number(r.ratings_count || 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type DriverWatchlistRow = {
+  driver_id?: string;
+  driver_name?: string;
+  municipality?: string;
+  completed_trips?: number;
+  ratings_count?: number;
+  average_rating?: number | null;
+  low_ratings_count?: number;
+  latest_feedback?: string | null;
+  latest_rating_at?: string | null;
+};
+
+type DriverWatchlistResponse = {
+  ok?: boolean;
+  rows?: DriverWatchlistRow[];
+};
+
+function LowRatedDriverWatchlist() {
+  const [data, setData] = React.useState<DriverWatchlistResponse | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/admin/analytics/driver-watchlist?limit=6&max_average=4", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({} as DriverWatchlistResponse));
+        if (!cancelled) {
+          setData(j);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData({ ok: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!data || !data.ok) {
+    return <div className="text-xs text-slate-400">Loading...</div>;
+  }
+
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+
+  if (rows.length === 0) {
+    return <div className="text-xs text-slate-400">No drivers currently meet the watchlist threshold.</div>;
+  }
+
+  return (
+    <div className="overflow-x-auto text-xs">
+      <table className="w-full border text-left">
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="border p-2">Driver</th>
+            <th className="border p-2">Town</th>
+            <th className="border p-2">Avg rating</th>
+            <th className="border p-2">Ratings</th>
+            <th className="border p-2">Low ratings</th>
+            <th className="border p-2">Completed</th>
+            <th className="border p-2">Latest feedback</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={String(r.driver_id || r.driver_name || Math.random())}>
+              <td className="border p-2">{r.driver_name || "Unknown Driver"}</td>
+              <td className="border p-2">{r.municipality || "-"}</td>
+              <td className="border p-2">
+                {r.average_rating != null ? Number(r.average_rating).toFixed(2) : "-"}
+              </td>
+              <td className="border p-2">{Number(r.ratings_count || 0)}</td>
+              <td className="border p-2">{Number(r.low_ratings_count || 0)}</td>
+              <td className="border p-2">{Number(r.completed_trips || 0)}</td>
+              <td className="border p-2">{r.latest_feedback || "-"}</td>
             </tr>
           ))}
         </tbody>
