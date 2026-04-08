@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 
@@ -75,13 +75,11 @@ export default function AdminControlCenter() {
   const [role, setRole] = React.useState<string>("admin");
   const isDispatcher = role === "dispatcher";
 
-  // counts
   const [loading, setLoading] = React.useState(true);
   const [msg, setMsg] = React.useState<string>("");
-
   const [pendingVerifications, setPendingVerifications] = React.useState<number>(0);
-
-  // optional status indicators (UI only; we do not assume endpoints exist)
+  const [ratingsCount, setRatingsCount] = React.useState<number>(0);
+  const [ratingsAverage, setRatingsAverage] = React.useState<number>(0);
   const [lastRefresh, setLastRefresh] = React.useState<string>("");
 
   React.useEffect(() => {
@@ -99,13 +97,20 @@ export default function AdminControlCenter() {
     setMsg("");
 
     try {
-      // --- Verification pending count (known working endpoint)
-      const j = await safeJson("/api/admin/verification/pending");
-      if (j?.ok && Array.isArray(j.rows)) {
-        setPendingVerifications(j.rows.length);
+      const verification = await safeJson("/api/admin/verification/pending");
+      if (verification?.ok && Array.isArray(verification.rows)) {
+        setPendingVerifications(verification.rows.length);
       } else {
-        // Keep UI stable even if endpoint fails
         setPendingVerifications(0);
+      }
+
+      const ratings = await safeJson("/api/admin/ratings?limit=1");
+      if (ratings?.ok && ratings.stats) {
+        setRatingsCount(Number(ratings.stats.total || 0));
+        setRatingsAverage(Number(ratings.stats.average_rating || 0));
+      } else {
+        setRatingsCount(0);
+        setRatingsAverage(0);
       }
 
       setLastRefresh(new Date().toLocaleString());
@@ -124,10 +129,8 @@ export default function AdminControlCenter() {
       load();
     };
 
-    // Initial load
     safeLoad();
 
-    // Reload when tab becomes visible / user refocuses window
     const onFocus = () => safeLoad();
     const onVis = () => {
       if (document.visibilityState === "visible") safeLoad();
@@ -136,7 +139,6 @@ export default function AdminControlCenter() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
-    // BroadcastChannel (verification updates)
     let bc: BroadcastChannel | null = null;
     try {
       if (typeof window !== "undefined" && "BroadcastChannel" in window) {
@@ -147,7 +149,6 @@ export default function AdminControlCenter() {
       }
     } catch {}
 
-    // localStorage fallback (cross-tab)
     const onStorage = (e: StorageEvent) => {
       if (e.key === "jride_verification_pending_changed") safeLoad();
     };
@@ -172,7 +173,7 @@ export default function AdminControlCenter() {
             <div className="text-2xl font-bold">Admin Control Center</div>
             <div className="text-sm opacity-70 mt-1">
               Operations dashboard (counts are live). Role: {role}
-              {lastRefresh ? <span className="ml-2">â€¢ Last refresh: {lastRefresh}</span> : null}
+              {lastRefresh ? <span className="ml-2">Last refresh: {lastRefresh}</span> : null}
             </div>
           </div>
           <button
@@ -186,7 +187,6 @@ export default function AdminControlCenter() {
 
         {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
 
-        {/* ===== OPS / DISPATCH ===== */}
         <div className="mt-6">
           <div className="text-sm font-semibold mb-2">Operations</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -208,7 +208,6 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
-        {/* ===== QUEUES ===== */}
         <div className="mt-8">
           <div className="text-sm font-semibold mb-2">Queues</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -240,7 +239,6 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
-        {/* ===== FINANCE ===== */}
         <div className="mt-8">
           <div className="text-sm font-semibold mb-2">Finance</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -265,7 +263,23 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
-        {/* ===== SYSTEM ===== */}
+        <div className="mt-8">
+          <div className="text-sm font-semibold mb-2">Quality</div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Tile
+              title="Trip Ratings"
+              desc="Read-only completed-trip passenger feedback analytics."
+              href="/admin/ratings"
+              badge={loading ? "-" : ratingsCount}
+              right={
+                <div className="text-xs rounded-full bg-slate-100 border border-black/10 px-2 py-1">
+                  avg {loading ? "-" : ratingsAverage.toFixed(2)}
+                </div>
+              }
+            />
+          </div>
+        </div>
+
         <div className="mt-8">
           <div className="text-sm font-semibold mb-2">System</div>
           <div className="grid gap-4 md:grid-cols-3">
