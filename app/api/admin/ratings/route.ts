@@ -1,278 +1,201 @@
-import { NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
-function env(name: string) {
-  const v = process.env[name];
-  return v && String(v).trim() ? String(v).trim() : "";
-}
+type RatingRow = {
+  id: string;
+  booking_id: string | null;
+  booking_code: string | null;
+  rating: number | null;
+  feedback: string | null;
+  created_at: string | null;
+  driver_id: string | null;
+  passenger_id: string | null;
+};
 
-function parseCsv(v: string) {
-  return String(v || "")
+function envList(nameA: string, nameB?: string): string[] {
+  const raw = [process.env[nameA], nameB ? process.env[nameB] : undefined]
+    .filter(Boolean)
+    .join(",");
+  return raw
     .split(",")
-    .map((s) => s.trim())
+    .map((v) => String(v || "").trim().toLowerCase())
     .filter(Boolean);
 }
 
-function toLowerList(xs: string[]) {
-  return xs.map((s) => s.trim().toLowerCase()).filter(Boolean);
+function hasAllowedEmail(email: string | null | undefined): boolean {
+  const probe = String(email || "").trim().toLowerCase();
+  if (!probe) return false;
+  const admins = envList("JRIDE_ADMIN_EMAILS", "ADMIN_EMAILS");
+  const dispatchers = envList("JRIDE_DISPATCHER_EMAILS", "DISPATCHER_EMAILS");
+  return admins.includes(probe) || dispatchers.includes(probe);
 }
 
-function isInList(val: string | null | undefined, list: string[]) {
-  const v = String(val || "").trim();
-  if (!v) return false;
-  return list.includes(v);
+function hasAllowedUserId(userId: string | null | undefined): boolean {
+  const probe = String(userId || "").trim().toLowerCase();
+  if (!probe) return false;
+  const admins = envList("JRIDE_ADMIN_USER_IDS");
+  const dispatchers = envList("JRIDE_DISPATCHER_USER_IDS");
+  return admins.includes(probe) || dispatchers.includes(probe);
 }
 
-function isEmailInList(email: string | null | undefined, listLower: string[]) {
-  const e = String(email || "").trim().toLowerCase();
-  if (!e) return false;
-  return listLower.includes(e);
+function hasAllowedRole(role: unknown): boolean {
+  const probe = String(role || "").trim().toLowerCase();
+  return probe === "admin" || probe === "dispatcher";
 }
 
-function toIsoDate(v: string | null) {
-  const s = String(v || "").trim();
-  if (!s) return "";
-  return s;
+function getRequiredEnv(name: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error("Missing env: " + name);
+  return v;
 }
 
-function toNumber(v: unknown, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+async function getSupabaseUser() {
+  const url = getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const anon = getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+  const cookieStore = await cookies();
+  const sb = createServerClient(url, anon, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set() {},
+      remove() {},
+    },
+  });
+
+  const { data } = await sb.auth.getUser();
+  return data?.user ?? null;
 }
 
-function maskEmail(email: string | null | undefined) {
-  const e = String(email || "").trim();
-  if (!e) return "";
-  const parts = e.split("@");
-  if (parts.length !== 2) return e;
-  const name = parts[0];
-  const domain = parts[1];
-  if (name.length <= 2) return name + "***@" + domain;
-  return name.slice(0, 2) + "***@" + domain;
+function getService() {
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url) throw new Error("Missing env: SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
+  if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY");
+
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
-function buildQuery(params: URLSearchParams) {
-  const qs = new URLSearchParams();
-  qs.set("select", "id,booking_id,booking_code,driver_id,passenger_id,rating,feedback,created_at");
-  qs.set("order", "created_at.desc");
+async function resolveRequester() {
+  const session = await auth().catch(() => null);
+  const nextAuthEmail = String(session?.user?.email || "").trim().toLowerCase() || null;
 
-  const limitRaw = parseInt(params.get("limit") || "100", 10);
-  const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 100, 500));
-  qs.set("limit", String(limit));
+  const supaUser = await getSupabaseUser().catch(() => null);
+  const supaEmail = String(supaUser?.email || "").trim().toLowerCase() || null;
+  const supaUserId = supaUser?.id ? String(supaUser.id) : null;
+  const supaRole =
+    (supaUser?.user_metadata as Record<string, unknown> | undefined)?.role ??
+    (supaUser?.app_metadata as Record<string, unknown> | undefined)?.role ??
+    null;
 
-  const rating = String(params.get("rating") || "").trim();
-  if (rating) qs.set("rating", "eq." + rating);
+  const effectiveEmail = nextAuthEmail || supaEmail || null;
 
-  const from = toIsoDate(params.get("from"));
-  if (from) qs.set("created_at", "gte." + from);
+  const allowed =
+    hasAllowedEmail(effectiveEmail) ||
+    hasAllowedUserId(supaUserId) ||
+    hasAllowedRole(supaRole);
 
-  const to = toIsoDate(params.get("to"));
-  if (to) qs.append("created_at", "lte." + to);
-
-  return qs;
+  return {
+    allowed,
+    effectiveEmail,
+    nextAuthEmail,
+    supaEmail,
+    supaUserId,
+    supaRole,
+    hasAnyIdentity: Boolean(effectiveEmail || supaUserId),
+  };
 }
 
-async function getRoleFromMetadata(adminSb: any, userId: string) {
+export async function GET(req: NextRequest) {
   try {
-    const u = await adminSb.auth.admin.getUserById(userId);
-    const md: any = u?.data?.user?.user_metadata || {};
-    const role = String(md?.role || "").toLowerCase();
-    const isAdmin = md?.is_admin === true || role === "admin";
-    const isDispatcher = role === "dispatcher";
-    return { isAdmin, isDispatcher, role };
-  } catch {
-    return { isAdmin: false, isDispatcher: false, role: "" };
-  }
-}
+    const requester = await resolveRequester();
 
-export async function GET(req: Request) {
-  try {
-    const reqUrl = new URL(req.url);
-    const debug = reqUrl.searchParams.get("debug") === "1";
-
-    const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
-    const anon =
-      env("SUPABASE_ANON_KEY") ||
-      env("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
-      env("NEXT_PUBLIC_SUPABASE_KEY") ||
-      "";
-    const service =
-      env("SUPABASE_SERVICE_ROLE_KEY") ||
-      env("SUPABASE_SERVICE_ROLE") ||
-      env("SUPABASE_SERVICE_KEY") ||
-      "";
-
-    if (!url) return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
-    if (!anon) return NextResponse.json({ ok: false, error: "Missing SUPABASE_ANON_KEY" }, { status: 500 });
-    if (!service) return NextResponse.json({ ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
-
-    const cookieStore = await cookies();
-    const cookieNames = cookieStore.getAll().map((c) => c.name);
-
-    const userSb = createServerClient(url, anon, {
-      cookies: {
-        get(name) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    });
-
-    const { data: userData, error: userError } = await userSb.auth.getUser();
-    const user = userData?.user;
-    const requesterId = user?.id ? String(user.id) : "";
-    const requesterEmail = user?.email ? String(user.email) : "";
-
-    const adminSb = createClient(url, service, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const adminIds = parseCsv(env("JRIDE_ADMIN_USER_IDS") || env("ADMIN_USER_IDS"));
-    const dispatcherIds = parseCsv(env("JRIDE_DISPATCHER_USER_IDS") || env("DISPATCHER_USER_IDS"));
-    const adminEmailsLower = toLowerList(parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS")));
-    const dispatcherEmailsLower = toLowerList(parseCsv(env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS")));
-
-    let isAdminByList = isInList(requesterId, adminIds) || isEmailInList(requesterEmail, adminEmailsLower);
-    let isDispatcherByList = isInList(requesterId, dispatcherIds) || isEmailInList(requesterEmail, dispatcherEmailsLower);
-    let isAdmin = isAdminByList;
-    let isDispatcher = isDispatcherByList;
-    let metadataRole = "";
-
-    if (requesterId && !isAdmin && !isDispatcher) {
-      const md = await getRoleFromMetadata(adminSb, requesterId);
-      isAdmin = md.isAdmin;
-      isDispatcher = md.isDispatcher;
-      metadataRole = md.role;
-    }
-
-    const debugPayload = {
-      has_user: !!requesterId,
-      requester_id: requesterId || null,
-      requester_email_masked: maskEmail(requesterEmail) || null,
-      user_error: userError ? String(userError.message || userError) : null,
-      cookie_names: cookieNames,
-      env_seen: {
-        has_admin_emails: adminEmailsLower.length > 0,
-        has_dispatcher_emails: dispatcherEmailsLower.length > 0,
-        has_admin_ids: adminIds.length > 0,
-        has_dispatcher_ids: dispatcherIds.length > 0,
-        admin_emails_count: adminEmailsLower.length,
-        dispatcher_emails_count: dispatcherEmailsLower.length,
-      },
-      matches: {
-        admin_by_list: isAdminByList,
-        dispatcher_by_list: isDispatcherByList,
-        metadata_role: metadataRole || null,
-        final_is_admin: isAdmin,
-        final_is_dispatcher: isDispatcher,
-      },
-    };
-
-    if (!requesterId) {
+    if (!requester.hasAnyIdentity) {
       return NextResponse.json(
-        debug
-          ? { ok: false, error: "Not signed in", debug: debugPayload }
-          : { ok: false, error: "Not signed in" },
+        { ok: false, error: "Not signed in." },
         { status: 401 }
       );
     }
 
-    if (!isAdmin && !isDispatcher) {
+    if (!requester.allowed) {
       return NextResponse.json(
-        debug
-          ? { ok: false, error: "Forbidden (admin/dispatcher only).", debug: debugPayload }
-          : { ok: false, error: "Forbidden (admin/dispatcher only)." },
+        { ok: false, error: "Forbidden (admin/dispatcher only)." },
         { status: 403 }
       );
     }
 
-    const restUrl = url + "/rest/v1/trip_ratings?" + buildQuery(reqUrl.searchParams).toString();
+    const url = new URL(req.url);
+    const limitRaw = Number(url.searchParams.get("limit") || "50");
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 200)
+      : 50;
 
-    const res = await fetch(restUrl, {
-      headers: {
-        apikey: service,
-        Authorization: "Bearer " + service,
-      },
-      cache: "no-store",
-    });
+    const ratingFilter = (url.searchParams.get("rating") || "").trim();
 
-    const text = await res.text();
-    if (!res.ok) {
+    const service = getService();
+
+    let query = service
+      .from("trip_ratings")
+      .select("id, booking_id, booking_code, rating, feedback, created_at, driver_id, passenger_id")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (ratingFilter) {
+      const parsed = Number(ratingFilter);
+      if (Number.isFinite(parsed)) {
+        query = query.eq("rating", parsed);
+      }
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
       return NextResponse.json(
-        debug
-          ? { ok: false, error: "RATINGS_READ_FAILED", details: text, debug: debugPayload }
-          : { ok: false, error: "RATINGS_READ_FAILED", details: text },
-        { status: res.status }
+        { ok: false, error: error.message || "Failed to load ratings." },
+        { status: 500 }
       );
     }
 
-    let rows: any[] = [];
-    try {
-      rows = JSON.parse(text || "[]");
-    } catch {
-      rows = [];
-    }
+    const rows = Array.isArray(data) ? (data as RatingRow[]) : [];
 
     const stats = {
       total: rows.length,
-      average_rating: 0,
-      by_star: {
-        star_5: 0,
-        star_4: 0,
-        star_3: 0,
-        star_2: 0,
-        star_1: 0,
-      },
-      with_feedback: 0,
+      average_rating:
+        rows.length > 0
+          ? rows.reduce((sum, r) => sum + Number(r.rating || 0), 0) / rows.length
+          : 0,
+      with_feedback: rows.filter((r) => String(r.feedback || "").trim() !== "").length,
+      stars_5: rows.filter((r) => Number(r.rating || 0) === 5).length,
+      stars_4: rows.filter((r) => Number(r.rating || 0) === 4).length,
+      stars_3: rows.filter((r) => Number(r.rating || 0) === 3).length,
+      stars_2: rows.filter((r) => Number(r.rating || 0) === 2).length,
+      stars_1: rows.filter((r) => Number(r.rating || 0) === 1).length,
     };
 
-    let sum = 0;
-    for (const row of rows) {
-      const rating = toNumber(row?.rating, 0);
-      const feedback = String(row?.feedback || "").trim();
-      if (rating >= 1 && rating <= 5) {
-        sum += rating;
-        if (rating === 5) stats.by_star.star_5++;
-        if (rating === 4) stats.by_star.star_4++;
-        if (rating === 3) stats.by_star.star_3++;
-        if (rating === 2) stats.by_star.star_2++;
-        if (rating === 1) stats.by_star.star_1++;
-      }
-      if (feedback) stats.with_feedback++;
-    }
-
-    if (stats.total > 0) {
-      stats.average_rating = Number((sum / stats.total).toFixed(2));
-    }
-
+    return NextResponse.json({
+      ok: true,
+      stats,
+      rows,
+    });
+  } catch (error) {
     return NextResponse.json(
-      debug
-        ? {
-            ok: true,
-            rows,
-            stats,
-            debug: debugPayload,
-          }
-        : {
-            ok: true,
-            rows,
-            stats,
-          },
       {
-        status: 200,
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      }
-    );
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) },
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }
