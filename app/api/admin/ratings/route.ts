@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
@@ -44,6 +44,17 @@ function toNumber(v: unknown, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function maskEmail(email: string | null | undefined) {
+  const e = String(email || "").trim();
+  if (!e) return "";
+  const parts = e.split("@");
+  if (parts.length !== 2) return e;
+  const name = parts[0];
+  const domain = parts[1];
+  if (name.length <= 2) return name + "***@" + domain;
+  return name.slice(0, 2) + "***@" + domain;
+}
+
 function buildQuery(params: URLSearchParams) {
   const qs = new URLSearchParams();
   qs.set("select", "id,booking_id,booking_code,driver_id,passenger_id,rating,feedback,created_at");
@@ -72,14 +83,17 @@ async function getRoleFromMetadata(adminSb: any, userId: string) {
     const role = String(md?.role || "").toLowerCase();
     const isAdmin = md?.is_admin === true || role === "admin";
     const isDispatcher = role === "dispatcher";
-    return { isAdmin, isDispatcher };
+    return { isAdmin, isDispatcher, role };
   } catch {
-    return { isAdmin: false, isDispatcher: false };
+    return { isAdmin: false, isDispatcher: false, role: "" };
   }
 }
 
 export async function GET(req: Request) {
   try {
+    const reqUrl = new URL(req.url);
+    const debug = reqUrl.searchParams.get("debug") === "1";
+
     const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
     const anon =
       env("SUPABASE_ANON_KEY") ||
@@ -96,7 +110,9 @@ export async function GET(req: Request) {
     if (!anon) return NextResponse.json({ ok: false, error: "Missing SUPABASE_ANON_KEY" }, { status: 500 });
     if (!service) return NextResponse.json({ ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
 
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
+    const cookieNames = cookieStore.getAll().map((c) => c.name);
+
     const userSb = createServerClient(url, anon, {
       cookies: {
         get(name) {
@@ -105,14 +121,10 @@ export async function GET(req: Request) {
       },
     });
 
-    const { data: userData } = await userSb.auth.getUser();
+    const { data: userData, error: userError } = await userSb.auth.getUser();
     const user = userData?.user;
     const requesterId = user?.id ? String(user.id) : "";
     const requesterEmail = user?.email ? String(user.email) : "";
-
-    if (!requesterId) {
-      return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
-    }
 
     const adminSb = createClient(url, service, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -123,20 +135,60 @@ export async function GET(req: Request) {
     const adminEmailsLower = toLowerList(parseCsv(env("JRIDE_ADMIN_EMAILS") || env("ADMIN_EMAILS")));
     const dispatcherEmailsLower = toLowerList(parseCsv(env("JRIDE_DISPATCHER_EMAILS") || env("DISPATCHER_EMAILS")));
 
-    let isAdmin = isInList(requesterId, adminIds) || isEmailInList(requesterEmail, adminEmailsLower);
-    let isDispatcher = isInList(requesterId, dispatcherIds) || isEmailInList(requesterEmail, dispatcherEmailsLower);
+    let isAdminByList = isInList(requesterId, adminIds) || isEmailInList(requesterEmail, adminEmailsLower);
+    let isDispatcherByList = isInList(requesterId, dispatcherIds) || isEmailInList(requesterEmail, dispatcherEmailsLower);
+    let isAdmin = isAdminByList;
+    let isDispatcher = isDispatcherByList;
+    let metadataRole = "";
 
-    if (!isAdmin && !isDispatcher) {
+    if (requesterId && !isAdmin && !isDispatcher) {
       const md = await getRoleFromMetadata(adminSb, requesterId);
       isAdmin = md.isAdmin;
       isDispatcher = md.isDispatcher;
+      metadataRole = md.role;
+    }
+
+    const debugPayload = {
+      has_user: !!requesterId,
+      requester_id: requesterId || null,
+      requester_email_masked: maskEmail(requesterEmail) || null,
+      user_error: userError ? String(userError.message || userError) : null,
+      cookie_names: cookieNames,
+      env_seen: {
+        has_admin_emails: adminEmailsLower.length > 0,
+        has_dispatcher_emails: dispatcherEmailsLower.length > 0,
+        has_admin_ids: adminIds.length > 0,
+        has_dispatcher_ids: dispatcherIds.length > 0,
+        admin_emails_count: adminEmailsLower.length,
+        dispatcher_emails_count: dispatcherEmailsLower.length,
+      },
+      matches: {
+        admin_by_list: isAdminByList,
+        dispatcher_by_list: isDispatcherByList,
+        metadata_role: metadataRole || null,
+        final_is_admin: isAdmin,
+        final_is_dispatcher: isDispatcher,
+      },
+    };
+
+    if (!requesterId) {
+      return NextResponse.json(
+        debug
+          ? { ok: false, error: "Not signed in", debug: debugPayload }
+          : { ok: false, error: "Not signed in" },
+        { status: 401 }
+      );
     }
 
     if (!isAdmin && !isDispatcher) {
-      return NextResponse.json({ ok: false, error: "Forbidden (admin/dispatcher only)." }, { status: 403 });
+      return NextResponse.json(
+        debug
+          ? { ok: false, error: "Forbidden (admin/dispatcher only).", debug: debugPayload }
+          : { ok: false, error: "Forbidden (admin/dispatcher only)." },
+        { status: 403 }
+      );
     }
 
-    const reqUrl = new URL(req.url);
     const restUrl = url + "/rest/v1/trip_ratings?" + buildQuery(reqUrl.searchParams).toString();
 
     const res = await fetch(restUrl, {
@@ -149,7 +201,12 @@ export async function GET(req: Request) {
 
     const text = await res.text();
     if (!res.ok) {
-      return NextResponse.json({ ok: false, error: "RATINGS_READ_FAILED", details: text }, { status: res.status });
+      return NextResponse.json(
+        debug
+          ? { ok: false, error: "RATINGS_READ_FAILED", details: text, debug: debugPayload }
+          : { ok: false, error: "RATINGS_READ_FAILED", details: text },
+        { status: res.status }
+      );
     }
 
     let rows: any[] = [];
@@ -192,11 +249,18 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json(
-      {
-        ok: true,
-        rows,
-        stats,
-      },
+      debug
+        ? {
+            ok: true,
+            rows,
+            stats,
+            debug: debugPayload,
+          }
+        : {
+            ok: true,
+            rows,
+            stats,
+          },
       {
         status: 200,
         headers: {
