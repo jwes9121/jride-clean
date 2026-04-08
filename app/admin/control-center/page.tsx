@@ -364,6 +364,17 @@ export default function AdminControlCenter() {
   <RatingCoverageGapChecker />
 </div>
 
+
+{/* === RATING CAPTURE AUDIT === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Rating Capture Audit</h2>
+    <span className="text-xs text-slate-400">Trace missing or delayed passenger ratings</span>
+  </div>
+
+  <RatingCaptureAuditPanel />
+</div>
+
 </main>
   );
 }
@@ -806,6 +817,83 @@ function RatingCoverageGapChecker() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+type RatingAuditRow = {
+  booking_code?: string;
+  town?: string;
+  driver_name?: string;
+  passenger_name?: string;
+  completed_at?: string;
+  rated_at?: string | null;
+  rating_delay_minutes?: number | null;
+};
+
+type RatingAuditResponse = {
+  ok?: boolean;
+  stats?: {
+    total_completed?: number;
+    total_rated?: number;
+    missing?: number;
+  };
+  rows?: RatingAuditRow[];
+};
+
+function RatingCaptureAuditPanel() {
+  const [data, setData] = React.useState<RatingAuditResponse | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/admin/analytics/rating-capture-audit?limit=10", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => setData({ ok: false }));
+  }, []);
+
+  if (!data || !data.ok) {
+    return <div className="text-xs text-slate-400">Loading...</div>;
+  }
+
+  const stats = data.stats || {};
+  const rows = data.rows || [];
+
+  return (
+    <div className="text-xs space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="border p-2 rounded">Completed: {stats.total_completed || 0}</div>
+        <div className="border p-2 rounded">Rated: {stats.total_rated || 0}</div>
+        <div className="border p-2 rounded">Missing: {stats.missing || 0}</div>
+      </div>
+
+      <table className="w-full border">
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="p-2 border">Code</th>
+            <th className="p-2 border">Town</th>
+            <th className="p-2 border">Driver</th>
+            <th className="p-2 border">Passenger</th>
+            <th className="p-2 border">Completed</th>
+            <th className="p-2 border">Rated</th>
+            <th className="p-2 border">Delay(min)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className="p-2 border">{r.booking_code}</td>
+              <td className="p-2 border">{r.town}</td>
+              <td className="p-2 border">{r.driver_name}</td>
+              <td className="p-2 border">{r.passenger_name}</td>
+              <td className="p-2 border">{r.completed_at}</td>
+              <td className="p-2 border">{r.rated_at || "-"}</td>
+              <td className="p-2 border">{r.rating_delay_minutes ?? "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
