@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
         .select("id, booking_code, town, driver_id, passenger_name, created_at, updated_at")
         .eq("status", "completed")
         .order("updated_at", { ascending: false })
-        .limit(500),
+        .limit(1000),
       supabase
         .from("trip_ratings")
         .select("booking_id, booking_code"),
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       profileMap.set(driverId, p);
     }
 
-    const missingRows = bookings
+    const missingAllRows = bookings
       .filter((b) => {
         const bookingId = String(b.id || "").trim();
         const bookingCode = String(b.booking_code || "").trim();
@@ -129,8 +129,9 @@ export async function GET(req: NextRequest) {
           passenger_name: b.passenger_name || "Unknown Passenger",
           completed_at: b.updated_at || b.created_at,
         };
-      })
-      .slice(0, limit);
+      });
+
+    const rows = missingAllRows.slice(0, limit);
 
     const townMap = new Map<string, { completed: number; rated: number; missing: number }>();
 
@@ -152,7 +153,7 @@ export async function GET(req: NextRequest) {
       townMap.set(town, prev);
     }
 
-    const summary_by_town = Array.from(townMap.entries())
+    const summaryByTown = Array.from(townMap.entries())
       .map(([town, v]) => ({
         town,
         completed_trips: v.completed,
@@ -171,11 +172,11 @@ export async function GET(req: NextRequest) {
       ok: true,
       summary: {
         completed_trips: bookings.length,
-        rated_trips: ratings.length,
-        missing_ratings: missingRows.length,
+        rated_trips: bookings.length - missingAllRows.length,
+        missing_ratings: missingAllRows.length,
       },
-      summary_by_town,
-      rows: missingRows,
+      summary_by_town: summaryByTown,
+      rows,
     });
   } catch (error) {
     return NextResponse.json(
