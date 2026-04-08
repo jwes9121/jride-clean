@@ -353,6 +353,17 @@ export default function AdminControlCenter() {
   <LowRatedDriverWatchlist />
 </div>
 
+
+{/* === RATING COVERAGE GAPS === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Zero-rating Completed-trip Gap Checker</h2>
+    <span className="text-xs text-slate-400">Completed trips with missing passenger rating records</span>
+  </div>
+
+  <RatingCoverageGapChecker />
+</div>
+
 </main>
   );
 }
@@ -654,6 +665,147 @@ function LowRatedDriverWatchlist() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+type RatingCoverageGapRow = {
+  booking_id?: string | null;
+  booking_code?: string | null;
+  town?: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  passenger_name?: string | null;
+  completed_at?: string | null;
+};
+
+type RatingCoverageGapTownRow = {
+  town?: string | null;
+  completed_trips?: number;
+  rated_trips?: number;
+  missing_ratings?: number;
+  coverage_pct?: number;
+};
+
+type RatingCoverageGapResponse = {
+  ok?: boolean;
+  summary?: {
+    completed_trips?: number;
+    rated_trips?: number;
+    missing_ratings?: number;
+  };
+  summary_by_town?: RatingCoverageGapTownRow[];
+  rows?: RatingCoverageGapRow[];
+};
+
+function RatingCoverageGapChecker() {
+  const [data, setData] = React.useState<RatingCoverageGapResponse | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/admin/analytics/rating-coverage-gaps?limit=8", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({} as RatingCoverageGapResponse));
+        if (!cancelled) {
+          setData(j);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData({ ok: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!data || !data.ok) {
+    return <div className="text-xs text-slate-400">Loading...</div>;
+  }
+
+  const summary = data.summary || {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const townRows = Array.isArray(data.summary_by_town) ? data.summary_by_town.slice(0, 5) : [];
+
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="rounded border p-3">
+          <div className="text-slate-400">Completed trips checked</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900">{Number(summary.completed_trips || 0)}</div>
+        </div>
+        <div className="rounded border p-3">
+          <div className="text-slate-400">Trips with ratings</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900">{Number(summary.rated_trips || 0)}</div>
+        </div>
+        <div className="rounded border p-3">
+          <div className="text-slate-400">Missing rating records</div>
+          <div className="mt-1 text-lg font-semibold text-slate-900">{Number(summary.missing_ratings || 0)}</div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border text-left">
+          <thead>
+            <tr className="bg-slate-50">
+              <th className="border p-2">Town</th>
+              <th className="border p-2">Completed</th>
+              <th className="border p-2">Rated</th>
+              <th className="border p-2">Missing</th>
+              <th className="border p-2">Coverage</th>
+            </tr>
+          </thead>
+          <tbody>
+            {townRows.map((r, i) => (
+              <tr key={String(r.town || i)}>
+                <td className="border p-2">{r.town || "Unknown"}</td>
+                <td className="border p-2">{Number(r.completed_trips || 0)}</td>
+                <td className="border p-2">{Number(r.rated_trips || 0)}</td>
+                <td className="border p-2">{Number(r.missing_ratings || 0)}</td>
+                <td className="border p-2">
+                  {r.coverage_pct != null ? Math.round(Number(r.coverage_pct) * 100) + "%" : "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border text-left">
+          <thead>
+            <tr className="bg-slate-50">
+              <th className="border p-2">Booking code</th>
+              <th className="border p-2">Town</th>
+              <th className="border p-2">Driver</th>
+              <th className="border p-2">Passenger</th>
+              <th className="border p-2">Completed at</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td className="border p-2 text-slate-400" colSpan={5}>No completed-trip rating gaps found.</td>
+              </tr>
+            ) : (
+              rows.map((r) => (
+                <tr key={String(r.booking_id || r.booking_code || Math.random())}>
+                  <td className="border p-2">{r.booking_code || "-"}</td>
+                  <td className="border p-2">{r.town || "-"}</td>
+                  <td className="border p-2">{r.driver_name || "Unknown Driver"}</td>
+                  <td className="border p-2">{r.passenger_name || "Unknown Passenger"}</td>
+                  <td className="border p-2">{r.completed_at || "-"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
