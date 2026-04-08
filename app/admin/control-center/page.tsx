@@ -1,5 +1,21 @@
 "use client";
 
+type AnalyticsSegment = "all" | "production" | "test" | "legacy";
+
+function getSelectedAnalyticsSegment(): AnalyticsSegment {
+  if (typeof window === "undefined") return "all";
+  const url = new URL(window.location.href);
+  const raw = (url.searchParams.get("analytics_segment") || "all").toLowerCase();
+  if (raw === "production" || raw === "test" || raw === "legacy") return raw;
+  return "all";
+}
+
+function setSelectedAnalyticsSegment(seg: AnalyticsSegment) {
+  const url = new URL(window.location.href);
+  if (seg === "all") url.searchParams.delete("analytics_segment");
+  else url.searchParams.set("analytics_segment", seg);
+  window.location.href = url.toString();
+}
 import * as React from "react";
 
 type AnyObj = Record<string, any>;
