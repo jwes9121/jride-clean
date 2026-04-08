@@ -307,6 +307,64 @@ export default function AdminControlCenter() {
           </div>
         ) : null}
       </div>
-    </main>
+    
+{/* === RATINGS SNAPSHOT === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Ratings Snapshot</h2>
+    <a href="/admin/ratings" className="text-xs text-emerald-600 hover:underline">
+      View full
+    </a>
+  </div>
+
+  <RatingsSnapshot />
+</div>
+
+</main>
   );
 }
+
+
+function RatingsSnapshot() {
+  const [data, setData] = React.useState(null)
+
+  React.useEffect(() => {
+    fetch("/api/admin/ratings?limit=5")
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => {})
+  }, [])
+
+  if (!data || !data.ok) {
+    return <div className="text-xs text-slate-400">Loading...</div>
+  }
+
+  const stats = data.stats || {}
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+      <div className="rounded border p-2">
+        <div className="text-slate-400">Total</div>
+        <div className="font-semibold">{stats.total_ratings || 0}</div>
+      </div>
+
+      <div className="rounded border p-2">
+        <div className="text-slate-400">Avg</div>
+        <div className="font-semibold">{stats.average_rating || 0}</div>
+      </div>
+
+      <div className="rounded border p-2">
+        <div className="text-slate-400">With Feedback</div>
+        <div className="font-semibold">{stats.with_feedback || 0}</div>
+      </div>
+
+      <div className="rounded border p-2">
+        <div className="text-slate-400">5â˜… Share</div>
+        <div className="font-semibold">
+          {stats.five_star_share ? Math.round(stats.five_star_share * 100) + "%" : "-"}
+        </div>
+      </div>
+    </div>
+  )
+}
+
