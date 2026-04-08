@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 
@@ -325,24 +325,51 @@ export default function AdminControlCenter() {
 }
 
 
+type RatingsSnapshotResponse = {
+  ok?: boolean;
+  stats?: {
+    total_ratings?: number | null;
+    average_rating?: number | null;
+    with_feedback?: number | null;
+    five_star_share?: number | null;
+  };
+};
+
 function RatingsSnapshot() {
-  const [data, setData] = React.useState(null)
+  const [data, setData] = React.useState<RatingsSnapshotResponse | null>(null);
 
   React.useEffect(() => {
-    fetch("/api/admin/ratings?limit=5")
-      .then(r => r.json())
-      .then(setData)
-      .catch(() => {})
-  }, [])
+    let cancelled = false;
+
+    fetch("/api/admin/ratings?limit=5", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({} as RatingsSnapshotResponse));
+        if (!cancelled) {
+          setData(j);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData({ ok: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>
+    return <div className="text-xs text-slate-400">Loading...</div>;
   }
 
-  const stats = data.stats || {}
+  const stats = data.stats || {};
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+    <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
       <div className="rounded border p-2">
         <div className="text-slate-400">Total</div>
         <div className="font-semibold">{stats.total_ratings || 0}</div>
@@ -359,12 +386,11 @@ function RatingsSnapshot() {
       </div>
 
       <div className="rounded border p-2">
-        <div className="text-slate-400">5â˜… Share</div>
+        <div className="text-slate-400">5-star Share</div>
         <div className="font-semibold">
-          {stats.five_star_share ? Math.round(stats.five_star_share * 100) + "%" : "-"}
+          {stats.five_star_share != null ? Math.round(stats.five_star_share * 100) + "%" : "-"}
         </div>
       </div>
     </div>
-  )
+  );
 }
-
