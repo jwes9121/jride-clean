@@ -312,7 +312,6 @@ export async function POST(req: Request) {
 
     const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
     const feesAcknowledged = !!body.fees_acknowledged;
-    const notes = text(body.notes);
 
     if (!town) {
       return NextResponse.json(
@@ -386,9 +385,6 @@ export async function POST(req: Request) {
       insert.passenger_name = passengerName;
     }
 
-    if (notes) {
-      insert.notes = notes;
-    }
 
     const { data: booking, error } = await supabase
       .from("bookings")
