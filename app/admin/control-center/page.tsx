@@ -375,6 +375,17 @@ export default function AdminControlCenter() {
   <RatingCaptureAuditPanel />
 </div>
 
+
+{/* === SEGMENTED RATING COMPLIANCE === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Post-implementation Rating Compliance</h2>
+    <span className="text-xs text-slate-400">Production vs test vs legacy segmentation</span>
+  </div>
+
+  <SegmentedRatingCompliancePanel />
+</div>
+
 </main>
   );
 }
@@ -894,6 +905,130 @@ function RatingCaptureAuditPanel() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+type SegmentedComplianceBucket = {
+  completed?: number;
+  rated?: number;
+  missing?: number;
+};
+
+type SegmentedComplianceRow = {
+  segment?: "production" | "test" | "legacy";
+  booking_code?: string | null;
+  town?: string | null;
+  driver_name?: string;
+  passenger_name?: string;
+  completed_at?: string | null;
+  rated_at?: string | null;
+};
+
+type SegmentedComplianceResponse = {
+  ok?: boolean;
+  launch_date?: string;
+  summary?: {
+    production?: SegmentedComplianceBucket;
+    test?: SegmentedComplianceBucket;
+    legacy?: SegmentedComplianceBucket;
+  };
+  rows?: SegmentedComplianceRow[];
+};
+
+function SegmentedRatingCompliancePanel() {
+  const [data, setData] = React.useState<SegmentedComplianceResponse | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/admin/analytics/rating-compliance-segmented?limit=12", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then(async (r) => {
+        const j = await r.json().catch(() => ({} as SegmentedComplianceResponse));
+        if (!cancelled) {
+          setData(j);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData({ ok: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!data || !data.ok) {
+    return <div className="text-xs text-slate-400">Loading...</div>;
+  }
+
+  const summary = data.summary || {};
+  const production = summary.production || {};
+  const test = summary.test || {};
+  const legacy = summary.legacy || {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="rounded border p-3">
+          <div className="mb-2 font-semibold text-slate-700">Production</div>
+          <div>Completed: {Number(production.completed || 0)}</div>
+          <div>Rated: {Number(production.rated || 0)}</div>
+          <div>Missing: {Number(production.missing || 0)}</div>
+        </div>
+
+        <div className="rounded border p-3">
+          <div className="mb-2 font-semibold text-slate-700">Test</div>
+          <div>Completed: {Number(test.completed || 0)}</div>
+          <div>Rated: {Number(test.rated || 0)}</div>
+          <div>Missing: {Number(test.missing || 0)}</div>
+        </div>
+
+        <div className="rounded border p-3">
+          <div className="mb-2 font-semibold text-slate-700">Legacy</div>
+          <div>Completed: {Number(legacy.completed || 0)}</div>
+          <div>Rated: {Number(legacy.rated || 0)}</div>
+          <div>Missing: {Number(legacy.missing || 0)}</div>
+        </div>
+      </div>
+
+      <div className="text-[11px] text-slate-500">
+        Launch cutoff used for production compliance: {data.launch_date || "-"}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border text-left">
+          <thead>
+            <tr className="bg-slate-50">
+              <th className="border p-2">Segment</th>
+              <th className="border p-2">Booking code</th>
+              <th className="border p-2">Town</th>
+              <th className="border p-2">Driver</th>
+              <th className="border p-2">Passenger</th>
+              <th className="border p-2">Completed</th>
+              <th className="border p-2">Rated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={String(r.booking_code || i)}>
+                <td className="border p-2">{r.segment || "-"}</td>
+                <td className="border p-2">{r.booking_code || "-"}</td>
+                <td className="border p-2">{r.town || "-"}</td>
+                <td className="border p-2">{r.driver_name || "-"}</td>
+                <td className="border p-2">{r.passenger_name || "-"}</td>
+                <td className="border p-2">{r.completed_at || "-"}</td>
+                <td className="border p-2">{r.rated_at || "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
