@@ -264,6 +264,17 @@ export default function AdminControlCenter() {
         </div>
 
         <div className="mt-8">
+{/* === DRIVER PERFORMANCE === */}
+<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
+  <div className="mb-3 flex items-center justify-between">
+    <h2 className="text-sm font-semibold text-slate-700">Driver Performance</h2>
+    <span className="text-xs text-slate-400">Completed trips, payout, platform revenue, ratings</span>
+  </div>
+
+  <DriverPerformanceAnalytics />
+</div>
+
+
           <div className="text-sm font-semibold mb-2">Quality</div>
           <div className="grid gap-4 md:grid-cols-3">
             <Tile
@@ -330,16 +341,6 @@ export default function AdminControlCenter() {
   <TripAnalytics />
 </div>
 
-
-{/* === DRIVER PERFORMANCE === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Driver Performance</h2>
-    <span className="text-xs text-slate-400">Completed trips, payout, platform revenue, ratings</span>
-  </div>
-
-  <DriverPerformanceAnalytics />
-</div>
 
 </main>
   );
