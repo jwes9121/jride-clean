@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function noStoreHeaders() {
@@ -161,8 +161,8 @@ export async function GET(req: NextRequest) {
     let wallet: any = null;
     try {
       const { data } = await supabase
-        .from("driver_wallet_balances")
-        .select("driver_id, balance, min_required_balance, locked, status")
+        .from("drivers")
+        .select("driver_id, wallet_balance, min_required_wallet_balance, wallet_locked, status")
         .eq("driver_id", authRes.driverId)
         .limit(1);
 
@@ -200,10 +200,10 @@ export async function GET(req: NextRequest) {
           town: text(profileRow?.municipality) || null,
           phone: text(profileRow?.phone) || null,
           email: text(profileRow?.email) || null,
-          wallet_balance: num(wallet?.balance) ?? 0,
-          wallet_min_required: num(wallet?.min_required_balance) ?? 0,
-          wallet_locked: Boolean(wallet?.locked),
-          wallet_status: text(wallet?.status) || null,
+          wallet_wallet_balance: num(wallet?.wallet_balance) ?? 0,
+          wallet_min_required: num(wallet?.min_required_wallet_balance) ?? 0,
+          wallet_wallet_locked: Boolean(wallet?.wallet_locked),
+          wallet_status: null,
         },
         recent_trips: (tripRows ?? []).map(buildTripSummary),
       },
