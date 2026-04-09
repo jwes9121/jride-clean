@@ -162,11 +162,11 @@ export async function GET(req: NextRequest) {
     try {
       const { data } = await supabase
         .from("drivers")
-        .select("driver_id, wallet_balance, min_required_wallet_balance, wallet_locked, status")
-        .eq("driver_id", authRes.driverId)
-        .limit(1);
+        .select("id, wallet_balance, min_wallet_required, wallet_locked, driver_name")
+        .eq("id", authRes.driverId)
+        .maybeSingle();
 
-      wallet = data?.[0] ?? null;
+      wallet = data ?? null;
     } catch {
       wallet = null;
     }
@@ -196,16 +196,16 @@ export async function GET(req: NextRequest) {
         ok: true,
         profile: {
           driver_id: authRes.driverId,
-          full_name: text(profileRow?.full_name) || null,
+          full_name:
+            text(profileRow?.full_name) ||
+            text(wallet?.driver_name) ||
+            null,
           town: text(profileRow?.municipality) || null,
           phone: text(profileRow?.phone) || null,
           email: text(profileRow?.email) || null,
-
-          // ✅ FIXED FIELD NAMES (CRITICAL)
           wallet_balance: num(wallet?.wallet_balance) ?? 0,
-          wallet_min_required: num(wallet?.min_required_wallet_balance) ?? 0,
+          wallet_min_required: num(wallet?.min_wallet_required) ?? 0,
           wallet_locked: Boolean(wallet?.wallet_locked),
-
           wallet_status: null,
         },
         recent_trips: (tripRows ?? []).map(buildTripSummary),
