@@ -200,9 +200,12 @@ export async function GET(req: NextRequest) {
           town: text(profileRow?.municipality) || null,
           phone: text(profileRow?.phone) || null,
           email: text(profileRow?.email) || null,
-          wallet_wallet_balance: num(wallet?.wallet_balance) ?? 0,
+
+          // ✅ FIXED FIELD NAMES (CRITICAL)
+          wallet_balance: num(wallet?.wallet_balance) ?? 0,
           wallet_min_required: num(wallet?.min_required_wallet_balance) ?? 0,
-          wallet_wallet_locked: Boolean(wallet?.wallet_locked),
+          wallet_locked: Boolean(wallet?.wallet_locked),
+
           wallet_status: null,
         },
         recent_trips: (tripRows ?? []).map(buildTripSummary),
