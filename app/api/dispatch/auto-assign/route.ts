@@ -10,6 +10,13 @@ type DriverRow = {
   town?: string | null;
 };
 
+type DriverWalletRow = {
+  id: string;
+  wallet_balance: number | null;
+  min_wallet_required: number | null;
+  wallet_locked: boolean | null;
+};
+
 type BookingRow = {
   id: string;
   booking_code: string | null;
@@ -40,36 +47,6 @@ function num(v: any): number | null {
 
 function isoNow(): string {
   return new Date().toISOString();
-}
-
-
-function effectiveMinWalletRequired(raw: any): number {
-  const configured = num(raw);
-  return configured != null && configured >= 250 ? configured : 250;
-}
-
-async function isDriverWalletEligible(supabase: any, driverId: string): Promise<{
-  eligible: boolean;
-  balance: number;
-  minRequired: number;
-  walletLocked: boolean;
-}> {
-  const { data } = await supabase
-    .from("drivers")
-    .select("id, wallet_balance, min_wallet_required, wallet_locked")
-    .eq("id", driverId)
-    .maybeSingle();
-
-  const balance = num((data as any)?.wallet_balance) ?? 0;
-  const minRequired = effectiveMinWalletRequired((data as any)?.min_wallet_required);
-  const walletLocked = Boolean((data as any)?.wallet_locked);
-
-  return {
-    eligible: Boolean(data) && !walletLocked && balance >= minRequired,
-    balance,
-    minRequired,
-    walletLocked,
-  };
 }
 
 function json(body: any, status = 200) {
@@ -130,6 +107,12 @@ function isAssignableSearchingState(status: any): boolean {
   return s === "requested" || s === "searching";
 }
 
+function effectiveMinWalletRequired(v: any): number {
+  const n = num(v);
+  if (n == null) return 250;
+  return Math.max(250, n);
+}
+
 function compareDrivers(a: DriverRow, b: DriverRow, pickupLat: number | null, pickupLng: number | null): number {
   const aLat = num(a.lat);
   const aLng = num(a.lng);
@@ -172,6 +155,7 @@ type MatchDebug = {
   rejected_excluded_count: number;
   rejected_wrong_town_count: number;
   rejected_low_wallet_count: number;
+  rejected_wallet_locked_count: number;
   eligible_count: number;
   chosen_driver_id: string | null;
   chosen_driver_town: string | null;
@@ -215,6 +199,7 @@ async function matchSingle(
     rejected_excluded_count: 0,
     rejected_wrong_town_count: 0,
     rejected_low_wallet_count: 0,
+    rejected_wallet_locked_count: 0,
     eligible_count: 0,
     chosen_driver_id: null,
     chosen_driver_town: null,
@@ -286,6 +271,31 @@ async function matchSingle(
   const allDrivers = (drivers || []) as DriverRow[];
   debug.scanned_driver_count = allDrivers.length;
 
+  const driverIds = allDrivers
+    .map((d) => text(d.driver_id))
+    .filter(Boolean);
+
+  const walletByDriverId = new Map<string, DriverWalletRow>();
+  if (driverIds.length > 0) {
+    const { data: walletRows, error: walletError } = await supabase
+      .from("drivers")
+      .select("id, wallet_balance, min_wallet_required, wallet_locked")
+      .in("id", driverIds);
+
+    if (walletError) {
+      return {
+        assigned: false,
+        reason: "DRIVER_WALLET_SCAN_FAILED",
+        decision: "blocked",
+        debug,
+      };
+    }
+
+    for (const row of (walletRows || []) as DriverWalletRow[]) {
+      walletByDriverId.set(text(row.id), row);
+    }
+  }
+
   const allowedTownSet = new Set(allowedTowns.map((x) => text(x).toLowerCase()));
   const eligible: DriverRow[] = [];
 
@@ -308,6 +318,21 @@ async function matchSingle(
       continue;
     }
 
+    const wallet = walletByDriverId.get(text(d.driver_id));
+    const walletLocked = Boolean(wallet?.wallet_locked);
+    const walletBalance = num(wallet?.wallet_balance) ?? 0;
+    const walletMinRequired = effectiveMinWalletRequired(wallet?.min_wallet_required);
+
+    if (walletLocked) {
+      debug.rejected_wallet_locked_count++;
+      continue;
+    }
+
+    if (walletBalance < walletMinRequired) {
+      debug.rejected_low_wallet_count++;
+      continue;
+    }
+
     if (!d.updated_at) {
       debug.rejected_missing_updated_at_count++;
       continue;
@@ -322,12 +347,6 @@ async function matchSingle(
     const ageSec = (nowMs - updatedMs) / 1000;
     if (ageSec > ASSIGN_FRESHNESS_SECONDS) {
       debug.rejected_stale_count++;
-      continue;
-    }
-
-    const wallet = await isDriverWalletEligible(supabase, String(d.driver_id || ""));
-    if (!wallet.eligible) {
-      debug.rejected_low_wallet_count++;
       continue;
     }
 
