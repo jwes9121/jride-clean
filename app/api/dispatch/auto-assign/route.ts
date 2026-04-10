@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type DriverRow = {
@@ -40,6 +40,36 @@ function num(v: any): number | null {
 
 function isoNow(): string {
   return new Date().toISOString();
+}
+
+
+function effectiveMinWalletRequired(raw: any): number {
+  const configured = num(raw);
+  return configured != null && configured >= 250 ? configured : 250;
+}
+
+async function isDriverWalletEligible(supabase: any, driverId: string): Promise<{
+  eligible: boolean;
+  balance: number;
+  minRequired: number;
+  walletLocked: boolean;
+}> {
+  const { data } = await supabase
+    .from("drivers")
+    .select("id, wallet_balance, min_wallet_required, wallet_locked")
+    .eq("id", driverId)
+    .maybeSingle();
+
+  const balance = num((data as any)?.wallet_balance) ?? 0;
+  const minRequired = effectiveMinWalletRequired((data as any)?.min_wallet_required);
+  const walletLocked = Boolean((data as any)?.wallet_locked);
+
+  return {
+    eligible: Boolean(data) && !walletLocked && balance >= minRequired,
+    balance,
+    minRequired,
+    walletLocked,
+  };
 }
 
 function json(body: any, status = 200) {
@@ -141,6 +171,7 @@ type MatchDebug = {
   rejected_stale_count: number;
   rejected_excluded_count: number;
   rejected_wrong_town_count: number;
+  rejected_low_wallet_count: number;
   eligible_count: number;
   chosen_driver_id: string | null;
   chosen_driver_town: string | null;
@@ -183,6 +214,7 @@ async function matchSingle(
     rejected_stale_count: 0,
     rejected_excluded_count: 0,
     rejected_wrong_town_count: 0,
+    rejected_low_wallet_count: 0,
     eligible_count: 0,
     chosen_driver_id: null,
     chosen_driver_town: null,
@@ -290,6 +322,12 @@ async function matchSingle(
     const ageSec = (nowMs - updatedMs) / 1000;
     if (ageSec > ASSIGN_FRESHNESS_SECONDS) {
       debug.rejected_stale_count++;
+      continue;
+    }
+
+    const wallet = await isDriverWalletEligible(supabase, String(d.driver_id || ""));
+    if (!wallet.eligible) {
+      debug.rejected_low_wallet_count++;
       continue;
     }
 
