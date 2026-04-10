@@ -82,8 +82,8 @@ function buildTripSummary(row: any, driverNameById: Record<string, string>) {
   const verifiedFare = num(row?.verified_fare);
   const proposedFare = num(row?.proposed_fare);
   const pickupDistanceFee = num(row?.pickup_distance_fee) ?? 0;
-  const platformFee = num(row?.platform_fee) ?? 0;
-  const totalFare = (verifiedFare ?? proposedFare ?? 0) + pickupDistanceFee + platformFee;
+  const platformFee = null;
+  const totalFare = (verifiedFare ?? proposedFare ?? 0) + pickupDistanceFee;
 
   const assignedDriverId = text(row?.assigned_driver_id);
   const resolvedDriverName =
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
     const { data: tripRows, error: tripErr } = await supabase
       .from("bookings")
       .select(
-        "id, booking_code, status, town, from_label, to_label, assigned_driver_id, passenger_name, proposed_fare, verified_fare, pickup_distance_fee, platform_fee, created_at, updated_at"
+        "id, booking_code, status, town, from_label, to_label, assigned_driver_id, passenger_name, proposed_fare, verified_fare, pickup_distance_fee, created_at, updated_at"
       )
       .eq("created_by_user_id", authRes.userId)
       .order("created_at", { ascending: false })

@@ -122,13 +122,13 @@ function toHistoryRow(booking: any, driverMap: DriverMap) {
   const proposedFare = n(booking.proposed_fare);
   const verifiedFare = n(booking.verified_fare);
   const pickupDistanceFee = n(booking.pickup_distance_fee);
-  const platformFee = n(booking.platform_fee);
+  const platformFee = null;
 
   const totalFare =
     n(booking.total_fare) ??
     n(booking.total_amount) ??
     n(booking.grand_total) ??
-    ((proposedFare ?? 0) + (pickupDistanceFee ?? 0) + (platformFee ?? 0));
+    ((proposedFare ?? 0) + (pickupDistanceFee ?? 0));
 
   return {
     id: booking.id ?? null,
