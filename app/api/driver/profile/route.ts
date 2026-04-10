@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function noStoreHeaders() {
@@ -19,6 +19,12 @@ function num(v: unknown): number | null {
   if (!s || s.toLowerCase() === "null") return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+function effectiveMinWalletRequired(raw: unknown): number {
+  const configured = num(raw);
+  if (configured !== null && configured >= 250) return configured;
+  return 250;
 }
 
 function getSupabase() {
@@ -204,9 +210,14 @@ export async function GET(req: NextRequest) {
           phone: text(profileRow?.phone) || null,
           email: text(profileRow?.email) || null,
           wallet_balance: num(wallet?.wallet_balance) ?? 0,
-          wallet_min_required: num(wallet?.min_wallet_required) ?? 0,
+          wallet_min_required: effectiveMinWalletRequired(wallet?.min_wallet_required),
           wallet_locked: Boolean(wallet?.wallet_locked),
-          wallet_status: null,
+          wallet_status:
+            Boolean(wallet?.wallet_locked)
+              ? "LOCKED"
+              : (num(wallet?.wallet_balance) ?? 0) < effectiveMinWalletRequired(wallet?.min_wallet_required)
+              ? "LOW"
+              : "OK",
         },
         recent_trips: (tripRows ?? []).map(buildTripSummary),
       },

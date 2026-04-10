@@ -6,6 +6,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function effectiveMinWalletRequired(raw: unknown): number {
+  const configured = Number(raw ?? 0);
+  if (Number.isFinite(configured) && configured >= 250) return configured;
+  return 250;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -33,7 +39,7 @@ export async function GET(req: NextRequest) {
     }
 
     const balance = Number(driver.wallet_balance ?? 0);
-    const minRequired = Number(driver.min_wallet_required ?? 0);
+    const minRequired = effectiveMinWalletRequired(driver.min_wallet_required);
     const walletLocked = !!driver.wallet_locked;
 
     let walletStatus = "OK";

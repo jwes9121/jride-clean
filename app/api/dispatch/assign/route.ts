@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function text(v: unknown): string {
@@ -36,6 +36,16 @@ function getSupabase() {
   });
 }
 
+function num(v: unknown): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function effectiveMinWalletRequired(raw: unknown): number {
+  const configured = num(raw);
+  return configured >= 250 ? configured : 250;
+}
+
 const ASSIGNABLE_STATUSES = new Set([
   "requested",
   "pending",
@@ -43,6 +53,35 @@ const ASSIGNABLE_STATUSES = new Set([
   "assigned",
   "accepted",
 ]);
+
+async function isDriverWalletEligible(supabase: any, driverId: string) {
+  const { data, error } = await supabase
+    .from("drivers")
+    .select("id, wallet_balance, min_wallet_required, wallet_locked")
+    .eq("id", driverId)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false as const, error: "driver_wallet_read_failed", message: error.message };
+  }
+
+  if (!data) {
+    return { ok: false as const, error: "driver_not_found" };
+  }
+
+  const balance = num((data as any).wallet_balance);
+  const minRequired = effectiveMinWalletRequired((data as any).min_wallet_required);
+  const walletLocked = Boolean((data as any).wallet_locked);
+  const eligible = !walletLocked && balance >= minRequired;
+
+  return {
+    ok: true as const,
+    eligible,
+    balance,
+    minRequired,
+    walletLocked,
+  };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -101,6 +140,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (explicitDriverId) {
+      const explicitEligibility = await isDriverWalletEligible(supabase, explicitDriverId);
+      if (!explicitEligibility.ok) {
+        return NextResponse.json(
+          { ok: false, error: explicitEligibility.error, message: (explicitEligibility as any).message || null },
+          { status: explicitEligibility.error === "driver_not_found" ? 404 : 500 }
+        );
+      }
+      if (!explicitEligibility.eligible) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: explicitEligibility.walletLocked ? "driver_wallet_locked" : "driver_wallet_below_minimum",
+            driver_id: explicitDriverId,
+            wallet_balance: explicitEligibility.balance,
+            min_wallet_required: explicitEligibility.minRequired,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     let chosenDriverId = explicitDriverId;
 
     if (!chosenDriverId) {
@@ -128,19 +189,33 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const first = (drivers || []).find((row: any) => text(row?.driver_id));
-      if (!first) {
+      let eligibleDriverId = "";
+
+      for (const row of drivers || []) {
+        const candidateDriverId = text((row as any)?.driver_id);
+        if (!candidateDriverId) continue;
+
+        const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
+        if (!eligibility.ok) continue;
+        if (!eligibility.eligible) continue;
+
+        eligibleDriverId = candidateDriverId;
+        break;
+      }
+
+      if (!eligibleDriverId) {
         return NextResponse.json(
           {
             ok: false,
             error: emergencyMode ? "no_drivers_even_in_emergency" : "no_local_drivers",
             town: baseTown || null,
+            reason: "NO_ELIGIBLE_DRIVER_WITH_MIN_WALLET",
           },
           { status: 404 }
         );
       }
 
-      chosenDriverId = text((first as any).driver_id);
+      chosenDriverId = eligibleDriverId;
     }
 
     const nowIso = new Date().toISOString();
