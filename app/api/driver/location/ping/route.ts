@@ -1,100 +1,8 @@
-import { NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-type BookBody = {
-  town?: string;
-  pickup_label?: string;
-  dropoff_label?: string;
-  vehicle_type?: string;
-  from_label?: string;
-  to_label?: string;
-  service_type?: string;
-  pickup_lat?: number | string | null;
-  pickup_lng?: number | string | null;
-  dropoff_lat?: number | string | null;
-  dropoff_lng?: number | string | null;
-  passenger_count?: number | string | null;
-  fees_acknowledged?: boolean;
-  passenger_name?: string;
-  full_name?: string;
-  user_id?: string;
-  created_by_user_id?: string;
-  phone?: string;
-  role?: string;
-  notes?: string;
-};
-
-function text(v: unknown): string {
-  return String(v ?? "").trim();
-}
-
-function num(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-}
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function bookingCodeNow(): string {
-  const d = new Date();
-  const stamp =
-    d.getFullYear().toString() +
-    pad2(d.getMonth() + 1) +
-    pad2(d.getDate()) +
-    pad2(d.getHours()) +
-    pad2(d.getMinutes()) +
-    pad2(d.getSeconds());
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `JR-UI-${stamp}-${rand}`;
-}
-
-function getBearerToken(req: Request): string | null {
-  const auth = req.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7).trim();
-  return token || null;
-}
-
-function createUserClient(accessToken: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-
-  if (!url || !anon) {
-    throw new Error("SUPABASE_ENV_MISSING");
-  }
-
-  return createSupabaseClient(url, anon, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-    global: {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  });
-}
-
-function normalizeBaseUrl(v: string): string {
-  return String(v || "").trim().replace(/\/+$/, "");
-}
-
-function requestOrigin(req: Request): string {
-  try {
-    const u = new URL(req.url);
-    if (u.origin && u.origin !== "null") return normalizeBaseUrl(u.origin);
-  } catch {}
-
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  if (host) return normalizeBaseUrl(`${proto}://${host}`);
-
-  return "";
-}
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function envAny(names: string[]): string {
   for (const n of names) {
@@ -104,145 +12,221 @@ function envAny(names: string[]): string {
   return "";
 }
 
-function userDisplayName(user: any): string {
-  const direct = [
-    user?.user_metadata?.full_name,
-    user?.user_metadata?.name,
-    user?.user_metadata?.display_name,
-    user?.user_metadata?.passenger_name,
-    user?.raw_user_meta_data?.full_name,
-    user?.raw_user_meta_data?.name,
-    user?.raw_user_meta_data?.display_name,
-    user?.email,
-  ];
-
-  for (const v of direct) {
-    const s = text(v);
-    if (s) return s;
-  }
-
-  return "";
+function json(status: number, obj: any) {
+  return NextResponse.json(obj, { status });
 }
 
-async function getTokenUserAndVerified(supabase: any) {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data?.user?.id) {
-    return { user: null, verified: false };
-  }
-
-  const user = data.user;
-  let verified = false;
-
-  try {
-    const pv = await supabase
-      .from("passenger_verifications")
-      .select("status")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
-    verified = s === "approved_admin";
-  } catch {}
-
-  if (!verified) {
-    try {
-      const pr = await supabase
-        .from("passenger_verification_requests")
-        .select("status")
-        .eq("passenger_id", user.id)
-        .maybeSingle();
-
-      const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
-      verified = s === "approved_admin";
-    } catch {}
-  }
-
-  if (!verified) {
-    try {
-      const truthy = (v: unknown) =>
-        v === true ||
-        (typeof v === "string" &&
-          v.trim().toLowerCase() !== "" &&
-          v.trim().toLowerCase() !== "false" &&
-          v.trim().toLowerCase() !== "0" &&
-          v.trim().toLowerCase() !== "no") ||
-        (typeof v === "number" && v > 0);
-
-      const tries: Array<["auth_user_id" | "user_id", string]> = [
-        ["auth_user_id", user.id],
-        ["user_id", user.id],
-      ];
-
-      for (const [col, val] of tries) {
-        const r = await supabase
-          .from("passengers")
-          .select("is_verified,verified,verification_tier")
-          .eq(col, val)
-          .limit(1)
-          .maybeSingle();
-
-        if (!r.error && r.data) {
-          const row: any = r.data;
-          verified =
-            truthy(row.is_verified) ||
-            truthy(row.verified) ||
-            truthy(row.verification_tier);
-
-          if (verified) break;
-        }
-      }
-    } catch {}
-  }
-
-  return { user, verified };
+function norm(s: any): string {
+  return String(s ?? "").trim().toLowerCase();
 }
 
-function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+function text(v: any): string {
+  return String(v ?? "").trim();
 }
 
-async function canBookOrThrow(supabase: any) {
-  const uv = await getTokenUserAndVerified(supabase);
+function normDeviceId(s: any): string {
+  return String(s ?? "").trim().toLowerCase();
+}
 
-  if (!uv.user?.id) {
-    return NextResponse.json(
-      { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-      { status: 401 }
-    );
+function getBearerToken(req: NextRequest): string | null {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7).trim();
+  return token || null;
+}
+
+function isDriverSecretAuthorized(req: NextRequest): boolean {
+  const provided = text(req.headers.get("x-jride-driver-secret"));
+  const expected =
+    text(process.env.DRIVER_PING_SECRET) ||
+    text(process.env.NEXT_PUBLIC_DRIVER_PING_SECRET);
+  if (!provided || !expected) return false;
+  return provided === expected;
+}
+
+async function resolveDriverIdFromBearer(serviceSupabase: any, authUserId: string): Promise<string | null> {
+  const directProfile = await serviceSupabase
+    .from("driver_profiles")
+    .select("driver_id")
+    .eq("driver_id", authUserId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!directProfile.error && directProfile.data?.driver_id) {
+    return text(directProfile.data.driver_id) || null;
   }
 
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    hour12: false,
-    hour: "2-digit",
-  });
+  const authUser = await serviceSupabase
+    .from("auth_users_view")
+    .select("email")
+    .eq("id", authUserId)
+    .limit(1)
+    .maybeSingle();
 
-  const hour = parseInt(fmt.format(new Date()), 10);
-  const nightGate = hour >= 20 || hour < 5;
+  const email = text((authUser.data as any)?.email);
+  if (!email) return null;
 
-  if (nightGate && !uv.verified && !jrideNightGateBypass()) {
-    throw {
-      code: "NIGHT_GATE_UNVERIFIED",
-      message: "Booking is restricted from 8PM to 5AM unless verified.",
-      status: 403,
-    };
+  const byEmail = await serviceSupabase
+    .from("driver_profiles")
+    .select("driver_id")
+    .eq("email", email)
+    .limit(1)
+    .maybeSingle();
+
+  if (!byEmail.error && byEmail.data?.driver_id) {
+    return text(byEmail.data.driver_id) || null;
+  }
+
+  return null;
+}
+
+async function resolveDriverAuth(req: NextRequest, serviceSupabase: any): Promise<
+  | { ok: true; driverId: string; authMode: "bearer" | "driver_secret" }
+  | { ok: false; code: string; message: string }
+> {
+  const accessToken = getBearerToken(req);
+  if (accessToken) {
+    const anonUrl = envAny(["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"]);
+    const anonKey = envAny(["NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"]);
+    if (!anonUrl || !anonKey) {
+      return {
+        ok: false,
+        code: "SUPABASE_ANON_ENV_MISSING",
+        message: "Missing Supabase anon client environment variables.",
+      };
+    }
+
+    const authSupabase = createClient(anonUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
+    const user = userRes?.user ?? null;
+    if (userErr || !user?.id) {
+      return {
+        ok: false,
+        code: "NOT_AUTHED",
+        message: "Invalid bearer token.",
+      };
+    }
+
+    const driverId = await resolveDriverIdFromBearer(serviceSupabase, user.id);
+    if (!driverId) {
+      return {
+        ok: false,
+        code: "DRIVER_NOT_FOUND",
+        message: "No driver profile found for token user.",
+      };
+    }
+
+    return { ok: true, driverId, authMode: "bearer" };
+  }
+
+  if (isDriverSecretAuthorized(req)) {
+    return { ok: true, driverId: "", authMode: "driver_secret" };
   }
 
   return {
-    ok: true,
-    userId: uv.user.id,
-    verified: uv.verified,
-    user: uv.user,
+    ok: false,
+    code: "NOT_AUTHED",
+    message: "Missing bearer token or valid driver secret.",
   };
 }
 
-async function triggerSingleAutoAssign(req: Request, bookingId: string) {
-  const baseUrl = normalizeBaseUrl(
-    envAny(["INTERNAL_BASE_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_BASE_URL"]) || requestOrigin(req)
-  );
+function pickDeviceId(req: Request, body: any): string {
+  const fromBody = String(body?.device_id ?? body?.deviceId ?? "");
+  if (fromBody && fromBody.trim()) return normDeviceId(fromBody);
 
-  if (!baseUrl) {
+  const ua = String(req.headers.get("user-agent") ?? "").slice(0, 160);
+  const xff = String(req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  const seed = (ua + "|" + xff).trim();
+  return normDeviceId(seed ? "fallback:" + seed : "fallback:unknown");
+}
+
+async function enforceDeviceLockPing(opts: {
+  supabase: any;
+  driverId: string;
+  deviceId: string;
+  nowIso: string;
+  staleSeconds: number;
+  forceTakeover: boolean;
+}) {
+  const { supabase, driverId, deviceId, nowIso, staleSeconds, forceTakeover } = opts;
+
+  const reqDevice = normDeviceId(deviceId);
+
+  const { data: lock, error: lockErr } = await supabase
+    .from("driver_device_locks")
+    .select("driver_id, device_id, last_seen")
+    .eq("driver_id", driverId)
+    .maybeSingle();
+
+  if (lockErr) throw new Error("driver_device_locks lookup failed: " + lockErr.message);
+
+  if (!lock) {
+    const { error: insErr } = await supabase
+      .from("driver_device_locks")
+      .insert({ driver_id: driverId, device_id: reqDevice, last_seen: nowIso });
+
+    if (insErr) throw new Error("driver_device_locks insert failed: " + insErr.message);
+
+    return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: 0 };
+  }
+
+  const active = normDeviceId(lock.device_id ?? "");
+  const lastSeen = lock.last_seen ? new Date(lock.last_seen as any).getTime() : 0;
+  const nowMs = new Date(nowIso).getTime();
+  const ageSec = lastSeen ? Math.floor((nowMs - lastSeen) / 1000) : 999999;
+  const same = active === reqDevice;
+
+  if (same) {
+    const { error: hbErr } = await supabase
+      .from("driver_device_locks")
+      .update({ last_seen: nowIso })
+      .eq("driver_id", driverId);
+
+    if (hbErr) throw new Error("driver_device_locks heartbeat update failed: " + hbErr.message);
+
+    return { ok: true, claimed: false, active_device_id: active, last_seen_age_seconds: ageSec };
+  }
+
+  if (!same && forceTakeover) {
+    const { data: loc, error: locErr } = await supabase
+      .from("driver_locations")
+      .select("status")
+      .eq("driver_id", driverId)
+      .maybeSingle();
+
+    if (locErr) throw new Error("driver_locations lookup failed: " + locErr.message);
+
+    const st = norm((loc as any)?.status ?? "");
+    if (!st || st !== "offline") {
+      return {
+        ok: false,
+        online_block: true,
+        active_device_id: active,
+        current_status: st || "unknown",
+        last_seen_age_seconds: ageSec,
+      };
+    }
+  }
+
+  if (!forceTakeover && ageSec < staleSeconds) {
+    return { ok: false, conflict: true, active_device_id: active, last_seen_age_seconds: ageSec };
+  }
+
+  const { error: upErr } = await supabase
+    .from("driver_device_locks")
+    .update({ device_id: reqDevice, last_seen: nowIso })
+    .eq("driver_id", driverId);
+
+  if (upErr) throw new Error("driver_device_locks update failed: " + upErr.message);
+
+  return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
+}
+
+async function triggerRetryAutoAssign(baseUrl: string) {
+  if (!baseUrl || !String(baseUrl).trim()) {
     return {
       attempted: false,
       ok: false,
@@ -251,20 +235,19 @@ async function triggerSingleAutoAssign(req: Request, bookingId: string) {
     };
   }
 
-  const url = `${baseUrl}/api/dispatch/auto-assign`;
+  const url = String(baseUrl).replace(/\/+$/, "") + "/api/dispatch/retry-auto-assign";
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
-      body: JSON.stringify({ mode: "single", bookingId }),
     });
 
     let body: any = null;
     try {
       body = await res.json();
-    } catch {
+    } catch (_) {
       body = null;
     }
 
@@ -272,164 +255,237 @@ async function triggerSingleAutoAssign(req: Request, bookingId: string) {
       attempted: true,
       ok: res.ok,
       status: res.status,
-      url,
       body,
+      url,
     };
   } catch (e: any) {
     return {
       attempted: true,
       ok: false,
       status: 0,
-      url,
       error: String(e?.message ?? e),
+      url,
     };
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const traceStartedAt = new Date().toISOString();
+  console.log("[DISPATCH_TRACE] ping:start", { at: traceStartedAt });
+
   try {
-    const accessToken = getBearerToken(req);
+    const body = await req.json().catch(() => ({}));
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { ok: false, code: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401 }
-      );
+    const bodyDriverId = text(body?.driver_id ?? body?.driverId);
+    if (!bodyDriverId) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
+
+    const incomingLat = Number(body?.lat);
+    const incomingLng = Number(body?.lng);
+    const hasIncomingCoords = Number.isFinite(incomingLat) && Number.isFinite(incomingLng);
+
+    const status = norm(body?.status ?? "online") || "online";
+    const town = text(body?.town);
+    const forceTakeover = !!(body?.force_takeover ?? body?.forceTakeover ?? false);
+
+    const supabaseUrl = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
+    const supabaseServiceRole = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
+
+    if (!supabaseUrl || !supabaseServiceRole) {
+      return json(500, { ok: false, code: "SUPABASE_ENV_MISSING" });
     }
 
-    const supabase = createUserClient(accessToken);
-    const body = (await req.json().catch(() => ({}))) as BookBody;
+    const supabase = createClient(supabaseUrl, supabaseServiceRole, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
-    const town = text(body.town);
-    const pickupLabel = text(body.from_label || body.pickup_label);
-    const dropoffLabel = text(body.to_label || body.dropoff_label);
-    const vehicleType = text(body.service_type || body.vehicle_type || "tricycle");
-
-    const pickupLat = num(body.pickup_lat);
-    const pickupLng = num(body.pickup_lng);
-    const dropoffLat = num(body.dropoff_lat);
-    const dropoffLng = num(body.dropoff_lng);
-
-    const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
-    const feesAcknowledged = !!body.fees_acknowledged;
-
-    if (!town) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_TOWN", message: "Town is required." },
-        { status: 400 }
-      );
+    const authRes = await resolveDriverAuth(req, supabase);
+    if (!authRes.ok) {
+      return json(401, {
+        ok: false,
+        code: authRes.code,
+        message: authRes.message,
+      });
     }
 
-    if (!pickupLabel || pickupLat == null || pickupLng == null) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_PICKUP", message: "Pickup location is required." },
-        { status: 400 }
-      );
+    const driverId = authRes.authMode === "bearer" ? authRes.driverId : bodyDriverId;
+
+    if (!driverId) {
+      return json(400, {
+        ok: false,
+        code: "MISSING_DRIVER_ID",
+        message: "driver_id is required for driver_secret mode.",
+      });
     }
 
-    if (!dropoffLabel || dropoffLat == null || dropoffLng == null) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_DROPOFF", message: "Drop-off location is required." },
-        { status: 400 }
-      );
+    if (authRes.authMode === "bearer" && driverId !== bodyDriverId) {
+      return json(403, {
+        ok: false,
+        code: "DRIVER_ID_MISMATCH",
+        message: "Authenticated driver does not match payload driver_id.",
+        auth_driver_id: driverId,
+        body_driver_id: bodyDriverId,
+      });
     }
 
-    if (!feesAcknowledged) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "ACK_REQUIRED",
-          message: "You must acknowledge the fee notice first.",
-        },
-        { status: 400 }
-      );
+    const nowIso = new Date().toISOString();
+    const deviceId = pickDeviceId(req, body);
+
+    const lock = await enforceDeviceLockPing({
+      supabase,
+      driverId,
+      deviceId,
+      nowIso,
+      staleSeconds: 120,
+      forceTakeover,
+    });
+
+    if ((lock as any).online_block) {
+      return json(409, {
+        ok: false,
+        code: "DEVICE_TAKEOVER_REQUIRES_OFFLINE",
+        active_device_id: (lock as any).active_device_id,
+        current_status: (lock as any).current_status,
+        last_seen_age_seconds: (lock as any).last_seen_age_seconds,
+      });
     }
 
-    const canRes: any = await canBookOrThrow(supabase);
-    if (canRes && typeof canRes.headers?.get === "function") {
-      return canRes;
+    if ((lock as any).conflict) {
+      return json(409, {
+        ok: false,
+        code: "DEVICE_LOCKED",
+        active_device_id: (lock as any).active_device_id,
+        last_seen_age_seconds: (lock as any).last_seen_age_seconds,
+      });
     }
 
-    const createdByUserId = text((canRes as any).userId);
-    if (!createdByUserId) {
-      return NextResponse.json(
-        { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401 }
-      );
+    const { data: prevLoc, error: prevLocErr } = await supabase
+      .from("driver_locations")
+      .select("id, status, lat, lng")
+      .eq("driver_id", driverId)
+      .maybeSingle();
+
+    if (prevLocErr) {
+      return json(500, {
+        ok: false,
+        code: "PREV_DRIVER_LOCATION_LOOKUP_FAILED",
+        message: prevLocErr.message,
+      });
     }
 
-    const passengerName =
-      text(body.passenger_name) ||
-      text(body.full_name) ||
-      userDisplayName((canRes as any).user);
+    const previousStatus = norm((prevLoc as any)?.status ?? "");
 
-    const bookingCode = bookingCodeNow();
+    let finalLat: number | null = null;
+    let finalLng: number | null = null;
+    let coordsSource = "incoming";
 
-    const insert: Record<string, any> = {
-      booking_code: bookingCode,
-      status: "requested",
-      town,
-      from_label: pickupLabel,
-      to_label: dropoffLabel,
-      pickup_lat: pickupLat,
-      pickup_lng: pickupLng,
-      dropoff_lat: dropoffLat,
-      dropoff_lng: dropoffLng,
-      service_type: vehicleType,
-      passenger_count: passengerCount,
-      created_by_user_id: createdByUserId,
-      customer_status: "pending",
+    if (hasIncomingCoords) {
+      finalLat = incomingLat;
+      finalLng = incomingLng;
+    } else {
+      const prevLat = Number((prevLoc as any)?.lat);
+      const prevLng = Number((prevLoc as any)?.lng);
+      const hasPrevCoords = Number.isFinite(prevLat) && Number.isFinite(prevLng);
+
+      if (hasPrevCoords) {
+        finalLat = prevLat;
+        finalLng = prevLng;
+        coordsSource = "previous_row";
+      }
+    }
+
+    if (!Number.isFinite(finalLat as any) || !Number.isFinite(finalLng as any)) {
+      return json(400, {
+        ok: false,
+        code: "MISSING_COORDS_AND_NO_PREVIOUS_LOCATION",
+        driver_id: driverId,
+        previous_status: previousStatus || null,
+      });
+    }
+
+    const upsertPayload: any = {
+      driver_id: driverId,
+      lat: finalLat,
+      lng: finalLng,
+      status,
+      town: town || null,
+      updated_at: nowIso,
     };
 
-    if (passengerName) {
-      insert.passenger_name = passengerName;
+    if ((prevLoc as any)?.id) {
+      upsertPayload.id = (prevLoc as any).id;
     }
 
+    const { error: upErr } = await supabase
+      .from("driver_locations")
+      .upsert(upsertPayload, { onConflict: "driver_id", ignoreDuplicates: false });
 
-    const { data: booking, error } = await supabase
-      .from("bookings")
-      .insert(insert)
-      .select("*")
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "BOOKING_INSERT_FAILED",
-          message: error.message || "Booking insert failed.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const bookingId = text((booking as any)?.id);
-    const autoAssign = bookingId
-      ? await triggerSingleAutoAssign(req, bookingId)
-      : {
-          attempted: false,
-          ok: false,
-          skipped: true,
-          reason: "BOOKING_ID_MISSING_AFTER_INSERT",
-        };
-
-    return NextResponse.json(
-      {
-        ok: true,
-        booking_code: bookingCode,
-        booking,
-        auto_assign: autoAssign,
-      },
-      { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
-    );
-  } catch (e: any) {
-    return NextResponse.json(
-      {
+    if (upErr) {
+      return json(500, {
         ok: false,
-        code: e?.code || "BOOK_ROUTE_FAILED",
-        message: e?.message || "Unknown error",
-      },
-      { status: e?.status || 500, headers: { "Cache-Control": "no-store, max-age=0" } }
-    );
+        code: "INSERT_FAILED",
+        message: upErr.message,
+        detail: {
+          driver_id: driverId,
+          has_incoming_coords: hasIncomingCoords,
+          used_previous_coords: !hasIncomingCoords,
+          sent_id: !!upsertPayload.id,
+        },
+      });
+    }
+
+    console.log("[DISPATCH_TRACE] ping:upsert_result", {
+      driver_id: driverId,
+      auth_mode: authRes.authMode,
+      previous_status: previousStatus || null,
+      current_status: status,
+      coords_source: coordsSource,
+    });
+
+    const becameOnline = previousStatus !== "online" && status === "online";
+
+    let retryResult: any = {
+      attempted: false,
+      ok: false,
+      skipped: true,
+      reason: "NOT_ONLINE_EDGE",
+    };
+
+    if (becameOnline) {
+      const baseUrl = envAny([
+        "INTERNAL_BASE_URL",
+        "NEXT_PUBLIC_BASE_URL",
+        "NEXTAUTH_URL",
+      ]);
+      retryResult = await triggerRetryAutoAssign(baseUrl);
+    }
+
+    console.log("[DISPATCH_TRACE] ping:retry_result", {
+      driver_id: driverId,
+      auth_mode: authRes.authMode,
+      became_online: becameOnline,
+      retry_triggered: !!(retryResult?.attempted),
+      retry_ok: !!(retryResult?.ok),
+      retry_status: retryResult?.status ?? null,
+    });
+
+    return json(200, {
+      ok: true,
+      driver_id: driverId,
+      auth_mode: authRes.authMode,
+      status,
+      previous_status: previousStatus || null,
+      became_online: becameOnline,
+      retry_triggered: !!(retryResult?.attempted),
+      retry_ok: !!(retryResult?.ok),
+      retry_result: retryResult,
+      town: town || null,
+      claimed: !!(lock as any).claimed,
+      active_device_id: (lock as any).active_device_id,
+      coords_source: coordsSource,
+      lat: finalLat,
+      lng: finalLng,
+    });
+  } catch (e: any) {
+    return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
   }
 }
