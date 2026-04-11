@@ -191,6 +191,20 @@ export async function GET(req: NextRequest) {
     }
 
     const booking = bookingRes.data;
+let passengerPhone: string | null = null;
+
+if (booking?.created_by_user_id) {
+  const passengerRes = await serviceSupabase
+    .from("passenger_profiles")
+    .select("phone")
+    .eq("id", booking.created_by_user_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (!passengerRes.error && passengerRes.data) {
+    passengerPhone = s((passengerRes.data as any).phone);
+  }
+}
     if (!booking) {
       return NextResponse.json(
         { ok: true, trip: null, active_trip: null, auth_mode: authMode },
@@ -273,6 +287,7 @@ export async function GET(req: NextRequest) {
       dropoff_lat: dropoffLat,
       dropoff_lng: dropoffLng,
       passenger_name: s((booking as any).passenger_name),
+      passenger_phone: passengerPhone,
       passenger_count: n((booking as any).passenger_count),
       driver_id: s((booking as any).driver_id) ?? driverId,
       assigned_driver_id: s((booking as any).assigned_driver_id) ?? driverId,
