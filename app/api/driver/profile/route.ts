@@ -177,6 +177,15 @@ export async function GET(req: NextRequest) {
       wallet = null;
     }
 
+    const walletBalance = num(wallet?.wallet_balance) ?? 0;
+    const walletMinRequired = effectiveMinWalletRequired(wallet?.min_wallet_required);
+    const walletLocked = Boolean(wallet?.wallet_locked);
+    const walletStatus = walletLocked
+      ? "LOCKED"
+      : walletBalance < walletMinRequired
+      ? "LOW"
+      : "OK";
+
     const { data: tripRows, error: tripErr } = await supabase
       .from("bookings")
       .select(
@@ -209,27 +218,19 @@ export async function GET(req: NextRequest) {
           town: text(profileRow?.municipality) || null,
           phone: text(profileRow?.phone) || null,
           email: text(profileRow?.email) || null,
-          wallet_balance: num(wallet?.wallet_balance) ?? 0,
-          wallet_min_required: effectiveMinWalletRequired(wallet?.min_wallet_required),
-          wallet_locked: Boolean(wallet?.wallet_locked),
-          wallet_status:
-            Boolean(wallet?.wallet_locked)
-              ? "LOCKED"
-              : (num(wallet?.wallet_balance) ?? 0) < effectiveMinWalletRequired(wallet?.min_wallet_required)
-              ? "LOW"
-              : "OK",
+          wallet_balance: walletBalance,
+          wallet_min_required: walletMinRequired,
+          wallet_locked: walletLocked,
+          wallet_status: walletStatus,
+          wallet_source: "drivers.wallet_balance",
         },
-        recent_trips: (tripRows ?? []).map(buildTripSummary),
+        recent_trips: (tripRows || []).map(buildTripSummary),
       },
-      { status: 200, headers: noStoreHeaders() }
+      { headers: noStoreHeaders() }
     );
-  } catch (err: any) {
+  } catch (e: any) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "DRIVER_PROFILE_ROUTE_FAILED",
-        message: String(err?.message ?? err),
-      },
+      { ok: false, error: "DRIVER_PROFILE_FAILED", message: e?.message || "Unexpected server error." },
       { status: 500, headers: noStoreHeaders() }
     );
   }

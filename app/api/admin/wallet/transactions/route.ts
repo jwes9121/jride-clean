@@ -26,9 +26,11 @@ function ok(data: any = {}) {
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
+
 function isNumericId(v: string) {
   return /^[0-9]+$/.test(String(v || "").trim());
 }
+
 function isIdOk(v: string) {
   return isUuid(v) || isNumericId(v);
 }
@@ -69,18 +71,32 @@ async function fetchRowsWithSafeOrdering(table: string, key: string, id: string,
   if (error) {
     return { rows: [], orderedBy: null as any, fatalError: String((error as any)?.message || error) };
   }
+
   return { rows: data ?? [], orderedBy: null };
 }
 
-async function fetchBalanceSafe(kind: "driver" | "vendor", id: string) {
-  const rpcName = kind === "driver"
-    ? "admin_get_driver_wallet_balance_v1"
-    : "admin_get_vendor_wallet_balance_v1";
+async function fetchDriverSnapshot(id: string) {
+  const { data, error } = await supabase
+    .from("drivers")
+    .select("id, driver_name, wallet_balance, min_wallet_required, wallet_locked, driver_status")
+    .eq("id", id)
+    .maybeSingle();
 
-  const argSets =
-    kind === "driver"
-      ? [{ driver_id: id }, { p_driver_id: id }, { in_driver_id: id }, { _driver_id: id }]
-      : [{ vendor_id: id }, { p_vendor_id: id }, { in_vendor_id: id }, { _vendor_id: id }];
+  if (error) {
+    return { snapshot: null, snapshotError: error.message };
+  }
+
+  return { snapshot: data ?? null, snapshotError: null };
+}
+
+async function fetchVendorBalanceSafe(id: string) {
+  const rpcName = "admin_get_vendor_wallet_balance_v1";
+  const argSets = [
+    { vendor_id: id },
+    { p_vendor_id: id },
+    { in_vendor_id: id },
+    { _vendor_id: id }
+  ];
 
   for (let i = 0; i < argSets.length; i++) {
     const { data, error } = await supabase.rpc(rpcName as any, argSets[i]);
@@ -112,8 +128,21 @@ export async function GET(req: Request) {
       return bad("Wallet tx fetch failed", "WALLET_TX_FETCH_FAILED", 500, { details: (res as any).fatalError });
     }
 
-    const bal = await fetchBalanceSafe(kind as any, id);
+    if (kind === "driver") {
+      const snapshotRes = await fetchDriverSnapshot(id);
+      return ok({
+        kind,
+        id,
+        orderedBy: res.orderedBy,
+        wallet_source: "drivers.wallet_balance",
+        balance: snapshotRes.snapshot?.wallet_balance ?? null,
+        balanceError: snapshotRes.snapshotError,
+        driver: snapshotRes.snapshot,
+        rows: res.rows
+      });
+    }
 
+    const bal = await fetchVendorBalanceSafe(id);
     return ok({
       kind,
       id,

@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const { data: driver, error: dErr } = await supabase
       .from("drivers")
-      .select("id, wallet_balance, min_wallet_required, wallet_locked")
+      .select("id, driver_name, wallet_balance, min_wallet_required, wallet_locked, driver_status")
       .eq("id", driverId)
       .maybeSingle();
 
@@ -58,9 +58,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const ledgerBalance = (txs || []).reduce((sum: number, row: any) => sum + Number(row?.amount ?? 0), 0);
-    const snapshotBalance = Number(driver.wallet_balance ?? 0);
-    const balance = (txs || []).length > 0 ? ledgerBalance : snapshotBalance;
+    const balance = Number(driver.wallet_balance ?? 0);
     const minRequired = effectiveMinWalletRequired(driver.min_wallet_required);
     const walletLocked = !!driver.wallet_locked;
 
@@ -72,12 +70,13 @@ export async function GET(req: NextRequest) {
       NextResponse.json({
         ok: true,
         driver_id: driverId,
+        driver_name: driver.driver_name ?? null,
         balance,
-        snapshot_balance: snapshotBalance,
-        ledger_balance: ledgerBalance,
+        wallet_balance: balance,
         min_wallet_required: minRequired,
         wallet_locked: walletLocked,
         wallet_status: walletStatus,
+        wallet_source: "drivers.wallet_balance",
         transactions: txs || []
       })
     );

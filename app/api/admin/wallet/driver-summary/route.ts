@@ -22,29 +22,19 @@ function isUuid(v: string) {
   );
 }
 
-// Keep this permissive because some older systems use numeric IDs.
-// Your drivers.id is uuid, but wallet tx lookup might still accept numeric elsewhere.
 function isNumericId(v: string) {
   return /^[0-9]+$/.test(String(v || "").trim());
 }
+
 function isIdOk(v: string) {
   return isUuid(v) || isNumericId(v);
 }
 
-async function tryBalanceSources(driver_id: string) {
-  const sources = ["driver_wallet_balances_v1"];
-  for (const src of sources) {
-    const r = await supabase.from(src).select("*").eq("driver_id", driver_id).maybeSingle();
-    if (!r.error && r.data) return { source: src, row: r.data };
-  }
-  return { source: null as any, row: null as any };
-}
-
-async function fetchDriverTx(driver_id: string, limit: number) {
+async function fetchDriverTx(driverId: string, limit: number) {
   const r = await supabase
     .from("driver_wallet_transactions")
-    .select("*")
-    .eq("driver_id", driver_id)
+    .select("id, created_at, amount, balance_after, reason, booking_id")
+    .eq("driver_id", driverId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -52,8 +42,8 @@ async function fetchDriverTx(driver_id: string, limit: number) {
 
   const r2 = await supabase
     .from("driver_wallet_transactions")
-    .select("*")
-    .eq("driver_id", driver_id)
+    .select("id, created_at, amount, balance_after, reason, booking_id")
+    .eq("driver_id", driverId)
     .order("id", { ascending: false })
     .limit(limit);
 
@@ -64,13 +54,11 @@ async function fetchDriverTx(driver_id: string, limit: number) {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-
-    // Autosuggest mode
     const q = String(url.searchParams.get("q") || "").trim();
+
     if (q) {
       if (q.length < 2) return json(200, { ok: true, drivers: [] });
 
-      // drivers schema you provided: id (uuid), driver_name (text)
       const r = await supabase
         .from("drivers")
         .select("id,driver_name")
@@ -80,40 +68,10 @@ export async function GET(req: Request) {
         .limit(20);
 
       if (r.error) {
-        // fallback: allow searching by UUID fragment too
-        const r2 = await supabase
-          .from("drivers")
-          .select("id,driver_name")
-          .not("driver_name", "is", null)
-          .or(`driver_name.ilike.%${q}%,id::text.ilike.%${q}%`)
-          .order("driver_name", { ascending: true })
-          .limit(20);
-
-        if (r2.error) return json(500, { ok: false, code: "SEARCH_FAILED", message: r2.error.message });
-
-        const drivers = (r2.data || [])
-          .filter((d: any) => {
-            const name = String(d?.driver_name ?? "").toLowerCase();
-            return !(name.includes("test") || name.includes("demo"));
-          })
-          .map((d: any) => {
-            const id = String(d?.id ?? "");
-            const name = String(d?.driver_name ?? "").trim() || id;
-            return {
-              id,
-              driver_name: name,
-              label: `${name} (${id})`,
-            };
-          });
-
-        return json(200, { ok: true, drivers });
+        return json(500, { ok: false, code: "SEARCH_FAILED", message: r.error.message });
       }
 
       const drivers = (r.data || [])
-        .filter((d: any) => {
-          const name = String(d?.driver_name ?? "").toLowerCase();
-          return !(name.includes("test") || name.includes("demo"));
-        })
         .map((d: any) => {
           const id = String(d?.id ?? "");
           const name = String(d?.driver_name ?? "").trim() || id;
@@ -127,16 +85,16 @@ export async function GET(req: Request) {
       return json(200, { ok: true, drivers });
     }
 
-    // Wallet lookup mode
-    const driver_id = String(url.searchParams.get("driver_id") || "").trim();
-    if (!driver_id) {
+    const driverId = String(url.searchParams.get("driver_id") || "").trim();
+    if (!driverId) {
       return json(400, {
         ok: false,
         code: "MISSING_DRIVER_ID",
         message: "Provide either ?q= (autosuggest) or ?driver_id= (wallet lookup).",
       });
     }
-    if (!isIdOk(driver_id)) {
+
+    if (!isIdOk(driverId)) {
       return json(400, {
         ok: false,
         code: "BAD_DRIVER_ID",
@@ -144,14 +102,27 @@ export async function GET(req: Request) {
       });
     }
 
-    const bal = await tryBalanceSources(driver_id);
-    const last = await fetchDriverTx(driver_id, 20);
+    const { data: driver, error: driverErr } = await supabase
+      .from("drivers")
+      .select("id, driver_name, wallet_balance, min_wallet_required, wallet_locked, driver_status")
+      .eq("id", driverId)
+      .maybeSingle();
+
+    if (driverErr) {
+      return json(500, {
+        ok: false,
+        code: "DRIVER_READ_FAILED",
+        message: driverErr.message,
+      });
+    }
+
+    const last = await fetchDriverTx(driverId, 20);
 
     return json(200, {
       ok: true,
-      driver_id,
-      balance_source: bal.source,
-      balance_row: bal.row,
+      driver_id: driverId,
+      wallet_source: "drivers.wallet_balance",
+      driver,
       last_tx: last,
     });
   } catch (e: any) {

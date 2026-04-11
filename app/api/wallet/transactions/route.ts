@@ -113,7 +113,12 @@ export async function GET(req: Request) {
     }
 
     return withNoStore(
-      NextResponse.json({ ok: true, driver, transactions: txs || [] })
+      NextResponse.json({
+        ok: true,
+        wallet_source: "drivers.wallet_balance",
+        driver,
+        transactions: txs || []
+      })
     );
   } catch (e: any) {
     return withNoStore(
