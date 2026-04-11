@@ -203,7 +203,7 @@ export async function GET(req: NextRequest) {
       const passengerProfileRes = await serviceSupabase
         .from("passenger_profiles")
         .select("phone")
-        .eq("id", (booking as any).created_by_user_id)
+        .eq("user_id", (booking as any).created_by_user_id)
         .limit(1)
         .maybeSingle();
 
