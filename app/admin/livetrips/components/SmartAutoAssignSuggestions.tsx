@@ -7,8 +7,8 @@ type Driver = {
   name: string;
   lat: number;
   lng: number;
-  zone: string;      // home town / municipality
-  homeTown: string;  // same as zone, but explicit
+  zone: string;
+  homeTown: string;
   status: string;
 };
 
@@ -16,13 +16,13 @@ type Trip = {
   id: string;
   pickupLat: number;
   pickupLng: number;
-  zone: string;      // pickup town
-  tripType: string;  // "ride", "food", "delivery", etc.
+  zone: string;
+  tripType: string;
 };
 
 type ZoneStat = {
   util: number;
-  status: string; // "OK" | "WARN" | "FULL"
+  status: string;
 };
 
 type Props = {
@@ -34,7 +34,6 @@ type Props = {
 
 function isDeliveryType(tripType: string) {
   const t = (tripType || "").toLowerCase();
-  if (!t) return false;
   return (
     t.includes("food") ||
     t.includes("delivery") ||
@@ -45,13 +44,27 @@ function isDeliveryType(tripType: string) {
 
 function isDriverAvailable(status: string) {
   const s = (status || "").toLowerCase();
-  if (!s) return true; // be permissive if unknown
   return (
     s.includes("available") ||
     s.includes("online") ||
     s.includes("idle") ||
     s.includes("waiting")
   );
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export default function SmartAutoAssignSuggestions({
@@ -67,42 +80,39 @@ export default function SmartAutoAssignSuggestions({
 
     return drivers
       .filter((d) => {
-        // must be available
         if (!isDriverAvailable(d.status)) return false;
 
-        // do not use drivers from FULL zones (capacity protection)
         const zStat = zoneStats[d.zone];
         if (zStat && zStat.status === "FULL") return false;
 
-        // ordinance: passenger / ride trips MUST use same town only
         if (!deliveryMode) {
           return d.homeTown === trip.zone;
         }
 
-        // delivery / takeout: any town is allowed
         return true;
       })
       .map((d) => {
-        const dist = Math.sqrt(
-          Math.pow(d.lat - trip.pickupLat, 2) +
-            Math.pow(d.lng - trip.pickupLng, 2)
+        const dist = haversineKm(
+          d.lat,
+          d.lng,
+          trip.pickupLat,
+          trip.pickupLng
         );
 
         let score = dist;
-        let label = "Nearest";
+        let label = "~" + dist.toFixed(2) + " km";
 
         if (!deliveryMode && d.homeTown === trip.zone) {
-          // passenger + same town (this is actually required, but we still label it)
           score *= 0.4;
-          label = "Same town (ordinance)";
+          label = "Same town - " + dist.toFixed(2) + " km";
         } else if (deliveryMode && d.homeTown === trip.zone) {
-          label = "Same town";
+          label = "Same town - " + dist.toFixed(2) + " km";
         } else if (zoneStats[d.zone]?.status === "OK") {
           score *= 0.8;
-          label = "Low-load zone";
+          label = "Low-load - " + dist.toFixed(2) + " km";
         }
 
-        return { ...d, score, label };
+        return { ...d, score, label, dist };
       })
       .sort((a, b) => a.score - b.score)
       .slice(0, 5);
@@ -121,12 +131,11 @@ export default function SmartAutoAssignSuggestions({
     return (
       <div className="text-[11px] text-slate-400">
         {deliveryMode ? (
-          <>No available drivers found near this pickup point.</>
+          <>No available drivers near pickup.</>
         ) : (
           <>
             No eligible drivers from{" "}
-            <span className="font-semibold">{trip.zone}</span>{" "}
-            (passenger ordinance: pickup must use driver from same town).
+            <span className="font-semibold">{trip.zone}</span>.
           </>
         )}
       </div>
@@ -143,7 +152,7 @@ export default function SmartAutoAssignSuggestions({
           <div>
             <div className="font-semibold">{d.name}</div>
             <div className="text-[10px] text-slate-500">
-              {d.homeTown}  {d.label}
+              {d.homeTown} - {d.label}
             </div>
           </div>
 
