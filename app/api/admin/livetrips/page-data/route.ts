@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getSupabase() {
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabase();
 
     // =========================================================
-    // 1) DRIVER PRESENCE (SOURCE OF TRUTH)
+    // 1) DRIVER PRESENCE
     // =========================================================
     const { data: drivers, error: driverErr } = await supabase
       .from("driver_locations")
@@ -28,36 +28,48 @@ export async function GET(req: NextRequest) {
     }
 
     // =========================================================
-    // 2) CURRENT BOOKINGS (CANONICAL ONLY)
+    // 2) QUEUE + ACTIVE BOOKINGS (SOURCE OF TRUTH)
     // =========================================================
-    const { data: currentTrips, error: tripErr } = await supabase
-      .from("dispatch_driver_current_booking_v1")
-      .select("*");
+    const { data: bookings, error: bookingErr } = await supabase
+      .from("bookings")
+      .select("*")
+      .in("status", [
+        "requested",
+        "searching",
+        "assigned",
+        "accepted",
+        "fare_proposed",
+        "ready",
+        "on_the_way",
+        "arrived",
+        "on_trip"
+      ])
+      .order("updated_at", { ascending: false });
 
-    if (tripErr) {
+    if (bookingErr) {
       return NextResponse.json({
         ok: false,
-        error: "CURRENT_TRIPS_FAILED",
-        message: tripErr.message,
+        error: "BOOKINGS_FAILED",
+        message: bookingErr.message,
       });
     }
 
     // =========================================================
-    // 3) MAP DRIVER → ACTIVE TRIP
+    // 3) MAP DRIVER → ACTIVE TRIP (for map only)
     // =========================================================
     const tripMap: Record<string, any> = {};
 
-    for (const trip of currentTrips ?? []) {
-      const driverId = trip.canonical_driver_id;
+    for (const trip of bookings ?? []) {
+      const driverId = trip.driver_id || trip.assigned_driver_id;
       if (driverId) {
         tripMap[driverId] = trip;
       }
     }
 
     // =========================================================
-    // 4) MERGE DRIVER + TRIP
+    // 4) DRIVER VIEW (MAP)
     // =========================================================
-    const result = (drivers ?? []).map((d: any) => {
+    const driverResult = (drivers ?? []).map((d: any) => {
       const trip = tripMap[d.driver_id] || null;
 
       return {
@@ -84,10 +96,15 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    // =========================================================
+    // 5) RETURN BOTH QUEUE + DRIVERS
+    // =========================================================
     return NextResponse.json({
       ok: true,
-      drivers: result,
+      drivers: driverResult,
+      trips: bookings ?? [], // <-- THIS FIXES YOUR QUEUE
     });
+
   } catch (err: any) {
     return NextResponse.json({
       ok: false,
