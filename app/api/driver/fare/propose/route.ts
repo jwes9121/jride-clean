@@ -222,6 +222,8 @@ export async function POST(req: Request) {
     }
 
     const etaMinutes = estimateEtaMinutes(driverToPickupKm);
+    const platformFee = 15;
+    const totalFare = Number((proposedFare + pickupFee + platformFee).toFixed(2));
 
     const updatePayload: Record<string, unknown> = {
       proposed_fare: proposedFare,
@@ -275,7 +277,8 @@ export async function POST(req: Request) {
           pickup_eta_minutes: etaMinutes,
           pickup_distance_fee: pickupFee,
           trip_distance_km: tripDistanceKm,
-          total_fare: proposedFare + pickupFee,
+          platform_fee: platformFee,
+          total_fare: totalFare,
           reread_warning: freshErr?.message || "REREAD_NOT_AVAILABLE",
         },
         { status: 200, headers: noStoreHeaders() }
@@ -295,9 +298,8 @@ export async function POST(req: Request) {
         pickup_eta_minutes: etaMinutes,
         pickup_distance_fee: num((fresh as any).pickup_distance_fee) ?? 0,
         trip_distance_km: num((fresh as any).trip_distance_km),
-        total_fare:
-          (num((fresh as any).proposed_fare) ?? 0) +
-          (num((fresh as any).pickup_distance_fee) ?? 0),
+        platform_fee: platformFee,
+        total_fare: totalFare,
       },
       { status: 200, headers: noStoreHeaders() }
     );

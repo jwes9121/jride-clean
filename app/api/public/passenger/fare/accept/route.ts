@@ -126,7 +126,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const totalFare = proposedFareRaw + pickupFee;
+    const platformFee = 15;
+    const totalFare = Number((proposedFareRaw + pickupFee + platformFee).toFixed(2));
 
     return NextResponse.json(
       {
@@ -135,6 +136,7 @@ export async function POST(req: Request) {
         booking_id: (booking as any).id,
         verified_fare: proposedFareRaw,
         pickup_distance_fee: pickupFee,
+        platform_fee: platformFee,
         total_fare: totalFare,
         status: "ready",
       },
