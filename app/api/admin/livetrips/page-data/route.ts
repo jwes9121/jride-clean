@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getSupabase() {
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     }
 
     // =========================================================
-    // 2) QUEUE + ACTIVE BOOKINGS (SOURCE OF TRUTH)
+    // 2) QUEUE + ACTIVE BOOKINGS
     // =========================================================
     const { data: bookings, error: bookingErr } = await supabase
       .from("bookings")
@@ -55,11 +55,20 @@ export async function GET(req: NextRequest) {
     }
 
     // =========================================================
-    // 3) MAP DRIVER → ACTIVE TRIP (for map only)
+    // 3) NORMALIZE BOOKINGS TO ARRAY
+    // =========================================================
+    const tripsArray = Array.isArray(bookings)
+      ? bookings
+      : bookings
+        ? [bookings]
+        : [];
+
+    // =========================================================
+    // 4) MAP DRIVER -> ACTIVE TRIP
     // =========================================================
     const tripMap: Record<string, any> = {};
 
-    for (const trip of bookings ?? []) {
+    for (const trip of tripsArray) {
       const driverId = trip.driver_id || trip.assigned_driver_id;
       if (driverId) {
         tripMap[driverId] = trip;
@@ -67,7 +76,7 @@ export async function GET(req: NextRequest) {
     }
 
     // =========================================================
-    // 4) DRIVER VIEW (MAP)
+    // 5) DRIVER VIEW (MAP)
     // =========================================================
     const driverResult = (drivers ?? []).map((d: any) => {
       const trip = tripMap[d.driver_id] || null;
@@ -96,15 +105,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // =========================================================
-    // 5) RETURN BOTH QUEUE + DRIVERS
-    // =========================================================
     return NextResponse.json({
       ok: true,
       drivers: driverResult,
-      trips: bookings ?? [], // <-- THIS FIXES YOUR QUEUE
+      trips: tripsArray,
     });
-
   } catch (err: any) {
     return NextResponse.json({
       ok: false,
