@@ -104,8 +104,6 @@ const LIVETRIPS_DISPATCH_STATUSES = [
   ...LIVETRIPS_ACTIVE_STATUSES,
 ];
 
-const DUMMY_DRIVER_ID = "00000000-0000-4000-8000-000000000001";
-
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
@@ -204,17 +202,10 @@ function normalizeTripRow(t: any): TripRow {
   };
 }
 
-function isDummyDriverTrip(t?: TripRow | null): boolean {
-  const driverId = String(t?.driver_id || "").trim();
-  const assignedDriverId = String(t?.assigned_driver_id || "").trim();
-  return driverId === DUMMY_DRIVER_ID || assignedDriverId === DUMMY_DRIVER_ID;
-}
-
 function shouldKeepTripInLiveTrips(t?: TripRow | null): boolean {
   if (!t) return false;
   const s = normStatus(t.status);
   if (!LIVETRIPS_DISPATCH_STATUSES.includes(s)) return false;
-  if (isDummyDriverTrip(t)) return false;
   return true;
 }
 
