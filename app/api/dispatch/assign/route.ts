@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
 
     let bookingQuery = supabase
       .from("bookings")
-      .select("id, booking_code, town, status, driver_id, assigned_driver_id")
+      .select("id, booking_code, town, status, driver_id, assigned_driver_id, pickup_lat, pickup_lng")
       .limit(1);
 
     bookingQuery = bookingCode
@@ -163,6 +163,7 @@ export async function POST(req: NextRequest) {
           { status: explicitEligibility.error === "driver_not_found" ? 404 : 500 }
         );
       }
+
       if (!explicitEligibility.eligible) {
         return NextResponse.json(
           {
@@ -190,46 +191,10 @@ export async function POST(req: NextRequest) {
         .filter((x) => !!x);
 
       const { data: drivers, error: driverError } = await supabase
-  .from("driver_locations")
-  .select("driver_id, town, lat, lng, updated_at, status")
-  .in("town", normalizedTowns)
-  .eq("status", "online");
-
-if (driverError) {
-  return NextResponse.json(
-    { ok: false, error: "driver_query_failed", message: driverError.message },
-    { status: 500 }
-  );
-}
-
-const pickupLat = Number((booking as any).pickup_lat || 0);
-const pickupLng = Number((booking as any).pickup_lng || 0);
-
-const ranked = (drivers || [])
-  .map((d: any) => {
-    const dist = haversineKm(
-      Number(d.lat),
-      Number(d.lng),
-      pickupLat,
-      pickupLng
-    );
-    return { ...d, dist };
-  })
-  .sort((a: any, b: any) => a.dist - b.dist);
-
-let eligibleDriverId = "";
-
-for (const row of ranked) {
-  const candidateDriverId = text(row?.driver_id);
-  if (!candidateDriverId) continue;
-
-  const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
-  if (!eligibility.ok) continue;
-  if (!eligibility.eligible) continue;
-
-  eligibleDriverId = candidateDriverId;
-  break;
-}
+        .from("driver_locations")
+        .select("driver_id, town, lat, lng, updated_at, status")
+        .in("town", normalizedTowns)
+        .eq("status", "online");
 
       if (driverError) {
         return NextResponse.json(
@@ -238,10 +203,25 @@ for (const row of ranked) {
         );
       }
 
+      const pickupLat = num((booking as any).pickup_lat);
+      const pickupLng = num((booking as any).pickup_lng);
+
+      const ranked = (drivers || [])
+        .map((d: any) => {
+          const dist = haversineKm(
+            num(d.lat),
+            num(d.lng),
+            pickupLat,
+            pickupLng
+          );
+          return { ...d, dist };
+        })
+        .sort((a: any, b: any) => a.dist - b.dist);
+
       let eligibleDriverId = "";
 
-      for (const row of drivers || []) {
-        const candidateDriverId = text((row as any)?.driver_id);
+      for (const row of ranked) {
+        const candidateDriverId = text(row?.driver_id);
         if (!candidateDriverId) continue;
 
         const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
