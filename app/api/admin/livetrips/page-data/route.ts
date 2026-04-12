@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getSupabase() {
@@ -26,7 +26,23 @@ export async function GET(req: NextRequest) {
       .select("*");
 
     if (driverErr) {
-      return NextResponse.json({
+      const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseHost = (() => {
+  try {
+    return new URL(supabaseUrl).host;
+  } catch {
+    return supabaseUrl;
+  }
+})();
+
+return NextResponse.json({
+  ok: true,
+  debug: {
+    supabase_host: supabaseHost,
+    generated_at: new Date().toISOString(),
+    trip_count: tripsArray?.length || 0,
+    booking_codes: (tripsArray || []).map((t: any) => t.booking_code).filter(Boolean)
+  },{
         ok: false,
         error: "DRIVER_LOCATIONS_FAILED",
         message: driverErr.message,
@@ -41,7 +57,23 @@ export async function GET(req: NextRequest) {
       .select("driver_id, full_name, callsign, phone, municipality");
 
     if (driverProfilesErr) {
-      return NextResponse.json({
+      const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseHost = (() => {
+  try {
+    return new URL(supabaseUrl).host;
+  } catch {
+    return supabaseUrl;
+  }
+})();
+
+return NextResponse.json({
+  ok: true,
+  debug: {
+    supabase_host: supabaseHost,
+    generated_at: new Date().toISOString(),
+    trip_count: tripsArray?.length || 0,
+    booking_codes: (tripsArray || []).map((t: any) => t.booking_code).filter(Boolean)
+  },{
         ok: false,
         error: "DRIVER_PROFILES_FAILED",
         message: driverProfilesErr.message,
@@ -68,7 +100,23 @@ export async function GET(req: NextRequest) {
       .order("updated_at", { ascending: false });
 
     if (bookingErr) {
-      return NextResponse.json({
+      const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseHost = (() => {
+  try {
+    return new URL(supabaseUrl).host;
+  } catch {
+    return supabaseUrl;
+  }
+})();
+
+return NextResponse.json({
+  ok: true,
+  debug: {
+    supabase_host: supabaseHost,
+    generated_at: new Date().toISOString(),
+    trip_count: tripsArray?.length || 0,
+    booking_codes: (tripsArray || []).map((t: any) => t.booking_code).filter(Boolean)
+  },{
         ok: false,
         error: "BOOKINGS_FAILED",
         message: bookingErr.message,
@@ -174,14 +222,46 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseHost = (() => {
+  try {
+    return new URL(supabaseUrl).host;
+  } catch {
+    return supabaseUrl;
+  }
+})();
+
+return NextResponse.json({
+  ok: true,
+  debug: {
+    supabase_host: supabaseHost,
+    generated_at: new Date().toISOString(),
+    trip_count: tripsArray?.length || 0,
+    booking_codes: (tripsArray || []).map((t: any) => t.booking_code).filter(Boolean)
+  },{
       ok: true,
       zones,
       drivers: driverResult,
       trips: tripsArray,
     });
   } catch (err: any) {
-    return NextResponse.json({
+    const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseHost = (() => {
+  try {
+    return new URL(supabaseUrl).host;
+  } catch {
+    return supabaseUrl;
+  }
+})();
+
+return NextResponse.json({
+  ok: true,
+  debug: {
+    supabase_host: supabaseHost,
+    generated_at: new Date().toISOString(),
+    trip_count: tripsArray?.length || 0,
+    booking_codes: (tripsArray || []).map((t: any) => t.booking_code).filter(Boolean)
+  },{
       ok: false,
       error: "LIVETRIPS_ROUTE_FAILED",
       message: String(err?.message ?? err),
