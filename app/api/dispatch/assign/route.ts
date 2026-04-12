@@ -36,8 +36,13 @@ function getSupabase() {
   });
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const R = 6371;
+function num(v: unknown): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const r = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
 
@@ -48,12 +53,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
 
-  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function num(v: unknown): number {
-  const n = Number(v ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  return 2 * r * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function effectiveMinWalletRequired(raw: unknown): number {
@@ -163,7 +163,6 @@ export async function POST(req: NextRequest) {
           { status: explicitEligibility.error === "driver_not_found" ? 404 : 500 }
         );
       }
-
       if (!explicitEligibility.eligible) {
         return NextResponse.json(
           {
@@ -207,16 +206,28 @@ export async function POST(req: NextRequest) {
       const pickupLng = num((booking as any).pickup_lng);
 
       const ranked = (drivers || [])
-        .map((d: any) => {
-          const dist = haversineKm(
-            num(d.lat),
-            num(d.lng),
-            pickupLat,
-            pickupLng
-          );
-          return { ...d, dist };
+        .map((row: any) => {
+          const driverTown = text(row?.town).toLowerCase();
+          const sameTown = driverTown === baseTown.toLowerCase();
+          const lat = num(row?.lat);
+          const lng = num(row?.lng);
+          const distKm = haversineKm(lat, lng, pickupLat, pickupLng);
+
+          return {
+            ...row,
+            sameTown,
+            distKm,
+            townPriority: sameTown ? 0 : 1,
+          };
         })
-        .sort((a: any, b: any) => a.dist - b.dist);
+        .sort((a: any, b: any) => {
+          if (a.townPriority !== b.townPriority) return a.townPriority - b.townPriority;
+          if (a.distKm !== b.distKm) return a.distKm - b.distKm;
+
+          const aUpdated = new Date(a.updated_at || "").getTime() || 0;
+          const bUpdated = new Date(b.updated_at || "").getTime() || 0;
+          return bUpdated - aUpdated;
+        });
 
       let eligibleDriverId = "";
 
