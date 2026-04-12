@@ -36,6 +36,21 @@ function getSupabase() {
   });
 }
 
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function num(v: unknown): number {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -175,12 +190,46 @@ export async function POST(req: NextRequest) {
         .filter((x) => !!x);
 
       const { data: drivers, error: driverError } = await supabase
-        .from("driver_locations")
-        .select("driver_id, town, updated_at, status")
-        .in("town", normalizedTowns)
-        .eq("status", "online")
-        .order("updated_at", { ascending: false })
-        .limit(20);
+  .from("driver_locations")
+  .select("driver_id, town, lat, lng, updated_at, status")
+  .in("town", normalizedTowns)
+  .eq("status", "online");
+
+if (driverError) {
+  return NextResponse.json(
+    { ok: false, error: "driver_query_failed", message: driverError.message },
+    { status: 500 }
+  );
+}
+
+const pickupLat = Number((booking as any).pickup_lat || 0);
+const pickupLng = Number((booking as any).pickup_lng || 0);
+
+const ranked = (drivers || [])
+  .map((d: any) => {
+    const dist = haversineKm(
+      Number(d.lat),
+      Number(d.lng),
+      pickupLat,
+      pickupLng
+    );
+    return { ...d, dist };
+  })
+  .sort((a: any, b: any) => a.dist - b.dist);
+
+let eligibleDriverId = "";
+
+for (const row of ranked) {
+  const candidateDriverId = text(row?.driver_id);
+  if (!candidateDriverId) continue;
+
+  const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
+  if (!eligibility.ok) continue;
+  if (!eligibility.eligible) continue;
+
+  eligibleDriverId = candidateDriverId;
+  break;
+}
 
       if (driverError) {
         return NextResponse.json(
