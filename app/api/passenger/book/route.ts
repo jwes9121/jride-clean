@@ -212,6 +212,31 @@ async function canBookOrThrow(supabase: any) {
     );
   }
 
+  if (!uv.verified) {
+    const priorCountRes = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by_user_id", uv.user.id);
+
+    if (priorCountRes.error) {
+      throw {
+        code: "UNVERIFIED_BOOKING_CHECK_FAILED",
+        message: priorCountRes.error.message || "Could not validate prior unverified bookings.",
+        status: 500,
+      };
+    }
+
+    const priorCount = Number(priorCountRes.count || 0);
+
+    if (priorCount >= 1) {
+      throw {
+        code: "UNVERIFIED_BOOKING_LIMIT",
+        message: "Passenger verification is required after the first unverified booking.",
+        status: 403,
+      };
+    }
+  }
+
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila",
     hour12: false,

@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type BookBody = {
@@ -159,6 +159,31 @@ async function canBookOrThrow(
       { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
       { status: 401 }
     );
+  }
+
+  if (!uv.verified) {
+    const priorCountRes = await supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by_user_id", uv.user.id);
+
+    if (priorCountRes.error) {
+      throw {
+        code: "UNVERIFIED_BOOKING_CHECK_FAILED",
+        message: priorCountRes.error.message || "Could not validate prior unverified bookings.",
+        status: 500,
+      };
+    }
+
+    const priorCount = Number(priorCountRes.count || 0);
+
+    if (priorCount >= 1) {
+      throw {
+        code: "UNVERIFIED_BOOKING_LIMIT",
+        message: "Passenger verification is required after the first unverified booking.",
+        status: 403,
+      };
+    }
   }
 
   const fmt = new Intl.DateTimeFormat("en-US", {
