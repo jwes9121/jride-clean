@@ -1117,7 +1117,7 @@ export default function LiveTripsClient() {
         </div>
 
         <div className="rounded-lg border overflow-hidden">
-          <LiveTripsMap trips={mapTrips as any} drivers={drivers} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
+          <LiveTripsMap trips={mapTrips as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
         </div>
       </div>
     </div>
