@@ -61,6 +61,72 @@ function effectiveMinWalletRequired(raw: unknown): number {
   return configured >= 250 ? configured : 250;
 }
 
+function ageSecondsFromIso(input: string | null | undefined): number | null {
+  if (!input) return null;
+  const parsed = Date.parse(input);
+  if (!Number.isFinite(parsed)) return null;
+  const now = Date.now();
+  const ms = now - parsed;
+  return Math.max(0, Math.floor(ms / 1000));
+}
+
+function ts(input: string | null | undefined): number {
+  if (!input) return 0;
+  const parsed = Date.parse(input);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const DRIVER_STALE_AFTER_SECONDS = 120;
+const ASSIGN_CUTOFF_MINUTES = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
+const ASSIGN_CUTOFF_SECONDS = ASSIGN_CUTOFF_MINUTES * 60;
+const ONLINE_LIKE_STATUSES = new Set(["online", "available", "idle", "waiting"]);
+
+function evaluateDriverLocationEligibility(row: any) {
+  const updatedAt = text(row?.updated_at) || text(row?.created_at) || "";
+  const ageSeconds = ageSecondsFromIso(updatedAt || null);
+  const rawStatus = cleanStatus(row?.status);
+  const isStale = ageSeconds == null ? true : ageSeconds > DRIVER_STALE_AFTER_SECONDS;
+  const effectiveStatus = isStale ? "offline" : rawStatus;
+  const assignFresh = ageSeconds == null ? false : ageSeconds <= ASSIGN_CUTOFF_SECONDS;
+  const assignOnlineEligible = ONLINE_LIKE_STATUSES.has(rawStatus);
+  const assignEligible = assignFresh && assignOnlineEligible;
+
+  return {
+    updatedAt: updatedAt || null,
+    ageSeconds,
+    rawStatus,
+    isStale,
+    effectiveStatus,
+    assignFresh,
+    assignOnlineEligible,
+    assignEligible,
+  };
+}
+
+function keepLatestDriverLocationRows(rows: any[]): any[] {
+  const latestByDriverId: Record<string, any> = {};
+
+  for (const row of rows || []) {
+    const driverId = text(row?.driver_id);
+    if (!driverId) continue;
+
+    const prev = latestByDriverId[driverId];
+    if (!prev) {
+      latestByDriverId[driverId] = row;
+      continue;
+    }
+
+    const prevTs = ts(prev?.updated_at || prev?.created_at || null);
+    const nextTs = ts(row?.updated_at || row?.created_at || null);
+
+    if (nextTs > prevTs) {
+      latestByDriverId[driverId] = row;
+    }
+  }
+
+  return Object.values(latestByDriverId);
+}
+
 const ASSIGNABLE_STATUSES = new Set([
   "requested",
   "pending",
@@ -95,6 +161,31 @@ async function isDriverWalletEligible(supabase: any, driverId: string) {
     balance,
     minRequired,
     walletLocked,
+  };
+}
+
+async function getLatestDriverLocationForDriver(supabase: any, driverId: string) {
+  const { data, error } = await supabase
+    .from("driver_locations")
+    .select("driver_id, town, lat, lng, updated_at, created_at, status")
+    .eq("driver_id", driverId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false as const, error: "driver_location_read_failed", message: error.message };
+  }
+
+  if (!data) {
+    return { ok: false as const, error: "driver_location_not_found" };
+  }
+
+  const eligibility = evaluateDriverLocationEligibility(data);
+  return {
+    ok: true as const,
+    row: data,
+    eligibility,
   };
 }
 
@@ -156,6 +247,39 @@ export async function POST(req: NextRequest) {
     }
 
     if (explicitDriverId) {
+      const driverLocation = await getLatestDriverLocationForDriver(supabase, explicitDriverId);
+      if (!driverLocation.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: driverLocation.error,
+            message: (driverLocation as any).message || null,
+            driver_id: explicitDriverId,
+          },
+          { status: driverLocation.error === "driver_location_not_found" ? 404 : 500 }
+        );
+      }
+
+      if (!driverLocation.eligibility.assignEligible) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "driver_not_assign_eligible",
+            driver_id: explicitDriverId,
+            driver_status: driverLocation.eligibility.rawStatus,
+            effective_status: driverLocation.eligibility.effectiveStatus,
+            is_stale: driverLocation.eligibility.isStale,
+            assign_fresh: driverLocation.eligibility.assignFresh,
+            assign_online_eligible: driverLocation.eligibility.assignOnlineEligible,
+            assign_eligible: driverLocation.eligibility.assignEligible,
+            updated_at: driverLocation.eligibility.updatedAt,
+            age_seconds: driverLocation.eligibility.ageSeconds,
+            assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
+          },
+          { status: 409 }
+        );
+      }
+
       const explicitEligibility = await isDriverWalletEligible(supabase, explicitDriverId);
       if (!explicitEligibility.ok) {
         return NextResponse.json(
@@ -191,9 +315,8 @@ export async function POST(req: NextRequest) {
 
       const { data: drivers, error: driverError } = await supabase
         .from("driver_locations")
-        .select("driver_id, town, lat, lng, updated_at, status")
-        .in("town", normalizedTowns)
-        .eq("status", "online");
+        .select("driver_id, town, lat, lng, updated_at, created_at, status")
+        .in("town", normalizedTowns);
 
       if (driverError) {
         return NextResponse.json(
@@ -205,8 +328,9 @@ export async function POST(req: NextRequest) {
       const pickupLat = num((booking as any).pickup_lat);
       const pickupLng = num((booking as any).pickup_lng);
 
-      const ranked = (drivers || [])
+      const ranked = keepLatestDriverLocationRows(drivers || [])
         .map((row: any) => {
+          const eligibility = evaluateDriverLocationEligibility(row);
           const driverTown = text(row?.town).toLowerCase();
           const sameTown = driverTown === baseTown.toLowerCase();
           const lat = num(row?.lat);
@@ -215,6 +339,7 @@ export async function POST(req: NextRequest) {
 
           return {
             ...row,
+            eligibility,
             sameTown,
             distKm,
             townPriority: sameTown ? 0 : 1,
@@ -224,8 +349,8 @@ export async function POST(req: NextRequest) {
           if (a.townPriority !== b.townPriority) return a.townPriority - b.townPriority;
           if (a.distKm !== b.distKm) return a.distKm - b.distKm;
 
-          const aUpdated = new Date(a.updated_at || "").getTime() || 0;
-          const bUpdated = new Date(b.updated_at || "").getTime() || 0;
+          const aUpdated = ts(a.updated_at || a.created_at || null);
+          const bUpdated = ts(b.updated_at || b.created_at || null);
           return bUpdated - aUpdated;
         });
 
@@ -234,6 +359,7 @@ export async function POST(req: NextRequest) {
       for (const row of ranked) {
         const candidateDriverId = text(row?.driver_id);
         if (!candidateDriverId) continue;
+        if (!row?.eligibility?.assignEligible) continue;
 
         const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
         if (!eligibility.ok) continue;
@@ -249,7 +375,8 @@ export async function POST(req: NextRequest) {
             ok: false,
             error: emergencyMode ? "no_drivers_even_in_emergency" : "no_local_drivers",
             town: baseTown || null,
-            reason: "NO_ELIGIBLE_DRIVER_WITH_MIN_WALLET",
+            reason: "NO_ASSIGN_ELIGIBLE_DRIVER_WITH_MIN_WALLET",
+            assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
           },
           { status: 404 }
         );
@@ -297,6 +424,7 @@ export async function POST(req: NextRequest) {
       assigned_at: updated?.assigned_at ?? nowIso,
       emergency_mode: emergencyMode,
       assignment_mode: explicitDriverId ? "manual" : "auto",
+      assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
     });
   } catch (e: any) {
     return NextResponse.json(
