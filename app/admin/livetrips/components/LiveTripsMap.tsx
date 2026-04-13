@@ -8,26 +8,28 @@ import DispatchActionPanel from "./DispatchActionPanel";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
-export type DriverLocation = {
-  driver_id: string;
-  lat?: number;
-  lng?: number;
-  status?: string;
-  updated_at?: string;
-  age_seconds?: number;
-  assign_eligible?: boolean;
-  is_stale?: boolean;
-  name?: string;
-  phone?: string;
-  town?: string;
-};
-
 export interface LiveTripsMapProps {
   trips: LiveTrip[];
-  drivers?: DriverLocation[];
+  drivers: MapDriverRow[];
   selectedTripId: string | null;
-  stuckTripIds: Set<string>; // external optional stuck set
+  stuckTripIds: Set<string>;
 }
+
+type MapDriverRow = {
+  driver_id?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  status?: string | null;
+  effective_status?: string | null;
+  updated_at?: string | null;
+  updated_at_ph?: string | null;
+  age_seconds?: number | null;
+  assign_eligible?: boolean | null;
+  is_stale?: boolean | null;
+  name?: string | null;
+  phone?: string | null;
+  town?: string | null;
+};
 
 type LngLatTuple = [number, number];
 
@@ -37,7 +39,72 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// ---------- Coordinate helpers ----------
+function formatPHDateTime(value: any): string {
+  if (!value) return "--";
+  const d = new Date(String(value));
+  if (!Number.isFinite(d.getTime())) return String(value);
+  try {
+    return new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(d);
+  } catch {
+    return String(value);
+  }
+}
+
+function driverStatusText(driver: MapDriverRow): string {
+  return String(driver.effective_status ?? driver.status ?? "").trim().toLowerCase();
+}
+
+function driverDisplayPoint(driver: MapDriverRow): LngLatTuple | null {
+  const lat = num(driver.lat);
+  const lng = num(driver.lng);
+  if (lat == null || lng == null) return null;
+  return [lng, lat];
+}
+
+function initialsFromName(name: string | null | undefined): string {
+  const raw = String(name ?? "").trim();
+  if (!raw) return "D";
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (!parts.length) return "D";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function buildDriverBadgeMarker(driver: MapDriverRow): HTMLDivElement {
+  const el = document.createElement("div");
+  const isStale = !!driver.is_stale;
+  const status = driverStatusText(driver);
+  const eligible = !!driver.assign_eligible;
+
+  el.className = "jride-driver-badge";
+  if (isStale) {
+    el.classList.add("jride-driver-badge-stale");
+  } else if (eligible || ["online", "available", "idle", "waiting"].includes(status)) {
+    el.classList.add("jride-driver-badge-online");
+  } else {
+    el.classList.add("jride-driver-badge-busy");
+  }
+
+  el.textContent = initialsFromName(driver.name);
+  const titleBits = [
+    String(driver.name ?? "Driver").trim() || "Driver",
+    String(driver.town ?? "").trim() || null,
+    String(driver.effective_status ?? driver.status ?? "").trim() || null,
+    driver.updated_at_ph ? "Last ping: " + driver.updated_at_ph : null,
+  ].filter(Boolean);
+  el.title = titleBits.join(" | ");
+  return el;
+}
+
 
 function getPickup(trip: any): LngLatTuple | null {
   const lat =
@@ -80,9 +147,6 @@ function getExplicitDriver(trip: any): LngLatTuple | null {
   return null;
 }
 
-/**
- * Fallback: collect all coords and infer a driver position
- */
 function getAllCoords(trip: any): LngLatTuple[] {
   if (!trip || typeof trip !== "object") return [];
   const entries = Object.entries(trip) as [string, any][];
@@ -126,31 +190,20 @@ function getAllCoords(trip: any): LngLatTuple[] {
   return coords;
 }
 
-/**
- * Driver position priority:
- * 1) explicit driver_* fields
- * 2) from all coords:
- *    - 1 coord  => that coord
- *    - 2 coords => second coord
- *    - 3+       => second-to-last coord
- */
 function getDriverReal(trip: any): LngLatTuple | null {
-  // DISABLE_DRIVER_COORD_FALLBACKS_V2
-  // Only trust explicit driver_* coordinates.
-  // Do not infer driver position from pickup/dropoff/other trip coordinates.
   const explicit = getExplicitDriver(trip);
   if (explicit) return explicit;
-  return null;
+
+  const coords = getAllCoords(trip);
+  if (!coords.length) return null;
+  if (coords.length === 1) return coords[0];
+  if (coords.length === 2) return coords[1];
+  return coords[coords.length - 2];
 }
 
-/**
- * Display position for the trike icon: slightly south of real driver position
- * so the destination red dot (at true coords) never sits on top of it.
- */
 function getDriverDisplay(real: LngLatTuple | null): LngLatTuple | null {
   if (!real) return null;
   const [lng, lat] = real;
-  // ~20m south
   const offsetLat = lat - 0.00018;
   return [lng, offsetLat];
 }
@@ -174,19 +227,7 @@ function distanceMeters(a: LngLatTuple, b: LngLatTuple): number {
     );
   return R * c;
 }
-// LIVETRIPSMAP_STABLE_CAMERA_AND_DRIVER_INITIALS_V3
-function getDriverInitials(name?: string): string {
-  const s = String(name ?? "").trim();
-  if (!s) return "?";
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
-/**
- * Road-following route via Mapbox Directions.
- * Returns straight line if anything fails.
- */
 async function getRoadRoute(
   start: LngLatTuple,
   end: LngLatTuple
@@ -228,8 +269,6 @@ async function getRoadRoute(
   }
 }
 
-// ---------- Zone helpers ----------
-
 function getZoneName(trip: any): string {
   return (
     (trip.town ??
@@ -244,11 +283,20 @@ function normalizeZone(name: string): string {
   return name.trim().toLowerCase();
 }
 
-// ---------- Main component ----------
+interface AutoAssignSuggestion {
+  tripId: string;
+  bookingCode?: string;
+  driverName?: string;
+  driverId?: string;
+  driverTown?: string | null;
+  distanceMeters?: number;
+  reason: string;
+  score: number;
+}
 
 export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   trips,
-  drivers = [],
+  drivers,
   selectedTripId,
   stuckTripIds,
 }) => {
@@ -257,18 +305,15 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const [mapReady, setMapReady] = useState(false);
 
   const driverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const standaloneDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const routeIdsRef = useRef<Set<string>>(new Set());
-  const standaloneDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const lastFollowRef = useRef<LngLatTuple | null>(null);
-  const autoFollowedSelectionRef = useRef<string | null>(null);
 
-  // Audio for problem-trip alerts
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const alertedIdsRef = useRef<Set<string>>(new Set());
 
-  // ===== STUCK TRIP WATCHER (internal) =====
   type TrackState = {
     lastPos: LngLatTuple | null;
     lastMoveTime: number;
@@ -277,8 +322,8 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const trackerRef = useRef<Record<string, TrackState>>({});
   const [localStuckIds, setLocalStuckIds] = useState<Set<string>>(new Set());
 
-  const MOVE_THRESHOLD_M = 25; // >25m counts as movement
-  const STUCK_MS = 3 * 60 * 1000; // 3 minutes => stuck
+  const MOVE_THRESHOLD_M = 25;
+  const STUCK_MS = 3 * 60 * 1000;
 
   useEffect(() => {
     const now = Date.now();
@@ -337,7 +382,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const activeStuckIds =
     stuckTripIds && stuckTripIds.size > 0 ? stuckTripIds : localStuckIds;
 
-  // ===== AUTO PROBLEM-TRIP ALERT SOUND =====
   useEffect(() => {
     const audio = alertAudioRef.current;
     if (!audio) return;
@@ -374,12 +418,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         audio.currentTime = 0;
         void audio.play();
       } catch {
-        // ignore play errors
       }
     }
   }, [trips, activeStuckIds]);
 
-  // ===== ZONE COLUMN FILTERS =====
   const [zoneFilter, setZoneFilter] = useState<string>("all");
 
   const zoneStats = useMemo(() => {
@@ -404,7 +446,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     );
   }, [trips, zoneFilter]);
 
-  // ===== KPI BANNER =====
   const kpi = useMemo(() => {
     let active = 0;
     let pending = 0;
@@ -455,14 +496,72 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     };
   }, [trips, activeStuckIds]);
 
+  const [suggestions, setSuggestions] = useState<AutoAssignSuggestion[]>([]);
 
-  // ===== SELECTED DRIVER LIVE OVERVIEW =====
+  useEffect(() => {
+    const pending = trips.filter((t: any) =>
+      ["pending", "assigned"].includes((t.status ?? "").toString())
+    );
+    const drivers = trips.filter((t: any) =>
+      ["idle", "available", "on_the_way", "on_trip"].includes(
+        (t.status ?? "").toString()
+      )
+    );
+
+    const next: AutoAssignSuggestion[] = [];
+
+    for (const p of pending as any[]) {
+      const pickup = getPickup(p);
+      if (!pickup) continue;
+
+      const pTown = (p.town ?? p.zone ?? p.area ?? null) as string | null;
+
+      let best: AutoAssignSuggestion | null = null;
+
+      for (const d of drivers as any[]) {
+        const driverReal = getDriverReal(d);
+        if (!driverReal) continue;
+
+        const dTown = (d.town ?? d.zone ?? d.area ?? null) as string | null;
+        const dist = distanceMeters(pickup, driverReal);
+
+        let penalty = 0;
+        if (pTown && dTown && pTown !== dTown) {
+          penalty += 2000;
+        }
+
+        const score = dist + penalty;
+
+        if (!best || score < best.score) {
+          best = {
+            tripId: String(p.id ?? p.bookingCode ?? ""),
+            bookingCode: p.bookingCode,
+            driverName: d.driver_name ?? d.driverName ?? null,
+            driverId: d.driver_id ?? d.driverId ?? null,
+            driverTown: dTown,
+            distanceMeters: dist,
+            reason:
+              pTown && dTown && pTown !== dTown
+                ? "Nearest driver but from another town"
+                : "Nearest available driver",
+            score,
+          };
+        }
+      }
+
+      if (best) next.push(best);
+    }
+
+    next.sort((a, b) => a.score - b.score);
+    setSuggestions(next.slice(0, 3));
+  }, [trips]);
+
   const selectedTrip = useMemo(() => {
     if (!selectedTripId) return null;
     return (
       (trips.find(
         (t: any) =>
-          String((t as any).id ?? (t as any).bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
+          String(t.id ?? t.bookingCode ?? "") === selectedTripId
       ) as any) ?? null
     );
   }, [trips, selectedTripId]);
@@ -486,7 +585,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     if (driverReal && pickup) distToPickup = distanceMeters(driverReal, pickup);
     if (driverReal && drop) distToDrop = distanceMeters(driverReal, drop);
 
-    const bookingCode = selectedTrip.bookingCode ?? selectedTrip.booking_code ?? id;
+    const bookingCode = selectedTrip.bookingCode ?? id;
     const lastUpdate =
       selectedTrip.driver_last_seen_at ??
       selectedTrip.updated_at ??
@@ -506,7 +605,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     };
   }, [selectedTrip, activeStuckIds]);
 
-  // ===== INIT MAP =====
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
 
@@ -524,30 +622,27 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     return () => {
       map.off("load", onLoad);
       setMapReady(false);
-
-      for (const marker of Object.values(standaloneDriverMarkersRef.current)) {
-        marker.remove();
-      }
-      standaloneDriverMarkersRef.current = {};
-
       map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // ===== MARKERS + ROUTES =====
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     if (!mapReady) return;
     const nextDrivers: Record<string, mapboxgl.Marker> = {};
+    const nextStandaloneDrivers: Record<string, mapboxgl.Marker> = {};
     const nextPickups: Record<string, mapboxgl.Marker> = {};
     const nextDrops: Record<string, mapboxgl.Marker> = {};
     const validRouteIds = new Set<string>();
+    const tripDriverIds = new Set<string>();
 
     for (let i = 0; i < visibleTrips.length; i++) {
       const raw = visibleTrips[i] as any;
       const id = String(raw.id ?? raw.bookingCode ?? i);
+      const tripDriverId = String(raw.driver_id ?? raw.assigned_driver_id ?? "");
+      if (tripDriverId) tripDriverIds.add(tripDriverId);
 
       const driverReal = getDriverReal(raw);
       const driverDisplay = getDriverDisplay(driverReal);
@@ -557,7 +652,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const isStuck = activeStuckIds.has(id);
       const isProblem = !!raw.isProblem;
 
-      // DRIVER marker
       if (driverDisplay) {
         let marker = driverMarkersRef.current[id];
         if (!marker) {
@@ -580,7 +674,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         nextDrivers[id] = marker;
       }
 
-      // PICKUP
       if (pickup) {
         let marker = pickupMarkersRef.current[id];
         if (!marker) {
@@ -598,7 +691,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         nextPickups[id] = marker;
       }
 
-      // DROPOFF
       if (drop) {
         let marker = dropMarkersRef.current[id];
         if (!marker) {
@@ -616,7 +708,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         nextDrops[id] = marker;
       }
 
-      // ROUTE
       const routeId = `route-road-${id}`;
 
       if (pickup && drop) {
@@ -655,10 +746,37 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       }
     }
 
+    for (let i = 0; i < drivers.length; i++) {
+      const driver = (drivers[i] || {}) as MapDriverRow;
+      const driverId = String(driver.driver_id || "");
+      if (!driverId) continue;
+      if (tripDriverIds.has(driverId)) continue;
+
+      const point = driverDisplayPoint(driver);
+      if (!point) continue;
+
+      let marker = standaloneDriverMarkersRef.current[driverId];
+      if (!marker) {
+        const el = buildDriverBadgeMarker(driver);
+        marker = new mapboxgl.Marker(el).setLngLat(point).addTo(map);
+      } else {
+        marker.setLngLat(point);
+        const nextEl = buildDriverBadgeMarker(driver);
+        marker.getElement().className = nextEl.className;
+        marker.getElement().textContent = nextEl.textContent;
+        marker.getElement().title = nextEl.title;
+      }
+
+      nextStandaloneDrivers[driverId] = marker;
+    }
+
     const map2 = mapRef.current;
     if (map2) {
       for (const [id, marker] of Object.entries(driverMarkersRef.current)) {
         if (!nextDrivers[id]) marker.remove();
+      }
+      for (const [id, marker] of Object.entries(standaloneDriverMarkersRef.current)) {
+        if (!nextStandaloneDrivers[id]) marker.remove();
       }
       for (const [id, marker] of Object.entries(pickupMarkersRef.current)) {
         if (!nextPickups[id]) marker.remove();
@@ -676,99 +794,18 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     }
 
     driverMarkersRef.current = nextDrivers;
+    standaloneDriverMarkersRef.current = nextStandaloneDrivers;
     pickupMarkersRef.current = nextPickups;
     dropMarkersRef.current = nextDrops;
     routeIdsRef.current = validRouteIds;
-  }, [visibleTrips, activeStuckIds, mapReady]);
+  }, [visibleTrips, drivers, activeStuckIds, mapReady]);
 
-
-  // ===== STANDALONE DRIVER MARKERS (independent from trip data) =====
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    const nextStandalone: Record<string, mapboxgl.Marker> = {};
-
-    for (const d of drivers ?? []) {
-      const lat = num((d as any).lat);
-      const lng = num((d as any).lng);
-      if (lat == null || lng == null) continue;
-
-      const id = String((d as any).driver_id || "");
-      if (!id) continue;
-
-      const statusLower = String((d as any).status ?? "").toLowerCase();
-      const isStale = !!(d as any).is_stale;
-      const isOnline = ["available", "online", "idle", "assigned", "on_the_way", "on_trip"].includes(statusLower);
-
-      let marker = standaloneDriverMarkersRef.current[id];
-      const initials = getDriverInitials((d as any).name);
-
-      if (!marker) {
-        const el = document.createElement("div");
-        el.style.width = "22px";
-        el.style.height = "22px";
-        el.style.borderRadius = "9999px";
-        el.style.border = "2px solid #ffffff";
-        el.style.boxShadow = "0 1px 4px rgba(0,0,0,0.35)";
-        el.style.transform = "translate(-50%, -50%)";
-        el.style.cursor = "pointer";
-        el.style.display = "flex";
-        el.style.alignItems = "center";
-        el.style.justifyContent = "center";
-        el.style.fontSize = "10px";
-        el.style.fontWeight = "700";
-        el.style.lineHeight = "1";
-        el.style.color = "#ffffff";
-        el.style.userSelect = "none";
-        el.style.backgroundColor = isStale ? "#94a3b8" : isOnline ? "#2563eb" : "#64748b";
-        el.textContent = initials;
-        el.title = [
-          (d as any).name ?? id,
-          (d as any).status ?? "",
-          (d as any).town ?? "",
-        ].filter(Boolean).join(" | ");
-
-        marker = new mapboxgl.Marker(el).setLngLat([lng, lat]).addTo(map);
-      } else {
-        marker.setLngLat([lng, lat]);
-        const el = marker.getElement();
-        el.style.backgroundColor = isStale ? "#94a3b8" : isOnline ? "#2563eb" : "#64748b";
-        el.textContent = initials;
-        el.title = [
-          (d as any).name ?? id,
-          (d as any).status ?? "",
-          (d as any).town ?? "",
-        ].filter(Boolean).join(" | ");
-      }
-
-      nextStandalone[id] = marker;
-    }
-
-    for (const [id, marker] of Object.entries(standaloneDriverMarkersRef.current)) {
-      if (!nextStandalone[id]) {
-        marker.remove();
-      }
-    }
-
-    standaloneDriverMarkersRef.current = nextStandalone;
-  }, [drivers, mapReady]);
-    // ===== AUTO-FOLLOW =====
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (!selectedTripId) {
-      autoFollowedSelectionRef.current = null;
-      return;
-    }
-
-    if (autoFollowedSelectionRef.current === selectedTripId) {
-      return;
-    }
+    if (!map || !selectedTripId) return;
 
     const raw = trips.find(
-      (t: any) => String((t as any).id ?? (t as any).bookingCode ?? (t as any).booking_code ?? "") === selectedTripId
+      (t: any) => String(t.id ?? t.bookingCode ?? "") === selectedTripId
     ) as any | undefined;
     if (!raw) return;
 
@@ -779,8 +816,12 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     const target: LngLatTuple | null = driverReal ?? drop ?? pickup ?? null;
     if (!target) return;
 
+    if (lastFollowRef.current) {
+      const dist = distanceMeters(lastFollowRef.current, target);
+      if (dist < 30) return;
+    }
+
     lastFollowRef.current = target;
-    autoFollowedSelectionRef.current = selectedTripId;
 
     map.flyTo({
       center: target,
@@ -788,15 +829,13 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       speed: 1.2,
       essential: true,
     });
-    }, [selectedTripId, trips]);
+  }, [selectedTripId, trips]);
 
-  // ===== RENDER =====
   return (
     <>
       <div className="relative h-full w-full">
         <div ref={containerRef} className="h-full w-full" />
 
-        {/* KPI BANNER */}
         <div className="pointer-events-auto absolute top-3 right-3 z-20 flex max-w-xl flex-wrap gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs shadow-md">
           <div className="flex flex-wrap gap-2">
             <div className="flex items-center gap-2 rounded-md bg-rose-50 px-2 py-1 text-rose-800">
@@ -838,7 +877,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           </div>
         </div>
 
-        {/* ZONE COLUMN FILTERS */}
         <div className="pointer-events-auto absolute top-3 left-3 z-20 max-w-xl rounded-xl bg-white/90 px-3 py-2 text-xs shadow-md">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="font-semibold text-slate-800">
@@ -892,8 +930,46 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           )}
         </div>
 
+        <div className="pointer-events-auto absolute bottom-3 left-3 z-20 max-w-xs rounded-xl bg-white/90 p-3 text-xs shadow-md">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-semibold text-slate-800">
+              Auto-assign suggestions
+            </span>
+            <span className="text-[10px] text-slate-400">(beta helper)</span>
+          </div>
+          {suggestions.length === 0 ? (
+            <div className="text-[11px] text-slate-500">
+              No pending trips needing suggestions right now.
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {suggestions.map((s) => (
+                <li
+                  key={s.tripId}
+                  className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1"
+                >
+                  <div className="text-[11px] font-semibold text-emerald-800">
+                    Trip {s.bookingCode ?? s.tripId}
+                  </div>
+                  <div className="text-[11px] text-slate-700">
+                    Suggest:{" "}
+                    <span className="font-medium">
+                      {s.driverName ??
+                        (s.driverId ? `Driver ${s.driverId}` : "Nearest driver")}
+                    </span>
+                    {s.driverTown ? ` (${s.driverTown})` : null}
+                  </div>
+                  {s.distanceMeters != null && (
+                    <div className="text-[10px] text-slate-500">
+                      ~{(s.distanceMeters / 1000).toFixed(2)} km away - {s.reason}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-        {/* DRIVER LIVE OVERVIEW + DISPATCH ACTION PANEL */}
         {selectedOverview && (
           <div className="pointer-events-auto absolute bottom-3 right-3 z-20 w-80 rounded-xl bg-white/90 p-3 text-xs shadow-md space-y-2">
             <div className="mb-1 flex items-center justify-between">
@@ -915,7 +991,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                 <span className="text-slate-500">Status</span>
                 <span className="font-medium">
                   {selectedOverview.status}
-                  {selectedOverview.isStuck ? "  STUCK" : ""}
+                  {selectedOverview.isStuck ? " - STUCK" : ""}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -943,9 +1019,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500">Last update</span>
                 <span className="font-medium">
-                  {selectedOverview.lastUpdate
-                    ? String(selectedOverview.lastUpdate)
-                    : "-"}
+                  {formatPHDateTime(selectedOverview.lastUpdate)}
                 </span>
               </div>
             </div>
@@ -993,7 +1067,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           </div>
         )}
 
-        {/* Hidden audio element */}
         <audio
           ref={alertAudioRef}
           src="/audio/jride_audio.mp3"
@@ -1004,6 +1077,33 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       <style jsx global>{`
         .jride-marker-blink {
           animation: jride-pulse 1.3s infinite;
+        }
+        .jride-driver-badge {
+          width: 34px;
+          height: 34px;
+          border-radius: 9999px;
+          border: 2px solid #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+          transform: translate(-50%, -50%);
+          user-select: none;
+        }
+        .jride-driver-badge-online {
+          background: #10b981;
+          color: #ffffff;
+        }
+        .jride-driver-badge-busy {
+          background: #f59e0b;
+          color: #111827;
+        }
+        .jride-driver-badge-stale {
+          background: #9ca3af;
+          color: #ffffff;
         }
         @keyframes jride-pulse {
           0% {
@@ -1022,8 +1122,3 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 };
 
 export default LiveTripsMap;
-
-
-
-
-
