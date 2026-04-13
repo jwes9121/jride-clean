@@ -228,6 +228,10 @@ function distanceMeters(a: LngLatTuple, b: LngLatTuple): number {
   return R * c;
 }
 
+function isDriverStationaryStatus(status: string): boolean {
+  return ["online", "available", "idle", "waiting", "offline"].includes(status);
+}
+
 async function getRoadRoute(
   start: LngLatTuple,
   end: LngLatTuple
@@ -306,6 +310,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
   const driverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const standaloneDriverMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const standaloneDriverLastPointRef = useRef<Record<string, LngLatTuple>>({});
   const pickupMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const routeIdsRef = useRef<Set<string>>(new Set());
@@ -749,8 +754,21 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       if (!driverId) continue;
       if (tripDriverIds.has(driverId)) continue;
 
-      const point = driverDisplayPoint(driver);
-      if (!point) continue;
+      const rawPoint = driverDisplayPoint(driver);
+      if (!rawPoint) continue;
+
+      const status = driverStatusText(driver);
+      const prevPoint = standaloneDriverLastPointRef.current[driverId];
+      let point = rawPoint;
+
+      if (prevPoint && isDriverStationaryStatus(status)) {
+        const driftMeters = distanceMeters(prevPoint, rawPoint);
+        if (driftMeters < 25) {
+          point = prevPoint;
+        }
+      }
+
+      standaloneDriverLastPointRef.current[driverId] = point;
 
       let marker = standaloneDriverMarkersRef.current[driverId];
       if (!marker) {
@@ -773,7 +791,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         if (!nextDrivers[id]) marker.remove();
       }
       for (const [id, marker] of Object.entries(standaloneDriverMarkersRef.current)) {
-        if (!nextStandaloneDrivers[id]) marker.remove();
+        if (!nextStandaloneDrivers[id]) {
+          marker.remove();
+          delete standaloneDriverLastPointRef.current[id];
+        }
       }
       for (const [id, marker] of Object.entries(pickupMarkersRef.current)) {
         if (!nextPickups[id]) marker.remove();
@@ -1076,17 +1097,17 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           animation: jride-pulse 1.3s infinite;
         }
         .jride-driver-badge {
-          width: 34px;
-          height: 34px;
+          width: 24px;
+          height: 24px;
           border-radius: 9999px;
-          border: 2px solid #ffffff;
+          border: 1.5px solid #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 11px;
+          font-size: 9px;
           font-weight: 700;
           line-height: 1;
-          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
           user-select: none;
         }
         .jride-driver-badge-online {
