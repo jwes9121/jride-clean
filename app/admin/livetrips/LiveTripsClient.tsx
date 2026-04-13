@@ -126,12 +126,7 @@ function parseTripsFromPageData(j: any): TripRow[] {
 
 function parseDriversFromPayload(j: any): DriverRow[] {
   if (!j) return [];
-  const candidates = [
-    j.drivers,
-    j.data,
-    j["0"],
-    Array.isArray(j) ? j : null,
-  ];
+  const candidates = [j.drivers, j.data, j["0"], Array.isArray(j) ? j : null];
   for (const c of candidates) {
     const arr = safeArray<DriverRow>(c);
     if (arr.length) return arr;
@@ -581,6 +576,20 @@ export default function LiveTripsClient() {
     if (!selectedTripId) return null;
     return allTrips.find((t) => normTripId(t) === selectedTripId) || null;
   }, [allTrips, selectedTripId]);
+
+  const selectedManualDriver = useMemo(() => {
+    return drivers.find((d) => String(d.driver_id || "") === manualDriverId) || null;
+  }, [drivers, manualDriverId]);
+
+  useEffect(() => {
+    if (!selectedManualDriver) return;
+    if (selectedManualDriver.assign_eligible) return;
+    setManualDriverId("");
+  }, [selectedManualDriver]);
+
+  const eligibleDrivers = useMemo(() => {
+    return drivers.filter((d) => Boolean(d.assign_eligible));
+  }, [drivers]);
 
   const driverRows = useMemo(() => {
     return drivers
@@ -1059,13 +1068,19 @@ export default function LiveTripsClient() {
                   value={manualDriverId}
                   onChange={(e) => setManualDriverId(e.target.value)}
                 >
-                  <option value="">Select driver</option>
+                  <option value="">Select eligible driver</option>
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
-                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + ((d as any).effective_status ? " - " + (d as any).effective_status : "")).trim();
+                    const isEligible = Boolean(d.assign_eligible);
+                    const label = (
+                      (d.name || "Driver") +
+                      (d.town ? " - " + d.town : "") +
+                      ((d as any).effective_status ? " - " + (d as any).effective_status : "") +
+                      (isEligible ? "" : " - NOT ELIGIBLE")
+                    ).trim();
 
                     return (
-                      <option key={id || String(idx)} value={id}>
+                      <option key={id || String(idx)} value={id} disabled={!isEligible}>
                         {label}
                       </option>
                     );
@@ -1074,9 +1089,9 @@ export default function LiveTripsClient() {
 
                 <button
                   className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
-                  disabled={!selectedTrip?.booking_code || !manualDriverId}
+                  disabled={!selectedTrip?.booking_code || !manualDriverId || !selectedManualDriver?.assign_eligible}
                   onClick={() => {
-                    if (!selectedTrip?.booking_code) return;
+                    if (!selectedTrip?.booking_code || !selectedManualDriver?.assign_eligible) return;
                     assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) => setLastAction(String(err?.message || err)));
                   }}
                 >
@@ -1093,10 +1108,14 @@ export default function LiveTripsClient() {
                 </button>
               </div>
 
+              <div className="mt-2 text-[11px] text-slate-500">
+                Manual assignment dropdown only allows drivers with assign_eligible = Yes. Ineligible drivers remain visible in Drivers view for monitoring.
+              </div>
+
               <div className="mt-2">
                 <SmartAutoAssignSuggestions
                   trip={selectedTripForSuggestions as any}
-                  drivers={drivers.map((d) => ({
+                  drivers={eligibleDrivers.map((d) => ({
                     id: String(d.driver_id || ""),
                     name: String(d.name || "Driver"),
                     lat: Number(d.lat ?? 0),
