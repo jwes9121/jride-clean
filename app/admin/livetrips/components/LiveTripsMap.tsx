@@ -229,7 +229,13 @@ function distanceMeters(a: LngLatTuple, b: LngLatTuple): number {
 }
 
 function isDriverStationaryStatus(status: string): boolean {
-  return ["online", "available", "idle", "waiting", "offline"].includes(status);
+  return ["online", "available", "idle", "waiting", "offline", "walk_in", "walk-in"].includes(status);
+}
+
+function standaloneDriverMoveThresholdMeters(driver: MapDriverRow, status: string): number {
+  if (driver.is_stale) return 250;
+  if (isDriverStationaryStatus(status)) return 120;
+  return 60;
 }
 
 async function getRoadRoute(
@@ -761,9 +767,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const prevPoint = standaloneDriverLastPointRef.current[driverId];
       let point = rawPoint;
 
-      if (prevPoint && isDriverStationaryStatus(status)) {
+      if (prevPoint) {
         const driftMeters = distanceMeters(prevPoint, rawPoint);
-        if (driftMeters < 25) {
+        const thresholdMeters = standaloneDriverMoveThresholdMeters(driver, status);
+        if (driftMeters < thresholdMeters) {
           point = prevPoint;
         }
       }
