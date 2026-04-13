@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 function n(v: unknown): number | null {
@@ -263,6 +263,11 @@ export async function GET(req: NextRequest) {
       pickup_distance_fee: pickupDistanceFee,
       platform_fee: platformFee,
       total_fare: totalFare,
+
+      // === JRIDE TRANSPARENCY FIELDS (SAFE ADD) ===
+      submitted_regular_fare: n((booking as any).submitted_regular_fare),
+      night_rate_mode: s((booking as any).night_rate_mode),
+      night_rate_hour_ph: n((booking as any).night_rate_hour_ph),
       total_amount: totalFare,
       grand_total: totalFare,
       passenger_fare_response: s((booking as any).passenger_fare_response),
