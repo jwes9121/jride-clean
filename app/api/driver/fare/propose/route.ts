@@ -66,6 +66,54 @@ function estimateEtaMinutes(distanceKm: number | null): number | null {
   return Math.max(1, Math.ceil((distanceKm / 25) * 60));
 }
 
+type NightRateDetails = {
+  basis: "booking_created_at" | "server_now";
+  basisIso: string;
+  manilaHour: number;
+  mode: "regular" | "double" | "plus_100";
+  adjustedBaseFare: number;
+};
+
+function getNightRateDetails(regularFare: number, bookingCreatedAt: unknown): NightRateDetails {
+  const createdAtText = text(bookingCreatedAt);
+  let basis: NightRateDetails["basis"] = "server_now";
+  let basisDate = new Date();
+
+  if (createdAtText) {
+    const parsed = new Date(createdAtText);
+    if (Number.isFinite(parsed.getTime())) {
+      basisDate = parsed;
+      basis = "booking_created_at";
+    }
+  }
+
+  const hourText = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    hour: "2-digit",
+    hour12: false,
+  }).format(basisDate);
+
+  const manilaHour = Number(hourText);
+  let mode: NightRateDetails["mode"] = "regular";
+  let adjustedBaseFare = regularFare;
+
+  if (manilaHour >= 20 && manilaHour <= 22) {
+    mode = "double";
+    adjustedBaseFare = regularFare * 2;
+  } else if (manilaHour >= 23 || manilaHour <= 4) {
+    mode = "plus_100";
+    adjustedBaseFare = regularFare + 100;
+  }
+
+  return {
+    basis,
+    basisIso: basisDate.toISOString(),
+    manilaHour,
+    mode,
+    adjustedBaseFare,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
@@ -73,7 +121,7 @@ export async function POST(req: Request) {
 
     const bookingCode = text(body.booking_code || body.bookingCode);
     const bookingId = text(body.booking_id || body.bookingId);
-    const proposedFare = num(body.proposed_fare ?? body.fare);
+    const submittedRegularFare = num(body.proposed_fare ?? body.fare);
 
     if (!bookingCode && !bookingId) {
       return NextResponse.json(
@@ -82,7 +130,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (proposedFare == null || proposedFare <= 0) {
+    if (submittedRegularFare == null || submittedRegularFare <= 0) {
       return NextResponse.json(
         { ok: false, error: "INVALID_PROPOSED_FARE" },
         { status: 400, headers: noStoreHeaders() }
@@ -222,11 +270,13 @@ export async function POST(req: Request) {
     }
 
     const etaMinutes = estimateEtaMinutes(driverToPickupKm);
+    const nightRate = getNightRateDetails(submittedRegularFare, (booking as any).created_at);
+    const adjustedProposedFare = nightRate.adjustedBaseFare;
     const platformFee = 15;
-    const totalFare = Number((proposedFare + pickupFee + platformFee).toFixed(2));
+    const totalFare = adjustedProposedFare + pickupFee + platformFee;
 
     const updatePayload: Record<string, unknown> = {
-      proposed_fare: proposedFare,
+      proposed_fare: adjustedProposedFare,
       verified_fare: null,
       passenger_fare_response: null,
       driver_to_pickup_km: driverToPickupKm,
@@ -270,7 +320,12 @@ export async function POST(req: Request) {
           booking_code: (booking as any).booking_code,
           booking_id: (booking as any).id,
           status: "fare_proposed",
-          proposed_fare: proposedFare,
+          submitted_regular_fare: submittedRegularFare,
+          night_rate_basis: nightRate.basis,
+          night_rate_basis_iso: nightRate.basisIso,
+          night_rate_hour_ph: nightRate.manilaHour,
+          night_rate_mode: nightRate.mode,
+          proposed_fare: adjustedProposedFare,
           verified_fare: null,
           passenger_fare_response: null,
           driver_to_pickup_km: driverToPickupKm,
@@ -291,6 +346,11 @@ export async function POST(req: Request) {
         booking_code: (fresh as any).booking_code,
         booking_id: (fresh as any).id,
         status: (fresh as any).status,
+        submitted_regular_fare: submittedRegularFare,
+        night_rate_basis: nightRate.basis,
+        night_rate_basis_iso: nightRate.basisIso,
+        night_rate_hour_ph: nightRate.manilaHour,
+        night_rate_mode: nightRate.mode,
         proposed_fare: num((fresh as any).proposed_fare),
         verified_fare: num((fresh as any).verified_fare),
         passenger_fare_response: text((fresh as any).passenger_fare_response) || null,
@@ -299,7 +359,10 @@ export async function POST(req: Request) {
         pickup_distance_fee: num((fresh as any).pickup_distance_fee) ?? 0,
         trip_distance_km: num((fresh as any).trip_distance_km),
         platform_fee: platformFee,
-        total_fare: totalFare,
+        total_fare:
+          (num((fresh as any).proposed_fare) ?? 0) +
+          (num((fresh as any).pickup_distance_fee) ?? 0) +
+          platformFee,
       },
       { status: 200, headers: noStoreHeaders() }
     );
