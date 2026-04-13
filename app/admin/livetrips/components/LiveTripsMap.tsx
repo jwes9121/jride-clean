@@ -659,9 +659,8 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           el.src = "/icons/jride-trike.png";
           el.style.width = "42px";
           el.style.height = "42px";
-          el.style.transform = "translate(-50%, -50%)";
           if (isStuck || isProblem) el.classList.add("jride-marker-blink");
-          marker = new mapboxgl.Marker(el).setLngLat(driverDisplay).addTo(map);
+          marker = new mapboxgl.Marker({ element: el, offset: [0, 0] }).setLngLat(driverDisplay).addTo(map);
         } else {
           marker.setLngLat(driverDisplay);
           const el = marker.getElement();
@@ -683,8 +682,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           el.style.borderRadius = "9999px";
           el.style.backgroundColor = "#22c55e";
           el.style.border = "2px solid #ffffff";
-          el.style.transform = "translate(-50%, -50%)";
-          marker = new mapboxgl.Marker(el).setLngLat(pickup).addTo(map);
+          marker = new mapboxgl.Marker({ element: el, offset: [0, 0] }).setLngLat(pickup).addTo(map);
         } else {
           marker.setLngLat(pickup);
         }
@@ -700,8 +698,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           el.style.borderRadius = "9999px";
           el.style.backgroundColor = "#ef4444";
           el.style.border = "2px solid #ffffff";
-          el.style.transform = "translate(-50%, -50%)";
-          marker = new mapboxgl.Marker(el).setLngLat(drop).addTo(map);
+          marker = new mapboxgl.Marker({ element: el, offset: [0, 0] }).setLngLat(drop).addTo(map);
         } else {
           marker.setLngLat(drop);
         }
@@ -758,7 +755,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       let marker = standaloneDriverMarkersRef.current[driverId];
       if (!marker) {
         const el = buildDriverBadgeMarker(driver);
-        marker = new mapboxgl.Marker(el).setLngLat(point).addTo(map);
+        marker = new mapboxgl.Marker({ element: el, offset: [0, 0] }).setLngLat(point).addTo(map);
       } else {
         marker.setLngLat(point);
         const nextEl = buildDriverBadgeMarker(driver);
@@ -1090,7 +1087,6 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           font-weight: 700;
           line-height: 1;
           box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
-          transform: translate(-50%, -50%);
           user-select: none;
         }
         .jride-driver-badge-online {
