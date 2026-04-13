@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type ProposeBody = {
@@ -277,6 +277,9 @@ export async function POST(req: Request) {
 
     const updatePayload: Record<string, unknown> = {
       proposed_fare: adjustedProposedFare,
+      submitted_regular_fare: submittedRegularFare,
+      night_rate_hour_ph: nightRate.manilaHour,
+      night_rate_mode: nightRate.mode,
       verified_fare: null,
       passenger_fare_response: null,
       driver_to_pickup_km: driverToPickupKm,
@@ -377,3 +380,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
