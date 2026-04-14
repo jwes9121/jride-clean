@@ -371,6 +371,41 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const bookingTown = text((booking as any).town);
+      const driverTown = text((driverLocation.row as any)?.town);
+      const normalizedBookingTown = bookingTown.toLowerCase();
+      const normalizedDriverTown = driverTown.toLowerCase();
+      const allowedManualTowns = emergencyMode
+        ? [normalizedBookingTown, ...getNearbyTowns(bookingTown).map((x) => text(x).toLowerCase())]
+        : [normalizedBookingTown];
+
+      if (!normalizedBookingTown) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "booking_town_missing",
+            booking_id: bookingDbId,
+            booking_code: text((booking as any).booking_code),
+          },
+          { status: 409 }
+        );
+      }
+
+      if (!normalizedDriverTown || !allowedManualTowns.includes(normalizedDriverTown)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: emergencyMode ? "driver_outside_allowed_emergency_towns" : "driver_outside_booking_town",
+            booking_town: bookingTown || null,
+            driver_town: driverTown || null,
+            emergency_mode: emergencyMode,
+            allowed_towns: allowedManualTowns,
+            driver_id: explicitDriverId,
+          },
+          { status: 409 }
+        );
+      }
+
       const explicitEligibility = await isDriverWalletEligible(supabase, explicitDriverId);
       if (!explicitEligibility.ok) {
         return NextResponse.json(
