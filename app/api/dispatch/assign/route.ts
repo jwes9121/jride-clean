@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function text(v: unknown): string {
@@ -247,6 +247,35 @@ export async function POST(req: NextRequest) {
     }
 
     if (explicitDriverId) {
+      // ðŸ”’ HARD LOCK: prevent driver with active trip
+      const { data: activeTripManual } = await supabase
+        .from("bookings")
+        .select("booking_code, status")
+        .eq("assigned_driver_id", explicitDriverId)
+        .in("status", [
+          "assigned",
+          "accepted",
+          "fare_proposed",
+          "ready",
+          "on_the_way",
+          "arrived",
+          "on_trip"
+        ])
+        .limit(1)
+        .maybeSingle();
+
+      if (activeTripManual) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "driver_already_has_active_trip",
+            existing_booking_code: activeTripManual.booking_code,
+            existing_status: activeTripManual.status
+          },
+          { status: 409 }
+        );
+      }
+
       const driverLocation = await getLatestDriverLocationForDriver(supabase, explicitDriverId);
       if (!driverLocation.ok) {
         return NextResponse.json(
@@ -360,6 +389,25 @@ export async function POST(req: NextRequest) {
         const candidateDriverId = text(row?.driver_id);
         if (!candidateDriverId) continue;
         if (!row?.eligibility?.assignEligible) continue;
+        // ðŸ”’ HARD LOCK: skip drivers already in active trip
+        const { data: activeTrip } = await supabase
+          .from("bookings")
+          .select("id")
+          .eq("assigned_driver_id", candidateDriverId)
+          .in("status", [
+            "assigned",
+            "accepted",
+            "fare_proposed",
+            "ready",
+            "on_the_way",
+            "arrived",
+            "on_trip"
+          ])
+          .limit(1)
+          .maybeSingle();
+
+        if (activeTrip) continue;
+
 
         const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
         if (!eligibility.ok) continue;
@@ -433,3 +481,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
