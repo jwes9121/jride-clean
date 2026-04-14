@@ -236,23 +236,15 @@ function buildStandaloneDriversGeoJSON(
 }
 
 function getPickup(trip: any): LngLatTuple | null {
-  const lat = num(trip.pickup_lat) ?? num(trip.from_lat) ?? num(trip.origin_lat);
-  const lng = num(trip.pickup_lng) ?? num(trip.from_lng) ?? num(trip.origin_lng);
+  const lat = num(trip.pickup_lat);
+  const lng = num(trip.pickup_lng);
   if (lat != null && lng != null) return [lng, lat];
   return null;
 }
 
 function getDropoff(trip: any): LngLatTuple | null {
-  const lat =
-    num(trip.dropoff_lat) ??
-    num(trip.to_lat) ??
-    num(trip.dest_lat) ??
-    num(trip.destination_lat);
-  const lng =
-    num(trip.dropoff_lng) ??
-    num(trip.to_lng) ??
-    num(trip.dest_lng) ??
-    num(trip.destination_lng);
+  const lat = num(trip.dropoff_lat);
+  const lng = num(trip.dropoff_lng);
   if (lat != null && lng != null) return [lng, lat];
   return null;
 }
