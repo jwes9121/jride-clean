@@ -24,6 +24,19 @@ type BookBody = {
   notes?: string;
 };
 
+type MapboxFeature = {
+  id?: string;
+  text?: string;
+  place_name?: string;
+  place_type?: string[];
+  properties?: Record<string, any>;
+  context?: Array<Record<string, any>> | Record<string, any>;
+};
+
+const SUPPORTED_TOWNS = ["Banaue", "Hingyon", "Kiangan", "Lagawe", "Lamut"] as const;
+
+type SupportedTown = (typeof SUPPORTED_TOWNS)[number];
+
 function text(v: unknown): string {
   return String(v ?? "").trim();
 }
@@ -49,6 +62,139 @@ function bookingCodeNow(): string {
     pad2(d.getSeconds());
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `JR-UI-${stamp}-${rand}`;
+}
+
+function canonicalTownName(v: unknown): SupportedTown | null {
+  const s = text(v).toLowerCase();
+  if (!s) return null;
+  for (const town of SUPPORTED_TOWNS) {
+    if (s === town.toLowerCase()) return town;
+  }
+  return null;
+}
+
+function extractTownFromText(v: unknown): SupportedTown | null {
+  const s = text(v).toLowerCase();
+  if (!s) return null;
+  for (const town of SUPPORTED_TOWNS) {
+    if (s.includes(town.toLowerCase())) return town;
+  }
+  return null;
+}
+
+function getMapboxToken(): string {
+  return text(
+    process.env.MAPBOX_ACCESS_TOKEN ||
+      process.env.MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+  );
+}
+
+function collectContextValues(ctx: unknown): string[] {
+  const out: string[] = [];
+
+  if (Array.isArray(ctx)) {
+    for (const item of ctx) {
+      if (!item || typeof item !== "object") continue;
+      out.push(text((item as any).text));
+      out.push(text((item as any).place_name));
+      out.push(text((item as any).name));
+      out.push(text((item as any).wikidata));
+      out.push(text((item as any).short_code));
+      out.push(text((item as any).id));
+    }
+    return out.filter(Boolean);
+  }
+
+  if (ctx && typeof ctx === "object") {
+    for (const value of Object.values(ctx as Record<string, any>)) {
+      if (!value || typeof value !== "object") continue;
+      out.push(text((value as any).name));
+      out.push(text((value as any).text));
+      out.push(text((value as any).place_name));
+      out.push(text((value as any).mapbox_id));
+    }
+  }
+
+  return out.filter(Boolean);
+}
+
+function extractTownFromFeature(feature: MapboxFeature | null | undefined): SupportedTown | null {
+  if (!feature) return null;
+
+  const candidates: string[] = [];
+  candidates.push(text(feature.text));
+  candidates.push(text(feature.place_name));
+  candidates.push(text(feature.id));
+
+  const props = feature.properties || {};
+  candidates.push(text(props.name));
+  candidates.push(text(props.name_preferred));
+  candidates.push(text(props.place_formatted));
+  candidates.push(text(props.full_address));
+  candidates.push(text(props.feature_type));
+  candidates.push(text(props.mapbox_id));
+
+  for (const v of collectContextValues(feature.context)) candidates.push(v);
+  for (const v of collectContextValues(props.context)) candidates.push(v);
+
+  for (const v of candidates) {
+    const town = extractTownFromText(v);
+    if (town) return town;
+  }
+
+  return null;
+}
+
+async function reverseGeocodePickupTown(lat: number, lng: number): Promise<SupportedTown | null> {
+  const token = getMapboxToken();
+  if (!token) {
+    throw new Error("MAPBOX_TOKEN_MISSING");
+  }
+
+  const v6Url =
+    "https://api.mapbox.com/search/geocode/v6/reverse" +
+    `?longitude=${encodeURIComponent(String(lng))}` +
+    `&latitude=${encodeURIComponent(String(lat))}` +
+    "&country=PH" +
+    "&language=en" +
+    "&limit=5" +
+    `&access_token=${encodeURIComponent(token)}`;
+
+  try {
+    const res = await fetch(v6Url, { method: "GET", cache: "no-store" });
+    if (res.ok) {
+      const json: any = await res.json().catch(() => null);
+      const features = Array.isArray(json?.features) ? json.features : [];
+      for (const feature of features) {
+        const town = extractTownFromFeature(feature);
+        if (town) return town;
+      }
+    }
+  } catch {}
+
+  const v5Url =
+    "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+    `${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json` +
+    "?country=PH" +
+    "&language=en" +
+    "&limit=5" +
+    `&access_token=${encodeURIComponent(token)}`;
+
+  try {
+    const res = await fetch(v5Url, { method: "GET", cache: "no-store" });
+    if (res.ok) {
+      const json: any = await res.json().catch(() => null);
+      const features = Array.isArray(json?.features) ? json.features : [];
+      for (const feature of features) {
+        const town = extractTownFromFeature(feature);
+        if (town) return town;
+      }
+    }
+  } catch {}
+
+  return null;
 }
 
 function getBearerToken(req: Request): string | null {
@@ -325,7 +471,7 @@ export async function POST(req: Request) {
     const supabase = createUserClient(accessToken);
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
-    const town = text(body.town);
+    const selectedTown = canonicalTownName(body.town);
     const pickupLabel = text(body.from_label || body.pickup_label);
     const dropoffLabel = text(body.to_label || body.dropoff_label);
     const vehicleType = text(body.service_type || body.vehicle_type || "tricycle");
@@ -338,9 +484,9 @@ export async function POST(req: Request) {
     const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
     const feesAcknowledged = !!body.fees_acknowledged;
 
-    if (!town) {
+    if (!selectedTown) {
       return NextResponse.json(
-        { ok: false, code: "MISSING_TOWN", message: "Town is required." },
+        { ok: false, code: "MISSING_TOWN", message: "Valid town is required." },
         { status: 400 }
       );
     }
@@ -370,6 +516,46 @@ export async function POST(req: Request) {
       );
     }
 
+    const derivedPickupTown = await reverseGeocodePickupTown(pickupLat, pickupLng).catch((e) => {
+      const msg = String(e?.message ?? e);
+      if (msg === "MAPBOX_TOKEN_MISSING") {
+        throw {
+          code: "PICKUP_TOWN_VALIDATION_UNAVAILABLE",
+          message: "Server cannot validate pickup town because the Mapbox token is missing.",
+          status: 500,
+        };
+      }
+      throw {
+        code: "PICKUP_TOWN_VALIDATION_FAILED",
+        message: "Could not validate the pickup town from the pinned coordinates.",
+        status: 502,
+      };
+    });
+
+    if (!derivedPickupTown) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PICKUP_TOWN_UNRESOLVED",
+          message: "Could not determine the pickup town from the pinned coordinates. Please re-pin the pickup point.",
+        },
+        { status: 422 }
+      );
+    }
+
+    if (derivedPickupTown !== selectedTown) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PICKUP_TOWN_MISMATCH",
+          message: `Pickup pin is inside ${derivedPickupTown}, not ${selectedTown}. Move the pickup pin inside ${selectedTown} or change the selected town.`,
+          selected_town: selectedTown,
+          derived_pickup_town: derivedPickupTown,
+        },
+        { status: 409 }
+      );
+    }
+
     const canRes: any = await canBookOrThrow(supabase);
     if (canRes && typeof canRes.headers?.get === "function") {
       return canRes;
@@ -393,7 +579,7 @@ export async function POST(req: Request) {
     const insert: Record<string, any> = {
       booking_code: bookingCode,
       status: "requested",
-      town,
+      town: derivedPickupTown,
       from_label: pickupLabel,
       to_label: dropoffLabel,
       pickup_lat: pickupLat,
@@ -409,7 +595,6 @@ export async function POST(req: Request) {
     if (passengerName) {
       insert.passenger_name = passengerName;
     }
-
 
     const { data: booking, error } = await supabase
       .from("bookings")
@@ -444,6 +629,8 @@ export async function POST(req: Request) {
         booking_code: bookingCode,
         booking,
         auto_assign: autoAssign,
+        pickup_town_validated: true,
+        derived_pickup_town: derivedPickupTown,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
