@@ -34,21 +34,6 @@ function noStoreHeaders() {
   };
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const r = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return r * c;
-}
-
 function pickupDistanceFee(km: number): number {
   const freeKm = 1.5;
   const blockKm = 0.5;
@@ -72,6 +57,11 @@ type NightRateDetails = {
   manilaHour: number;
   mode: "regular" | "double" | "plus_100";
   adjustedBaseFare: number;
+};
+
+type DirectionsResult = {
+  distanceKm: number;
+  durationMinutes: number | null;
 };
 
 function getNightRateDetails(regularFare: number, bookingCreatedAt: unknown): NightRateDetails {
@@ -111,6 +101,61 @@ function getNightRateDetails(regularFare: number, bookingCreatedAt: unknown): Ni
     manilaHour,
     mode,
     adjustedBaseFare,
+  };
+}
+
+function getMapboxToken(): string {
+  const candidates = [
+    process.env.MAPBOX_ACCESS_TOKEN,
+    process.env.MAPBOX_TOKEN,
+    process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN,
+    process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
+  ];
+
+  for (const v of candidates) {
+    const s = text(v);
+    if (s) return s;
+  }
+
+  return "";
+}
+
+async function getRoadDistance(
+  fromLng: number,
+  fromLat: number,
+  toLng: number,
+  toLat: number
+): Promise<DirectionsResult> {
+  const token = getMapboxToken();
+  if (!token) {
+    throw new Error("ROAD_DISTANCE_TOKEN_MISSING");
+  }
+
+  const url =
+    "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+    `${fromLng},${fromLat};${toLng},${toLat}` +
+    `?alternatives=false&geometries=geojson&overview=full&steps=false&access_token=${encodeURIComponent(token)}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`ROAD_DISTANCE_FETCH_FAILED_${res.status}`);
+  }
+
+  const json: any = await res.json().catch(() => ({}));
+  const route = Array.isArray(json?.routes) ? json.routes[0] : null;
+  const meters = Number(route?.distance ?? NaN);
+  const seconds = Number(route?.duration ?? NaN);
+
+  if (!Number.isFinite(meters) || meters <= 0) {
+    throw new Error("ROAD_DISTANCE_NOT_AVAILABLE");
+  }
+
+  return {
+    distanceKm: Number((meters / 1000).toFixed(2)),
+    durationMinutes:
+      Number.isFinite(seconds) && seconds > 0
+        ? Math.max(1, Math.ceil(seconds / 60))
+        : null,
   };
 }
 
@@ -229,6 +274,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!Number.isFinite(dropoffLat) || !Number.isFinite(dropoffLng)) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_DROPOFF_COORDS" },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
     let driverLat: number | null = null;
     let driverLng: number | null = null;
 
@@ -248,28 +300,44 @@ export async function POST(req: Request) {
     }
 
     let driverToPickupKm: number | null = null;
+    let pickupEtaMinutes: number | null = null;
     let pickupFee = 0;
 
     if (driverLat != null && driverLng != null) {
-      driverToPickupKm = Number(
-        haversineKm(driverLat, driverLng, pickupLat, pickupLng).toFixed(1)
-      );
-      pickupFee = pickupDistanceFee(driverToPickupKm);
+      try {
+        const road = await getRoadDistance(driverLng, driverLat, pickupLng, pickupLat);
+        driverToPickupKm = road.distanceKm;
+        pickupEtaMinutes = road.durationMinutes ?? estimateEtaMinutes(road.distanceKm);
+        pickupFee = pickupDistanceFee(road.distanceKm);
+      } catch (e: any) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "ROAD_DISTANCE_UNAVAILABLE",
+            message: String(e?.message ?? e),
+            stage: "driver_to_pickup",
+          },
+          { status: 500, headers: noStoreHeaders() }
+        );
+      }
     }
 
     let tripDistanceKm: number | null = null;
-    if (
-      Number.isFinite(pickupLat) &&
-      Number.isFinite(pickupLng) &&
-      Number.isFinite(dropoffLat) &&
-      Number.isFinite(dropoffLng)
-    ) {
-      tripDistanceKm = Number(
-        haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(2)
+    try {
+      const roadTrip = await getRoadDistance(pickupLng, pickupLat, dropoffLng, dropoffLat);
+      tripDistanceKm = roadTrip.distanceKm;
+    } catch (e: any) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ROAD_DISTANCE_UNAVAILABLE",
+          message: String(e?.message ?? e),
+          stage: "pickup_to_dropoff",
+        },
+        { status: 500, headers: noStoreHeaders() }
       );
     }
 
-    const etaMinutes = estimateEtaMinutes(driverToPickupKm);
     const nightRate = getNightRateDetails(submittedRegularFare, (booking as any).created_at);
     const adjustedProposedFare = nightRate.adjustedBaseFare;
     const platformFee = 15;
@@ -352,7 +420,7 @@ export async function POST(req: Request) {
           verified_fare: null,
           passenger_fare_response: null,
           driver_to_pickup_km: driverToPickupKm,
-          pickup_eta_minutes: etaMinutes,
+          pickup_eta_minutes: pickupEtaMinutes,
           pickup_distance_fee: pickupFee,
           trip_distance_km: tripDistanceKm,
           platform_fee: platformFee,
@@ -378,7 +446,7 @@ export async function POST(req: Request) {
         verified_fare: num((fresh as any).verified_fare),
         passenger_fare_response: text((fresh as any).passenger_fare_response) || null,
         driver_to_pickup_km: num((fresh as any).driver_to_pickup_km),
-        pickup_eta_minutes: etaMinutes,
+        pickup_eta_minutes: pickupEtaMinutes,
         pickup_distance_fee: num((fresh as any).pickup_distance_fee) ?? 0,
         trip_distance_km: num((fresh as any).trip_distance_km),
         platform_fee: platformFee,
@@ -400,4 +468,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
