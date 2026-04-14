@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
 type ProposeBody = {
@@ -296,11 +296,31 @@ export async function POST(req: Request) {
       .eq("id", (booking as any).id);
 
     if (updateErr) {
+      console.error("[FARE_PROPOSE_UPDATE_FAILED]", {
+        booking_id: (booking as any).id,
+        booking_code: (booking as any).booking_code,
+        current_status: currentStatus,
+        effective_driver_id: effectiveDriverId,
+        assigned_driver_id: assignedDriverId || null,
+        booking_driver_id: bookingDriverId || null,
+        update_payload: updatePayload,
+        update_error: updateErr,
+      });
+
       return NextResponse.json(
         {
           ok: false,
           error: "FARE_PROPOSE_UPDATE_FAILED",
           message: updateErr.message,
+          code: (updateErr as any)?.code ?? null,
+          details: (updateErr as any)?.details ?? null,
+          hint: (updateErr as any)?.hint ?? null,
+          current_status: currentStatus,
+          booking_code: (booking as any).booking_code ?? null,
+          effective_driver_id: effectiveDriverId || null,
+          assigned_driver_id: assignedDriverId || null,
+          booking_driver_id: bookingDriverId || null,
+          update_payload: updatePayload,
         },
         { status: 500, headers: noStoreHeaders() }
       );
