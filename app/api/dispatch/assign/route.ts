@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function text(v: unknown): string {
@@ -76,10 +76,41 @@ function ts(input: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isUniqueViolation(error: any): boolean {
+  const code = text(error?.code);
+  const message = text(error?.message).toLowerCase();
+  const details = text(error?.details).toLowerCase();
+  const hint = text(error?.hint).toLowerCase();
+
+  return (
+    code === "23505" ||
+    message.includes("duplicate key") ||
+    details.includes("duplicate key") ||
+    hint.includes("duplicate key")
+  );
+}
+
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const ASSIGN_CUTOFF_MINUTES = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
 const ASSIGN_CUTOFF_SECONDS = ASSIGN_CUTOFF_MINUTES * 60;
 const ONLINE_LIKE_STATUSES = new Set(["online", "available", "idle", "waiting"]);
+
+const ACTIVE_DRIVER_BOOKING_STATUSES = [
+  "assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "on_trip",
+];
+
+const ASSIGNABLE_STATUSES = new Set([
+  "requested",
+  "pending",
+  "searching",
+  "assigned",
+]);
 
 function evaluateDriverLocationEligibility(row: any) {
   const updatedAt = text(row?.updated_at) || text(row?.created_at) || "";
@@ -126,14 +157,6 @@ function keepLatestDriverLocationRows(rows: any[]): any[] {
 
   return Object.values(latestByDriverId);
 }
-
-const ASSIGNABLE_STATUSES = new Set([
-  "requested",
-  "pending",
-  "searching",
-  "assigned",
-  "accepted",
-]);
 
 async function isDriverWalletEligible(supabase: any, driverId: string) {
   const { data, error } = await supabase
@@ -189,6 +212,34 @@ async function getLatestDriverLocationForDriver(supabase: any, driverId: string)
   };
 }
 
+async function findActiveTripForDriver(supabase: any, driverId: string, excludeBookingId?: string) {
+  let query = supabase
+    .from("bookings")
+    .select("id, booking_code, status, driver_id, assigned_driver_id")
+    .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
+    .in("status", ACTIVE_DRIVER_BOOKING_STATUSES)
+    .limit(1);
+
+  if (excludeBookingId) {
+    query = query.neq("id", excludeBookingId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    return {
+      ok: false as const,
+      error: "active_trip_check_failed",
+      message: error.message,
+    };
+  }
+
+  return {
+    ok: true as const,
+    trip: data || null,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = getSupabase();
@@ -200,17 +251,11 @@ export async function POST(req: NextRequest) {
     const emergencyMode = body?.emergency_mode === true;
 
     if (!bookingCode && !bookingId) {
-      return NextResponse.json(
-        { ok: false, error: "missing_booking" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "missing_booking" }, { status: 400 });
     }
 
     if (explicitDriverId && !isUuid(explicitDriverId)) {
-      return NextResponse.json(
-        { ok: false, error: "invalid_driver_id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "invalid_driver_id" }, { status: 400 });
     }
 
     let bookingQuery = supabase
@@ -232,13 +277,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "booking_not_found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ ok: false, error: "booking_not_found" }, { status: 404 });
     }
 
+    const bookingDbId = text((booking as any).id);
     const currentStatus = cleanStatus((booking as any).status);
+    const currentDriverId = text((booking as any).assigned_driver_id || (booking as any).driver_id);
+
     if (!ASSIGNABLE_STATUSES.has(currentStatus)) {
       return NextResponse.json(
         { ok: false, error: "booking_not_assignable", status: currentStatus },
@@ -246,31 +291,48 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (explicitDriverId) {
-      // ðŸ”’ HARD LOCK: prevent driver with active trip
-      const { data: activeTripManual } = await supabase
-        .from("bookings")
-        .select("booking_code, status")
-        .eq("assigned_driver_id", explicitDriverId)
-        .in("status", [
-          "assigned",
-          "accepted",
-          "fare_proposed",
-          "ready",
-          "on_the_way",
-          "arrived",
-          "on_trip"
-        ])
-        .limit(1)
-        .maybeSingle();
+    if (
+      currentDriverId &&
+      explicitDriverId &&
+      currentDriverId === explicitDriverId &&
+      currentStatus === "assigned"
+    ) {
+      return NextResponse.json({
+        ok: true,
+        booking_id: bookingDbId,
+        booking_code: text((booking as any).booking_code),
+        driver_id: currentDriverId,
+        assigned_driver_id: currentDriverId,
+        status: currentStatus,
+        assigned_at: null,
+        emergency_mode: emergencyMode,
+        assignment_mode: "manual",
+        note: "already_assigned_to_requested_driver",
+        assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
+      });
+    }
 
-      if (activeTripManual) {
+    if (explicitDriverId) {
+      const activeTripManual = await findActiveTripForDriver(supabase, explicitDriverId, bookingDbId);
+      if (!activeTripManual.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: activeTripManual.error,
+            message: (activeTripManual as any).message || null,
+            driver_id: explicitDriverId,
+          },
+          { status: 500 }
+        );
+      }
+
+      if (activeTripManual.trip) {
         return NextResponse.json(
           {
             ok: false,
             error: "driver_already_has_active_trip",
-            existing_booking_code: activeTripManual.booking_code,
-            existing_status: activeTripManual.status
+            existing_booking_code: activeTripManual.trip.booking_code,
+            existing_status: activeTripManual.trip.status,
           },
           { status: 409 }
         );
@@ -312,10 +374,15 @@ export async function POST(req: NextRequest) {
       const explicitEligibility = await isDriverWalletEligible(supabase, explicitDriverId);
       if (!explicitEligibility.ok) {
         return NextResponse.json(
-          { ok: false, error: explicitEligibility.error, message: (explicitEligibility as any).message || null },
+          {
+            ok: false,
+            error: explicitEligibility.error,
+            message: (explicitEligibility as any).message || null,
+          },
           { status: explicitEligibility.error === "driver_not_found" ? 404 : 500 }
         );
       }
+
       if (!explicitEligibility.eligible) {
         return NextResponse.json(
           {
@@ -334,13 +401,9 @@ export async function POST(req: NextRequest) {
 
     if (!chosenDriverId) {
       const baseTown = text((booking as any).town);
-      const townsToSearch = emergencyMode
-        ? [baseTown, ...getNearbyTowns(baseTown)]
-        : [baseTown];
+      const townsToSearch = emergencyMode ? [baseTown, ...getNearbyTowns(baseTown)] : [baseTown];
 
-      const normalizedTowns = townsToSearch
-        .map((x) => text(x))
-        .filter((x) => !!x);
+      const normalizedTowns = townsToSearch.map((x) => text(x)).filter((x) => !!x);
 
       const { data: drivers, error: driverError } = await supabase
         .from("driver_locations")
@@ -389,25 +452,10 @@ export async function POST(req: NextRequest) {
         const candidateDriverId = text(row?.driver_id);
         if (!candidateDriverId) continue;
         if (!row?.eligibility?.assignEligible) continue;
-        // ðŸ”’ HARD LOCK: skip drivers already in active trip
-        const { data: activeTrip } = await supabase
-          .from("bookings")
-          .select("id")
-          .eq("assigned_driver_id", candidateDriverId)
-          .in("status", [
-            "assigned",
-            "accepted",
-            "fare_proposed",
-            "ready",
-            "on_the_way",
-            "arrived",
-            "on_trip"
-          ])
-          .limit(1)
-          .maybeSingle();
 
-        if (activeTrip) continue;
-
+        const activeTrip = await findActiveTripForDriver(supabase, candidateDriverId, bookingDbId);
+        if (!activeTrip.ok) continue;
+        if (activeTrip.trip) continue;
 
         const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
         if (!eligibility.ok) continue;
@@ -449,11 +497,27 @@ export async function POST(req: NextRequest) {
     const { data: updatedRows, error: assignError } = await supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", (booking as any).id)
+      .eq("id", bookingDbId)
+      .in("status", Array.from(ASSIGNABLE_STATUSES))
       .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at")
       .limit(1);
 
     if (assignError) {
+      if (isUniqueViolation(assignError)) {
+        const activeTrip = await findActiveTripForDriver(supabase, chosenDriverId, bookingDbId);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "driver_already_has_active_trip",
+            driver_id: chosenDriverId,
+            existing_booking_code: activeTrip.ok ? activeTrip.trip?.booking_code || null : null,
+            existing_status: activeTrip.ok ? activeTrip.trip?.status || null : null,
+            db_guard: "ux_bookings_one_active_driver_v1",
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         { ok: false, error: "assignment_failed", message: assignError.message },
         { status: 500 }
@@ -461,10 +525,21 @@ export async function POST(req: NextRequest) {
     }
 
     const updated = updatedRows?.[0] ?? null;
+    if (!updated) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "booking_assignment_lost_race",
+          booking_id: bookingDbId,
+          booking_code: text((booking as any).booking_code),
+        },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,
-      booking_id: text(updated?.id || (booking as any).id),
+      booking_id: text(updated?.id || bookingDbId),
       booking_code: text(updated?.booking_code || (booking as any).booking_code),
       driver_id: text(updated?.driver_id || chosenDriverId),
       assigned_driver_id: text(updated?.assigned_driver_id || chosenDriverId),
@@ -481,4 +556,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
