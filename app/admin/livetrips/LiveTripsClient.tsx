@@ -604,14 +604,18 @@ export default function LiveTripsClient() {
     const driversReady = drivers.filter((d) => Boolean(d.assign_eligible)).length;
     const searchingTrips = allTrips.filter((t) => ["requested", "searching"].includes(normStatus(t.status))).length;
     const activeTrips = allTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status))).length;
+    const demandPressure = searchingTrips + activeTrips;
     let coverageLabel = "LOW";
     let coverageTone = "bg-rose-50 text-rose-700 border-rose-200";
 
-    if (driversReady >= 3) {
-      coverageLabel = "HIGH";
+    if (driversReady >= 6 && driversReady >= demandPressure + 2) {
+      coverageLabel = "HEALTHY";
       coverageTone = "bg-emerald-50 text-emerald-700 border-emerald-200";
-    } else if (driversReady >= 1) {
+    } else if (driversReady >= 4) {
       coverageLabel = "OK";
+      coverageTone = "bg-sky-50 text-sky-700 border-sky-200";
+    } else if (driversReady >= 2) {
+      coverageLabel = "FRAGILE";
       coverageTone = "bg-amber-50 text-amber-700 border-amber-200";
     }
 

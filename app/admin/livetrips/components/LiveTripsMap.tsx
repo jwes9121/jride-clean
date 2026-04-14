@@ -43,6 +43,15 @@ type StandaloneDriverFeatureProperties = {
 const STANDALONE_DRIVER_SOURCE_ID = "jride-standalone-drivers";
 const STANDALONE_DRIVER_CIRCLE_LAYER_ID = "jride-standalone-drivers-circle";
 const STANDALONE_DRIVER_TEXT_LAYER_ID = "jride-standalone-drivers-text";
+const PICKUP_RADIUS_SOURCE_ID = "jride-selected-pickup-radius";
+const PICKUP_RADIUS_FILL_LAYER_ID = "jride-selected-pickup-radius-fill";
+const PICKUP_RADIUS_LINE_LAYER_ID = "jride-selected-pickup-radius-line";
+const BEST_CANDIDATE_SOURCE_ID = "jride-best-candidate-guidance";
+const BEST_CANDIDATE_LINE_LAYER_ID = "jride-best-candidate-guidance-line";
+const BEST_CANDIDATE_CIRCLE_LAYER_ID = "jride-best-candidate-guidance-circle";
+
+const PICKUP_GUIDANCE_RADIUS_METERS = 1500;
+const CROSS_TOWN_GUIDANCE_PENALTY_METERS = 2000;
 
 function num(v: any): number | null {
   if (typeof v === "number" && !Number.isNaN(v)) return v;
@@ -129,17 +138,27 @@ function ensureStandaloneDriverLayers(map: mapboxgl.Map) {
       type: "circle",
       source: STANDALONE_DRIVER_SOURCE_ID,
       paint: {
-        "circle-radius": 12,
+        "circle-radius": [
+          "match",
+          ["get", "tone"],
+          "online",
+          13,
+          "busy",
+          11,
+          "stale",
+          10,
+          10,
+        ],
         "circle-color": [
           "match",
           ["get", "tone"],
           "online",
-          "#10b981",
+          "#22c55e",
           "busy",
-          "#f59e0b",
+          "#ef4444",
           "stale",
-          "#9ca3af",
-          "#9ca3af",
+          "#94a3b8",
+          "#94a3b8",
         ],
         "circle-stroke-color": "#ffffff",
         "circle-stroke-width": 1.5,
@@ -182,6 +201,186 @@ function removeStandaloneDriverLayers(map: mapboxgl.Map) {
   if (map.getSource(STANDALONE_DRIVER_SOURCE_ID)) {
     map.removeSource(STANDALONE_DRIVER_SOURCE_ID);
   }
+}
+
+function ensureSelectionGuidanceLayers(map: mapboxgl.Map) {
+  if (!map.getSource(PICKUP_RADIUS_SOURCE_ID)) {
+    map.addSource(PICKUP_RADIUS_SOURCE_ID, {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: [],
+      },
+    });
+  }
+
+  if (!map.getLayer(PICKUP_RADIUS_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: PICKUP_RADIUS_FILL_LAYER_ID,
+      type: "fill",
+      source: PICKUP_RADIUS_SOURCE_ID,
+      paint: {
+        "fill-color": "#10b981",
+        "fill-opacity": 0.08,
+      },
+    });
+  }
+
+  if (!map.getLayer(PICKUP_RADIUS_LINE_LAYER_ID)) {
+    map.addLayer({
+      id: PICKUP_RADIUS_LINE_LAYER_ID,
+      type: "line",
+      source: PICKUP_RADIUS_SOURCE_ID,
+      paint: {
+        "line-color": "#10b981",
+        "line-width": 2,
+        "line-dasharray": [2, 2],
+      },
+    });
+  }
+
+  if (!map.getSource(BEST_CANDIDATE_SOURCE_ID)) {
+    map.addSource(BEST_CANDIDATE_SOURCE_ID, {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: [],
+      },
+    });
+  }
+
+  if (!map.getLayer(BEST_CANDIDATE_LINE_LAYER_ID)) {
+    map.addLayer({
+      id: BEST_CANDIDATE_LINE_LAYER_ID,
+      type: "line",
+      source: BEST_CANDIDATE_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "LineString"],
+      paint: {
+        "line-color": "#0ea5e9",
+        "line-width": 3,
+        "line-dasharray": [1.5, 1.5],
+      },
+    });
+  }
+
+  if (!map.getLayer(BEST_CANDIDATE_CIRCLE_LAYER_ID)) {
+    map.addLayer({
+      id: BEST_CANDIDATE_CIRCLE_LAYER_ID,
+      type: "circle",
+      source: BEST_CANDIDATE_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-radius": 10,
+        "circle-color": "#0ea5e9",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+      },
+    });
+  }
+}
+
+function removeSelectionGuidanceLayers(map: mapboxgl.Map) {
+  if (map.getLayer(BEST_CANDIDATE_CIRCLE_LAYER_ID)) {
+    map.removeLayer(BEST_CANDIDATE_CIRCLE_LAYER_ID);
+  }
+  if (map.getLayer(BEST_CANDIDATE_LINE_LAYER_ID)) {
+    map.removeLayer(BEST_CANDIDATE_LINE_LAYER_ID);
+  }
+  if (map.getSource(BEST_CANDIDATE_SOURCE_ID)) {
+    map.removeSource(BEST_CANDIDATE_SOURCE_ID);
+  }
+  if (map.getLayer(PICKUP_RADIUS_LINE_LAYER_ID)) {
+    map.removeLayer(PICKUP_RADIUS_LINE_LAYER_ID);
+  }
+  if (map.getLayer(PICKUP_RADIUS_FILL_LAYER_ID)) {
+    map.removeLayer(PICKUP_RADIUS_FILL_LAYER_ID);
+  }
+  if (map.getSource(PICKUP_RADIUS_SOURCE_ID)) {
+    map.removeSource(PICKUP_RADIUS_SOURCE_ID);
+  }
+}
+
+function buildPickupRadiusGeoJSON(center: LngLatTuple, radiusMeters: number): GeoJSON.FeatureCollection {
+  const lng = center[0];
+  const lat = center[1];
+  const points: [number, number][] = [];
+  const earthRadiusMeters = 6378137;
+  const distanceRadians = radiusMeters / earthRadiusMeters;
+
+  for (let i = 0; i <= 64; i++) {
+    const bearing = (i / 64) * Math.PI * 2;
+    const lat1 = (lat * Math.PI) / 180;
+    const lng1 = (lng * Math.PI) / 180;
+
+    const lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(distanceRadians) +
+        Math.cos(lat1) * Math.sin(distanceRadians) * Math.cos(bearing)
+    );
+    const lng2 =
+      lng1 +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(distanceRadians) * Math.cos(lat1),
+        Math.cos(distanceRadians) - Math.sin(lat1) * Math.sin(lat2)
+      );
+
+    points.push([(lng2 * 180) / Math.PI, (lat2 * 180) / Math.PI]);
+  }
+
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: {
+          type: "Polygon",
+          coordinates: [points],
+        },
+        properties: {},
+      },
+    ],
+  };
+}
+
+function selectedTripCandidateScore(driver: MapDriverRow, pickup: LngLatTuple, zoneLabel: string): number | null {
+  if (!driver.assign_eligible) return null;
+  const point = driverDisplayPoint(driver);
+  if (!point) return null;
+
+  const distMeters = distanceMeters(point, pickup);
+  const sameTown = normalizeZone(driver.town ?? "") === normalizeZone(zoneLabel);
+  return sameTown ? distMeters : distMeters + CROSS_TOWN_GUIDANCE_PENALTY_METERS;
+}
+
+function buildBestCandidateGuidanceGeoJSON(driver: MapDriverRow, pickup: LngLatTuple): GeoJSON.FeatureCollection {
+  const point = driverDisplayPoint(driver);
+  if (!point) {
+    return {
+      type: "FeatureCollection",
+      features: [],
+    };
+  }
+
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [point, pickup],
+        },
+        properties: {},
+      },
+      {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: point,
+        },
+        properties: {},
+      },
+    ],
+  };
 }
 
 function buildStandaloneDriversGeoJSON(
@@ -702,12 +901,14 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
 
     const onLoad = () => {
       ensureStandaloneDriverLayers(map);
+      ensureSelectionGuidanceLayers(map);
       setMapReady(true);
     };
 
     map.on("load", onLoad);
     if (map.isStyleLoaded()) {
       ensureStandaloneDriverLayers(map);
+      ensureSelectionGuidanceLayers(map);
       setMapReady(true);
     }
 
@@ -739,6 +940,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
         map.off("mouseleave", STANDALONE_DRIVER_CIRCLE_LAYER_ID, onMouseLeaveStandalone);
         map.off("click", STANDALONE_DRIVER_CIRCLE_LAYER_ID, onClickStandalone);
       }
+      removeSelectionGuidanceLayers(map);
       removeStandaloneDriverLayers(map);
       setMapReady(false);
       map.remove();
@@ -751,6 +953,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     if (!map || !mapReady) return;
 
     ensureStandaloneDriverLayers(map);
+    ensureSelectionGuidanceLayers(map);
 
     const nextDrivers: Record<string, mapboxgl.Marker> = {};
     const nextPickups: Record<string, mapboxgl.Marker> = {};
@@ -882,6 +1085,53 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       standaloneSource.setData(standaloneDriversData as any);
     }
 
+    const radiusSource = map.getSource(PICKUP_RADIUS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+    const candidateSource = map.getSource(BEST_CANDIDATE_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+
+    if (selectedTrip) {
+      const selectedPickup = getPickup(selectedTrip);
+      if (selectedPickup && radiusSource) {
+        radiusSource.setData(buildPickupRadiusGeoJSON(selectedPickup, PICKUP_GUIDANCE_RADIUS_METERS) as any);
+      } else if (radiusSource) {
+        radiusSource.setData({ type: "FeatureCollection", features: [] } as any);
+      }
+
+      if (selectedPickup && candidateSource) {
+        const selectedZone = getZoneName(selectedTrip);
+        let bestDriver: MapDriverRow | null = null;
+        let bestScore = Number.POSITIVE_INFINITY;
+
+        for (let i = 0; i < drivers.length; i++) {
+          const driver = (drivers[i] || {}) as MapDriverRow;
+          const driverId = String(driver.driver_id || "");
+          if (!driverId) continue;
+          if (tripDriverIds.has(driverId)) continue;
+
+          const score = selectedTripCandidateScore(driver, selectedPickup, selectedZone);
+          if (score == null) continue;
+          if (score < bestScore) {
+            bestScore = score;
+            bestDriver = driver;
+          }
+        }
+
+        if (bestDriver) {
+          candidateSource.setData(buildBestCandidateGuidanceGeoJSON(bestDriver, selectedPickup) as any);
+        } else {
+          candidateSource.setData({ type: "FeatureCollection", features: [] } as any);
+        }
+      } else if (candidateSource) {
+        candidateSource.setData({ type: "FeatureCollection", features: [] } as any);
+      }
+    } else {
+      if (radiusSource) {
+        radiusSource.setData({ type: "FeatureCollection", features: [] } as any);
+      }
+      if (candidateSource) {
+        candidateSource.setData({ type: "FeatureCollection", features: [] } as any);
+      }
+    }
+
     for (const [id, marker] of Object.entries(driverMarkersRef.current)) {
       if (!nextDrivers[id]) marker.remove();
     }
@@ -903,7 +1153,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     pickupMarkersRef.current = nextPickups;
     dropMarkersRef.current = nextDrops;
     routeIdsRef.current = validRouteIds;
-  }, [visibleTrips, drivers, activeStuckIds, mapReady]);
+  }, [visibleTrips, drivers, activeStuckIds, mapReady, selectedTrip]);
 
   useEffect(() => {
     const map = mapRef.current;
