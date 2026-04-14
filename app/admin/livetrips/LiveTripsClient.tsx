@@ -126,7 +126,12 @@ function parseTripsFromPageData(j: any): TripRow[] {
 
 function parseDriversFromPayload(j: any): DriverRow[] {
   if (!j) return [];
-  const candidates = [j.drivers, j.data, j["0"], Array.isArray(j) ? j : null];
+  const candidates = [
+    j.drivers,
+    j.data,
+    j["0"],
+    Array.isArray(j) ? j : null,
+  ];
   for (const c of candidates) {
     const arr = safeArray<DriverRow>(c);
     if (arr.length) return arr;
@@ -184,6 +189,79 @@ type FilterKey =
 function labelOrDash(v?: any) {
   const s = String(v ?? "").trim();
   return s ? s : "--";
+}
+
+function tripPriorityScore(t: TripRow): number {
+  const s = normStatus(t.status);
+  const mins = minutesSince(t.updated_at || t.created_at || null);
+  let score = 0;
+
+  if (computeIsProblem(t)) score += 1000;
+  if (s === "searching") score += 300;
+  if (s === "requested") score += 250;
+  if (s === "assigned") score += 180;
+  if (s === "accepted") score += 150;
+  if (s === "fare_proposed") score += 120;
+  if (s === "ready") score += 110;
+  if (s === "on_the_way") score += 90;
+  if (s === "arrived") score += 70;
+  if (s === "on_trip") score += 60;
+
+  if ((s === "searching" || s === "requested") && mins >= 1) score += 80;
+  if (!textOrEmpty(t.driver_id) && !textOrEmpty(t.assigned_driver_id) && ["requested", "searching", "assigned"].includes(s)) score += 60;
+
+  return score;
+}
+
+function tripPriorityReason(t: TripRow): string | null {
+  const s = normStatus(t.status);
+  const mins = minutesSince(t.updated_at || t.created_at || null);
+  if (computeIsProblem(t)) {
+    if (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) return "STUCK > 15m";
+    if (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip) return "STUCK > 25m";
+    const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
+    const hasDropoff = Number.isFinite(t.dropoff_lat as any) && Number.isFinite(t.dropoff_lng as any);
+    if (!hasPickup || !hasDropoff) return "NO LOCATION DATA";
+    return "PROBLEM";
+  }
+  if ((s === "searching" || s === "requested") && mins >= 1) return "WAITING";
+  if (!textOrEmpty(t.driver_id) && !textOrEmpty(t.assigned_driver_id) && ["requested", "searching", "assigned"].includes(s)) return "NO DRIVER";
+  return null;
+}
+
+function textOrEmpty(v?: any): string {
+  return String(v ?? "").trim();
+}
+
+function statusPillClass(status: string): string {
+  if (["requested", "searching"].includes(status)) return "border-amber-300 bg-amber-50 text-amber-800";
+  if (["assigned", "accepted", "fare_proposed", "ready"].includes(status)) return "border-blue-300 bg-blue-50 text-blue-800";
+  if (["on_the_way", "arrived", "on_trip"].includes(status)) return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (["completed"].includes(status)) return "border-slate-300 bg-slate-50 text-slate-700";
+  if (["cancelled"].includes(status)) return "border-rose-300 bg-rose-50 text-rose-700";
+  return "border-slate-200 bg-white text-slate-700";
+}
+
+function seenAgoTone(ageSeconds?: number): string {
+  if (!Number.isFinite(ageSeconds as number)) return "text-slate-400";
+  const age = Number(ageSeconds ?? 0);
+  if (age <= 30) return "text-emerald-600 font-medium";
+  if (age <= 120) return "text-amber-600 font-medium";
+  return "text-rose-600 font-medium";
+}
+
+function driverRowTone(d: DriverRow): string {
+  if (d.assign_eligible) return "bg-emerald-50/60";
+  if (d.is_stale) return "bg-rose-50/50";
+  return "bg-amber-50/40";
+}
+
+function tripRowTone(t: TripRow): string {
+  if (computeIsProblem(t)) return "bg-rose-50/60";
+  const s = normStatus(t.status);
+  if (["searching", "requested"].includes(s)) return "bg-amber-50/50";
+  if (["assigned", "accepted", "fare_proposed", "ready"].includes(s)) return "bg-blue-50/40";
+  return "";
 }
 
 function normalizeTripRow(t: any): TripRow {
@@ -522,6 +600,30 @@ export default function LiveTripsClient() {
     return c;
   }, [allTrips]);
 
+  const dispatchPressure = useMemo(() => {
+    const driversReady = drivers.filter((d) => Boolean(d.assign_eligible)).length;
+    const searchingTrips = allTrips.filter((t) => ["requested", "searching"].includes(normStatus(t.status))).length;
+    const activeTrips = allTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status))).length;
+    let coverageLabel = "LOW";
+    let coverageTone = "bg-rose-50 text-rose-700 border-rose-200";
+
+    if (driversReady >= 3) {
+      coverageLabel = "HIGH";
+      coverageTone = "bg-emerald-50 text-emerald-700 border-emerald-200";
+    } else if (driversReady >= 1) {
+      coverageLabel = "OK";
+      coverageTone = "bg-amber-50 text-amber-700 border-amber-200";
+    }
+
+    return {
+      pending: searchingTrips,
+      active: activeTrips,
+      driversReady,
+      coverageLabel,
+      coverageTone,
+    };
+  }, [allTrips, drivers]);
+
   const visibleTrips = useMemo(() => {
     const f = tripFilter;
     let out: TripRow[] = [];
@@ -541,6 +643,10 @@ export default function LiveTripsClient() {
     }
 
     out.sort((a, b) => {
+      const pa = tripPriorityScore(a);
+      const pb = tripPriorityScore(b);
+      if (pb !== pa) return pb - pa;
+
       const ta = new Date(a.updated_at || a.created_at || (0 as any)).getTime() || 0;
       const tb = new Date(b.updated_at || b.created_at || (0 as any)).getTime() || 0;
       return tb - ta;
@@ -609,6 +715,10 @@ export default function LiveTripsClient() {
         };
       })
       .sort((a, b) => {
+        const ae = a.driver.assign_eligible ? 1 : 0;
+        const be = b.driver.assign_eligible ? 1 : 0;
+        if (be !== ae) return be - ae;
+
         const au = new Date(a.driver.updated_at || "").getTime() || 0;
         const bu = new Date(b.driver.updated_at || "").getTime() || 0;
         return bu - au;
@@ -729,6 +839,25 @@ export default function LiveTripsClient() {
 
         <div className="ml-auto text-xs text-gray-600 self-center">
           {lastAction ? <span>Last action: {lastAction}</span> : <span>&nbsp;</span>}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Pending</div>
+          <div className="text-lg font-bold text-amber-900">{dispatchPressure.pending}</div>
+        </div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Active</div>
+          <div className="text-lg font-bold text-emerald-900">{dispatchPressure.active}</div>
+        </div>
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">Drivers ready</div>
+          <div className="text-lg font-bold text-sky-900">{dispatchPressure.driversReady}</div>
+        </div>
+        <div className={["rounded-lg border px-3 py-2", dispatchPressure.coverageTone].join(" ")}>
+          <div className="text-[10px] font-semibold uppercase tracking-wide">Coverage</div>
+          <div className="text-lg font-bold">{dispatchPressure.coverageLabel}</div>
         </div>
       </div>
 
@@ -857,8 +986,9 @@ export default function LiveTripsClient() {
                           key={row.key}
                           className={[
                             "border-b",
+                            driverRowTone(d),
                             trip ? "cursor-pointer hover:bg-gray-50" : "",
-                            isSel ? "bg-blue-50" : "",
+                            isSel ? "ring-1 ring-inset ring-blue-300" : "",
                           ].join(" ")}
                           onClick={() => {
                             if (trip) {
@@ -869,7 +999,7 @@ export default function LiveTripsClient() {
                           <td className="p-2 font-medium">{labelOrDash(d.name)}</td>
                           <td className="p-2">{labelOrDash(d.phone)}</td>
                           <td className="p-2">{labelOrDash(d.town)}</td>
-                          <td className="p-2">{labelOrDash((d as any).effective_status ?? d.status)}</td>
+                          <td className="p-2"><span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>{labelOrDash((d as any).effective_status ?? d.status)}</span></td>
                           <td className="p-2">
                             {trip ? (
                               <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
@@ -880,16 +1010,16 @@ export default function LiveTripsClient() {
                             )}
                           </td>
                           <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
-                          <td className="p-2">{formatLastSeen(d.age_seconds)}</td>
+                          <td className={["p-2", seenAgoTone(d.age_seconds)].join(" ")}>{formatLastSeen(d.age_seconds)}</td>
                           <td className="p-2">
                             {(d as any).assign_eligible
-                              ? <span className="text-green-600 font-medium">Yes</span>
-                              : <span className="text-gray-400">No</span>}
+                              ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">READY</span>
+                              : <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">BLOCKED</span>}
                           </td>
                           <td className="p-2">
                             {(d as any).is_stale
-                              ? <span className="text-red-600 font-medium">Yes</span>
-                              : <span className="text-green-600">No</span>}
+                              ? <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">STALE</span>
+                              : <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">FRESH</span>}
                           </td>
                         </tr>
                       );
@@ -932,15 +1062,16 @@ export default function LiveTripsClient() {
                           key={rowKey}
                           className={[
                             "border-b cursor-pointer",
-                            isSel ? "bg-blue-50" : "hover:bg-gray-50",
+                            tripRowTone(t),
+                            isSel ? "ring-1 ring-inset ring-blue-300" : "hover:bg-gray-50",
                           ].join(" ")}
                           onClick={() => setSelectedTripId(id)}
                         >
                           <td className="p-2 font-medium">
                             {t.booking_code || "-"}
-                            {isProblem ? (
-                              <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">
-                                PROBLEM
+                            {tripPriorityReason(t) ? (
+                              <span className="ml-2 inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                                {tripPriorityReason(t)}
                               </span>
                             ) : null}
                           </td>
@@ -948,7 +1079,7 @@ export default function LiveTripsClient() {
                           <td className="p-2">{t.pickup_label || "-"}</td>
                           <td className="p-2">{t.dropoff_label || "-"}</td>
                           <td className="p-2">
-                            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
+                            <span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(s)].join(" ")}>
                               {s || "-"}
                             </span>
                           </td>
@@ -1072,12 +1203,7 @@ export default function LiveTripsClient() {
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
                     const isEligible = Boolean(d.assign_eligible);
-                    const label = (
-                      (d.name || "Driver") +
-                      (d.town ? " - " + d.town : "") +
-                      ((d as any).effective_status ? " - " + (d as any).effective_status : "") +
-                      (isEligible ? "" : " - NOT ELIGIBLE")
-                    ).trim();
+                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + ((d as any).effective_status ? " - " + (d as any).effective_status : "") + (isEligible ? "" : " - NOT ELIGIBLE")).trim();
 
                     return (
                       <option key={id || String(idx)} value={id} disabled={!isEligible}>
@@ -1109,7 +1235,7 @@ export default function LiveTripsClient() {
               </div>
 
               <div className="mt-2 text-[11px] text-slate-500">
-                Manual assignment dropdown only allows drivers with assign_eligible = Yes. Ineligible drivers remain visible in Drivers view for monitoring.
+                Manual assignment prioritizes visibility for operators, but only drivers with assign_eligible = Yes are selectable.
               </div>
 
               <div className="mt-2">
