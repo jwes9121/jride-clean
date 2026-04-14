@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getSupabase() {
@@ -45,6 +45,51 @@ function buildDebug(debugMode: boolean, extra: Record<string, unknown> = {}) {
       ...extra,
     },
   };
+}
+
+function ts(input: string | null | undefined) {
+  if (!input) return 0;
+  const t = new Date(input).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function ageSecondsFromIso(input: string | null | undefined) {
+  if (!input) return null;
+  const parsed = Date.parse(input);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+}
+
+function dedupeLatestDriverRows(rows: any[]): any[] {
+  const latestByDriverId: Record<string, any> = {};
+
+  for (const row of rows) {
+    const driverId = text(row?.driver_id);
+    if (!driverId) continue;
+
+    const prev = latestByDriverId[driverId];
+    if (!prev) {
+      latestByDriverId[driverId] = row;
+      continue;
+    }
+
+    const prevTs = ts(prev?.updated_at || prev?.created_at || null);
+    const nextTs = ts(row?.updated_at || row?.created_at || null);
+
+    if (nextTs > prevTs) {
+      latestByDriverId[driverId] = row;
+    }
+  }
+
+  return Object.values(latestByDriverId).sort((a: any, b: any) => {
+    const at = ts(a?.updated_at || a?.created_at || null);
+    const bt = ts(b?.updated_at || b?.created_at || null);
+    return bt - at;
+  });
+}
+
+function normalizeTownKey(v: unknown): string {
+  return text(v).toLowerCase();
 }
 
 export async function GET(req: NextRequest) {
@@ -128,9 +173,13 @@ export async function GET(req: NextRequest) {
       zones = asArray<any>(zonesRes.data);
     }
 
-    const driverRows = asArray<any>(driverLocationsRes.data);
+    const rawDriverRows = asArray<any>(driverLocationsRes.data);
+    const driverRows = dedupeLatestDriverRows(rawDriverRows);
     const bookingRows = asArray<any>(bookingsRes.data);
     const profileRows = asArray<any>(driverProfilesRes.data);
+
+    const staleAfterSeconds = 120;
+    const onlineLike = new Set(["online", "available", "idle", "waiting"]);
 
     const driverProfileMap: Record<string, any> = {};
     for (const row of profileRows) {
@@ -169,19 +218,24 @@ export async function GET(req: NextRequest) {
       const driverId = text(row?.driver_id);
       const profile = driverProfileMap[driverId] || null;
       const trip = activeTripByDriverId[driverId] || null;
+      const ageSeconds = ageSecondsFromIso(row?.updated_at ?? null);
+      const isStale = ageSeconds == null ? true : ageSeconds > staleAfterSeconds;
+      const rawStatus = text(row?.status).toLowerCase();
+      const effectiveStatus = isStale ? "offline" : rawStatus;
+      const assignEligible = !isStale && onlineLike.has(rawStatus);
 
       return {
         driver_id: row?.driver_id ?? null,
         lat: row?.lat ?? null,
         lng: row?.lng ?? null,
         status: row?.status ?? null,
-        effective_status: row?.status ?? null,
+        effective_status: row?.effective_status ?? effectiveStatus,
         town: row?.town ?? profile?.municipality ?? null,
         updated_at: row?.updated_at ?? null,
         updated_at_ph: row?.updated_at_ph ?? null,
-        age_seconds: row?.age_seconds ?? null,
-        assign_eligible: row?.assign_eligible ?? null,
-        is_stale: row?.is_stale ?? null,
+        age_seconds: row?.age_seconds ?? ageSeconds,
+        assign_eligible: row?.assign_eligible ?? assignEligible,
+        is_stale: row?.is_stale ?? isStale,
         vehicle_type: row?.vehicle_type ?? null,
         capacity: row?.capacity ?? null,
         name: profile?.full_name ?? profile?.callsign ?? null,
@@ -200,6 +254,43 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    const activeDriversByTown: Record<string, number> = {};
+    for (const driver of drivers) {
+      const townKey = normalizeTownKey(driver?.town);
+      if (!townKey) continue;
+
+      const effectiveStatus = normalizeTownKey(driver?.effective_status);
+      if (!onlineLike.has(effectiveStatus)) continue;
+
+      activeDriversByTown[townKey] = (activeDriversByTown[townKey] || 0) + 1;
+    }
+
+    const normalizedZones = zones.map((zone: any) => {
+      const zoneName = text(zone?.zone_name);
+      const zoneKey = normalizeTownKey(zoneName || zone?.town || zone?.name);
+      const activeDrivers = activeDriversByTown[zoneKey] || 0;
+      const capacityLimit = Number(zone?.capacity_limit ?? 0);
+      const availableSlots = capacityLimit > 0 ? Math.max(0, capacityLimit - activeDrivers) : null;
+
+      let status = text(zone?.status).toUpperCase();
+      if (!status) {
+        if (capacityLimit > 0 && activeDrivers >= capacityLimit) {
+          status = "FULL";
+        } else if (capacityLimit > 0 && activeDrivers >= Math.ceil(capacityLimit * 0.8)) {
+          status = "WARN";
+        } else {
+          status = "OK";
+        }
+      }
+
+      return {
+        ...zone,
+        active_drivers: activeDrivers,
+        available_slots: availableSlots,
+        status,
+      };
+    });
+
     return NextResponse.json({
       ok: true,
       ...buildDebug(debugMode, {
@@ -209,8 +300,11 @@ export async function GET(req: NextRequest) {
         booking_codes: tripsArray
           .map((t: any) => t?.booking_code)
           .filter(Boolean),
+        raw_driver_row_count: rawDriverRows.length,
+        deduped_driver_row_count: driverRows.length,
+        active_drivers_by_town: activeDriversByTown,
       }),
-      zones,
+      zones: normalizedZones,
       drivers,
       trips: tripsArray,
     });
