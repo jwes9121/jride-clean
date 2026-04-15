@@ -13,6 +13,7 @@ export interface LiveTripsMapProps {
   drivers: MapDriverRow[];
   selectedTripId: string | null;
   stuckTripIds: Set<string>;
+  onEmergencyAssign?: (bookingCode: string) => Promise<void>;
 }
 
 type MapDriverRow = {
@@ -407,6 +408,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   drivers,
   selectedTripId,
   stuckTripIds,
+  onEmergencyAssign,
 }) => {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -665,7 +667,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     if (driverReal && pickup) distToPickup = distanceMeters(driverReal, pickup);
     if (driverReal && drop) distToDrop = distanceMeters(driverReal, drop);
 
-    const bookingCode = selectedTrip.bookingCode ?? id;
+    const bookingCode = selectedTrip.booking_code ?? selectedTrip.bookingCode ?? id;
     const lastUpdate = selectedTrip.driver_last_seen_at ?? selectedTrip.updated_at ?? selectedTrip.inserted_at ?? null;
 
     return {
@@ -1074,11 +1076,12 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
             </div>
 
             <DispatchActionPanel
+              bookingCode={selectedOverview.bookingCode}
               selectedTrip={
                 selectedTrip && selectedTrip.id
                   ? {
                       id: String(selectedTrip.id),
-                      booking_code: selectedTrip.bookingCode ?? selectedOverview.bookingCode,
+                      booking_code: selectedTrip.booking_code ?? selectedTrip.bookingCode ?? selectedOverview.bookingCode,
                       status: selectedTrip.status ?? selectedOverview.status,
                       driver_id: selectedTrip.driver_id ?? selectedTrip.driverId ?? null,
                       driver_name:
@@ -1091,6 +1094,13 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
                   : null
               }
               dispatcherName={undefined}
+              onEmergency={
+                selectedOverview.bookingCode && onEmergencyAssign
+                  ? async () => {
+                      await onEmergencyAssign(selectedOverview.bookingCode);
+                    }
+                  : undefined
+              }
             />
           </div>
         )}

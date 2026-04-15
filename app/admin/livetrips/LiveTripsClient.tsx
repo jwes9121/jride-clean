@@ -14,6 +14,26 @@ function formatLastSeen(ageSeconds?: number) {
   return Math.floor(ageSeconds / 3600) + "h ago";
 }
 
+function formatPHDateTime(value?: string | null): string {
+  if (!value) return "--";
+  const d = new Date(String(value));
+  if (!Number.isFinite(d.getTime())) return String(value);
+  try {
+    return new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(d);
+  } catch {
+    return String(value);
+  }
+}
+
 type ZoneRow = {
   zone_id: string;
   zone_name: string;
@@ -691,6 +711,20 @@ export default function LiveTripsClient() {
     return drivers.find((d) => String(d.driver_id || "") === manualDriverId) || null;
   }, [drivers, manualDriverId]);
 
+
+  const selectedTripTown = useMemo(() => {
+    return String(selectedTrip?.town || selectedTrip?.zone || "").trim().toLowerCase();
+  }, [selectedTrip]);
+
+  const selectedManualDriverTown = useMemo(() => {
+    return String(selectedManualDriver?.town || "").trim().toLowerCase();
+  }, [selectedManualDriver]);
+
+  const manualAssignRequiresEmergency = useMemo(() => {
+    if (!selectedTripTown || !selectedManualDriverTown) return false;
+    return selectedTripTown !== selectedManualDriverTown;
+  }, [selectedTripTown, selectedManualDriverTown]);
+
   useEffect(() => {
     if (!selectedManualDriver) return;
     if (selectedManualDriver.assign_eligible) return;
@@ -773,12 +807,16 @@ export default function LiveTripsClient() {
     return j;
   }
 
-  async function assignDriver(bookingCode: string, driverId: string) {
+  async function assignDriver(bookingCode: string, driverId: string, emergencyMode?: boolean) {
     if (!bookingCode || !driverId) return;
-    setLastAction("Assigning...");
-    await postJson("/api/dispatch/assign", { bookingCode, driverId });
-    setLastAction("Assigned");
-    await loadPage();
+    setLastAction(emergencyMode ? "Emergency assigning..." : "Assigning...");
+    const result = await postJson("/api/dispatch/assign", {
+      bookingCode,
+      driverId,
+      emergency_mode: emergencyMode === true,
+    });
+    setLastAction(result?.emergency_mode ? "Assigned via emergency" : "Assigned");
+    await refreshAll("assign");
   }
 
   async function updateTripStatus(bookingCode: string, status: string) {
@@ -787,6 +825,17 @@ export default function LiveTripsClient() {
     await postJson("/api/dispatch/status", { bookingCode, status });
     setLastAction("Status -> " + status);
     await loadPage();
+  }
+
+  async function emergencyAssignNearest(bookingCode: string) {
+    if (!bookingCode) return;
+    setLastAction("Emergency assigning nearest eligible driver...");
+    const result = await postJson("/api/dispatch/assign", {
+      bookingCode,
+      emergency_mode: true,
+    });
+    setLastAction(result?.driver_id ? "Emergency assigned" : "Emergency assign requested");
+    await refreshAll("emergency");
   }
 
   const zoneStats = useMemo(() => {
@@ -1170,7 +1219,7 @@ export default function LiveTripsClient() {
                     <div><span className="text-gray-500">Dropoff:</span> <span className="font-medium">{labelOrDash(selectedTrip.dropoff_label)}</span></div>
                     <div><span className="text-gray-500">Status:</span> <span className="font-medium">{labelOrDash(selectedTrip.status)}</span></div>
                     <div><span className="text-gray-500">Town:</span> <span className="font-medium">{labelOrDash(selectedTrip.town || selectedTrip.zone)}</span></div>
-                    <div><span className="text-gray-500">Updated:</span> <span className="font-medium">{labelOrDash(selectedTrip.updated_at)}</span></div>
+                    <div><span className="text-gray-500">Updated:</span> <span className="font-medium">{formatPHDateTime(selectedTrip.updated_at)}</span></div>
                   </div>
                 )}
               </div>
@@ -1222,10 +1271,10 @@ export default function LiveTripsClient() {
                   disabled={!selectedTrip?.booking_code || !manualDriverId || !selectedManualDriver?.assign_eligible}
                   onClick={() => {
                     if (!selectedTrip?.booking_code || !selectedManualDriver?.assign_eligible) return;
-                    assignDriver(selectedTrip.booking_code, manualDriverId).catch((err) => setLastAction(String(err?.message || err)));
+                    assignDriver(selectedTrip.booking_code, manualDriverId, manualAssignRequiresEmergency).catch((err) => setLastAction(String(err?.message || err)));
                   }}
                 >
-                  Assign
+                  {manualAssignRequiresEmergency ? "Emergency assign" : "Assign"}
                 </button>
 
                 <button
@@ -1238,8 +1287,16 @@ export default function LiveTripsClient() {
                 </button>
               </div>
 
-              <div className="mt-2 text-[11px] text-slate-500">
-                Manual assignment prioritizes visibility for operators, but only drivers with assign_eligible = Yes are selectable.
+              <div className="mt-2 text-[11px] text-slate-500 space-y-1">
+                <div>Manual assignment only allows drivers with assign_eligible = Yes.</div>
+                {selectedTrip && selectedManualDriver ? (
+                  <div>
+                    Trip town: <span className="font-semibold">{labelOrDash(selectedTrip.town || selectedTrip.zone)}</span>
+                    {" | "}
+                    Driver town: <span className="font-semibold">{labelOrDash(selectedManualDriver.town)}</span>
+                    {manualAssignRequiresEmergency ? " | Cross-town will use emergency mode." : " | Same-town standard assign."}
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-2">
@@ -1257,7 +1314,10 @@ export default function LiveTripsClient() {
                   zoneStats={zoneStats}
                   onAssign={async (driverId) => {
                     if (!selectedTrip?.booking_code) return;
-                    await assignDriver(selectedTrip.booking_code, driverId);
+                    const suggestionDriver = eligibleDrivers.find((d) => String(d.driver_id || "") === String(driverId)) || null;
+                    const suggestionDriverTown = String(suggestionDriver?.town || "").trim().toLowerCase();
+                    const emergencyMode = !!selectedTripTown && !!suggestionDriverTown && selectedTripTown !== suggestionDriverTown;
+                    await assignDriver(selectedTrip.booking_code, driverId, emergencyMode);
                   }}
                 />
               </div>
@@ -1266,7 +1326,15 @@ export default function LiveTripsClient() {
         </div>
 
         <div className="rounded-lg border overflow-hidden">
-          <LiveTripsMap trips={mapTrips as any} drivers={drivers as any} selectedTripId={selectedTripId} stuckTripIds={stuckTripIds as any} />
+          <LiveTripsMap
+            trips={mapTrips as any}
+            drivers={drivers as any}
+            selectedTripId={selectedTripId}
+            stuckTripIds={stuckTripIds as any}
+            onEmergencyAssign={async (bookingCode) => {
+              await emergencyAssignNearest(bookingCode);
+            }}
+          />
         </div>
       </div>
     </div>
