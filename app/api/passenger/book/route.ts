@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -234,6 +235,32 @@ function getBearerToken(req: Request): string | null {
   return token || null;
 }
 
+
+function createUserClient(accessToken: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+
+  if (!url || !anon) {
+    throw {
+      code: "SUPABASE_ENV_MISSING",
+      message: "Supabase environment is missing for authenticated booking.",
+      status: 500,
+    };
+  }
+
+  return createSupabaseClient(url, anon, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+}
+
 function envAny(names: string[]): string {
   for (const n of names) {
     const v = process.env[n];
@@ -464,7 +491,7 @@ async function canBookOrThrow(
     };
   }
 
-  return { ok: true, userId: uv.user.id, verified: uv.verified };
+  return { ok: true, userId: uv.user.id, user: uv.user, verified: uv.verified };
 }
 
 export async function POST(req: Request) {
@@ -478,6 +505,8 @@ export async function POST(req: Request) {
         { status: 401 }
       );
     }
+
+    const userSupabase = createUserClient(accessToken);
 
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
@@ -543,7 +572,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const canRes: any = await canBookOrThrow(supabase as any, accessToken);
+    const canRes: any = await canBookOrThrow(userSupabase as any, accessToken);
     if (canRes && typeof canRes.headers?.get === "function") {
       return canRes;
     }
@@ -664,7 +693,7 @@ export async function POST(req: Request) {
       is_emergency: emergencyMode,
     };
 
-    const { data: booking, error } = await supabase
+    const { data: booking, error } = await userSupabase
       .from("bookings")
       .insert(insert)
       .select("*")
