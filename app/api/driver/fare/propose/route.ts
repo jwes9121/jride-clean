@@ -343,6 +343,8 @@ export async function POST(req: Request) {
     const platformFee = 15;
     const totalFare = adjustedProposedFare + pickupFee + platformFee;
 
+    // Canonical lifecycle allows direct accepted -> fare_proposed.
+    // Do not regress accepted back to assigned before proposing fare.
     const updatePayload: Record<string, unknown> = {
       proposed_fare: adjustedProposedFare,
       submitted_regular_fare: submittedRegularFare,
@@ -356,6 +358,7 @@ export async function POST(req: Request) {
       status: "fare_proposed",
       assigned_driver_id: assignedDriverId || effectiveDriverId,
       driver_id: bookingDriverId || effectiveDriverId,
+      updated_at: new Date().toISOString(),
     };
 
     const { error: updateErr } = await supabase
@@ -371,6 +374,7 @@ export async function POST(req: Request) {
         effective_driver_id: effectiveDriverId,
         assigned_driver_id: assignedDriverId || null,
         booking_driver_id: bookingDriverId || null,
+        target_status: "fare_proposed",
         update_payload: updatePayload,
         update_error: updateErr,
       });
@@ -388,7 +392,8 @@ export async function POST(req: Request) {
           effective_driver_id: effectiveDriverId || null,
           assigned_driver_id: assignedDriverId || null,
           booking_driver_id: bookingDriverId || null,
-          update_payload: updatePayload,
+          target_status: "fare_proposed",
+        update_payload: updatePayload,
         },
         { status: 500, headers: noStoreHeaders() }
       );
