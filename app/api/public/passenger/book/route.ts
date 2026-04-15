@@ -1,31 +1,30 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type BookBody = {
   town?: string;
-
   pickup_label?: string;
   dropoff_label?: string;
   vehicle_type?: string;
-
   from_label?: string;
   to_label?: string;
   service_type?: string;
-
   pickup_lat?: number | string | null;
   pickup_lng?: number | string | null;
   dropoff_lat?: number | string | null;
   dropoff_lng?: number | string | null;
-
   passenger_count?: number | string | null;
   fees_acknowledged?: boolean;
-
+  emergency_mode?: boolean;
+  emergency_fee_acknowledged?: boolean;
   passenger_name?: string;
   full_name?: string;
   user_id?: string;
   created_by_user_id?: string;
   phone?: string;
   role?: string;
+  notes?: string;
 };
 
 function text(v: unknown): string {
@@ -33,9 +32,180 @@ function text(v: unknown): string {
 }
 
 function num(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+  if (v === null || v === undefined || v === "") return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
 }
+
+function norm(v: unknown): string {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function normalizeVehicleType(v: unknown): string {
+  const s = norm(v);
+  if (!s) return "";
+  if (s.includes("motor")) return "motorcycle";
+  if (s.includes("trike")) return "tricycle";
+  if (s.includes("tricycle")) return "tricycle";
+  return s;
+}
+
+function oppositeVehicleType(v: string): string | null {
+  if (v === "tricycle") return "motorcycle";
+  if (v === "motorcycle") return "tricycle";
+  return null;
+}
+
+function vehicleLabel(v: string): string {
+  if (v === "tricycle") return "tricycle";
+  if (v === "motorcycle") return "motorcycle";
+  return v || "vehicle";
+}
+
+type DriverLocationRow = {
+  driver_id?: string | null;
+  status?: string | null;
+  updated_at?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  town?: string | null;
+  vehicle_type?: string | null;
+};
+
+type DriverWalletRow = {
+  id?: string | null;
+  wallet_balance?: number | null;
+  min_wallet_required?: number | null;
+  wallet_locked?: boolean | null;
+};
+
+type AvailabilitySummary = {
+  requested_vehicle_type: string;
+  alternate_vehicle_type: string | null;
+  local_requested_count: number;
+  local_alternate_count: number;
+  emergency_requested_count: number;
+  emergency_alternate_count: number;
+};
+
+const ASSIGN_FRESHNESS_SECONDS = 10;
+
+function getNearbyTowns(town: string): string[] {
+  const map: Record<string, string[]> = {
+    Lagawe: ["Lamut", "Hingyon"],
+    Lamut: ["Lagawe", "Kiangan"],
+    Hingyon: ["Lagawe"],
+    Banaue: ["Hingyon"],
+  };
+  return map[town] || [];
+}
+
+function effectiveMinWalletRequired(v: unknown): number {
+  const n = num(v);
+  if (n == null) return 250;
+  return Math.max(250, n);
+}
+
+async function getAvailabilitySummary(bookingTown: string, requestedVehicleType: string): Promise<AvailabilitySummary> {
+  const supabase = supabaseAdmin();
+  const localTown = text(bookingTown);
+  const requested = normalizeVehicleType(requestedVehicleType) || "tricycle";
+  const alternate = oppositeVehicleType(requested);
+  const localTownSet = new Set([localTown.toLowerCase()]);
+  const emergencyTownSet = new Set([localTown.toLowerCase(), ...getNearbyTowns(localTown).map((x) => text(x).toLowerCase())]);
+
+  const summary: AvailabilitySummary = {
+    requested_vehicle_type: requested,
+    alternate_vehicle_type: alternate,
+    local_requested_count: 0,
+    local_alternate_count: 0,
+    emergency_requested_count: 0,
+    emergency_alternate_count: 0,
+  };
+
+  if (!localTown) {
+    return summary;
+  }
+
+  const { data: driverRows, error: driverError } = await supabase
+    .from("driver_locations")
+    .select("driver_id, status, updated_at, lat, lng, town, vehicle_type");
+
+  if (driverError) {
+    throw {
+      code: "DRIVER_AVAILABILITY_SCAN_FAILED",
+      message: driverError.message || "Could not scan driver availability.",
+      status: 500,
+    };
+  }
+
+  const allDrivers = Array.isArray(driverRows) ? (driverRows as DriverLocationRow[]) : [];
+  const driverIds = allDrivers.map((row) => text(row.driver_id)).filter(Boolean);
+
+  const walletByDriverId = new Map<string, DriverWalletRow>();
+  if (driverIds.length > 0) {
+    const { data: walletRows, error: walletError } = await supabase
+      .from("drivers")
+      .select("id, wallet_balance, min_wallet_required, wallet_locked")
+      .in("id", driverIds);
+
+    if (walletError) {
+      throw {
+        code: "DRIVER_WALLET_SCAN_FAILED",
+        message: walletError.message || "Could not scan driver wallets.",
+        status: 500,
+      };
+    }
+
+    for (const row of Array.isArray(walletRows) ? (walletRows as DriverWalletRow[]) : []) {
+      walletByDriverId.set(text(row.id), row);
+    }
+  }
+
+  const nowMs = Date.now();
+
+  for (const row of allDrivers) {
+    const driverId = text(row.driver_id);
+    if (!driverId) continue;
+    if (norm(row.status) !== "online") continue;
+
+    const driverTown = text(row.town).toLowerCase();
+    if (!driverTown) continue;
+
+    const updatedAt = text(row.updated_at);
+    if (!updatedAt) continue;
+
+    const updatedMs = new Date(updatedAt).getTime();
+    if (!Number.isFinite(updatedMs)) continue;
+
+    const ageSec = (nowMs - updatedMs) / 1000;
+    if (ageSec > ASSIGN_FRESHNESS_SECONDS) continue;
+
+    const wallet = walletByDriverId.get(driverId);
+    if (Boolean(wallet?.wallet_locked)) continue;
+
+    const walletBalance = num(wallet?.wallet_balance) ?? 0;
+    const walletMinRequired = effectiveMinWalletRequired(wallet?.min_wallet_required);
+    if (walletBalance < walletMinRequired) continue;
+
+    const driverVehicleType = normalizeVehicleType(row.vehicle_type);
+    if (!driverVehicleType) continue;
+
+    const inLocal = localTownSet.has(driverTown);
+    const inEmergency = emergencyTownSet.has(driverTown);
+
+    if (driverVehicleType === requested) {
+      if (inLocal) summary.local_requested_count++;
+      if (inEmergency) summary.emergency_requested_count++;
+    } else if (alternate && driverVehicleType === alternate) {
+      if (inLocal) summary.local_alternate_count++;
+      if (inEmergency) summary.emergency_alternate_count++;
+    }
+  }
+
+  return summary;
+}
+
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -59,6 +229,44 @@ function getBearerToken(req: Request): string | null {
   if (!auth.startsWith("Bearer ")) return null;
   const token = auth.slice(7).trim();
   return token || null;
+}
+
+function createUserClient(accessToken: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+
+  if (!url || !anon) {
+    throw new Error("SUPABASE_ENV_MISSING");
+  }
+
+  return createSupabaseClient(url, anon, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+}
+
+function normalizeBaseUrl(v: string): string {
+  return String(v || "").trim().replace(/\/+$/, "");
+}
+
+function requestOrigin(req: Request): string {
+  try {
+    const u = new URL(req.url);
+    if (u.origin && u.origin !== "null") return normalizeBaseUrl(u.origin);
+  } catch {}
+
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+  if (host) return normalizeBaseUrl(`${proto}://${host}`);
+
+  return "";
 }
 
 function envAny(names: string[]): string {
@@ -122,11 +330,38 @@ async function resolvePickupTownFromCoords(pickupLng: number, pickupLat: number)
   return derivedTown;
 }
 
-async function getTokenUserAndVerified(
-  supabase: ReturnType<typeof createClient>,
-  accessToken: string
-) {
-  const { data, error } = await supabase.auth.getUser(accessToken);
+function userDisplayName(user: any): string {
+  const direct = [
+    user?.user_metadata?.full_name,
+    user?.user_metadata?.name,
+    user?.user_metadata?.display_name,
+    user?.user_metadata?.passenger_name,
+    user?.raw_user_meta_data?.full_name,
+    user?.raw_user_meta_data?.name,
+    user?.raw_user_meta_data?.display_name,
+    user?.email,
+  ];
+
+  for (const v of direct) {
+    const s = text(v);
+    if (s) return s;
+  }
+
+  return "";
+}
+
+function normalizePassengerName(v: unknown): string {
+  return String(v ?? "").trim().replace(/\s+/g, " ");
+}
+
+function isValidPassengerName(v: string): boolean {
+  const parts = String(v ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return false;
+  return parts.every((part) => /[A-Za-z]/.test(part));
+}
+
+async function getTokenUserAndVerified(supabase: any) {
+  const { data, error } = await supabase.auth.getUser();
   if (error || !data?.user?.id) {
     return { user: null, verified: false };
   }
@@ -169,7 +404,6 @@ async function getTokenUserAndVerified(
           v.trim().toLowerCase() !== "no") ||
         (typeof v === "number" && v > 0);
 
-      const selV = "is_verified,verified,verification_tier";
       const tries: Array<["auth_user_id" | "user_id", string]> = [
         ["auth_user_id", user.id],
         ["user_id", user.id],
@@ -178,7 +412,7 @@ async function getTokenUserAndVerified(
       for (const [col, val] of tries) {
         const r = await supabase
           .from("passengers")
-          .select(selV)
+          .select("is_verified,verified,verification_tier")
           .eq(col, val)
           .limit(1)
           .maybeSingle();
@@ -200,17 +434,12 @@ async function getTokenUserAndVerified(
 }
 
 function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "")
-    .trim()
-    .toLowerCase();
+  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "").trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
-async function canBookOrThrow(
-  supabase: ReturnType<typeof createClient>,
-  accessToken: string
-) {
-  const uv = await getTokenUserAndVerified(supabase, accessToken);
+async function canBookOrThrow(supabase: any) {
+  const uv = await getTokenUserAndVerified(supabase);
 
   if (!uv.user?.id) {
     return NextResponse.json(
@@ -261,12 +490,65 @@ async function canBookOrThrow(
     };
   }
 
-  return { ok: true, userId: uv.user.id, verified: uv.verified };
+  return {
+    ok: true,
+    userId: uv.user.id,
+    verified: uv.verified,
+    user: uv.user,
+  };
+}
+
+async function triggerSingleAutoAssign(req: Request, bookingId: string) {
+  const baseUrl = normalizeBaseUrl(
+    envAny(["INTERNAL_BASE_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_BASE_URL"]) || requestOrigin(req)
+  );
+
+  if (!baseUrl) {
+    return {
+      attempted: false,
+      ok: false,
+      skipped: true,
+      reason: "BASE_URL_MISSING",
+    };
+  }
+
+  const url = `${baseUrl}/api/dispatch/auto-assign`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ mode: "single", bookingId }),
+    });
+
+    let body: any = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+
+    return {
+      attempted: true,
+      ok: res.ok,
+      status: res.status,
+      url,
+      body,
+    };
+  } catch (e: any) {
+    return {
+      attempted: true,
+      ok: false,
+      status: 0,
+      url,
+      error: String(e?.message ?? e),
+    };
+  }
 }
 
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
     const accessToken = getBearerToken(req);
 
     if (!accessToken) {
@@ -276,12 +558,13 @@ export async function POST(req: Request) {
       );
     }
 
+    const supabase = createUserClient(accessToken);
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
     const selectedTown = text(body.town);
     const pickupLabel = text(body.from_label || body.pickup_label);
     const dropoffLabel = text(body.to_label || body.dropoff_label);
-    const vehicleType = text(body.service_type || body.vehicle_type || "tricycle");
+    const vehicleType = normalizeVehicleType(body.service_type || body.vehicle_type || "tricycle") || "tricycle";
 
     const pickupLat = num(body.pickup_lat);
     const pickupLng = num(body.pickup_lng);
@@ -290,6 +573,8 @@ export async function POST(req: Request) {
 
     const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
     const feesAcknowledged = !!body.fees_acknowledged;
+    const emergencyMode = !!body.emergency_mode;
+    const emergencyFeeAcknowledged = !!body.emergency_fee_acknowledged;
 
     if (!selectedTown) {
       return NextResponse.json(
@@ -338,12 +623,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const canRes: any = await canBookOrThrow(supabase as any, accessToken);
+    const canRes: any = await canBookOrThrow(supabase);
     if (canRes && typeof canRes.headers?.get === "function") {
       return canRes;
     }
 
-    const createdByUserId = String((canRes as any).userId || "").trim();
+    const createdByUserId = text((canRes as any).userId);
     if (!createdByUserId) {
       return NextResponse.json(
         { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
@@ -351,11 +636,99 @@ export async function POST(req: Request) {
       );
     }
 
+    const passengerName = normalizePassengerName(
+      text(body.passenger_name) ||
+      text(body.full_name) ||
+      userDisplayName((canRes as any).user)
+    );
+
+    if (!isValidPassengerName(passengerName)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "INVALID_PASSENGER_NAME",
+          message: "Passenger name must contain at least first name and last name.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const availability = await getAvailabilitySummary(derivedTown, vehicleType);
+
+    if (!emergencyMode) {
+      if (availability.local_requested_count <= 0 && availability.local_alternate_count > 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "ALTERNATE_VEHICLE_AVAILABLE",
+            message: `No available ${vehicleLabel(vehicleType)} drivers in ${derivedTown}. ${vehicleLabel(availability.alternate_vehicle_type || "")} is available now.`,
+            requested_vehicle_type: vehicleType,
+            alternate_vehicle_type: availability.alternate_vehicle_type,
+            availability,
+          },
+          { status: 409 }
+        );
+      }
+
+      if (availability.local_requested_count <= 0 && availability.local_alternate_count <= 0) {
+        if (availability.emergency_requested_count > 0) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "EMERGENCY_BOOKING_AVAILABLE",
+              message: "No drivers are currently available in your town. You can continue with Emergency Booking to search nearby towns. A pickup distance fee may apply depending on how far the assigned driver is from your pickup point.",
+              requested_vehicle_type: vehicleType,
+              alternate_vehicle_type: availability.alternate_vehicle_type,
+              availability,
+            },
+            { status: 409 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "NO_DRIVERS_AVAILABLE",
+            message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
+            requested_vehicle_type: vehicleType,
+            alternate_vehicle_type: availability.alternate_vehicle_type,
+            availability,
+          },
+          { status: 409 }
+        );
+      }
+    } else {
+      if (!emergencyFeeAcknowledged) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "EMERGENCY_ACK_REQUIRED",
+            message: "You must acknowledge the emergency pickup distance fee notice first.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (availability.emergency_requested_count <= 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "NO_DRIVERS_AVAILABLE",
+            message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
+            requested_vehicle_type: vehicleType,
+            alternate_vehicle_type: availability.alternate_vehicle_type,
+            availability,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const bookingCode = bookingCodeNow();
 
     const insert: Record<string, any> = {
       booking_code: bookingCode,
-      status: "searching",
+      status: "requested",
       town: derivedTown,
       from_label: pickupLabel,
       to_label: dropoffLabel,
@@ -367,7 +740,10 @@ export async function POST(req: Request) {
       passenger_count: passengerCount,
       created_by_user_id: createdByUserId,
       customer_status: "pending",
+      is_emergency: emergencyMode,
     };
+
+    insert.passenger_name = passengerName;
 
     const { data: booking, error } = await supabase
       .from("bookings")
@@ -386,11 +762,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const bookingId = text((booking as any)?.id);
+    const autoAssign = bookingId
+      ? await triggerSingleAutoAssign(req, bookingId)
+      : {
+          attempted: false,
+          ok: false,
+          skipped: true,
+          reason: "BOOKING_ID_MISSING_AFTER_INSERT",
+        };
+
     return NextResponse.json(
       {
         ok: true,
         booking_code: bookingCode,
         booking,
+        auto_assign: autoAssign,
         validated_town: derivedTown,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
