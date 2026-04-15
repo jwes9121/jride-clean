@@ -179,8 +179,14 @@ const driverPayout = useMemo(() => {
   }, [trip]);
 
   const passengerPlatformFee = useMemo(() => {
-    // Keep separate from company_cut; passenger platform fee should be explicit (e.g., platform_service_fee)
-    return asNum(trip?.platform_service_fee ?? trip?.platformServiceFee ?? trip?.platform_service ?? null);
+    // Passenger platform fee must align with backend canonical field first.
+    return asNum(
+      trip?.platform_fee ??
+      trip?.platform_service_fee ??
+      trip?.platformServiceFee ??
+      trip?.platform_service ??
+      null
+    );
   }, [trip]);
 
   const passengerBaseFare = useMemo(() => {
