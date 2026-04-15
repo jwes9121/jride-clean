@@ -8,6 +8,7 @@ type DriverRow = {
   lat: number | null;
   lng: number | null;
   town?: string | null;
+  vehicle_type?: string | null;
 };
 
 type DriverWalletRow = {
@@ -26,6 +27,7 @@ type BookingRow = {
   status?: string | null;
   driver_id?: string | null;
   is_emergency?: boolean | null;
+  service_type?: string | null;
 };
 
 const ASSIGN_FRESHNESS_SECONDS = 10;
@@ -38,6 +40,16 @@ function norm(v: any): string {
 function text(v: any): string {
   return String(v ?? "").trim();
 }
+
+function normalizeVehicleType(v: any): string {
+  const s = norm(v);
+  if (!s) return "";
+  if (s.includes("motor")) return "motorcycle";
+  if (s.includes("trike")) return "tricycle";
+  if (s.includes("tricycle")) return "tricycle";
+  return s;
+}
+
 
 function num(v: any): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -154,12 +166,15 @@ type MatchDebug = {
   rejected_stale_count: number;
   rejected_excluded_count: number;
   rejected_wrong_town_count: number;
+  rejected_wrong_vehicle_count: number;
   rejected_low_wallet_count: number;
   rejected_wallet_locked_count: number;
   eligible_count: number;
   chosen_driver_id: string | null;
   chosen_driver_town: string | null;
   chosen_driver_distance_km: number | null;
+  requested_vehicle_type: string | null;
+  chosen_driver_vehicle_type: string | null;
   freshness_seconds_threshold: number;
   excluded_driver_ids: string[];
 };
@@ -179,6 +194,7 @@ async function matchSingle(
   const excluded = (excludeDriverIds || []).map((x) => String(x || "").trim()).filter(Boolean);
   const bookingTown = text(booking?.town);
   const emergencyMode = !!booking?.is_emergency;
+  const requestedVehicleType = normalizeVehicleType(booking?.service_type);
   const allowedTowns = allowedTownsForBooking(bookingTown, emergencyMode);
   const pickupLat = num(booking?.pickup_lat);
   const pickupLng = num(booking?.pickup_lng);
@@ -198,12 +214,15 @@ async function matchSingle(
     rejected_stale_count: 0,
     rejected_excluded_count: 0,
     rejected_wrong_town_count: 0,
+    rejected_wrong_vehicle_count: 0,
     rejected_low_wallet_count: 0,
     rejected_wallet_locked_count: 0,
     eligible_count: 0,
     chosen_driver_id: null,
     chosen_driver_town: null,
     chosen_driver_distance_km: null,
+    requested_vehicle_type: requestedVehicleType || null,
+    chosen_driver_vehicle_type: null,
     freshness_seconds_threshold: ASSIGN_FRESHNESS_SECONDS,
     excluded_driver_ids: excluded,
   };
@@ -257,7 +276,7 @@ async function matchSingle(
 
   const { data: drivers, error: driversError } = await supabase
     .from("driver_locations")
-    .select("driver_id, status, updated_at, lat, lng, town");
+    .select("driver_id, status, updated_at, lat, lng, town, vehicle_type");
 
   if (driversError) {
     return {
@@ -318,6 +337,14 @@ async function matchSingle(
       continue;
     }
 
+    const driverVehicleType = normalizeVehicleType(d.vehicle_type);
+    if (requestedVehicleType) {
+      if (!driverVehicleType || driverVehicleType !== requestedVehicleType) {
+        debug.rejected_wrong_vehicle_count++;
+        continue;
+      }
+    }
+
     const wallet = walletByDriverId.get(text(d.driver_id));
     const walletLocked = Boolean(wallet?.wallet_locked);
     const walletBalance = num(wallet?.wallet_balance) ?? 0;
@@ -368,6 +395,7 @@ async function matchSingle(
   const chosen = eligible[0];
   debug.chosen_driver_id = chosen.driver_id;
   debug.chosen_driver_town = text(chosen.town) || null;
+  debug.chosen_driver_vehicle_type = normalizeVehicleType(chosen.vehicle_type) || null;
 
   const chosenLat = num(chosen.lat);
   const chosenLng = num(chosen.lng);
@@ -425,7 +453,7 @@ export async function POST(req: Request) {
     if (mode === "scan_requested") {
       const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency")
+        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
         .in("status", ["requested", "searching"])
         .is("driver_id", null)
         .order("created_at", { ascending: true })
@@ -532,7 +560,7 @@ export async function POST(req: Request) {
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency")
+      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
       .eq("id", bookingId)
       .single();
 

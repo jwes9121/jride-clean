@@ -201,6 +201,17 @@ function fmtDate(v?: string | null): string {
   });
 }
 
+
+function normalizePassengerNameInput(v: string): string {
+  return norm(v).replace(/\s+/g, " ");
+}
+
+function isValidPassengerNameInput(v: string): boolean {
+  const parts = normalizePassengerNameInput(v).split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return false;
+  return parts.every((part) => /^[A-Za-z]{2,}$/.test(part));
+}
+
 function numOrNull(v: string): number | null {
   const t = norm(v);
   if (!t) return null;
@@ -1609,6 +1620,13 @@ export default function RidePage() {
     }
 
     try {
+      const effectivePassengerName = normalizePassengerNameInput(signedInPassengerName || passengerName);
+      if (!isValidPassengerNameInput(effectivePassengerName)) {
+        setResult("BOOK_FAILED: INVALID_PASSENGER_NAME - Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.");
+        setBusy(false);
+        return;
+      }
+
       if (geoPermission !== "granted" || geoInsideIfugao !== true) {
         await refreshGeoGate(true);
         if (geoPermission !== "granted" || geoInsideIfugao !== true) {
@@ -1643,7 +1661,7 @@ export default function RidePage() {
       const book = await postJson(
         "/api/public/passenger/book",
         {
-          passenger_name: passengerName,
+          passenger_name: effectivePassengerName,
           town,
           pickup_label: fromLabel,
           dropoff_label: toLabel,
@@ -2186,12 +2204,17 @@ export default function RidePage() {
                 value={signedInPassengerName || passengerName}
                 onChange={(e) => {
                   if (signedInPassengerName) return;
-                  setPassengerName(e.target.value);
+                  setPassengerName(e.target.value.replace(/[^A-Za-z\s]/g, "").replace(/\s+/g, " "));
                 }}
                 readOnly={!!norm(signedInPassengerName)}
               />
               {signedInPassengerName ? (
                 <div className="mt-1 text-xs text-slate-500">Autofilled from your signed-in passenger account.</div>
+              ) : null}
+              {!isValidPassengerNameInput(signedInPassengerName || passengerName) ? (
+                <div className="mt-1 text-xs text-amber-700">
+                  Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.
+                </div>
               ) : null}
             </div>
 

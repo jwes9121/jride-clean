@@ -262,7 +262,7 @@ function normalizePassengerName(v: unknown): string {
 function isValidPassengerName(v: string): boolean {
   const parts = String(v ?? "").trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return false;
-  return parts.every((part) => /[A-Za-z]/.test(part));
+  return parts.every((part) => /^[A-Za-z]{2,}$/.test(part));
 }
 
 function userDisplayName(user: any): string {
@@ -567,7 +567,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           code: "INVALID_PASSENGER_NAME",
-          message: "Passenger name must contain at least first name and last name.",
+          message: "Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.",
         },
         { status: 400 }
       );
