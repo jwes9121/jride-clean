@@ -225,13 +225,14 @@ async function enforceDeviceLockPing(opts: {
   return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
 }
 
-async function triggerRetryAutoAssign(baseUrl: string) {
+async function triggerRetryAutoAssign(baseUrl: string, triggerReason: string) {
   if (!baseUrl || !String(baseUrl).trim()) {
     return {
       attempted: false,
       ok: false,
       skipped: true,
       reason: "BASE_URL_MISSING",
+      trigger_reason: triggerReason,
     };
   }
 
@@ -257,6 +258,7 @@ async function triggerRetryAutoAssign(baseUrl: string) {
       status: res.status,
       body,
       url,
+      trigger_reason: triggerReason,
     };
   } catch (e: any) {
     return {
@@ -265,6 +267,7 @@ async function triggerRetryAutoAssign(baseUrl: string) {
       status: 0,
       error: String(e?.message ?? e),
       url,
+      trigger_reason: triggerReason,
     };
   }
 }
@@ -360,7 +363,7 @@ export async function POST(req: NextRequest) {
 
     const { data: prevLoc, error: prevLocErr } = await supabase
       .from("driver_locations")
-      .select("id, status, lat, lng")
+      .select("id, status, lat, lng, updated_at")
       .eq("driver_id", driverId)
       .maybeSingle();
 
@@ -373,6 +376,19 @@ export async function POST(req: NextRequest) {
     }
 
     const previousStatus = norm((prevLoc as any)?.status ?? "");
+    const previousUpdatedAt = text((prevLoc as any)?.updated_at);
+    const previousUpdatedMs = previousUpdatedAt ? Date.parse(previousUpdatedAt) : 0;
+    const nowMs = Date.parse(nowIso);
+    const previousAgeSeconds =
+      Number.isFinite(previousUpdatedMs) && previousUpdatedMs > 0
+        ? Math.max(0, Math.floor((nowMs - previousUpdatedMs) / 1000))
+        : null;
+
+    const recoveredFromStaleOnline =
+      previousStatus === "online" &&
+      previousAgeSeconds !== null &&
+      previousAgeSeconds > 120 &&
+      status === "online";
 
     let finalLat: number | null = null;
     let finalLng: number | null = null;
@@ -439,33 +455,39 @@ export async function POST(req: NextRequest) {
       previous_status: previousStatus || null,
       current_status: status,
       coords_source: coordsSource,
+      previous_age_seconds: previousAgeSeconds,
+      recovered_from_stale_online: recoveredFromStaleOnline,
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";
+    const shouldRetry = becameOnline || recoveredFromStaleOnline;
 
     let retryResult: any = {
       attempted: false,
       ok: false,
       skipped: true,
-      reason: "NOT_ONLINE_EDGE",
+      reason: "NOT_ONLINE_EDGE_OR_STALE_RECOVERY",
     };
 
-    if (becameOnline) {
+    if (shouldRetry) {
       const baseUrl = envAny([
         "INTERNAL_BASE_URL",
         "NEXT_PUBLIC_BASE_URL",
         "NEXTAUTH_URL",
       ]);
-      retryResult = await triggerRetryAutoAssign(baseUrl);
+      const triggerReason = becameOnline ? "became_online" : "recovered_from_stale_online";
+      retryResult = await triggerRetryAutoAssign(baseUrl, triggerReason);
     }
 
     console.log("[DISPATCH_TRACE] ping:retry_result", {
       driver_id: driverId,
       auth_mode: authRes.authMode,
       became_online: becameOnline,
+      recovered_from_stale_online: recoveredFromStaleOnline,
       retry_triggered: !!(retryResult?.attempted),
       retry_ok: !!(retryResult?.ok),
       retry_status: retryResult?.status ?? null,
+      retry_reason: retryResult?.trigger_reason ?? null,
     });
 
     return json(200, {
@@ -475,6 +497,7 @@ export async function POST(req: NextRequest) {
       status,
       previous_status: previousStatus || null,
       became_online: becameOnline,
+      recovered_from_stale_online: recoveredFromStaleOnline,
       retry_triggered: !!(retryResult?.attempted),
       retry_ok: !!(retryResult?.ok),
       retry_result: retryResult,
