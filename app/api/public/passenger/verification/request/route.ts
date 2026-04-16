@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { createClient as createAdmin } from "@supabase/supabase-js";
+import { createClient as createAdmin, createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
@@ -25,19 +25,86 @@ function adminClient() {
   });
 }
 
-export async function GET() {
-  const supabase = createClient();
+function extractBearerToken(req: Request): string {
+  const auth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
+  if (!auth) return "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim() || "";
+}
 
-  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+function createUserClient(accessToken: string) {
+  const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
+  const anon =
+    env("SUPABASE_ANON_KEY") ||
+    env("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+    env("NEXT_PUBLIC_SUPABASE_KEY") ||
+    "";
+  if (!url || !anon) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_ANON_KEY");
+  }
+  return createSupabaseClient(url, anon, {
+    global: { headers: { Authorization: "Bearer " + accessToken } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+async function resolvePassengerAuth(req: Request) {
+  const cookieSupabase = createClient();
+  const accessToken = extractBearerToken(req);
+
+  if (accessToken) {
+    const userSupabase = createUserClient(accessToken);
+    const { data: userRes, error: userErr } = await userSupabase.auth.getUser(accessToken);
+    const user = userRes?.user;
+    if (userErr || !user?.id) {
+      return {
+        ok: false,
+        authed: false,
+        user: null,
+        supabase: userSupabase,
+        error: userErr?.message || "Invalid bearer token",
+      };
+    }
+    return {
+      ok: true,
+      authed: true,
+      user,
+      supabase: userSupabase,
+      error: "",
+    };
+  }
+
+  const { data: userRes, error: userErr } = await cookieSupabase.auth.getUser();
   const user = userRes?.user;
-
   if (userErr || !user?.id) {
+    return {
+      ok: false,
+      authed: false,
+      user: null,
+      supabase: cookieSupabase,
+      error: userErr?.message || "Not signed in",
+    };
+  }
+
+  return {
+    ok: true,
+    authed: true,
+    user,
+    supabase: cookieSupabase,
+    error: "",
+  };
+}
+
+export async function GET(req: Request) {
+  const auth = await resolvePassengerAuth(req);
+
+  if (!auth.authed || !auth.user?.id) {
     return NextResponse.json({ ok: true, authed: false }, { status: 200 });
   }
 
-  const passenger_id = user.id;
+  const passenger_id = auth.user.id;
 
-  const r = await supabase
+  const r = await auth.supabase
     .from("passenger_verification_requests")
     .select("*")
     .eq("passenger_id", passenger_id)
@@ -54,19 +121,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
+    const auth = await resolvePassengerAuth(req);
 
-    const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    const user = userRes?.user;
-
-    if (userErr || !user?.id) {
+    if (!auth.authed || !auth.user?.id) {
       return NextResponse.json(
-        { ok: false, error: "Not signed in (Supabase session missing)" },
+        { ok: false, error: "Not signed in (Supabase session or bearer token missing)" },
         { status: 401 }
       );
     }
 
-    const passenger_id = user.id;
+    const supabase = auth.supabase;
+    const passenger_id = auth.user.id;
     const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
     const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";
 
@@ -168,7 +233,7 @@ export async function POST(req: Request) {
     }
 
     const ex = existing.data as any | null;
-    const exStatus = ex?.status ? String(ex.status) : "";
+    const exStatus = ex?.status ? String(ex.status) as VerificationStatus : "";
 
     if (ex && (exStatus === "approved" || exStatus === "pending_admin")) {
       return NextResponse.json({
@@ -178,7 +243,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const nextStatus = "submitted";
+    const nextStatus: VerificationStatus = "submitted";
     const ts = nowIso();
 
     if (!ex) {
