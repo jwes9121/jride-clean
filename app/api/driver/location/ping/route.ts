@@ -44,6 +44,15 @@ function isDriverSecretAuthorized(req: NextRequest): boolean {
   return provided === expected;
 }
 
+function normalizeVehicleType(v: unknown): string {
+  const s = norm(v);
+  if (!s) return "";
+  if (s.includes("motor")) return "motorcycle";
+  if (s.includes("trike")) return "tricycle";
+  if (s.includes("tricycle")) return "tricycle";
+  return s;
+}
+
 async function resolveDriverIdFromBearer(serviceSupabase: any, authUserId: string): Promise<string | null> {
   const directProfile = await serviceSupabase
     .from("driver_profiles")
@@ -78,6 +87,21 @@ async function resolveDriverIdFromBearer(serviceSupabase: any, authUserId: strin
   }
 
   return null;
+}
+
+async function resolveDriverVehicleType(serviceSupabase: any, driverId: string): Promise<string> {
+  const profile = await serviceSupabase
+    .from("driver_profiles")
+    .select("vehicle_type")
+    .eq("driver_id", driverId)
+    .limit(1)
+    .maybeSingle();
+
+  if (profile.error) {
+    throw new Error("driver_profiles vehicle_type lookup failed: " + profile.error.message);
+  }
+
+  return normalizeVehicleType((profile.data as any)?.vehicle_type);
 }
 
 async function resolveDriverAuth(req: NextRequest, serviceSupabase: any): Promise<
@@ -330,6 +354,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const vehicleType = await resolveDriverVehicleType(supabase, driverId);
+    if (!vehicleType) {
+      return json(409, {
+        ok: false,
+        code: "DRIVER_VEHICLE_TYPE_MISSING",
+        message: "Driver vehicle type is missing in driver_profiles.",
+        driver_id: driverId,
+      });
+    }
+
     const nowIso = new Date().toISOString();
     const deviceId = pickDeviceId(req, body);
 
@@ -363,7 +397,7 @@ export async function POST(req: NextRequest) {
 
     const { data: prevLoc, error: prevLocErr } = await supabase
       .from("driver_locations")
-      .select("id, status, lat, lng, updated_at")
+      .select("id, status, lat, lng, updated_at, vehicle_type")
       .eq("driver_id", driverId)
       .maybeSingle();
 
@@ -425,6 +459,7 @@ export async function POST(req: NextRequest) {
       status,
       town: town || null,
       updated_at: nowIso,
+      vehicle_type: vehicleType,
     };
 
     if ((prevLoc as any)?.id) {
@@ -445,6 +480,7 @@ export async function POST(req: NextRequest) {
           has_incoming_coords: hasIncomingCoords,
           used_previous_coords: !hasIncomingCoords,
           sent_id: !!upsertPayload.id,
+          vehicle_type: vehicleType,
         },
       });
     }
@@ -457,6 +493,7 @@ export async function POST(req: NextRequest) {
       coords_source: coordsSource,
       previous_age_seconds: previousAgeSeconds,
       recovered_from_stale_online: recoveredFromStaleOnline,
+      vehicle_type: vehicleType,
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";
@@ -507,6 +544,7 @@ export async function POST(req: NextRequest) {
       coords_source: coordsSource,
       lat: finalLat,
       lng: finalLng,
+      vehicle_type: vehicleType,
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
