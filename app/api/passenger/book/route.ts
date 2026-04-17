@@ -92,7 +92,8 @@ type AvailabilitySummary = {
   emergency_alternate_count: number;
 };
 
-const ASSIGN_FRESHNESS_SECONDS = 10;
+const DRIVER_STALE_AFTER_SECONDS = 120;
+const DRIVER_ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
 
 function getNearbyTowns(town: string): string[] {
   const map: Record<string, string[]> = {
@@ -108,6 +109,16 @@ function effectiveMinWalletRequired(v: unknown): number {
   const n = num(v);
   if (n == null) return 250;
   return Math.max(250, n);
+}
+
+function driverAssignCutoffMinutes(): number {
+  const n = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
+  return Number.isFinite(n) && n > 0 ? n : 10;
+}
+
+function bookingAvailabilityFreshnessSeconds(): number {
+  const assignCutoffSeconds = driverAssignCutoffMinutes() * 60;
+  return Math.min(DRIVER_STALE_AFTER_SECONDS, assignCutoffSeconds);
 }
 
 async function getAvailabilitySummary(bookingTown: string, requestedVehicleType: string): Promise<AvailabilitySummary> {
@@ -167,11 +178,14 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
   }
 
   const nowMs = Date.now();
+  const freshnessSeconds = bookingAvailabilityFreshnessSeconds();
 
   for (const row of allDrivers) {
     const driverId = text(row.driver_id);
     if (!driverId) continue;
-    if (norm(row.status) !== "online") continue;
+
+    const rawStatus = norm(row.status);
+    if (!DRIVER_ONLINE_LIKE.has(rawStatus)) continue;
 
     const driverTown = text(row.town).toLowerCase();
     if (!driverTown) continue;
@@ -183,7 +197,7 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
     if (!Number.isFinite(updatedMs)) continue;
 
     const ageSec = (nowMs - updatedMs) / 1000;
-    if (ageSec > ASSIGN_FRESHNESS_SECONDS) continue;
+    if (ageSec > freshnessSeconds) continue;
 
     const wallet = walletByDriverId.get(driverId);
     if (Boolean(wallet?.wallet_locked)) continue;
@@ -210,7 +224,6 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
   return summary;
 }
 
-
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -234,7 +247,6 @@ function getBearerToken(req: Request): string | null {
   const token = auth.slice(7).trim();
   return token || null;
 }
-
 
 function createUserClient(accessToken: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
