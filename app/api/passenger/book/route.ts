@@ -756,6 +756,43 @@ export async function POST(req: Request) {
           p_booking_code: bookingCode,
           p_program_code: promoProgramCode,
         });
+        const reservedPromo = (reserveRes as any)?.data ?? null;
+        const reservedCreditId = text((reservedPromo as any)?.credit_id);
+        const reservedStatus =
+          text((reservedPromo as any)?.reservation_status || (reservedPromo as any)?.status) || "reserved";
+        const reservedAmountRaw = Number((reservedPromo as any)?.credit_amount ?? 40);
+        const reservedAmount = Number.isFinite(reservedAmountRaw)
+          ? Math.max(0, reservedAmountRaw)
+          : 40;
+
+        if (!((reserveRes as any)?.error) && reservedCreditId) {
+          const promoBookingPatch = {
+            promo_program_code: promoProgramCode || "ANDROID_FIRST_RIDE_40",
+            promo_credit_id: reservedCreditId,
+            promo_status: reservedStatus,
+            promo_applied_amount: reservedAmount,
+            updated_at: new Date().toISOString(),
+          };
+
+          const persistPromoRes = await userSupabase
+            .from("bookings")
+            .update(promoBookingPatch)
+            .eq("id", booking.id)
+            .select("id, promo_program_code, promo_credit_id, promo_status, promo_applied_amount")
+            .single();
+
+          if (!(persistPromoRes as any)?.error && (persistPromoRes as any)?.data) {
+            (booking as any).promo_program_code =
+              ((persistPromoRes as any).data as any).promo_program_code ?? promoBookingPatch.promo_program_code;
+            (booking as any).promo_credit_id =
+              ((persistPromoRes as any).data as any).promo_credit_id ?? promoBookingPatch.promo_credit_id;
+            (booking as any).promo_status =
+              ((persistPromoRes as any).data as any).promo_status ?? promoBookingPatch.promo_status;
+            (booking as any).promo_applied_amount =
+              ((persistPromoRes as any).data as any).promo_applied_amount ?? promoBookingPatch.promo_applied_amount;
+          }
+        }
+
 
         if (reserveRes.error) {
           promo = {
