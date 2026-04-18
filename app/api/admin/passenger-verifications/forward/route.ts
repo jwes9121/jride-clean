@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { auth } from "../../../../../auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -30,8 +30,9 @@ async function getAuthorizedAdmin() {
   const session = await auth();
   const requesterEmail = String((session?.user as any)?.email || "").trim().toLowerCase();
   const role = String((session?.user as any)?.role || "user").trim().toLowerCase();
+  const hasUser = !!session?.user;
 
-  if (!requesterEmail) {
+  if (!hasUser) {
     return { ok: false, status: 401, error: "Not signed in" };
   }
 
@@ -91,3 +92,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
+
