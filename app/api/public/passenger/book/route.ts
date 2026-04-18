@@ -1,30 +1,40 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type BookBody = {
   town?: string;
+
   pickup_label?: string;
   dropoff_label?: string;
   vehicle_type?: string;
+
   from_label?: string;
   to_label?: string;
   service_type?: string;
+
   pickup_lat?: number | string | null;
   pickup_lng?: number | string | null;
   dropoff_lat?: number | string | null;
   dropoff_lng?: number | string | null;
+
   passenger_count?: number | string | null;
   fees_acknowledged?: boolean;
   emergency_mode?: boolean;
   emergency_fee_acknowledged?: boolean;
+
   passenger_name?: string;
   full_name?: string;
   user_id?: string;
   created_by_user_id?: string;
   phone?: string;
   role?: string;
-  notes?: string;
+  promo_code?: string;
+  promoCode?: string;
+  device_id?: string;
+  deviceId?: string;
+  platform?: string;
 };
 
 function text(v: unknown): string {
@@ -32,9 +42,8 @@ function text(v: unknown): string {
 }
 
 function num(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function norm(v: unknown): string {
@@ -88,7 +97,8 @@ type AvailabilitySummary = {
   emergency_alternate_count: number;
 };
 
-const ASSIGN_FRESHNESS_SECONDS = 10;
+const DRIVER_STALE_AFTER_SECONDS = 120;
+const DRIVER_ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
 
 function getNearbyTowns(town: string): string[] {
   const map: Record<string, string[]> = {
@@ -104,6 +114,16 @@ function effectiveMinWalletRequired(v: unknown): number {
   const n = num(v);
   if (n == null) return 250;
   return Math.max(250, n);
+}
+
+function driverAssignCutoffMinutes(): number {
+  const n = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
+  return Number.isFinite(n) && n > 0 ? n : 10;
+}
+
+function bookingAvailabilityFreshnessSeconds(): number {
+  const assignCutoffSeconds = driverAssignCutoffMinutes() * 60;
+  return Math.min(DRIVER_STALE_AFTER_SECONDS, assignCutoffSeconds);
 }
 
 async function getAvailabilitySummary(bookingTown: string, requestedVehicleType: string): Promise<AvailabilitySummary> {
@@ -163,11 +183,14 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
   }
 
   const nowMs = Date.now();
+  const freshnessSeconds = bookingAvailabilityFreshnessSeconds();
 
   for (const row of allDrivers) {
     const driverId = text(row.driver_id);
     if (!driverId) continue;
-    if (norm(row.status) !== "online") continue;
+
+    const rawStatus = norm(row.status);
+    if (!DRIVER_ONLINE_LIKE.has(rawStatus)) continue;
 
     const driverTown = text(row.town).toLowerCase();
     if (!driverTown) continue;
@@ -179,7 +202,7 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
     if (!Number.isFinite(updatedMs)) continue;
 
     const ageSec = (nowMs - updatedMs) / 1000;
-    if (ageSec > ASSIGN_FRESHNESS_SECONDS) continue;
+    if (ageSec > freshnessSeconds) continue;
 
     const wallet = walletByDriverId.get(driverId);
     if (Boolean(wallet?.wallet_locked)) continue;
@@ -205,7 +228,6 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
 
   return summary;
 }
-
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -236,7 +258,11 @@ function createUserClient(accessToken: string) {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
   if (!url || !anon) {
-    throw new Error("SUPABASE_ENV_MISSING");
+    throw {
+      code: "SUPABASE_ENV_MISSING",
+      message: "Supabase environment is missing for authenticated booking.",
+      status: 500,
+    };
   }
 
   return createSupabaseClient(url, anon, {
@@ -250,23 +276,6 @@ function createUserClient(accessToken: string) {
       },
     },
   });
-}
-
-function normalizeBaseUrl(v: string): string {
-  return String(v || "").trim().replace(/\/+$/, "");
-}
-
-function requestOrigin(req: Request): string {
-  try {
-    const u = new URL(req.url);
-    if (u.origin && u.origin !== "null") return normalizeBaseUrl(u.origin);
-  } catch {}
-
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  if (host) return normalizeBaseUrl(`${proto}://${host}`);
-
-  return "";
 }
 
 function envAny(names: string[]): string {
@@ -288,6 +297,36 @@ function getMapboxToken(): string {
 
 function normalizeTownKey(v: unknown): string {
   return text(v).replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizePassengerName(v: unknown): string {
+  return String(v ?? "").trim().replace(/\s+/g, " ");
+}
+
+function isValidPassengerName(v: string): boolean {
+  const parts = String(v ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return false;
+  return parts.every((part) => /^[A-Za-z]{2,}$/.test(part));
+}
+
+function userDisplayName(user: any): string {
+  const direct = [
+    user?.user_metadata?.full_name,
+    user?.user_metadata?.name,
+    user?.user_metadata?.display_name,
+    user?.user_metadata?.passenger_name,
+    user?.raw_user_meta_data?.full_name,
+    user?.raw_user_meta_data?.name,
+    user?.raw_user_meta_data?.display_name,
+    user?.email,
+  ];
+
+  for (const v of direct) {
+    const s = text(v);
+    if (s) return s;
+  }
+
+  return "";
 }
 
 async function resolvePickupTownFromCoords(pickupLng: number, pickupLat: number): Promise<string> {
@@ -330,38 +369,11 @@ async function resolvePickupTownFromCoords(pickupLng: number, pickupLat: number)
   return derivedTown;
 }
 
-function userDisplayName(user: any): string {
-  const direct = [
-    user?.user_metadata?.full_name,
-    user?.user_metadata?.name,
-    user?.user_metadata?.display_name,
-    user?.user_metadata?.passenger_name,
-    user?.raw_user_meta_data?.full_name,
-    user?.raw_user_meta_data?.name,
-    user?.raw_user_meta_data?.display_name,
-    user?.email,
-  ];
-
-  for (const v of direct) {
-    const s = text(v);
-    if (s) return s;
-  }
-
-  return "";
-}
-
-function normalizePassengerName(v: unknown): string {
-  return String(v ?? "").trim().replace(/\s+/g, " ");
-}
-
-function isValidPassengerName(v: string): boolean {
-  const parts = String(v ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return false;
-  return parts.every((part) => /[A-Za-z]/.test(part));
-}
-
-async function getTokenUserAndVerified(supabase: any) {
-  const { data, error } = await supabase.auth.getUser();
+async function getTokenUserAndVerified(
+  supabase: ReturnType<typeof createClient>,
+  accessToken: string
+) {
+  const { data, error } = await supabase.auth.getUser(accessToken);
   if (error || !data?.user?.id) {
     return { user: null, verified: false };
   }
@@ -404,6 +416,7 @@ async function getTokenUserAndVerified(supabase: any) {
           v.trim().toLowerCase() !== "no") ||
         (typeof v === "number" && v > 0);
 
+      const selV = "is_verified,verified,verification_tier";
       const tries: Array<["auth_user_id" | "user_id", string]> = [
         ["auth_user_id", user.id],
         ["user_id", user.id],
@@ -412,7 +425,7 @@ async function getTokenUserAndVerified(supabase: any) {
       for (const [col, val] of tries) {
         const r = await supabase
           .from("passengers")
-          .select("is_verified,verified,verification_tier")
+          .select(selV)
           .eq(col, val)
           .limit(1)
           .maybeSingle();
@@ -434,12 +447,17 @@ async function getTokenUserAndVerified(supabase: any) {
 }
 
 function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "").trim().toLowerCase();
+  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "")
+    .trim()
+    .toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
-async function canBookOrThrow(supabase: any) {
-  const uv = await getTokenUserAndVerified(supabase);
+async function canBookOrThrow(
+  supabase: ReturnType<typeof createClient>,
+  accessToken: string
+) {
+  const uv = await getTokenUserAndVerified(supabase, accessToken);
 
   if (!uv.user?.id) {
     return NextResponse.json(
@@ -490,65 +508,12 @@ async function canBookOrThrow(supabase: any) {
     };
   }
 
-  return {
-    ok: true,
-    userId: uv.user.id,
-    verified: uv.verified,
-    user: uv.user,
-  };
-}
-
-async function triggerSingleAutoAssign(req: Request, bookingId: string) {
-  const baseUrl = normalizeBaseUrl(
-    envAny(["INTERNAL_BASE_URL", "NEXTAUTH_URL", "NEXT_PUBLIC_BASE_URL"]) || requestOrigin(req)
-  );
-
-  if (!baseUrl) {
-    return {
-      attempted: false,
-      ok: false,
-      skipped: true,
-      reason: "BASE_URL_MISSING",
-    };
-  }
-
-  const url = `${baseUrl}/api/dispatch/auto-assign`;
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify({ mode: "single", bookingId }),
-    });
-
-    let body: any = null;
-    try {
-      body = await res.json();
-    } catch {
-      body = null;
-    }
-
-    return {
-      attempted: true,
-      ok: res.ok,
-      status: res.status,
-      url,
-      body,
-    };
-  } catch (e: any) {
-    return {
-      attempted: true,
-      ok: false,
-      status: 0,
-      url,
-      error: String(e?.message ?? e),
-    };
-  }
+  return { ok: true, userId: uv.user.id, user: uv.user, verified: uv.verified };
 }
 
 export async function POST(req: Request) {
   try {
+    const supabase = createClient();
     const accessToken = getBearerToken(req);
 
     if (!accessToken) {
@@ -558,7 +523,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createUserClient(accessToken);
+    const userSupabase = createUserClient(accessToken);
+
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
     const selectedTown = text(body.town);
@@ -575,6 +541,13 @@ export async function POST(req: Request) {
     const feesAcknowledged = !!body.fees_acknowledged;
     const emergencyMode = !!body.emergency_mode;
     const emergencyFeeAcknowledged = !!body.emergency_fee_acknowledged;
+    const promoCode = text(body.promo_code || body.promoCode).toUpperCase();
+    const deviceId = text(body.device_id || body.deviceId);
+    const promoProgramCode =
+      promoCode && text(body.platform).toLowerCase() === "android"
+        ? "ANDROID_FIRST_RIDE_40"
+        : "";
+    const platform = norm(body.platform || "android") || "android";
 
     if (!selectedTown) {
       return NextResponse.json(
@@ -623,12 +596,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const canRes: any = await canBookOrThrow(supabase);
+    const canRes: any = await canBookOrThrow(userSupabase as any, accessToken);
     if (canRes && typeof canRes.headers?.get === "function") {
       return canRes;
     }
 
-    const createdByUserId = text((canRes as any).userId);
+    const createdByUserId = String((canRes as any).userId || "").trim();
     if (!createdByUserId) {
       return NextResponse.json(
         { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
@@ -647,7 +620,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           code: "INVALID_PASSENGER_NAME",
-          message: "Passenger name must contain at least first name and last name.",
+          message: "Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.",
         },
         { status: 400 }
       );
@@ -728,7 +701,7 @@ export async function POST(req: Request) {
 
     const insert: Record<string, any> = {
       booking_code: bookingCode,
-      status: "requested",
+      status: "searching",
       town: derivedTown,
       from_label: pickupLabel,
       to_label: dropoffLabel,
@@ -739,13 +712,12 @@ export async function POST(req: Request) {
       service_type: vehicleType,
       passenger_count: passengerCount,
       created_by_user_id: createdByUserId,
+      passenger_name: passengerName,
       customer_status: "pending",
       is_emergency: emergencyMode,
     };
 
-    insert.passenger_name = passengerName;
-
-    const { data: booking, error } = await supabase
+    const { data: booking, error } = await userSupabase
       .from("bookings")
       .insert(insert)
       .select("*")
@@ -762,23 +734,99 @@ export async function POST(req: Request) {
       );
     }
 
-    const bookingId = text((booking as any)?.id);
-    const autoAssign = bookingId
-      ? await triggerSingleAutoAssign(req, bookingId)
-      : {
-          attempted: false,
+    let promo: Record<string, any> | null = null;
+
+    if (promoCode && deviceId && booking?.id && bookingCode) {
+      const ensureRes = await userSupabase.rpc("jride_promo_ensure_android_credit", {
+        p_user_id: createdByUserId,
+        p_device_id: deviceId,
+        p_program_code: promoProgramCode,
+      });
+
+      if (ensureRes.error) {
+        promo = {
           ok: false,
-          skipped: true,
-          reason: "BOOKING_ID_MISSING_AFTER_INSERT",
+          stage: "ensure",
+          error: ensureRes.error.message || "PROMO_ENSURE_FAILED",
         };
+      } else {
+        const ensureData = (ensureRes.data as any) || null;
+        const reserveRes = await userSupabase.rpc("jride_promo_reserve_for_booking", {
+          p_user_id: createdByUserId,
+          p_device_id: deviceId,
+          p_booking_id: booking.id,
+          p_booking_code: bookingCode,
+          p_program_code: promoProgramCode,
+        });
+        const reservedPromo = (reserveRes as any)?.data ?? null;
+        const reservedCreditId = text((reservedPromo as any)?.credit_id);
+        const reservedStatus =
+          text((reservedPromo as any)?.reservation_status || (reservedPromo as any)?.status) || "reserved";
+        const reservedAmountRaw = Number((reservedPromo as any)?.credit_amount ?? 40);
+        const reservedAmount = Number.isFinite(reservedAmountRaw)
+          ? Math.max(0, reservedAmountRaw)
+          : 40;
+
+        if (!((reserveRes as any)?.error) && reservedCreditId) {
+          const promoBookingPatch = {
+            promo_program_code: promoProgramCode || "ANDROID_FIRST_RIDE_40",
+            promo_credit_id: reservedCreditId,
+            promo_status: reservedStatus,
+            promo_applied_amount: reservedAmount,
+            updated_at: new Date().toISOString(),
+          };
+
+          const persistPromoRes = await userSupabase
+            .from("bookings")
+            .update(promoBookingPatch)
+            .eq("id", booking.id)
+            .select("id, promo_program_code, promo_credit_id, promo_status, promo_applied_amount")
+            .single();
+
+          if (!(persistPromoRes as any)?.error && (persistPromoRes as any)?.data) {
+            (booking as any).promo_program_code =
+              ((persistPromoRes as any).data as any).promo_program_code ?? promoBookingPatch.promo_program_code;
+            (booking as any).promo_credit_id =
+              ((persistPromoRes as any).data as any).promo_credit_id ?? promoBookingPatch.promo_credit_id;
+            (booking as any).promo_status =
+              ((persistPromoRes as any).data as any).promo_status ?? promoBookingPatch.promo_status;
+            (booking as any).promo_applied_amount =
+              ((persistPromoRes as any).data as any).promo_applied_amount ?? promoBookingPatch.promo_applied_amount;
+          }
+        }
+
+
+        if (reserveRes.error) {
+          promo = {
+            ok: false,
+            stage: "reserve",
+            ensure: ensureData,
+            error: reserveRes.error.message || "PROMO_RESERVE_FAILED",
+          };
+        } else {
+          promo = {
+            ok: true,
+            stage: "reserve",
+            ensure: ensureData,
+            reserve: (reserveRes.data as any) || null,
+          };
+        }
+      }
+    } else if (promoCode || deviceId) {
+      promo = {
+        ok: false,
+        stage: "skipped",
+        error: !promoCode ? "MISSING_PROMO_CODE" : !deviceId ? "MISSING_DEVICE_ID" : "PROMO_SKIPPED",
+      };
+    }
 
     return NextResponse.json(
       {
         ok: true,
         booking_code: bookingCode,
         booking,
-        auto_assign: autoAssign,
         validated_town: derivedTown,
+        promo,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
