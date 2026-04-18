@@ -30,6 +30,9 @@ type BookBody = {
   created_by_user_id?: string;
   phone?: string;
   role?: string;
+  promo_code?: string;
+  device_id?: string;
+  platform?: string;
 };
 
 function text(v: unknown): string {
@@ -536,6 +539,9 @@ export async function POST(req: Request) {
     const feesAcknowledged = !!body.fees_acknowledged;
     const emergencyMode = !!body.emergency_mode;
     const emergencyFeeAcknowledged = !!body.emergency_fee_acknowledged;
+    const promoCode = text(body.promo_code).toUpperCase();
+    const deviceId = text(body.device_id);
+    const platform = norm(body.platform || "android") || "android";
 
     if (!selectedTown) {
       return NextResponse.json(
@@ -722,12 +728,62 @@ export async function POST(req: Request) {
       );
     }
 
+    let promo: Record<string, any> | null = null;
+
+    if (promoCode && deviceId && booking?.id && bookingCode) {
+      const ensureRes = await userSupabase.rpc("jride_promo_ensure_android_credit", {
+        p_user_id: createdByUserId,
+        p_device_id: deviceId,
+        p_program_code: promoCode,
+      });
+
+      if (ensureRes.error) {
+        promo = {
+          ok: false,
+          stage: "ensure",
+          error: ensureRes.error.message || "PROMO_ENSURE_FAILED",
+        };
+      } else {
+        const ensureData = (ensureRes.data as any) || null;
+        const reserveRes = await userSupabase.rpc("jride_promo_reserve_for_booking", {
+          p_user_id: createdByUserId,
+          p_device_id: deviceId,
+          p_booking_id: booking.id,
+          p_booking_code: bookingCode,
+          p_program_code: promoCode,
+        });
+
+        if (reserveRes.error) {
+          promo = {
+            ok: false,
+            stage: "reserve",
+            ensure: ensureData,
+            error: reserveRes.error.message || "PROMO_RESERVE_FAILED",
+          };
+        } else {
+          promo = {
+            ok: true,
+            stage: "reserve",
+            ensure: ensureData,
+            reserve: (reserveRes.data as any) || null,
+          };
+        }
+      }
+    } else if (promoCode || deviceId) {
+      promo = {
+        ok: false,
+        stage: "skipped",
+        error: !promoCode ? "MISSING_PROMO_CODE" : !deviceId ? "MISSING_DEVICE_ID" : "PROMO_SKIPPED",
+      };
+    }
+
     return NextResponse.json(
       {
         ok: true,
         booking_code: bookingCode,
         booking,
         validated_town: derivedTown,
+        promo,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
     );

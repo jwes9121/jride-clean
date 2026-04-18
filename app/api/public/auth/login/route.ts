@@ -225,7 +225,6 @@ export async function POST(req: NextRequest) {
       const promoEnsureRes = await rpcSupabase.rpc("jride_promo_ensure_android_credit", {
         p_user_id: user.id,
         p_device_id: deviceId,
-        p_is_verified: verified,
         p_program_code: "ANDROID_FIRST_RIDE_40",
       });
 
