@@ -541,6 +541,10 @@ export async function POST(req: Request) {
     const emergencyFeeAcknowledged = !!body.emergency_fee_acknowledged;
     const promoCode = text(body.promo_code).toUpperCase();
     const deviceId = text(body.device_id);
+    const promoProgramCode =
+      promoCode && text(body.platform).toLowerCase() === "android"
+        ? "ANDROID_FIRST_RIDE_40"
+        : "";
     const platform = norm(body.platform || "android") || "android";
 
     if (!selectedTown) {
@@ -734,7 +738,7 @@ export async function POST(req: Request) {
       const ensureRes = await userSupabase.rpc("jride_promo_ensure_android_credit", {
         p_user_id: createdByUserId,
         p_device_id: deviceId,
-        p_program_code: promoCode,
+        p_program_code: promoProgramCode,
       });
 
       if (ensureRes.error) {
@@ -750,7 +754,7 @@ export async function POST(req: Request) {
           p_device_id: deviceId,
           p_booking_id: booking.id,
           p_booking_code: bookingCode,
-          p_program_code: promoCode,
+          p_program_code: promoProgramCode,
         });
 
         if (reserveRes.error) {
