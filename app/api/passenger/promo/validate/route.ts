@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 
@@ -147,55 +147,75 @@ export async function POST(req: Request) {
     const admin = createAdminClient();
     const passengerId = auth.user.id;
 
-    const allowRes = await admin
+    const anyPromoRes = await admin
       .from("passenger_promo_allowlist")
-      .select("*")
-      .eq("passenger_id", passengerId)
-      .eq("platform", "android")
-      .eq("status", "active")
+      .select("id, promo_code, platform, status, require_verified")
       .eq("promo_code", promoCode)
+      .eq("platform", "android")
+      .limit(1)
       .maybeSingle();
 
-    if (allowRes.error) {
+    if (anyPromoRes.error) {
       return NextResponse.json(
         {
           ok: false,
           eligible: false,
-          error: "PROMO_ALLOWLIST_LOOKUP_FAILED",
-          message: allowRes.error.message || "Could not validate promo allowlist.",
+          error: "PROMO_CODE_LOOKUP_FAILED",
+          message: anyPromoRes.error.message || "Could not validate this promo code.",
         },
         { status: 500 }
       );
     }
 
-    const allowRow: any = allowRes.data || null;
-
-    if (!allowRow) {
+    if (!anyPromoRes.data) {
       return NextResponse.json(
         {
           ok: true,
           eligible: false,
-          error: "PROMO_NOT_ALLOWED",
-          message: "This promo is not approved for this passenger account.",
+          error: "PROMO_CODE_UNKNOWN",
+          message: "Promo code not found. Please check the code and try again.",
         },
         { status: 200 }
       );
     }
 
-    const approvedDeviceId = text(allowRow?.approved_device_id);
-    if (approvedDeviceId && approvedDeviceId !== deviceId) {
+    const activePromoRes = await admin
+      .from("passenger_promo_allowlist")
+      .select("id")
+      .eq("promo_code", promoCode)
+      .eq("platform", "android")
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+
+    if (activePromoRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          eligible: false,
+          error: "PROMO_STATUS_LOOKUP_FAILED",
+          message: activePromoRes.error.message || "Could not validate promo campaign status.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!activePromoRes.data) {
       return NextResponse.json(
         {
           ok: true,
           eligible: false,
-          error: "DEVICE_NOT_ALLOWED",
-          message: "This promo is not approved for this Android device.",
+          error: "PROMO_ENDED",
+          message: "This promo has already ended.",
         },
         { status: 200 }
       );
     }
 
-    if (allowRow?.require_verified === true) {
+    const requireVerified =
+      anyPromoRes.data?.require_verified === true;
+
+    if (requireVerified) {
       const verificationRes = await admin
         .from("passenger_verification_requests")
         .select("status")
@@ -221,11 +241,92 @@ export async function POST(req: Request) {
             ok: true,
             eligible: false,
             error: "PASSENGER_NOT_VERIFIED",
-            message: "Passenger verification must be approved before using this promo.",
+            message: "Verify your account first before using this promo.",
           },
           { status: 200 }
         );
       }
+    }
+
+    const allowRes = await admin
+      .from("passenger_promo_allowlist")
+      .select("*")
+      .eq("passenger_id", passengerId)
+      .eq("platform", "android")
+      .eq("status", "active")
+      .eq("promo_code", promoCode)
+      .maybeSingle();
+
+    if (allowRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          eligible: false,
+          error: "PROMO_ALLOWLIST_LOOKUP_FAILED",
+          message: allowRes.error.message || "Could not validate promo allowlist.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const allowRow: any = allowRes.data || null;
+
+    if (!allowRow) {
+      const passengerPromoRes = await admin
+        .from("passenger_promo_allowlist")
+        .select("id, status")
+        .eq("passenger_id", passengerId)
+        .eq("platform", "android")
+        .eq("promo_code", promoCode)
+        .limit(1)
+        .maybeSingle();
+
+      if (passengerPromoRes.error) {
+        return NextResponse.json(
+          {
+            ok: false,
+            eligible: false,
+            error: "PROMO_PASSENGER_ALLOWLIST_LOOKUP_FAILED",
+            message: passengerPromoRes.error.message || "Could not validate passenger promo status.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (passengerPromoRes.data && norm(passengerPromoRes.data.status) !== "active") {
+        return NextResponse.json(
+          {
+            ok: true,
+            eligible: false,
+            error: "PROMO_ENDED",
+            message: "This promo has already ended.",
+          },
+          { status: 200 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          eligible: false,
+          error: "PROMO_NOT_ALLOWED",
+          message: "This promo is not approved for this passenger account.",
+        },
+        { status: 200 }
+      );
+    }
+
+    const approvedDeviceId = text(allowRow?.approved_device_id);
+    if (approvedDeviceId && approvedDeviceId !== deviceId) {
+      return NextResponse.json(
+        {
+          ok: true,
+          eligible: false,
+          error: "DEVICE_NOT_ALLOWED",
+          message: "This promo is not approved for this Android device.",
+        },
+        { status: 200 }
+      );
     }
 
     const byPassengerRes = await admin
@@ -253,7 +354,7 @@ export async function POST(req: Request) {
           ok: true,
           eligible: false,
           error: "PROMO_ALREADY_USED_BY_PASSENGER",
-          message: "This promo has already been used by this passenger account.",
+          message: "This promo for this account has already been redeemed.",
           redemption: byPassengerRes.data,
         },
         { status: 200 }
@@ -285,7 +386,7 @@ export async function POST(req: Request) {
           ok: true,
           eligible: false,
           error: "PROMO_ALREADY_USED_BY_DEVICE",
-          message: "This promo has already been used on this Android device.",
+          message: "This promo has already been redeemed on this Android device.",
           redemption: byDeviceRes.data,
         },
         { status: 200 }
