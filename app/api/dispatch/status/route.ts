@@ -75,6 +75,40 @@ async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bo
   };
 }
 
+async function finalizePromoSafe(supabase: any, booking: any) {
+  const promoStatus = clean(booking?.promo_status).toLowerCase();
+  const promoProgramCode = clean(booking?.promo_program_code) || "ANDROID_FIRST_RIDE_40";
+  const driverId = clean(booking?.driver_id || booking?.assigned_driver_id);
+  const bookingId = clean(booking?.id);
+  const bookingCode = clean(booking?.booking_code);
+
+  if (!bookingId || !driverId || promoStatus !== "reserved") {
+    return { ok: true, skipped: true };
+  }
+
+  const proposedFareRaw = Number(booking?.proposed_fare ?? 0);
+  const pickupFeeRaw = Number(booking?.pickup_distance_fee ?? 0);
+  const promoAppliedRaw = Number(booking?.promo_applied_amount ?? 0);
+  const proposedFare = Number.isFinite(proposedFareRaw) && proposedFareRaw > 0 ? proposedFareRaw : 0;
+  const pickupFee = Number.isFinite(pickupFeeRaw) && pickupFeeRaw > 0 ? pickupFeeRaw : 0;
+  const promoApplied = Number.isFinite(promoAppliedRaw) && promoAppliedRaw > 0 ? promoAppliedRaw : 0;
+  const completedTotal = Number(Math.max(proposedFare + pickupFee + 15 - promoApplied, 0).toFixed(2));
+
+  const { data, error } = await supabase.rpc("jride_promo_finalize_completed_booking", {
+    p_booking_id: bookingId,
+    p_completed_total: completedTotal,
+    p_driver_id: driverId,
+    p_booking_code: bookingCode,
+    p_program_code: promoProgramCode,
+  });
+
+  if (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+
+  return { ok: true, data: data ?? null, completed_total: completedTotal };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -91,7 +125,7 @@ export async function POST(req: NextRequest) {
     const adminClient = getAdminClient(req);
     const supabase = adminClient ?? routeClient;
 
-    let query = supabase.from("bookings").select("id, booking_code, status").limit(1);
+    let query = supabase.from("bookings").select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code").limit(1);
 
     if (bookingCode) {
       query = query.eq("booking_code", bookingCode);
@@ -128,10 +162,24 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const promoFinalized = await finalizePromoSafe(supabase, booking);
+      if (!promoFinalized.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: promoFinalized.error || "promo_finalize_failed",
+            completed_via: "admin_finalize_trip_and_credit_wallets",
+            result: finalized.data ?? null,
+          },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json({
         ok: true,
         completed_via: "admin_finalize_trip_and_credit_wallets",
         result: finalized.data ?? null,
+        promo_finalize: promoFinalized,
       });
     }
 

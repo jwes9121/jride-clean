@@ -100,11 +100,32 @@ export async function POST(req: Request) {
 
     const pickupFeeRaw = Number((booking as any).pickup_distance_fee ?? 0);
     const pickupFee = Number.isFinite(pickupFeeRaw) ? pickupFeeRaw : 0;
-    const promoAppliedAmountRaw = Number((booking as any).promo_applied_amount ?? 0);
-    const promoAppliedAmount = Number.isFinite(promoAppliedAmountRaw) && promoAppliedAmountRaw > 0 ? promoAppliedAmountRaw : 0;
+    const existingPromoAppliedAmountRaw = Number((booking as any).promo_applied_amount ?? 0);
+    let promoAppliedAmount = Number.isFinite(existingPromoAppliedAmountRaw) && existingPromoAppliedAmountRaw > 0 ? existingPromoAppliedAmountRaw : 0;
+    let promoStatus = text((booking as any).promo_status) || null;
+    let promoProgramCode = text((booking as any).promo_program_code) || null;
+    let promoCreditId = text((booking as any).promo_credit_id) || null;
+
+    if (!promoAppliedAmount || !promoStatus || !promoProgramCode || !promoCreditId) {
+      const { data: reservedCredit } = await supabase
+        .from("passenger_promo_credits")
+        .select("id, credit_amount, program_code, status")
+        .eq("reserved_booking_id", (booking as any).id)
+        .eq("status", "reserved")
+        .limit(1)
+        .maybeSingle();
+
+      if (reservedCredit) {
+        const reservedAmountRaw = Number((reservedCredit as any).credit_amount ?? 0);
+        const reservedAmount = Number.isFinite(reservedAmountRaw) && reservedAmountRaw > 0 ? reservedAmountRaw : 0;
+        promoAppliedAmount = Number(Math.max(0, Math.min(reservedAmount, proposedFareRaw + pickupFee + 15)).toFixed(2));
+        promoStatus = "reserved";
+        promoProgramCode = text((reservedCredit as any).program_code) || "ANDROID_FIRST_RIDE_40";
+        promoCreditId = text((reservedCredit as any).id) || null;
+      }
+    }
+
     const promoApplied = promoAppliedAmount > 0;
-    const promoStatus = text((booking as any).promo_status) || null;
-    const promoProgramCode = text((booking as any).promo_program_code) || null;
 
     const updatePayload: Record<string, unknown> = {
       passenger_fare_response: "accepted",
@@ -113,6 +134,10 @@ export async function POST(req: Request) {
       verified_by: "passenger",
       verified_reason: "accepted_by_passenger",
       status: "ready",
+      promo_applied_amount: promoAppliedAmount,
+      promo_status: promoStatus,
+      promo_program_code: promoProgramCode,
+      promo_credit_id: promoCreditId,
     };
 
     const { error: updateErr } = await supabase
@@ -149,6 +174,7 @@ export async function POST(req: Request) {
         promo_applied_amount: promoAppliedAmount,
         promo_status: promoStatus,
         promo_program_code: promoProgramCode,
+        promo_credit_id: promoCreditId,
         total_fare: totalFare,
         status: "ready",
       },
