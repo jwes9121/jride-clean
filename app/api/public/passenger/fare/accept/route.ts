@@ -100,6 +100,11 @@ export async function POST(req: Request) {
 
     const pickupFeeRaw = Number((booking as any).pickup_distance_fee ?? 0);
     const pickupFee = Number.isFinite(pickupFeeRaw) ? pickupFeeRaw : 0;
+    const promoAppliedAmountRaw = Number((booking as any).promo_applied_amount ?? 0);
+    const promoAppliedAmount = Number.isFinite(promoAppliedAmountRaw) && promoAppliedAmountRaw > 0 ? promoAppliedAmountRaw : 0;
+    const promoApplied = promoAppliedAmount > 0;
+    const promoStatus = text((booking as any).promo_status) || null;
+    const promoProgramCode = text((booking as any).promo_program_code) || null;
 
     const updatePayload: Record<string, unknown> = {
       passenger_fare_response: "accepted",
@@ -127,7 +132,8 @@ export async function POST(req: Request) {
     }
 
     const platformFee = 15;
-    const totalFare = Number((proposedFareRaw + pickupFee + platformFee).toFixed(2));
+    const subtotalBeforeDiscount = Number((proposedFareRaw + pickupFee + platformFee).toFixed(2));
+    const totalFare = Number(Math.max(subtotalBeforeDiscount - promoAppliedAmount, 0).toFixed(2));
 
     return NextResponse.json(
       {
@@ -137,6 +143,12 @@ export async function POST(req: Request) {
         verified_fare: proposedFareRaw,
         pickup_distance_fee: pickupFee,
         platform_fee: platformFee,
+        subtotal_before_discount: subtotalBeforeDiscount,
+        promo_applied: promoApplied,
+        promo_discount: promoAppliedAmount,
+        promo_applied_amount: promoAppliedAmount,
+        promo_status: promoStatus,
+        promo_program_code: promoProgramCode,
         total_fare: totalFare,
         status: "ready",
       },

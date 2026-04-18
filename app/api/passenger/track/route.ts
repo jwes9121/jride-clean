@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 function n(v: unknown): number | null {
@@ -225,12 +225,20 @@ export async function GET(req: NextRequest) {
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
     const pickupDistanceFee = n((booking as any).pickup_distance_fee);
+    const promoAppliedAmount = n((booking as any).promo_applied_amount) ?? 0;
+    const promoStatus = s((booking as any).promo_status);
+    const promoProgramCode = s((booking as any).promo_program_code);
+    const promoApplied = promoAppliedAmount > 0;
     const platformFee = 15;
     const fare = verifiedFare ?? proposedFare;
-    const totalFare =
+    const subtotalBeforeDiscount =
       fare == null
         ? null
         : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2));
+    const totalFare =
+      subtotalBeforeDiscount == null
+        ? null
+        : Number(Math.max(subtotalBeforeDiscount - promoAppliedAmount, 0).toFixed(2));
 
     const payload = {
       ok: true,
@@ -262,6 +270,12 @@ export async function GET(req: NextRequest) {
       fare,
       pickup_distance_fee: pickupDistanceFee,
       platform_fee: platformFee,
+      subtotal_before_discount: subtotalBeforeDiscount,
+      promo_applied: promoApplied,
+      promo_discount: promoAppliedAmount,
+      promo_applied_amount: promoAppliedAmount,
+      promo_status: promoStatus,
+      promo_program_code: promoProgramCode,
       total_fare: totalFare,
 
       // === JRIDE TRANSPARENCY FIELDS (SAFE ADD) ===
