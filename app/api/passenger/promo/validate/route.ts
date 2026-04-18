@@ -328,10 +328,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const promoProgramCode = "ANDROID_FIRST_RIDE_40";
+
     const statusRes = await admin.rpc("jride_promo_get_status", {
       p_user_id: passengerId,
       p_device_id: deviceId,
-      p_program_code: promoCode,
+      p_program_code: promoProgramCode,
     });
 
     if (statusRes.error) {
