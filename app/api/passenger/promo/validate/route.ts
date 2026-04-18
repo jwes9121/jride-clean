@@ -212,8 +212,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const requireVerified =
-      anyPromoRes.data?.require_verified === true;
+    const requireVerified = anyPromoRes.data?.require_verified === true;
 
     if (requireVerified) {
       const verificationRes = await admin
@@ -329,65 +328,62 @@ export async function POST(req: Request) {
       );
     }
 
-    const byPassengerRes = await admin
-      .from("passenger_promo_redemptions")
-      .select("id, booking_code, redeemed_at, status")
-      .eq("passenger_id", passengerId)
-      .eq("promo_code", promoCode)
-      .maybeSingle();
+    const statusRes = await admin.rpc("jride_promo_get_status", {
+      p_user_id: passengerId,
+      p_device_id: deviceId,
+      p_program_code: promoCode,
+    });
 
-    if (byPassengerRes.error) {
+    if (statusRes.error) {
       return NextResponse.json(
         {
           ok: false,
           eligible: false,
-          error: "PROMO_PASSENGER_REDEMPTION_LOOKUP_FAILED",
-          message: byPassengerRes.error.message || "Could not check passenger redemption status.",
+          error: "PROMO_STATUS_RPC_FAILED",
+          message: statusRes.error.message || "Could not check promo credit status.",
         },
         { status: 500 }
       );
     }
 
-    if (byPassengerRes.data) {
+    const promoStatus = (statusRes.data as any) || null;
+    const creditExists = promoStatus?.credit_exists === true;
+    const creditStatus = norm(promoStatus?.credit_status);
+
+    if (creditExists && creditStatus === "used") {
       return NextResponse.json(
         {
           ok: true,
           eligible: false,
-          error: "PROMO_ALREADY_USED_BY_PASSENGER",
-          message: "This promo for this account has already been redeemed.",
-          redemption: byPassengerRes.data,
+          error: "PROMO_ALREADY_USED",
+          message: "This promo for this account and device has already been used.",
+          promo_status: promoStatus,
         },
         { status: 200 }
       );
     }
 
-    const byDeviceRes = await admin
-      .from("passenger_promo_redemptions")
-      .select("id, booking_code, redeemed_at, status")
-      .eq("device_id", deviceId)
-      .eq("promo_code", promoCode)
-      .maybeSingle();
-
-    if (byDeviceRes.error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          eligible: false,
-          error: "PROMO_DEVICE_REDEMPTION_LOOKUP_FAILED",
-          message: byDeviceRes.error.message || "Could not check device redemption status.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (byDeviceRes.data) {
+    if (creditExists && creditStatus === "reserved") {
       return NextResponse.json(
         {
           ok: true,
           eligible: false,
-          error: "PROMO_ALREADY_USED_BY_DEVICE",
-          message: "This promo has already been redeemed on this Android device.",
-          redemption: byDeviceRes.data,
+          error: "PROMO_ALREADY_RESERVED",
+          message: "This promo is already reserved for another booking.",
+          promo_status: promoStatus,
+        },
+        { status: 200 }
+      );
+    }
+
+    if (creditExists && creditStatus && creditStatus !== "available") {
+      return NextResponse.json(
+        {
+          ok: true,
+          eligible: false,
+          error: "PROMO_NOT_AVAILABLE",
+          message: "This promo is not currently available for this account and device.",
+          promo_status: promoStatus,
         },
         { status: 200 }
       );
@@ -399,12 +395,17 @@ export async function POST(req: Request) {
         eligible: true,
         promo: {
           promo_code: promoCode,
-          discount_amount: 40,
+          discount_amount: Number(promoStatus?.credit_amount ?? 40),
           platform: "android",
           passenger_id: passengerId,
           require_verified: allowRow?.require_verified === true,
           approved_device_match: approvedDeviceId ? approvedDeviceId === deviceId : true,
+          credit_exists: creditExists,
+          credit_status: creditStatus || (creditExists ? "available" : null),
+          credit_id: promoStatus?.credit_id ?? null,
+          daily_available_slots: promoStatus?.daily_available_slots ?? null,
         },
+        promo_status: promoStatus,
         message: "Promo is valid for this Android passenger account and device.",
       },
       { status: 200 }
