@@ -751,6 +751,26 @@ export async function POST(req: Request) {
         };
       } else {
         const ensureData = (ensureRes.data as any) || null;
+
+        if ((ensureData as any)?.ok === false) {
+          await userSupabase.from("bookings").delete().eq("id", booking.id);
+
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "PROMO_ENSURE_BLOCKED",
+              message: String((ensureData as any)?.error || "Promo is not available for this account or device."),
+              promo: {
+                ok: false,
+                stage: "ensure",
+                ensure: ensureData,
+                error: String((ensureData as any)?.error || "PROMO_ENSURE_BLOCKED"),
+              },
+            },
+            { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
+          );
+        }
+
         const reserveRes = await userSupabase.rpc("jride_promo_reserve_for_booking", {
           p_user_id: createdByUserId,
           p_device_id: deviceId,
@@ -758,7 +778,37 @@ export async function POST(req: Request) {
           p_booking_code: bookingCode,
           p_program_code: promoProgramCode,
         });
-        const reservedPromo = (reserveRes as any)?.data ?? null;
+        const reserveData = (reserveRes.data as any) || null;
+
+        if (reserveRes.error || (reserveData as any)?.ok === false) {
+          await userSupabase.from("bookings").delete().eq("id", booking.id);
+
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "PROMO_RESERVE_BLOCKED",
+              message: String(
+                reserveRes.error?.message ||
+                  (reserveData as any)?.error ||
+                  "Promo could not be reserved for this booking."
+              ),
+              promo: {
+                ok: false,
+                stage: "reserve",
+                ensure: ensureData,
+                reserve: reserveData,
+                error: String(
+                  reserveRes.error?.message ||
+                    (reserveData as any)?.error ||
+                    "PROMO_RESERVE_BLOCKED"
+                ),
+              },
+            },
+            { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
+          );
+        }
+
+        const reservedPromo = reserveData;
         const reservedCreditId = text((reservedPromo as any)?.credit_id);
         const reservedStatus =
           text((reservedPromo as any)?.reservation_status || (reservedPromo as any)?.status) || "reserved";
@@ -796,21 +846,12 @@ export async function POST(req: Request) {
         }
 
 
-        if (reserveRes.error) {
-          promo = {
-            ok: false,
-            stage: "reserve",
-            ensure: ensureData,
-            error: reserveRes.error.message || "PROMO_RESERVE_FAILED",
-          };
-        } else {
-          promo = {
-            ok: true,
-            stage: "reserve",
-            ensure: ensureData,
-            reserve: (reserveRes.data as any) || null,
-          };
-        }
+        promo = {
+          ok: true,
+          stage: "reserve",
+          ensure: ensureData,
+          reserve: reserveData,
+        };
       }
     } else if (promoCode || deviceId) {
       promo = {

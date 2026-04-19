@@ -330,6 +330,54 @@ export async function POST(req: Request) {
 
     const promoProgramCode = "ANDROID_FIRST_RIDE_40";
 
+    const ensureStatusRes = await admin.rpc("jride_promo_ensure_android_credit", {
+      p_user_id: passengerId,
+      p_device_id: deviceId,
+      p_program_code: promoProgramCode,
+    });
+
+    if (ensureStatusRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          eligible: false,
+          error: "PROMO_ENSURE_RPC_FAILED",
+          message: ensureStatusRes.error.message || "Could not verify promo ownership for this account and device.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const ensureStatus = (ensureStatusRes.data as any) || null;
+
+    if (ensureStatus?.ok === false) {
+      const ensureError = norm(ensureStatus?.error);
+
+      if (ensureError === "promo_already_exists_for_user_or_device") {
+        return NextResponse.json(
+          {
+            ok: true,
+            eligible: false,
+            error: "PROMO_ALREADY_EXISTS_FOR_USER_OR_DEVICE",
+            message: "This promo is already attached to this Android device or another passenger account on this device.",
+            promo_status: ensureStatus,
+          },
+          { status: 200 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          eligible: false,
+          error: ensureStatus?.error || "PROMO_NOT_AVAILABLE",
+          message: "This promo is not currently available for this Android passenger account and device.",
+          promo_status: ensureStatus,
+        },
+        { status: 200 }
+      );
+    }
+
     const statusRes = await admin.rpc("jride_promo_get_status", {
       p_user_id: passengerId,
       p_device_id: deviceId,
