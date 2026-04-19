@@ -86,13 +86,13 @@ async function finalizePromoSafe(supabase: any, booking: any) {
     return { ok: true, skipped: true };
   }
 
+  const verifiedFareRaw = Number(booking?.verified_fare ?? 0);
   const proposedFareRaw = Number(booking?.proposed_fare ?? 0);
   const pickupFeeRaw = Number(booking?.pickup_distance_fee ?? 0);
-  const promoAppliedRaw = Number(booking?.promo_applied_amount ?? 0);
-  const proposedFare = Number.isFinite(proposedFareRaw) && proposedFareRaw > 0 ? proposedFareRaw : 0;
+  const fareBaseRaw = Number.isFinite(verifiedFareRaw) && verifiedFareRaw > 0 ? verifiedFareRaw : proposedFareRaw;
+  const fareBase = Number.isFinite(fareBaseRaw) && fareBaseRaw > 0 ? fareBaseRaw : 0;
   const pickupFee = Number.isFinite(pickupFeeRaw) && pickupFeeRaw > 0 ? pickupFeeRaw : 0;
-  const promoApplied = Number.isFinite(promoAppliedRaw) && promoAppliedRaw > 0 ? promoAppliedRaw : 0;
-  const completedTotal = Number(Math.max(proposedFare + pickupFee + 15 - promoApplied, 0).toFixed(2));
+  const completedTotal = Number(Math.max(fareBase + pickupFee + 15, 0).toFixed(2));
 
   const { data, error } = await supabase.rpc("jride_promo_finalize_completed_booking", {
     p_booking_id: bookingId,
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     const adminClient = getAdminClient(req);
     const supabase = adminClient ?? routeClient;
 
-    let query = supabase.from("bookings").select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code").limit(1);
+    let query = supabase.from("bookings").select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, verified_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code").limit(1);
 
     if (bookingCode) {
       query = query.eq("booking_code", bookingCode);
