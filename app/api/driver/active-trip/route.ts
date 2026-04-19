@@ -263,13 +263,23 @@ export async function GET(req: NextRequest) {
 
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
-    const pickupDistanceFee = n((booking as any).pickup_distance_fee);
+    const submittedRegularFare = n((booking as any).submitted_regular_fare);
+    const pickupDistanceFee = n((booking as any).pickup_distance_fee) ?? 0;
+    const promoAppliedAmount = n((booking as any).promo_applied_amount) ?? 0;
+    const promoStatus = s((booking as any).promo_status);
+    const promoProgramCode = s((booking as any).promo_program_code);
     const platformFee = 15;
+
     const fare = verifiedFare ?? proposedFare;
-    const totalFare =
+    const subtotalBeforeDiscount =
       fare == null
         ? null
-        : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2));
+        : Number((fare + pickupDistanceFee + platformFee).toFixed(2));
+
+    const payableTotal =
+      subtotalBeforeDiscount == null
+        ? null
+        : Number(Math.max(0, subtotalBeforeDiscount - promoAppliedAmount).toFixed(2));
 
     const hints = deriveStageHints(normalizedStatus, fare != null);
 
@@ -301,12 +311,18 @@ export async function GET(req: NextRequest) {
       eta_minutes: pickupEtaMinutes,
       proposed_fare: proposedFare,
       verified_fare: verifiedFare,
+      submitted_regular_fare: submittedRegularFare,
       fare,
       pickup_distance_fee: pickupDistanceFee,
       platform_fee: platformFee,
-      total_fare: totalFare,
-      total_amount: totalFare,
-      grand_total: totalFare,
+      promo_applied_amount: promoAppliedAmount,
+      promo_status: promoStatus,
+      promo_program_code: promoProgramCode,
+      subtotal_before_discount: subtotalBeforeDiscount,
+      payable_total: payableTotal,
+      total_fare: payableTotal,
+      total_amount: payableTotal,
+      grand_total: payableTotal,
       fare_ready: hints.fare_ready,
       pickup_metrics_ready: hints.pickup_metrics_ready,
       waiting_for_driver_proposal: hints.waiting_for_driver_proposal,
