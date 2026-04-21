@@ -33,6 +33,7 @@ type BookBody = {
   promo_code?: string;
   device_id?: string;
   platform?: string;
+  notes?: string;
 };
 
 function text(v: unknown): string {
@@ -546,6 +547,7 @@ export async function POST(req: Request) {
         ? "ANDROID_FIRST_RIDE_40"
         : "";
     const platform = norm(body.platform || "android") || "android";
+    const notes = text(body.notes).slice(0, 300) || null;
 
     if (!selectedTown) {
       return NextResponse.json(
@@ -711,6 +713,7 @@ export async function POST(req: Request) {
       passenger_count: passengerCount,
       created_by_user_id: createdByUserId,
       passenger_name: passengerName,
+      notes,
       customer_status: "pending",
       is_emergency: emergencyMode,
     };

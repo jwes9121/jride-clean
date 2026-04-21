@@ -297,6 +297,7 @@ export async function GET(req: NextRequest) {
       dropoff_lat: dropoffLat,
       dropoff_lng: dropoffLng,
       passenger_name: s((booking as any).passenger_name),
+      notes: s((booking as any).notes),
       passenger_phone: passengerPhone,
       passenger_count: n((booking as any).passenger_count),
       driver_id: s((booking as any).driver_id) ?? driverId,
