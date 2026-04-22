@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -148,7 +148,11 @@ export async function GET(req: NextRequest) {
       const isTodaMember = profile?.is_toda_member === true;
       const todaName = text(profile?.toda_org) || null;
       const todaSharePerRide = Number(profile?.toda_share_per_ride || 0) > 0 ? Number(profile?.toda_share_per_ride) : 1;
-      const isTodaRide = isTodaMember && !!todaName;
+      const normalizedTodaName = String(todaName || "").trim().toUpperCase();
+      const isTodaRide =
+        isTodaMember === true &&
+        !!todaName &&
+        !["NON_TODA", "NONE", "N/A", "NA", "NULL", "-", "NO TODA"].includes(normalizedTodaName);
       const companyShare = isTodaRide ? Math.max(0, 15 - todaSharePerRide) : 15;
       const todaShare = isTodaRide ? todaSharePerRide : 0;
       const proposedFare = Number(row.proposed_fare || 0);
@@ -206,3 +210,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: e?.message || "DRIVER_ANALYTICS_FAILED" }, { status: 500 });
   }
 }
+

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -108,7 +108,11 @@ export async function GET() {
       const isTodaMember = profile?.is_toda_member === true;
       const todaName = text(profile?.toda_org);
       const todaSharePerRide = Number(profile?.toda_share_per_ride || 0) > 0 ? Number(profile?.toda_share_per_ride) : 1;
-      const isTodaRide = isTodaMember && !!todaName;
+      const normalizedTodaName = String(todaName || "").trim().toUpperCase();
+      const isTodaRide =
+        isTodaMember === true &&
+        !!todaName &&
+        !["NON_TODA", "NONE", "N/A", "NA", "NULL", "-", "NO TODA"].includes(normalizedTodaName);
       const todaShare = isTodaRide ? todaSharePerRide : 0;
       const companyShare = isTodaRide ? Math.max(0, 15 - todaSharePerRide) : 15;
 
@@ -172,3 +176,4 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: e?.message || "TRIPS_ANALYTICS_FAILED" }, { status: 500 });
   }
 }
+

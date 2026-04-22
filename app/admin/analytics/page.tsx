@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 
@@ -220,20 +220,20 @@ export default function AdminAnalyticsPage() {
     const todaShareTotal = scopedTrips.reduce((sum, row) => sum + Number(row.toda_share_total || 0), 0);
     const todaTrips = scopedTrips.reduce((sum, row) => sum + Number(row.toda_completed_trips || 0), 0);
     const grossProposedFareEarnings = scopedDrivers.reduce((sum, row) => sum + Number(row.gross_proposed_fare_earnings || 0), 0);
-    const towns = new Set(scopedTrips.map((r) => String(r.town || "Unknown")));
+    const towns = new Set(scopedTrips.map((r) => String(r.town || "Unknown (legacy data)")));
     return { totalTrips, companyShareTotal, todaShareTotal, todaTrips, grossProposedFareEarnings, towns: towns.size, watchCount: scopedWatch.length, noDriverCount: scopedFailures.length };
   }, [scopedTrips, scopedDrivers, scopedWatch, scopedFailures]);
 
   const exportTrips = React.useCallback(() => {
-    downloadCsv(`jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Town", "Completed Trips", "Company Share", "TODA Share", "TODA Trips"], scopedTrips.map((r) => [r.town || "Unknown", Number(r.total_trips || 0), Number((r.company_share_total ?? r.total_revenue) || 0), Number(r.toda_share_total || 0), Number(r.toda_completed_trips || 0)]));
+    downloadCsv(`jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Town", "Completed Trips", "Company Share", "TODA Share", "TODA Trips"], scopedTrips.map((r) => [r.town || "Unknown (legacy data)", Number(r.total_trips || 0), Number((r.company_share_total ?? r.total_revenue) || 0), Number(r.toda_share_total || 0), Number(r.toda_completed_trips || 0)]));
   }, [scopedTrips, scope]);
 
   const exportDrivers = React.useCallback(() => {
-    downloadCsv(`jride-analytics-drivers-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Driver", "Town", "TODA", "Completed Trips", "Gross Proposed Fare", "Company Share", "TODA Share", "Average Rating", "Ratings Count"], scopedDrivers.map((r) => [r.driver_name || "Unknown Driver", r.municipality || "Unknown", r.toda_name || "-", Number(r.completed_trips || 0), Number(r.gross_proposed_fare_earnings || 0), Number((r.total_company_share ?? r.total_platform_revenue) || 0), Number(r.total_toda_share || 0), Number(r.average_rating || 0).toFixed(2), Number(r.ratings_count || 0)]));
+    downloadCsv(`jride-analytics-drivers-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Driver", "Town", "TODA", "Completed Trips", "Gross Proposed Fare", "Company Share", "TODA Share", "Average Rating", "Ratings Count"], scopedDrivers.map((r) => [r.driver_name || "Unknown Driver", r.municipality || "Unknown (legacy data)", r.toda_name || "-", Number(r.completed_trips || 0), Number(r.gross_proposed_fare_earnings || 0), Number((r.total_company_share ?? r.total_platform_revenue) || 0), Number(r.total_toda_share || 0), Number(r.average_rating || 0).toFixed(2), Number(r.ratings_count || 0)]));
   }, [scopedDrivers, scope]);
 
   const exportFailures = React.useCallback(() => {
-    downloadCsv(`jride-no-driver-searches-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Passenger", "Town", "Time (PHT)", "Pickup", "Dropoff", "Requested Vehicle", "Alternate Vehicle", "Code", "Message"], scopedFailures.map((r) => [r.passenger_name || "Unknown Passenger", r.town || "Unknown", formatPHDateTime(r.created_at), r.from_label || "-", r.to_label || "-", r.requested_vehicle_type || "-", r.alternate_vehicle_type || "-", r.code || "-", r.message || "-"]));
+    downloadCsv(`jride-no-driver-searches-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Passenger", "Town", "Time (PHT)", "Pickup", "Dropoff", "Requested Vehicle", "Alternate Vehicle", "Code", "Message"], scopedFailures.map((r) => [r.passenger_name || "Unknown Passenger", r.town || "Unknown (legacy data)", formatPHDateTime(r.created_at), r.from_label || "-", r.to_label || "-", r.requested_vehicle_type || "-", r.alternate_vehicle_type || "-", r.code || "-", r.message || "-"]));
   }, [scopedFailures, scope]);
 
   return (
@@ -296,8 +296,8 @@ export default function AdminAnalyticsPage() {
                 <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-3 pr-4 font-semibold">Town</th><th className="py-3 pr-4 font-semibold">Trips</th><th className="py-3 pr-4 font-semibold">Company</th><th className="py-3 pr-4 font-semibold">TODA</th></tr></thead>
                 <tbody>
                   {scopedTrips.length === 0 ? <tr><td colSpan={4} className="py-6 text-slate-400">No rows for the selected scope.</td></tr> : scopedTrips.map((row) => (
-                    <tr key={String(row.town || "Unknown")} className="border-b border-slate-100 last:border-0">
-                      <td className="py-3 pr-4 font-medium text-slate-900">{row.town || "Unknown"}</td>
+                    <tr key={String(row.town || "Unknown (legacy data)")} className="border-b border-slate-100 last:border-0">
+                      <td className="py-3 pr-4 font-medium text-slate-900">{row.town || "Unknown (legacy data)"}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.total_trips || 0))}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatPeso(Number((row.company_share_total ?? row.total_revenue) || 0))}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatPeso(Number(row.toda_share_total || 0))}</td>
@@ -318,7 +318,7 @@ export default function AdminAnalyticsPage() {
                   {scopedDrivers.length === 0 ? <tr><td colSpan={9} className="py-6 text-slate-400">No driver analytics rows for the selected scope.</td></tr> : scopedDrivers.map((row) => (
                     <tr key={String(row.driver_id || row.driver_name || Math.random())} className="border-b border-slate-100 last:border-0">
                       <td className="py-3 pr-4 font-medium text-slate-900">{row.driver_name || "Unknown Driver"}</td>
-                      <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown"}</td>
+                      <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown (legacy data)"}</td>
                       <td className="py-3 pr-4 text-slate-700">{row.toda_name || "-"}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.completed_trips || 0))}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatPeso(Number(row.gross_proposed_fare_earnings || 0))}</td>
@@ -340,13 +340,13 @@ export default function AdminAnalyticsPage() {
             <p className="mt-1 text-sm text-slate-500">Each TODA receives PHP 1 per completed ride when the driver is identified as a TODA member.</p>
             <div className="mt-4 space-y-4">
               {scopedTrips.map((row) => (
-                <div key={`toda-${row.town || "Unknown"}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="font-semibold text-slate-900">{row.town || "Unknown"}</div>
+                <div key={`toda-${row.town || "Unknown (legacy data)"}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="font-semibold text-slate-900">{row.town || "Unknown (legacy data)"}</div>
                   <div className="mt-1 text-sm text-slate-500">TODA rides: {formatCount(Number(row.toda_completed_trips || 0))} - TODA share: {formatPeso(Number(row.toda_share_total || 0))}</div>
                   <div className="mt-3 overflow-auto">
                     <table className="min-w-full text-sm"><thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">TODA</th><th className="py-2 pr-4 font-semibold">Trips</th><th className="py-2 font-semibold">Share</th></tr></thead><tbody>
                       {Array.isArray(row.toda_breakdown) && row.toda_breakdown.length > 0 ? row.toda_breakdown.map((item, idx) => (
-                        <tr key={`${row.town || "Unknown"}-${item.toda_name || idx}`} className="border-b border-slate-100 last:border-0"><td className="py-2 pr-4 text-slate-700">{item.toda_name || "-"}</td><td className="py-2 pr-4 text-slate-700">{formatCount(Number(item.trips || 0))}</td><td className="py-2 text-slate-700">{formatPeso(Number(item.toda_share_total || 0))}</td></tr>
+                        <tr key={`${row.town || "Unknown (legacy data)"}-${item.toda_name || idx}`} className="border-b border-slate-100 last:border-0"><td className="py-2 pr-4 text-slate-700">{item.toda_name || "-"}</td><td className="py-2 pr-4 text-slate-700">{formatCount(Number(item.trips || 0))}</td><td className="py-2 text-slate-700">{formatPeso(Number(item.toda_share_total || 0))}</td></tr>
                       )) : <tr><td colSpan={3} className="py-3 text-slate-400">No TODA-tagged rides in this town.</td></tr>}
                     </tbody></table>
                   </div>
@@ -365,7 +365,7 @@ export default function AdminAnalyticsPage() {
                   {scopedFailures.length === 0 ? <tr><td colSpan={7} className="py-6 text-slate-400">No no-driver search rows yet. The table exists, but booking routes must still write into it.</td></tr> : scopedFailures.map((row) => (
                     <tr key={String(row.id || Math.random())} className="border-b border-slate-100 last:border-0">
                       <td className="py-3 pr-4 font-medium text-slate-900">{row.passenger_name || "Unknown Passenger"}</td>
-                      <td className="py-3 pr-4 text-slate-700">{row.town || "Unknown"}</td>
+                      <td className="py-3 pr-4 text-slate-700">{row.town || "Unknown (legacy data)"}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatPHDateTime(row.created_at)}</td>
                       <td className="py-3 pr-4 text-slate-700">{row.from_label || "-"}</td>
                       <td className="py-3 pr-4 text-slate-700">{row.to_label || "-"}</td>
@@ -390,7 +390,7 @@ export default function AdminAnalyticsPage() {
                   {scopedWatch.length === 0 ? <tr><td colSpan={7} className="py-6 text-slate-400">No watchlist rows for the selected scope.</td></tr> : scopedWatch.map((row) => (
                     <tr key={String(row.driver_id || row.driver_name || Math.random())} className="border-b border-slate-100 last:border-0">
                       <td className="py-3 pr-4 font-medium text-slate-900">{row.driver_name || "Unknown Driver"}</td>
-                      <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown"}</td>
+                      <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown (legacy data)"}</td>
                       <td className="py-3 pr-4 text-slate-700">{Number(row.average_rating || 0).toFixed(2)}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.low_ratings_count || 0))}</td>
                       <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.completed_trips || 0))}</td>
@@ -407,3 +407,4 @@ export default function AdminAnalyticsPage() {
     </main>
   );
 }
+
