@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -51,7 +51,9 @@ type DriverProfileRow = {
   driver_id: string | null;
   full_name: string | null;
   municipality: string | null;
-  toda_name: string | null;
+  is_toda_member: boolean | null;
+  toda_org: string | null;
+  toda_share_per_ride: number | null;
 };
 
 export async function GET() {
@@ -65,7 +67,7 @@ export async function GET() {
         .eq("status", "completed"),
       supabase
         .from("driver_profiles")
-        .select("driver_id, full_name, municipality, toda_name"),
+        .select("driver_id, full_name, municipality, is_toda_member, toda_org, toda_share_per_ride"),
     ]);
 
     if (bookingsRes.error) throw bookingsRes.error;
@@ -98,10 +100,14 @@ export async function GET() {
       if (isTest) continue;
 
       const town = normalizeTown(row.town || profile?.municipality);
-      const todaName = text(profile?.toda_name);
-      const isTodaRide = !!todaName;
-      const companyShare = isTodaRide ? 14 : 15;
-      const todaShare = isTodaRide ? 1 : 0;
+      const isTodaMember = profile?.is_toda_member === true;
+      const todaName = text(profile?.toda_org);
+      const todaSharePerRide = Number(profile?.toda_share_per_ride || 0) > 0
+        ? Number(profile?.toda_share_per_ride)
+        : 1;
+      const isTodaRide = isTodaMember && !!todaName;
+      const companyShare = isTodaRide ? Math.max(0, 15 - todaSharePerRide) : 15;
+      const todaShare = isTodaRide ? todaSharePerRide : 0;
 
       const prev = townMap.get(town) || {
         town,
@@ -125,7 +131,7 @@ export async function GET() {
           toda_share_total: 0,
         };
         todaPrev.trips += 1;
-        todaPrev.toda_share_total += 1;
+        todaPrev.toda_share_total += todaShare;
         prev.toda_breakdown[todaName] = todaPrev;
       } else {
         prev.non_toda_completed_trips += 1;
@@ -166,3 +172,4 @@ export async function GET() {
     );
   }
 }
+

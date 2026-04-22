@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,9 @@ type DriverProfileRow = {
   driver_id: string | null;
   full_name: string | null;
   municipality: string | null;
-  toda_name: string | null;
+  is_toda_member: boolean | null;
+  toda_org: string | null;
+  toda_share_per_ride: number | null;
 };
 
 type RatingRow = {
@@ -76,7 +78,7 @@ export async function GET(req: NextRequest) {
         .eq("status", "completed"),
       supabase
         .from("driver_profiles")
-        .select("driver_id, full_name, municipality, toda_name"),
+        .select("driver_id, full_name, municipality, is_toda_member, toda_org, toda_share_per_ride"),
       supabase
         .from("trip_ratings")
         .select("driver_id, rating"),
@@ -131,7 +133,9 @@ export async function GET(req: NextRequest) {
       driver_id: string;
       driver_name: string;
       municipality: string;
-      toda_name: string | null;
+      is_toda_member: boolean | null;
+  toda_org: string | null;
+  toda_share_per_ride: number | null;
       completed_trips: number;
       toda_completed_trips: number;
       non_toda_completed_trips: number;
@@ -148,14 +152,20 @@ export async function GET(req: NextRequest) {
       if (isTestDriver(driverId, name)) continue;
 
       const municipality = normalizeTown(profile?.municipality || row.town);
-      const todaName = text(profile?.toda_name) || null;
-      const isTodaRide = !!todaName;
+      const isTodaMember = profile?.is_toda_member === true;
+      const todaName = text(profile?.toda_org) || null;
+      const todaSharePerRide = Number(profile?.toda_share_per_ride || 0) > 0
+        ? Number(profile?.toda_share_per_ride)
+        : 1;
+      const isTodaRide = isTodaMember && !!todaName;
 
       const prev = aggregate.get(driverId) || {
         driver_id: driverId,
         driver_name: name,
         municipality,
-        toda_name: todaName,
+        is_toda_member: isTodaMember,
+        toda_org: todaName,
+        toda_share_per_ride: todaSharePerRide,
         completed_trips: 0,
         toda_completed_trips: 0,
         non_toda_completed_trips: 0,
@@ -164,8 +174,8 @@ export async function GET(req: NextRequest) {
       };
 
       prev.completed_trips += 1;
-      prev.total_company_share += isTodaRide ? 14 : 15;
-      prev.total_toda_share += isTodaRide ? 1 : 0;
+      prev.total_company_share += isTodaRide ? Math.max(0, 15 - todaSharePerRide) : 15;
+      prev.total_toda_share += isTodaRide ? todaSharePerRide : 0;
       if (isTodaRide) {
         prev.toda_completed_trips += 1;
       } else {
@@ -184,7 +194,7 @@ export async function GET(req: NextRequest) {
           driver_id: row.driver_id,
           driver_name: row.driver_name,
           municipality: row.municipality,
-          toda_name: row.toda_name,
+          toda_name: row.toda_org,
           completed_trips: row.completed_trips,
           toda_completed_trips: row.toda_completed_trips,
           non_toda_completed_trips: row.non_toda_completed_trips,
@@ -213,3 +223,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+
