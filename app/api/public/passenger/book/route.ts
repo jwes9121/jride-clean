@@ -742,16 +742,85 @@ const boundaryOverrideRequested =
           availability,
         });
 
+        await logDriverSearchFailure({
+
+
+          passengerId: createdByUserId,
+
+
+          passengerName,
+
+
+          town: effectiveTown,
+
+
+          fromLabel: pickupLabel,
+
+
+          toLabel: dropoffLabel,
+
+
+          pickupLat,
+
+
+          pickupLng,
+
+
+          dropoffLat,
+
+
+          dropoffLng,
+
+
+          requestedVehicleType: vehicleType,
+
+
+          alternateVehicleType: availability.alternate_vehicle_type,
+
+
+          code: "NO_DRIVERS_AVAILABLE",
+
+
+          message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
+
+
+          availability,
+
+
+        });
+
+
+
         return NextResponse.json(
+
+
           {
+
+
             ok: false,
+
+
             code: "NO_DRIVERS_AVAILABLE",
+
+
             message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
+
+
             requested_vehicle_type: vehicleType,
+
+
             alternate_vehicle_type: availability.alternate_vehicle_type,
+
+
             availability,
+
+
           },
+
+
           { status: 409 }
+
+
         );
       }
     } else {
@@ -784,16 +853,85 @@ const boundaryOverrideRequested =
           availability,
         });
 
+        await logDriverSearchFailure({
+
+
+          passengerId: createdByUserId,
+
+
+          passengerName,
+
+
+          town: effectiveTown,
+
+
+          fromLabel: pickupLabel,
+
+
+          toLabel: dropoffLabel,
+
+
+          pickupLat,
+
+
+          pickupLng,
+
+
+          dropoffLat,
+
+
+          dropoffLng,
+
+
+          requestedVehicleType: vehicleType,
+
+
+          alternateVehicleType: availability.alternate_vehicle_type,
+
+
+          code: "NO_DRIVERS_AVAILABLE",
+
+
+          message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
+
+
+          availability,
+
+
+        });
+
+
+
         return NextResponse.json(
+
+
           {
+
+
             ok: false,
+
+
             code: "NO_DRIVERS_AVAILABLE",
+
+
             message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
+
+
             requested_vehicle_type: vehicleType,
+
+
             alternate_vehicle_type: availability.alternate_vehicle_type,
+
+
             availability,
+
+
           },
+
+
           { status: 409 }
+
+
         );
       }
     }
@@ -986,5 +1124,6 @@ const boundaryOverrideRequested =
     );
   }
 }
+
 
 
