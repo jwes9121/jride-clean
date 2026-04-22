@@ -710,7 +710,9 @@ const boundaryOverrideRequested =
 
       if (availability.local_requested_count <= 0 && availability.local_alternate_count <= 0) {
         if (availability.emergency_requested_count > 0) {
-          return NextResponse.json(
+          
+      
+return NextResponse.json(
             {
               ok: false,
               code: "EMERGENCY_BOOKING_AVAILABLE",
@@ -1122,6 +1124,8 @@ const boundaryOverrideRequested =
     );
   }
 }
+
+
 
 
 
