@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -300,6 +300,16 @@ function normalizeTownKey(v: unknown): string {
   return text(v).replace(/\s+/g, " ").toLowerCase();
 }
 
+function canApplyBoundaryOverride(selectedTown: string, derivedTown: string, requested: boolean): boolean {
+  if (!requested) return false;
+  const selectedKey = normalizeTownKey(selectedTown);
+  const derivedKey = normalizeTownKey(derivedTown);
+  const map: Record<string, string[]> = {
+    lagawe: ["kiangan"],
+  };
+  return !!map[selectedKey]?.includes(derivedKey);
+}
+
 function normalizePassengerName(v: unknown): string {
   return String(v ?? "").trim().replace(/\s+/g, " ");
 }
@@ -528,6 +538,12 @@ export async function POST(req: Request) {
 
     const body = (await req.json().catch(() => ({}))) as BookBody;
 
+const boundaryOverrideRequested =
+  (body as any).boundary_override === true ||
+  (body as any).boundaryOverride === true ||
+  String((body as any).boundary_override || "").trim() === "1" ||
+  String((body as any).boundaryOverride || "").trim().toLowerCase() === "true";
+
     const selectedTown = text(body.town);
     const pickupLabel = text(body.from_label || body.pickup_label);
     const dropoffLabel = text(body.to_label || body.dropoff_label);
@@ -584,8 +600,12 @@ export async function POST(req: Request) {
     }
 
     const derivedTown = await resolvePickupTownFromCoords(pickupLng, pickupLat);
+    const boundaryOverrideApplied =
+      normalizeTownKey(derivedTown) !== normalizeTownKey(selectedTown) &&
+      canApplyBoundaryOverride(selectedTown, derivedTown, boundaryOverrideRequested);
+    const effectiveTown = boundaryOverrideApplied ? selectedTown : derivedTown;
 
-    if (normalizeTownKey(derivedTown) !== normalizeTownKey(selectedTown)) {
+    if (!boundaryOverrideApplied && normalizeTownKey(derivedTown) !== normalizeTownKey(selectedTown)) {
       return NextResponse.json(
         {
           ok: false,
@@ -628,7 +648,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const availability = await getAvailabilitySummary(derivedTown, vehicleType);
+    const availability = await getAvailabilitySummary(effectiveTown, vehicleType);
 
     if (!emergencyMode) {
       if (availability.local_requested_count <= 0 && availability.local_alternate_count > 0) {
@@ -704,7 +724,7 @@ export async function POST(req: Request) {
     const insert: Record<string, any> = {
       booking_code: bookingCode,
       status: "searching",
-      town: derivedTown,
+      town: effectiveTown,
       from_label: pickupLabel,
       to_label: dropoffLabel,
       pickup_lat: pickupLat,
@@ -870,6 +890,8 @@ export async function POST(req: Request) {
         booking_code: bookingCode,
         booking,
         validated_town: derivedTown,
+        service_town: effectiveTown,
+        boundary_override_applied: boundaryOverrideApplied,
         promo,
       },
       { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
@@ -885,3 +907,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
