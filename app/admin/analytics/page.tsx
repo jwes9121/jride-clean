@@ -1,16 +1,32 @@
-"use client";
+﻿"use client";
 
 import React from "react";
+
+type TodaBreakdownRow = {
+  toda_name?: string | null;
+  trips?: number | null;
+  toda_share_total?: number | null;
+};
 
 type TripsTownRow = {
   town?: string | null;
   total_trips?: number | null;
   total_revenue?: number | null;
+  company_share_total?: number | null;
+  toda_share_total?: number | null;
+  toda_completed_trips?: number | null;
+  non_toda_completed_trips?: number | null;
+  toda_breakdown?: TodaBreakdownRow[] | null;
 };
 
 type TripsResponse = {
   ok?: boolean;
   rows?: TripsTownRow[];
+  totals?: {
+    total_trips?: number | null;
+    company_share_total?: number | null;
+    toda_share_total?: number | null;
+  };
   error?: string;
 };
 
@@ -18,8 +34,12 @@ type DriverRow = {
   driver_id?: string | null;
   driver_name?: string | null;
   municipality?: string | null;
+  toda_name?: string | null;
   completed_trips?: number | null;
-  total_driver_payout?: number | null;
+  toda_completed_trips?: number | null;
+  non_toda_completed_trips?: number | null;
+  total_toda_share?: number | null;
+  total_company_share?: number | null;
   total_platform_revenue?: number | null;
   average_rating?: number | null;
   ratings_count?: number | null;
@@ -49,7 +69,7 @@ type WatchlistResponse = {
   error?: string;
 };
 
-type ScopeOption = "all" | "Lagawe" | "Hingyon" | "Banaue" | "Lamut" | "Kiangan";
+type ScopeOption = "all" | "Lagawe" | "Hingyon" | "Banaue" | "Lamut" | "Kiangan" | "Unknown";
 
 const CURRENCY = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -178,28 +198,21 @@ export default function AdminAnalyticsPage() {
     };
   }, [load]);
 
-  const scopedTrips = React.useMemo(
-    () => tripRows.filter((r) => townMatch(scope, r.town)),
-    [tripRows, scope]
-  );
-
-  const scopedDrivers = React.useMemo(
-    () => driverRows.filter((r) => townMatch(scope, r.municipality)),
-    [driverRows, scope]
-  );
-
-  const scopedWatch = React.useMemo(
-    () => watchRows.filter((r) => townMatch(scope, r.municipality)),
-    [watchRows, scope]
-  );
+  const scopedTrips = React.useMemo(() => tripRows.filter((r) => townMatch(scope, r.town)), [tripRows, scope]);
+  const scopedDrivers = React.useMemo(() => driverRows.filter((r) => townMatch(scope, r.municipality)), [driverRows, scope]);
+  const scopedWatch = React.useMemo(() => watchRows.filter((r) => townMatch(scope, r.municipality)), [watchRows, scope]);
 
   const totals = React.useMemo(() => {
     const totalTrips = scopedTrips.reduce((sum, row) => sum + Number(row.total_trips || 0), 0);
-    const totalRevenue = scopedTrips.reduce((sum, row) => sum + Number(row.total_revenue || 0), 0);
+    const companyShareTotal = scopedTrips.reduce((sum, row) => sum + Number((row.company_share_total ?? row.total_revenue) || 0), 0);
+    const todaShareTotal = scopedTrips.reduce((sum, row) => sum + Number(row.toda_share_total || 0), 0);
+    const todaTrips = scopedTrips.reduce((sum, row) => sum + Number(row.toda_completed_trips || 0), 0);
     const towns = new Set(scopedTrips.map((r) => String(r.town || "Unknown")));
     return {
       totalTrips,
-      totalRevenue,
+      companyShareTotal,
+      todaShareTotal,
+      todaTrips,
       towns: towns.size,
       watchCount: scopedWatch.length,
     };
@@ -208,20 +221,28 @@ export default function AdminAnalyticsPage() {
   const exportTrips = React.useCallback(() => {
     downloadCsv(
       `jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Town", "Completed Trips", "Revenue"],
-      scopedTrips.map((r) => [r.town || "Unknown", Number(r.total_trips || 0), Number(r.total_revenue || 0)])
+      ["Town", "Completed Trips", "Company Share", "TODA Share", "TODA Trips"],
+      scopedTrips.map((r) => [
+        r.town || "Unknown",
+        Number(r.total_trips || 0),
+        Number((r.company_share_total ?? r.total_revenue) || 0),
+        Number(r.toda_share_total || 0),
+        Number(r.toda_completed_trips || 0),
+      ])
     );
   }, [scopedTrips, scope]);
 
   const exportDrivers = React.useCallback(() => {
     downloadCsv(
       `jride-analytics-drivers-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Driver", "Town", "Completed Trips", "Platform Revenue", "Average Rating", "Ratings Count"],
+      ["Driver", "Town", "TODA", "Completed Trips", "Company Share", "TODA Share", "Average Rating", "Ratings Count"],
       scopedDrivers.map((r) => [
         r.driver_name || "Unknown Driver",
         r.municipality || "Unknown",
+        r.toda_name || "-",
         Number(r.completed_trips || 0),
-        Number(r.total_platform_revenue || 0),
+        Number((r.total_company_share ?? r.total_platform_revenue) || 0),
+        Number(r.total_toda_share || 0),
         Number(r.average_rating || 0).toFixed(2),
         Number(r.ratings_count || 0),
       ])
@@ -237,7 +258,7 @@ export default function AdminAnalyticsPage() {
               <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
                 JRide Analytics Center
               </div>
-              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics and exports</h1>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics, company share, and TODA share</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">
                 Built for expansion. View town-filtered results, export CSV reports, and monitor partner-safe metrics using Philippine date and time.
               </p>
@@ -273,6 +294,7 @@ export default function AdminAnalyticsPage() {
                 <option value="Banaue">Banaue</option>
                 <option value="Lamut">Lamut</option>
                 <option value="Kiangan">Kiangan</option>
+                <option value="Unknown">Unknown</option>
               </select>
               <button onClick={() => void load()} className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
                 Refresh
@@ -288,20 +310,19 @@ export default function AdminAnalyticsPage() {
           {msg ? <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{msg}</div> : null}
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card title="Completed trips" value={formatCount(totals.totalTrips)} sub={scope === "all" ? "All filtered towns" : scope} />
-          <Card title="Platform revenue" value={formatPeso(totals.totalRevenue)} sub="From analytics route output" />
-          <Card title="Visible towns" value={formatCount(totals.towns)} sub="Town scope in current view" />
+          <Card title="Company share" value={formatPeso(totals.companyShareTotal)} sub="PHP 14 when TODA ride, PHP 15 otherwise" />
+          <Card title="TODA share" value={formatPeso(totals.todaShareTotal)} sub="PHP 1 per TODA member ride" />
+          <Card title="TODA rides" value={formatCount(totals.todaTrips)} sub="Completed trips with a TODA member driver" />
           <Card title="Driver watchlist" value={formatCount(totals.watchCount)} sub="Drivers needing review" />
         </section>
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
           <div className="xl:col-span-5 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-slate-900">Trips and revenue by town</h2>
-                <p className="mt-1 text-sm text-slate-500">Current backend analytics endpoint, filtered in UI by selected scope.</p>
-              </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">Trips, company share, and TODA share by town</h2>
+              <p className="mt-1 text-sm text-slate-500">Town totals from completed bookings. TODA share applies only when the driver has a TODA identity.</p>
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -309,20 +330,22 @@ export default function AdminAnalyticsPage() {
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="pb-3 pr-4 font-semibold">Town</th>
                     <th className="pb-3 pr-4 font-semibold">Trips</th>
-                    <th className="pb-3 font-semibold">Revenue</th>
+                    <th className="pb-3 pr-4 font-semibold">Company</th>
+                    <th className="pb-3 font-semibold">TODA</th>
                   </tr>
                 </thead>
                 <tbody>
                   {scopedTrips.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="py-6 text-slate-400">{loading ? "Loading analytics..." : "No rows for the selected scope."}</td>
+                      <td colSpan={4} className="py-6 text-slate-400">{loading ? "Loading analytics..." : "No rows for the selected scope."}</td>
                     </tr>
                   ) : (
                     scopedTrips.map((row, idx) => (
                       <tr key={`${row.town || "Unknown"}-${idx}`} className="border-b border-slate-100 last:border-b-0">
                         <td className="py-3 pr-4 font-semibold text-slate-900">{row.town || "Unknown"}</td>
                         <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.total_trips || 0))}</td>
-                        <td className="py-3 text-slate-700">{formatPeso(Number(row.total_revenue || 0))}</td>
+                        <td className="py-3 pr-4 text-slate-700">{formatPeso(Number((row.company_share_total ?? row.total_revenue) || 0))}</td>
+                        <td className="py-3 text-slate-700">{formatPeso(Number(row.toda_share_total || 0))}</td>
                       </tr>
                     ))
                   )}
@@ -333,8 +356,8 @@ export default function AdminAnalyticsPage() {
 
           <div className="xl:col-span-7 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <div>
-              <h2 className="text-lg font-bold tracking-tight text-slate-900">Top drivers</h2>
-              <p className="mt-1 text-sm text-slate-500">Completed trips, platform revenue, and quality signals.</p>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">Top drivers with TODA identification</h2>
+              <p className="mt-1 text-sm text-slate-500">Completed trips, company share, TODA share, and quality signals.</p>
             </div>
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -342,8 +365,10 @@ export default function AdminAnalyticsPage() {
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="pb-3 pr-4 font-semibold">Driver</th>
                     <th className="pb-3 pr-4 font-semibold">Town</th>
+                    <th className="pb-3 pr-4 font-semibold">TODA</th>
                     <th className="pb-3 pr-4 font-semibold">Trips</th>
-                    <th className="pb-3 pr-4 font-semibold">Platform</th>
+                    <th className="pb-3 pr-4 font-semibold">Company</th>
+                    <th className="pb-3 pr-4 font-semibold">TODA</th>
                     <th className="pb-3 pr-4 font-semibold">Avg rating</th>
                     <th className="pb-3 font-semibold">Ratings</th>
                   </tr>
@@ -351,15 +376,17 @@ export default function AdminAnalyticsPage() {
                 <tbody>
                   {scopedDrivers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-6 text-slate-400">{loading ? "Loading drivers..." : "No driver analytics rows for the selected scope."}</td>
+                      <td colSpan={8} className="py-6 text-slate-400">{loading ? "Loading drivers..." : "No driver analytics rows for the selected scope."}</td>
                     </tr>
                   ) : (
                     scopedDrivers.map((row, idx) => (
                       <tr key={`${row.driver_id || row.driver_name || "driver"}-${idx}`} className="border-b border-slate-100 last:border-b-0">
                         <td className="py-3 pr-4 font-semibold text-slate-900">{row.driver_name || "Unknown Driver"}</td>
                         <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown"}</td>
+                        <td className="py-3 pr-4 text-slate-700">{row.toda_name || "-"}</td>
                         <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.completed_trips || 0))}</td>
-                        <td className="py-3 pr-4 text-slate-700">{formatPeso(Number(row.total_platform_revenue || 0))}</td>
+                        <td className="py-3 pr-4 text-slate-700">{formatPeso(Number((row.total_company_share ?? row.total_platform_revenue) || 0))}</td>
+                        <td className="py-3 pr-4 text-slate-700">{formatPeso(Number(row.total_toda_share || 0))}</td>
                         <td className="py-3 pr-4 text-slate-700">{Number(row.average_rating || 0).toFixed(2)}</td>
                         <td className="py-3 text-slate-700">{formatCount(Number(row.ratings_count || 0))}</td>
                       </tr>
@@ -371,47 +398,105 @@ export default function AdminAnalyticsPage() {
           </div>
         </section>
 
-        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div>
-            <h2 className="text-lg font-bold tracking-tight text-slate-900">Driver watchlist</h2>
-            <p className="mt-1 text-sm text-slate-500">Low-rating watchlist for management review and partner-safe monitoring.</p>
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div className="xl:col-span-6 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">TODA breakdown by town</h2>
+              <p className="mt-1 text-sm text-slate-500">Each TODA receives PHP 1 per completed ride when the driver is identified as a TODA member.</p>
+            </div>
+            <div className="mt-4 space-y-4">
+              {scopedTrips.length === 0 ? (
+                <div className="py-6 text-sm text-slate-400">{loading ? "Loading TODA rows..." : "No TODA rows for the selected scope."}</div>
+              ) : (
+                scopedTrips.map((row, idx) => {
+                  const items = Array.isArray(row.toda_breakdown) ? row.toda_breakdown : [];
+                  return (
+                    <div key={`${row.town || "Unknown"}-${idx}`} className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="font-semibold text-slate-900">{row.town || "Unknown"}</div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            TODA rides: {formatCount(Number(row.toda_completed_trips || 0))} Â· TODA share: {formatPeso(Number(row.toda_share_total || 0))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-left text-slate-500">
+                              <th className="pb-2 pr-4 font-semibold">TODA</th>
+                              <th className="pb-2 pr-4 font-semibold">Trips</th>
+                              <th className="pb-2 font-semibold">Share</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.length === 0 ? (
+                              <tr>
+                                <td colSpan={3} className="py-3 text-slate-400">No TODA-tagged rides in this town.</td>
+                              </tr>
+                            ) : (
+                              items.map((item, itemIdx) => (
+                                <tr key={`${item.toda_name || "toda"}-${itemIdx}`} className="border-b border-slate-100 last:border-b-0">
+                                  <td className="py-2 pr-4 text-slate-900">{item.toda_name || "Unknown TODA"}</td>
+                                  <td className="py-2 pr-4 text-slate-700">{formatCount(Number(item.trips || 0))}</td>
+                                  <td className="py-2 text-slate-700">{formatPeso(Number(item.toda_share_total || 0))}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="pb-3 pr-4 font-semibold">Driver</th>
-                  <th className="pb-3 pr-4 font-semibold">Town</th>
-                  <th className="pb-3 pr-4 font-semibold">Avg rating</th>
-                  <th className="pb-3 pr-4 font-semibold">Low ratings</th>
-                  <th className="pb-3 pr-4 font-semibold">Completed</th>
-                  <th className="pb-3 pr-4 font-semibold">Latest feedback</th>
-                  <th className="pb-3 font-semibold">Latest rating at (PHT)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scopedWatch.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-slate-400">{loading ? "Loading watchlist..." : "No watchlist rows for the selected scope."}</td>
+
+          <div className="xl:col-span-6 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">Driver watchlist</h2>
+              <p className="mt-1 text-sm text-slate-500">Low-rating watchlist for management review and partner-safe monitoring.</p>
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-slate-500">
+                    <th className="pb-3 pr-4 font-semibold">Driver</th>
+                    <th className="pb-3 pr-4 font-semibold">Town</th>
+                    <th className="pb-3 pr-4 font-semibold">Avg rating</th>
+                    <th className="pb-3 pr-4 font-semibold">Low ratings</th>
+                    <th className="pb-3 pr-4 font-semibold">Completed</th>
+                    <th className="pb-3 pr-4 font-semibold">Latest feedback</th>
+                    <th className="pb-3 font-semibold">Latest rating at (PHT)</th>
                   </tr>
-                ) : (
-                  scopedWatch.map((row, idx) => (
-                    <tr key={`${row.driver_id || row.driver_name || "watch"}-${idx}`} className="border-b border-slate-100 last:border-b-0">
-                      <td className="py-3 pr-4 font-semibold text-slate-900">{row.driver_name || "Unknown Driver"}</td>
-                      <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown"}</td>
-                      <td className="py-3 pr-4 text-slate-700">{Number(row.average_rating || 0).toFixed(2)}</td>
-                      <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.low_ratings_count || 0))}</td>
-                      <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.completed_trips || 0))}</td>
-                      <td className="py-3 pr-4 text-slate-700">{row.latest_feedback || "-"}</td>
-                      <td className="py-3 text-slate-700">{formatPHDateTime(row.latest_rating_at)}</td>
+                </thead>
+                <tbody>
+                  {scopedWatch.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-slate-400">{loading ? "Loading watchlist..." : "No watchlist rows for the selected scope."}</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    scopedWatch.map((row, idx) => (
+                      <tr key={`${row.driver_id || row.driver_name || "watch"}-${idx}`} className="border-b border-slate-100 last:border-b-0">
+                        <td className="py-3 pr-4 font-semibold text-slate-900">{row.driver_name || "Unknown Driver"}</td>
+                        <td className="py-3 pr-4 text-slate-700">{row.municipality || "Unknown"}</td>
+                        <td className="py-3 pr-4 text-slate-700">{Number(row.average_rating || 0).toFixed(2)}</td>
+                        <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.low_ratings_count || 0))}</td>
+                        <td className="py-3 pr-4 text-slate-700">{formatCount(Number(row.completed_trips || 0))}</td>
+                        <td className="py-3 pr-4 text-slate-700">{row.latest_feedback || "-"}</td>
+                        <td className="py-3 text-slate-700">{formatPHDateTime(row.latest_rating_at)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>
     </main>
   );
 }
+
+

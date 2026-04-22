@@ -2,46 +2,167 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const TEST_DRIVER_IDS = new Set([
+  "00000000-0000-4000-8000-000000000001",
+]);
+
+function text(v: unknown): string {
+  return String(v ?? "").trim();
+}
+
+function normalizeTown(v: unknown): string {
+  const s = text(v);
+  return s || "Unknown";
+}
+
+function isTestDriver(id: unknown, fullName: unknown): boolean {
+  const driverId = text(id);
+  const name = text(fullName).toLowerCase();
+  if (TEST_DRIVER_IDS.has(driverId)) return true;
+  if (!name) return false;
+  return name.includes("test driver");
+}
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url) throw new Error("Missing env: SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
+  if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY");
+
+  return createClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+type BookingRow = {
+  town: string | null;
+  driver_id: string | null;
+  assigned_driver_id: string | null;
+};
+
+type DriverProfileRow = {
+  driver_id: string | null;
+  full_name: string | null;
+  municipality: string | null;
+  toda_name: string | null;
+};
 
 export async function GET() {
   try {
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = getSupabase();
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("town, driver_payout, company_cut, status")
-      .eq("status", "completed");
+    const [bookingsRes, profilesRes] = await Promise.all([
+      supabase
+        .from("bookings")
+        .select("town, driver_id, assigned_driver_id")
+        .eq("status", "completed"),
+      supabase
+        .from("driver_profiles")
+        .select("driver_id, full_name, municipality, toda_name"),
+    ]);
 
-    if (error) throw error;
+    if (bookingsRes.error) throw bookingsRes.error;
+    if (profilesRes.error) throw profilesRes.error;
 
-    const map: Record<string, { trips: number; revenue: number }> = {};
+    const bookings = Array.isArray(bookingsRes.data) ? (bookingsRes.data as BookingRow[]) : [];
+    const profiles = Array.isArray(profilesRes.data) ? (profilesRes.data as DriverProfileRow[]) : [];
 
-    for (const row of data || []) {
-      const town = row.town || "Unknown";
-      if (!map[town]) {
-        map[town] = { trips: 0, revenue: 0 };
-      }
-
-      map[town].trips += 1;
-
-      const revenue =
-        Number(row.company_cut || 0) +
-        Number(row.driver_payout || 0);
-
-      map[town].revenue += revenue;
+    const profileMap = new Map<string, DriverProfileRow>();
+    for (const row of profiles) {
+      const driverId = text(row.driver_id);
+      if (!driverId) continue;
+      profileMap.set(driverId, row);
     }
 
-    const rows = Object.entries(map).map(([town, v]) => ({
-      town,
-      total_trips: v.trips,
-      total_revenue: v.revenue,
-    }));
+    const townMap = new Map<string, {
+      town: string;
+      completed_trips: number;
+      company_share_total: number;
+      toda_share_total: number;
+      toda_completed_trips: number;
+      non_toda_completed_trips: number;
+      toda_breakdown: Record<string, { toda_name: string; trips: number; toda_share_total: number }>;
+    }>();
 
-    return NextResponse.json({ ok: true, rows });
+    for (const row of bookings) {
+      const resolvedDriverId = text(row.driver_id) || text(row.assigned_driver_id);
+      const profile = resolvedDriverId ? profileMap.get(resolvedDriverId) : undefined;
+      const isTest = isTestDriver(resolvedDriverId, profile?.full_name);
+      if (isTest) continue;
+
+      const town = normalizeTown(row.town || profile?.municipality);
+      const todaName = text(profile?.toda_name);
+      const isTodaRide = !!todaName;
+      const companyShare = isTodaRide ? 14 : 15;
+      const todaShare = isTodaRide ? 1 : 0;
+
+      const prev = townMap.get(town) || {
+        town,
+        completed_trips: 0,
+        company_share_total: 0,
+        toda_share_total: 0,
+        toda_completed_trips: 0,
+        non_toda_completed_trips: 0,
+        toda_breakdown: {},
+      };
+
+      prev.completed_trips += 1;
+      prev.company_share_total += companyShare;
+      prev.toda_share_total += todaShare;
+
+      if (isTodaRide) {
+        prev.toda_completed_trips += 1;
+        const todaPrev = prev.toda_breakdown[todaName] || {
+          toda_name: todaName,
+          trips: 0,
+          toda_share_total: 0,
+        };
+        todaPrev.trips += 1;
+        todaPrev.toda_share_total += 1;
+        prev.toda_breakdown[todaName] = todaPrev;
+      } else {
+        prev.non_toda_completed_trips += 1;
+      }
+
+      townMap.set(town, prev);
+    }
+
+    const rows = Array.from(townMap.values())
+      .map((row) => ({
+        town: row.town,
+        total_trips: row.completed_trips,
+        total_revenue: row.company_share_total,
+        company_share_total: row.company_share_total,
+        toda_share_total: row.toda_share_total,
+        toda_completed_trips: row.toda_completed_trips,
+        non_toda_completed_trips: row.non_toda_completed_trips,
+        toda_breakdown: Object.values(row.toda_breakdown)
+          .sort((a, b) => b.trips - a.trips || a.toda_name.localeCompare(b.toda_name)),
+      }))
+      .sort((a, b) => b.total_trips - a.total_trips || a.town.localeCompare(b.town));
+
+    const totals = rows.reduce(
+      (acc, row) => {
+        acc.total_trips += Number(row.total_trips || 0);
+        acc.company_share_total += Number(row.company_share_total || 0);
+        acc.toda_share_total += Number(row.toda_share_total || 0);
+        return acc;
+      },
+      { total_trips: 0, company_share_total: 0, toda_share_total: 0 }
+    );
+
+    return NextResponse.json({ ok: true, rows, totals });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "ANALYTICS_TRIPS_ROUTE_FAILED" },
+      { status: 500 }
+    );
   }
 }

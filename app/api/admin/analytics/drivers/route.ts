@@ -4,17 +4,38 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const TEST_DRIVER_IDS = new Set([
+  "00000000-0000-4000-8000-000000000001",
+]);
+
+function text(v: unknown): string {
+  return String(v ?? "").trim();
+}
+
+function normalizeTown(v: unknown): string {
+  const s = text(v);
+  return s || "Unknown";
+}
+
+function isTestDriver(id: unknown, fullName: unknown): boolean {
+  const driverId = text(id);
+  const name = text(fullName).toLowerCase();
+  if (TEST_DRIVER_IDS.has(driverId)) return true;
+  if (!name) return false;
+  return name.includes("test driver");
+}
+
 type BookingRow = {
   driver_id: string | null;
+  assigned_driver_id: string | null;
   town: string | null;
-  driver_payout: number | null;
-  company_cut: number | null;
 };
 
 type DriverProfileRow = {
   driver_id: string | null;
   full_name: string | null;
   municipality: string | null;
+  toda_name: string | null;
 };
 
 type RatingRow = {
@@ -51,11 +72,11 @@ export async function GET(req: NextRequest) {
     const [bookingsRes, profilesRes, ratingsRes] = await Promise.all([
       supabase
         .from("bookings")
-        .select("driver_id, town, driver_payout, company_cut")
+        .select("driver_id, assigned_driver_id, town")
         .eq("status", "completed"),
       supabase
         .from("driver_profiles")
-        .select("driver_id, full_name, municipality"),
+        .select("driver_id, full_name, municipality, toda_name"),
       supabase
         .from("trip_ratings")
         .select("driver_id, rating"),
@@ -88,14 +109,14 @@ export async function GET(req: NextRequest) {
 
     const profileMap = new Map<string, DriverProfileRow>();
     for (const row of profiles) {
-      const driverId = String(row.driver_id || "").trim();
+      const driverId = text(row.driver_id);
       if (!driverId) continue;
       profileMap.set(driverId, row);
     }
 
     const ratingMap = new Map<string, { count: number; sum: number }>();
     for (const row of ratings) {
-      const driverId = String(row.driver_id || "").trim();
+      const driverId = text(row.driver_id);
       if (!driverId) continue;
       const rating = Number(row.rating || 0);
       const prev = ratingMap.get(driverId) || { count: 0, sum: 0 };
@@ -110,31 +131,46 @@ export async function GET(req: NextRequest) {
       driver_id: string;
       driver_name: string;
       municipality: string;
+      toda_name: string | null;
       completed_trips: number;
-      total_driver_payout: number;
-      total_platform_revenue: number;
+      toda_completed_trips: number;
+      non_toda_completed_trips: number;
+      total_toda_share: number;
+      total_company_share: number;
     }>();
 
     for (const row of bookings) {
-      const driverId = String(row.driver_id || "").trim();
+      const driverId = text(row.driver_id) || text(row.assigned_driver_id);
       if (!driverId) continue;
 
       const profile = profileMap.get(driverId);
-      const name = String(profile?.full_name || "Unknown Driver");
-      const municipality = String(profile?.municipality || row.town || "Unknown");
+      const name = text(profile?.full_name) || "Unknown Driver";
+      if (isTestDriver(driverId, name)) continue;
+
+      const municipality = normalizeTown(profile?.municipality || row.town);
+      const todaName = text(profile?.toda_name) || null;
+      const isTodaRide = !!todaName;
 
       const prev = aggregate.get(driverId) || {
         driver_id: driverId,
         driver_name: name,
         municipality,
+        toda_name: todaName,
         completed_trips: 0,
-        total_driver_payout: 0,
-        total_platform_revenue: 0,
+        toda_completed_trips: 0,
+        non_toda_completed_trips: 0,
+        total_toda_share: 0,
+        total_company_share: 0,
       };
 
       prev.completed_trips += 1;
-      prev.total_driver_payout += Number(row.driver_payout || 0);
-      prev.total_platform_revenue += Number(row.company_cut || 0);
+      prev.total_company_share += isTodaRide ? 14 : 15;
+      prev.total_toda_share += isTodaRide ? 1 : 0;
+      if (isTodaRide) {
+        prev.toda_completed_trips += 1;
+      } else {
+        prev.non_toda_completed_trips += 1;
+      }
 
       aggregate.set(driverId, prev);
     }
@@ -148,25 +184,24 @@ export async function GET(req: NextRequest) {
           driver_id: row.driver_id,
           driver_name: row.driver_name,
           municipality: row.municipality,
+          toda_name: row.toda_name,
           completed_trips: row.completed_trips,
-          total_driver_payout: row.total_driver_payout,
-          total_platform_revenue: row.total_platform_revenue,
+          toda_completed_trips: row.toda_completed_trips,
+          non_toda_completed_trips: row.non_toda_completed_trips,
+          total_toda_share: row.total_toda_share,
+          total_company_share: row.total_company_share,
+          total_platform_revenue: row.total_company_share,
           ratings_count: ratingInfo.count,
           average_rating: averageRating,
         };
       })
       .sort((a, b) => {
-        if (b.completed_trips - a.completed_trips !== 0) {
-          return b.completed_trips - a.completed_trips;
-        }
-        return b.total_platform_revenue - a.total_platform_revenue;
+        if (b.completed_trips !== a.completed_trips) return b.completed_trips - a.completed_trips;
+        return b.total_company_share - a.total_company_share;
       })
       .slice(0, limit);
 
-    return NextResponse.json({
-      ok: true,
-      rows,
-    });
+    return NextResponse.json({ ok: true, rows });
   } catch (error) {
     return NextResponse.json(
       {
