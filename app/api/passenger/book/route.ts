@@ -96,6 +96,51 @@ type AvailabilitySummary = {
   emergency_alternate_count: number;
 };
 
+async function logDriverSearchFailure(input: {
+  passengerId?: string | null;
+  passengerName?: string | null;
+  town?: string | null;
+  fromLabel?: string | null;
+  toLabel?: string | null;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  dropoffLat?: number | null;
+  dropoffLng?: number | null;
+  requestedVehicleType?: string | null;
+  alternateVehicleType?: string | null;
+  code?: string | null;
+  message?: string | null;
+  availability?: AvailabilitySummary | null;
+}) {
+  try {
+    const admin = supabaseAdmin();
+    const availability = input.availability || null;
+
+    await admin.from("driver_search_failures").insert({
+      passenger_id: text(input.passengerId) || null,
+      passenger_name: text(input.passengerName) || null,
+      town: text(input.town) || null,
+      from_label: text(input.fromLabel) || null,
+      to_label: text(input.toLabel) || null,
+      pickup_lat: input.pickupLat ?? null,
+      pickup_lng: input.pickupLng ?? null,
+      dropoff_lat: input.dropoffLat ?? null,
+      dropoff_lng: input.dropoffLng ?? null,
+      requested_vehicle_type: text(input.requestedVehicleType) || null,
+      alternate_vehicle_type: text(input.alternateVehicleType) || null,
+      code: text(input.code) || "NO_DRIVERS_AVAILABLE",
+      message: text(input.message) || null,
+      local_requested_count: Number((availability as any)?.local_requested_count || 0),
+      local_alternate_count: Number((availability as any)?.local_alternate_count || 0),
+      emergency_requested_count: Number((availability as any)?.emergency_requested_count || 0),
+      emergency_alternate_count: Number((availability as any)?.emergency_alternate_count || 0),
+    });
+  } catch (e) {
+    console.warn("[BOOK] driver_search_failures insert skipped", e);
+  }
+}
+
+
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
 
@@ -678,6 +723,23 @@ const boundaryOverrideRequested =
           );
         }
 
+        await logDriverSearchFailure({
+          passengerId: createdByUserId,
+          passengerName,
+          town: effectiveTown,
+          fromLabel: pickupLabel,
+          toLabel: dropoffLabel,
+          pickupLat,
+          pickupLng,
+          dropoffLat,
+          dropoffLng,
+          requestedVehicleType: vehicleType,
+          alternateVehicleType: availability.alternate_vehicle_type,
+          code: "NO_DRIVERS_AVAILABLE",
+          message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
+          availability,
+        });
+
         return NextResponse.json(
           {
             ok: false,
@@ -703,6 +765,23 @@ const boundaryOverrideRequested =
       }
 
       if (availability.emergency_requested_count <= 0) {
+        await logDriverSearchFailure({
+          passengerId: createdByUserId,
+          passengerName,
+          town: effectiveTown,
+          fromLabel: pickupLabel,
+          toLabel: dropoffLabel,
+          pickupLat,
+          pickupLng,
+          dropoffLat,
+          dropoffLng,
+          requestedVehicleType: vehicleType,
+          alternateVehicleType: availability.alternate_vehicle_type,
+          code: "NO_DRIVERS_AVAILABLE",
+          message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
+          availability,
+        });
+
         return NextResponse.json(
           {
             ok: false,
@@ -905,5 +984,6 @@ const boundaryOverrideRequested =
     );
   }
 }
+
 
 
