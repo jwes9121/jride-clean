@@ -371,6 +371,8 @@ export default function LiveTripsClient() {
   const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
 
   const [manualDriverId, setManualDriverId] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [townFilter, setTownFilter] = useState<string>("all");
 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -648,6 +650,21 @@ export default function LiveTripsClient() {
     };
   }, [allTrips, drivers]);
 
+  const townOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of allTrips) {
+      const town = String(t.town || t.zone || "").trim();
+      if (town) set.add(town);
+    }
+    for (const d of drivers) {
+      const town = String(d.town || "").trim();
+      if (town) set.add(town);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allTrips, drivers]);
+
+  const queryNeedle = searchQuery.trim().toLowerCase();
+
   const visibleTrips = useMemo(() => {
     const f = tripFilter;
     let out: TripRow[] = [];
@@ -666,6 +683,25 @@ export default function LiveTripsClient() {
       out = allTrips.filter((t) => normStatus(t.status) === f);
     }
 
+    out = out.filter((trip) => {
+      const town = String(trip.town || trip.zone || "").trim();
+      if (townFilter !== "all" && town.toLowerCase() !== townFilter.toLowerCase()) return false;
+      if (!queryNeedle) return true;
+      const hay = [
+        trip.booking_code,
+        trip.passenger_name,
+        trip.pickup_label,
+        trip.dropoff_label,
+        trip.driver_name,
+        trip.driver_phone,
+        town,
+        trip.status,
+      ]
+        .map((v) => String(v || "").toLowerCase())
+        .join(" ");
+      return hay.includes(queryNeedle);
+    });
+
     out.sort((a, b) => {
       const pa = tripPriorityScore(a);
       const pb = tripPriorityScore(b);
@@ -677,7 +713,7 @@ export default function LiveTripsClient() {
     });
 
     return out;
-  }, [allTrips, tripFilter, stuckTripIds]);
+  }, [allTrips, tripFilter, stuckTripIds, townFilter, queryNeedle]);
 
   const mapTrips = useMemo(() => {
     if (viewMode === "drivers") {
@@ -763,10 +799,29 @@ export default function LiveTripsClient() {
       });
   }, [drivers, allTrips]);
 
+  const filteredDriverRows = useMemo(() => {
+    return driverRows.filter((row) => {
+      const town = String(row.driver.town || "").trim();
+      if (townFilter !== "all" && town.toLowerCase() !== townFilter.toLowerCase()) return false;
+      if (!queryNeedle) return true;
+      const hay = [
+        row.driver.name,
+        row.driver.phone,
+        row.driver.town,
+        row.driver.status,
+        row.driver.effective_status,
+        row.activeTrip?.booking_code,
+      ]
+        .map((v) => String(v || "").toLowerCase())
+        .join(" ");
+      return hay.includes(queryNeedle);
+    });
+  }, [driverRows, townFilter, queryNeedle]);
+
   function pillClass(active: boolean) {
     return [
       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm",
-      active ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
+      active ? "border-slate-900 bg-slate-900 text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100",
     ].join(" ");
   }
 
@@ -867,11 +922,11 @@ export default function LiveTripsClient() {
   const showThresholds = "Stuck watcher thresholds: on_the_way >= " + STUCK_THRESHOLDS_MIN.on_the_way + " min, on_trip >= " + STUCK_THRESHOLDS_MIN.on_trip + " min";
 
   return (
-    <div className="p-4">
+    <div className="min-h-screen bg-slate-50 p-4 text-slate-900 md:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Live Trips</h1>
-          <p className="text-sm text-gray-600">Monitor active bookings on the left and follow them on the map on the right.</p>
+          <h1 className="text-3xl font-bold tracking-tight">LiveTrips Command Center</h1>
+          <p className="mt-1 text-sm text-slate-600">Premium dispatch workspace for trip cycle monitoring, driver readiness, and rapid incident response without touching backend trip rules.</p>
         </div>
         <div className="text-xs text-gray-600 text-right">
           <div className="font-medium">Stuck watcher thresholds</div>
@@ -879,7 +934,7 @@ export default function LiveTripsClient() {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <button className={pillClass(viewMode === "trips")} onClick={() => setModeAndFocus("trips")}>
           Trips <span className="text-xs opacity-80">{counts.all}</span>
         </button>
@@ -895,7 +950,40 @@ export default function LiveTripsClient() {
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+      <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Find faster</div>
+            <div className="text-xs text-slate-500">Search booking code, passenger, driver, phone, or town. All timestamps stay on Philippine time.</div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[minmax(280px,1fr),200px,auto]">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search booking / passenger / driver / phone"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-emerald-400 focus:bg-white"
+            />
+            <select
+              value={townFilter}
+              onChange={(e) => setTownFilter(e.target.value)}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-emerald-400 focus:bg-white"
+            >
+              <option value="all">All towns</option>
+              {townOptions.map((town) => (
+                <option key={town} value={town}>{town}</option>
+              ))}
+            </select>
+            <button
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={() => { setSearchQuery(""); setTownFilter("all"); }}
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Pending</div>
           <div className="text-lg font-bold text-amber-900">{dispatchPressure.pending}</div>
@@ -978,7 +1066,7 @@ export default function LiveTripsClient() {
 
       <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
         {zones.map((z) => (
-          <div key={z.zone_id} className="rounded-lg border p-3">
+          <div key={z.zone_id} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="font-semibold">{z.zone_name}</div>
               <div className="text-xs text-gray-600">{z.status || "-"}</div>
@@ -990,9 +1078,9 @@ export default function LiveTripsClient() {
         ))}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4" ref={tableRef}>
-        <div className="rounded-lg border">
-          <div className="p-3 border-b flex items-center justify-between">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.05fr,0.95fr]" ref={tableRef}>
+        <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 p-4">
             <div className="font-semibold">
               {viewMode === "drivers"
                 ? "Drivers view"
@@ -1001,14 +1089,14 @@ export default function LiveTripsClient() {
                 : "Dispatch view (Requested + Searching + Assigned + Accepted + Fare proposed + Ready + On the way + Arrived + On trip)"}
             </div>
             <div className="text-xs text-gray-600">
-              {viewMode === "drivers" ? (drivers.length + " shown") : (visibleTrips.length + " shown")}
+              {viewMode === "drivers" ? (filteredDriverRows.length + " shown") : (visibleTrips.length + " shown")}
             </div>
           </div>
 
           {viewMode === "drivers" ? (
             <div className="overflow-auto" style={{ maxHeight: 420 }}>
               <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-white border-b">
+                <thead className="sticky top-0 border-b border-slate-200 bg-white/95 backdrop-blur">
                   <tr className="text-left">
                     <th className="p-2">Driver</th>
                     <th className="p-2">Phone</th>
@@ -1022,14 +1110,14 @@ export default function LiveTripsClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {driverRows.length === 0 ? (
+                  {filteredDriverRows.length === 0 ? (
                     <tr>
                       <td className="p-3 text-gray-600" colSpan={9}>
                         No drivers in this view.
                       </td>
                     </tr>
                   ) : (
-                    driverRows.map((row) => {
+                    filteredDriverRows.map((row) => {
                       const d = row.driver;
                       const trip = row.activeTrip;
                       const isSel = trip ? selectedTripId === normTripId(trip) : false;
@@ -1084,7 +1172,7 @@ export default function LiveTripsClient() {
           ) : (
             <div className="overflow-auto" style={{ maxHeight: 420 }}>
               <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-white border-b">
+                <thead className="sticky top-0 border-b border-slate-200 bg-white/95 backdrop-blur">
                   <tr className="text-left">
                     <th className="p-2">Code</th>
                     <th className="p-2">Passenger</th>
@@ -1207,7 +1295,7 @@ export default function LiveTripsClient() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded border p-3">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50/70 p-4">
                 <div className="font-semibold mb-2">Trip details</div>
                 {!selectedTrip ? (
                   <div className="text-sm text-gray-500">Select a trip to view details.</div>
@@ -1224,7 +1312,7 @@ export default function LiveTripsClient() {
                 )}
               </div>
 
-              <div className="rounded border p-3">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50/70 p-4">
                 <div className="font-semibold mb-2">Driver details</div>
                 {!selectedTrip ? (
                   <div className="text-sm text-gray-500">Select a trip to view driver details.</div>
@@ -1244,7 +1332,7 @@ export default function LiveTripsClient() {
               <TripLifecycleActions trip={selectedTrip as any} />
             </div>
 
-            <div className="mt-3 rounded border p-3">
+            <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
               <div className="font-semibold mb-2">Assign driver (manual)</div>
               <div className="flex flex-wrap gap-2 items-center">
                 <select
@@ -1267,7 +1355,7 @@ export default function LiveTripsClient() {
                 </select>
 
                 <button
-                  className="rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50"
+                  className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
                   disabled={!selectedTrip?.booking_code || !manualDriverId || !selectedManualDriver?.assign_eligible}
                   onClick={() => {
                     if (!selectedTrip?.booking_code || !selectedManualDriver?.assign_eligible) return;
@@ -1278,7 +1366,7 @@ export default function LiveTripsClient() {
                 </button>
 
                 <button
-                  className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                  className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   onClick={() => {
                     refreshAll("manual").catch(() => {});
                   }}
