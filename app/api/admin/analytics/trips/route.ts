@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -12,6 +12,16 @@ const TEST_DRIVER_IDS = new Set([
 const EXCLUDED_PASSENGER_NAMES = new Set([
   "che er",
   "je wes",
+]);
+
+const UNCLASSIFIED_TOWN_TOKENS = new Set([
+  "",
+  "unknown",
+  "n/a",
+  "na",
+  "null",
+  "-",
+  "none",
 ]);
 
 type BookingRow = {
@@ -47,6 +57,11 @@ function text(v: unknown): string {
 function normalizeTown(v: unknown): string {
   const s = text(v);
   return s || "Unknown";
+}
+
+function isClassifiedTown(v: unknown): boolean {
+  const s = text(v).toLowerCase();
+  return !UNCLASSIFIED_TOWN_TOKENS.has(s);
 }
 
 function isExcludedPassenger(name: unknown): boolean {
@@ -97,6 +112,13 @@ export async function GET() {
       toda_breakdown: Record<string, { toda_name: string; trips: number; toda_share_total: number }>;
     }>();
 
+    const hiddenUnclassified = {
+      total_trips: 0,
+      company_share_total: 0,
+      toda_share_total: 0,
+      toda_completed_trips: 0,
+    };
+
     for (const row of bookings) {
       if (isExcludedPassenger(row.passenger_name)) continue;
 
@@ -104,7 +126,10 @@ export async function GET() {
       const profile = resolvedDriverId ? profileMap.get(resolvedDriverId) : undefined;
       if (resolvedDriverId && isTestDriver(resolvedDriverId, profile?.full_name)) continue;
 
-      const town = normalizeTown(row.town || profile?.municipality);
+      const resolvedTownRaw = row.town || profile?.municipality;
+      const town = normalizeTown(resolvedTownRaw);
+      const classifiedTown = isClassifiedTown(resolvedTownRaw);
+
       const isTodaMember = profile?.is_toda_member === true;
       const todaName = text(profile?.toda_org);
       const todaSharePerRide = Number(profile?.toda_share_per_ride || 0) > 0 ? Number(profile?.toda_share_per_ride) : 1;
@@ -115,6 +140,14 @@ export async function GET() {
         !["NON_TODA", "NONE", "N/A", "NA", "NULL", "-", "NO TODA"].includes(normalizedTodaName);
       const todaShare = isTodaRide ? todaSharePerRide : 0;
       const companyShare = isTodaRide ? Math.max(0, 15 - todaSharePerRide) : 15;
+
+      if (!classifiedTown) {
+        hiddenUnclassified.total_trips += 1;
+        hiddenUnclassified.company_share_total += companyShare;
+        hiddenUnclassified.toda_share_total += todaShare;
+        if (isTodaRide) hiddenUnclassified.toda_completed_trips += 1;
+        continue;
+      }
 
       const prev = townMap.get(town) || {
         town,
@@ -171,9 +204,13 @@ export async function GET() {
       { total_trips: 0, company_share_total: 0, toda_share_total: 0, toda_completed_trips: 0 }
     );
 
-    return NextResponse.json({ ok: true, rows, totals });
+    return NextResponse.json({
+      ok: true,
+      rows,
+      totals,
+      hidden_unclassified_legacy: hiddenUnclassified,
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "TRIPS_ANALYTICS_FAILED" }, { status: 500 });
   }
 }
-

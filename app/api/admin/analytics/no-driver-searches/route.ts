@@ -10,6 +10,16 @@ const EXCLUDED_PASSENGER_NAMES = new Set([
   "je wes",
 ]);
 
+const UNCLASSIFIED_TOWN_TOKENS = new Set([
+  "",
+  "unknown",
+  "n/a",
+  "na",
+  "null",
+  "-",
+  "none",
+]);
+
 type FailureRow = {
   id: string | null;
   created_at: string | null;
@@ -47,6 +57,11 @@ function normalizeTown(v: unknown): string {
   return s || "Unknown";
 }
 
+function isClassifiedTown(v: unknown): boolean {
+  const s = text(v).toLowerCase();
+  return !UNCLASSIFIED_TOWN_TOKENS.has(s);
+}
+
 function isExcludedPassenger(name: unknown): boolean {
   const s = text(name).toLowerCase();
   return !!s && EXCLUDED_PASSENGER_NAMES.has(s);
@@ -69,6 +84,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "NO_DRIVER_FAILURES_QUERY_FAILED", message: error.message }, { status: 500 });
     }
 
+    let hiddenUnclassifiedCount = 0;
+
     const rows = (Array.isArray(data) ? (data as FailureRow[]) : [])
       .filter((r) => !isExcludedPassenger(r.passenger_name))
       .map((r) => ({
@@ -87,7 +104,12 @@ export async function GET(req: NextRequest) {
         local_alternate_count: Number(r.local_alternate_count || 0),
         emergency_requested_count: Number(r.emergency_requested_count || 0),
         emergency_alternate_count: Number(r.emergency_alternate_count || 0),
-      }));
+      }))
+      .filter((r) => {
+        const keep = isClassifiedTown(r.town);
+        if (!keep) hiddenUnclassifiedCount += 1;
+        return keep;
+      });
 
     const totals = rows.reduce(
       (acc, row) => {
@@ -99,7 +121,12 @@ export async function GET(req: NextRequest) {
       { total_failures: 0, by_town: {} as Record<string, number> }
     );
 
-    return NextResponse.json({ ok: true, rows, totals });
+    return NextResponse.json({
+      ok: true,
+      rows,
+      totals,
+      hidden_unclassified_legacy: { total_failures: hiddenUnclassifiedCount },
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "NO_DRIVER_FAILURES_FAILED" }, { status: 500 });
   }
