@@ -72,6 +72,14 @@ function vehicleLabel(v: string): string {
   return v || "vehicle";
 }
 
+function isMotorcycleCapacityExceeded(vehicleType: string, passengerCount: number): boolean {
+  return vehicleType === "motorcycle" && passengerCount > 1;
+}
+
+function motorcycleCapacityMessage(passengerCount: number): string {
+  return `Motorcycle rides can take only 1 passenger. This booking has ${passengerCount} passengers. Please book a tricycle or make separate motorcycle bookings, one passenger per ride.`;
+}
+
 type DriverLocationRow = {
   driver_id?: string | null;
   status?: string | null;
@@ -699,10 +707,59 @@ const boundaryOverrideRequested =
       );
     }
 
+    if (isMotorcycleCapacityExceeded(vehicleType, passengerCount)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "MOTORCYCLE_CAPACITY_LIMIT",
+          message: motorcycleCapacityMessage(passengerCount),
+          requested_vehicle_type: vehicleType,
+          passenger_count: passengerCount,
+          max_passengers: 1,
+          can_make_separate_motorcycle_bookings: true,
+        },
+        { status: 409 }
+      );
+    }
+
     const availability = await getAvailabilitySummary(effectiveTown, vehicleType);
 
     if (!emergencyMode) {
       if (availability.local_requested_count <= 0 && availability.local_alternate_count > 0) {
+        if (isMotorcycleCapacityExceeded(String(availability.alternate_vehicle_type || ""), passengerCount)) {
+          await logDriverSearchFailure({
+            passengerId: createdByUserId,
+            passengerName,
+            town: effectiveTown,
+            fromLabel: pickupLabel,
+            toLabel: dropoffLabel,
+            pickupLat,
+            pickupLng,
+            dropoffLat,
+            dropoffLng,
+            requestedVehicleType: vehicleType,
+            alternateVehicleType: availability.alternate_vehicle_type,
+            code: "ALTERNATE_VEHICLE_CAPACITY_LIMIT",
+            message: `Only motorcycle drivers are available in ${derivedTown}, but motorcycles can take only 1 passenger. This booking has ${passengerCount} passengers.`,
+            availability,
+          });
+
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "ALTERNATE_VEHICLE_CAPACITY_LIMIT",
+              message: "Only motorcycle drivers are available right now, but motorcycles can take only 1 passenger. Please book a tricycle later or make separate motorcycle bookings, one passenger per ride.",
+              requested_vehicle_type: vehicleType,
+              blocked_alternate_vehicle_type: availability.alternate_vehicle_type,
+              passenger_count: passengerCount,
+              max_passengers: 1,
+              can_make_separate_motorcycle_bookings: true,
+              availability,
+            },
+            { status: 409 }
+          );
+        }
+
         return NextResponse.json(
           {
             ok: false,
