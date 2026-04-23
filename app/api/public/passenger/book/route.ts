@@ -138,7 +138,13 @@ async function logDriverSearchFailure(input: {
       emergency_alternate_count: Number((availability as any)?.emergency_alternate_count || 0),
     });
   } catch (e) {
-    console.warn("[BOOK] driver_search_failures insert skipped", e);
+    console.warn("[BOOK] driver_search_failures insert failed", {
+      code: text(input.code) || "NO_DRIVERS_AVAILABLE",
+      town: text(input.town) || null,
+      requested_vehicle_type: text(input.requestedVehicleType) || null,
+      passenger_id: text(input.passengerId) || null,
+      error: e,
+    });
   }
 }
 
@@ -712,9 +718,24 @@ const boundaryOverrideRequested =
 
       if (availability.local_requested_count <= 0 && availability.local_alternate_count <= 0) {
         if (availability.emergency_requested_count > 0) {
-          
-      
-return NextResponse.json(
+          await logDriverSearchFailure({
+            passengerId: createdByUserId,
+            passengerName,
+            town: effectiveTown,
+            fromLabel: pickupLabel,
+            toLabel: dropoffLabel,
+            pickupLat,
+            pickupLng,
+            dropoffLat,
+            dropoffLng,
+            requestedVehicleType: vehicleType,
+            alternateVehicleType: availability.alternate_vehicle_type,
+            code: "EMERGENCY_BOOKING_AVAILABLE",
+            message: `No local ${vehicleLabel(vehicleType)} drivers were found for ${derivedTown}. Emergency search in nearby towns is available.`,
+            availability,
+          });
+
+          return NextResponse.json(
             {
               ok: false,
               code: "EMERGENCY_BOOKING_AVAILABLE",
@@ -743,54 +764,6 @@ return NextResponse.json(
           message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
           availability,
         });
-
-        await logDriverSearchFailure({
-
-
-          passengerId: createdByUserId,
-
-
-          passengerName,
-
-
-          town: effectiveTown,
-
-
-          fromLabel: pickupLabel,
-
-
-          toLabel: dropoffLabel,
-
-
-          pickupLat,
-
-
-          pickupLng,
-
-
-          dropoffLat,
-
-
-          dropoffLng,
-
-
-          requestedVehicleType: vehicleType,
-
-
-          alternateVehicleType: availability.alternate_vehicle_type,
-
-
-          code: "NO_DRIVERS_AVAILABLE",
-
-
-          message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
-
-
-          availability,
-
-
-        });
-
 
 
         return NextResponse.json(
@@ -854,54 +827,6 @@ return NextResponse.json(
           message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
           availability,
         });
-
-        await logDriverSearchFailure({
-
-
-          passengerId: createdByUserId,
-
-
-          passengerName,
-
-
-          town: effectiveTown,
-
-
-          fromLabel: pickupLabel,
-
-
-          toLabel: dropoffLabel,
-
-
-          pickupLat,
-
-
-          pickupLng,
-
-
-          dropoffLat,
-
-
-          dropoffLng,
-
-
-          requestedVehicleType: vehicleType,
-
-
-          alternateVehicleType: availability.alternate_vehicle_type,
-
-
-          code: "NO_DRIVERS_AVAILABLE",
-
-
-          message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
-
-
-          availability,
-
-
-        });
-
 
 
         return NextResponse.json(
