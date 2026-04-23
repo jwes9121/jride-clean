@@ -1,7 +1,5 @@
-﻿"use client";
-
+"use client";
 import React from "react";
-
 type TripsTownRow = {
   town?: string | null;
   total_trips?: number | null;
@@ -11,7 +9,6 @@ type TripsTownRow = {
   toda_completed_trips?: number | null;
   toda_breakdown?: Array<{ toda_name?: string | null; trips?: number | null; toda_share_total?: number | null }>;
 };
-
 type TripsResponse = {
   ok?: boolean;
   rows?: TripsTownRow[];
@@ -23,7 +20,6 @@ type TripsResponse = {
   };
   error?: string;
 };
-
 type DriverRow = {
   driver_id?: string | null;
   driver_name?: string | null;
@@ -39,13 +35,11 @@ type DriverRow = {
   average_rating?: number | null;
   ratings_count?: number | null;
 };
-
 type DriversResponse = {
   ok?: boolean;
   rows?: DriverRow[];
   error?: string;
 };
-
 type WatchlistRow = {
   driver_id?: string | null;
   driver_name?: string | null;
@@ -57,13 +51,11 @@ type WatchlistRow = {
   latest_feedback?: string | null;
   latest_rating_at?: string | null;
 };
-
 type WatchlistResponse = {
   ok?: boolean;
   rows?: WatchlistRow[];
   error?: string;
 };
-
 type FailureRow = {
   id?: string | null;
   created_at?: string | null;
@@ -81,23 +73,49 @@ type FailureRow = {
   emergency_requested_count?: number | null;
   emergency_alternate_count?: number | null;
 };
-
 type FailuresResponse = {
   ok?: boolean;
   rows?: FailureRow[];
   totals?: { total_failures?: number | null; by_town?: Record<string, number> };
   error?: string;
 };
-
+type PresenceRow = {
+  passenger_id?: string | null;
+  passenger_name?: string | null;
+  town?: string | null;
+  app_state?: string | null;
+  screen_name?: string | null;
+  last_seen_at?: string | null;
+  last_booking_code?: string | null;
+  platform?: string | null;
+  is_active_now?: boolean | null;
+};
+type PresenceTownRow = {
+  town?: string | null;
+  active_now?: number | null;
+};
+type PresenceResponse = {
+  ok?: boolean;
+  freshness_seconds?: number | null;
+  counts?: {
+    active_now?: number | null;
+    foreground_now?: number | null;
+    background_now?: number | null;
+    offline_marked_now?: number | null;
+    with_booking_now?: number | null;
+    searching_now?: number | null;
+  };
+  towns?: PresenceTownRow[];
+  rows?: PresenceRow[];
+  error?: string;
+};
 type ScopeOption = "all" | "Lagawe" | "Hingyon" | "Banaue" | "Lamut" | "Kiangan" | "Unknown";
-
 const CURRENCY = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
   maximumFractionDigits: 0,
 });
 const NUMBER = new Intl.NumberFormat("en-PH");
-
 function formatPeso(v: number) {
   return CURRENCY.format(Number.isFinite(v) ? v : 0);
 }
@@ -117,6 +135,14 @@ function formatPHDateTime(value?: string | null) {
     minute: "2-digit",
     hour12: true,
   }).format(d);
+}
+function formatSecondsLabel(value?: number | null) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return "-";
+  if (n < 60) return `${n} sec`;
+  const minutes = Math.floor(n / 60);
+  const seconds = n % 60;
+  return seconds ? `${minutes} min ${seconds} sec` : `${minutes} min`;
 }
 function formatPHNow() {
   return new Intl.DateTimeFormat("en-PH", {
@@ -158,7 +184,6 @@ function Card({ title, value, sub }: { title: string; value: string; sub?: strin
     </div>
   );
 }
-
 export default function AdminAnalyticsPage() {
   const [scope, setScope] = React.useState<ScopeOption>("all");
   const [lastRefresh, setLastRefresh] = React.useState<string>(formatPHNow());
@@ -168,32 +193,53 @@ export default function AdminAnalyticsPage() {
   const [driverRows, setDriverRows] = React.useState<DriverRow[]>([]);
   const [watchRows, setWatchRows] = React.useState<WatchlistRow[]>([]);
   const [failureRows, setFailureRows] = React.useState<FailureRow[]>([]);
-
+  const [presenceRows, setPresenceRows] = React.useState<PresenceRow[]>([]);
+  const [presenceTowns, setPresenceTowns] = React.useState<PresenceTownRow[]>([]);
+  const [presenceFreshnessSeconds, setPresenceFreshnessSeconds] = React.useState<number>(90);
+  const [presenceCounts, setPresenceCounts] = React.useState<NonNullable<PresenceResponse["counts"]>>({
+    active_now: 0,
+    foreground_now: 0,
+    background_now: 0,
+    offline_marked_now: 0,
+    with_booking_now: 0,
+    searching_now: 0,
+  });
   const load = React.useCallback(async () => {
     setLoading(true);
     setMsg("");
     try {
-      const [tripRes, driverRes, watchRes, failRes] = await Promise.all([
+      const [tripRes, driverRes, watchRes, failRes, presenceRes] = await Promise.all([
         fetch("/api/admin/analytics/trips", { cache: "no-store", credentials: "same-origin" }),
         fetch("/api/admin/analytics/drivers?limit=20", { cache: "no-store", credentials: "same-origin" }),
         fetch("/api/admin/analytics/driver-watchlist?limit=8", { cache: "no-store", credentials: "same-origin" }),
         fetch("/api/admin/analytics/no-driver-searches?limit=100", { cache: "no-store", credentials: "same-origin" }),
+        fetch("/api/admin/analytics/passenger-presence?freshness_seconds=90", { cache: "no-store", credentials: "same-origin" }),
       ]);
-
       const tripsJson = (await tripRes.json().catch(() => ({}))) as TripsResponse;
       const driversJson = (await driverRes.json().catch(() => ({}))) as DriversResponse;
       const watchJson = (await watchRes.json().catch(() => ({}))) as WatchlistResponse;
       const failJson = (await failRes.json().catch(() => ({}))) as FailuresResponse;
-
+      const presenceJson = (await presenceRes.json().catch(() => ({}))) as PresenceResponse;
       if (!tripRes.ok) throw new Error(tripsJson.error || "Failed to load trips analytics.");
       if (!driverRes.ok) throw new Error(driversJson.error || "Failed to load driver analytics.");
       if (!watchRes.ok) throw new Error(watchJson.error || "Failed to load driver watchlist.");
       if (!failRes.ok) throw new Error(failJson.error || "Failed to load no-driver analytics.");
-
+      if (!presenceRes.ok) throw new Error(presenceJson.error || "Failed to load passenger presence analytics.");
       setTripRows(Array.isArray(tripsJson.rows) ? tripsJson.rows : []);
       setDriverRows(Array.isArray(driversJson.rows) ? driversJson.rows : []);
       setWatchRows(Array.isArray(watchJson.rows) ? watchJson.rows : []);
       setFailureRows(Array.isArray(failJson.rows) ? failJson.rows : []);
+      setPresenceRows(Array.isArray(presenceJson.rows) ? presenceJson.rows : []);
+      setPresenceTowns(Array.isArray(presenceJson.towns) ? presenceJson.towns : []);
+      setPresenceFreshnessSeconds(Number(presenceJson.freshness_seconds || 90));
+      setPresenceCounts({
+        active_now: Number(presenceJson.counts?.active_now || 0),
+        foreground_now: Number(presenceJson.counts?.foreground_now || 0),
+        background_now: Number(presenceJson.counts?.background_now || 0),
+        offline_marked_now: Number(presenceJson.counts?.offline_marked_now || 0),
+        with_booking_now: Number(presenceJson.counts?.with_booking_now || 0),
+        searching_now: Number(presenceJson.counts?.searching_now || 0),
+      });
       setLastRefresh(formatPHNow());
     } catch (e: any) {
       setMsg(e?.message || "Failed to load analytics.");
@@ -201,19 +247,37 @@ export default function AdminAnalyticsPage() {
       setLoading(false);
     }
   }, []);
-
   React.useEffect(() => {
     let alive = true;
-    const run = async () => { if (alive) await load(); };
+    const run = async () => {
+      if (alive) await load();
+    };
     void run();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [load]);
-
   const scopedTrips = React.useMemo(() => tripRows.filter((r) => townMatch(scope, r.town)), [tripRows, scope]);
   const scopedDrivers = React.useMemo(() => driverRows.filter((r) => townMatch(scope, r.municipality)), [driverRows, scope]);
   const scopedWatch = React.useMemo(() => watchRows.filter((r) => townMatch(scope, r.municipality)), [watchRows, scope]);
   const scopedFailures = React.useMemo(() => failureRows.filter((r) => townMatch(scope, r.town)), [failureRows, scope]);
-
+  const scopedPresenceRows = React.useMemo(() => presenceRows.filter((r) => townMatch(scope, r.town)), [presenceRows, scope]);
+  const scopedPresenceTowns = React.useMemo(() => {
+    if (scope === "all") return presenceTowns;
+    return presenceTowns.filter((r) => townMatch(scope, r.town));
+  }, [presenceTowns, scope]);
+  const presenceTotals = React.useMemo(() => {
+    const activeNow = scopedPresenceRows.length;
+    const foregroundNow = scopedPresenceRows.filter((r) => String(r.app_state || "foreground") === "foreground").length;
+    const backgroundNow = scopedPresenceRows.filter((r) => String(r.app_state || "") === "background").length;
+    const offlineMarkedNow = scopedPresenceRows.filter((r) => String(r.app_state || "") === "offline").length;
+    const withBookingNow = scopedPresenceRows.filter((r) => !!r.last_booking_code).length;
+    const searchingNow = scopedPresenceRows.filter((r) => {
+      const screen = String(r.screen_name || "").toLowerCase();
+      return !r.last_booking_code && ["passengerbookrideactivity", "passengersearchingactivity", "search", "booking", "home"].includes(screen);
+    }).length;
+    return { activeNow, foregroundNow, backgroundNow, offlineMarkedNow, withBookingNow, searchingNow };
+  }, [scopedPresenceRows]);
   const totals = React.useMemo(() => {
     const totalTrips = scopedTrips.reduce((sum, row) => sum + Number(row.total_trips || 0), 0);
     const companyShareTotal = scopedTrips.reduce((sum, row) => sum + Number((row.company_share_total ?? row.total_revenue) || 0), 0);
@@ -221,21 +285,79 @@ export default function AdminAnalyticsPage() {
     const todaTrips = scopedTrips.reduce((sum, row) => sum + Number(row.toda_completed_trips || 0), 0);
     const grossProposedFareEarnings = scopedDrivers.reduce((sum, row) => sum + Number(row.gross_proposed_fare_earnings || 0), 0);
     const towns = new Set(scopedTrips.map((r) => String(r.town || "Unknown (legacy data)")));
-    return { totalTrips, companyShareTotal, todaShareTotal, todaTrips, grossProposedFareEarnings, towns: towns.size, watchCount: scopedWatch.length, noDriverCount: scopedFailures.length };
+    return {
+      totalTrips,
+      companyShareTotal,
+      todaShareTotal,
+      todaTrips,
+      grossProposedFareEarnings,
+      towns: towns.size,
+      watchCount: scopedWatch.length,
+      noDriverCount: scopedFailures.length,
+    };
   }, [scopedTrips, scopedDrivers, scopedWatch, scopedFailures]);
-
   const exportTrips = React.useCallback(() => {
-    downloadCsv(`jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Town", "Completed Trips", "Company Share", "TODA Share", "TODA Trips"], scopedTrips.map((r) => [r.town || "Unknown (legacy data)", Number(r.total_trips || 0), Number((r.company_share_total ?? r.total_revenue) || 0), Number(r.toda_share_total || 0), Number(r.toda_completed_trips || 0)]));
+    downloadCsv(
+      `jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Town", "Completed Trips", "Company Share", "TODA Share", "TODA Trips"],
+      scopedTrips.map((r) => [
+        r.town || "Unknown (legacy data)",
+        Number(r.total_trips || 0),
+        Number((r.company_share_total ?? r.total_revenue) || 0),
+        Number(r.toda_share_total || 0),
+        Number(r.toda_completed_trips || 0),
+      ])
+    );
   }, [scopedTrips, scope]);
-
   const exportDrivers = React.useCallback(() => {
-    downloadCsv(`jride-analytics-drivers-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Driver", "Town", "TODA", "Completed Trips", "Gross Proposed Fare", "Company Share", "TODA Share", "Average Rating", "Ratings Count"], scopedDrivers.map((r) => [r.driver_name || "Unknown Driver", r.municipality || "Unknown (legacy data)", r.toda_name || "-", Number(r.completed_trips || 0), Number(r.gross_proposed_fare_earnings || 0), Number((r.total_company_share ?? r.total_platform_revenue) || 0), Number(r.total_toda_share || 0), Number(r.average_rating || 0).toFixed(2), Number(r.ratings_count || 0)]));
+    downloadCsv(
+      `jride-analytics-drivers-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Driver", "Town", "TODA", "Completed Trips", "Gross Proposed Fare", "Company Share", "TODA Share", "Average Rating", "Ratings Count"],
+      scopedDrivers.map((r) => [
+        r.driver_name || "Unknown Driver",
+        r.municipality || "Unknown (legacy data)",
+        r.toda_name || "-",
+        Number(r.completed_trips || 0),
+        Number(r.gross_proposed_fare_earnings || 0),
+        Number((r.total_company_share ?? r.total_platform_revenue) || 0),
+        Number(r.total_toda_share || 0),
+        Number(r.average_rating || 0).toFixed(2),
+        Number(r.ratings_count || 0),
+      ])
+    );
   }, [scopedDrivers, scope]);
-
   const exportFailures = React.useCallback(() => {
-    downloadCsv(`jride-no-driver-searches-${scope}-${new Date().toISOString().slice(0, 10)}.csv`, ["Passenger", "Town", "Time (PHT)", "Pickup", "Dropoff", "Requested Vehicle", "Alternate Vehicle", "Code", "Message"], scopedFailures.map((r) => [r.passenger_name || "Unknown Passenger", r.town || "Unknown (legacy data)", formatPHDateTime(r.created_at), r.from_label || "-", r.to_label || "-", r.requested_vehicle_type || "-", r.alternate_vehicle_type || "-", r.code || "-", r.message || "-"]));
+    downloadCsv(
+      `jride-no-driver-searches-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Passenger", "Town", "Time (PHT)", "Pickup", "Dropoff", "Requested Vehicle", "Alternate Vehicle", "Code", "Message"],
+      scopedFailures.map((r) => [
+        r.passenger_name || "Unknown Passenger",
+        r.town || "Unknown (legacy data)",
+        formatPHDateTime(r.created_at),
+        r.from_label || "-",
+        r.to_label || "-",
+        r.requested_vehicle_type || "-",
+        r.alternate_vehicle_type || "-",
+        r.code || "-",
+        r.message || "-",
+      ])
+    );
   }, [scopedFailures, scope]);
-
+  const exportPresence = React.useCallback(() => {
+    downloadCsv(
+      `jride-passenger-presence-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Passenger", "Town", "App State", "Screen", "Last Seen (PHT)", "Booking Code", "Platform"],
+      scopedPresenceRows.map((r) => [
+        r.passenger_name || "Unknown Passenger",
+        r.town || "Unknown",
+        r.app_state || "foreground",
+        r.screen_name || "-",
+        formatPHDateTime(r.last_seen_at),
+        r.last_booking_code || "-",
+        r.platform || "-",
+      ])
+    );
+  }, [scopedPresenceRows, scope]);
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 md:px-6 lg:px-8">
@@ -243,7 +365,7 @@ export default function AdminAnalyticsPage() {
           <div className="flex flex-col gap-6 p-6 md:p-8 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">JRide Analytics Center</div>
-              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics, company share, TODA share, and no-driver demand</h1>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics, company share, TODA share, passenger presence, and no-driver demand</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">Built for expansion. View town-filtered results, export CSV reports, and monitor partner-safe metrics using Philippine date and time.</p>
             </div>
             <div className="grid grid-cols-1 gap-3 text-sm text-slate-300 sm:grid-cols-2">
@@ -252,7 +374,6 @@ export default function AdminAnalyticsPage() {
             </div>
           </div>
         </section>
-
         <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -273,11 +394,11 @@ export default function AdminAnalyticsPage() {
               <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportTrips}>Export trips CSV</button>
               <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportDrivers}>Export drivers CSV</button>
               <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportFailures}>Export no-driver CSV</button>
+              <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportPresence}>Export presence CSV</button>
             </div>
           </div>
           {msg ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{msg}</div> : null}
         </section>
-
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
           <Card title="Completed trips" value={formatCount(totals.totalTrips)} sub="All filtered towns" />
           <Card title="Company share" value={formatPeso(totals.companyShareTotal)} sub="PHP 14 when TODA ride, PHP 15 otherwise" />
@@ -286,7 +407,92 @@ export default function AdminAnalyticsPage() {
           <Card title="Driver gross fares" value={formatPeso(totals.grossProposedFareEarnings)} sub="Sum of completed-trip proposed fares" />
           <Card title="No-driver searches" value={formatCount(totals.noDriverCount)} sub="Passengers who searched but got no driver" />
         </section>
-
+        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">Passenger presence live panel</h2>
+              <p className="mt-1 text-sm text-slate-500">Read-only live demand view from passenger_app_presence. Fresh rows only. Current freshness window: {formatSecondsLabel(presenceFreshnessSeconds)}.</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Scope summary</div>
+              <div className="mt-1 font-semibold">{scope === "all" ? "All towns" : scope}</div>
+              <div className="mt-1 text-xs text-emerald-700">API total active now: {formatCount(Number(presenceCounts.active_now || 0))}</div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <Card title="Active passengers now" value={formatCount(presenceTotals.activeNow)} sub="Fresh presence rows in scope" />
+            <Card title="Foreground now" value={formatCount(presenceTotals.foregroundNow)} sub="App_state = foreground" />
+            <Card title="Searching now" value={formatCount(presenceTotals.searchingNow)} sub="No booking code on booking/search/home screens" />
+            <Card title="Background now" value={formatCount(presenceTotals.backgroundNow)} sub="App_state = background" />
+            <Card title="With booking now" value={formatCount(presenceTotals.withBookingNow)} sub="Presence rows carrying a booking code" />
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Active by town</h3>
+              <p className="mt-1 text-xs text-slate-500">Counts are filtered by the selected town scope.</p>
+              <div className="mt-3 overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 font-semibold">Active now</th></tr></thead>
+                  <tbody>
+                    {scopedPresenceTowns.length === 0 ? <tr><td colSpan={2} className="py-4 text-slate-400">No active passenger presence rows for this scope.</td></tr> : scopedPresenceTowns.map((row) => (
+                      <tr key={String(row.town || "Unknown")} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 pr-4 font-medium text-slate-900">{row.town || "Unknown"}</td>
+                        <td className="py-2 text-slate-700">{formatCount(Number(row.active_now || 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Current booking screen users</h3>
+              <p className="mt-1 text-xs text-slate-500">Passengers on booking and searching surfaces without an active booking code.</p>
+              <div className="mt-3 overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Passenger</th><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Screen</th><th className="py-2 font-semibold">Last seen</th></tr></thead>
+                  <tbody>
+                    {scopedPresenceRows.filter((row) => !row.last_booking_code).filter((row) => {
+                      const screen = String(row.screen_name || "").toLowerCase();
+                      return ["passengerbookrideactivity", "passengersearchingactivity", "search", "booking", "home"].includes(screen);
+                    }).length === 0 ? <tr><td colSpan={4} className="py-4 text-slate-400">No current booking-screen users in this scope.</td></tr> : scopedPresenceRows.filter((row) => !row.last_booking_code).filter((row) => {
+                      const screen = String(row.screen_name || "").toLowerCase();
+                      return ["passengerbookrideactivity", "passengersearchingactivity", "search", "booking", "home"].includes(screen);
+                    }).map((row) => (
+                      <tr key={String(row.passenger_id || row.last_seen_at || Math.random())} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 pr-4 font-medium text-slate-900">{row.passenger_name || "Unknown Passenger"}</td>
+                        <td className="py-2 pr-4 text-slate-700">{row.town || "Unknown"}</td>
+                        <td className="py-2 pr-4 text-slate-700">{row.screen_name || "-"}</td>
+                        <td className="py-2 text-slate-700">{formatPHDateTime(row.last_seen_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-slate-900">Recent active passengers</h3>
+            <p className="mt-1 text-xs text-slate-500">Most recent fresh presence rows in the selected town scope.</p>
+            <div className="mt-3 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Passenger</th><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">App state</th><th className="py-2 pr-4 font-semibold">Screen</th><th className="py-2 pr-4 font-semibold">Booking code</th><th className="py-2 pr-4 font-semibold">Platform</th><th className="py-2 font-semibold">Last seen</th></tr></thead>
+                <tbody>
+                  {scopedPresenceRows.length === 0 ? <tr><td colSpan={7} className="py-4 text-slate-400">No active passenger presence rows for this scope.</td></tr> : scopedPresenceRows.slice(0, 25).map((row, idx) => (
+                    <tr key={String(row.passenger_id || `${row.last_seen_at || "row"}-${idx}`)} className="border-b border-slate-100 last:border-0">
+                      <td className="py-2 pr-4 font-medium text-slate-900">{row.passenger_name || "Unknown Passenger"}</td>
+                      <td className="py-2 pr-4 text-slate-700">{row.town || "Unknown"}</td>
+                      <td className="py-2 pr-4 text-slate-700">{row.app_state || "foreground"}</td>
+                      <td className="py-2 pr-4 text-slate-700">{row.screen_name || "-"}</td>
+                      <td className="py-2 pr-4 text-slate-700">{row.last_booking_code || "-"}</td>
+                      <td className="py-2 pr-4 text-slate-700">{row.platform || "-"}</td>
+                      <td className="py-2 text-slate-700">{formatPHDateTime(row.last_seen_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Trips, company share, and TODA share by town</h2>
@@ -307,7 +513,6 @@ export default function AdminAnalyticsPage() {
               </table>
             </div>
           </div>
-
           <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Top drivers with TODA identification</h2>
             <p className="mt-1 text-sm text-slate-500">Completed trips, gross proposed fares, company share, TODA share, and quality signals.</p>
@@ -333,7 +538,6 @@ export default function AdminAnalyticsPage() {
             </div>
           </div>
         </section>
-
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">TODA breakdown by town</h2>
@@ -354,15 +558,14 @@ export default function AdminAnalyticsPage() {
               ))}
             </div>
           </div>
-
           <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">No-driver search demand</h2>
-            <p className="mt-1 text-sm text-slate-500">Passengers who searched but were not able to get a driver. This reads from driver_search_failures and will populate only after booking routes start writing to that table.</p>
+            <p className="mt-1 text-sm text-slate-500">Passengers who searched but were not able to get a driver. This reads from driver_search_failures only. It does not patch or infer missing rows.</p>
             <div className="mt-4 overflow-auto">
               <table className="min-w-full text-sm">
                 <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-3 pr-4 font-semibold">Passenger</th><th className="py-3 pr-4 font-semibold">Town</th><th className="py-3 pr-4 font-semibold">Time (PHT)</th><th className="py-3 pr-4 font-semibold">Pickup</th><th className="py-3 pr-4 font-semibold">Dropoff</th><th className="py-3 pr-4 font-semibold">Requested</th><th className="py-3 font-semibold">Alternate</th></tr></thead>
                 <tbody>
-                  {scopedFailures.length === 0 ? <tr><td colSpan={7} className="py-6 text-slate-400">No no-driver search rows yet. The table exists, but booking routes must still write into it.</td></tr> : scopedFailures.map((row) => (
+                  {scopedFailures.length === 0 ? <tr><td colSpan={7} className="py-6 text-slate-400">No no-driver search rows yet in this scope. This page remains read-only and does not change booking logging behavior.</td></tr> : scopedFailures.map((row) => (
                     <tr key={String(row.id || Math.random())} className="border-b border-slate-100 last:border-0">
                       <td className="py-3 pr-4 font-medium text-slate-900">{row.passenger_name || "Unknown Passenger"}</td>
                       <td className="py-3 pr-4 text-slate-700">{row.town || "Unknown (legacy data)"}</td>
@@ -378,7 +581,6 @@ export default function AdminAnalyticsPage() {
             </div>
           </div>
         </section>
-
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-1">
           <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Driver watchlist</h2>
@@ -407,4 +609,3 @@ export default function AdminAnalyticsPage() {
     </main>
   );
 }
-
