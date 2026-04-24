@@ -4,6 +4,21 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
+
+function isTakeoutEnabled() {
+  return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
+}
+
+function takeoutDisabledResponse() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "TAKEOUT_DISABLED",
+      message: "Takeout is not enabled yet. Ride booking remains the active service."
+    },
+    { status: 503 }
+  );
+}
 // PHASE_3D_TAKEOUT_COORDS_HELPERS
 type LatLng = { lat: number | null; lng: number | null };
 
@@ -377,6 +392,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isTakeoutEnabled()) return takeoutDisabledResponse();
   const supabase = createRouteHandlerClient({ cookies });
   // Keep auth system untouched; do not enforce hard fail unless you want later
   // const authed = await isAuthedWithEither(supabase).catch(() => false);
@@ -448,7 +464,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
 
   // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
-// Phase 3A bridge: when vendor marks ready (driver_arrived), also move booking.status -> "assigned"
+// Phase 3A bridge: when vendor marks ready (driver_arrived), do not move booking.status to ride lifecycle values
 // so it becomes dispatch-visible. Idempotent: only if status is still requested/empty.
   if (order_id) {
     const cur = await admin
@@ -465,7 +481,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
     const patch: any = { vendor_status: nextVendor };
 
-    // Bridge rule: vendor ready -> dispatch sees it
+    // Bridge rule: vendor ready -> takeout customer status only
     // Only advance if booking hasn't progressed yet.
     const stillRequested = !curStatus || curStatus === "requested";
     const isReadySignal =
@@ -475,7 +491,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       nextVendor === "pickup_ready";
 
     if (stillRequested && isReadySignal) {
-      patch.status = "assigned";
+      patch.customer_status = "ready_for_pickup";
     }
 
     const up = await admin
