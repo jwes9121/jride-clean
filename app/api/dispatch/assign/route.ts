@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function text(v: unknown): string {
@@ -161,7 +161,7 @@ function keepLatestDriverLocationRows(rows: any[]): any[] {
 async function isDriverWalletEligible(supabase: any, driverId: string) {
   const { data, error } = await supabase
     .from("drivers")
-    .select("id, wallet_balance, min_wallet_required, wallet_locked")
+    .select("*")
     .eq("id", driverId)
     .maybeSingle();
 
@@ -184,13 +184,14 @@ async function isDriverWalletEligible(supabase: any, driverId: string) {
     balance,
     minRequired,
     walletLocked,
+    driver: data,
   };
 }
 
 async function getLatestDriverLocationForDriver(supabase: any, driverId: string) {
   const { data, error } = await supabase
     .from("driver_locations")
-    .select("driver_id, town, lat, lng, updated_at, created_at, status")
+    .select("*")
     .eq("driver_id", driverId)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -240,6 +241,74 @@ async function findActiveTripForDriver(supabase: any, driverId: string, excludeB
   };
 }
 
+function normalizedVehicleType(row: any): string {
+  const raw = text(
+    row?.vehicle_type ||
+      row?.vehicleType ||
+      row?.vehicle ||
+      row?.vehicle_kind ||
+      row?.vehicleKind ||
+      row?.driver_vehicle_type ||
+      row?.driverVehicleType ||
+      row?.transport_type ||
+      row?.transportType ||
+      row?.type
+  ).toLowerCase();
+
+  if (raw.includes("motor") || raw.includes("bike") || raw.includes("mc")) return "motorcycle";
+  if (raw.includes("trike") || raw.includes("tricycle") || raw.includes("toda")) return "tricycle";
+  return raw;
+}
+
+function bookingPassengerCount(booking: any): number {
+  const candidates = [
+    booking?.passenger_count,
+    booking?.passengerCount,
+    booking?.pax_count,
+    booking?.paxCount,
+    booking?.passengers,
+    booking?.pax,
+  ];
+
+  for (const candidate of candidates) {
+    const n = Number(candidate);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+
+  return 1;
+}
+
+function driverVehicleType(locationRow: any, driverRow?: any): string {
+  return normalizedVehicleType(driverRow) || normalizedVehicleType(locationRow);
+}
+
+function evaluateVehicleCapacity(booking: any, locationRow: any, driverRow?: any) {
+  const requestedVehicle = normalizedVehicleType(booking);
+  const passengerCount = bookingPassengerCount(booking);
+  const driverVehicle = driverVehicleType(locationRow, driverRow);
+  const driverIsMotorcycle = driverVehicle === "motorcycle";
+  const sameRequestedVehicle = !!requestedVehicle && !!driverVehicle && requestedVehicle === driverVehicle;
+
+  if (passengerCount > 1 && driverIsMotorcycle) {
+    return {
+      ok: false as const,
+      error: "motorcycle_capacity_exceeded",
+      message: "Motorcycle can only take 1 passenger. Please book separate rides or choose tricycle when available.",
+      requested_vehicle_type: requestedVehicle || null,
+      driver_vehicle_type: driverVehicle || null,
+      passenger_count: passengerCount,
+    };
+  }
+
+  return {
+    ok: true as const,
+    requested_vehicle_type: requestedVehicle || null,
+    driver_vehicle_type: driverVehicle || null,
+    passenger_count: passengerCount,
+    vehicle_priority: sameRequestedVehicle ? 0 : driverVehicle ? 1 : 2,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = getSupabase();
@@ -260,7 +329,7 @@ export async function POST(req: NextRequest) {
 
     let bookingQuery = supabase
       .from("bookings")
-      .select("id, booking_code, town, status, driver_id, assigned_driver_id, pickup_lat, pickup_lng")
+      .select("*")
       .limit(1);
 
     bookingQuery = bookingCode
@@ -430,6 +499,28 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         );
       }
+
+      const manualVehicleCapacity = evaluateVehicleCapacity(
+        booking,
+        driverLocation.row,
+        (explicitEligibility as any).driver
+      );
+      if (!manualVehicleCapacity.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: manualVehicleCapacity.error,
+            message: manualVehicleCapacity.message,
+            booking_id: bookingDbId,
+            booking_code: text((booking as any).booking_code),
+            driver_id: explicitDriverId,
+            requested_vehicle_type: manualVehicleCapacity.requested_vehicle_type,
+            driver_vehicle_type: manualVehicleCapacity.driver_vehicle_type,
+            passenger_count: manualVehicleCapacity.passenger_count,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     let chosenDriverId = explicitDriverId;
@@ -442,7 +533,7 @@ export async function POST(req: NextRequest) {
 
       const { data: drivers, error: driverError } = await supabase
         .from("driver_locations")
-        .select("driver_id, town, lat, lng, updated_at, created_at, status")
+        .select("*")
         .in("town", normalizedTowns);
 
       if (driverError) {
@@ -464,16 +555,20 @@ export async function POST(req: NextRequest) {
           const lng = num(row?.lng);
           const distKm = haversineKm(lat, lng, pickupLat, pickupLng);
 
+          const vehicleCapacity = evaluateVehicleCapacity(booking, row);
+
           return {
             ...row,
             eligibility,
             sameTown,
             distKm,
             townPriority: sameTown ? 0 : 1,
+            vehiclePriority: vehicleCapacity.ok ? vehicleCapacity.vehicle_priority : 99,
           };
         })
         .sort((a: any, b: any) => {
           if (a.townPriority !== b.townPriority) return a.townPriority - b.townPriority;
+          if (a.vehiclePriority !== b.vehiclePriority) return a.vehiclePriority - b.vehiclePriority;
           if (a.distKm !== b.distKm) return a.distKm - b.distKm;
 
           const aUpdated = ts(a.updated_at || a.created_at || null);
@@ -495,6 +590,9 @@ export async function POST(req: NextRequest) {
         const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
         if (!eligibility.ok) continue;
         if (!eligibility.eligible) continue;
+
+        const vehicleCapacity = evaluateVehicleCapacity(booking, row, (eligibility as any).driver);
+        if (!vehicleCapacity.ok) continue;
 
         eligibleDriverId = candidateDriverId;
         break;
@@ -591,3 +689,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
