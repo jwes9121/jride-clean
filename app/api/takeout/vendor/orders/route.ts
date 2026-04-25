@@ -1,32 +1,84 @@
 import { NextRequest, NextResponse } from "next/server";
 
-function isTakeoutEnabled() {
-  return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+function takeoutEnabled(): boolean {
+  const raw = String(process.env.TAKEOUT_ENABLED || "0").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
-function disabled() {
+function disabledResponse() {
   return NextResponse.json(
     {
       ok: false,
+      enabled: false,
       error: "TAKEOUT_DISABLED",
-      message: "Takeout vendor actions are prepared but not enabled yet."
+      message: "Takeout vendor actions are prepared but not enabled yet.",
     },
     { status: 503 }
   );
 }
 
-export async function GET() {
-  return NextResponse.json({ ok: true, enabled: isTakeoutEnabled(), orders: [] });
+function buildLegacyUrl(req: NextRequest): URL {
+  const url = new URL(req.url);
+  url.pathname = "/api/vendor-orders";
+  return url;
 }
 
-export async function POST(_req: NextRequest) {
-  if (!isTakeoutEnabled()) return disabled();
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "TAKEOUT_VENDOR_ACTIONS_NOT_WIRED",
-      message: "Canonical takeout vendor order actions route is reserved for the takeout rollout."
+async function forwardToLegacyVendorOrders(req: NextRequest, method: "GET" | "POST", body?: any) {
+  const url = buildLegacyUrl(req);
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers.cookie = cookie;
+
+  const forwarded = await fetch(url.toString(), {
+    method,
+    headers,
+    body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
+    cache: "no-store",
+  });
+
+  const payload = await forwarded.text();
+  return new NextResponse(payload, {
+    status: forwarded.status,
+    headers: {
+      "content-type": forwarded.headers.get("content-type") || "application/json",
     },
-    { status: 501 }
-  );
+  });
+}
+
+export async function GET(req: NextRequest) {
+  if (!takeoutEnabled()) return disabledResponse();
+
+  try {
+    return await forwardToLegacyVendorOrders(req, "GET");
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "TAKEOUT_VENDOR_ORDERS_GET_FAILED",
+        message: error?.message || "Failed to load vendor takeout orders.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  if (!takeoutEnabled()) return disabledResponse();
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    return await forwardToLegacyVendorOrders(req, "POST", body);
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "TAKEOUT_VENDOR_ORDER_ACTION_FAILED",
+        message: error?.message || "Failed to update vendor takeout order.",
+      },
+      { status: 500 }
+    );
+  }
 }
