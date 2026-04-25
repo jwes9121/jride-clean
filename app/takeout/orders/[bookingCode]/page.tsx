@@ -75,7 +75,7 @@ const STATUS_ORDER: string[] = [
 
 function formatMoney(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return "-";
-  return `₱${value.toFixed(2)}`;
+  return `PHP ${value.toFixed(2)}`;
 }
 
 function formatDateTime(value?: string | null) {
@@ -450,7 +450,7 @@ export default function TakeoutOrderStatusPage({ params }: PageProps) {
 
           {normalizedStatus === "completed" && (
             <p className="mt-3 text-[11px] text-emerald-600">
-              Order completed ✓ Redirecting to your receipt…
+              Order completed OK Redirecting to your receipt...
             </p>
           )}
           {copyMessage && (
@@ -497,7 +497,7 @@ export default function TakeoutOrderStatusPage({ params }: PageProps) {
         </div>
 
         <div className="text-xs text-slate-500 flex flex-col gap-1 items-start">
-          {loading && <span>Loading latest order status…</span>}
+          {loading && <span>Loading latest order status...</span>}
           {error && (
             <span className="text-rose-600">
               Error: {error} (you can pull to refresh / reload app)
@@ -510,7 +510,7 @@ export default function TakeoutOrderStatusPage({ params }: PageProps) {
                 realtimeConnected ? "text-emerald-600" : "text-slate-400"
               }
             >
-              {realtimeConnected ? "Connected" : "Waiting for updates…"}
+              {realtimeConnected ? "Connected" : "Waiting for updates..."}
             </span>
           </span>
         </div>

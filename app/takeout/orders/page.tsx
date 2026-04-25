@@ -45,7 +45,7 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function getDisplayStatus(order: TakeoutOrder): string {
-  // Prefer customer_status → vendor_status → status
+  // Prefer customer_status -> vendor_status -> status
   return (
     order.customer_status ||
     order.vendor_status ||
@@ -109,7 +109,7 @@ export default function TakeoutOrdersPage() {
           setOrders(body.orders ?? []);
         }
       } catch (err: any) {
-        console.error("❌ Failed to load takeout orders:", err);
+        console.error("X Failed to load takeout orders:", err);
         if (!cancelled) {
           setError(err?.message || "Failed to load orders");
         }
@@ -157,7 +157,7 @@ export default function TakeoutOrdersPage() {
           </div>
 
           {loading && (
-            <p className="text-sm text-slate-500">Loading takeout orders…</p>
+            <p className="text-sm text-slate-500">Loading takeout orders...</p>
           )}
 
           {!loading && activeOrders.length === 0 && (
@@ -189,7 +189,7 @@ export default function TakeoutOrdersPage() {
                     {getDisplayStatus(order)}
                   </span>
                   <span className="text-right text-sm font-semibold text-slate-900">
-                    ₱{formatMoney(order.total_bill)}
+                    PHP {formatMoney(order.total_bill)}
                   </span>
                 </div>
               </Link>
@@ -237,7 +237,7 @@ export default function TakeoutOrdersPage() {
                     {getDisplayStatus(order)}
                   </span>
                   <span className="text-right text-sm font-semibold text-slate-900">
-                    ₱{formatMoney(order.total_bill)}
+                    PHP {formatMoney(order.total_bill)}
                   </span>
                 </div>
               </Link>

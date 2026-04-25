@@ -90,9 +90,9 @@ export default function TakeoutTrackPage({ params }: PageProps) {
     const base = "https://api.mapbox.com/styles/v1/mapbox/streets-v11/static";
 
     const pins = [
-      // Vendor / pickup – blue
+      // Vendor / pickup - blue
       `pin-s+1D4ED8(${pickupLng},${pickupLat})`,
-      // Customer / dropoff – green
+      // Customer / dropoff - green
       `pin-s+16A34A(${dropLng},${dropLat})`,
     ].join(",");
 
@@ -120,13 +120,13 @@ export default function TakeoutTrackPage({ params }: PageProps) {
           </p>
           <p className="mt-2 text-[11px] text-slate-500">
             The map shows the vendor location and your dropoff location. This is
-            a first version of live tracking – later we can add the rider icon
+            a first version of live tracking - later we can add the rider icon
             as we wire driver GPS for takeout.
           </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-md px-5 py-4 flex items-center justify-center">
-          {loading && <p className="text-sm text-slate-500">Loading map…</p>}
+          {loading && <p className="text-sm text-slate-500">Loading map...</p>}
           {!loading && error && (
             <p className="text-sm text-rose-600">Error: {error}</p>
           )}

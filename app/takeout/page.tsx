@@ -289,7 +289,7 @@ export default function TakeoutPage() {
         .filter(Boolean);
 
 
-      // Snapshot payload (menu) Ãƒ¢Ã¢â€š¬Ã¢â‚¬ Phase 2D will lock this into bookings later
+      // Snapshot payload (menu) ????????????,?? Phase 2D will lock this into bookings later
       const payload = {
         // PHASE_3D_TAKEOUT_COORDS_FIX (payload-only; enables server-side dropoff coords)
         device_key: deviceKey,
@@ -459,7 +459,7 @@ export default function TakeoutPage() {
                   </>
                 ) : (
                   <div className="text-sm text-slate-700">
-                    No saved address yet. Choose "Enter a new addressÃƒ¢Ã¢â€š¬Ã‚.
+                    No saved address yet. Choose "Enter a new address??????????,?.
                   </div>
                 )}
               </div>
@@ -499,7 +499,7 @@ export default function TakeoutPage() {
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-600">
-                  Tip: "Set as primaryÃƒ¢Ã¢â€š¬Ã‚ makes it the default next time.
+                  Tip: "Set as primary??????????,? makes it the default next time.
                 </div>
               </div>
             )}

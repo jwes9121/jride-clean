@@ -22,7 +22,7 @@ export async function GET(
     );
   }
 
-  // ✅ Type narrowing — from here onward TS knows this is a booking row
+  // OK Type narrowing - from here onward TS knows this is a booking row
   const booking = data as any;
 
   const fare_breakdown = booking.fare_breakdown ?? {};

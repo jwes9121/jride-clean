@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: pricingErr.message }, { status: 500 });
     }
 
-    // ✅ FIX: cast to unknown first (compiler-required), runtime unchanged
+    // OK FIX: cast to unknown first (compiler-required), runtime unchanged
     const pricing = (pricingRows ?? []) as unknown as PricingRow[];
 
     if (pricing.length === 0) {

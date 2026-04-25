@@ -40,7 +40,7 @@ function num(v: unknown): number {
 }
 
 function formatMoney(n: number): string {
-  return `₱${n.toFixed(2)}`;
+  return `PHP ${n.toFixed(2)}`;
 }
 
 function formatDateTime(value?: string | null): string {
@@ -250,7 +250,7 @@ export default function TakeoutReceiptPage({ params }: PageProps) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-2xl bg-white px-6 py-4 text-sm text-slate-600 shadow-sm">
-          Loading receipt…
+          Loading receipt...
         </div>
       </div>
     );
@@ -397,7 +397,7 @@ export default function TakeoutReceiptPage({ params }: PageProps) {
                       : "cursor-pointer hover:scale-110"
                   } ${colorClass}`}
                 >
-                  ★
+                  ?
                 </button>
               );
             })}

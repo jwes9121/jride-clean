@@ -47,13 +47,13 @@ export async function POST(
     });
 
     if (error) {
-      console.error("❌ Error inserting rating:", error);
+      console.error("X Error inserting rating:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("❌ Rating API error:", err);
+    console.error("X Rating API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
