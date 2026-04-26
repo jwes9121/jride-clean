@@ -634,6 +634,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     // Optional fields (will be auto-dropped if columns don't exist)
 
 
+    passenger_name: customer_name || "Takeout Customer",
     rider_name: customer_name || null,
 
 
