@@ -4,7 +4,6 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
-
 function isTakeoutEnabled() {
   return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
 }
@@ -185,7 +184,6 @@ async function fetchAddressCoords(admin: any, deviceKey: string, addressId: stri
 }
 // PHASE_3D_TAKEOUT_COORDS_HELPERS_END
 
-
 export const dynamic = "force-dynamic";
 /* PHASE_3E_TOWNZONE_DERIVE_START */
 function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
@@ -213,7 +211,6 @@ function deriveZoneFromTown(town: string | null): string | null {
   return t ? t : null; // zone==town for now
 }
 /* PHASE_3E_TOWNZONE_DERIVE_END */
-
 
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
@@ -412,120 +409,6 @@ const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   if (!vendor_id) {
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
   }
-
-  // TAKEOUT_VENDOR_STATUS_EARLY_UPDATE_FIX_V4
-const early_order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? '').trim();
-const early_vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? 'preparing').trim();
-
-if (early_order_id) {
-  const patch: Record<string, any> = { vendor_status: early_vendor_status };
-  if (['pickup_ready','ready','ready_for_pickup','prepared','driver_arrived'].includes(early_vendor_status.toLowerCase())) {
-    patch.customer_status = 'ready_for_pickup';
-  }
-
-  const up = await admin
-    .from('bookings')
-    .update(patch)
-    .eq('id', early_order_id)
-    .eq('vendor_id', vendor_id)
-    .eq('service_type', 'takeout')
-    .select('id,status,vendor_status,customer_status')
-    .single();
-
-  if (up.error) {
-    return json(500,{ok:false,error:'TAKEOUT_VENDOR_STATUS_UPDATE_FAILED',message:up.error.message});
-  }
-
-  return json(200,{
-    ok:true,
-    action:'updated',
-    order_id: up.data?.id ?? early_order_id,
-    status: up.data?.status ?? null,
-    vendor_status: up.data?.vendor_status ?? early_vendor_status,
-    customer_status: up.data?.customer_status ?? null
-  });
-}
-
-// PHASE_3F_TAKEOUT_COORDS_TOWN
-  const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
-  const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
-
-  const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
-
-  const v = await fetchVendorCoordsAndTown(admin, vendor_id);
-  const vendorLL = v.ll;
-  const vendorTown = v.town;
-
-  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
-
-  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
-  const derivedTown =
-    explicitTown ||
-    vendorTown ||
-    inferTownFromLabel(to_label_hint) ||
-    deriveTownFromLatLng(vendorLL.lat, vendorLL.lng) ||
-    null;
-
-  const pickupLL = normalizeLL(vendorLL);
-  const dropoffLL = normalizeLL(dropLL);
-  // TAKEOUT_VENDOR_STATUS_EARLY_UPDATE_FIX_V4
-const early_order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? '').trim();
-const early_vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? 'preparing').trim();
-
-if (early_order_id) {
-  const patch: Record<string, any> = { vendor_status: early_vendor_status };
-  if (['pickup_ready','ready','ready_for_pickup','prepared','driver_arrived'].includes(early_vendor_status.toLowerCase())) {
-    patch.customer_status = 'ready_for_pickup';
-  }
-
-  const up = await admin
-    .from('bookings')
-    .update(patch)
-    .eq('id', early_order_id)
-    .eq('vendor_id', vendor_id)
-    .eq('service_type', 'takeout')
-    .select('id,status,vendor_status,customer_status')
-    .single();
-
-  if (up.error) {
-    return json(500,{ok:false,error:'TAKEOUT_VENDOR_STATUS_UPDATE_FAILED',message:up.error.message});
-  }
-
-  return json(200,{
-    ok:true,
-    action:'updated',
-    order_id: up.data?.id ?? early_order_id,
-    status: up.data?.status ?? null,
-    vendor_status: up.data?.vendor_status ?? early_vendor_status,
-    customer_status: up.data?.customer_status ?? null
-  });
-}
-
-// PHASE_3F_TAKEOUT_COORDS_TOWN_END
-/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_START
-   Ensure CREATE path will never write missing coords (prevents LiveTrips PROBLEM noise).
-   Uses vars computed above in PHASE_3F:
-   - pickupLL, dropoffLL, derivedTown
-*/
-const town = derivedTown;
-const zone = deriveZoneFromTown(town) || town;
-
-if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
-  return json(400, {
-    ok: false,
-    error: "TAKEOUT_COORDS_MISSING",
-    message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng (or Mapbox token fallback).",
-    details: {
-      pickup_lat: (pickupLL as any)?.lat ?? null,
-      pickup_lng: (pickupLL as any)?.lng ?? null,
-      dropoff_lat: (dropoffLL as any)?.lat ?? null,
-      dropoff_lng: (dropoffLL as any)?.lng ?? null,
-      town,
-      zone,
-    },
-  });
-}
-/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_END */
 const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
@@ -585,7 +468,6 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
 
-
   const customer_name = String(body?.customer_name ?? body?.customerName ?? "").trim();
   const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
   const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
@@ -619,70 +501,77 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
         const col = String(m[1]);
 
-
         // Remove unknown column and retry
-
 
         delete (payload as any)[col];
 
-
         continue;
-
 
       }
 
-
-
-
-
       // Any other DB error: stop
-
 
       return res;
 
-
     }
-
-
-
-
 
     return {
 
-
       data: null,
-
 
       error: { message: "DB_ERROR: schema-safe insert retries exceeded" },
 
-
     } as any;
-
 
   }
 
+  // TAKEOUT_CREATE_COORDS_RESTORE_V1
+  // Create path only: resolve pickup/dropoff/town before inserting booking.
+  const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
+  const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
+  const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
 
+  const v = await fetchVendorCoordsAndTown(admin, vendor_id);
+  const vendorLL = v.ll;
+  const vendorTown = v.town;
 
+  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
 
+  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
+  const derivedTown =
+    explicitTown ||
+    vendorTown ||
+    inferTownFromLabel(to_label_hint) ||
+    deriveTownFromLatLng(vendorLL.lat, vendorLL.lng) ||
+    null;
 
+  const pickupLL = normalizeLL(vendorLL);
+  const dropoffLL = normalizeLL(dropLL);
+
+  if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
+    return json(400, {
+      ok: false,
+      error: "TAKEOUT_COORDS_MISSING",
+      message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng.",
+      details: {
+        pickup_lat: (pickupLL as any)?.lat ?? null,
+        pickup_lng: (pickupLL as any)?.lng ?? null,
+        dropoff_lat: (dropoffLL as any)?.lat ?? null,
+        dropoff_lng: (dropoffLL as any)?.lng ?? null,
+        town: derivedTown,
+      },
+    });
+  }
   const createPayload: Record<string, any> = {    // PHASE_3D_TAKEOUT_COORDS_FIX fields
-
-
-
-
-
 
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
     // bookings has 'town' column (no 'zone' column) - keep town only
 
     // Likely required / core
 
-
     vendor_id,
 
-
     service_type: "takeout",
-
 
     vendor_status,
   // PHASE_3F create-time town + coords (no 0/0)
@@ -693,73 +582,34 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         dropoff_lng: (dropoffLL as any)?.lng ?? null,
     status: "requested",
 
-
-
-
-
     // Optional fields (will be auto-dropped if columns don't exist)
-
 
     passenger_name: customer_name || "Takeout Customer",
     rider_name: customer_name || null,
 
-
     rider_phone: customer_phone || null,
-
-
-
-
 
     customer_name: customer_name || null,
 
-
     customer_phone: customer_phone || null,
-
-
-
-
 
     to_label: to_label || null,
 
-
     dropoff_label: to_label || null,
-
-
-
-
 
     note: note || null,
 
-
     items_text: items_text || null,
-
-
-
-
 
     // Phase 2D requirement
 
-
     takeout_items_subtotal: subtotal,
-
 
   };
 
-
-
-
-
   const ins = await insertBookingSchemaSafe(createPayload);
 
-
-
-
-
   if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
-
-
-
-
 
   const bookingId = String(ins.data?.id ?? "");
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
@@ -794,9 +644,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_START
 
-
   try {
-
 
     // 1) vendor pickup coords (preferred)
     const vendorMeta =
@@ -806,7 +654,6 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
       null;
     const vLL = pickLatLng(vendorMeta);
-
 
     const vTown = pickTown(vendorMeta);
     const vLabel =
@@ -835,91 +682,48 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       isFiniteNum(addr?.lng) ?? null;
     // 3) accept coords if caller provided them (future-proof)
 
-
     const bPickupLat = isFiniteNum(body?.pickup_lat ?? body?.pickupLat ?? null);
-
 
     const bPickupLng = isFiniteNum(body?.pickup_lng ?? body?.pickupLng ?? null);
 
-
     const bDropLat = isFiniteNum(body?.dropoff_lat ?? body?.dropoffLat ?? body?.to_lat ?? body?.toLat ?? null);
-
 
     const bDropLng = isFiniteNum(body?.dropoff_lng ?? body?.dropoffLng ?? body?.to_lng ?? body?.toLng ?? null);
 
-
-
-
-
     const pickup_lat = bPickupLat ?? vLL.lat;
-
 
     const pickup_lng = bPickupLng ?? vLL.lng;
 
-
-
-
-
     // If we can't find a dropoff coordinate, fallback to pickup coords (pilot-safe: removes PROBLEM trips)
-
 
     const dropoff_lat = bDropLat ?? aLat ?? pickup_lat ?? null;
 
-
     const dropoff_lng = bDropLng ?? aLng ?? pickup_lng ?? null;
-
-
-
-
 
     const updatePayload: Record<string, any> = {
 
-
       // labels (schema-safe; unknown cols auto-dropped)
-
 
       pickup_label: vLabel || null,
 
-
       from_label: vLabel || null,
-
-
-
-
 
       dropoff_label: to_label || null,
 
-
       to_label: to_label || null,
-
-
-
-
 
       // coords
       // town defaults help zoning
 
-
       town: vTown || null,
-
 
     };
 
-
-
-
-
     // only update if we have at least pickup coords (and ideally dropoff coords too)
-
 
     const hasAny =
 
-
       (pickup_lat != null && pickup_lng != null) || (dropoff_lat != null && dropoff_lng != null);
-
-
-
-
 
     if (hasAny) {
       // Inline schema-safe update (drop unknown booking columns and retry)
@@ -959,138 +763,81 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       }
     }
 
-
   } catch {
-
 
     // fail-open: creation must succeed even if hydration fails
 
-
   }
-
 
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_END
 
-
-
-
-
-
-
-
   // Snapshot lock (idempotent): if already exists, do not insert again
-
 
   let takeoutSnapshot: any = null;
 
-
   try {
-
 
     const already = await admin
 
-
       .from("takeout_order_items")
-
 
       .select("id", { count: "exact", head: true })
 
-
       .eq("booking_id", bookingId);
-
-
-
-
 
     const existingCount = (already as any)?.count ?? 0;
 
-
-
-
-
     if (existingCount > 0) {
-
 
       // Ensure booking subtotal is set (repair only; do not re-snapshot)
 
-
       const cur = toNum((ins.data as any)?.takeout_items_subtotal);
-
 
       if (!(cur > 0) && subtotal > 0) {
 
-
         await admin!.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
 
-
       }
-
 
       takeoutSnapshot = { ok: true, inserted: 0, subtotal, note: "already_snapshotted" };
 
-
     } else {
-
 
       const rowsToInsert = items.map((it) => ({
 
-
         booking_id: bookingId,
-
 
         menu_item_id: it.menu_item_id,
 
-
         name: it.name,
-
 
         price: toNum(it.price),
 
-
         quantity: Math.max(1, it.quantity || 1),
-
 
         snapshot_at: new Date().toISOString(),
 
-
       }));
-
-
-
-
 
       const snapIns = await admin.from("takeout_order_items").insert(rowsToInsert);
 
-
       if (snapIns.error) {
-
 
         takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Insert failed: " + snapIns.error.message };
 
-
       } else {
-
 
         takeoutSnapshot = { ok: true, inserted: rowsToInsert.length, subtotal, note: "OK" };
 
-
       }
-
 
     }
 
-
   } catch (e: any) {
-
 
     takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Snapshot exception: " + String(e?.message || e) };
 
-
   }
-
-
-
-
 
   // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG
   let coords_debug: any = null;
@@ -1105,15 +852,11 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG_END
   return json(200, {
 
-
     ok: true,
-
 
     action: "created",
 
-
     order_id: bookingId,
-
 
     
     resolved_pickup: pickupLL ?? vendorLL ?? null,
@@ -1122,12 +865,14 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
 takeout_items_subtotal: subtotal,
 
-
     takeoutSnapshot,
-
 
   });
 
-
 }
+
+
+
+
+
 
