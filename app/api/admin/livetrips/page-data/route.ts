@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { auth } from "@/auth";
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -92,15 +93,44 @@ function normalizeTownKey(v: unknown): string {
   return text(v).toLowerCase();
 }
 
+function isStaffRole(role: unknown): boolean {
+  const r = String(role || "").toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
 export async function GET(req: NextRequest) {
   const debugMode = req.nextUrl.searchParams.get("debug") === "1";
+
+  const session = await auth();
+  const sessionUser = (session?.user ?? null) as any;
+  const role = String(sessionUser?.role || "").toLowerCase();
+
+  if (!sessionUser) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "UNAUTHORIZED",
+        message: "Sign in required.",
+      },
+      { status: 401 }
+    );
+  }
+
+  if (!isStaffRole(role)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "FORBIDDEN",
+        message: "Admin or dispatcher role required.",
+      },
+      { status: 403 }
+    );
+  }
 
   try {
     const supabase = getSupabase();
 
-    const driverLocationsRes = await supabase
-      .from("driver_locations")
-      .select("*");
+    const driverLocationsRes = await supabase.from("driver_locations").select("*");
 
     if (driverLocationsRes.error) {
       return NextResponse.json(
@@ -150,6 +180,7 @@ export async function GET(req: NextRequest) {
       .from("bookings")
       .select("*")
       .in("status", activeStatuses)
+      .or("service_type.is.null,service_type.neq.takeout")
       .order("updated_at", { ascending: false });
 
     if (bookingsRes.error) {
@@ -297,9 +328,7 @@ export async function GET(req: NextRequest) {
         active_statuses: activeStatuses,
         booking_row_count: bookingRows.length,
         trip_count: tripsArray.length,
-        booking_codes: tripsArray
-          .map((t: any) => t?.booking_code)
-          .filter(Boolean),
+        booking_codes: tripsArray.map((t: any) => t?.booking_code).filter(Boolean),
         raw_driver_row_count: rawDriverRows.length,
         deduped_driver_row_count: driverRows.length,
         active_drivers_by_town: activeDriversByTown,
