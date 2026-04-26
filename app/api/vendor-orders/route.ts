@@ -310,6 +310,7 @@ export async function GET(req: NextRequest) {
     .from("bookings")
     .select("*")
     .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout")
     .order("created_at", { ascending: false });
 
   if (b.error) return json(500, { ok: false, error: "DB_ERROR", message: b.error.message });
@@ -472,6 +473,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       .select("id,status,vendor_status")
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout")
       .single();
 
     if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
@@ -499,6 +501,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       .update(patch)
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout")
       .select("*")
       .single();
 
