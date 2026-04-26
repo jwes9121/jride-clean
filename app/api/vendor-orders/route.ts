@@ -460,6 +460,39 @@ if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || 
   });
 }
 /* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_END */
+// TAKEOUT_VENDOR_STATUS_EARLY_UPDATE_FIX_V3
+const early_order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? '').trim();
+const early_vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? 'preparing').trim();
+
+if (early_order_id) {
+  const patch: Record<string, any> = { vendor_status: early_vendor_status };
+  if (['pickup_ready','ready','ready_for_pickup','prepared','driver_arrived'].includes(early_vendor_status.toLowerCase())) {
+    patch.customer_status = 'ready_for_pickup';
+  }
+
+  const up = await admin
+    .from('bookings')
+    .update(patch)
+    .eq('id', early_order_id)
+    .eq('vendor_id', vendor_id)
+    .eq('service_type', 'takeout')
+    .select('id,status,vendor_status,customer_status')
+    .single();
+
+  if (up.error) {
+    return json(500,{ok:false,error:'TAKEOUT_VENDOR_STATUS_UPDATE_FAILED',message:up.error.message});
+  }
+
+  return json(200,{
+    ok:true,
+    action:'updated',
+    order_id: up.data?.id ?? early_order_id,
+    status: up.data?.status ?? null,
+    vendor_status: up.data?.vendor_status ?? early_vendor_status,
+    customer_status: up.data?.customer_status ?? null
+  });
+}
+
 const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
