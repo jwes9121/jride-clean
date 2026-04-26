@@ -413,54 +413,7 @@ const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
   }
 
-  // PHASE_3F_TAKEOUT_COORDS_TOWN
-  const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
-  const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
-
-  const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
-
-  const v = await fetchVendorCoordsAndTown(admin, vendor_id);
-  const vendorLL = v.ll;
-  const vendorTown = v.town;
-
-  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
-
-  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
-  const derivedTown =
-    explicitTown ||
-    vendorTown ||
-    inferTownFromLabel(to_label_hint) ||
-    deriveTownFromLatLng(vendorLL.lat, vendorLL.lng) ||
-    null;
-
-  const pickupLL = normalizeLL(vendorLL);
-  const dropoffLL = normalizeLL(dropLL);
-  // PHASE_3F_TAKEOUT_COORDS_TOWN_END
-/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_START
-   Ensure CREATE path will never write missing coords (prevents LiveTrips PROBLEM noise).
-   Uses vars computed above in PHASE_3F:
-   - pickupLL, dropoffLL, derivedTown
-*/
-const town = derivedTown;
-const zone = deriveZoneFromTown(town) || town;
-
-if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
-  return json(400, {
-    ok: false,
-    error: "TAKEOUT_COORDS_MISSING",
-    message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng (or Mapbox token fallback).",
-    details: {
-      pickup_lat: (pickupLL as any)?.lat ?? null,
-      pickup_lng: (pickupLL as any)?.lng ?? null,
-      dropoff_lat: (dropoffLL as any)?.lat ?? null,
-      dropoff_lng: (dropoffLL as any)?.lng ?? null,
-      town,
-      zone,
-    },
-  });
-}
-/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_END */
-// TAKEOUT_VENDOR_STATUS_EARLY_UPDATE_FIX_V3
+  // TAKEOUT_VENDOR_STATUS_EARLY_UPDATE_FIX_V4
 const early_order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? '').trim();
 const early_vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? 'preparing').trim();
 
@@ -493,6 +446,86 @@ if (early_order_id) {
   });
 }
 
+// PHASE_3F_TAKEOUT_COORDS_TOWN
+  const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
+  const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
+
+  const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
+
+  const v = await fetchVendorCoordsAndTown(admin, vendor_id);
+  const vendorLL = v.ll;
+  const vendorTown = v.town;
+
+  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
+
+  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
+  const derivedTown =
+    explicitTown ||
+    vendorTown ||
+    inferTownFromLabel(to_label_hint) ||
+    deriveTownFromLatLng(vendorLL.lat, vendorLL.lng) ||
+    null;
+
+  const pickupLL = normalizeLL(vendorLL);
+  const dropoffLL = normalizeLL(dropLL);
+  // TAKEOUT_VENDOR_STATUS_EARLY_UPDATE_FIX_V4
+const early_order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? '').trim();
+const early_vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? 'preparing').trim();
+
+if (early_order_id) {
+  const patch: Record<string, any> = { vendor_status: early_vendor_status };
+  if (['pickup_ready','ready','ready_for_pickup','prepared','driver_arrived'].includes(early_vendor_status.toLowerCase())) {
+    patch.customer_status = 'ready_for_pickup';
+  }
+
+  const up = await admin
+    .from('bookings')
+    .update(patch)
+    .eq('id', early_order_id)
+    .eq('vendor_id', vendor_id)
+    .eq('service_type', 'takeout')
+    .select('id,status,vendor_status,customer_status')
+    .single();
+
+  if (up.error) {
+    return json(500,{ok:false,error:'TAKEOUT_VENDOR_STATUS_UPDATE_FAILED',message:up.error.message});
+  }
+
+  return json(200,{
+    ok:true,
+    action:'updated',
+    order_id: up.data?.id ?? early_order_id,
+    status: up.data?.status ?? null,
+    vendor_status: up.data?.vendor_status ?? early_vendor_status,
+    customer_status: up.data?.customer_status ?? null
+  });
+}
+
+// PHASE_3F_TAKEOUT_COORDS_TOWN_END
+/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_START
+   Ensure CREATE path will never write missing coords (prevents LiveTrips PROBLEM noise).
+   Uses vars computed above in PHASE_3F:
+   - pickupLL, dropoffLL, derivedTown
+*/
+const town = derivedTown;
+const zone = deriveZoneFromTown(town) || town;
+
+if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
+  return json(400, {
+    ok: false,
+    error: "TAKEOUT_COORDS_MISSING",
+    message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng (or Mapbox token fallback).",
+    details: {
+      pickup_lat: (pickupLL as any)?.lat ?? null,
+      pickup_lng: (pickupLL as any)?.lng ?? null,
+      dropoff_lat: (dropoffLL as any)?.lat ?? null,
+      dropoff_lng: (dropoffLL as any)?.lng ?? null,
+      town,
+      zone,
+    },
+  });
+}
+/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_END */
 const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
   const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
@@ -1097,3 +1130,4 @@ takeout_items_subtotal: subtotal,
 
 
 }
+
