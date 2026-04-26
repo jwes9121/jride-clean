@@ -562,6 +562,13 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       },
     });
   }
+  // TAKEOUT_BOOKING_CODE_CREATE_V1
+  const takeoutBookingCode =
+    String(body?.booking_code ?? body?.bookingCode ?? "").trim() ||
+    ("TO-" +
+      new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14) +
+      "-" +
+      Math.floor(1000 + Math.random() * 9000));
   const createPayload: Record<string, any> = {    // PHASE_3D_TAKEOUT_COORDS_FIX fields
 
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
@@ -574,6 +581,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     service_type: "takeout",
 
     vendor_status,
+    booking_code: takeoutBookingCode,
   // PHASE_3F create-time town + coords (no 0/0)
   town: (typeof derivedTown !== "undefined" ? derivedTown : null),
         pickup_lat: (pickupLL as any)?.lat ?? null,
@@ -870,6 +878,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
