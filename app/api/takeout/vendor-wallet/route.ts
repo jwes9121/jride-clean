@@ -33,7 +33,7 @@ async function resolveVendorIdFromSession() {
   );
 
   if (error) {
-    console.error("❌ get_or_create_vendor_id_by_email error:", error);
+    console.error(" get_or_create_vendor_id_by_email error:", error);
     throw new Error(error.message || "Failed to resolve vendor ID");
   }
 
@@ -48,7 +48,7 @@ async function resolveVendorIdFromSession() {
 export async function GET() {
   try {
     if (!supabase) {
-      console.error("❌ Supabase env vars missing for vendor-wallet API");
+      console.error(" Supabase env vars missing for vendor-wallet API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -64,7 +64,7 @@ export async function GET() {
     );
 
     if (syncError) {
-      console.error("❌ Error running sync_vendor_takeout_wallet:", syncError);
+      console.error(" Error running sync_vendor_takeout_wallet:", syncError);
       // Continue; wallet may still contain previous data.
     }
 
@@ -76,7 +76,7 @@ export async function GET() {
       .limit(1);
 
     if (walletError) {
-      console.error("❌ Error loading vendor_wallet:", walletError);
+      console.error(" Error loading vendor_wallet:", walletError);
       return NextResponse.json(
         { error: walletError.message },
         { status: 500 }
@@ -94,7 +94,7 @@ export async function GET() {
       .limit(50);
 
     if (txError) {
-      console.error("❌ Error loading vendor_wallet_transactions:", txError);
+      console.error(" Error loading vendor_wallet_transactions:", txError);
       return NextResponse.json(
         { error: txError.message },
         { status: 500 }
@@ -108,7 +108,7 @@ export async function GET() {
       transactions: txRows ?? [],
     });
   } catch (err: any) {
-    console.error("❌ vendor-wallet GET server error:", err);
+    console.error(" vendor-wallet GET server error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
@@ -119,7 +119,7 @@ export async function GET() {
 export async function POST() {
   try {
     if (!supabase) {
-      console.error("❌ Supabase env vars missing for vendor-wallet API");
+      console.error(" Supabase env vars missing for vendor-wallet API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -138,7 +138,7 @@ export async function POST() {
     );
 
     if (settleError) {
-      console.error("❌ Error running settle_vendor_wallet:", settleError);
+      console.error(" Error running settle_vendor_wallet:", settleError);
       return NextResponse.json(
         { error: settleError.message ?? "Failed to settle wallet" },
         { status: 400 }
@@ -147,7 +147,7 @@ export async function POST() {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("❌ vendor-wallet POST server error:", err);
+    console.error(" vendor-wallet POST server error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }

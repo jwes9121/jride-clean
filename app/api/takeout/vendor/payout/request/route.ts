@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
 
@@ -21,7 +21,7 @@ const supabase =
 export async function POST() {
   try {
     if (!supabase) {
-      console.error("âŒ Supabase env vars missing in vendor payout request API");
+      console.error(" Supabase env vars missing in vendor payout request API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -42,7 +42,7 @@ export async function POST() {
       .limit(1);
 
     if (vendorError) {
-      console.error("âŒ vendor_accounts error:", vendorError);
+      console.error(" vendor_accounts error:", vendorError);
       return NextResponse.json(
         { error: vendorError.message },
         { status: 500 }
@@ -67,7 +67,7 @@ export async function POST() {
       .limit(1);
 
     if (summaryError) {
-      console.error("âŒ admin_vendor_payout_summary error:", summaryError);
+      console.error(" admin_vendor_payout_summary error:", summaryError);
       return NextResponse.json(
         { error: summaryError.message },
         { status: 500 }
@@ -92,7 +92,7 @@ export async function POST() {
       .limit(1);
 
     if (pendingError) {
-      console.error("âŒ vendor_payout_requests pending check error:", pendingError);
+      console.error(" vendor_payout_requests pending check error:", pendingError);
       return NextResponse.json(
         { error: pendingError.message },
         { status: 500 }
@@ -122,7 +122,7 @@ export async function POST() {
       .limit(1);
 
     if (insertError) {
-      console.error("âŒ vendor_payout_requests insert error:", insertError);
+      console.error(" vendor_payout_requests insert error:", insertError);
       return NextResponse.json(
         { error: insertError.message },
         { status: 500 }
@@ -133,7 +133,7 @@ export async function POST() {
 
     return NextResponse.json({ request });
   } catch (err: any) {
-    console.error("âŒ vendor payout request API error:", err);
+    console.error(" vendor payout request API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }

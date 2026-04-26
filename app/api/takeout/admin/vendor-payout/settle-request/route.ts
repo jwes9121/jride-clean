@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient } from "@supabase/supabase-js";
 
@@ -21,7 +21,7 @@ const supabase =
 export async function POST(req: Request) {
   try {
     if (!supabase) {
-      console.error("âŒ Supabase env vars missing in admin settle-request API");
+      console.error(" Supabase env vars missing in admin settle-request API");
       return NextResponse.json(
         { error: "Supabase not configured" },
         { status: 500 }
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (requestError) {
-      console.error("âŒ vendor_payout_requests load error:", requestError);
+      console.error(" vendor_payout_requests load error:", requestError);
       return NextResponse.json(
         { error: requestError.message },
         { status: 500 }
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
 
     if (walletInsertError) {
       console.error(
-        "âŒ vendor_wallet_transactions insert error:",
+        " vendor_wallet_transactions insert error:",
         walletInsertError
       );
       return NextResponse.json(
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (updateError) {
-      console.error("âŒ vendor_payout_requests update error:", updateError);
+      console.error(" vendor_payout_requests update error:", updateError);
       return NextResponse.json(
         { error: updateError.message },
         { status: 500 }
@@ -137,7 +137,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ request: updated });
   } catch (err: any) {
-    console.error("âŒ admin settle-request API error:", err);
+    console.error(" admin settle-request API error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Unknown server error" },
       { status: 500 }
