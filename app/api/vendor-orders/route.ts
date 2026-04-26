@@ -441,6 +441,14 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       nextVendor === "prepared" ||
       nextVendor === "pickup_ready";
 
+    // TAKEOUT_CUSTOMER_STATUS_COMPLETE_MAP_V1
+    const lowerVendor = String(nextVendor || "").toLowerCase();
+
+    if (lowerVendor === "completed") {
+      patch.customer_status = "completed";
+    } else if (lowerVendor === "cancelled" || lowerVendor === "canceled") {
+      patch.customer_status = "cancelled";
+    }
     if (stillRequested && isReadySignal) {
       patch.customer_status = "ready_for_pickup";
     }
@@ -878,6 +886,8 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
+
 
 
 
