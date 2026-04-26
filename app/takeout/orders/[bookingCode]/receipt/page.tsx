@@ -159,22 +159,38 @@ export default function TakeoutReceiptPage({ params }: PageProps) {
 
   const fare: FareBreakdown = useMemo(() => {
     const fb = order?.fare_breakdown ?? {};
+    const isTakeout = String((order as any)?.service_type ?? "").toLowerCase() === "takeout";
+
+    const itemsTotal = num(
+      (fb as FareBreakdown).items_total ??
+      (order as any)?.items_total ??
+      (order as any)?.takeout_items_subtotal
+    );
+
+    const deliveryFee = num(
+      (fb as FareBreakdown).delivery_fee ??
+      (order as any)?.delivery_fee
+    );
+
+    const platformFee = isTakeout
+      ? num(itemsTotal * 0.10)
+      : num((fb as FareBreakdown).platform_fee ?? (order as any)?.platform_fee);
+
+    const otherFees = num(
+      (fb as FareBreakdown).other_fees ??
+      (order as any)?.other_fees
+    );
+
+    const grandTotal = isTakeout
+      ? num(itemsTotal + deliveryFee + otherFees)
+      : num((fb as FareBreakdown).grand_total ?? (order as any)?.grand_total);
+
     return {
-      items_total: num(
-        (fb as FareBreakdown).items_total ?? (order as any)?.items_total
-      ),
-      delivery_fee: num(
-        (fb as FareBreakdown).delivery_fee ?? (order as any)?.delivery_fee
-      ),
-      platform_fee: num(
-        (fb as FareBreakdown).platform_fee ?? (order as any)?.platform_fee
-      ),
-      other_fees: num(
-        (fb as FareBreakdown).other_fees ?? (order as any)?.other_fees
-      ),
-      grand_total: num(
-        (fb as FareBreakdown).grand_total ?? (order as any)?.grand_total
-      ),
+      items_total: itemsTotal,
+      delivery_fee: deliveryFee,
+      platform_fee: platformFee,
+      other_fees: otherFees,
+      grand_total: grandTotal,
     };
   }, [order]);
 
