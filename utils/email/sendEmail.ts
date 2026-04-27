@@ -1,33 +1,48 @@
-import nodemailer from "nodemailer";
+const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
+const EMAIL_FROM = process.env.EMAIL_FROM || "info@jride.net";
 
-export async function sendEmail(params: {
+type SendEmailParams = {
   to: string;
   subject: string;
   html: string;
-}) {
-  const host = process.env.SMTP_HOST || "";
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER || "";
-  const pass = process.env.SMTP_PASS || "";
+  text?: string;
+};
 
-  if (!host || !port || !user || !pass) {
-    throw new Error("SMTP_NOT_CONFIGURED");
+export async function sendEmail(params: SendEmailParams) {
+  if (!RESEND_API_KEY) {
+    throw new Error("Missing RESEND_API_KEY");
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: false,
-    auth: {
-      user,
-      pass,
-    },
-  });
-
-  await transporter.sendMail({
-    from: `"JRide" <${user}>`,
-    to: params.to,
+  const payload = {
+    from: EMAIL_FROM,
+    to: [params.to],
     subject: params.subject,
     html: params.html,
+    text: params.text || stripHtml(params.html),
+  };
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const msg =
+      typeof data?.message === "string"
+        ? data.message
+        : `Resend failed with status ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return data;
+}
+
+function stripHtml(input: string): string {
+  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
