@@ -91,16 +91,14 @@ function itemSubtotal(order: TakeoutOrder): number {
   }, 0);
 }
 
-function vendorEarnings(order: TakeoutOrder): number {
-  const subtotal = itemSubtotal(order);
-  return Math.round(subtotal * 90) / 100;
-}
-
 function platformFee(order: TakeoutOrder): number {
   const subtotal = itemSubtotal(order);
-  const stored = num(order.company_cut);
-  if (stored > 0) return stored;
   return Math.round(subtotal * 10) / 100;
+}
+
+function vendorEarnings(order: TakeoutOrder): number {
+  const subtotal = itemSubtotal(order);
+  return Math.round((subtotal - platformFee(order)) * 100) / 100;
 }
 
 function effectiveStatus(order: TakeoutOrder): string {
