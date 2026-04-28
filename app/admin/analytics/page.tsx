@@ -139,6 +139,12 @@ type DriverWorkforceResponse = {
   ok?: boolean;
   rows?: DriverWorkforceRow[];
   gaps?: DriverCoverageGapRow[];
+  source?: {
+    mode?: string | null;
+    roster_source?: string | null;
+    profile_usage?: string | null;
+    note?: string | null;
+  };
   summary?: {
     active_drivers_now?: number | null;
     drivers_logged_in_today?: number | null;
@@ -334,7 +340,8 @@ export default function AdminAnalyticsPage() {
             worst_gap_end_at: workforceJson.summary?.worst_gap_end_at || null,
             worst_gap_minutes: Number(workforceJson.summary?.worst_gap_minutes || 0),
           });
-          setDriverWorkforceStatus("Loaded from /api/admin/analytics/driver-workforce.");
+          const mode = String(workforceJson.source?.mode || "snapshot_only");
+          setDriverWorkforceStatus(mode === "snapshot_only" ? "Live snapshot mode: driver_locations plus bookings. No driver session history table exists yet." : "Loaded from /api/admin/analytics/driver-workforce.");
         } else {
           setDriverWorkforceRows([]);
           setDriverCoverageGaps([]);
@@ -509,9 +516,9 @@ export default function AdminAnalyticsPage() {
               <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics, company share, TODA share, passenger presence, driver workforce, and no-driver demand</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">Built for expansion. View town-filtered results, export CSV reports, and monitor partner-safe metrics using Philippine date and time.</p>
             </div>
-            <div className="grid grid-cols-1 gap-3 text-sm text-slate-300 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><div className="text-xs uppercase tracking-[0.14em] text-slate-400">Timezone</div><div className="mt-1 font-semibold text-white">Asia/Manila (PHT)</div></div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><div className="text-xs uppercase tracking-[0.14em] text-slate-400">Last refresh</div><div className="mt-1 font-semibold text-white">{lastRefresh}</div></div>
+            <div className="grid w-full grid-cols-1 gap-3 text-sm text-slate-300 sm:w-auto sm:min-w-[280px] sm:grid-cols-1 xl:grid-cols-2">
+              <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><div className="text-xs uppercase tracking-[0.14em] text-slate-400">Timezone</div><div className="mt-1 break-words font-semibold leading-snug text-white">Asia/Manila (PHT)</div></div>
+              <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><div className="text-xs uppercase tracking-[0.14em] text-slate-400">Last refresh</div><div className="mt-1 break-words font-semibold leading-snug text-white">{lastRefresh}</div></div>
             </div>
           </div>
         </section>
@@ -553,7 +560,7 @@ export default function AdminAnalyticsPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-lg font-bold tracking-tight text-slate-900">Driver workforce intelligence</h2>
-              <p className="mt-1 text-sm text-slate-500">Read-only driver attendance, login behavior, incentive gatekeeper status, and no-driver coverage gaps. Gatekeeper v1: 8 hours per day and at least 5 qualified days per week.</p>
+              <p className="mt-1 text-sm text-slate-500">Read-only driver workforce snapshot. Current production DB has driver_locations and bookings, but no driver session history table yet, so attendance-hour and coverage-gap metrics stay disabled instead of being faked.</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Data source</div>
@@ -562,16 +569,16 @@ export default function AdminAnalyticsPage() {
           </div>
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
             <Card title="Drivers online now" value={formatCount(driverWorkforceTotals.activeNow || Number(driverWorkforceSummary.active_drivers_now || 0))} sub="Fresh online drivers in scope" />
-            <Card title="Logged in today" value={formatCount(driverWorkforceTotals.loggedInToday || Number(driverWorkforceSummary.drivers_logged_in_today || 0))} sub="Unique drivers with online time" />
-            <Card title="Online hours today" value={formatMinutesLabel(driverWorkforceTotals.totalToday || Number(driverWorkforceSummary.total_online_minutes_today || 0))} sub={`Avg: ${formatMinutesLabel(driverWorkforceTotals.avgToday || Number(driverWorkforceSummary.avg_online_minutes_today || 0))}`} />
-            <Card title="Qualified today" value={formatCount(driverWorkforceTotals.qualifiedToday || Number(driverWorkforceSummary.qualified_today || 0))} sub="At least 8 online hours" />
-            <Card title="Qualified this week" value={formatCount(driverWorkforceTotals.qualifiedWeek || Number(driverWorkforceSummary.qualified_this_week || 0))} sub="At least 5 qualified days" />
-            <Card title="No-driver time today" value={formatMinutesLabel(driverWorkforceTotals.noDriverMinutes)} sub="Zero online drivers in scope" />
+            <Card title="Logged in today" value={formatCount(driverWorkforceTotals.loggedInToday || Number(driverWorkforceSummary.drivers_logged_in_today || 0))} sub="Disabled until driver session logs exist" />
+            <Card title="Online hours today" value={formatMinutesLabel(driverWorkforceTotals.totalToday || Number(driverWorkforceSummary.total_online_minutes_today || 0))} sub="Disabled until driver session logs exist" />
+            <Card title="Qualified today" value={formatCount(driverWorkforceTotals.qualifiedToday || Number(driverWorkforceSummary.qualified_today || 0))} sub="Needs session history" />
+            <Card title="Qualified this week" value={formatCount(driverWorkforceTotals.qualifiedWeek || Number(driverWorkforceSummary.qualified_this_week || 0))} sub="Needs session history" />
+            <Card title="No-driver time today" value={formatMinutesLabel(driverWorkforceTotals.noDriverMinutes)} sub="Needs session history" />
           </div>
           <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">Driver gatekeeper ranking</h3>
-              <p className="mt-1 text-xs text-slate-500">Use this for incentive eligibility review. This panel is display-only and does not change dispatch, wallets, or lifecycle.</p>
+              <h3 className="text-sm font-semibold text-slate-900">Driver recent activity ranking</h3>
+              <p className="mt-1 text-xs text-slate-500">Uses driver_locations recent activity plus booking acceptance data. This panel is display-only and does not change dispatch, wallets, or lifecycle.</p>
               <div className="mt-3 overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Driver</th><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Today</th><th className="py-2 pr-4 font-semibold">Logins</th><th className="py-2 pr-4 font-semibold">Week days</th><th className="py-2 pr-4 font-semibold">Accept</th><th className="py-2 font-semibold">Last seen</th></tr></thead>
@@ -593,7 +600,7 @@ export default function AdminAnalyticsPage() {
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-sm font-semibold text-slate-900">No-driver coverage gaps</h3>
-              <p className="mt-1 text-xs text-slate-500">Shows hours where every driver was offline, so incentives can target real dead zones instead of guesswork.</p>
+              <p className="mt-1 text-xs text-slate-500">Disabled until a real driver session history table exists. The system will not invent coverage gaps from snapshot data.</p>
               <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">Worst gap</div>
                 <div className="mt-1 font-semibold">{driverWorkforceTotals.worstGap ? gapLabel(driverWorkforceTotals.worstGap.start_at, driverWorkforceTotals.worstGap.end_at, driverWorkforceTotals.worstGap.minutes) : gapLabel(driverWorkforceSummary.worst_gap_start_at, driverWorkforceSummary.worst_gap_end_at, driverWorkforceSummary.worst_gap_minutes)}</div>
@@ -602,7 +609,7 @@ export default function AdminAnalyticsPage() {
                 <table className="min-w-full text-sm">
                   <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Gap window</th><th className="py-2 font-semibold">Minutes</th></tr></thead>
                   <tbody>
-                    {scopedDriverCoverageGaps.length === 0 ? <tr><td colSpan={3} className="py-4 text-slate-400">No no-driver coverage gap rows yet for this scope.</td></tr> : scopedDriverCoverageGaps.slice(0, 20).map((row, idx) => (
+                    {scopedDriverCoverageGaps.length === 0 ? <tr><td colSpan={3} className="py-4 text-slate-400">No coverage gap rows because driver session history is not implemented yet.</td></tr> : scopedDriverCoverageGaps.slice(0, 20).map((row, idx) => (
                       <tr key={`${row.town || "Unknown"}-${row.start_at || idx}`} className="border-b border-slate-100 last:border-0">
                         <td className="py-2 pr-4 font-medium text-slate-900">{row.town || "Unknown"}</td>
                         <td className="py-2 pr-4 text-slate-700">{row.label || gapLabel(row.start_at, row.end_at, row.minutes)}</td>
