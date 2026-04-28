@@ -109,6 +109,50 @@ type PresenceResponse = {
   rows?: PresenceRow[];
   error?: string;
 };
+type DriverWorkforceRow = {
+  driver_id?: string | null;
+  driver_name?: string | null;
+  town?: string | null;
+  municipality?: string | null;
+  today_online_minutes?: number | null;
+  week_online_minutes?: number | null;
+  month_online_minutes?: number | null;
+  today_login_count?: number | null;
+  week_qualified_days?: number | null;
+  month_qualified_days?: number | null;
+  accepted_bookings?: number | null;
+  assigned_bookings?: number | null;
+  completed_trips?: number | null;
+  last_seen_at?: string | null;
+  current_status?: string | null;
+  is_online_now?: boolean | null;
+};
+type DriverCoverageGapRow = {
+  town?: string | null;
+  date?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  minutes?: number | null;
+  label?: string | null;
+};
+type DriverWorkforceResponse = {
+  ok?: boolean;
+  rows?: DriverWorkforceRow[];
+  gaps?: DriverCoverageGapRow[];
+  summary?: {
+    active_drivers_now?: number | null;
+    drivers_logged_in_today?: number | null;
+    total_online_minutes_today?: number | null;
+    avg_online_minutes_today?: number | null;
+    qualified_today?: number | null;
+    qualified_this_week?: number | null;
+    no_driver_minutes_today?: number | null;
+    worst_gap_start_at?: string | null;
+    worst_gap_end_at?: string | null;
+    worst_gap_minutes?: number | null;
+  };
+  error?: string;
+};
 type ScopeOption = "all" | "Lagawe" | "Hingyon" | "Banaue" | "Lamut" | "Kiangan" | "Unknown";
 const CURRENCY = new Intl.NumberFormat("en-PH", {
   style: "currency",
@@ -143,6 +187,25 @@ function formatSecondsLabel(value?: number | null) {
   const minutes = Math.floor(n / 60);
   const seconds = n % 60;
   return seconds ? `${minutes} min ${seconds} sec` : `${minutes} min`;
+}
+function formatMinutesLabel(value?: number | null) {
+  const n = Math.max(0, Math.round(Number(value || 0)));
+  if (!Number.isFinite(n) || n <= 0) return "0m";
+  const hours = Math.floor(n / 60);
+  const minutes = n % 60;
+  if (hours <= 0) return `${minutes}m`;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+function formatAcceptanceRate(accepted?: number | null, assigned?: number | null) {
+  const a = Number(accepted || 0);
+  const b = Number(assigned || 0);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return "-";
+  return `${Math.round((a / b) * 100)}%`;
+}
+function gapLabel(startAt?: string | null, endAt?: string | null, minutes?: number | null) {
+  const length = formatMinutesLabel(minutes);
+  if (!startAt || !endAt) return length === "0m" ? "-" : length;
+  return `${formatPHDateTime(startAt)} to ${formatPHDateTime(endAt)} (${length})`;
 }
 function formatPHNow() {
   return new Intl.DateTimeFormat("en-PH", {
@@ -204,6 +267,19 @@ export default function AdminAnalyticsPage() {
     with_booking_now: 0,
     searching_now: 0,
   });
+  const [driverWorkforceRows, setDriverWorkforceRows] = React.useState<DriverWorkforceRow[]>([]);
+  const [driverCoverageGaps, setDriverCoverageGaps] = React.useState<DriverCoverageGapRow[]>([]);
+  const [driverWorkforceSummary, setDriverWorkforceSummary] = React.useState<NonNullable<DriverWorkforceResponse["summary"]>>({
+    active_drivers_now: 0,
+    drivers_logged_in_today: 0,
+    total_online_minutes_today: 0,
+    avg_online_minutes_today: 0,
+    qualified_today: 0,
+    qualified_this_week: 0,
+    no_driver_minutes_today: 0,
+    worst_gap_minutes: 0,
+  });
+  const [driverWorkforceStatus, setDriverWorkforceStatus] = React.useState<string>("Not loaded yet.");
   const load = React.useCallback(async () => {
     setLoading(true);
     setMsg("");
@@ -240,6 +316,35 @@ export default function AdminAnalyticsPage() {
         with_booking_now: Number(presenceJson.counts?.with_booking_now || 0),
         searching_now: Number(presenceJson.counts?.searching_now || 0),
       });
+      try {
+        const workforceRes = await fetch("/api/admin/analytics/driver-workforce?freshness_seconds=180", { cache: "no-store", credentials: "same-origin" });
+        if (workforceRes.ok) {
+          const workforceJson = (await workforceRes.json().catch(() => ({}))) as DriverWorkforceResponse;
+          setDriverWorkforceRows(Array.isArray(workforceJson.rows) ? workforceJson.rows : []);
+          setDriverCoverageGaps(Array.isArray(workforceJson.gaps) ? workforceJson.gaps : []);
+          setDriverWorkforceSummary({
+            active_drivers_now: Number(workforceJson.summary?.active_drivers_now || 0),
+            drivers_logged_in_today: Number(workforceJson.summary?.drivers_logged_in_today || 0),
+            total_online_minutes_today: Number(workforceJson.summary?.total_online_minutes_today || 0),
+            avg_online_minutes_today: Number(workforceJson.summary?.avg_online_minutes_today || 0),
+            qualified_today: Number(workforceJson.summary?.qualified_today || 0),
+            qualified_this_week: Number(workforceJson.summary?.qualified_this_week || 0),
+            no_driver_minutes_today: Number(workforceJson.summary?.no_driver_minutes_today || 0),
+            worst_gap_start_at: workforceJson.summary?.worst_gap_start_at || null,
+            worst_gap_end_at: workforceJson.summary?.worst_gap_end_at || null,
+            worst_gap_minutes: Number(workforceJson.summary?.worst_gap_minutes || 0),
+          });
+          setDriverWorkforceStatus("Loaded from /api/admin/analytics/driver-workforce.");
+        } else {
+          setDriverWorkforceRows([]);
+          setDriverCoverageGaps([]);
+          setDriverWorkforceStatus("Driver workforce endpoint is not available yet. Existing analytics remain unchanged.");
+        }
+      } catch {
+        setDriverWorkforceRows([]);
+        setDriverCoverageGaps([]);
+        setDriverWorkforceStatus("Driver workforce endpoint is not available yet. Existing analytics remain unchanged.");
+      }
       setLastRefresh(formatPHNow());
     } catch (e: any) {
       setMsg(e?.message || "Failed to load analytics.");
@@ -266,6 +371,22 @@ export default function AdminAnalyticsPage() {
     if (scope === "all") return presenceTowns;
     return presenceTowns.filter((r) => townMatch(scope, r.town));
   }, [presenceTowns, scope]);
+  const scopedDriverWorkforceRows = React.useMemo(() => driverWorkforceRows.filter((r) => townMatch(scope, r.town ?? r.municipality)), [driverWorkforceRows, scope]);
+  const scopedDriverCoverageGaps = React.useMemo(() => driverCoverageGaps.filter((r) => townMatch(scope, r.town)), [driverCoverageGaps, scope]);
+  const driverWorkforceTotals = React.useMemo(() => {
+    const rows = scopedDriverWorkforceRows;
+    const activeNow = rows.filter((r) => !!r.is_online_now || String(r.current_status || "").toLowerCase() === "online").length;
+    const loggedInToday = rows.filter((r) => Number(r.today_online_minutes || 0) > 0 || Number(r.today_login_count || 0) > 0).length;
+    const totalToday = rows.reduce((sum, r) => sum + Number(r.today_online_minutes || 0), 0);
+    const avgToday = loggedInToday > 0 ? Math.round(totalToday / loggedInToday) : 0;
+    const qualifiedToday = rows.filter((r) => Number(r.today_online_minutes || 0) >= 480).length;
+    const qualifiedWeek = rows.filter((r) => Number(r.week_qualified_days || 0) >= 5).length;
+    const noDriverMinutes = scope === "all"
+      ? Number(driverWorkforceSummary.no_driver_minutes_today || 0)
+      : scopedDriverCoverageGaps.reduce((sum, r) => sum + Number(r.minutes || 0), 0);
+    const worstGap = scopedDriverCoverageGaps.slice().sort((a, b) => Number(b.minutes || 0) - Number(a.minutes || 0))[0] || null;
+    return { activeNow, loggedInToday, totalToday, avgToday, qualifiedToday, qualifiedWeek, noDriverMinutes, worstGap };
+  }, [scopedDriverWorkforceRows, scopedDriverCoverageGaps, driverWorkforceSummary, scope]);
   const presenceTotals = React.useMemo(() => {
     const activeNow = scopedPresenceRows.length;
     const foregroundNow = scopedPresenceRows.filter((r) => String(r.app_state || "foreground") === "foreground").length;
@@ -358,6 +479,26 @@ export default function AdminAnalyticsPage() {
       ])
     );
   }, [scopedPresenceRows, scope]);
+  const exportDriverWorkforce = React.useCallback(() => {
+    downloadCsv(
+      `jride-driver-workforce-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Driver", "Town", "Status", "Online Now", "Today Hours", "Week Hours", "Month Hours", "Login Count Today", "Week Qualified Days", "Acceptance Rate", "Completed Trips", "Last Seen (PHT)"],
+      scopedDriverWorkforceRows.map((r) => [
+        r.driver_name || "Unknown Driver",
+        r.town ?? r.municipality ?? "Unknown",
+        r.current_status || "-",
+        r.is_online_now ? "Yes" : "No",
+        formatMinutesLabel(r.today_online_minutes),
+        formatMinutesLabel(r.week_online_minutes),
+        formatMinutesLabel(r.month_online_minutes),
+        Number(r.today_login_count || 0),
+        Number(r.week_qualified_days || 0),
+        formatAcceptanceRate(r.accepted_bookings, r.assigned_bookings),
+        Number(r.completed_trips || 0),
+        formatPHDateTime(r.last_seen_at),
+      ])
+    );
+  }, [scopedDriverWorkforceRows, scope]);
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 md:px-6 lg:px-8">
@@ -365,7 +506,7 @@ export default function AdminAnalyticsPage() {
           <div className="flex flex-col gap-6 p-6 md:p-8 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">JRide Analytics Center</div>
-              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics, company share, TODA share, passenger presence, and no-driver demand</h1>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">Operations analytics, company share, TODA share, passenger presence, driver workforce, and no-driver demand</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 md:text-base">Built for expansion. View town-filtered results, export CSV reports, and monitor partner-safe metrics using Philippine date and time.</p>
             </div>
             <div className="grid grid-cols-1 gap-3 text-sm text-slate-300 sm:grid-cols-2">
@@ -395,6 +536,7 @@ export default function AdminAnalyticsPage() {
               <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportDrivers}>Export drivers CSV</button>
               <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportFailures}>Export no-driver CSV</button>
               <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportPresence}>Export presence CSV</button>
+              <button className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={exportDriverWorkforce}>Export driver workforce CSV</button>
             </div>
           </div>
           {msg ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{msg}</div> : null}
@@ -406,6 +548,72 @@ export default function AdminAnalyticsPage() {
           <Card title="TODA rides" value={formatCount(totals.todaTrips)} sub="Completed trips with a TODA member driver" />
           <Card title="Driver gross fares" value={formatPeso(totals.grossProposedFareEarnings)} sub="Sum of completed-trip proposed fares" />
           <Card title="No-driver searches" value={formatCount(totals.noDriverCount)} sub="Passengers who searched but got no driver" />
+        </section>
+        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">Driver workforce intelligence</h2>
+              <p className="mt-1 text-sm text-slate-500">Read-only driver attendance, login behavior, incentive gatekeeper status, and no-driver coverage gaps. Gatekeeper v1: 8 hours per day and at least 5 qualified days per week.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Data source</div>
+              <div className="mt-1 font-semibold">{driverWorkforceStatus}</div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+            <Card title="Drivers online now" value={formatCount(driverWorkforceTotals.activeNow || Number(driverWorkforceSummary.active_drivers_now || 0))} sub="Fresh online drivers in scope" />
+            <Card title="Logged in today" value={formatCount(driverWorkforceTotals.loggedInToday || Number(driverWorkforceSummary.drivers_logged_in_today || 0))} sub="Unique drivers with online time" />
+            <Card title="Online hours today" value={formatMinutesLabel(driverWorkforceTotals.totalToday || Number(driverWorkforceSummary.total_online_minutes_today || 0))} sub={`Avg: ${formatMinutesLabel(driverWorkforceTotals.avgToday || Number(driverWorkforceSummary.avg_online_minutes_today || 0))}`} />
+            <Card title="Qualified today" value={formatCount(driverWorkforceTotals.qualifiedToday || Number(driverWorkforceSummary.qualified_today || 0))} sub="At least 8 online hours" />
+            <Card title="Qualified this week" value={formatCount(driverWorkforceTotals.qualifiedWeek || Number(driverWorkforceSummary.qualified_this_week || 0))} sub="At least 5 qualified days" />
+            <Card title="No-driver time today" value={formatMinutesLabel(driverWorkforceTotals.noDriverMinutes)} sub="Zero online drivers in scope" />
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Driver gatekeeper ranking</h3>
+              <p className="mt-1 text-xs text-slate-500">Use this for incentive eligibility review. This panel is display-only and does not change dispatch, wallets, or lifecycle.</p>
+              <div className="mt-3 overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Driver</th><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Today</th><th className="py-2 pr-4 font-semibold">Logins</th><th className="py-2 pr-4 font-semibold">Week days</th><th className="py-2 pr-4 font-semibold">Accept</th><th className="py-2 font-semibold">Last seen</th></tr></thead>
+                  <tbody>
+                    {scopedDriverWorkforceRows.length === 0 ? <tr><td colSpan={7} className="py-4 text-slate-400">No driver workforce rows yet for this scope. Add /api/admin/analytics/driver-workforce when backend attendance data is ready.</td></tr> : scopedDriverWorkforceRows.slice(0, 25).map((row, idx) => (
+                      <tr key={String(row.driver_id || `${row.driver_name || "driver"}-${idx}`)} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 pr-4 font-medium text-slate-900">{row.driver_name || "Unknown Driver"}</td>
+                        <td className="py-2 pr-4 text-slate-700">{row.town ?? row.municipality ?? "Unknown"}</td>
+                        <td className="py-2 pr-4 text-slate-700">{formatMinutesLabel(row.today_online_minutes)}</td>
+                        <td className="py-2 pr-4 text-slate-700">{formatCount(Number(row.today_login_count || 0))}</td>
+                        <td className="py-2 pr-4 text-slate-700">{formatCount(Number(row.week_qualified_days || 0))} / 5</td>
+                        <td className="py-2 pr-4 text-slate-700">{formatAcceptanceRate(row.accepted_bookings, row.assigned_bookings)}</td>
+                        <td className="py-2 text-slate-700">{formatPHDateTime(row.last_seen_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">No-driver coverage gaps</h3>
+              <p className="mt-1 text-xs text-slate-500">Shows hours where every driver was offline, so incentives can target real dead zones instead of guesswork.</p>
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">Worst gap</div>
+                <div className="mt-1 font-semibold">{driverWorkforceTotals.worstGap ? gapLabel(driverWorkforceTotals.worstGap.start_at, driverWorkforceTotals.worstGap.end_at, driverWorkforceTotals.worstGap.minutes) : gapLabel(driverWorkforceSummary.worst_gap_start_at, driverWorkforceSummary.worst_gap_end_at, driverWorkforceSummary.worst_gap_minutes)}</div>
+              </div>
+              <div className="mt-3 overflow-auto">
+                <table className="min-w-full text-sm">
+                  <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Gap window</th><th className="py-2 font-semibold">Minutes</th></tr></thead>
+                  <tbody>
+                    {scopedDriverCoverageGaps.length === 0 ? <tr><td colSpan={3} className="py-4 text-slate-400">No no-driver coverage gap rows yet for this scope.</td></tr> : scopedDriverCoverageGaps.slice(0, 20).map((row, idx) => (
+                      <tr key={`${row.town || "Unknown"}-${row.start_at || idx}`} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 pr-4 font-medium text-slate-900">{row.town || "Unknown"}</td>
+                        <td className="py-2 pr-4 text-slate-700">{row.label || gapLabel(row.start_at, row.end_at, row.minutes)}</td>
+                        <td className="py-2 text-slate-700">{formatMinutesLabel(row.minutes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
