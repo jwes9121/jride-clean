@@ -394,6 +394,27 @@ export default function AdminAnalyticsPage() {
     const worstGap = scopedDriverCoverageGaps.slice().sort((a, b) => Number(b.minutes || 0) - Number(a.minutes || 0))[0] || null;
     return { activeNow, loggedInToday, totalToday, avgToday, qualifiedToday, qualifiedWeek, noDriverMinutes, worstGap };
   }, [scopedDriverWorkforceRows, scopedDriverCoverageGaps, driverWorkforceSummary, scope]);
+  const driverLiveCoverageRows = React.useMemo(() => {
+    const map = new Map<string, { town: string; roster: number; online: number; fresh: number; lastSeen: string | null }>();
+    for (const row of scopedDriverWorkforceRows) {
+      const town = String(row.town ?? row.municipality ?? "Unknown");
+      const current = map.get(town) || { town, roster: 0, online: 0, fresh: 0, lastSeen: null };
+      current.roster += 1;
+      if (!!row.is_online_now || String(row.current_status || "").toLowerCase() === "online") {
+        current.online += 1;
+        current.fresh += 1;
+      }
+      const last = row.last_seen_at ? new Date(row.last_seen_at).getTime() : 0;
+      const prev = current.lastSeen ? new Date(current.lastSeen).getTime() : 0;
+      if (last && (!prev || last > prev)) current.lastSeen = row.last_seen_at || null;
+      map.set(town, current);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (b.online !== a.online) return b.online - a.online;
+      if (b.roster !== a.roster) return b.roster - a.roster;
+      return a.town.localeCompare(b.town);
+    });
+  }, [scopedDriverWorkforceRows]);
   const presenceTotals = React.useMemo(() => {
     const activeNow = scopedPresenceRows.length;
     const foregroundNow = scopedPresenceRows.filter((r) => String(r.app_state || "foreground") === "foreground").length;
@@ -579,13 +600,13 @@ export default function AdminAnalyticsPage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-sm font-semibold text-slate-900">Driver recent activity ranking</h3>
               <p className="mt-1 text-xs text-slate-500">Uses driver_locations recent activity plus booking acceptance data. This panel is display-only and does not change dispatch, wallets, or lifecycle.</p>
-              <div className="mt-3 overflow-auto">
+              <div className="mt-3 max-h-[390px] overflow-auto rounded-xl border border-slate-200 bg-white">
                 <table className="min-w-full text-sm">
-                  <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Driver</th><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Today</th><th className="py-2 pr-4 font-semibold">Logins</th><th className="py-2 pr-4 font-semibold">Week days</th><th className="py-2 pr-4 font-semibold">Accept</th><th className="py-2 font-semibold">Last seen</th></tr></thead>
+                  <thead className="sticky top-0 bg-white"><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pl-3 pr-4 font-semibold">Driver</th><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Today</th><th className="py-2 pr-4 font-semibold">Logins</th><th className="py-2 pr-4 font-semibold">Week days</th><th className="py-2 pr-4 font-semibold">Accept</th><th className="py-2 font-semibold">Last seen</th></tr></thead>
                   <tbody>
                     {scopedDriverWorkforceRows.length === 0 ? <tr><td colSpan={7} className="py-4 text-slate-400">No driver workforce rows yet for this scope. Add /api/admin/analytics/driver-workforce when backend attendance data is ready.</td></tr> : scopedDriverWorkforceRows.slice(0, 25).map((row, idx) => (
                       <tr key={String(row.driver_id || `${row.driver_name || "driver"}-${idx}`)} className="border-b border-slate-100 last:border-0">
-                        <td className="py-2 pr-4 font-medium text-slate-900">{row.driver_name || "Unknown Driver"}</td>
+                        <td className="py-2 pl-3 pr-4 font-medium text-slate-900">{row.driver_name || "Unknown Driver"}</td>
                         <td className="py-2 pr-4 text-slate-700">{row.town ?? row.municipality ?? "Unknown"}</td>
                         <td className="py-2 pr-4 text-slate-700">{formatMinutesLabel(row.today_online_minutes)}</td>
                         <td className="py-2 pr-4 text-slate-700">{formatCount(Number(row.today_login_count || 0))}</td>
@@ -599,25 +620,39 @@ export default function AdminAnalyticsPage() {
               </div>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold text-slate-900">No-driver coverage gaps</h3>
-              <p className="mt-1 text-xs text-slate-500">Disabled until a real driver session history table exists. The system will not invent coverage gaps from snapshot data.</p>
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">Worst gap</div>
-                <div className="mt-1 font-semibold">{driverWorkforceTotals.worstGap ? gapLabel(driverWorkforceTotals.worstGap.start_at, driverWorkforceTotals.worstGap.end_at, driverWorkforceTotals.worstGap.minutes) : gapLabel(driverWorkforceSummary.worst_gap_start_at, driverWorkforceSummary.worst_gap_end_at, driverWorkforceSummary.worst_gap_minutes)}</div>
+              <h3 className="text-sm font-semibold text-slate-900">Live coverage by town</h3>
+              <p className="mt-1 text-xs text-slate-500">Uses real driver_locations snapshot data only. This replaces the empty coverage-gap space until a real driver session history table exists.</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Online</div>
+                  <div className="mt-1 text-2xl font-bold text-slate-950">{formatCount(driverWorkforceTotals.activeNow || Number(driverWorkforceSummary.active_drivers_now || 0))}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Roster</div>
+                  <div className="mt-1 text-2xl font-bold text-slate-950">{formatCount(scopedDriverWorkforceRows.length)}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Mode</div>
+                  <div className="mt-1 text-sm font-bold text-slate-950">Snapshot</div>
+                </div>
               </div>
-              <div className="mt-3 overflow-auto">
+              <div className="mt-3 max-h-[390px] overflow-auto rounded-xl border border-slate-200 bg-white">
                 <table className="min-w-full text-sm">
-                  <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Gap window</th><th className="py-2 font-semibold">Minutes</th></tr></thead>
+                  <thead className="sticky top-0 bg-white"><tr className="border-b border-slate-200 text-left text-slate-500"><th className="py-2 pl-3 pr-4 font-semibold">Town</th><th className="py-2 pr-4 font-semibold">Online</th><th className="py-2 pr-4 font-semibold">Roster</th><th className="py-2 pr-3 font-semibold">Latest seen</th></tr></thead>
                   <tbody>
-                    {scopedDriverCoverageGaps.length === 0 ? <tr><td colSpan={3} className="py-4 text-slate-400">No coverage gap rows because driver session history is not implemented yet.</td></tr> : scopedDriverCoverageGaps.slice(0, 20).map((row, idx) => (
-                      <tr key={`${row.town || "Unknown"}-${row.start_at || idx}`} className="border-b border-slate-100 last:border-0">
-                        <td className="py-2 pr-4 font-medium text-slate-900">{row.town || "Unknown"}</td>
-                        <td className="py-2 pr-4 text-slate-700">{row.label || gapLabel(row.start_at, row.end_at, row.minutes)}</td>
-                        <td className="py-2 text-slate-700">{formatMinutesLabel(row.minutes)}</td>
+                    {driverLiveCoverageRows.length === 0 ? <tr><td colSpan={4} className="px-3 py-4 text-slate-400">No live driver coverage rows for this scope.</td></tr> : driverLiveCoverageRows.map((row) => (
+                      <tr key={row.town} className="border-b border-slate-100 last:border-0">
+                        <td className="py-2 pl-3 pr-4 font-medium text-slate-900">{row.town}</td>
+                        <td className="py-2 pr-4 text-slate-700">{formatCount(row.online)}</td>
+                        <td className="py-2 pr-4 text-slate-700">{formatCount(row.roster)}</td>
+                        <td className="py-2 pr-3 text-slate-700">{formatPHDateTime(row.lastSeen)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                No-driver gap history remains disabled because no driver session history table exists in production. This panel uses only truthful live snapshot data.
               </div>
             </div>
           </div>
