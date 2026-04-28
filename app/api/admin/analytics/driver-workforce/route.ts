@@ -156,6 +156,46 @@ function statusFrom(row: AnyRow): string | null {
   return text(row.status) || text(row.current_status) || text(row.driver_status);
 }
 
+function truthyFlag(v: any): boolean | null {
+  if (v === true) return true;
+  if (v === false) return false;
+  if (v == null) return null;
+  const s = String(v).trim().toLowerCase();
+  if (["true", "t", "yes", "y", "1", "active", "enabled", "approved", "verified"].includes(s)) return true;
+  if (["false", "f", "no", "n", "0", "inactive", "disabled", "deactivated", "blocked", "suspended", "rejected", "archived", "deleted"].includes(s)) return false;
+  return null;
+}
+
+function isDeactivatedDriverProfile(row: AnyRow): boolean {
+  const statusValues = [
+    row.status,
+    row.current_status,
+    row.driver_status,
+    row.account_status,
+    row.approval_status,
+    row.verification_status,
+    row.lifecycle_status,
+  ]
+    .map((v) => String(v ?? "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (statusValues.some((s) => ["deactivated", "inactive", "disabled", "blocked", "suspended", "archived", "deleted", "rejected"].includes(s))) {
+    return true;
+  }
+
+  const activeFlags = [row.is_active, row.active, row.enabled, row.is_enabled];
+  for (const flag of activeFlags) {
+    const parsed = truthyFlag(flag);
+    if (parsed === false) return true;
+  }
+
+  if (row.deactivated_at || row.disabled_at || row.blocked_at || row.deleted_at || row.archived_at) {
+    return true;
+  }
+
+  return false;
+}
+
 function lastSeenFrom(row: AnyRow): string | null {
   return text(row.last_seen_at) || text(row.updated_at) || text(row.created_at);
 }
@@ -298,10 +338,15 @@ export async function GET(req: Request) {
     ]);
 
     const rowsByDriver = new Map<string, DriverWorkforceRow>();
+    const deactivatedDriverIds = new Set<string>();
 
     for (const p of profilesResult.rows) {
       const id = driverIdFrom(p);
       if (!id) continue;
+      if (isDeactivatedDriverProfile(p)) {
+        deactivatedDriverIds.add(id);
+        continue;
+      }
       const row = ensureDriver(rowsByDriver, id);
       mergeIdentity(row, {
         driver_name: driverNameFrom(p),
@@ -315,6 +360,7 @@ export async function GET(req: Request) {
     for (const d of driverLocationsResult.rows) {
       const id = driverIdFrom(d);
       if (!id) continue;
+      if (deactivatedDriverIds.has(id) || isDeactivatedDriverProfile(d)) continue;
       const status = statusFrom(d);
       const lastSeen = lastSeenFrom(d);
       const fresh = lastSeen ? new Date(lastSeen).getTime() >= freshCutoff.getTime() : false;
@@ -332,7 +378,9 @@ export async function GET(req: Request) {
       row.is_online_now = onlineNow;
     }
 
-    const sessions = sessionsResult.rows.map(normalizeSession).filter(Boolean) as SessionRow[];
+    const sessions = sessionsResult.rows
+      .map(normalizeSession)
+      .filter((s): s is SessionRow => !!s && !deactivatedDriverIds.has(s.driver_id));
     const dayMinutesByDriverDate = new Map<string, number>();
 
     for (const s of sessions) {
@@ -380,6 +428,7 @@ export async function GET(req: Request) {
     for (const b of bookingsResult.rows) {
       const id = text(b.assigned_driver_id) || text(b.driver_id) || text(b.accepted_driver_id);
       if (!id) continue;
+      if (deactivatedDriverIds.has(id)) continue;
       const row = ensureDriver(rowsByDriver, id);
       const status = String(b.status ?? "").trim().toLowerCase();
       if (text(b.assigned_driver_id) || text(b.driver_id)) row.assigned_bookings += 1;
@@ -388,6 +437,7 @@ export async function GET(req: Request) {
     }
 
     const rows = Array.from(rowsByDriver.values())
+      .filter((r) => !r.driver_id || !deactivatedDriverIds.has(r.driver_id))
       .filter((r) => r.driver_id || r.driver_name || r.is_online_now || r.today_online_minutes > 0 || r.month_online_minutes > 0)
       .sort((a, b) => {
         if (b.today_online_minutes !== a.today_online_minutes) return b.today_online_minutes - a.today_online_minutes;
@@ -413,6 +463,7 @@ export async function GET(req: Request) {
         driver_presence_sessions_error: sessionsResult.error,
         driver_profiles_error: profilesResult.error,
         bookings_error: bookingsResult.error,
+        excluded_deactivated_drivers: deactivatedDriverIds.size,
         has_session_data: sessions.length > 0,
         mode: sessions.length > 0 ? "sessions" : "snapshot_only",
       },
