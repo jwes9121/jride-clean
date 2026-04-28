@@ -1,100 +1,69 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/utils/email/sendEmail";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-function bad(msg: string, status = 400) {
-  return NextResponse.json({ ok: false, error: msg }, { status });
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+function text(v: unknown) {
+  return String(v || "").trim();
 }
 
-function isEmail(s: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const email = String(body?.email ?? "").trim().toLowerCase();
+    const body = await req.json();
+    const email = text(body?.email).toLowerCase();
 
-    if (!isEmail(email)) return bad("Valid email is required.");
-
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-    const serviceKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_SERVICE_KEY ||
-      process.env.SUPABASE_SERVICE_ROLE ||
-      "";
-
-    if (!supabaseUrl || !serviceKey) {
-      return bad("Missing Supabase server configuration.", 500);
+    if (!email) {
+      return NextResponse.json(
+        { ok: false, error: "Email is required." },
+        { status: 400 }
+      );
     }
 
-    const admin = createAdminClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
+    const { data } = await supabase.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: {
+        redirectTo: "https://app.jride.net/reset-password",
+      },
     });
 
-    const successResponse = NextResponse.json({
+    const link = data?.properties?.action_link;
+
+    if (link) {
+      const html = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6">
+          <h2>JRide Password Reset</h2>
+          <p>Click the button below to reset your password:</p>
+          <p>
+            <a href="${link}" style="background:#111;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;">
+              Reset Password
+            </a>
+          </p>
+          <p>If you did not request this, you can ignore this email.</p>
+        </div>
+      `;
+
+      await sendEmail({
+        to: email,
+        subject: "JRide password reset",
+        html,
+        replyTo: process.env.EMAIL_REPLY_TO || "info@jride.net",
+      });
+    }
+
+    return NextResponse.json({
       ok: true,
       message: "If that email exists, a reset link has been sent.",
     });
-
-    let matchedUser: any = null;
-    const perPage = 100;
-
-    for (let page = 1; page <= 100; page++) {
-      const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-
-      if (error) return bad(error.message || "Unable to query users.", 500);
-
-      const users = data?.users || [];
-      matchedUser =
-        users.find((u) => {
-          const meta = (u.user_metadata ?? {}) as any;
-          return String(meta.contact_email ?? "").trim().toLowerCase() === email;
-        }) || null;
-
-      if (matchedUser) break;
-      if (users.length < perPage) break;
-    }
-
-    if (!matchedUser) return successResponse;
-
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-
-    const { error: insertError } = await admin.from("password_reset_tokens").insert({
-      user_id: matchedUser.id,
-      token,
-      expires_at: expiresAt,
-      used: false,
-    });
-
-    if (insertError) {
-      return bad(insertError.message || "Unable to create reset token.", 500);
-    }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "https://app.jride.net";
-    const resetLink = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
-
-    await sendEmail({
-      to: email,
-      subject: "JRide password reset",
-      html: `
-        <p>Hello,</p>
-        <p>We received a request to reset your JRide password.</p>
-        <p><a href="${resetLink}">Click here to reset your password</a></p>
-        <p>This link expires in 1 hour.</p>
-        <p>If you did not request this, you can ignore this email.</p>
-      `,
-    });
-
-    return successResponse;
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Forgot password failed." },
+      { ok: false, error: e?.message || "Unexpected error." },
       { status: 500 }
     );
   }
