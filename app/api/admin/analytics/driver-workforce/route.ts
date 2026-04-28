@@ -45,6 +45,7 @@ type SessionRow = {
 const QUALIFIED_DAY_MINUTES = 8 * 60;
 const QUALIFIED_WEEK_DAYS = 5;
 const PH_TZ = "Asia/Manila";
+const ROSTER_ACTIVITY_DAYS = 30;
 
 function json(data: any, status = 200) {
   return NextResponse.json(data, { status });
@@ -75,7 +76,9 @@ function phParts(d: Date) {
     second: "2-digit",
     hourCycle: "h23",
   }).formatToParts(d);
+
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value || 0);
+
   return {
     year: get("year"),
     month: get("month"),
@@ -87,7 +90,6 @@ function phParts(d: Date) {
 }
 
 function utcForPhLocal(year: number, month: number, day: number, hour = 0, minute = 0, second = 0) {
-  // Philippines is UTC+8 with no DST. This keeps day/week/month scopes stable for JRide ops.
   return new Date(Date.UTC(year, month - 1, day, hour - 8, minute, second, 0));
 }
 
@@ -102,12 +104,6 @@ function startOfPhDay(now: Date) {
 
 function startOfPhWeek(now: Date) {
   const dayStart = startOfPhDay(now);
-  const phWeekday = Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: PH_TZ, weekday: "short" })
-      .formatToParts(now)
-      .find((p) => p.type === "weekday")?.value === "Mon"
-  );
-  void phWeekday;
   const weekdayName = new Intl.DateTimeFormat("en-US", { timeZone: PH_TZ, weekday: "short" }).format(now);
   const index: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
   return addDays(dayStart, -(index[weekdayName] ?? 0));
@@ -120,12 +116,17 @@ function startOfPhMonth(now: Date) {
 
 function minutesBetween(startIso: string | null, endIso: string | null, rangeStart: Date, rangeEnd: Date): number {
   if (!startIso) return 0;
+
   const s = new Date(startIso).getTime();
   const e = endIso ? new Date(endIso).getTime() : Date.now();
+
   if (!Number.isFinite(s) || !Number.isFinite(e)) return 0;
+
   const a = Math.max(s, rangeStart.getTime());
   const b = Math.min(e, rangeEnd.getTime());
+
   if (b <= a) return 0;
+
   return Math.floor((b - a) / 60000);
 }
 
@@ -156,17 +157,24 @@ function statusFrom(row: AnyRow): string | null {
   return text(row.status) || text(row.current_status) || text(row.driver_status);
 }
 
+function lastSeenFrom(row: AnyRow): string | null {
+  return text(row.last_seen_at) || text(row.updated_at) || text(row.created_at);
+}
+
 function truthyFlag(v: any): boolean | null {
   if (v === true) return true;
   if (v === false) return false;
   if (v == null) return null;
+
   const s = String(v).trim().toLowerCase();
+
   if (["true", "t", "yes", "y", "1", "active", "enabled", "approved", "verified"].includes(s)) return true;
   if (["false", "f", "no", "n", "0", "inactive", "disabled", "deactivated", "blocked", "suspended", "rejected", "archived", "deleted"].includes(s)) return false;
+
   return null;
 }
 
-function isDeactivatedDriverProfile(row: AnyRow): boolean {
+function isDeactivatedDriverRow(row: AnyRow): boolean {
   const statusValues = [
     row.status,
     row.current_status,
@@ -179,11 +187,16 @@ function isDeactivatedDriverProfile(row: AnyRow): boolean {
     .map((v) => String(v ?? "").trim().toLowerCase())
     .filter(Boolean);
 
-  if (statusValues.some((s) => ["deactivated", "inactive", "disabled", "blocked", "suspended", "archived", "deleted", "rejected"].includes(s))) {
+  if (
+    statusValues.some((s) =>
+      ["deactivated", "inactive", "disabled", "blocked", "suspended", "archived", "deleted", "rejected"].includes(s)
+    )
+  ) {
     return true;
   }
 
   const activeFlags = [row.is_active, row.active, row.enabled, row.is_enabled];
+
   for (const flag of activeFlags) {
     const parsed = truthyFlag(flag);
     if (parsed === false) return true;
@@ -196,14 +209,14 @@ function isDeactivatedDriverProfile(row: AnyRow): boolean {
   return false;
 }
 
-function lastSeenFrom(row: AnyRow): string | null {
-  return text(row.last_seen_at) || text(row.updated_at) || text(row.created_at);
-}
-
 async function safeSelect(supabase: any, table: string, query: (q: any) => any) {
   try {
     const { data, error } = await query(supabase.from(table).select("*"));
-    if (error) return { rows: [] as AnyRow[], error: error.message || String(error) };
+
+    if (error) {
+      return { rows: [] as AnyRow[], error: error.message || String(error) };
+    }
+
     return { rows: Array.isArray(data) ? (data as AnyRow[]) : [], error: null as string | null };
   } catch (err: any) {
     return { rows: [] as AnyRow[], error: err?.message || String(err) };
@@ -213,7 +226,9 @@ async function safeSelect(supabase: any, table: string, query: (q: any) => any) 
 function normalizeSession(row: AnyRow): SessionRow | null {
   const driver_id = driverIdFrom(row);
   const login_at = text(row.login_at) || text(row.online_at) || text(row.started_at) || text(row.start_at) || text(row.created_at);
+
   if (!driver_id || !login_at) return null;
+
   return {
     driver_id,
     driver_name: driverNameFrom(row),
@@ -224,10 +239,9 @@ function normalizeSession(row: AnyRow): SessionRow | null {
   };
 }
 
-function ensureDriver(map: Map<string, DriverWorkforceRow>, driver_id: string | null) {
-  const id = driver_id || "unknown";
-  if (!map.has(id)) {
-    map.set(id, {
+function ensureDriver(map: Map<string, DriverWorkforceRow>, driver_id: string) {
+  if (!map.has(driver_id)) {
+    map.set(driver_id, {
       driver_id,
       driver_name: null,
       town: null,
@@ -246,7 +260,8 @@ function ensureDriver(map: Map<string, DriverWorkforceRow>, driver_id: string | 
       is_online_now: false,
     });
   }
-  return map.get(id)!;
+
+  return map.get(driver_id)!;
 }
 
 function mergeIdentity(target: DriverWorkforceRow, source: Partial<DriverWorkforceRow>) {
@@ -255,58 +270,6 @@ function mergeIdentity(target: DriverWorkforceRow, source: Partial<DriverWorkfor
   target.municipality = target.municipality || source.municipality || source.town || null;
   target.last_seen_at = target.last_seen_at || source.last_seen_at || null;
   target.current_status = target.current_status || source.current_status || null;
-}
-
-function buildCoverageGaps(sessions: SessionRow[], dayStart: Date, now: Date): DriverCoverageGapRow[] {
-  if (!sessions.length) return [];
-  const startMs = dayStart.getTime();
-  const endMs = now.getTime();
-  if (endMs <= startMs) return [];
-
-  const towns = new Set<string>(["All towns"]);
-  for (const s of sessions) {
-    const t = s.town || s.municipality || "Unknown";
-    towns.add(t);
-  }
-
-  const gaps: DriverCoverageGapRow[] = [];
-
-  for (const town of Array.from(towns)) {
-    let gapStart: number | null = null;
-    let gapEnd: number | null = null;
-    for (let t = startMs; t < endMs; t += 60000) {
-      const active = sessions.some((s) => {
-        const st = new Date(s.login_at).getTime();
-        const en = s.logout_at ? new Date(s.logout_at).getTime() : now.getTime();
-        const sameTown = town === "All towns" || (s.town || s.municipality || "Unknown") === town;
-        return sameTown && st <= t && en > t;
-      });
-      if (!active) {
-        if (gapStart == null) gapStart = t;
-        gapEnd = t + 60000;
-      } else if (gapStart != null && gapEnd != null) {
-        gaps.push(makeGap(town, gapStart, gapEnd));
-        gapStart = null;
-        gapEnd = null;
-      }
-    }
-    if (gapStart != null && gapEnd != null) gaps.push(makeGap(town, gapStart, gapEnd));
-  }
-
-  return gaps.sort((a, b) => b.minutes - a.minutes).slice(0, 20);
-}
-
-function makeGap(town: string, startMs: number, endMs: number): DriverCoverageGapRow {
-  const start = new Date(startMs);
-  const end = new Date(endMs);
-  return {
-    town,
-    date: phDateKeyFromIso(start.toISOString()),
-    start_at: start.toISOString(),
-    end_at: end.toISOString(),
-    minutes: Math.max(0, Math.floor((endMs - startMs) / 60000)),
-    label: `${formatPhTime(start)} - ${formatPhTime(end)}`,
-  };
 }
 
 function formatPhTime(d: Date) {
@@ -318,54 +281,129 @@ function formatPhTime(d: Date) {
   }).format(d);
 }
 
+function makeGap(town: string, startMs: number, endMs: number): DriverCoverageGapRow {
+  const start = new Date(startMs);
+  const end = new Date(endMs);
+
+  return {
+    town,
+    date: phDateKeyFromIso(start.toISOString()),
+    start_at: start.toISOString(),
+    end_at: end.toISOString(),
+    minutes: Math.max(0, Math.floor((endMs - startMs) / 60000)),
+    label: `${formatPhTime(start)} - ${formatPhTime(end)}`,
+  };
+}
+
+function buildCoverageGaps(sessions: SessionRow[], dayStart: Date, now: Date): DriverCoverageGapRow[] {
+  if (!sessions.length) return [];
+
+  const startMs = dayStart.getTime();
+  const endMs = now.getTime();
+
+  if (endMs <= startMs) return [];
+
+  const towns = new Set<string>(["All towns"]);
+
+  for (const s of sessions) {
+    const t = s.town || s.municipality || "Unknown";
+    towns.add(t);
+  }
+
+  const gaps: DriverCoverageGapRow[] = [];
+
+  for (const town of Array.from(towns)) {
+    let gapStart: number | null = null;
+    let gapEnd: number | null = null;
+
+    for (let t = startMs; t < endMs; t += 60000) {
+      const active = sessions.some((s) => {
+        const st = new Date(s.login_at).getTime();
+        const en = s.logout_at ? new Date(s.logout_at).getTime() : now.getTime();
+        const sameTown = town === "All towns" || (s.town || s.municipality || "Unknown") === town;
+        return sameTown && st <= t && en > t;
+      });
+
+      if (!active) {
+        if (gapStart == null) gapStart = t;
+        gapEnd = t + 60000;
+      } else if (gapStart != null && gapEnd != null) {
+        gaps.push(makeGap(town, gapStart, gapEnd));
+        gapStart = null;
+        gapEnd = null;
+      }
+    }
+
+    if (gapStart != null && gapEnd != null) {
+      gaps.push(makeGap(town, gapStart, gapEnd));
+    }
+  }
+
+  return gaps.sort((a, b) => b.minutes - a.minutes).slice(0, 20);
+}
+
+function isRecentIso(value: string | null, cutoff: Date): boolean {
+  if (!value) return false;
+
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) && ms >= cutoff.getTime();
+}
+
 export async function GET(req: Request) {
   try {
     const supabase = supabaseAdmin();
     const url = new URL(req.url);
+
     const freshnessSeconds = Math.max(60, Math.min(900, num(url.searchParams.get("freshness_seconds")) || 180));
+
     const now = new Date();
     const dayStart = startOfPhDay(now);
     const dayEnd = addDays(dayStart, 1);
     const weekStart = startOfPhWeek(now);
     const monthStart = startOfPhMonth(now);
+    const activityStart = new Date(now.getTime() - ROSTER_ACTIVITY_DAYS * 24 * 60 * 60 * 1000);
     const freshCutoff = new Date(now.getTime() - freshnessSeconds * 1000);
 
     const [driverLocationsResult, sessionsResult, profilesResult, bookingsResult] = await Promise.all([
-      safeSelect(supabase, "driver_locations", (q) => q.limit(2000)),
+      safeSelect(supabase, "driver_locations", (q) => q.gte("updated_at", iso(activityStart)).limit(5000)),
       safeSelect(supabase, "driver_presence_sessions", (q) => q.gte("login_at", iso(monthStart)).limit(10000)),
       safeSelect(supabase, "driver_profiles", (q) => q.limit(3000)),
       safeSelect(supabase, "bookings", (q) => q.gte("created_at", iso(monthStart)).limit(10000)),
     ]);
 
-    const rowsByDriver = new Map<string, DriverWorkforceRow>();
     const deactivatedDriverIds = new Set<string>();
+    const profileByDriverId = new Map<string, AnyRow>();
 
     for (const p of profilesResult.rows) {
       const id = driverIdFrom(p);
       if (!id) continue;
-      if (isDeactivatedDriverProfile(p)) {
+
+      if (isDeactivatedDriverRow(p)) {
         deactivatedDriverIds.add(id);
         continue;
       }
-      const row = ensureDriver(rowsByDriver, id);
-      mergeIdentity(row, {
-        driver_name: driverNameFrom(p),
-        town: townFrom(p),
-        municipality: townFrom(p),
-        current_status: statusFrom(p),
-        last_seen_at: lastSeenFrom(p),
-      });
+
+      profileByDriverId.set(id, p);
     }
+
+    const rowsByDriver = new Map<string, DriverWorkforceRow>();
+    const rosterDriverIds = new Set<string>();
 
     for (const d of driverLocationsResult.rows) {
       const id = driverIdFrom(d);
       if (!id) continue;
-      if (deactivatedDriverIds.has(id) || isDeactivatedDriverProfile(d)) continue;
-      const status = statusFrom(d);
+      if (deactivatedDriverIds.has(id)) continue;
+      if (isDeactivatedDriverRow(d)) continue;
+
       const lastSeen = lastSeenFrom(d);
-      const fresh = lastSeen ? new Date(lastSeen).getTime() >= freshCutoff.getTime() : false;
-      const onlineNow = fresh && isOnlineStatus(status);
+      if (!isRecentIso(lastSeen, activityStart)) continue;
+
+      rosterDriverIds.add(id);
+
       const row = ensureDriver(rowsByDriver, id);
+      const status = statusFrom(d);
+      const fresh = lastSeen ? new Date(lastSeen).getTime() >= freshCutoff.getTime() : false;
+
       mergeIdentity(row, {
         driver_name: driverNameFrom(d),
         town: townFrom(d),
@@ -373,18 +411,50 @@ export async function GET(req: Request) {
         current_status: status,
         last_seen_at: lastSeen,
       });
+
       row.current_status = status || row.current_status;
       row.last_seen_at = lastSeen || row.last_seen_at;
-      row.is_online_now = onlineNow;
+      row.is_online_now = fresh && isOnlineStatus(status);
     }
 
     const sessions = sessionsResult.rows
       .map(normalizeSession)
-      .filter((s): s is SessionRow => !!s && !deactivatedDriverIds.has(s.driver_id));
+      .filter((s): s is SessionRow => !!s)
+      .filter((s) => !deactivatedDriverIds.has(s.driver_id));
+
+    for (const s of sessions) {
+      rosterDriverIds.add(s.driver_id);
+    }
+
+    for (const b of bookingsResult.rows) {
+      const id = text(b.assigned_driver_id) || text(b.driver_id) || text(b.accepted_driver_id);
+      if (!id) continue;
+      if (deactivatedDriverIds.has(id)) continue;
+      rosterDriverIds.add(id);
+    }
+
+    for (const id of rosterDriverIds) {
+      const profile = profileByDriverId.get(id);
+      const row = ensureDriver(rowsByDriver, id);
+
+      if (profile) {
+        mergeIdentity(row, {
+          driver_name: driverNameFrom(profile),
+          town: townFrom(profile),
+          municipality: townFrom(profile),
+          current_status: statusFrom(profile),
+          last_seen_at: lastSeenFrom(profile),
+        });
+      }
+    }
+
     const dayMinutesByDriverDate = new Map<string, number>();
 
     for (const s of sessions) {
+      if (!rosterDriverIds.has(s.driver_id)) continue;
+
       const row = ensureDriver(rowsByDriver, s.driver_id);
+
       mergeIdentity(row, {
         driver_name: s.driver_name,
         town: s.town,
@@ -394,22 +464,27 @@ export async function GET(req: Request) {
       const todayMins = minutesBetween(s.login_at, s.logout_at, dayStart, now);
       const weekMins = minutesBetween(s.login_at, s.logout_at, weekStart, now);
       const monthMins = minutesBetween(s.login_at, s.logout_at, monthStart, now);
+
       row.today_online_minutes += todayMins;
       row.week_online_minutes += weekMins;
       row.month_online_minutes += monthMins;
 
       const loginTime = new Date(s.login_at).getTime();
-      if (loginTime >= dayStart.getTime() && loginTime < dayEnd.getTime()) row.today_login_count += 1;
+      if (loginTime >= dayStart.getTime() && loginTime < dayEnd.getTime()) {
+        row.today_login_count += 1;
+      }
 
-      // Split sessions into PH day buckets for qualified day counting.
       let cursor = new Date(Math.max(new Date(s.login_at).getTime(), monthStart.getTime()));
       const sessionEnd = new Date(Math.min(s.logout_at ? new Date(s.logout_at).getTime() : now.getTime(), now.getTime()));
+
       while (cursor < sessionEnd) {
         const key = phDateKeyFromIso(cursor.toISOString());
         const p = phParts(cursor);
         const nextDay = addDays(utcForPhLocal(p.year, p.month, p.day, 0, 0, 0), 1);
-        const mins = minutesBetween(s.login_at, s.logout_at, cursor, nextDay < sessionEnd ? nextDay : sessionEnd);
+        const bucketEnd = nextDay < sessionEnd ? nextDay : sessionEnd;
+        const mins = minutesBetween(s.login_at, s.logout_at, cursor, bucketEnd);
         const mapKey = `${s.driver_id}|${key}`;
+
         dayMinutesByDriverDate.set(mapKey, (dayMinutesByDriverDate.get(mapKey) || 0) + mins);
         cursor = nextDay;
       }
@@ -417,11 +492,17 @@ export async function GET(req: Request) {
 
     for (const [key, mins] of dayMinutesByDriverDate.entries()) {
       const [driverId, dateKey] = key.split("|");
+      if (!driverId || !rosterDriverIds.has(driverId)) continue;
+
       const row = ensureDriver(rowsByDriver, driverId);
+
       if (mins >= QUALIFIED_DAY_MINUTES) {
         row.month_qualified_days += 1;
+
         const dateStart = new Date(`${dateKey}T00:00:00+08:00`);
-        if (dateStart.getTime() >= weekStart.getTime()) row.week_qualified_days += 1;
+        if (dateStart.getTime() >= weekStart.getTime()) {
+          row.week_qualified_days += 1;
+        }
       }
     }
 
@@ -429,16 +510,28 @@ export async function GET(req: Request) {
       const id = text(b.assigned_driver_id) || text(b.driver_id) || text(b.accepted_driver_id);
       if (!id) continue;
       if (deactivatedDriverIds.has(id)) continue;
+      if (!rosterDriverIds.has(id)) continue;
+
       const row = ensureDriver(rowsByDriver, id);
       const status = String(b.status ?? "").trim().toLowerCase();
-      if (text(b.assigned_driver_id) || text(b.driver_id)) row.assigned_bookings += 1;
-      if (["accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip", "completed"].includes(status)) row.accepted_bookings += 1;
-      if (status === "completed") row.completed_trips += 1;
+
+      if (text(b.assigned_driver_id) || text(b.driver_id)) {
+        row.assigned_bookings += 1;
+      }
+
+      if (["accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip", "completed"].includes(status)) {
+        row.accepted_bookings += 1;
+      }
+
+      if (status === "completed") {
+        row.completed_trips += 1;
+      }
     }
 
     const rows = Array.from(rowsByDriver.values())
-      .filter((r) => !r.driver_id || !deactivatedDriverIds.has(r.driver_id))
-      .filter((r) => r.driver_id || r.driver_name || r.is_online_now || r.today_online_minutes > 0 || r.month_online_minutes > 0)
+      .filter((r) => !!r.driver_id)
+      .filter((r) => !deactivatedDriverIds.has(String(r.driver_id)))
+      .filter((r) => rosterDriverIds.has(String(r.driver_id)))
       .sort((a, b) => {
         if (b.today_online_minutes !== a.today_online_minutes) return b.today_online_minutes - a.today_online_minutes;
         if (b.week_qualified_days !== a.week_qualified_days) return b.week_qualified_days - a.week_qualified_days;
@@ -452,7 +545,8 @@ export async function GET(req: Request) {
     const qualifiedToday = rows.filter((r) => r.today_online_minutes >= QUALIFIED_DAY_MINUTES).length;
     const qualifiedThisWeek = rows.filter((r) => r.week_qualified_days >= QUALIFIED_WEEK_DAYS).length;
 
-    const gaps = buildCoverageGaps(sessions.filter((s) => minutesBetween(s.login_at, s.logout_at, dayStart, now) > 0), dayStart, now);
+    const todaySessions = sessions.filter((s) => rosterDriverIds.has(s.driver_id)).filter((s) => minutesBetween(s.login_at, s.logout_at, dayStart, now) > 0);
+    const gaps = buildCoverageGaps(todaySessions, dayStart, now);
     const allTownsGap = gaps.find((g) => g.town === "All towns") || null;
     const worstGap = gaps[0] || null;
 
@@ -464,6 +558,9 @@ export async function GET(req: Request) {
         driver_profiles_error: profilesResult.error,
         bookings_error: bookingsResult.error,
         excluded_deactivated_drivers: deactivatedDriverIds.size,
+        roster_activity_days: ROSTER_ACTIVITY_DAYS,
+        roster_source: "driver_locations_recent_activity_plus_sessions_plus_bookings",
+        profile_usage: "metadata_only",
         has_session_data: sessions.length > 0,
         mode: sessions.length > 0 ? "sessions" : "snapshot_only",
       },
@@ -490,6 +587,14 @@ export async function GET(req: Request) {
     });
   } catch (err: any) {
     console.error("DRIVER_WORKFORCE_ANALYTICS_UNEXPECTED", err);
-    return json({ ok: false, error: "DRIVER_WORKFORCE_ANALYTICS_UNEXPECTED", message: err?.message || "Unexpected error" }, 500);
+
+    return json(
+      {
+        ok: false,
+        error: "DRIVER_WORKFORCE_ANALYTICS_UNEXPECTED",
+        message: err?.message || "Unexpected error",
+      },
+      500
+    );
   }
 }
