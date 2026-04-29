@@ -1,12 +1,12 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { requirePartnerAccess } from "@/lib/partner-access";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requirePartnerAccess } from "../../../../lib/partner-access";
 
 function db() {
   return createClient(
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "",
     process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-    { auth:{persistSession:false,autoRefreshToken:false} }
+    { auth: { persistSession: false, autoRefreshToken: false } }
   );
 }
 
@@ -20,12 +20,10 @@ export async function GET(req: NextRequest) {
   const access = Array.isArray(gate.access) ? gate.access : [];
   const territory = String(req.nextUrl.searchParams.get("territory") || "");
 
-  const allowed = access.some((x:any) =>
-    String(x.territory_name || "") === territory
-  );
+  const allowed = access.some((x: any) => String(x.territory_name || "") === territory);
 
   if (!allowed) {
-    return NextResponse.json({ ok:false, error:"FORBIDDEN_TERRITORY" }, { status:403 });
+    return NextResponse.json({ ok: false, error: "FORBIDDEN_TERRITORY" }, { status: 403 });
   }
 
   const supabase = db();
@@ -35,11 +33,11 @@ export async function GET(req: NextRequest) {
     .select("*")
     .eq("town", territory)
     .in("status", ["requested","searching","assigned","accepted","fare_proposed","ready","on_the_way","arrived","on_trip"])
-    .order("updated_at", { ascending:false })
+    .order("updated_at", { ascending: false })
     .limit(100);
 
   return NextResponse.json({
-    ok:true,
+    ok: true,
     territory,
     rows: res.data || []
   });

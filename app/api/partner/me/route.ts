@@ -1,5 +1,5 @@
-﻿import { NextResponse } from "next/server";
-import { requirePartnerAccess } from "@/lib/partner-access";
+import { NextResponse } from "next/server";
+import { requirePartnerAccess } from "../../../../lib/partner-access";
 
 export async function GET() {
   const gate = await requirePartnerAccess();

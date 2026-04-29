@@ -1,12 +1,12 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { requirePartnerAccess } from "@/lib/partner-access";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requirePartnerAccess } from "../../../../../lib/partner-access";
 
 function db() {
   return createClient(
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "",
     process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-    { auth:{persistSession:false,autoRefreshToken:false} }
+    { auth: { persistSession: false, autoRefreshToken: false } }
   );
 }
 
@@ -18,22 +18,20 @@ export async function POST(req: NextRequest) {
   }
 
   const access = Array.isArray(gate.access) ? gate.access : [];
-  const body = await req.json().catch(()=>({}));
+  const body = await req.json().catch(() => ({}));
 
   const territory = String(body.territory || "");
   const driver_id = String(body.driver_id || "");
   const amount = Number(body.amount || 0);
 
-  const allowed = access.some((x:any) =>
-    String(x.territory_name || "") === territory
-  );
+  const allowed = access.some((x: any) => String(x.territory_name || "") === territory);
 
   if (!allowed) {
-    return NextResponse.json({ ok:false, error:"FORBIDDEN_TERRITORY" }, { status:403 });
+    return NextResponse.json({ ok: false, error: "FORBIDDEN_TERRITORY" }, { status: 403 });
   }
 
   if (!driver_id || amount <= 0) {
-    return NextResponse.json({ ok:false, error:"INVALID_INPUT" }, { status:400 });
+    return NextResponse.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
   }
 
   const supabase = db();
@@ -51,7 +49,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   return NextResponse.json({
-    ok:true,
+    ok: true,
     row: res.data
   });
 }
