@@ -396,6 +396,13 @@ export default function TakeoutPage() {
             </div>
           </div>
 
+          {vendorClosed ? (
+            <div className="md:col-span-2 rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+              <div className="font-semibold">Vendor is currently closed</div>
+              <div className="mt-1 text-xs">Please try again later. New orders are blocked until the vendor reopens.</div>
+            </div>
+          ) : null}
+
           <div>
             <label className="text-xs font-medium text-slate-700">Passenger name (required)</label>
             <input
@@ -567,12 +574,6 @@ export default function TakeoutPage() {
               <div className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{menuErr}</div>
             ) : null}
 
-            {vendorClosed ? (
-              <div className="mt-2 rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                <div className="font-semibold">Vendor is currently closed</div>
-                <div className="mt-1 text-xs">Please try again later. New orders are blocked until the vendor reopens.</div>
-              </div>
-            ) : null}
 
             {!vendorId.trim() ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
