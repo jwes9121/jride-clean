@@ -29,6 +29,15 @@ export default function VendorLoginPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  function persistVendorId(nextVendorId: string) {
+    const id = text(nextVendorId);
+    setVendorId(id);
+    if (typeof window !== "undefined" && id) {
+      localStorage.setItem(LS_VENDOR_ID, id);
+      sessionStorage.setItem(LS_VENDOR_ID, id);
+    }
+  }
+
   const selectedVendor = useMemo(() => {
     return vendors.find((v) => text(v.id) === text(vendorId)) || null;
   }, [vendors, vendorId]);
@@ -45,8 +54,8 @@ export default function VendorLoginPage() {
       const list = Array.isArray(body?.vendors) ? body.vendors : [];
       setVendors(list);
       const saved = typeof window !== "undefined" ? localStorage.getItem(LS_VENDOR_ID) : "";
-      if (saved) setVendorId(saved);
-      else if (list.length > 0) setVendorId(text(list[0]?.id));
+      if (saved) persistVendorId(saved);
+      else if (list.length > 0) persistVendorId(text(list[0]?.id));
       setMessage("Vendor access list loaded.");
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor list."));
@@ -71,7 +80,8 @@ export default function VendorLoginPage() {
     // not change backend auth, ride dispatch, fare, wallet, or lifecycle routes.
     if (typeof window !== "undefined") {
       localStorage.setItem(LS_VENDOR_ID, id);
-      window.location.href = "/vendor-portal";
+      sessionStorage.setItem(LS_VENDOR_ID, id);
+      window.location.assign(`/vendor-portal?vendor_id=${encodeURIComponent(id)}&source=vendor-login`);
     }
   }
 
@@ -84,11 +94,11 @@ export default function VendorLoginPage() {
               <div className="text-xs font-bold uppercase tracking-wide text-emerald-700">JRide Takeout</div>
               <h1 className="text-2xl font-bold">Vendor Login</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                Vendor access bridge for onboarding. This page only selects the vendor portal context and does not call ride dispatch, fare proposal, wallet payout, or trip lifecycle routes.
+                Vendor access bridge for onboarding. V2 persists the selected vendor before redirect. This page only selects the vendor portal context and does not call ride dispatch, fare proposal, wallet payout, or trip lifecycle routes.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <a href="/vendor-portal" className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Vendor portal</a>
+              <button type="button" onClick={continueToPortal} className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Vendor portal</button>
               <button type="button" onClick={loadVendors} disabled={loading} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                 {loading ? "Loading..." : "Refresh"}
               </button>
@@ -101,7 +111,7 @@ export default function VendorLoginPage() {
           <div className="mt-5 space-y-4">
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Known vendor</span>
-              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+              <select value={vendorId} onChange={(e) => persistVendorId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
                 <option value="">Select vendor</option>
                 {vendors.map((vendor) => {
                   const id = text(vendor.id);
@@ -113,7 +123,7 @@ export default function VendorLoginPage() {
 
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Vendor ID</span>
-              <input value={vendorId} onChange={(e) => setVendorId(e.target.value)} placeholder="Paste vendor UUID" className="w-full rounded-lg border px-3 py-2" />
+              <input value={vendorId} onChange={(e) => persistVendorId(e.target.value)} placeholder="Paste vendor UUID" className="w-full rounded-lg border px-3 py-2" />
             </label>
 
             <label className="block text-sm">
@@ -142,7 +152,8 @@ export default function VendorLoginPage() {
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>Touches only the vendor login page.</li>
             <li>Uses the existing vendor list API for vendor selection.</li>
-            <li>Stores only the selected vendor ID in browser localStorage.</li>
+            <li>Stores only the selected vendor ID in browser localStorage and sessionStorage.</li>
+            <li>Redirects to vendor portal with vendor_id query fallback for deterministic loading.</li>
             <li>Does not call dispatch, assign, status, fare proposal, ride lifecycle, or payout routes.</li>
           </ul>
         </section>
