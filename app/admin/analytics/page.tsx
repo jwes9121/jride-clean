@@ -415,6 +415,61 @@ export default function AdminAnalyticsPage() {
       return a.town.localeCompare(b.town);
     });
   }, [scopedDriverWorkforceRows]);
+  const driverActivationRows = React.useMemo(() => {
+    const nowMs = Date.now();
+    return scopedDriverWorkforceRows
+      .map((row) => {
+        const lastSeenMs = row.last_seen_at ? new Date(row.last_seen_at).getTime() : 0;
+        const daysInactive = lastSeenMs > 0 ? Math.floor((nowMs - lastSeenMs) / 86400000) : 999;
+        const assigned = Number(row.assigned_bookings || 0);
+        const accepted = Number(row.accepted_bookings || 0);
+        const completed = Number(row.completed_trips || 0);
+        const acceptanceRate = assigned > 0 ? Math.round((accepted / assigned) * 100) : null;
+        const isOnline = !!row.is_online_now || String(row.current_status || "").toLowerCase() === "online";
+        const flags: string[] = [];
+
+        if (!isOnline && daysInactive >= 7) flags.push("Offline 7d+");
+        if (!isOnline && daysInactive >= 14) flags.push("Offline 14d+");
+        if (assigned > 0 && accepted === 0) flags.push("No accepts");
+        if (acceptanceRate !== null && acceptanceRate < 50) flags.push("Low accept");
+        if (completed === 0 && assigned > 0) flags.push("No completed trips");
+
+        let priority = 0;
+        if (daysInactive >= 14) priority += 40;
+        else if (daysInactive >= 7) priority += 25;
+        if (assigned > 0 && accepted === 0) priority += 25;
+        if (acceptanceRate !== null && acceptanceRate < 50) priority += 15;
+        if (completed === 0 && assigned > 0) priority += 10;
+
+        return {
+          driver_id: row.driver_id,
+          driver_name: row.driver_name || "Unknown Driver",
+          town: row.town ?? row.municipality ?? "Unknown",
+          isOnline,
+          daysInactive,
+          lastSeen: row.last_seen_at || null,
+          assigned,
+          accepted,
+          completed,
+          acceptanceRate,
+          flags,
+          priority,
+        };
+      })
+      .filter((row) => row.flags.length > 0)
+      .sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        if (b.daysInactive !== a.daysInactive) return b.daysInactive - a.daysInactive;
+        return a.driver_name.localeCompare(b.driver_name);
+      })
+      .slice(0, 12);
+  }, [scopedDriverWorkforceRows]);
+  const driverActivationSummary = React.useMemo(() => {
+    const offline7 = driverActivationRows.filter((row) => row.daysInactive >= 7).length;
+    const offline14 = driverActivationRows.filter((row) => row.daysInactive >= 14).length;
+    const lowAccept = driverActivationRows.filter((row) => row.flags.includes("Low accept") || row.flags.includes("No accepts")).length;
+    return { offline7, offline14, lowAccept, total: driverActivationRows.length };
+  }, [driverActivationRows]);
   const presenceTotals = React.useMemo(() => {
     const activeNow = scopedPresenceRows.length;
     const foregroundNow = scopedPresenceRows.filter((r) => String(r.app_state || "foreground") === "foreground").length;
@@ -655,6 +710,60 @@ export default function AdminAnalyticsPage() {
                 No-driver gap history remains disabled because no driver session history table exists in production. This panel uses only truthful live snapshot data.
               </div>
             </div>
+          </div>
+        </section>
+        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900">Driver activation center</h2>
+              <p className="mt-1 text-sm text-slate-500">Read-only activation risk view using the same driver_locations and bookings snapshot. This does not change dispatch, wallets, lifecycle, or driver status.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Action queue</div>
+              <div className="mt-1 font-semibold text-slate-950">{formatCount(driverActivationSummary.total)} drivers</div>
+              <div className="mt-1 text-xs text-slate-500">Snapshot only. No automated changes.</div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4">
+            <Card title="Offline 7d+" value={formatCount(driverActivationSummary.offline7)} sub="Needs coordinator follow-up" />
+            <Card title="Offline 14d+" value={formatCount(driverActivationSummary.offline14)} sub="High reactivation risk" />
+            <Card title="Low accept risk" value={formatCount(driverActivationSummary.lowAccept)} sub="Accepted less than 50% or none" />
+            <Card title="Mode" value="Read-only" sub="No dispatch or wallet writes" />
+          </div>
+          <div className="mt-5 overflow-auto rounded-2xl border border-slate-200 bg-slate-50">
+            <table className="min-w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50">
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="py-2 pl-3 pr-4 font-semibold">Driver</th>
+                  <th className="py-2 pr-4 font-semibold">Town</th>
+                  <th className="py-2 pr-4 font-semibold">Risk flags</th>
+                  <th className="py-2 pr-4 font-semibold">Accept</th>
+                  <th className="py-2 pr-4 font-semibold">Trips</th>
+                  <th className="py-2 pr-3 font-semibold">Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {driverActivationRows.length === 0 ? <tr><td colSpan={6} className="px-3 py-4 text-slate-400">No driver activation risks found for this scope.</td></tr> : driverActivationRows.map((row) => (
+                  <tr key={String(row.driver_id || row.driver_name)} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2 pl-3 pr-4 font-medium text-slate-900">{row.driver_name}</td>
+                    <td className="py-2 pr-4 text-slate-700">{row.town}</td>
+                    <td className="py-2 pr-4 text-slate-700">
+                      <div className="flex flex-wrap gap-1">
+                        {row.flags.map((flag) => (
+                          <span key={flag} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{flag}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-4 text-slate-700">{row.acceptanceRate === null ? "-" : `${row.acceptanceRate}%`}</td>
+                    <td className="py-2 pr-4 text-slate-700">{formatCount(row.completed)}</td>
+                    <td className="py-2 pr-3 text-slate-700">{formatPHDateTime(row.lastSeen)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+            Suggested use: call or message these drivers, check wallet readiness manually, and coordinate with TODA leads. This panel is display-only.
           </div>
         </section>
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
