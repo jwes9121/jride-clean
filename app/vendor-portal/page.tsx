@@ -62,6 +62,18 @@ type AddItemForm = {
 
 const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
 const REFRESH_MS = 10000;
+
+function getPortalVendorIdFromBrowser(): string {
+  if (typeof window === "undefined") return "";
+
+  const fromUrl = text(new URLSearchParams(window.location.search).get("vendor_id"));
+  if (fromUrl) {
+    localStorage.setItem(LS_VENDOR_ID, fromUrl);
+    return fromUrl;
+  }
+
+  return text(localStorage.getItem(LS_VENDOR_ID));
+}
 const STATUS_OPTIONS = ["preparing", "pickup_ready", "completed", "cancelled"];
 
 function text(value: any): string {
@@ -156,7 +168,7 @@ export default function VendorPortalPage() {
   const [form, setForm] = useState<AddItemForm>({ name: "", description: "", price: "", sort_order: "0" });
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem(LS_VENDOR_ID) : "";
+    const saved = getPortalVendorIdFromBrowser();
     if (saved) setVendorId(saved);
   }, []);
 
@@ -175,7 +187,11 @@ export default function VendorPortalPage() {
       if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Failed to load vendors.");
       const list = Array.isArray(body?.vendors) ? body.vendors : [];
       setVendors(list);
-      if (!vendorId && list.length > 0) setVendorId(text(list[0]?.id));
+
+      const saved = getPortalVendorIdFromBrowser();
+      const current = text(vendorId);
+      const nextVendorId = current || saved || (list.length > 0 ? text(list[0]?.id) : "");
+      if (nextVendorId && nextVendorId !== current) setVendorId(nextVendorId);
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendors."));
     }
@@ -368,6 +384,8 @@ export default function VendorPortalPage() {
 
           {selectedVendor ? (
             <div className="mt-2 text-xs text-slate-500">Selected: {text(selectedVendor.display_name) || "Vendor"} {selectedVendor.email ? `- ${selectedVendor.email}` : ""}</div>
+          ) : vendorId ? (
+            <div className="mt-2 text-xs text-amber-700">Vendor ID loaded from login bridge. Refresh vendors if the vendor name is not shown.</div>
           ) : null}
 
           {message ? <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</div> : null}
