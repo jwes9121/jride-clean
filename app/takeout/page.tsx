@@ -90,6 +90,7 @@ export default function TakeoutPage() {
   // Phase 2B - menu consumption
   const [menuBusy, setMenuBusy] = useState(false);
   const [menuErr, setMenuErr] = useState<string | null>(null);
+  const [vendorClosed, setVendorClosed] = useState(false);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [qty, setQty] = useState<Record<string, number>>({});
 
@@ -141,8 +142,8 @@ export default function TakeoutPage() {
     const hasName = customerName.trim().length > 0;
     const hasAddr = resolvedDeliveryAddress.length > 0;
     const hasItems = selectedLines.length > 0;
-    return hasVendor && hasName && hasAddr && hasItems && !busy;
-  }, [vendorId, customerName, resolvedDeliveryAddress, selectedLines.length, busy]);
+    return hasVendor && hasName && hasAddr && hasItems && !vendorClosed && !busy;
+  }, [vendorId, customerName, resolvedDeliveryAddress, selectedLines.length, vendorClosed, busy]);
 
   async function refreshAddresses(k?: string) {
     const dk = String(k || deviceKey || "").trim();
@@ -166,6 +167,7 @@ export default function TakeoutPage() {
   async function refreshMenu(vId?: string) {
     const vid = String(vId || vendorId || "").trim();
     if (!vid) {
+      setVendorClosed(false);
       setMenu([]);
       setQty({});
       return;
@@ -173,7 +175,15 @@ export default function TakeoutPage() {
     setMenuBusy(true);
     setMenuErr(null);
     try {
-      const j = await getJson("/api/takeout/menu?vendor_id=" + encodeURIComponent(vid));
+      // CUSTOMER_VENDOR_AVAILABILITY_V1
+      // Prefer the vendor-menu API because it reflects the vendor open/closed switch.
+      // Fallback to the legacy takeout menu read so the page does not break on older deploys.
+      let j: any;
+      try {
+        j = await getJson("/api/vendor-menu?vendor_id=" + encodeURIComponent(vid));
+      } catch {
+        j = await getJson("/api/takeout/menu?vendor_id=" + encodeURIComponent(vid));
+      }
       const items = Array.isArray(j?.items) ? j.items : [];
       const mapped: MenuItem[] = items
         .filter(Boolean)
@@ -189,6 +199,18 @@ export default function TakeoutPage() {
         }))
         .filter((r: MenuItem) => r.id && r.name);
 
+      const orderableCount = mapped.filter((r) => (r.is_available !== false) && (r.sold_out_today !== true)).length;
+      const closedByApi =
+        j?.accepting_orders === false ||
+        j?.acceptingOrders === false ||
+        j?.vendor_accepting_orders === false ||
+        j?.vendorAcceptingOrders === false ||
+        j?.vendor_open === false ||
+        j?.vendorOpen === false ||
+        j?.is_open === false ||
+        j?.isOpen === false;
+      setVendorClosed(Boolean(closedByApi || (mapped.length > 0 && orderableCount === 0)));
+
       setMenu(mapped);
       // Keep existing qty but drop unknown
       setQty((prev) => {
@@ -200,6 +222,7 @@ export default function TakeoutPage() {
       });
     } catch (e: any) {
       setMenuErr(String(e?.message || e || "Failed to load menu"));
+      setVendorClosed(false);
       setMenu([]);
       setQty({});
     } finally {
@@ -248,6 +271,10 @@ export default function TakeoutPage() {
 
   async function submit() {
     try {
+      if (vendorClosed) {
+        setResult("Cannot place order: vendor is currently closed. Please try again later.");
+        return;
+      }
       setBusy(true);
       setResult("");
       setLastJson(null);
@@ -330,7 +357,11 @@ export default function TakeoutPage() {
 
       setResult("Created takeout order successfully." + (maybeId ? " ID: " + String(maybeId) : ""));
     } catch (e: any) {
-      setResult("Create takeout order failed: " + (e?.message || "Unknown error"));
+      const msg = String(e?.message || "Unknown error");
+      if (msg.includes("closed") || msg.includes("unavailable") || msg.includes("TAKEOUT_VENDOR_CLOSED")) {
+        setVendorClosed(true);
+      }
+      setResult("Create takeout order failed: " + msg);
     } finally {
       setBusy(false);
     }
@@ -438,7 +469,7 @@ export default function TakeoutPage() {
                     {saved.length > 1 ? (
                       <div className="mt-3">
                         <div className="text-[11px] font-medium text-slate-600">Other saved addresses</div>
-                        <div className="mt-2 space-y-2">
+                        <div className={cls("mt-2 space-y-2", vendorClosed && "opacity-60")}>
                           {saved.filter((a) => a.id !== primary.id).slice(0, 5).map((a) => (
                             <div key={a.id} className="flex items-start justify-between gap-2 rounded border bg-white p-2">
                               <div className="text-xs text-slate-800">{a.address_text}</div>
@@ -536,6 +567,13 @@ export default function TakeoutPage() {
               <div className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{menuErr}</div>
             ) : null}
 
+            {vendorClosed ? (
+              <div className="mt-2 rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                <div className="font-semibold">Vendor is currently closed</div>
+                <div className="mt-1 text-xs">Please try again later. New orders are blocked until the vendor reopens.</div>
+              </div>
+            ) : null}
+
             {!vendorId.trim() ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
                 Paste a <b>vendor_id</b> to load today's menu.
@@ -550,7 +588,7 @@ export default function TakeoutPage() {
               <div className="mt-2 space-y-2">
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
-                  const disabled = !m._available;
+                  const disabled = vendorClosed || !m._available;
                   return (
                     <div
                       key={m.id}
@@ -612,7 +650,7 @@ export default function TakeoutPage() {
                 <div className="font-semibold">{money(itemsSubtotal)}</div>
               </div>
               <div className="mt-1 text-[11px] text-slate-600">
-                This is an estimate for items only. Delivery fees/wallet math are unchanged.
+                {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. Delivery fees/wallet math are unchanged."}
               </div>
             </div>
 
@@ -646,8 +684,12 @@ export default function TakeoutPage() {
               canSubmit ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
-            {busy ? "Submitting..." : "Submit takeout order"}
+            {busy ? "Submitting..." : vendorClosed ? "Vendor closed" : "Submit takeout order"}
           </button>
+
+          {vendorClosed ? (
+            <span className="text-xs font-medium text-rose-700">Cannot place order: vendor is closed.</span>
+          ) : null}
 
           <a href="/vendor-orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
             View vendor orders
