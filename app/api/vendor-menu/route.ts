@@ -22,7 +22,23 @@ function toNum(v: any): number | null {
   return isFinite(n) ? n : null;
 }
 
-type Action = "toggle_available" | "toggle_soldout" | "update_price";
+function boolFromBody(v: any, fallback: boolean): boolean {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["1", "true", "yes", "open", "accepting"].includes(s)) return true;
+  if (["0", "false", "no", "closed", "paused"].includes(s)) return false;
+  return fallback;
+}
+
+function serviceDateUtc(): string {
+  const today = new Date();
+  const yyyy = today.getUTCFullYear();
+  const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(today.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+type Action = "toggle_available" | "toggle_soldout" | "update_price" | "set_vendor_accepting";
 
 export async function GET(req: NextRequest) {
   const admin = getServiceRoleAdmin();
@@ -66,14 +82,62 @@ export async function POST(req: NextRequest) {
   const action = String(body.action || "").trim() as Action;
 
   if (!vendor_id) return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
-  if (!menu_item_id) return json(400, { ok: false, error: "menu_item_id_required", message: "menu_item_id required" });
 
-  const today = new Date();
-  const yyyy = today.getUTCFullYear();
-  const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(today.getUTCDate()).padStart(2, "0");
-  // Use a date string; DB view uses current_date anyway, but day_state uses date.
-  const service_date = `${yyyy}-${mm}-${dd}`;
+  // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
+  // Vendor-level open/closed is enforced by setting all active menu items available/unavailable for today.
+  // This preserves existing takeout order/status routes and does not touch ride dispatch or trip lifecycle.
+  const service_date = serviceDateUtc();
+
+  if (action === "set_vendor_accepting") {
+    const accepting = boolFromBody(body.accepting_orders ?? body.acceptingOrders ?? body.is_available ?? body.isAvailable, true);
+
+    const menu = await admin
+      .from("vendor_menu_items")
+      .select("id")
+      .eq("vendor_id", vendor_id);
+
+    if (menu.error) return json(500, { ok: false, error: "DB_ERROR", message: menu.error.message });
+
+    const ids = (Array.isArray(menu.data) ? menu.data : [])
+      .map((r: any) => String(r?.id || "").trim())
+      .filter(Boolean);
+
+    if (ids.length) {
+      const rows = ids.map((id: string) => ({
+        vendor_id,
+        menu_item_id: id,
+        service_date,
+        is_available_today: accepting,
+        last_updated_at: new Date().toISOString(),
+      }));
+
+      const up = await admin
+        .from("vendor_menu_item_day_state")
+        .upsert(rows, { onConflict: "menu_item_id,service_date" });
+
+      if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
+    }
+
+    const refreshed = await admin
+      .from("vendor_menu_today")
+      .select("*")
+      .eq("vendor_id", vendor_id)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (refreshed.error) return json(500, { ok: false, error: "DB_ERROR", message: refreshed.error.message });
+
+    return json(200, {
+      ok: true,
+      action: "set_vendor_accepting",
+      vendor_id,
+      accepting_orders: accepting,
+      affected_menu_items: ids.length,
+      items: Array.isArray(refreshed.data) ? refreshed.data : [],
+    });
+  }
+
+  if (!menu_item_id) return json(400, { ok: false, error: "menu_item_id_required", message: "menu_item_id required" });
 
   // Upsert day_state row first (so toggles always have a row to update)
   // NOTE: service_date is in UTC here; for PH local date you can later switch to app-provided service_date.

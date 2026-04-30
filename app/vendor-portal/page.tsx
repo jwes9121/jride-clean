@@ -61,19 +61,35 @@ type AddItemForm = {
 };
 
 const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
+const LS_VENDOR_SOURCE = "JRIDE_VENDOR_PORTAL_SOURCE";
 const REFRESH_MS = 10000;
 
 function getPortalVendorIdFromBrowser(): string {
   if (typeof window === "undefined") return "";
 
-  const fromUrl = text(new URLSearchParams(window.location.search).get("vendor_id"));
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = text(params.get("vendor_id"));
+  const fromSource = text(params.get("source"));
   if (fromUrl) {
     localStorage.setItem(LS_VENDOR_ID, fromUrl);
+    sessionStorage.setItem(LS_VENDOR_ID, fromUrl);
+    if (fromSource) {
+      localStorage.setItem(LS_VENDOR_SOURCE, fromSource);
+      sessionStorage.setItem(LS_VENDOR_SOURCE, fromSource);
+    }
     return fromUrl;
   }
 
   return text(localStorage.getItem(LS_VENDOR_ID));
 }
+
+function isVendorLockedFromBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  const source = text(params.get("source") || sessionStorage.getItem(LS_VENDOR_SOURCE) || localStorage.getItem(LS_VENDOR_SOURCE));
+  return source === "vendor-login" && !!text(params.get("vendor_id") || sessionStorage.getItem(LS_VENDOR_ID) || localStorage.getItem(LS_VENDOR_ID));
+}
+
 const STATUS_OPTIONS = ["preparing", "pickup_ready", "completed", "cancelled"];
 
 function text(value: any): string {
@@ -156,6 +172,9 @@ function itemButtonClass(active: boolean): string {
 
 export default function VendorPortalPage() {
   const [vendorId, setVendorId] = useState("");
+  const [vendorLocked, setVendorLocked] = useState(false);
+  const [acceptingOrders, setAcceptingOrders] = useState(true);
+  const [lastOrderCount, setLastOrderCount] = useState<number | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<TakeoutOrder[]>([]);
@@ -169,12 +188,16 @@ export default function VendorPortalPage() {
 
   useEffect(() => {
     const saved = getPortalVendorIdFromBrowser();
+    const locked = isVendorLockedFromBrowser();
+    setVendorLocked(locked);
     if (saved) setVendorId(saved);
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && vendorId) localStorage.setItem(LS_VENDOR_ID, vendorId);
-  }, [vendorId]);
+    if (typeof window !== "undefined" && vendorId) {
+      localStorage.setItem(LS_VENDOR_ID, vendorId);
+    }
+  }, [vendorId, vendorLocked]);
 
   const selectedVendor = useMemo(() => {
     return vendors.find((v) => text(v.id) === text(vendorId)) || null;
@@ -190,12 +213,12 @@ export default function VendorPortalPage() {
 
       const saved = getPortalVendorIdFromBrowser();
       const current = text(vendorId);
-      const nextVendorId = current || saved || (list.length > 0 ? text(list[0]?.id) : "");
+      const nextVendorId = current || saved || (vendorLocked ? "" : (list.length > 0 ? text(list[0]?.id) : ""));
       if (nextVendorId && nextVendorId !== current) setVendorId(nextVendorId);
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendors."));
     }
-  }, [vendorId]);
+  }, [vendorId, vendorLocked]);
 
   const loadMenu = useCallback(async () => {
     const id = text(vendorId);
@@ -206,7 +229,11 @@ export default function VendorPortalPage() {
     const res = await fetch(`/api/takeout/menu?vendor_id=${encodeURIComponent(id)}`, { cache: "no-store" });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Failed to load menu.");
-    setMenuItems(Array.isArray(body?.items) ? body.items : []);
+    const nextItems = Array.isArray(body?.items) ? body.items : [];
+    setMenuItems(nextItems);
+    // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
+    // Vendor is accepting only when at least one menu item is orderable in the backend-backed menu state.
+    setAcceptingOrders(nextItems.some((item: MenuItem) => itemOrderable(item)));
   }, [vendorId]);
 
   const loadOrders = useCallback(async () => {
@@ -244,6 +271,49 @@ export default function VendorPortalPage() {
     }, REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [loadOrders]);
+
+  useEffect(() => {
+    const activeCount = orders.filter(activeOrder).length;
+    if (lastOrderCount !== null && activeCount > lastOrderCount) {
+      setMessage("New takeout order received. Review the order queue.");
+      try {
+        const audio = new Audio("/audio/jride_audio.mp3");
+        audio.volume = 0.7;
+        void audio.play();
+      } catch (_) {
+        // Browser may block audio until user interaction. Visual alert still works.
+      }
+    }
+    setLastOrderCount(activeCount);
+  }, [orders, lastOrderCount]);
+
+  async function setVendorAccepting(nextValue: boolean) {
+    const id = text(vendorId);
+    if (!id) return setError("Select a vendor first.");
+
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/vendor-menu", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          vendor_id: id,
+          action: "set_vendor_accepting",
+          accepting_orders: nextValue,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Vendor availability update failed.");
+      setMenuItems(Array.isArray(body?.items) ? body.items : []);
+      setAcceptingOrders(!!body?.accepting_orders);
+      setMessage(nextValue ? "Vendor is now accepting orders." : "Vendor is now closed for new orders.");
+    } catch (e: any) {
+      setError(String(e?.message || e || "Vendor availability update failed."));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function addMenuItem() {
     const id = text(vendorId);
@@ -365,14 +435,20 @@ export default function VendorPortalPage() {
             </div>
           </div>
 
+          {vendorLocked ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              Logged in as: <span className="font-semibold">{selectedVendor ? (text(selectedVendor.display_name) || text(selectedVendor.email) || vendorId) : vendorId}</span>. Vendor context is locked from vendor login.
+            </div>
+          ) : null}
+
           <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-[2fr_1fr]">
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Vendor ID</span>
-              <input value={vendorId} onChange={(e) => setVendorId(e.target.value)} placeholder="Paste vendor UUID" className="w-full rounded-lg border px-3 py-2" />
+              <input value={vendorId} onChange={(e) => setVendorId(e.target.value)} disabled={vendorLocked} placeholder="Paste vendor UUID" className="w-full rounded-lg border px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500" />
             </label>
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Known vendors</span>
-              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} disabled={vendorLocked} className="w-full rounded-lg border px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500">
                 <option value="">Select vendor</option>
                 {vendors.map((vendor) => {
                   const id = text(vendor.id);
@@ -387,6 +463,27 @@ export default function VendorPortalPage() {
           ) : vendorId ? (
             <div className="mt-2 text-xs text-amber-700">Vendor ID loaded from login bridge. Refresh vendors if the vendor name is not shown.</div>
           ) : null}
+
+          <div className="mt-4 rounded-xl border bg-slate-50 p-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-sm font-semibold">Accepting orders</div>
+                <div className="text-xs text-slate-500">Backend-backed readiness switch. Closing the vendor makes today&apos;s menu unavailable and blocks new takeout orders. Existing orders remain processable.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVendorAccepting(!acceptingOrders)}
+                disabled={saving || !vendorId}
+                className={[
+                  "rounded-full border px-4 py-2 text-sm font-semibold",
+                  acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-800",
+                  saving ? "opacity-50" : "",
+                ].join(" ")}
+              >
+                {saving ? "Saving..." : acceptingOrders ? "Open / accepting orders" : "Closed / pause orders"}
+              </button>
+            </div>
+          </div>
 
           {message ? <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</div> : null}
           {error ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</div> : null}
@@ -463,13 +560,19 @@ export default function VendorPortalPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold">Order Queue</h2>
-                <p className="text-sm text-slate-600">Process live takeout orders without using ride dispatch routes.</p>
+                <p className="text-sm text-slate-600">Process live takeout orders without using ride dispatch routes. New active orders trigger a visual alert and sound when the browser allows audio.</p>
               </div>
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" checked={showCompleted} onChange={(e) => setShowCompleted(e.target.checked)} />
                 Show completed
               </label>
             </div>
+
+            {!acceptingOrders ? (
+              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                Vendor is closed for new orders. Existing orders remain visible and can still be completed.
+              </div>
+            ) : null}
 
             <div className="mt-4 space-y-3">
               {visibleOrders.length === 0 ? (

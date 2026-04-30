@@ -490,6 +490,51 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   const subtotal = computeSubtotal(items);
 
+  // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
+  // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
+  // Ride dispatch, fare proposal, and trip lifecycle routes are not called here.
+  const submittedMenuIds = items
+    .map((it) => String(it.menu_item_id || "").trim())
+    .filter(Boolean);
+
+  if (submittedMenuIds.length) {
+    const menuState = await admin
+      .from("vendor_menu_today")
+      .select("*")
+      .eq("vendor_id", vendor_id);
+
+    if (menuState.error) {
+      return json(500, { ok: false, error: "DB_ERROR", message: menuState.error.message });
+    }
+
+    const byId = new Map<string, any>();
+    for (const row of Array.isArray(menuState.data) ? (menuState.data as any[]) : []) {
+      const id = String(row?.menu_item_id ?? row?.id ?? "").trim();
+      if (id) byId.set(id, row);
+    }
+
+    const blocked: string[] = [];
+    for (const item of items) {
+      const id = String(item.menu_item_id || "").trim();
+      if (!id) continue;
+      const row = byId.get(id);
+      const availableRaw = row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
+      const soldRaw = row?.sold_out_today ?? row?.is_sold_out_today;
+      const available = typeof availableRaw === "boolean" ? availableRaw : true;
+      const soldOut = typeof soldRaw === "boolean" ? soldRaw : false;
+      if (!row || !available || soldOut) blocked.push(item.name || id);
+    }
+
+    if (blocked.length) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_VENDOR_CLOSED_OR_ITEM_UNAVAILABLE",
+        message: "This vendor is closed or one or more selected items are unavailable. Please refresh the menu.",
+        blocked_items: blocked,
+      });
+    }
+  }
+
   // Create booking row (schema-safe: auto-drop unknown columns and retry)
   async function insertBookingSchemaSafe(initial: Record<string, any>) {
     // Keep a mutable copy
