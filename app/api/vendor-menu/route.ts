@@ -30,6 +30,34 @@ function boolFromBody(v: any, fallback: boolean): boolean {
   return fallback;
 }
 
+
+function normalizeMenuItem(row: any) {
+  const isAvailable =
+    typeof row?.is_available === "boolean"
+      ? row.is_available
+      : typeof row?.is_available_today === "boolean"
+        ? row.is_available_today
+        : true;
+
+  const soldOutToday =
+    typeof row?.sold_out_today === "boolean"
+      ? row.sold_out_today
+      : typeof row?.is_sold_out_today === "boolean"
+        ? row.is_sold_out_today
+        : false;
+
+  return {
+    ...row,
+    is_available: isAvailable,
+    sold_out_today: soldOutToday,
+  };
+}
+
+function computeAcceptingOrders(rows: any[]): boolean {
+  if (!rows.length) return true;
+  return rows.some((row) => row?.is_available !== false && row?.sold_out_today !== true);
+}
+
 function serviceDateUtc(): string {
   const today = new Date();
   const yyyy = today.getUTCFullYear();
@@ -62,7 +90,18 @@ export async function GET(req: NextRequest) {
 
   if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
 
-  return json(200, { ok: true, vendor_id, items: Array.isArray(data) ? data : [] });
+  const items = (Array.isArray(data) ? data : []).map(normalizeMenuItem);
+  const accepting_orders = computeAcceptingOrders(items);
+
+  return json(200, {
+    ok: true,
+    vendor_id,
+    accepting_orders,
+    vendor_accepting_orders: accepting_orders,
+    vendor_open: accepting_orders,
+    is_open: accepting_orders,
+    items,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -127,13 +166,18 @@ export async function POST(req: NextRequest) {
 
     if (refreshed.error) return json(500, { ok: false, error: "DB_ERROR", message: refreshed.error.message });
 
+    const refreshedItems = (Array.isArray(refreshed.data) ? refreshed.data : []).map(normalizeMenuItem);
+
     return json(200, {
       ok: true,
       action: "set_vendor_accepting",
       vendor_id,
       accepting_orders: accepting,
+      vendor_accepting_orders: accepting,
+      vendor_open: accepting,
+      is_open: accepting,
       affected_menu_items: ids.length,
-      items: Array.isArray(refreshed.data) ? refreshed.data : [],
+      items: refreshedItems,
     });
   }
 
@@ -204,5 +248,16 @@ export async function POST(req: NextRequest) {
 
   if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
 
-  return json(200, { ok: true, vendor_id, items: Array.isArray(data) ? data : [] });
+  const items = (Array.isArray(data) ? data : []).map(normalizeMenuItem);
+  const accepting_orders = computeAcceptingOrders(items);
+
+  return json(200, {
+    ok: true,
+    vendor_id,
+    accepting_orders,
+    vendor_accepting_orders: accepting_orders,
+    vendor_open: accepting_orders,
+    is_open: accepting_orders,
+    items,
+  });
 }
