@@ -3,6 +3,14 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+type Action = "toggle_available" | "toggle_soldout" | "update_price" | "set_vendor_accepting";
+
+type DayState = {
+  menu_item_id?: string | null;
+  is_available_today?: boolean | null;
+  is_sold_out_today?: boolean | null;
+};
+
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
 }
@@ -19,7 +27,7 @@ function getServiceRoleAdmin() {
 
 function toNum(v: any): number | null {
   const n = Number(v);
-  return isFinite(n) ? n : null;
+  return Number.isFinite(n) ? n : null;
 }
 
 function boolFromBody(v: any, fallback: boolean): boolean {
@@ -31,9 +39,8 @@ function boolFromBody(v: any, fallback: boolean): boolean {
 }
 
 function serviceDateManila(): string {
-  // JRIDE_VENDOR_MENU_SERVICE_DATE_MANILA_V1
-  // Vendor day-state rows must use the same Philippine service day that vendor_menu_today uses.
-  // UTC dates can write the previous day and make the portal look closed while the menu API stays open.
+  // JRIDE_VENDOR_MENU_DAYSTATE_AUTHORITATIVE_V1
+  // Use Philippine service day for vendor availability rows.
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
     year: "numeric",
@@ -47,7 +54,99 @@ function serviceDateManila(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-type Action = "toggle_available" | "toggle_soldout" | "update_price" | "set_vendor_accepting";
+function idOf(row: any): string {
+  return String(row?.id ?? row?.menu_item_id ?? row?.menuItemId ?? "").trim();
+}
+
+function normalizeBaseMenuRow(row: any) {
+  const availableBase =
+    typeof row?.is_available === "boolean"
+      ? row.is_available
+      : typeof row?.is_available_today === "boolean"
+        ? row.is_available_today
+        : true;
+
+  const soldBase =
+    typeof row?.sold_out_today === "boolean"
+      ? row.sold_out_today
+      : typeof row?.is_sold_out_today === "boolean"
+        ? row.is_sold_out_today
+        : false;
+
+  return {
+    ...row,
+    is_available: availableBase,
+    is_available_today: availableBase,
+    sold_out_today: soldBase,
+    is_sold_out_today: soldBase,
+  };
+}
+
+async function loadDayStateMap(admin: any, vendor_id: string, service_date: string) {
+  const state = await admin
+    .from("vendor_menu_item_day_state")
+    .select("menu_item_id,is_available_today,is_sold_out_today")
+    .eq("vendor_id", vendor_id)
+    .eq("service_date", service_date);
+
+  if (state.error) throw state.error;
+
+  const map = new Map<string, DayState>();
+  for (const row of Array.isArray(state.data) ? state.data : []) {
+    const id = String(row?.menu_item_id || "").trim();
+    if (id) map.set(id, row as DayState);
+  }
+  return map;
+}
+
+function overlayDayState(rows: any[], dayStateMap: Map<string, DayState>) {
+  return rows.map((raw) => {
+    const row = normalizeBaseMenuRow(raw);
+    const state = dayStateMap.get(idOf(row));
+    if (!state) return row;
+
+    const available =
+      typeof state.is_available_today === "boolean"
+        ? state.is_available_today
+        : row.is_available !== false;
+
+    const soldOut =
+      typeof state.is_sold_out_today === "boolean"
+        ? state.is_sold_out_today
+        : row.sold_out_today === true;
+
+    return {
+      ...row,
+      is_available: available,
+      is_available_today: available,
+      sold_out_today: soldOut,
+      is_sold_out_today: soldOut,
+    };
+  });
+}
+
+function computeAcceptingOrders(rows: any[]): boolean {
+  if (!rows.length) return true;
+  return rows.some((row) => row?.is_available !== false && row?.sold_out_today !== true);
+}
+
+async function loadMenuWithAuthoritativeDayState(admin: any, vendor_id: string, service_date: string) {
+  const menu = await admin
+    .from("vendor_menu_today")
+    .select("*")
+    .eq("vendor_id", vendor_id)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (menu.error) throw menu.error;
+
+  const rows = Array.isArray(menu.data) ? menu.data : [];
+  const dayStateMap = await loadDayStateMap(admin, vendor_id, service_date);
+  const items = overlayDayState(rows, dayStateMap);
+  const accepting_orders = computeAcceptingOrders(items);
+
+  return { items, accepting_orders };
+}
 
 export async function GET(req: NextRequest) {
   const admin = getServiceRoleAdmin();
@@ -62,16 +161,24 @@ export async function GET(req: NextRequest) {
   const vendor_id = String(req.nextUrl.searchParams.get("vendor_id") || "").trim();
   if (!vendor_id) return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
 
-  // Read from view created in your schema: public.vendor_menu_today
-  const { data, error } = await admin
-    .from("vendor_menu_today")
-    .select("*")
-    .eq("vendor_id", vendor_id)
-    .order("sort_order", { ascending: true }).order("name", { ascending: true });
+  const service_date = serviceDateManila();
 
-  if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
+  try {
+    const { items, accepting_orders } = await loadMenuWithAuthoritativeDayState(admin, vendor_id, service_date);
 
-  return json(200, { ok: true, vendor_id, service_date: serviceDateManila(), items: Array.isArray(data) ? data : [] });
+    return json(200, {
+      ok: true,
+      vendor_id,
+      service_date,
+      accepting_orders,
+      vendor_accepting_orders: accepting_orders,
+      vendor_open: accepting_orders,
+      is_open: accepting_orders,
+      items,
+    });
+  } catch (error: any) {
+    return json(500, { ok: false, error: "DB_ERROR", message: error?.message || "Failed to load vendor menu" });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -85,16 +192,12 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({} as any));
-
   const vendor_id = String(body.vendor_id || body.vendorId || "").trim();
   const menu_item_id = String(body.menu_item_id || body.menuItemId || "").trim();
   const action = String(body.action || "").trim() as Action;
 
   if (!vendor_id) return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
 
-  // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
-  // Vendor-level open/closed is enforced by setting all active menu items available/unavailable for today.
-  // This preserves existing takeout order/status routes and does not touch ride dispatch or trip lifecycle.
   const service_date = serviceDateManila();
 
   if (action === "set_vendor_accepting") {
@@ -117,6 +220,7 @@ export async function POST(req: NextRequest) {
         menu_item_id: id,
         service_date,
         is_available_today: accepting,
+        is_sold_out_today: false,
         last_updated_at: new Date().toISOString(),
       }));
 
@@ -127,30 +231,28 @@ export async function POST(req: NextRequest) {
       if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
     }
 
-    const refreshed = await admin
-      .from("vendor_menu_today")
-      .select("*")
-      .eq("vendor_id", vendor_id)
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (refreshed.error) return json(500, { ok: false, error: "DB_ERROR", message: refreshed.error.message });
-
-    return json(200, {
-      ok: true,
-      action: "set_vendor_accepting",
-      vendor_id,
-      accepting_orders: accepting,
-      service_date,
-      affected_menu_items: ids.length,
-      items: Array.isArray(refreshed.data) ? refreshed.data : [],
-    });
+    try {
+      const { items, accepting_orders } = await loadMenuWithAuthoritativeDayState(admin, vendor_id, service_date);
+      return json(200, {
+        ok: true,
+        action: "set_vendor_accepting",
+        vendor_id,
+        service_date,
+        accepting_orders,
+        vendor_accepting_orders: accepting_orders,
+        vendor_open: accepting_orders,
+        is_open: accepting_orders,
+        requested_accepting_orders: accepting,
+        affected_menu_items: ids.length,
+        items,
+      });
+    } catch (error: any) {
+      return json(500, { ok: false, error: "DB_ERROR", message: error?.message || "Failed to refresh vendor menu" });
+    }
   }
 
   if (!menu_item_id) return json(400, { ok: false, error: "menu_item_id_required", message: "menu_item_id required" });
 
-  // Upsert day_state row first (so toggles always have a row to update)
-  // NOTE: service_date is Manila local date to match vendor_menu_today and customer takeout availability.
   const upsertBase: any = {
     vendor_id,
     menu_item_id,
@@ -158,61 +260,61 @@ export async function POST(req: NextRequest) {
     last_updated_at: new Date().toISOString(),
   };
 
-  // Fetch current day_state (if any)
-  const { data: existing, error: exErr } = await admin
+  const existing = await admin
     .from("vendor_menu_item_day_state")
     .select("*")
     .eq("menu_item_id", menu_item_id)
     .eq("service_date", service_date)
     .maybeSingle();
 
-  if (exErr) return json(500, { ok: false, error: "DB_ERROR", message: exErr.message });
+  if (existing.error) return json(500, { ok: false, error: "DB_ERROR", message: existing.error.message });
 
-  const curAvail = existing?.is_available_today ?? true;
-  const curSold = existing?.is_sold_out_today ?? false;
+  const curAvail = existing.data?.is_available_today ?? true;
+  const curSold = existing.data?.is_sold_out_today ?? false;
 
   if (action === "toggle_available") {
     upsertBase.is_available_today = !curAvail;
-    // If making unavailable, sold out doesn't matter; keep sold_out as-is.
     upsertBase.is_sold_out_today = curSold;
   } else if (action === "toggle_soldout") {
     upsertBase.is_sold_out_today = !curSold;
-    // Sold out implies not orderable; keep available true but UI will block order.
     upsertBase.is_available_today = curAvail;
   } else if (action === "update_price") {
     const p = toNum(body.price);
     if (p === null) return json(400, { ok: false, error: "bad_price", message: "price must be a number" });
 
-    // Update base menu item price (stable catalog)
-    const { error: pErr } = await admin
+    const priceUpdate = await admin
       .from("vendor_menu_items")
       .update({ price: p })
       .eq("id", menu_item_id)
       .eq("vendor_id", vendor_id);
 
-    if (pErr) return json(500, { ok: false, error: "DB_ERROR", message: pErr.message });
+    if (priceUpdate.error) return json(500, { ok: false, error: "DB_ERROR", message: priceUpdate.error.message });
 
-    // Touch day_state last_updated
     upsertBase.is_available_today = curAvail;
     upsertBase.is_sold_out_today = curSold;
   } else {
     return json(400, { ok: false, error: "bad_action", message: "Unknown action" });
   }
 
-  const { error: upErr } = await admin
+  const up = await admin
     .from("vendor_menu_item_day_state")
     .upsert(upsertBase, { onConflict: "menu_item_id,service_date" });
 
-  if (upErr) return json(500, { ok: false, error: "DB_ERROR", message: upErr.message });
+  if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
 
-  // Return refreshed list
-  const { data, error } = await admin
-    .from("vendor_menu_today")
-    .select("*")
-    .eq("vendor_id", vendor_id)
-    .order("sort_order", { ascending: true }).order("name", { ascending: true });
-
-  if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
-
-  return json(200, { ok: true, vendor_id, service_date, items: Array.isArray(data) ? data : [] });
+  try {
+    const { items, accepting_orders } = await loadMenuWithAuthoritativeDayState(admin, vendor_id, service_date);
+    return json(200, {
+      ok: true,
+      vendor_id,
+      service_date,
+      accepting_orders,
+      vendor_accepting_orders: accepting_orders,
+      vendor_open: accepting_orders,
+      is_open: accepting_orders,
+      items,
+    });
+  } catch (error: any) {
+    return json(500, { ok: false, error: "DB_ERROR", message: error?.message || "Failed to refresh vendor menu" });
+  }
 }
