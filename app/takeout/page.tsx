@@ -75,7 +75,6 @@ export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-const [vendors, setVendors] = useState<any[]>([]);
 
   // Phase 2B.0 - DB-backed addresses (pilot via device_key)
   const [deviceKey, setDeviceKey] = useState("");
@@ -237,13 +236,6 @@ const [vendors, setVendors] = useState<any[]>([]);
     refreshAddresses(dk).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-useEffect(() => {
-  getJson("/api/admin/vendors")
-    .then((j) => {
-      setVendors(Array.isArray(j?.vendors) ? j.vendors : []);
-    })
-    .catch(() => setVendors([]));
-}, []);
 
   // Auto refresh menu when vendorId changes (debounced-ish)
   useEffect(() => {
@@ -336,7 +328,7 @@ useEffect(() => {
         .filter(Boolean);
 
 
-      // Snapshot payload (menu) ????????????,?? Phase 2D will lock this into bookings later
+      // Snapshot payload (menu): Phase 2D will lock this into bookings later
       const payload = {
         // PHASE_3D_TAKEOUT_COORDS_FIX (payload-only; enables server-side dropoff coords)
         device_key: deviceKey,
@@ -404,21 +396,13 @@ useEffect(() => {
       <div className="mt-4 rounded-lg border bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="text-xs font-medium text-slate-700">Select vendor</label>
-
-<select
-  className="mt-1 w-full rounded border px-3 py-2 text-sm"
-  value={vendorId}
-  onChange={(e) => setVendorId(e.target.value)}
->
-  <option value="">Select vendor</option>
-  {vendors.map((v: any) => (
-    <option key={v.id} value={v.id}>
-      {v.name} {v.town ? `(${v.town})` : ""}
-    </option>
-  ))}
-</select>
-
+            <label className="text-xs font-medium text-slate-700">Vendor ID (required)</label>
+            <input
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={vendorId}
+              onChange={(e) => setVendorId(e.target.value)}
+              placeholder="Select vendor"
+            />
             <div className="mt-1 text-[11px] text-slate-500">
               Menu loads automatically after you select a vendor.
             </div>
@@ -525,7 +509,7 @@ useEffect(() => {
                   </>
                 ) : (
                   <div className="text-sm text-slate-700">
-                    No saved address yet. Choose "Enter a new address??????????,?.
+                    No saved address yet. Choose "Enter a new address".
                   </div>
                 )}
               </div>
@@ -565,7 +549,7 @@ useEffect(() => {
                 </div>
 
                 <div className="mt-2 text-[11px] text-slate-600">
-                  Tip: "Set as primary??????????,? makes it the default next time.
+                  Tip: "Set as primary" makes it the default next time.
                 </div>
               </div>
             )}
@@ -605,7 +589,7 @@ useEffect(() => {
 
             {!vendorId.trim() ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
-                Paste a <b>vendor_id</b> to load today's menu.
+                Select a vendor to load today's menu.
               </div>
             ) : menuBusy ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menu...</div>
