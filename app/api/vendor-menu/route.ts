@@ -30,39 +30,20 @@ function boolFromBody(v: any, fallback: boolean): boolean {
   return fallback;
 }
 
+function serviceDateManila(): string {
+  // JRIDE_VENDOR_MENU_SERVICE_DATE_MANILA_V1
+  // Vendor day-state rows must use the same Philippine service day that vendor_menu_today uses.
+  // UTC dates can write the previous day and make the portal look closed while the menu API stays open.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
 
-function normalizeMenuItem(row: any) {
-  const isAvailable =
-    typeof row?.is_available === "boolean"
-      ? row.is_available
-      : typeof row?.is_available_today === "boolean"
-        ? row.is_available_today
-        : true;
-
-  const soldOutToday =
-    typeof row?.sold_out_today === "boolean"
-      ? row.sold_out_today
-      : typeof row?.is_sold_out_today === "boolean"
-        ? row.is_sold_out_today
-        : false;
-
-  return {
-    ...row,
-    is_available: isAvailable,
-    sold_out_today: soldOutToday,
-  };
-}
-
-function computeAcceptingOrders(rows: any[]): boolean {
-  if (!rows.length) return true;
-  return rows.some((row) => row?.is_available !== false && row?.sold_out_today !== true);
-}
-
-function serviceDateUtc(): string {
-  const today = new Date();
-  const yyyy = today.getUTCFullYear();
-  const mm = String(today.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(today.getUTCDate()).padStart(2, "0");
+  const yyyy = parts.find((p) => p.type === "year")?.value || "";
+  const mm = parts.find((p) => p.type === "month")?.value || "";
+  const dd = parts.find((p) => p.type === "day")?.value || "";
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -90,18 +71,7 @@ export async function GET(req: NextRequest) {
 
   if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
 
-  const items = (Array.isArray(data) ? data : []).map(normalizeMenuItem);
-  const accepting_orders = computeAcceptingOrders(items);
-
-  return json(200, {
-    ok: true,
-    vendor_id,
-    accepting_orders,
-    vendor_accepting_orders: accepting_orders,
-    vendor_open: accepting_orders,
-    is_open: accepting_orders,
-    items,
-  });
+  return json(200, { ok: true, vendor_id, service_date: serviceDateManila(), items: Array.isArray(data) ? data : [] });
 }
 
 export async function POST(req: NextRequest) {
@@ -125,7 +95,7 @@ export async function POST(req: NextRequest) {
   // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
   // Vendor-level open/closed is enforced by setting all active menu items available/unavailable for today.
   // This preserves existing takeout order/status routes and does not touch ride dispatch or trip lifecycle.
-  const service_date = serviceDateUtc();
+  const service_date = serviceDateManila();
 
   if (action === "set_vendor_accepting") {
     const accepting = boolFromBody(body.accepting_orders ?? body.acceptingOrders ?? body.is_available ?? body.isAvailable, true);
@@ -166,25 +136,21 @@ export async function POST(req: NextRequest) {
 
     if (refreshed.error) return json(500, { ok: false, error: "DB_ERROR", message: refreshed.error.message });
 
-    const refreshedItems = (Array.isArray(refreshed.data) ? refreshed.data : []).map(normalizeMenuItem);
-
     return json(200, {
       ok: true,
       action: "set_vendor_accepting",
       vendor_id,
       accepting_orders: accepting,
-      vendor_accepting_orders: accepting,
-      vendor_open: accepting,
-      is_open: accepting,
+      service_date,
       affected_menu_items: ids.length,
-      items: refreshedItems,
+      items: Array.isArray(refreshed.data) ? refreshed.data : [],
     });
   }
 
   if (!menu_item_id) return json(400, { ok: false, error: "menu_item_id_required", message: "menu_item_id required" });
 
   // Upsert day_state row first (so toggles always have a row to update)
-  // NOTE: service_date is in UTC here; for PH local date you can later switch to app-provided service_date.
+  // NOTE: service_date is Manila local date to match vendor_menu_today and customer takeout availability.
   const upsertBase: any = {
     vendor_id,
     menu_item_id,
@@ -248,16 +214,5 @@ export async function POST(req: NextRequest) {
 
   if (error) return json(500, { ok: false, error: "DB_ERROR", message: error.message });
 
-  const items = (Array.isArray(data) ? data : []).map(normalizeMenuItem);
-  const accepting_orders = computeAcceptingOrders(items);
-
-  return json(200, {
-    ok: true,
-    vendor_id,
-    accepting_orders,
-    vendor_accepting_orders: accepting_orders,
-    vendor_open: accepting_orders,
-    is_open: accepting_orders,
-    items,
-  });
+  return json(200, { ok: true, vendor_id, service_date, items: Array.isArray(data) ? data : [] });
 }
