@@ -75,6 +75,7 @@ export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+const [vendors, setVendors] = useState<any[]>([]);
 
   // Phase 2B.0 - DB-backed addresses (pilot via device_key)
   const [deviceKey, setDeviceKey] = useState("");
@@ -236,6 +237,13 @@ export default function TakeoutPage() {
     refreshAddresses(dk).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+useEffect(() => {
+  getJson("/api/admin/vendors")
+    .then((j) => {
+      setVendors(Array.isArray(j?.vendors) ? j.vendors : []);
+    })
+    .catch(() => setVendors([]));
+}, []);
 
   // Auto refresh menu when vendorId changes (debounced-ish)
   useEffect(() => {
@@ -396,15 +404,23 @@ export default function TakeoutPage() {
       <div className="mt-4 rounded-lg border bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="text-xs font-medium text-slate-700">Vendor ID (required)</label>
-            <input
-              className="mt-1 w-full rounded border px-3 py-2 text-sm"
-              value={vendorId}
-              onChange={(e) => setVendorId(e.target.value)}
-              placeholder="Paste vendor_id here"
-            />
+            <label className="text-xs font-medium text-slate-700">Select vendor</label>
+
+<select
+  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+  value={vendorId}
+  onChange={(e) => setVendorId(e.target.value)}
+>
+  <option value="">Select vendor</option>
+  {vendors.map((v: any) => (
+    <option key={v.id} value={v.id}>
+      {v.name} {v.town ? `(${v.town})` : ""}
+    </option>
+  ))}
+</select>
+
             <div className="mt-1 text-[11px] text-slate-500">
-              Menu loads automatically after you paste vendor_id.
+              Menu loads automatically after you select a vendor.
             </div>
           </div>
 
