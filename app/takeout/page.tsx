@@ -164,7 +164,7 @@ export default function TakeoutPage() {
     }
   }
 
-  async function refreshMenu(vId?: string) {
+  async function refreshMenu(vId?: string, silent = false) {
     const vid = String(vId || vendorId || "").trim();
     if (!vid) {
       setVendorClosed(false);
@@ -172,8 +172,8 @@ export default function TakeoutPage() {
       setQty({});
       return;
     }
-    setMenuBusy(true);
-    setMenuErr(null);
+    if (!silent) setMenuBusy(true);
+    if (!silent) setMenuErr(null);
     try {
       // CUSTOMER_VENDOR_AVAILABILITY_V1
       // Prefer the vendor-menu API because it reflects the vendor open/closed switch.
@@ -226,7 +226,7 @@ export default function TakeoutPage() {
       setMenu([]);
       setQty({});
     } finally {
-      setMenuBusy(false);
+      if (!silent) setMenuBusy(false);
     }
   }
 
@@ -243,6 +243,18 @@ export default function TakeoutPage() {
       refreshMenu().catch(() => undefined);
     }, 300);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorId]);
+
+  // JRIDE_TAKEOUT_AUTO_REFRESH_STATUS_V1
+  // Poll only the takeout menu availability contract. This does not call ride, dispatch, fare, or lifecycle routes.
+  useEffect(() => {
+    const vid = String(vendorId || "").trim();
+    if (!vid) return;
+    const t = window.setInterval(() => {
+      refreshMenu(vid, true).catch(() => undefined);
+    }, 10000);
+    return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
