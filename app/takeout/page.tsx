@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -435,7 +435,12 @@ export default function TakeoutPage() {
             <select
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={vendorId}
-              onChange={(e) => setVendorId(e.target.value)}
+              onChange={(e) => {
+                  const nextVendorId = e.target.value;
+                  setVendorId(nextVendorId);
+                  setQty({});
+                  refreshMenu(nextVendorId);
+                }}
             >
               <option value="">Select vendor</option>
               {vendors.map((v) => {
