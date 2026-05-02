@@ -428,9 +428,44 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
 
     const curStatus = String((cur.data as any)?.status || "").trim();
-    const nextVendor = vendor_status;
+    const curVendor = String((cur.data as any)?.vendor_status || "").trim().toLowerCase();
+    const nextVendor = String(vendor_status || "").trim().toLowerCase();
 
-    const patch: any = { vendor_status: nextVendor };
+    const allowedForward: Record<string, string[]> = {
+      "": ["preparing"],
+      "preparing": ["pickup_ready", "cancelled"],
+      "pickup_ready": ["completed", "cancelled"],
+      "completed": [],
+      "cancelled": [],
+      "canceled": []
+    };
+
+    const normalizedCurrent = curVendor === "canceled" ? "cancelled" : curVendor;
+    const normalizedNext = nextVendor === "canceled" ? "cancelled" : nextVendor;
+
+    if (normalizedCurrent === "completed" || normalizedCurrent === "cancelled") {
+      return json(409, {
+        ok: false,
+        error: "TERMINAL_STATE_LOCKED",
+        message: "Order already " + normalizedCurrent + ". No further updates allowed.",
+        current: normalizedCurrent,
+        attempted: normalizedNext
+      });
+    }
+
+    const allowed = allowedForward[normalizedCurrent] || [];
+    if (!allowed.includes(normalizedNext)) {
+      return json(409, {
+        ok: false,
+        error: "INVALID_VENDOR_STATUS_TRANSITION",
+        message: "Invalid transition: " + normalizedCurrent + " -> " + normalizedNext,
+        current: normalizedCurrent,
+        attempted: normalizedNext,
+        allowed
+      });
+    }
+
+    const patch: any = { vendor_status: normalizedNext };
 
     // Bridge rule: vendor ready -> takeout customer status only
     // Only advance if booking hasn't progressed yet.
@@ -931,6 +966,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
