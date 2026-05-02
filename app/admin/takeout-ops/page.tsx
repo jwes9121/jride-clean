@@ -102,6 +102,7 @@ export default function AdminTakeoutOpsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastLoaded, setLastLoaded] = useState<string>("");
+  const [actionBusyId, setActionBusyId] = useState<string>("");
 
   async function load(nextFilter?: string) {
     const f = nextFilter || filter;
@@ -141,6 +142,37 @@ export default function AdminTakeoutOpsPage() {
   function countFor(key: string) {
     if (!counts) return 0;
     return Number((counts as any)[key] || 0);
+  }
+
+  async function adminAction(order: TakeoutOrder, action: string) {
+    const id = String(order.id || "").trim();
+    if (!id) return;
+
+    const label = action === "force_cancel" ? "cancel" : action === "force_complete" ? "complete" : "reopen";
+    const ok = window.confirm("Admin action: " + label + " order " + String(order.booking_code || id) + "?");
+    if (!ok) return;
+
+    setActionBusyId(id);
+    setError("");
+
+    try {
+      const res = await fetch("/api/admin/takeout-orders/action", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ order_id: id, action }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body?.ok === false) {
+        throw new Error(body?.message || body?.error || "Admin action failed.");
+      }
+
+      await load(filter);
+    } catch (e: any) {
+      setError(String(e?.message || e || "Admin action failed."));
+    } finally {
+      setActionBusyId("");
+    }
   }
 
   return (
@@ -253,12 +285,13 @@ export default function AdminTakeoutOpsPage() {
                 <th className="px-3 py-3">Town</th>
                 <th className="px-3 py-3">Subtotal</th>
                 <th className="px-3 py-3">Created</th>
+                <th className="px-3 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
                     {busy ? "Loading..." : "No takeout orders for this filter."}
                   </td>
                 </tr>
@@ -295,6 +328,34 @@ export default function AdminTakeoutOpsPage() {
                     <td className="px-3 py-3 text-slate-700">{o.town || "-"}</td>
                     <td className="px-3 py-3 font-semibold">{money(o.takeout_items_subtotal)}</td>
                     <td className="px-3 py-3 text-slate-600">{fmtDate(o.created_at)}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={!!actionBusyId}
+                          onClick={() => adminAction(o, "force_cancel")}
+                          className="rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-800 disabled:opacity-40"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!actionBusyId}
+                          onClick={() => adminAction(o, "force_complete")}
+                          className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 disabled:opacity-40"
+                        >
+                          Complete
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!actionBusyId}
+                          onClick={() => adminAction(o, "reopen_preparing")}
+                          className="rounded-lg border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                        >
+                          Reopen
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
