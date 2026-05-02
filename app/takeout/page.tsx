@@ -101,6 +101,7 @@ export default function TakeoutPage() {
   const [addrMode, setAddrMode] = useState<"saved" | "new">("saved");
   const [saved, setSaved] = useState<AddressRow[]>([]);
   const [addrBusy, setAddrBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [addrErr, setAddrErr] = useState<string | null>(null);
 
   const [newAddr, setNewAddr] = useState("");
@@ -313,6 +314,7 @@ export default function TakeoutPage() {
   }
 
   function setItemQty(id: string, nextQty: number) {
+    setSubmitted(false);
     setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(99, Math.floor(toNum(nextQty)))) }));
   }
 
@@ -403,6 +405,11 @@ export default function TakeoutPage() {
         j?.order_id || j?.orderId || j?.booking_id || j?.bookingId || j?.id || "";
 
       setResult("Created takeout order successfully." + (maybeId ? " ID: " + String(maybeId) : ""));
+      setQty({});
+      setSubmitted(true);
+      setMenu([]);
+      setVendorId("");
+      setNote("");
     } catch (e: any) {
       const msg = String(e?.message || "Unknown error");
       if (msg.includes("closed") || msg.includes("unavailable") || msg.includes("TAKEOUT_VENDOR_CLOSED")) {
@@ -439,6 +446,7 @@ export default function TakeoutPage() {
                   const nextVendorId = e.target.value;
                   setVendorId(nextVendorId);
                   setQty({});
+                  setSubmitted(false);
                   refreshMenu(nextVendorId);
                 }}
             >
@@ -485,7 +493,10 @@ export default function TakeoutPage() {
             <input
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
+              onChange={(e) => {
+  const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
+  setCustomerPhone(digitsOnly);
+}}
               placeholder="09xx..."
             />
           </div>
@@ -574,7 +585,10 @@ export default function TakeoutPage() {
                   className="w-full rounded border px-3 py-2 text-sm"
                   rows={2}
                   value={newAddr}
-                  onChange={(e) => setNewAddr(e.target.value)}
+                  onChange={(e) => {
+                    setNewAddr(e.target.value);
+                    setSubmitted(false);
+                  }}
                   placeholder="Complete address (Barangay / landmark / municipality)"
                 />
 
@@ -746,13 +760,13 @@ export default function TakeoutPage() {
           <button
             type="button"
             onClick={submit}
-            disabled={!canSubmit}
+            disabled={!canSubmit || busy || submitted}
             className={cls(
               "rounded px-4 py-2 text-sm font-medium text-white",
-              canSubmit ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
+              canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
-            {busy ? "Submitting..." : vendorClosed ? "Vendor closed" : "Submit takeout order"}
+            {submitted ? "Order submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : "Submit takeout order"}
           </button>
 
           {vendorClosed ? (
@@ -781,3 +795,5 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
+
