@@ -27,6 +27,17 @@ type MenuItem = {
   last_updated_at?: string | null;
 };
 
+type VendorRow = {
+  id?: string | null;
+  vendor_id?: string | null;
+  name?: string | null;
+  display_name?: string | null;
+  vendor_name?: string | null;
+  email?: string | null;
+  town?: string | null;
+};
+
+
 const LS_DEVICE_KEY = "JRIDE_PAX_DEVICE_KEY";
 
 function getOrCreateDeviceKey(): string {
@@ -71,8 +82,17 @@ function money(n: number) {
   return "PHP " + v.toFixed(2);
 }
 
+function vendorKey(v: VendorRow): string {
+  return String(v.id || v.vendor_id || "").trim();
+}
+
+function vendorLabel(v: VendorRow): string {
+  return String(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor").trim();
+}
+
 export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
+  const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
@@ -101,6 +121,12 @@ export default function TakeoutPage() {
   const [lastJson, setLastJson] = useState<ApiResp | null>(null);
 
   const primary = useMemo(() => saved.find((a) => a.is_primary) || saved[0] || null, [saved]);
+
+  const selectedVendor = useMemo(() => {
+    const id = String(vendorId || "").trim();
+    if (!id) return null;
+    return vendors.find((v) => vendorKey(v) === id) || null;
+  }, [vendors, vendorId]);
 
   const resolvedDeliveryAddress = useMemo(() => {
     if (addrMode === "saved") return (primary?.address_text || "").trim();
@@ -235,6 +261,15 @@ export default function TakeoutPage() {
     setDeviceKey(dk);
     refreshAddresses(dk).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    getJson("/api/admin/vendors")
+      .then((j) => {
+        const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
+        setVendors(rows);
+      })
+      .catch(() => setVendors([]));
   }, []);
 
   // Auto refresh menu when vendorId changes (debounced-ish)
@@ -396,16 +431,31 @@ export default function TakeoutPage() {
       <div className="mt-4 rounded-lg border bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="text-xs font-medium text-slate-700">Vendor ID (required)</label>
-            <input
+            <label className="text-xs font-medium text-slate-700">Select vendor</label>
+            <select
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={vendorId}
               onChange={(e) => setVendorId(e.target.value)}
-              placeholder="Select vendor"
-            />
+            >
+              <option value="">Select vendor</option>
+              {vendors.map((v) => {
+                const id = vendorKey(v);
+                if (!id) return null;
+                return (
+                  <option key={id} value={id}>
+                    {vendorLabel(v)}{v.town ? " - " + v.town : ""}
+                  </option>
+                );
+              })}
+            </select>
             <div className="mt-1 text-[11px] text-slate-500">
               Menu loads automatically after you select a vendor.
             </div>
+            {vendorId ? (
+              <div className="mt-1 text-[11px] text-slate-500">
+                Selected: <span className="font-medium">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</span>
+              </div>
+            ) : null}
           </div>
 
           {vendorClosed ? (
