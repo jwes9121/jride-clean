@@ -337,7 +337,19 @@ async function matchSingle(
       continue;
     }
 
-    const driverVehicleType = normalizeVehicleType(d.vehicle_type); // JRIDE_AUTO_ASSIGN_SCOPE_V14
+    const rawDriverVehicleType = d.vehicle_type;
+      let driverVehicleType = normalizeVehicleType(rawDriverVehicleType);
+
+      if (!driverVehicleType && rawDriverVehicleType) {
+        const rawVehicleText = String(rawDriverVehicleType).toLowerCase().trim();
+
+        if (rawVehicleText.includes("tri")) {
+          driverVehicleType = "tricycle";
+        } else if (rawVehicleText.includes("motor")) {
+          driverVehicleType = "motorcycle";
+        }
+      }
+      // JRIDE_AUTO_ASSIGN_VEHICLE_NORMALIZER_V15 // JRIDE_AUTO_ASSIGN_SCOPE_V14
 
     // JRIDE_SHARED_DRIVER_POOL_TAKEOUT_V1
     // Soft-launch rule: takeout uses the same ride-capable drivers.
@@ -671,6 +683,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
 
 
 
