@@ -338,11 +338,48 @@ async function matchSingle(
     }
 
     const driverVehicleType = normalizeVehicleType(d.vehicle_type);
-    if (requestedVehicleType) {
-      if (!driverVehicleType || driverVehicleType !== requestedVehicleType) {
-        debug.rejected_wrong_vehicle_count++;
-        continue;
-      }
+
+    // JRIDE_SHARED_DRIVER_POOL_TAKEOUT_V1
+    // Soft-launch rule: takeout uses the same ride-capable drivers.
+    // A takeout booking may be assigned to tricycle or motorcycle drivers.
+    // Ride bookings still require their requested vehicle type.
+    const vehicleAllowedForBooking =
+      !requestedVehicleType ||
+      (requestedVehicleType === "takeout"
+        ? ["tricycle", "motorcycle"].includes(driverVehicleType)
+        : driverVehicleType === requestedVehicleType);
+
+    if (!vehicleAllowedForBooking) {
+      debug.rejected_wrong_vehicle_count++;
+      continue;
+    }
+
+    // JRIDE_SHARED_DRIVER_POOL_ACTIVE_LOCK_V1
+    // One driver cannot hold ride and takeout work at the same time.
+    const { data: busyRows, error: busyErr } = await supabase
+      .from("bookings")
+      .select("id, booking_code, status, service_type, driver_id, assigned_driver_id")
+      .or(`driver_id.eq.${d.driver_id},assigned_driver_id.eq.${d.driver_id}`)
+      .in("status", [
+        "assigned",
+        "accepted",
+        "fare_proposed",
+        "ready",
+        "on_the_way",
+        "arrived",
+        "on_trip",
+        "pickup_ready",
+      ])
+      .limit(1);
+
+    if (busyErr) {
+      (debug as any).rejected_busy_lookup_count = ((debug as any).rejected_busy_lookup_count || 0) + 1;
+      continue;
+    }
+
+    if ((busyRows || []).length > 0) {
+      (debug as any).rejected_busy_driver_count = ((debug as any).rejected_busy_driver_count || 0) + 1;
+      continue;
     }
 
     const wallet = walletByDriverId.get(text(d.driver_id));

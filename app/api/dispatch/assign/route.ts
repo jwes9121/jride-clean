@@ -282,18 +282,65 @@ function driverVehicleType(locationRow: any, driverRow?: any): string {
   return normalizedVehicleType(driverRow) || normalizedVehicleType(locationRow);
 }
 
-function evaluateVehicleCapacity(booking: any, locationRow: any, driverRow?: any) {
-  const requestedVehicle = normalizedVehicleType(booking);
-  const passengerCount = bookingPassengerCount(booking);
-  const driverVehicle = driverVehicleType(locationRow, driverRow);
+function cleanVehicle(value: unknown): string {
+  return text(value).trim().toLowerCase();
+}
+function evaluateVehicleCapacity(booking: any, locationRow: any, driverRow: any) {
+  // JRIDE_TAKEOUT_SHARED_POOL_ASSIGN_V4
+  // Soft-launch dispatch rule:
+  // - Takeout uses the same driver pool as rides.
+  // - Takeout can be assigned to tricycle or motorcycle drivers.
+  // - Ride bookings still enforce requested ride vehicle compatibility.
+  // - One active booking per driver is enforced by findActiveTripForDriver.
+
+  const serviceType = text((booking as any)?.service_type || (booking as any)?.booking_type || "ride").toLowerCase();
+  const isTakeout = serviceType === "takeout";
+
+  const requestedVehicle = cleanVehicle((booking as any)?.vehicle_type || (booking as any)?.requested_vehicle_type);
+  const driverVehicle = cleanVehicle((locationRow as any)?.vehicle_type || (driverRow as any)?.vehicle_type);
+  const passengerCount = Math.max(1, Math.floor(num((booking as any)?.passenger_count || (booking as any)?.seats || 1)));
+
   const driverIsMotorcycle = driverVehicle === "motorcycle";
+  const driverIsRideCapable = driverVehicle === "tricycle" || driverVehicle === "motorcycle";
   const sameRequestedVehicle = !!requestedVehicle && !!driverVehicle && requestedVehicle === driverVehicle;
+
+  if (isTakeout) {
+    if (!driverIsRideCapable) {
+      return {
+        ok: false as const,
+        error: "driver_not_takeout_capable",
+        message: "Takeout can only be assigned to tricycle or motorcycle drivers.",
+        requested_vehicle_type: requestedVehicle || "takeout",
+        driver_vehicle_type: driverVehicle || null,
+        passenger_count: passengerCount,
+      };
+    }
+
+    return {
+      ok: true as const,
+      requested_vehicle_type: requestedVehicle || "takeout",
+      driver_vehicle_type: driverVehicle || null,
+      passenger_count: passengerCount,
+      vehicle_priority: driverVehicle === "motorcycle" ? 0 : driverVehicle === "tricycle" ? 1 : 2,
+    };
+  }
 
   if (passengerCount > 1 && driverIsMotorcycle) {
     return {
       ok: false as const,
       error: "motorcycle_capacity_exceeded",
       message: "Motorcycle can only take 1 passenger. Please book separate rides or choose tricycle when available.",
+      requested_vehicle_type: requestedVehicle || null,
+      driver_vehicle_type: driverVehicle || null,
+      passenger_count: passengerCount,
+    };
+  }
+
+  if (requestedVehicle && driverVehicle && requestedVehicle !== driverVehicle) {
+    return {
+      ok: false as const,
+      error: "vehicle_type_mismatch",
+      message: "Driver vehicle type does not match the requested ride vehicle type.",
       requested_vehicle_type: requestedVehicle || null,
       driver_vehicle_type: driverVehicle || null,
       passenger_count: passengerCount,
@@ -308,7 +355,6 @@ function evaluateVehicleCapacity(booking: any, locationRow: any, driverRow?: any
     vehicle_priority: sameRequestedVehicle ? 0 : driverVehicle ? 1 : 2,
   };
 }
-
 export async function POST(req: NextRequest) {
   try {
     const supabase = getSupabase();
@@ -555,7 +601,7 @@ export async function POST(req: NextRequest) {
           const lng = num(row?.lng);
           const distKm = haversineKm(lat, lng, pickupLat, pickupLng);
 
-          const vehicleCapacity = evaluateVehicleCapacity(booking, row);
+          const vehicleCapacity = evaluateVehicleCapacity(booking, row, row);
 
           return {
             ...row,
@@ -689,4 +735,7 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+
+
 
