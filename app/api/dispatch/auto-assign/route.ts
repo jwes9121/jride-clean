@@ -30,6 +30,7 @@ type BookingRow = {
   service_type?: string | null;
 };
 
+const REQUEST_SEARCH_EXPIRY_SECONDS = 300; // JRIDE_SEARCHING_EXPIRE_5MIN_V1
 const ASSIGN_FRESHNESS_SECONDS = 10;
 const SCAN_LIMIT = 5;
 
@@ -507,6 +508,34 @@ export async function POST(req: Request) {
       : [];
 
     if (mode === "scan_requested") {
+      const expireNowIso = new Date().toISOString();
+      const expireCutoffIso = new Date(Date.now() - REQUEST_SEARCH_EXPIRY_SECONDS * 1000).toISOString();
+
+      const { data: expiredRows, error: expireError } = await supabase
+        .from("bookings")
+        .update({
+          status: "expired",
+          updated_at: expireNowIso,
+        })
+        .in("status", ["requested", "searching"])
+        .is("driver_id", null)
+        .lt("created_at", expireCutoffIso)
+        .select("id, booking_code, status, created_at");
+
+      if (expireError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "expire_search_bookings_failed",
+            message: expireError.message,
+            search_expiry_seconds: REQUEST_SEARCH_EXPIRY_SECONDS,
+          },
+          { status: 500 }
+        );
+      }
+
+      const expiredRequestedSearchCount = Array.isArray(expiredRows) ? expiredRows.length : 0;
+
       const { data: bookings, error } = await supabase
         .from("bookings")
         .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
@@ -583,6 +612,8 @@ export async function POST(req: Request) {
         results,
         debug: buildBaseDebug({
           booking_status_target: "requested or searching",
+          search_expiry_seconds: REQUEST_SEARCH_EXPIRY_SECONDS,
+          expired_requested_search_count: expiredRequestedSearchCount,
           booking_driver_target: "driver_id is null",
           booking_town_rule: "same town only unless booking.is_emergency = true",
         }),
@@ -683,6 +714,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
 
 
 
