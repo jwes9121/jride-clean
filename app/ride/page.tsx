@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * app/ride/page.tsx
@@ -248,10 +248,17 @@ function getToken(): string {
   }
 }
 
+function isRealBookingCode(code: string | null | undefined): boolean {
+  return typeof code === "string" && code.trim().startsWith("JR-");
+}
+
 function storedGet(): string {
   if (typeof window === "undefined") return "";
   try {
-    return String(localStorage.getItem(STORAGE_KEY) || "").trim();
+    const code = String(localStorage.getItem(STORAGE_KEY) || "").trim();
+    if (isRealBookingCode(code)) return code;
+    if (code) localStorage.removeItem(STORAGE_KEY);
+    return "";
   } catch {
     return "";
   }
@@ -260,7 +267,8 @@ function storedGet(): string {
 function storedSet(code: string) {
   if (typeof window === "undefined") return;
   try {
-    if (code) localStorage.setItem(STORAGE_KEY, code);
+    const clean = norm(code);
+    if (isRealBookingCode(clean)) localStorage.setItem(STORAGE_KEY, clean);
     else localStorage.removeItem(STORAGE_KEY);
   } catch {}
 }
@@ -489,6 +497,9 @@ export default function RidePage() {
 
   const [localVerify, setLocalVerify] = React.useState("");
   const [activeCode, setActiveCode] = React.useState(() => storedGet());
+  const [preBookingSearch, setPreBookingSearch] = React.useState(false);
+  const preBookingSearchRef = React.useRef(false);
+  const searchAbortRef = React.useRef(false);
   const [liveStatus, setLiveStatus] = React.useState("");
   const [liveBooking, setLiveBooking] = React.useState<TrackPayload | null>(null);
   const [liveErr, setLiveErr] = React.useState("");
@@ -567,6 +578,16 @@ export default function RidePage() {
     !!passengerName.trim() &&
     feesAck &&
     !busy;
+
+  React.useEffect(() => {
+    preBookingSearchRef.current = preBookingSearch;
+  }, [preBookingSearch]);
+
+  React.useEffect(() => {
+    return () => {
+      searchAbortRef.current = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -681,9 +702,15 @@ export default function RidePage() {
       if (typeof window === "undefined") return;
       const sp = new URLSearchParams(window.location.search || "");
       const urlCode = norm(sp.get("code") || sp.get("booking_code") || "");
-      if (urlCode) {
+      if (isRealBookingCode(urlCode)) {
         storedSet(urlCode);
         setActiveCode(urlCode);
+      } else if (urlCode) {
+        storedSet("");
+        sp.delete("code");
+        sp.delete("booking_code");
+        const clean = sp.toString();
+        window.history.replaceState({}, "", clean ? `${window.location.pathname}?${clean}` : window.location.pathname);
       }
       const f = norm(sp.get("from") || "");
       const t = norm(sp.get("to") || "");
@@ -719,7 +746,7 @@ export default function RidePage() {
         const resp = await getJsonAuth("/api/passenger/latest-booking");
         if (!resp.ok) return;
         const code = norm(resp.json?.booking_code || "");
-        if (code && alive) {
+        if (isRealBookingCode(code) && alive) {
           storedSet(code);
           setActiveCode(code);
         }
@@ -733,6 +760,11 @@ export default function RidePage() {
 
   React.useEffect(() => {
     if (!activeCode) return;
+    if (!isRealBookingCode(activeCode)) {
+      storedSet("");
+      setActiveCode("");
+      return;
+    }
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -1538,6 +1570,8 @@ export default function RidePage() {
   }
 
   function handleClear() {
+    searchAbortRef.current = true;
+    setPreBookingSearch(false);
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -1604,6 +1638,8 @@ export default function RidePage() {
   async function submit() {
     setResult("");
     setBusy(true);
+    setPreBookingSearch(false);
+    searchAbortRef.current = false;
 
     const pax = Number(clampPax(vehicleType, passengerCount));
     const maxPax = vehicleType === "motorcycle" ? 1 : 4;
@@ -1617,6 +1653,19 @@ export default function RidePage() {
       setResult(`Max ${maxPax} for ${vehicleType}.`);
       setBusy(false);
       return;
+    }
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    function isNoDriverResponse(j: any): boolean {
+      const code = normUpper(j?.code || j?.error || "");
+      const message = normUpper(j?.message || "");
+      return (
+        code.includes("NO_DRIVER") ||
+        code.includes("SEARCHING") ||
+        message.includes("NO DRIVER") ||
+        message.includes("SEARCHING")
+      );
     }
 
     try {
@@ -1658,61 +1707,93 @@ export default function RidePage() {
         return;
       }
 
-      const book = await postJson(
-        "/api/public/passenger/book",
-        {
-          passenger_name: effectivePassengerName,
-          town,
-          pickup_label: fromLabel,
-          dropoff_label: toLabel,
-          pickup_lat: numOrNull(pickupLat),
-          pickup_lng: numOrNull(pickupLng),
-          dropoff_lat: numOrNull(dropLat),
-          dropoff_lng: numOrNull(dropLng),
-          fees_acknowledged: feesAck,
-          service: "ride",
-          vehicle_type: vehicleType,
-          passenger_count: pax,
-          local_verification_code: norm(localVerify) ? localVerify : undefined,
-        },
-        true
-      );
+      const payload = {
+        passenger_name: effectivePassengerName,
+        town,
+        pickup_label: fromLabel,
+        dropoff_label: toLabel,
+        pickup_lat: numOrNull(pickupLat),
+        pickup_lng: numOrNull(pickupLng),
+        dropoff_lat: numOrNull(dropLat),
+        dropoff_lng: numOrNull(dropLng),
+        fees_acknowledged: feesAck,
+        service: "ride",
+        vehicle_type: vehicleType,
+        passenger_count: pax,
+        local_verification_code: norm(localVerify) ? localVerify : undefined,
+      };
 
-            if (!book.ok) {
+      const startedAt = Date.now();
+      const deadlineAt = startedAt + 5 * 60 * 1000;
+      let attempt = 0;
+
+      while (!searchAbortRef.current) {
+        attempt += 1;
+        const book = await postJson("/api/public/passenger/book", payload, true);
         const bj = book.json || {};
+        const code = norm(bj.booking?.booking_code || bj.booking_code || "");
 
-        // ONLY loop for no-driver case
-        if ((bj.code || "").includes("NO_DRIVER") || (bj.code || "").includes("SEARCHING")) {
+        if (book.ok && isRealBookingCode(code)) {
+          storedSet(code);
+          setActiveCode(code);
+          setPreBookingSearch(false);
+          setResult(`BOOKED_OK | Code: ${code}`);
+          setLiveStatus(norm(bj.booking?.status || ""));
+          if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("code", code);
+            window.history.replaceState({}, "", url.toString());
+          }
+          await refreshCanBook();
+          return;
+        }
+
+        if (book.ok && code && !isRealBookingCode(code)) {
+          storedSet("");
+          setActiveCode("");
+          setLiveBooking(null);
+          setLiveStatus("");
+          setLiveErr("");
           setResult("Searching for available drivers...");
-          
-          await new Promise(r => setTimeout(r, 10000)); // 10 sec delay
-          
-          return submit(); // retry
+          setPreBookingSearch(true);
+        } else if (!book.ok && isNoDriverResponse(bj)) {
+          storedSet("");
+          setActiveCode("");
+          setLiveBooking(null);
+          setLiveStatus("");
+          setLiveErr("");
+          setResult("Searching for available drivers...");
+          setPreBookingSearch(true);
+        } else if (!book.ok) {
+          setResult(`BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`);
+          setPreBookingSearch(false);
+          return;
+        } else {
+          setResult("BOOK_FAILED: Booking response did not include a valid JR booking code.");
+          setPreBookingSearch(false);
+          return;
         }
 
-        setResult(`BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`);
-        return;
-      }
-
-      const bj = book.json || {};
-      const code = norm(bj.booking?.booking_code || bj.booking_code || "");
-      setResult(`BOOKED_OK${code ? ` | Code: ${code}` : ""}`);
-
-      if (code) {
-        storedSet(code);
-        setActiveCode(code);
-        setLiveStatus(norm(bj.booking?.status || ""));
-        if (typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          url.searchParams.set("code", code);
-          window.history.replaceState({}, "", url.toString());
+        if (Date.now() >= deadlineAt) {
+          setPreBookingSearch(false);
+          setResult("NO_DRIVER_FOUND: No available driver found after 5 minutes. You may try motorcycle, emergency booking, or cancel.");
+          await refreshCanBook();
+          return;
         }
+
+        const remainingMs = Math.max(0, deadlineAt - Date.now());
+        const waitMs = Math.min(10000, remainingMs);
+        setResult(`Searching for available drivers... Retry ${attempt} of 30`);
+        await sleep(waitMs);
       }
 
-      await refreshCanBook();
+      setPreBookingSearch(false);
+      setResult("Search cancelled.");
     } catch (e: any) {
+      setPreBookingSearch(false);
       setResult(`ERROR: ${String(e?.message || e)}`);
     } finally {
+      searchAbortRef.current = false;
       setBusy(false);
     }
   }
@@ -2430,6 +2511,7 @@ export default function RidePage() {
                           <button
                             type="button"
                             onClick={() => {
+                              if (!isRealBookingCode(trip.booking_code)) return;
                               storedSet(trip.booking_code);
                               setActiveCode(trip.booking_code);
                               if (typeof window !== "undefined") {
