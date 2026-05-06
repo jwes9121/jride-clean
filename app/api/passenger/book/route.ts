@@ -671,7 +671,7 @@ const boundaryOverrideRequested =
           selected_town: selectedTown,
           derived_town: derivedTown,
         },
-        { status: 409 }
+        { status: 200 }
       );
     }
 
@@ -716,7 +716,7 @@ const boundaryOverrideRequested =
           max_passengers: 1,
           can_make_separate_motorcycle_bookings: true,
         },
-        { status: 409 }
+        { status: 200 }
       );
     }
 
@@ -754,7 +754,7 @@ const boundaryOverrideRequested =
               can_make_separate_motorcycle_bookings: true,
               availability,
             },
-            { status: 409 }
+            { status: 200 }
           );
         }
 
@@ -767,7 +767,7 @@ const boundaryOverrideRequested =
             alternate_vehicle_type: availability.alternate_vehicle_type,
             availability,
           },
-          { status: 409 }
+          { status: 200 }
         );
       }
 
@@ -799,7 +799,7 @@ const boundaryOverrideRequested =
               alternate_vehicle_type: availability.alternate_vehicle_type,
               availability,
             },
-            { status: 409 }
+            { status: 200 }
           );
         }
 
@@ -815,8 +815,8 @@ const boundaryOverrideRequested =
           dropoffLng,
           requestedVehicleType: vehicleType,
           alternateVehicleType: availability.alternate_vehicle_type,
-          code: "NO_DRIVERS_AVAILABLE",
-          message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
+          code: "SEARCHING_FOR_DRIVER", // JRIDE_BOOKING_CONTINUE_SEARCHING_V2,
+          message: `Searching for available drivers in ${derivedTown}. If no driver is found within 5 minutes, the booking will expire.`,
           availability,
         });
 
@@ -830,10 +830,10 @@ const boundaryOverrideRequested =
             ok: false,
 
 
-            code: "NO_DRIVERS_AVAILABLE",
+            code: "SEARCHING_FOR_DRIVER", // JRIDE_BOOKING_CONTINUE_SEARCHING_V2,
 
 
-            message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
+            message: `Searching for available drivers in ${derivedTown}. If no driver is found within 5 minutes, the booking will expire.`,
 
 
             requested_vehicle_type: vehicleType,
@@ -848,7 +848,7 @@ const boundaryOverrideRequested =
           },
 
 
-          { status: 409 }
+          { status: 200 }
 
 
         );
@@ -878,7 +878,7 @@ const boundaryOverrideRequested =
           dropoffLng,
           requestedVehicleType: vehicleType,
           alternateVehicleType: availability.alternate_vehicle_type,
-          code: "NO_DRIVERS_AVAILABLE",
+          code: "SEARCHING_FOR_DRIVER", // JRIDE_BOOKING_CONTINUE_SEARCHING_V2,
           message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
           availability,
         });
@@ -893,7 +893,7 @@ const boundaryOverrideRequested =
             ok: false,
 
 
-            code: "NO_DRIVERS_AVAILABLE",
+            code: "SEARCHING_FOR_DRIVER", // JRIDE_BOOKING_CONTINUE_SEARCHING_V2,
 
 
             message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
@@ -911,7 +911,7 @@ const boundaryOverrideRequested =
           },
 
 
-          { status: 409 }
+          { status: 200 }
 
 
         );
@@ -1106,6 +1106,7 @@ const boundaryOverrideRequested =
     );
   }
 }
+
 
 
 
