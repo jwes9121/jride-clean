@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * app/ride/page.tsx
@@ -1678,8 +1678,18 @@ export default function RidePage() {
         true
       );
 
-      if (!book.ok) {
+            if (!book.ok) {
         const bj = book.json || {};
+
+        // ONLY loop for no-driver case
+        if ((bj.code || "").includes("NO_DRIVER") || (bj.code || "").includes("SEARCHING")) {
+          setResult("Searching for available drivers...");
+          
+          await new Promise(r => setTimeout(r, 10000)); // 10 sec delay
+          
+          return submit(); // retry
+        }
+
         setResult(`BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`);
         return;
       }
