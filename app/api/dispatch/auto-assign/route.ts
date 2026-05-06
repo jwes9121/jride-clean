@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type DriverRow = {
@@ -343,11 +343,18 @@ async function matchSingle(
     // Soft-launch rule: takeout uses the same ride-capable drivers.
     // A takeout booking may be assigned to tricycle or motorcycle drivers.
     // Ride bookings still require their requested vehicle type.
-    const vehicleAllowedForBooking =
-      !requestedVehicleType ||
+    const vehicleAllowedForBooking = (
+  (!requestedVehicleType ||
       (requestedVehicleType === "takeout"
         ? ["tricycle", "motorcycle"].includes(driverVehicleType)
-        : driverVehicleType === requestedVehicleType);
+        : driverVehicleType === requestedVehicleType))
+  ||
+  (
+    (requestedVehicleType === "takeout") &&
+    (driverVehicleType === "tricycle" || driverVehicleType === "motorcycle")
+  )
+)
+// JRIDE_AUTO_ASSIGN_TAKEOUT_SHARED_POOL_V11;
 
     if (!vehicleAllowedForBooking) {
       debug.rejected_wrong_vehicle_count++;
@@ -664,3 +671,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
+
