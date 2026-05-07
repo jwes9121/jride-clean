@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * app/ride/page.tsx
@@ -1990,6 +1990,7 @@ export default function RidePage() {
         const code = norm(bj.booking?.booking_code || bj.booking_code || "");
 
         if (book.ok && isRealBookingCode(code)) {
+          preBookingSearchRef.current = false;
           storedSet(code);
           setActiveCode(code);
           setPreBookingSearch(false);
@@ -2014,17 +2015,20 @@ export default function RidePage() {
           setResult(
             `BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`,
           );
+          preBookingSearchRef.current = false;
           setPreBookingSearch(false);
           return;
         } else {
           setResult(
             "BOOK_FAILED: Booking response did not include a valid JR booking code.",
           );
+          preBookingSearchRef.current = false;
           setPreBookingSearch(false);
           return;
         }
 
         if (Date.now() >= deadlineAt) {
+          preBookingSearchRef.current = false;
           setPreBookingSearch(false);
           setResult(
             "NO_DRIVER_FOUND: No available driver found after 5 minutes. You may try motorcycle, emergency booking, or cancel.",
@@ -2039,9 +2043,11 @@ export default function RidePage() {
         await sleep(waitMs);
       }
 
+      preBookingSearchRef.current = false;
       setPreBookingSearch(false);
       setResult("Search cancelled.");
     } catch (e: any) {
+      preBookingSearchRef.current = false;
       setPreBookingSearch(false);
       setResult(`ERROR: ${String(e?.message || e)}`);
     } finally {
