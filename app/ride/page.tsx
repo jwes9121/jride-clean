@@ -1995,17 +1995,7 @@ export default function RidePage() {
           return;
         }
 
-        if (book.ok && code && !isRealBookingCode(code)) {
-          storedSet("");
-          setActiveCode("");
-          setLiveBooking(null);
-          setLiveStatus("");
-          setLiveErr("");
-          setResult("Searching for available drivers...");
-          setPreBookingSearch(true);
-        } else if (!book.ok && isNoDriverResponse(bj)) {
-          storedSet("");
-          setActiveCode("");
+        if (isNoDriverResponse(bj) || (book.ok && code && !isRealBookingCode(code))) {
           setLiveBooking(null);
           setLiveStatus("");
           setLiveErr("");
