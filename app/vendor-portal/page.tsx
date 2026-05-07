@@ -1,635 +1,591 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-type Vendor = {
+type VendorRow = {
   id?: string | null;
-  email?: string | null;
+  vendor_id?: string | null;
+  name?: string | null;
   display_name?: string | null;
-  created_at?: string | null;
+  vendor_name?: string | null;
+  email?: string | null;
+  town?: string | null;
+};
+
+type VendorProfile = {
+  id: string;
+  vendor_id: string;
+  name: string;
+  town?: string | null;
+  logo_url?: string | null;
+  accepting_orders?: boolean;
 };
 
 type MenuItem = {
-  id?: string | null;
+  id: string;
   menu_item_id?: string | null;
-  vendor_id?: string | null;
-  name?: string | null;
+  name: string;
   description?: string | null;
-  price?: number | string | null;
-  sort_order?: number | string | null;
-  is_available?: boolean | null;
-  is_available_today?: boolean | null;
-  available_today?: boolean | null;
-  sold_out_today?: boolean | null;
-  is_sold_out_today?: boolean | null;
+  price: number;
+  photo_url?: string | null;
+  sort_order?: number | null;
+  is_available: boolean;
+  sold_out_today: boolean;
   last_updated_at?: string | null;
 };
 
-type TakeoutItem = {
-  name?: string | null;
-  price?: number | string | null;
-  quantity?: number | string | null;
-};
-
 type TakeoutOrder = {
-  id?: string | null;
-  order_id?: string | null;
-  booking_id?: string | null;
-  booking_code?: string | null;
-  vendor_id?: string | null;
-  vendor_status?: string | null;
-  customer_status?: string | null;
-  status?: string | null;
-  service_type?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  customer_name?: string | null;
-  passenger_name?: string | null;
-  customer_phone?: string | null;
-  to_label?: string | null;
-  dropoff_label?: string | null;
-  items?: TakeoutItem[] | null;
-  items_subtotal?: number | string | null;
-  total_bill?: number | string | null;
+  id: string | null;
+  booking_code: string | null;
+  vendor_id: string | null;
+  vendor_name?: string | null;
+  vendor_status: string | null;
+  customer_name: string | null;
+  to_label: string | null;
+  takeout_items_subtotal: number | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-type AddItemForm = {
-  name: string;
-  description: string;
-  price: string;
-  sort_order: string;
-};
+const MAX_ITEMS = 15;
 
-const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
-const LS_VENDOR_SOURCE = "JRIDE_VENDOR_PORTAL_SOURCE";
-const REFRESH_MS = 10000;
-
-function getPortalVendorIdFromBrowser(): string {
-  if (typeof window === "undefined") return "";
-
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = text(params.get("vendor_id"));
-  const fromSource = text(params.get("source"));
-  if (fromUrl) {
-    localStorage.setItem(LS_VENDOR_ID, fromUrl);
-    sessionStorage.setItem(LS_VENDOR_ID, fromUrl);
-    if (fromSource) {
-      localStorage.setItem(LS_VENDOR_SOURCE, fromSource);
-      sessionStorage.setItem(LS_VENDOR_SOURCE, fromSource);
-    }
-    return fromUrl;
-  }
-
-  return text(localStorage.getItem(LS_VENDOR_ID));
+function cls(...v: Array<string | false | null | undefined>) {
+  return v.filter(Boolean).join(" ");
 }
 
-function isVendorLockedFromBrowser(): boolean {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  const source = text(params.get("source") || sessionStorage.getItem(LS_VENDOR_SOURCE) || localStorage.getItem(LS_VENDOR_SOURCE));
-  return source === "vendor-login" && !!text(params.get("vendor_id") || sessionStorage.getItem(LS_VENDOR_ID) || localStorage.getItem(LS_VENDOR_ID));
+function clean(v: any) {
+  return String(v ?? "").trim();
 }
 
-const STATUS_OPTIONS = ["preparing", "pickup_ready", "completed", "cancelled"];
-
-function text(value: any): string {
-  return String(value ?? "").trim();
-}
-
-function num(value: any): number {
-  const n = Number(value ?? 0);
+function toNum(v: any) {
+  const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-function money(value: any): string {
-  return "PHP " + num(value).toFixed(2);
+function money(v: any) {
+  return "PHP " + toNum(v).toFixed(2);
 }
 
-function menuItemId(item: MenuItem): string {
-  return text(item.menu_item_id || item.id);
+function vendorKey(v: VendorRow) {
+  return clean(v.id || v.vendor_id || v.email || "");
 }
 
-function itemAvailable(item: MenuItem): boolean {
-  const raw = item.is_available ?? item.is_available_today ?? item.available_today;
-  return typeof raw === "boolean" ? raw : true;
+function vendorLabel(v: VendorRow) {
+  return clean(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor");
 }
 
-function itemSoldOut(item: MenuItem): boolean {
-  const raw = item.sold_out_today ?? item.is_sold_out_today;
-  return typeof raw === "boolean" ? raw : false;
+function statusLabel(s: any) {
+  const x = clean(s).toLowerCase();
+  if (x === "pickup_ready") return "Pickup ready";
+  if (x === "preparing") return "Preparing";
+  if (x === "completed") return "Completed";
+  if (x === "cancelled" || x === "canceled") return "Cancelled";
+  return x || "Preparing";
 }
 
-function itemOrderable(item: MenuItem): boolean {
-  return itemAvailable(item) && !itemSoldOut(item);
+function orderClass(s: any) {
+  const x = clean(s).toLowerCase();
+  if (x === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (x === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
+  if (x === "cancelled" || x === "canceled") return "border-rose-300 bg-rose-50 text-rose-700";
+  return "border-amber-300 bg-amber-50 text-amber-800";
 }
 
-function orderId(order: TakeoutOrder): string {
-  return text(order.id || order.order_id || order.booking_id);
+async function getJson(url: string) {
+  const r = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j?.ok === false) throw new Error(j?.message || j?.error || "REQUEST_FAILED");
+  return j;
 }
 
-function orderCode(order: TakeoutOrder): string {
-  return text(order.booking_code) || orderId(order).slice(0, 8) || "-";
+async function postJson(url: string, body: any) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j?.ok === false) throw new Error(j?.message || j?.error || "REQUEST_FAILED");
+  return j;
 }
 
-function orderStatus(order: TakeoutOrder): string {
-  const s = text(order.vendor_status || order.customer_status || order.status || "requested").toLowerCase();
-  if (s === "ready" || s === "prepared" || s === "ready_for_pickup") return "pickup_ready";
-  if (s === "preparing_order") return "preparing";
-  return s || "requested";
-}
-
-function displayStatus(status: any): string {
-  const s = text(status).toLowerCase();
-  return s ? s.replace(/_/g, " ") : "-";
-}
-
-function statusClass(status: string): string {
-  if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "cancelled" || status === "canceled") return "border-rose-200 bg-rose-50 text-rose-800";
-  if (status === "pickup_ready") return "border-blue-200 bg-blue-50 text-blue-800";
-  if (status === "preparing") return "border-amber-200 bg-amber-50 text-amber-800";
-  return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function orderSubtotal(order: TakeoutOrder): number {
-  const explicit = num(order.items_subtotal ?? order.total_bill);
-  if (explicit > 0) return explicit;
-  const items = Array.isArray(order.items) ? order.items : [];
-  return items.reduce((sum, item) => sum + num(item.price) * Math.max(1, num(item.quantity) || 1), 0);
-}
-
-function activeOrder(order: TakeoutOrder): boolean {
-  const s = orderStatus(order);
-  return !["completed", "cancelled", "canceled"].includes(s);
-}
-
-function itemButtonClass(active: boolean): string {
-  return [
-    "rounded-lg border px-3 py-2 text-xs font-semibold",
-    active ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-  ].join(" ");
+async function fileToDataUrl(file: File | null): Promise<string | null> {
+  if (!file) return null;
+  if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed.");
+  if (file.size > 3 * 1024 * 1024) throw new Error("Image is too large. Maximum is 3MB.");
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read image."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function VendorPortalPage() {
+  const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [vendorId, setVendorId] = useState("");
-  const [vendorLocked, setVendorLocked] = useState(false);
-  const [acceptingOrders, setAcceptingOrders] = useState(true);
-  const [lastOrderCount, setLastOrderCount] = useState<number | null>(null);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [profile, setProfile] = useState<VendorProfile | null>(null);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<TakeoutOrder[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [showCompleted, setShowCompleted] = useState(false);
-  const [form, setForm] = useState<AddItemForm>({ name: "", description: "", price: "", sort_order: "0" });
+
+  const [profileName, setProfileName] = useState("");
+  const [acceptingOrders, setAcceptingOrders] = useState(true);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState("");
+
+  const [editingId, setEditingId] = useState("");
+  const [itemName, setItemName] = useState("");
+  const [itemDescription, setItemDescription] = useState("");
+  const [itemPrice, setItemPrice] = useState("");
+  const [itemAvailable, setItemAvailable] = useState(true);
+  const [itemSoldOut, setItemSoldOut] = useState(false);
+  const [itemFile, setItemFile] = useState<File | null>(null);
+  const [itemPreview, setItemPreview] = useState("");
+
+  const selectedVendor = useMemo(() => {
+    return vendors.find((v) => vendorKey(v) === vendorId) || null;
+  }, [vendors, vendorId]);
+
+  const activeOrders = useMemo(() => {
+    return orders.filter((o) => ["preparing", "pickup_ready", ""].includes(clean(o.vendor_status).toLowerCase()));
+  }, [orders]);
+
+  const historyOrders = useMemo(() => {
+    return orders.filter((o) => ["completed", "cancelled", "canceled"].includes(clean(o.vendor_status).toLowerCase()));
+  }, [orders]);
+
+  const usedCount = menu.length;
+  const limitReached = usedCount >= MAX_ITEMS && !editingId;
+
+  async function loadVendors() {
+    const j = await getJson("/api/admin/vendors");
+    const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
+    setVendors(rows);
+    if (!vendorId && rows.length) setVendorId(vendorKey(rows[0]));
+  }
+
+  async function loadVendorData(id?: string, silent = false) {
+    const vid = clean(id || vendorId);
+    if (!vid) return;
+    if (!silent) setBusy(true);
+    setError("");
+    try {
+      const j = await getJson("/api/vendor-menu/manage?vendor_id=" + encodeURIComponent(vid));
+      const v = j?.vendor || null;
+      const items = Array.isArray(j?.items) ? j.items : [];
+      setProfile(v);
+      setProfileName(clean(v?.name || selectedVendor ? vendorLabel(selectedVendor as any) : vid));
+      setAcceptingOrders(v?.accepting_orders !== false);
+      setLogoPreview(clean(v?.logo_url || ""));
+      setMenu(items);
+    } catch (e: any) {
+      setError(String(e?.message || e || "Failed to load vendor menu"));
+      setProfile(null);
+      setMenu([]);
+    } finally {
+      if (!silent) setBusy(false);
+    }
+  }
+
+  async function loadOrders(id?: string, silent = false) {
+    const vid = clean(id || vendorId);
+    if (!vid) return;
+    if (!silent) setBusy(true);
+    setError("");
+    try {
+      const j = await getJson("/api/vendor-orders?vendor_id=" + encodeURIComponent(vid));
+      const rows = Array.isArray(j?.orders) ? j.orders : [];
+      setOrders(rows);
+    } catch (e: any) {
+      setError(String(e?.message || e || "Failed to load vendor orders"));
+      setOrders([]);
+    } finally {
+      if (!silent) setBusy(false);
+    }
+  }
+
+  async function refreshAll(id?: string, silent = false) {
+    const vid = clean(id || vendorId);
+    if (!vid) return;
+    await Promise.all([loadVendorData(vid, silent), loadOrders(vid, silent)]);
+  }
 
   useEffect(() => {
-    const saved = getPortalVendorIdFromBrowser();
-    const locked = isVendorLockedFromBrowser();
-    setVendorLocked(locked);
-    if (saved) setVendorId(saved);
+    loadVendors().catch((e) => setError(String(e?.message || e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && vendorId) {
-      localStorage.setItem(LS_VENDOR_ID, vendorId);
-    }
-  }, [vendorId, vendorLocked]);
-
-  const selectedVendor = useMemo(() => {
-    return vendors.find((v) => text(v.id) === text(vendorId)) || null;
-  }, [vendors, vendorId]);
-
-  const loadVendors = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/vendors", { cache: "no-store" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Failed to load vendors.");
-      const list = Array.isArray(body?.vendors) ? body.vendors : [];
-      setVendors(list);
-
-      const saved = getPortalVendorIdFromBrowser();
-      const current = text(vendorId);
-      const nextVendorId = current || saved || (vendorLocked ? "" : (list.length > 0 ? text(list[0]?.id) : ""));
-      if (nextVendorId && nextVendorId !== current) setVendorId(nextVendorId);
-    } catch (e: any) {
-      setError(String(e?.message || e || "Failed to load vendors."));
-    }
-  }, [vendorId, vendorLocked]);
-
-  const loadMenu = useCallback(async () => {
-    const id = text(vendorId);
-    if (!id) {
-      setMenuItems([]);
-      return;
-    }
-    const res = await fetch(`/api/takeout/menu?vendor_id=${encodeURIComponent(id)}`, { cache: "no-store" });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Failed to load menu.");
-    const nextItems = Array.isArray(body?.items) ? body.items : [];
-    setMenuItems(nextItems);
-    // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
-    // Vendor is accepting only when at least one menu item is orderable in the backend-backed menu state.
-    setAcceptingOrders(nextItems.some((item: MenuItem) => itemOrderable(item)));
+    if (!vendorId) return;
+    refreshAll(vendorId).catch((e) => setError(String(e?.message || e)));
+    const t = setInterval(() => {
+      loadOrders(vendorId, true).catch(() => undefined);
+    }, 8000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  const loadOrders = useCallback(async () => {
-    const id = text(vendorId);
-    if (!id) {
-      setOrders([]);
+  function resetItemForm() {
+    setEditingId("");
+    setItemName("");
+    setItemDescription("");
+    setItemPrice("");
+    setItemAvailable(true);
+    setItemSoldOut(false);
+    setItemFile(null);
+    setItemPreview("");
+  }
+
+  function editItem(m: MenuItem) {
+    setEditingId(clean(m.id || m.menu_item_id));
+    setItemName(m.name || "");
+    setItemDescription(m.description || "");
+    setItemPrice(String(m.price || ""));
+    setItemAvailable(m.is_available !== false);
+    setItemSoldOut(m.sold_out_today === true);
+    setItemFile(null);
+    setItemPreview(clean(m.photo_url || ""));
+  }
+
+  async function saveProfile() {
+    const vid = clean(vendorId);
+    if (!vid) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const logoDataUrl = await fileToDataUrl(logoFile);
+      const j = await postJson("/api/vendor-menu/manage", {
+        action: "profile",
+        vendor_id: vid,
+        name: profileName,
+        accepting_orders: acceptingOrders,
+        logo_data_url: logoDataUrl,
+      });
+      setMessage(j?.warning ? "Profile saved, but image warning: " + j.warning : "Vendor profile saved.");
+      setLogoFile(null);
+      await loadVendorData(vid, true);
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveItem() {
+    const vid = clean(vendorId);
+    if (!vid) return;
+    if (limitReached) {
+      setError("Free-tier menu limit reached: 15 menu items maximum.");
       return;
     }
-    const res = await fetch(`/api/takeout/vendor/orders?vendor_id=${encodeURIComponent(id)}`, { cache: "no-store" });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Failed to load orders.");
-    setOrders(Array.isArray(body?.orders) ? body.orders : []);
-  }, [vendorId]);
-
-  const refreshAll = useCallback(async () => {
-    setLoading(true);
+    setBusy(true);
     setError("");
+    setMessage("");
     try {
-      await Promise.all([loadVendors(), loadMenu(), loadOrders()]);
-      setMessage("Vendor portal refreshed.");
-    } catch (e: any) {
-      setError(String(e?.message || e || "Refresh failed."));
-    } finally {
-      setLoading(false);
-    }
-  }, [loadVendors, loadMenu, loadOrders]);
-
-  useEffect(() => {
-    void refreshAll();
-  }, [refreshAll]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadOrders().catch(() => {});
-    }, REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [loadOrders]);
-
-  useEffect(() => {
-    const activeCount = orders.filter(activeOrder).length;
-    if (lastOrderCount !== null && activeCount > lastOrderCount) {
-      setMessage("New takeout order received. Review the order queue.");
-      try {
-        const audio = new Audio("/audio/jride_audio.mp3");
-        audio.volume = 0.7;
-        void audio.play();
-      } catch (_) {
-        // Browser may block audio until user interaction. Visual alert still works.
-      }
-    }
-    setLastOrderCount(activeCount);
-  }, [orders, lastOrderCount]);
-
-  async function setVendorAccepting(nextValue: boolean) {
-    const id = text(vendorId);
-    if (!id) return setError("Select a vendor first.");
-
-    setSaving(true);
-    setError("");
-    try {
-      const res = await fetch("/api/vendor-menu", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          vendor_id: id,
-          action: "set_vendor_accepting",
-          accepting_orders: nextValue,
-        }),
+      const photoDataUrl = await fileToDataUrl(itemFile);
+      const j = await postJson("/api/vendor-menu/manage", {
+        action: "save_item",
+        vendor_id: vid,
+        id: editingId || null,
+        name: itemName,
+        description: itemDescription,
+        price: itemPrice,
+        is_available: itemAvailable,
+        sold_out_today: itemSoldOut,
+        photo_data_url: photoDataUrl,
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Vendor availability update failed.");
-      setMenuItems(Array.isArray(body?.items) ? body.items : []);
-      setAcceptingOrders(!!body?.accepting_orders);
-      setMessage(nextValue ? "Vendor is now accepting orders." : "Vendor is now closed for new orders.");
+      setMessage(j?.warning ? "Menu saved, but image warning: " + j.warning : editingId ? "Menu item updated." : "Menu item added.");
+      resetItemForm();
+      await loadVendorData(vid, true);
     } catch (e: any) {
-      setError(String(e?.message || e || "Vendor availability update failed."));
+      setError(String(e?.message || e));
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  async function addMenuItem() {
-    const id = text(vendorId);
-    const name = text(form.name);
-    const price = num(form.price);
-    if (!id) return setError("Select a vendor first.");
-    if (!name) return setError("Menu item name is required.");
-    if (price <= 0) return setError("Price must be greater than zero.");
-
-    setSaving(true);
+  async function toggleItem(m: MenuItem, next: Partial<MenuItem>) {
+    const vid = clean(vendorId);
+    if (!vid) return;
+    const actionText = next.sold_out_today === true ? "mark this item as sold out" : next.is_available === false ? "make this item unavailable" : "update this item";
+    if ((next.sold_out_today === true || next.is_available === false) && !window.confirm("Confirm: " + actionText + "?")) return;
+    setBusy(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/vendor-menu-items", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          vendor_id: id,
-          name,
-          description: text(form.description) || null,
-          price,
-          sort_order: num(form.sort_order),
-        }),
+      await postJson("/api/vendor-menu/manage", {
+        action: "toggle_item",
+        vendor_id: vid,
+        id: m.id || m.menu_item_id,
+        is_available: next.is_available ?? m.is_available,
+        sold_out_today: next.sold_out_today ?? m.sold_out_today,
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Failed to add menu item.");
-      setForm({ name: "", description: "", price: "", sort_order: "0" });
-      await loadMenu();
-      setMessage("Menu item added.");
+      await loadVendorData(vid, true);
     } catch (e: any) {
-      setError(String(e?.message || e || "Failed to add menu item."));
+      setError(String(e?.message || e));
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  async function menuAction(item: MenuItem, action: string, price?: string) {
-    const id = text(vendorId);
-    const menu_item_id = menuItemId(item);
-    if (!id || !menu_item_id) return setError("Missing vendor or menu item id.");
-
-    setUpdatingId(menu_item_id + action);
+  async function moveOrder(order: TakeoutOrder, nextStatus: string) {
+    const vid = clean(vendorId);
+    const oid = clean(order.id);
+    if (!vid || !oid) return;
+    if (nextStatus === "cancelled" && !window.confirm("Cancel this takeout order?")) return;
+    setBusy(true);
     setError("");
+    setMessage("");
     try {
-      const payload: any = { vendor_id: id, menu_item_id, action };
-      if (action === "update_price") payload.price = num(price);
-      const res = await fetch("/api/vendor-menu", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
+      await postJson("/api/vendor-orders", {
+        vendor_id: vid,
+        order_id: oid,
+        vendor_status: nextStatus,
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Menu update failed.");
-      setMenuItems(Array.isArray(body?.items) ? body.items : []);
-      setMessage("Menu updated.");
+      setMessage("Order updated to " + statusLabel(nextStatus) + ".");
+      await loadOrders(vid, true);
     } catch (e: any) {
-      setError(String(e?.message || e || "Menu update failed."));
+      setError(String(e?.message || e));
     } finally {
-      setUpdatingId(null);
+      setBusy(false);
     }
   }
-
-  async function updateOrderStatus(order: TakeoutOrder, nextStatus: string) {
-    const id = orderId(order);
-    const vendor_id = text(order.vendor_id || vendorId);
-    if (!id || !vendor_id) return setError("Missing order or vendor id.");
-
-    setUpdatingId(id + nextStatus);
-    setError("");
-    try {
-      const res = await fetch("/api/takeout/vendor/orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ order_id: id, vendor_id, vendor_status: nextStatus }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body?.ok === false) throw new Error(body?.message || body?.error || "Order update failed.");
-      await loadOrders();
-      setMessage("Order status updated.");
-    } catch (e: any) {
-      setError(String(e?.message || e || "Order update failed."));
-    } finally {
-      setUpdatingId(null);
-    }
-  }
-
-  const visibleOrders = useMemo(() => {
-    return orders
-      .filter((order) => (showCompleted ? true : activeOrder(order)))
-      .sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
-  }, [orders, showCompleted]);
-
-  const stats = useMemo(() => {
-    const active = orders.filter(activeOrder).length;
-    const completed = orders.filter((o) => orderStatus(o) === "completed").length;
-    const gross = visibleOrders.reduce((sum, order) => sum + orderSubtotal(order), 0);
-    const menuAvailable = menuItems.filter(itemOrderable).length;
-    const soldOut = menuItems.filter(itemSoldOut).length;
-    return { active, completed, gross, menuAvailable, soldOut };
-  }, [orders, visibleOrders, menuItems]);
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-4">
-        <section className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wide text-emerald-700">JRide Takeout</div>
-              <h1 className="text-2xl font-bold">Vendor Portal</h1>
-              <p className="mt-1 max-w-3xl text-sm text-slate-600">
-                Manage vendor menu, daily availability, order queue, and earnings readiness. This page uses takeout vendor APIs only and does not call ride dispatch, fare proposal, or trip lifecycle routes.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <a href="/vendor-orders" className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Classic vendor orders</a>
-              <a href="/takeout" className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Customer takeout page</a>
-              <button type="button" onClick={refreshAll} disabled={loading} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                {loading ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+          <div>
+            <h1 className="text-2xl font-semibold">Vendor Portal</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Manage vendor profile, logo, up to 15 menu items, and takeout orders only.
+            </p>
           </div>
-
-          {vendorLocked ? (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Logged in as: <span className="font-semibold">{selectedVendor ? (text(selectedVendor.display_name) || text(selectedVendor.email) || vendorId) : vendorId}</span>. Vendor context is locked from vendor login.
-            </div>
-          ) : null}
-
-          <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-[2fr_1fr]">
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium">Vendor ID</span>
-              <input value={vendorId} onChange={(e) => setVendorId(e.target.value)} disabled={vendorLocked} placeholder="Paste vendor UUID" className="w-full rounded-lg border px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500" />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium">Known vendors</span>
-              <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} disabled={vendorLocked} className="w-full rounded-lg border px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500">
-                <option value="">Select vendor</option>
-                {vendors.map((vendor) => {
-                  const id = text(vendor.id);
-                  return <option key={id} value={id}>{text(vendor.display_name) || text(vendor.email) || id}</option>;
-                })}
-              </select>
-            </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="min-w-72 rounded-xl border px-3 py-2 text-sm"
+              value={vendorId}
+              onChange={(e) => {
+                setVendorId(e.target.value);
+                resetItemForm();
+                setMessage("");
+                setError("");
+              }}
+            >
+              <option value="">Select vendor</option>
+              {vendors.map((v) => {
+                const id = vendorKey(v);
+                return (
+                  <option key={id} value={id}>
+                    {vendorLabel(v)}{v.town ? " - " + v.town : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <button
+              type="button"
+              onClick={() => refreshAll().catch((e) => setError(String(e?.message || e)))}
+              className="rounded-xl border px-4 py-2 text-sm hover:bg-slate-50"
+              disabled={!vendorId || busy}
+            >
+              Refresh
+            </button>
           </div>
+        </div>
 
-          {selectedVendor ? (
-            <div className="mt-2 text-xs text-slate-500">Selected: {text(selectedVendor.display_name) || "Vendor"} {selectedVendor.email ? `- ${selectedVendor.email}` : ""}</div>
-          ) : vendorId ? (
-            <div className="mt-2 text-xs text-amber-700">Vendor ID loaded from login bridge. Refresh vendors if the vendor name is not shown.</div>
-          ) : null}
+        {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
+        {message ? <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div> : null}
 
-          <div className="mt-4 rounded-xl border bg-slate-50 p-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="text-sm font-semibold">Accepting orders</div>
-                <div className="text-xs text-slate-500">Backend-backed readiness switch. Closing the vendor makes today&apos;s menu unavailable and blocks new takeout orders. Existing orders remain processable.</div>
+        {!vendorId ? (
+          <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <section className="rounded-2xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Vendor profile</h2>
+                  <p className="text-xs text-slate-500">Logo, name, and open/closed status.</p>
+                </div>
+                <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700")}>{acceptingOrders ? "Open" : "Closed"}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setVendorAccepting(!acceptingOrders)}
-                disabled={saving || !vendorId}
-                className={[
-                  "rounded-full border px-4 py-2 text-sm font-semibold",
-                  acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-800",
-                  saving ? "opacity-50" : "",
-                ].join(" ")}
-              >
-                {saving ? "Saving..." : acceptingOrders ? "Open / accepting orders" : "Closed / pause orders"}
-              </button>
-            </div>
-          </div>
 
-          {message ? <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</div> : null}
-          {error ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</div> : null}
-
-          <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <div className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">Active orders</div><div className="text-2xl font-bold">{stats.active}</div></div>
-            <div className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">Completed</div><div className="text-2xl font-bold">{stats.completed}</div></div>
-            <div className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">Shown gross</div><div className="text-lg font-bold">{money(stats.gross)}</div></div>
-            <div className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">Orderable items</div><div className="text-2xl font-bold">{stats.menuAvailable}</div></div>
-            <div className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">Sold out today</div><div className="text-2xl font-bold">{stats.soldOut}</div></div>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold">Menu Manager</h2>
-                <p className="text-sm text-slate-600">Add items, edit prices, mark unavailable, or mark sold out for today.</p>
+              <div className="mt-4 flex items-center gap-3">
+                <div className="h-20 w-20 overflow-hidden rounded-2xl border bg-slate-100">
+                  {logoPreview ? <img src={logoPreview} alt="Vendor logo" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">Logo</div>}
+                </div>
+                <div className="min-w-0 text-sm">
+                  <div className="font-semibold">{profile?.name || profileName || selectedVendor ? vendorLabel(selectedVendor as any) : "Vendor"}</div>
+                  <div className="text-xs text-slate-500">{profile?.town || selectedVendor?.town || "Town not set"}</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Photo upload is optional, but recommended.</div>
+                </div>
               </div>
-              <button type="button" onClick={() => void loadMenu().catch((e: any) => setError(String(e?.message || e)))} className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Refresh menu</button>
-            </div>
 
-            <div className="mt-4 rounded-xl border bg-slate-50 p-3">
-              <div className="mb-2 text-sm font-semibold">Add menu item</div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-                <input value={form.name} onChange={(e) => setForm((x) => ({ ...x, name: e.target.value }))} placeholder="Item name" className="rounded-lg border px-3 py-2 text-sm" />
-                <input value={form.price} onChange={(e) => setForm((x) => ({ ...x, price: e.target.value }))} placeholder="Price" className="rounded-lg border px-3 py-2 text-sm" />
-                <input value={form.sort_order} onChange={(e) => setForm((x) => ({ ...x, sort_order: e.target.value }))} placeholder="Sort" className="rounded-lg border px-3 py-2 text-sm" />
-                <button type="button" onClick={addMenuItem} disabled={saving} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Adding..." : "Add item"}</button>
-              </div>
-              <textarea value={form.description} onChange={(e) => setForm((x) => ({ ...x, description: e.target.value }))} placeholder="Description" className="mt-2 w-full rounded-lg border px-3 py-2 text-sm" rows={2} />
-            </div>
+              <label className="mt-4 block text-xs font-medium text-slate-700">Vendor name</label>
+              <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Restaurant or vendor name" />
 
-            <div className="mt-4 space-y-2">
-              {menuItems.length === 0 ? (
-                <div className="rounded-xl border bg-white p-4 text-sm text-slate-500">No menu items loaded for this vendor.</div>
-              ) : (
-                menuItems.map((item) => {
-                  const id = menuItemId(item);
-                  const available = itemAvailable(item);
-                  const sold = itemSoldOut(item);
-                  const orderable = itemOrderable(item);
-                  const disabled = !!updatingId;
-                  return (
-                    <div key={id} className="rounded-xl border bg-white p-3">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                          <div className="font-semibold">{text(item.name) || "Unnamed item"}</div>
-                          <div className="text-xs text-slate-500">{text(item.description) || "No description"}</div>
-                          <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                            <span className="rounded-full border bg-slate-50 px-2 py-1">{money(item.price)}</span>
-                            <span className={["rounded-full border px-2 py-1", orderable ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"].join(" ")}>{orderable ? "Orderable" : "Not orderable"}</span>
-                            {sold ? <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">Sold out</span> : null}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button type="button" disabled={disabled} onClick={() => menuAction(item, "toggle_available")} className={itemButtonClass(available)}>{available ? "Set unavailable" : "Set available"}</button>
-                          <button type="button" disabled={disabled} onClick={() => menuAction(item, "toggle_soldout")} className={itemButtonClass(sold)}>{sold ? "Clear sold out" : "Sold out"}</button>
-                          <button type="button" disabled={disabled} onClick={() => {
-                            const next = window.prompt("New price", String(num(item.price).toFixed(2)));
-                            if (next !== null) void menuAction(item, "update_price", next);
-                          }} className="rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50">Edit price</button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+              <label className="mt-3 block text-xs font-medium text-slate-700">Restaurant logo</label>
+              <input
+                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  setLogoFile(f);
+                  if (f) setLogoPreview(URL.createObjectURL(f));
+                }}
+              />
 
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold">Order Queue</h2>
-                <p className="text-sm text-slate-600">Process live takeout orders without using ride dispatch routes. New active orders trigger a visual alert and sound when the browser allows audio.</p>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" checked={showCompleted} onChange={(e) => setShowCompleted(e.target.checked)} />
-                Show completed
+              <label className="mt-4 flex items-center justify-between rounded-xl border bg-slate-50 p-3 text-sm">
+                <span>
+                  <span className="block font-medium">Accepting orders</span>
+                  <span className="block text-xs text-slate-500">Closed vendors are blocked from new orders.</span>
+                </span>
+                <input type="checkbox" checked={acceptingOrders} onChange={(e) => setAcceptingOrders(e.target.checked)} />
               </label>
-            </div>
 
-            {!acceptingOrders ? (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                Vendor is closed for new orders. Existing orders remain visible and can still be completed.
+              <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400">
+                Save profile
+              </button>
+            </section>
+
+            <section className="rounded-2xl border bg-white p-4 shadow-sm lg:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Menu manager</h2>
+                  <p className="text-xs text-slate-500">Free-tier limit: {usedCount}/{MAX_ITEMS} menu items used.</p>
+                </div>
+                <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", limitReached ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-300 bg-slate-50 text-slate-700")}>{limitReached ? "Limit reached" : `${MAX_ITEMS - usedCount} slots left`}</span>
               </div>
-            ) : null}
 
-            <div className="mt-4 space-y-3">
-              {visibleOrders.length === 0 ? (
-                <div className="rounded-xl border bg-white p-4 text-sm text-slate-500">No orders in this view.</div>
-              ) : (
-                visibleOrders.map((order) => {
-                  const id = orderId(order);
-                  const status = orderStatus(order);
-                  const disabled = !!updatingId;
-                  const items = Array.isArray(order.items) ? order.items : [];
-                  return (
-                    <div key={id || orderCode(order)} className="rounded-xl border bg-white p-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="font-bold">{orderCode(order)}</div>
-                            <span className={["rounded-full border px-2 py-1 text-xs font-semibold", statusClass(status)].join(" ")}>{displayStatus(status)}</span>
-                          </div>
-                          <div className="mt-1 text-sm text-slate-700">{text(order.customer_name || order.passenger_name) || "Customer"}</div>
-                          <div className="text-xs text-slate-500">Deliver to: {text(order.to_label || order.dropoff_label) || "-"}</div>
-                          <div className="text-xs text-slate-400">Created: {text(order.created_at) || "-"}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-slate-500">Subtotal</div>
-                          <div className="text-lg font-bold">{money(orderSubtotal(order))}</div>
-                        </div>
+              <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 md:grid-cols-6">
+                <div className="md:col-span-2">
+                  <label className="text-xs font-medium text-slate-700">Menu name</label>
+                  <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemName} onChange={(e) => setItemName(e.target.value)} disabled={limitReached} placeholder="Example: Chicken adobo" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-700">Price</label>
+                  <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemPrice} onChange={(e) => setItemPrice(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached} inputMode="decimal" placeholder="0.00" />
+                </div>
+                <div className="md:col-span-3">
+                  <label className="text-xs font-medium text-slate-700">Photo</label>
+                  <input
+                    className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={limitReached}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setItemFile(f);
+                      if (f) setItemPreview(URL.createObjectURL(f));
+                    }}
+                  />
+                </div>
+                <div className="md:col-span-6">
+                  <label className="text-xs font-medium text-slate-700">Description</label>
+                  <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} disabled={limitReached} placeholder="Optional item details" />
+                </div>
+                <div className="flex flex-wrap items-center gap-4 md:col-span-6">
+                  <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemAvailable} onChange={(e) => setItemAvailable(e.target.checked)} disabled={limitReached} /> Available</label>
+                  <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemSoldOut} onChange={(e) => setItemSoldOut(e.target.checked)} disabled={limitReached} /> Sold out today</label>
+                  {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
+                  <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400">{editingId ? "Update item" : "Add item"}</button>
+                  <button type="button" onClick={resetItemForm} className="rounded-xl border px-4 py-2 text-sm hover:bg-white">Clear</button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {menu.length === 0 ? (
+                  <div className="rounded-xl border bg-white p-4 text-sm text-slate-600">No menu items yet.</div>
+                ) : (
+                  menu.map((m) => (
+                    <div key={m.id || m.menu_item_id || m.name} className="overflow-hidden rounded-2xl border bg-white">
+                      <div className="h-32 bg-slate-100">
+                        {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">No photo</div>}
                       </div>
-
-                      <div className="mt-3 rounded-xl border bg-slate-50 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Items</div>
-                        {items.length === 0 ? <div className="mt-2 text-sm text-slate-500">No item snapshot.</div> : null}
-                        {items.map((item, idx) => (
-                          <div key={idx} className="mt-2 flex items-center justify-between gap-3 text-sm">
-                            <div>
-                              <div className="font-medium">{text(item.name) || "Item"}</div>
-                              <div className="text-xs text-slate-500">Qty {Math.max(1, num(item.quantity) || 1)} x {money(item.price)}</div>
-                            </div>
-                            <div className="font-semibold">{money(num(item.price) * Math.max(1, num(item.quantity) || 1))}</div>
+                      <div className="space-y-2 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-semibold">{m.name}</div>
+                            <div className="text-sm font-medium text-slate-700">{money(m.price)}</div>
                           </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {STATUS_OPTIONS.map((next) => (
-                          <button key={next} type="button" disabled={disabled || status === next} onClick={() => updateOrderStatus(order, next)} className="rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
-                            {displayStatus(next)}
-                          </button>
-                        ))}
-                        {order.booking_code ? <a href={`/takeout/orders/${encodeURIComponent(order.booking_code)}/track`} className="rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50">Track</a> : null}
+                          <button type="button" className="rounded-lg border px-2 py-1 text-xs hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
+                        </div>
+                        {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <span className={cls("rounded-full border px-2 py-1", m.is_available ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-slate-50 text-slate-600")}>{m.is_available ? "Available" : "Unavailable"}</span>
+                          {m.sold_out_today ? <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-rose-700">Sold out</span> : null}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" className="rounded-lg border px-2 py-2 text-xs hover:bg-slate-50" onClick={() => toggleItem(m, { is_available: !m.is_available })}>{m.is_available ? "Make unavailable" : "Make available"}</button>
+                          <button type="button" className="rounded-lg border px-2 py-2 text-xs hover:bg-slate-50" onClick={() => toggleItem(m, { sold_out_today: !m.sold_out_today })}>{m.sold_out_today ? "Clear sold out" : "Mark sold out"}</button>
+                        </div>
                       </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border bg-white p-4 shadow-sm lg:col-span-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Order queue</h2>
+                  <p className="text-xs text-slate-500">Large simple controls for vendor processing.</p>
+                </div>
+                <div className="text-xs text-slate-500">Active: {activeOrders.length} | History: {historyOrders.length}</div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold">Active and pickup-ready</h3>
+                  <div className="space-y-2">
+                    {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
+                    {activeOrders.map((o) => {
+                      const s = clean(o.vendor_status).toLowerCase() || "preparing";
+                      return (
+                        <div key={o.id || o.booking_code || Math.random()} className="rounded-2xl border p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <div className="font-semibold">{o.booking_code || o.id}</div>
+                              <div className="text-sm text-slate-600">{o.customer_name || "Customer"}</div>
+                              <div className="text-xs text-slate-500">{o.to_label || "No address label"}</div>
+                            </div>
+                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
+                          </div>
+                          <div className="mt-2 text-sm font-medium">Subtotal: {money(o.takeout_items_subtotal)}</div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" disabled={s !== "preparing" || busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Pickup ready</button>
+                            <button type="button" disabled={s !== "pickup_ready" || busy} onClick={() => moveOrder(o, "completed")} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Completed</button>
+                            <button type="button" disabled={busy || s === "completed" || s === "cancelled"} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold">Completed and cancelled history</h3>
+                  <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
+                    {historyOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No completed or cancelled orders.</div> : null}
+                    {historyOrders.map((o) => (
+                      <div key={o.id || o.booking_code || Math.random()} className="rounded-xl border bg-slate-50 p-3 text-sm">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-semibold">{o.booking_code || o.id}</span>
+                          <span className={cls("rounded-full border px-2 py-0.5 text-xs", orderClass(o.vendor_status))}>{statusLabel(o.vendor_status)}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">{o.customer_name || "Customer"} | {money(o.takeout_items_subtotal)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+        )}
       </div>
     </main>
   );
