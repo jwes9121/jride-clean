@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * app/ride/page.tsx
@@ -58,7 +58,10 @@ const TOWN_GEO: Record<
   },
 };
 
-const LOCAL_LANDMARKS: Record<string, Array<{ name: string; center: [number, number] }>> = {
+const LOCAL_LANDMARKS: Record<
+  string,
+  Array<{ name: string; center: [number, number] }>
+> = {
   hingyon: [
     { name: "Hingyon Municipal Hall", center: [121.102294, 16.865595] },
     { name: "Hingyon Town Proper", center: [121.102294, 16.865595] },
@@ -180,11 +183,15 @@ function normUpper(v: unknown): string {
 }
 
 function money(v?: number | null): string {
-  return typeof v === "number" && Number.isFinite(v) ? `PHP ${v.toFixed(0)}` : "--";
+  return typeof v === "number" && Number.isFinite(v)
+    ? `PHP ${v.toFixed(0)}`
+    : "--";
 }
 
 function km(v?: number | null): string {
-  return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(1)} km` : "--";
+  return typeof v === "number" && Number.isFinite(v)
+    ? `${v.toFixed(1)} km`
+    : "--";
 }
 
 function fmtDate(v?: string | null): string {
@@ -200,7 +207,6 @@ function fmtDate(v?: string | null): string {
     minute: "2-digit",
   });
 }
-
 
 function normalizePassengerNameInput(v: string): string {
   return norm(v).replace(/\s+/g, " ");
@@ -252,6 +258,20 @@ function isRealBookingCode(code: string | null | undefined): boolean {
   return typeof code === "string" && code.trim().startsWith("JR-");
 }
 
+function isTrackableBookingStatus(status: string | null | undefined): boolean {
+  const s = normStatus(status || "");
+  if (!s) return false;
+  return [
+    "assigned",
+    "accepted",
+    "fare_proposed",
+    "ready",
+    "on_the_way",
+    "arrived",
+    "on_trip",
+  ].includes(s);
+}
+
 function storedGet(): string {
   if (typeof window === "undefined") return "";
   try {
@@ -283,12 +303,20 @@ function readRecentTrips(): RecentTrip[] {
     return parsed
       .filter((it: any) => it && typeof it.booking_code === "string")
       .filter((it: any) => {
-        const when = new Date(String(it.saved_at || it.completed_at || it.updated_at || 0)).getTime();
+        const when = new Date(
+          String(it.saved_at || it.completed_at || it.updated_at || 0),
+        ).getTime();
         return Number.isFinite(when) && now - when <= 7 * 24 * 60 * 60 * 1000;
       })
       .sort((a: any, b: any) => {
-        const ta = new Date(String(a.saved_at || a.completed_at || a.updated_at || 0)).getTime() || 0;
-        const tb = new Date(String(b.saved_at || b.completed_at || b.updated_at || 0)).getTime() || 0;
+        const ta =
+          new Date(
+            String(a.saved_at || a.completed_at || a.updated_at || 0),
+          ).getTime() || 0;
+        const tb =
+          new Date(
+            String(b.saved_at || b.completed_at || b.updated_at || 0),
+          ).getTime() || 0;
         return tb - ta;
       })
       .slice(0, 10);
@@ -305,7 +333,9 @@ function saveRecentTrips(items: RecentTrip[]) {
 }
 
 function upsertRecentTrip(item: RecentTrip) {
-  const existing = readRecentTrips().filter((it) => it.booking_code !== item.booking_code);
+  const existing = readRecentTrips().filter(
+    (it) => it.booking_code !== item.booking_code,
+  );
   saveRecentTrips([item, ...existing]);
 }
 
@@ -328,7 +358,9 @@ function localLandmarkMatches(q: string, townName: string): GeoFeature[] {
   if (!list.length) return [];
 
   const toks = query.split(/\s+/).filter(Boolean);
-  const hits = list.filter((it) => toks.every((t) => it.name.toLowerCase().includes(t)));
+  const hits = list.filter((it) =>
+    toks.every((t) => it.name.toLowerCase().includes(t)),
+  );
 
   return hits.map((it) => ({
     id: `local:${norm(townName).toLowerCase()}:${it.name}`,
@@ -346,14 +378,18 @@ async function getJson(url: string) {
 
 async function getJsonAuth(url: string) {
   const token = getToken();
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
   const r = await fetch(url, { method: "GET", headers, cache: "no-store" });
   const j = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, json: j };
 }
 
 async function postJson(url: string, body: unknown, auth = false) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
   if (auth) {
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -390,9 +426,21 @@ function statusMessage(statusRaw: unknown): string {
   return "Updating trip status...";
 }
 
-function statusTone(statusRaw: unknown): "blue" | "amber" | "green" | "red" | "slate" {
+function statusTone(
+  statusRaw: unknown,
+): "blue" | "amber" | "green" | "red" | "slate" {
   const st = normStatus(statusRaw);
-  if (["searching", "assigned", "accepted", "ready", "on_the_way", "on_trip"].includes(st)) return "blue";
+  if (
+    [
+      "searching",
+      "assigned",
+      "accepted",
+      "ready",
+      "on_the_way",
+      "on_trip",
+    ].includes(st)
+  )
+    return "blue";
   if (st === "fare_proposed" || st === "arrived") return "amber";
   if (st === "completed") return "green";
   if (st === "cancelled" || st === "rejected") return "red";
@@ -432,8 +480,8 @@ function StatusStepper({ status }: { status: string }) {
             now
               ? "border-emerald-300 bg-emerald-50"
               : done
-              ? "border-slate-300 bg-slate-50"
-              : "border-slate-200 bg-white",
+                ? "border-slate-300 bg-slate-50"
+                : "border-slate-200 bg-white",
           ].join(" ");
 
           const bubbleClass = [
@@ -441,13 +489,17 @@ function StatusStepper({ status }: { status: string }) {
             now
               ? "bg-emerald-500 text-white"
               : done
-              ? "bg-slate-800 text-white"
-              : "border border-slate-200 bg-slate-100 text-slate-500",
+                ? "bg-slate-800 text-white"
+                : "border border-slate-200 bg-slate-100 text-slate-500",
           ].join(" ");
 
           const labelClass = [
             "mt-2 block text-[11px] leading-tight",
-            now ? "font-semibold text-slate-900" : done ? "text-slate-700" : "text-slate-400",
+            now
+              ? "font-semibold text-slate-900"
+              : done
+                ? "text-slate-700"
+                : "text-slate-400",
           ].join(" ");
 
           return (
@@ -463,8 +515,9 @@ function StatusStepper({ status }: { status: string }) {
 }
 
 export default function RidePage() {
-  const MAPBOX_TOKEN =
-    (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "") as string;
+  const MAPBOX_TOKEN = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+    process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+    "") as string;
 
   const [authLoading, setAuthLoading] = React.useState(true);
   const [authed, setAuthed] = React.useState(false);
@@ -480,7 +533,9 @@ export default function RidePage() {
   const [dropLat, setDropLat] = React.useState("");
   const [dropLng, setDropLng] = React.useState("");
 
-  const [vehicleType, setVehicleType] = React.useState<"tricycle" | "motorcycle">("tricycle");
+  const [vehicleType, setVehicleType] = React.useState<
+    "tricycle" | "motorcycle"
+  >("tricycle");
   const [passengerCount, setPassengerCount] = React.useState("1");
 
   const [busy, setBusy] = React.useState(false);
@@ -489,8 +544,12 @@ export default function RidePage() {
   const [canInfo, setCanInfo] = React.useState<CanBookInfo | null>(null);
   const [canInfoErr, setCanInfoErr] = React.useState("");
 
-  const [geoPermission, setGeoPermission] = React.useState<"unknown" | "granted" | "denied">("unknown");
-  const [geoInsideIfugao, setGeoInsideIfugao] = React.useState<boolean | null>(null);
+  const [geoPermission, setGeoPermission] = React.useState<
+    "unknown" | "granted" | "denied"
+  >("unknown");
+  const [geoInsideIfugao, setGeoInsideIfugao] = React.useState<boolean | null>(
+    null,
+  );
   const [geoLat, setGeoLat] = React.useState<number | null>(null);
   const [geoLng, setGeoLng] = React.useState<number | null>(null);
   const [geoGateErr, setGeoGateErr] = React.useState("");
@@ -501,7 +560,9 @@ export default function RidePage() {
   const preBookingSearchRef = React.useRef(false);
   const searchAbortRef = React.useRef(false);
   const [liveStatus, setLiveStatus] = React.useState("");
-  const [liveBooking, setLiveBooking] = React.useState<TrackPayload | null>(null);
+  const [liveBooking, setLiveBooking] = React.useState<TrackPayload | null>(
+    null,
+  );
   const [liveErr, setLiveErr] = React.useState("");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const [fareBusy, setFareBusy] = React.useState(false);
@@ -515,7 +576,8 @@ export default function RidePage() {
   const [ratingCheckLoading, setRatingCheckLoading] = React.useState(false);
   const [ratingSubmitting, setRatingSubmitting] = React.useState(false);
   const [ratingErr, setRatingErr] = React.useState("");
-  const [ratingInfo, setRatingInfo] = React.useState<RatingCheckResponse | null>(null);
+  const [ratingInfo, setRatingInfo] =
+    React.useState<RatingCheckResponse | null>(null);
   const [ratingValue, setRatingValue] = React.useState(5);
   const [ratingFeedback, setRatingFeedback] = React.useState("");
   const [ratingThanks, setRatingThanks] = React.useState(false);
@@ -528,12 +590,20 @@ export default function RidePage() {
   const [geoFrom, setGeoFrom] = React.useState<GeoFeature[]>([]);
   const [geoTo, setGeoTo] = React.useState<GeoFeature[]>([]);
   const [geoErr, setGeoErr] = React.useState("");
-  const [activeGeoField, setActiveGeoField] = React.useState<"from" | "to" | null>(null);
-  const fromDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeGeoField, setActiveGeoField] = React.useState<
+    "from" | "to" | null
+  >(null);
+  const fromDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const toDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const [showMapPicker, setShowMapPicker] = React.useState(true);
-  const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">("pickup");
+  const [pickMode, setPickMode] = React.useState<"pickup" | "dropoff">(
+    "pickup",
+  );
   const pickModeRef = React.useRef<"pickup" | "dropoff">(pickMode);
   React.useEffect(() => {
     pickModeRef.current = pickMode;
@@ -548,9 +618,17 @@ export default function RidePage() {
   const ROUTE_SOURCE_ID = "jride_route_source";
   const ROUTE_LAYER_ID = "jride_route_line";
   const routeAbortRef = React.useRef<AbortController | null>(null);
-  const routeDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [routeInfo, setRouteInfo] = React.useState<{ distance_m: number; duration_s: number } | null>(null);
-  const routeGeoRef = React.useRef<any>({ type: "FeatureCollection", features: [] });
+  const routeDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [routeInfo, setRouteInfo] = React.useState<{
+    distance_m: number;
+    duration_s: number;
+  } | null>(null);
+  const routeGeoRef = React.useRef<any>({
+    type: "FeatureCollection",
+    features: [],
+  });
 
   const pickupTouchedRef = React.useRef(false);
   const townAppliedRef = React.useRef("");
@@ -564,7 +642,10 @@ export default function RidePage() {
   const pilotTownAllowed = isPilotTown(town);
 
   const unverifiedBlocked =
-    !verified && (nightGate || normUpper(canInfo?.code).includes("UNVERIFIED") || normUpper(canInfo?.code).includes("VERIFY"));
+    !verified &&
+    (nightGate ||
+      normUpper(canInfo?.code).includes("UNVERIFIED") ||
+      normUpper(canInfo?.code).includes("VERIFY"));
 
   const walletBlocked = walletOk === false || walletLocked;
 
@@ -605,7 +686,7 @@ export default function RidePage() {
           j?.data?.user?.name ??
           j?.data?.user?.full_name ??
           j?.name ??
-          ""
+          "",
       );
     }
 
@@ -631,7 +712,8 @@ export default function RidePage() {
         } else {
           const recent = readRecentTrips();
           const fallbackName = norm(recent?.[0]?.passenger_name ?? "");
-          if (fallbackName) setPassengerName((prev) => norm(prev) || fallbackName);
+          if (fallbackName)
+            setPassengerName((prev) => norm(prev) || fallbackName);
         }
       } catch {
         if (!alive) return;
@@ -639,7 +721,8 @@ export default function RidePage() {
         setAccountName("");
         const recent = readRecentTrips();
         const fallbackName = norm(recent?.[0]?.passenger_name ?? "");
-        if (fallbackName) setPassengerName((prev) => norm(prev) || fallbackName);
+        if (fallbackName)
+          setPassengerName((prev) => norm(prev) || fallbackName);
       } finally {
         if (alive) setAuthLoading(false);
       }
@@ -651,12 +734,16 @@ export default function RidePage() {
   }, []);
 
   function gotoLogin() {
-    if (typeof window !== "undefined") window.location.href = "/passenger-login";
+    if (typeof window !== "undefined")
+      window.location.href = "/passenger-login";
   }
 
   async function handleLogout() {
     try {
-      await fetch("/api/public/auth/logout", { method: "POST", cache: "no-store" });
+      await fetch("/api/public/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+      });
     } catch {}
     if (typeof window !== "undefined") {
       try {
@@ -684,7 +771,8 @@ export default function RidePage() {
   }, [town]);
 
   React.useEffect(() => {
-    if (!Number.isFinite(geoLat as any) || !Number.isFinite(geoLng as any)) return;
+    if (!Number.isFinite(geoLat as any) || !Number.isFinite(geoLng as any))
+      return;
     if (pickupTouchedRef.current) return;
     const isDefault = pickupLat === "16.7999" && pickupLng === "121.1175";
     if (isDefault) {
@@ -694,7 +782,8 @@ export default function RidePage() {
   }, [geoLat, geoLng, pickupLat, pickupLng]);
 
   React.useEffect(() => {
-    if (pickupLat !== "16.7999" || pickupLng !== "121.1175") pickupTouchedRef.current = true;
+    if (pickupLat !== "16.7999" || pickupLng !== "121.1175")
+      pickupTouchedRef.current = true;
   }, [pickupLat, pickupLng]);
 
   React.useEffect(() => {
@@ -710,7 +799,13 @@ export default function RidePage() {
         sp.delete("code");
         sp.delete("booking_code");
         const clean = sp.toString();
-        window.history.replaceState({}, "", clean ? `${window.location.pathname}?${clean}` : window.location.pathname);
+        window.history.replaceState(
+          {},
+          "",
+          clean
+            ? `${window.location.pathname}?${clean}`
+            : window.location.pathname,
+        );
       }
       const f = norm(sp.get("from") || "");
       const t = norm(sp.get("to") || "");
@@ -736,7 +831,7 @@ export default function RidePage() {
   }, []);
 
   React.useEffect(() => {
-    if (activeCode) return;
+    if (activeCode || busy || preBookingSearchRef.current) return;
     let alive = true;
 
     (async () => {
@@ -745,8 +840,19 @@ export default function RidePage() {
         if (!token) return;
         const resp = await getJsonAuth("/api/passenger/latest-booking");
         if (!resp.ok) return;
-        const code = norm(resp.json?.booking_code || "");
-        if (isRealBookingCode(code) && alive) {
+
+        const payload = resp.json?.booking || resp.json || {};
+        const code = norm(payload?.booking_code || "");
+        const status = normStatus(payload?.status || "");
+
+        // Strict recovery rule: never restore a booking unless the API proves it is a real active ride.
+        // This prevents old completed/cancelled/latest rows from opening the tracker during pre-booking search.
+        if (
+          isRealBookingCode(code) &&
+          isTrackableBookingStatus(status) &&
+          alive &&
+          !preBookingSearchRef.current
+        ) {
           storedSet(code);
           setActiveCode(code);
         }
@@ -756,10 +862,10 @@ export default function RidePage() {
     return () => {
       alive = false;
     };
-  }, [activeCode]);
+  }, [activeCode, busy, preBookingSearch]);
 
   React.useEffect(() => {
-    if (!activeCode) return;
+    if (!activeCode || preBookingSearch) return;
     if (!isRealBookingCode(activeCode)) {
       storedSet("");
       setActiveCode("");
@@ -783,7 +889,11 @@ export default function RidePage() {
       setLiveStatus("");
       setLiveErr("");
       setFareBusy(false);
-      setResult(reason);
+      setResult(
+        preBookingSearchRef.current
+          ? "Searching for available drivers..."
+          : reason,
+      );
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         url.searchParams.delete("code");
@@ -803,11 +913,15 @@ export default function RidePage() {
           return;
         }
 
-        const resp = await getJsonAuth(`/api/passenger/track?booking_code=${encodeURIComponent(activeCode)}`);
+        const resp = await getJsonAuth(
+          `/api/passenger/track?booking_code=${encodeURIComponent(activeCode)}`,
+        );
 
         if (!resp.ok) {
           const errCode = norm(resp.json?.error || "");
-          const errMsg = norm(resp.json?.message || resp.json?.error || `HTTP ${resp.status}`);
+          const errMsg = norm(
+            resp.json?.message || resp.json?.error || `HTTP ${resp.status}`,
+          );
           const terminalStatus = normStatus(resp.json?.status || "");
           const isTerminalResponse =
             resp.status === 409 &&
@@ -824,9 +938,18 @@ export default function RidePage() {
               ...(liveBooking || {}),
               booking_code: norm(resp.json?.booking_code || activeCode || ""),
               status: terminalStatus,
-              completed_at: norm(resp.json?.completed_at || liveBooking?.completed_at || ""),
-              cancelled_at: norm(resp.json?.cancelled_at || liveBooking?.cancelled_at || ""),
-              updated_at: norm(resp.json?.completed_at || resp.json?.cancelled_at || liveBooking?.updated_at || ""),
+              completed_at: norm(
+                resp.json?.completed_at || liveBooking?.completed_at || "",
+              ),
+              cancelled_at: norm(
+                resp.json?.cancelled_at || liveBooking?.cancelled_at || "",
+              ),
+              updated_at: norm(
+                resp.json?.completed_at ||
+                  resp.json?.cancelled_at ||
+                  liveBooking?.updated_at ||
+                  "",
+              ),
             } as TrackPayload;
 
             setLiveBooking(terminalBooking);
@@ -838,7 +961,11 @@ export default function RidePage() {
               pollRef.current = null;
             }
 
-            if ((terminalStatus === "cancelled" || terminalStatus === "rejected") && pollRef.current) {
+            if (
+              (terminalStatus === "cancelled" ||
+                terminalStatus === "rejected") &&
+              pollRef.current
+            ) {
               clearInterval(pollRef.current);
               pollRef.current = null;
             }
@@ -888,7 +1015,12 @@ export default function RidePage() {
 
   React.useEffect(() => {
     const st = normStatus(liveStatus);
-    if (!activeCode || !liveBooking || !["completed", "cancelled", "rejected"].includes(st)) return;
+    if (
+      !activeCode ||
+      !liveBooking ||
+      !["completed", "cancelled", "rejected"].includes(st)
+    )
+      return;
 
     const b = liveBooking;
 
@@ -929,8 +1061,15 @@ export default function RidePage() {
 
     upsertRecentTrip(item);
     setRecentTrips(readRecentTrips());
-  }, [activeCode, liveBooking, liveStatus, passengerName, fromLabel, toLabel, town]);
-
+  }, [
+    activeCode,
+    liveBooking,
+    liveStatus,
+    passengerName,
+    fromLabel,
+    toLabel,
+    town,
+  ]);
 
   React.useEffect(() => {
     if (normStatus(liveStatus) !== "completed" || !activeCode) {
@@ -1003,7 +1142,10 @@ export default function RidePage() {
           zoom: 14,
         });
 
-        mapRef.current.addControl(new MapboxGL.NavigationControl(), "top-right");
+        mapRef.current.addControl(
+          new MapboxGL.NavigationControl(),
+          "top-right",
+        );
 
         mapRef.current.on("load", () => {
           try {
@@ -1039,14 +1181,18 @@ export default function RidePage() {
         const dlat = toNum(dropLat, 16.7999);
 
         if (!pickupMarkerRef.current) {
-          pickupMarkerRef.current = new MapboxGL.Marker({ color: "#16a34a" }).setLngLat([plng, plat]).addTo(mapRef.current);
+          pickupMarkerRef.current = new MapboxGL.Marker({ color: "#16a34a" })
+            .setLngLat([plng, plat])
+            .addTo(mapRef.current);
         } else {
           pickupMarkerRef.current.setLngLat([plng, plat]);
         }
 
         if (numOrNull(dropLat) !== null && numOrNull(dropLng) !== null) {
           if (!dropoffMarkerRef.current) {
-            dropoffMarkerRef.current = new MapboxGL.Marker({ color: "#dc2626" }).setLngLat([dlng, dlat]).addTo(mapRef.current);
+            dropoffMarkerRef.current = new MapboxGL.Marker({ color: "#dc2626" })
+              .setLngLat([dlng, dlat])
+              .addTo(mapRef.current);
           } else {
             dropoffMarkerRef.current.setLngLat([dlng, dlat]);
           }
@@ -1058,7 +1204,16 @@ export default function RidePage() {
     return () => {
       cancelled = true;
     };
-  }, [showMapPicker, pickMode, pickupLat, pickupLng, dropLat, dropLng, MAPBOX_TOKEN, town]);
+  }, [
+    showMapPicker,
+    pickMode,
+    pickupLat,
+    pickupLng,
+    dropLat,
+    dropLng,
+    MAPBOX_TOKEN,
+    town,
+  ]);
 
   React.useEffect(() => {
     if (!showMapPicker || !MAPBOX_TOKEN) return;
@@ -1068,7 +1223,8 @@ export default function RidePage() {
 
     if (routeDebounceRef.current) clearTimeout(routeDebounceRef.current);
 
-    const hasDropoff = numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
+    const hasDropoff =
+      numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
     if (!hasDropoff) {
       setRouteInfo(null);
       routeGeoRef.current = { type: "FeatureCollection", features: [] };
@@ -1091,7 +1247,9 @@ export default function RidePage() {
       const qTown = encodeURIComponent(norm(town));
       const qLat = encodeURIComponent(norm(String(geoLat ?? pickupLat ?? "")));
       const qLng = encodeURIComponent(norm(String(geoLng ?? pickupLng ?? "")));
-      const qCode = norm(localVerify) ? encodeURIComponent(norm(localVerify)) : "";
+      const qCode = norm(localVerify)
+        ? encodeURIComponent(norm(localVerify))
+        : "";
       const url =
         "/api/public/passenger/can-book?town=" +
         qTown +
@@ -1105,7 +1263,10 @@ export default function RidePage() {
         return;
       }
       setCanInfo(r.json as CanBookInfo);
-      if (r.json?.verified === true || norm(r.json?.verification_status).toLowerCase() === "verified") {
+      if (
+        r.json?.verified === true ||
+        norm(r.json?.verification_status).toLowerCase() === "verified"
+      ) {
         setShowVerifyPanel(false);
       }
     } catch (e: any) {
@@ -1123,7 +1284,9 @@ export default function RidePage() {
         setGeoPermission("denied");
         return;
       }
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(
+        navigator.userAgent || "",
+      );
       geo.getCurrentPosition(
         (pos: any) => {
           const lat = Number(pos?.coords?.latitude);
@@ -1145,7 +1308,11 @@ export default function RidePage() {
             setGeoGateErr(`Location error: ${String(err?.message || err)}`);
           }
         },
-        { enableHighAccuracy: isMobile, timeout: isMobile ? 15000 : 8000, maximumAge: 0 }
+        {
+          enableHighAccuracy: isMobile,
+          timeout: isMobile ? 15000 : 8000,
+          maximumAge: 0,
+        },
       );
     } catch (e: any) {
       setGeoGateErr(`Location check failed: ${String(e?.message || e)}`);
@@ -1171,7 +1338,9 @@ export default function RidePage() {
         setGeoPermission("denied");
         return;
       }
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(
+        navigator.userAgent || "",
+      );
 
       await new Promise<void>((resolve) => {
         geo.getCurrentPosition(
@@ -1198,7 +1367,11 @@ export default function RidePage() {
             }
             resolve();
           },
-          { enableHighAccuracy: prompt && isMobile, timeout: prompt && isMobile ? 15000 : 8000, maximumAge: 60000 }
+          {
+            enableHighAccuracy: prompt && isMobile,
+            timeout: prompt && isMobile ? 15000 : 8000,
+            maximumAge: 60000,
+          },
         );
       });
     } catch (e: any) {
@@ -1225,7 +1398,9 @@ export default function RidePage() {
     const tGeo = getTownGeo(town);
     const proxLng = toNum(pickupLng, tGeo ? tGeo.center[0] : 121.1175);
     const proxLat = toNum(pickupLat, tGeo ? tGeo.center[1] : 16.7999);
-    const bboxStr = tGeo ? [tGeo.bbox[0], tGeo.bbox[1], tGeo.bbox[2], tGeo.bbox[3]].join(",") : "";
+    const bboxStr = tGeo
+      ? [tGeo.bbox[0], tGeo.bbox[1], tGeo.bbox[2], tGeo.bbox[3]].join(",")
+      : "";
 
     const url =
       "https://api.mapbox.com/search/searchbox/v1/suggest" +
@@ -1238,11 +1413,16 @@ export default function RidePage() {
 
     const r = await fetch(url);
     const j = await r.json().catch(() => ({}));
-    const arr: any[] = Array.isArray(j?.suggestions || j?.results || j?.features) ? (j.suggestions || j.results || j.features) : [];
+    const arr: any[] = Array.isArray(
+      j?.suggestions || j?.results || j?.features,
+    )
+      ? j.suggestions || j.results || j.features
+      : [];
 
     function pickCenter(it: any): [number, number] | undefined {
       const c1 = it?.geometry?.coordinates;
-      if (Array.isArray(c1) && c1.length >= 2) return [Number(c1[0]), Number(c1[1])];
+      if (Array.isArray(c1) && c1.length >= 2)
+        return [Number(c1[0]), Number(c1[1])];
       const c2 = it?.coordinates;
       if (c2) {
         const lng = Number(c2.longitude ?? c2.lng);
@@ -1250,14 +1430,21 @@ export default function RidePage() {
         if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
       }
       const c3 = it?.center;
-      if (Array.isArray(c3) && c3.length >= 2) return [Number(c3[0]), Number(c3[1])];
+      if (Array.isArray(c3) && c3.length >= 2)
+        return [Number(c3[0]), Number(c3[1])];
       return undefined;
     }
 
     const mapped: GeoFeature[] = arr.map((it) => ({
       id: String(it?.mapbox_id || it?.id || ""),
       mapbox_id: String(it?.mapbox_id || it?.id || ""),
-      place_name: norm(it?.place_formatted || it?.place_name || it?.full_address || it?.name || ""),
+      place_name: norm(
+        it?.place_formatted ||
+          it?.place_name ||
+          it?.full_address ||
+          it?.name ||
+          "",
+      ),
       text: norm(it?.name || it?.text || ""),
       center: pickCenter(it),
       feature_type: norm(it?.feature_type || it?.type || ""),
@@ -1286,7 +1473,9 @@ export default function RidePage() {
     return mapped;
   }
 
-  async function searchboxRetrieve(mapboxId: string): Promise<GeoFeature | null> {
+  async function searchboxRetrieve(
+    mapboxId: string,
+  ): Promise<GeoFeature | null> {
     if (!MAPBOX_TOKEN || !mapboxId) return null;
     const url =
       "https://api.mapbox.com/search/searchbox/v1/retrieve/" +
@@ -1301,11 +1490,19 @@ export default function RidePage() {
       const f0 = j?.features?.[0];
       if (!f0) return null;
       const coords = f0?.geometry?.coordinates;
-      const center = Array.isArray(coords) && coords.length >= 2 ? ([Number(coords[0]), Number(coords[1])] as [number, number]) : undefined;
+      const center =
+        Array.isArray(coords) && coords.length >= 2
+          ? ([Number(coords[0]), Number(coords[1])] as [number, number])
+          : undefined;
       return {
         id: mapboxId,
         mapbox_id: mapboxId,
-        place_name: norm(f0?.properties?.place_formatted || f0?.properties?.full_address || f0?.properties?.name || ""),
+        place_name: norm(
+          f0?.properties?.place_formatted ||
+            f0?.properties?.full_address ||
+            f0?.properties?.name ||
+            "",
+        ),
         text: norm(f0?.properties?.name || ""),
         center,
       };
@@ -1368,7 +1565,10 @@ export default function RidePage() {
     try {
       if (!map) return;
       if (!map.getSource(ROUTE_SOURCE_ID)) {
-        map.addSource(ROUTE_SOURCE_ID, { type: "geojson", data: routeGeoRef.current });
+        map.addSource(ROUTE_SOURCE_ID, {
+          type: "geojson",
+          data: routeGeoRef.current,
+        });
       }
       if (!map.getLayer(ROUTE_LAYER_ID)) {
         map.addLayer({
@@ -1423,9 +1623,15 @@ export default function RidePage() {
         return;
       }
 
-      const geo = { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: geom }] };
+      const geo = {
+        type: "FeatureCollection",
+        features: [{ type: "Feature", properties: {}, geometry: geom }],
+      };
       routeGeoRef.current = geo;
-      setRouteInfo({ distance_m: Number(route0.distance || 0), duration_s: Number(route0.duration || 0) });
+      setRouteInfo({
+        distance_m: Number(route0.distance || 0),
+        duration_s: Number(route0.duration || 0),
+      });
 
       if (mapRef.current) {
         ensureRouteLayer(mapRef.current);
@@ -1445,7 +1651,11 @@ export default function RidePage() {
     if (!bookingId) return;
     setFareBusy(true);
     try {
-      await postJson("/api/rides/fare-response", { booking_id: bookingId, response: "accepted" }, true);
+      await postJson(
+        "/api/rides/fare-response",
+        { booking_id: bookingId, response: "accepted" },
+        true,
+      );
     } finally {
       setFareBusy(false);
     }
@@ -1456,7 +1666,11 @@ export default function RidePage() {
     if (!bookingId) return;
     setFareBusy(true);
     try {
-      await postJson("/api/rides/fare-response", { booking_id: bookingId, response: "rejected" }, true);
+      await postJson(
+        "/api/rides/fare-response",
+        { booking_id: bookingId, response: "rejected" },
+        true,
+      );
     } finally {
       setFareBusy(false);
     }
@@ -1475,13 +1689,17 @@ export default function RidePage() {
     setRatingErr("");
 
     try {
-      const resp = await getJsonAuth(`/api/rides/rate?booking_code=${encodeURIComponent(code)}`);
+      const resp = await getJsonAuth(
+        `/api/rides/rate?booking_code=${encodeURIComponent(code)}`,
+      );
       const json = (resp.json || {}) as RatingCheckResponse;
 
       if (!resp.ok || json?.ok === false) {
         setRatingInfo(null);
         setRatingThanks(false);
-        setRatingErr(norm(json?.message || json?.error || `HTTP ${resp.status}`));
+        setRatingErr(
+          norm(json?.message || json?.error || `HTTP ${resp.status}`),
+        );
         return;
       }
 
@@ -1521,11 +1739,13 @@ export default function RidePage() {
           rating: ratingValue,
           feedback: trimmedFeedback,
         },
-        true
+        true,
       );
 
       if (!resp.ok || resp.json?.ok === false) {
-        setRatingErr(norm(resp.json?.message || resp.json?.error || `HTTP ${resp.status}`));
+        setRatingErr(
+          norm(resp.json?.message || resp.json?.error || `HTTP ${resp.status}`),
+        );
         return;
       }
 
@@ -1640,6 +1860,17 @@ export default function RidePage() {
     setBusy(true);
     setPreBookingSearch(false);
     searchAbortRef.current = false;
+    storedSet("");
+    setActiveCode("");
+    setLiveBooking(null);
+    setLiveStatus("");
+    setLiveErr("");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("code");
+      url.searchParams.delete("booking_code");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
 
     const pax = Number(clampPax(vehicleType, passengerCount));
     const maxPax = vehicleType === "motorcycle" ? 1 : 4;
@@ -1655,7 +1886,8 @@ export default function RidePage() {
       return;
     }
 
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const sleep = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
 
     function isNoDriverResponse(j: any): boolean {
       const code = normUpper(j?.code || j?.error || "");
@@ -1669,9 +1901,13 @@ export default function RidePage() {
     }
 
     try {
-      const effectivePassengerName = normalizePassengerNameInput(signedInPassengerName || passengerName);
+      const effectivePassengerName = normalizePassengerNameInput(
+        signedInPassengerName || passengerName,
+      );
       if (!isValidPassengerNameInput(effectivePassengerName)) {
-        setResult("BOOK_FAILED: INVALID_PASSENGER_NAME - Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.");
+        setResult(
+          "BOOK_FAILED: INVALID_PASSENGER_NAME - Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.",
+        );
         setBusy(false);
         return;
       }
@@ -1688,7 +1924,9 @@ export default function RidePage() {
       const qTown = encodeURIComponent(norm(town));
       const qLat = encodeURIComponent(norm(pickupLat));
       const qLng = encodeURIComponent(norm(pickupLng));
-      const qCode = norm(localVerify) ? encodeURIComponent(norm(localVerify)) : "";
+      const qCode = norm(localVerify)
+        ? encodeURIComponent(norm(localVerify))
+        : "";
       const canUrl =
         "/api/public/passenger/can-book?town=" +
         qTown +
@@ -1699,9 +1937,14 @@ export default function RidePage() {
       const can = await getJson(canUrl);
       if (!can.ok) {
         const cj = (can.json || {}) as CanBookInfo;
-        setResult(`CAN_BOOK_BLOCKED: ${normUpper(cj.code || "BLOCKED")} - ${norm(cj.message || "Not allowed")}`);
+        setResult(
+          `CAN_BOOK_BLOCKED: ${normUpper(cj.code || "BLOCKED")} - ${norm(cj.message || "Not allowed")}`,
+        );
         await refreshCanBook();
-        if (!cj.verified && (cj.nightGate || normUpper(cj.code).includes("UNVERIFIED"))) {
+        if (
+          !cj.verified &&
+          (cj.nightGate || normUpper(cj.code).includes("UNVERIFIED"))
+        ) {
           setShowVerifyPanel(true);
         }
         return;
@@ -1729,7 +1972,11 @@ export default function RidePage() {
 
       while (!searchAbortRef.current) {
         attempt += 1;
-        const book = await postJson("/api/public/passenger/book", payload, true);
+        const book = await postJson(
+          "/api/public/passenger/book",
+          payload,
+          true,
+        );
         const bj = book.json || {};
         const code = norm(bj.booking?.booking_code || bj.booking_code || "");
 
@@ -1765,18 +2012,24 @@ export default function RidePage() {
           setResult("Searching for available drivers...");
           setPreBookingSearch(true);
         } else if (!book.ok) {
-          setResult(`BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`);
+          setResult(
+            `BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`,
+          );
           setPreBookingSearch(false);
           return;
         } else {
-          setResult("BOOK_FAILED: Booking response did not include a valid JR booking code.");
+          setResult(
+            "BOOK_FAILED: Booking response did not include a valid JR booking code.",
+          );
           setPreBookingSearch(false);
           return;
         }
 
         if (Date.now() >= deadlineAt) {
           setPreBookingSearch(false);
-          setResult("NO_DRIVER_FOUND: No available driver found after 5 minutes. You may try motorcycle, emergency booking, or cancel.");
+          setResult(
+            "NO_DRIVER_FOUND: No available driver found after 5 minutes. You may try motorcycle, emergency booking, or cancel.",
+          );
           await refreshCanBook();
           return;
         }
@@ -1824,8 +2077,10 @@ export default function RidePage() {
   const bannerMsg = activeCode ? statusMessage(liveStatus) : "";
   const bannerTn = activeCode ? statusTone(liveStatus) : "slate";
 
-  const hasPickupPoint = numOrNull(pickupLat) !== null && numOrNull(pickupLng) !== null;
-  const hasDropoffPoint = numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
+  const hasPickupPoint =
+    numOrNull(pickupLat) !== null && numOrNull(pickupLng) !== null;
+  const hasDropoffPoint =
+    numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
 
   const lb = liveBooking as TrackPayload | null;
 
@@ -1835,7 +2090,8 @@ export default function RidePage() {
 
   // Canonical one-architecture precedence:
   // verified_fare -> proposed_fare -> fare
-  const liveFare = verifiedFareValue ?? proposedFareValue ?? payloadFareValue ?? null;
+  const liveFare =
+    verifiedFareValue ?? proposedFareValue ?? payloadFareValue ?? null;
 
   const livePickupFee = numValue(lb?.pickup_distance_fee);
   const livePlatformFee = numValue(lb?.platform_fee);
@@ -1854,51 +2110,68 @@ export default function RidePage() {
   const hasFare = liveFare != null;
   const hasLiveTotal = liveTotal != null;
 
-  const totalIsFallback =
-    backendLiveTotal == null &&
-    fallbackLiveTotal != null;
+  const totalIsFallback = backendLiveTotal == null && fallbackLiveTotal != null;
 
   const isFareProposed = normStatus(liveStatus) === "fare_proposed";
   const driverName = norm(lb?.driver_name || "");
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
   const tripToLabel = norm(lb?.to_label || toLabel || "");
-  const tripPassengerName = norm(lb?.passenger_name || signedInPassengerName || passengerName || "");
+  const tripPassengerName = norm(
+    lb?.passenger_name || signedInPassengerName || passengerName || "",
+  );
   const tripTown = norm(lb?.town || town || "");
-  const completedAt = norm(lb?.completed_at || (normStatus(liveStatus) === "completed" ? lb?.updated_at : "") || "");
-  const cancelledAt = norm(lb?.cancelled_at || (["cancelled", "rejected"].includes(normStatus(liveStatus)) ? lb?.updated_at : "") || "");
+  const completedAt = norm(
+    lb?.completed_at ||
+      (normStatus(liveStatus) === "completed" ? lb?.updated_at : "") ||
+      "",
+  );
+  const cancelledAt = norm(
+    lb?.cancelled_at ||
+      (["cancelled", "rejected"].includes(normStatus(liveStatus))
+        ? lb?.updated_at
+        : "") ||
+      "",
+  );
 
   const eligibilityRows = [
     { label: "Verified", value: verified ? "YES" : "NO" },
     { label: "Night gate", value: nightGate ? "ACTIVE" : "INACTIVE" },
-    { label: "Wallet", value: walletBlocked ? (walletLocked ? "LOCKED" : "BLOCKED") : "OK" },
+    {
+      label: "Wallet",
+      value: walletBlocked ? (walletLocked ? "LOCKED" : "BLOCKED") : "OK",
+    },
     {
       label: "Location",
       value:
         geoPermission !== "granted"
           ? "PERMISSION REQUIRED"
           : geoInsideIfugao === true
-          ? "INSIDE IFUGAO"
-          : "OUTSIDE IFUGAO",
+            ? "INSIDE IFUGAO"
+            : "OUTSIDE IFUGAO",
     },
-    { label: "Town", value: pilotTownAllowed ? "PILOT ALLOWED" : "NOT ALLOWED" },
+    {
+      label: "Town",
+      value: pilotTownAllowed ? "PILOT ALLOWED" : "NOT ALLOWED",
+    },
   ];
 
-  const blockingReason =
-    unverifiedBlocked
-      ? "Verification required. Complete verification before booking."
-      : walletBlocked
+  const blockingReason = unverifiedBlocked
+    ? "Verification required. Complete verification before booking."
+    : walletBlocked
       ? `Wallet blocked. ${walletLocked ? "Wallet is locked." : "Maintain the required wallet balance."}`
       : !geoOrLocalOk
-      ? geoPermission !== "granted"
-        ? "Location permission required."
-        : "Booking is allowed only inside Ifugao."
-      : !pilotTownAllowed
-      ? "Selected town is not yet enabled for booking."
-      : !norm(toLabel) || numOrNull(dropLat) === null || numOrNull(dropLng) === null
-      ? "Select a valid drop-off location."
-      : !feesAck
-      ? "Acknowledge the booking fees before requesting a ride."
-      : "";
+        ? geoPermission !== "granted"
+          ? "Location permission required."
+          : "Booking is allowed only inside Ifugao."
+        : !pilotTownAllowed
+          ? "Selected town is not yet enabled for booking."
+          : !norm(toLabel) ||
+              numOrNull(dropLat) === null ||
+              numOrNull(dropLng) === null
+            ? "Select a valid drop-off location."
+            : !feesAck
+              ? "Acknowledge the booking fees before requesting a ride."
+              : "";
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f7faf9_0%,#f2f7f5_48%,#eef5f2_100%)] text-slate-900">
@@ -1906,9 +2179,12 @@ export default function RidePage() {
         <div className="rounded-[28px] border border-white/80 bg-white/90 px-5 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Book a Ride</h1>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+                Book a Ride
+              </h1>
               <p className="mt-1 text-sm text-slate-500">
-                Fast, secure, and trackable rides with the restored passenger web booking flow.
+                Fast, secure, and trackable rides with the restored passenger
+                web booking flow.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1916,7 +2192,11 @@ export default function RidePage() {
                 JRide Passenger
               </div>
               <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 sm:inline-flex">
-                {authLoading ? "Checking session..." : authed ? `Signed in${accountName ? ` | ${accountName}` : ""}` : "Guest"}
+                {authLoading
+                  ? "Checking session..."
+                  : authed
+                    ? `Signed in${accountName ? ` | ${accountName}` : ""}`
+                    : "Guest"}
               </div>
               {authed ? (
                 <button
@@ -1946,12 +2226,12 @@ export default function RidePage() {
               (bannerTn === "amber"
                 ? "border-amber-300 bg-amber-50 text-amber-900"
                 : bannerTn === "green"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : bannerTn === "red"
-                ? "border-red-300 bg-red-50 text-red-900"
-                : bannerTn === "blue"
-                ? "border-emerald-200 bg-emerald-50/70 text-emerald-950"
-                : "border-slate-300 bg-slate-50 text-slate-800")
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : bannerTn === "red"
+                    ? "border-red-300 bg-red-50 text-red-900"
+                    : bannerTn === "blue"
+                      ? "border-emerald-200 bg-emerald-50/70 text-emerald-950"
+                      : "border-slate-300 bg-slate-50 text-slate-800")
             }
           >
             <div className="font-semibold">Current trip status</div>
@@ -1967,31 +2247,61 @@ export default function RidePage() {
             {liveStatus && <StatusStepper status={liveStatus} />}
 
             {hasFare && (
-              <div className={"rounded-xl border p-4 space-y-3 " + (isFareProposed ? "border-amber-200 bg-amber-50/50" : "border-black/10 bg-white")}>
+              <div
+                className={
+                  "rounded-xl border p-4 space-y-3 " +
+                  (isFareProposed
+                    ? "border-amber-200 bg-amber-50/50"
+                    : "border-black/10 bg-white")
+                }
+              >
                 <div>
-                  <div className={"text-sm font-semibold " + (isFareProposed ? "text-amber-900" : "text-slate-900")}>
-                    {isFareProposed ? "Driver proposed fare" : "Trip fare summary"}
+                  <div
+                    className={
+                      "text-sm font-semibold " +
+                      (isFareProposed ? "text-amber-900" : "text-slate-900")
+                    }
+                  >
+                    {isFareProposed
+                      ? "Driver proposed fare"
+                      : "Trip fare summary"}
                   </div>
                   <div className="mt-1 text-xs opacity-70">
-                    {isFareProposed ? "Accept to continue or request a new quote." : "Fare, pickup fee, and total shown for this trip."}
+                    {isFareProposed
+                      ? "Accept to continue or request a new quote."
+                      : "Fare, pickup fee, and total shown for this trip."}
                   </div>
                 </div>
 
                 <div className="space-y-1 text-sm">
                   <div>Fare: {money(liveFare)}</div>
                   {(livePickupFee != null && livePickupFee > 0) ||
-                  (numValue(lb?.driver_to_pickup_km) != null) ? (
+                  numValue(lb?.driver_to_pickup_km) != null ? (
                     <div>
-                      Pickup: {km(numValue(lb?.driver_to_pickup_km))} | {livePickupFee != null ? money(livePickupFee) : "--"}
+                      Pickup: {km(numValue(lb?.driver_to_pickup_km))} |{" "}
+                      {livePickupFee != null ? money(livePickupFee) : "--"}
                     </div>
                   ) : null}
-                  {livePlatformFee != null && <div>Platform fee: {money(livePlatformFee)}</div>}
+                  {livePlatformFee != null && (
+                    <div>Platform fee: {money(livePlatformFee)}</div>
+                  )}
                 </div>
 
                 <div className="border-t border-black/10 pt-3">
-                  <div className="text-base font-bold">Total to pay: {hasLiveTotal ? money(liveTotal) : "--"}</div>
-                  {totalIsFallback && <div className="mt-1 text-[11px] opacity-70">Shown as display fallback while backend total is unavailable.</div>}
-                  {!hasLiveTotal && <div className="mt-1 text-[11px] opacity-70">Waiting for backend total.</div>}
+                  <div className="text-base font-bold">
+                    Total to pay: {hasLiveTotal ? money(liveTotal) : "--"}
+                  </div>
+                  {totalIsFallback && (
+                    <div className="mt-1 text-[11px] opacity-70">
+                      Shown as display fallback while backend total is
+                      unavailable.
+                    </div>
+                  )}
+                  {!hasLiveTotal && (
+                    <div className="mt-1 text-[11px] opacity-70">
+                      Waiting for backend total.
+                    </div>
+                  )}
                 </div>
 
                 {isFareProposed && (
@@ -2018,7 +2328,9 @@ export default function RidePage() {
             {!hasFare && (
               <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] space-y-1">
                 <div className="text-sm font-semibold">Estimated total</div>
-                <div className="text-xs opacity-70">Fare will be proposed by your driver.</div>
+                <div className="text-xs opacity-70">
+                  Fare will be proposed by your driver.
+                </div>
               </div>
             )}
 
@@ -2027,30 +2339,53 @@ export default function RidePage() {
               <div className="text-sm">
                 Booking code: <span className="font-mono">{activeCode}</span>
               </div>
-              <div className="text-sm">Passenger: {tripPassengerName || "--"}</div>
+              <div className="text-sm">
+                Passenger: {tripPassengerName || "--"}
+              </div>
               <div className="text-sm">Pickup: {tripFromLabel || "--"}</div>
               <div className="text-sm">Drop-off: {tripToLabel || "--"}</div>
               <div className="text-sm">Town: {tripTown || "--"}</div>
-              <div className="text-sm">Status: {normStatus(liveStatus) || "--"}</div>
-              <div className="text-sm">Driver: {driverName || (lb?.booking_id ? String(lb.booking_id).substring(0, 8) + "..." : "Searching...")}</div>
+              <div className="text-sm">
+                Status: {normStatus(liveStatus) || "--"}
+              </div>
+              <div className="text-sm">
+                Driver:{" "}
+                {driverName ||
+                  (lb?.booking_id
+                    ? String(lb.booking_id).substring(0, 8) + "..."
+                    : "Searching...")}
+              </div>
               <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
             </div>
 
             <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] space-y-1">
               <div className="text-sm font-semibold">Trip details</div>
-              <div className="text-sm">Driver to pickup: {km(numValue(lb?.driver_to_pickup_km))}</div>
-              <div className="text-sm">Trip distance: {km(numValue(lb?.trip_distance_km))}</div>
+              <div className="text-sm">
+                Driver to pickup: {km(numValue(lb?.driver_to_pickup_km))}
+              </div>
+              <div className="text-sm">
+                Trip distance: {km(numValue(lb?.trip_distance_km))}
+              </div>
             </div>
 
-            {liveErr && <div className="text-xs text-red-600 opacity-70">{liveErr}</div>}
+            {liveErr && (
+              <div className="text-xs text-red-600 opacity-70">{liveErr}</div>
+            )}
 
-            {["completed", "cancelled", "rejected"].includes(normStatus(liveStatus)) && (
+            {["completed", "cancelled", "rejected"].includes(
+              normStatus(liveStatus),
+            ) && (
               <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-[0_14px_40px_rgba(15,23,42,0.07)] space-y-3">
-                <div className="text-sm font-semibold">{normStatus(liveStatus) === "completed" ? "Trip receipt" : "Trip summary"}</div>
+                <div className="text-sm font-semibold">
+                  {normStatus(liveStatus) === "completed"
+                    ? "Trip receipt"
+                    : "Trip summary"}
+                </div>
 
                 <div className="grid grid-cols-1 gap-1 text-sm">
                   <div>
-                    Booking code: <span className="font-mono">{activeCode}</span>
+                    Booking code:{" "}
+                    <span className="font-mono">{activeCode}</span>
                   </div>
                   <div>Status: {normStatus(liveStatus) || "--"}</div>
                   <div>Passenger: {tripPassengerName || "--"}</div>
@@ -2059,35 +2394,62 @@ export default function RidePage() {
                   <div>Drop-off: {tripToLabel || "--"}</div>
                   <div>Fare: {hasFare ? money(liveFare) : "--"}</div>
                   <div>
-                    Pickup: {km(numValue(lb?.driver_to_pickup_km))} | {livePickupFee != null ? money(livePickupFee) : "--"}
+                    Pickup: {km(numValue(lb?.driver_to_pickup_km))} |{" "}
+                    {livePickupFee != null ? money(livePickupFee) : "--"}
                   </div>
-                  <div>Platform fee: {livePlatformFee != null ? money(livePlatformFee) : "--"}</div>
+                  <div>
+                    Platform fee:{" "}
+                    {livePlatformFee != null ? money(livePlatformFee) : "--"}
+                  </div>
                   <div>
                     Total: {hasLiveTotal ? money(liveTotal) : "--"}
                     {totalIsFallback ? " (fallback)" : ""}
                   </div>
-                  <div>Driver to pickup: {km(numValue(lb?.driver_to_pickup_km))}</div>
+                  <div>
+                    Driver to pickup: {km(numValue(lb?.driver_to_pickup_km))}
+                  </div>
                   <div>Trip distance: {km(numValue(lb?.trip_distance_km))}</div>
                   <div>
-                    {normStatus(liveStatus) === "completed" ? "Completed" : "Cancelled"}:{" "}
-                    {fmtDate(normStatus(liveStatus) === "completed" ? completedAt : cancelledAt)}
+                    {normStatus(liveStatus) === "completed"
+                      ? "Completed"
+                      : "Cancelled"}
+                    :{" "}
+                    {fmtDate(
+                      normStatus(liveStatus) === "completed"
+                        ? completedAt
+                        : cancelledAt,
+                    )}
                   </div>
                 </div>
 
                 {normStatus(liveStatus) === "completed" && (
                   <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm space-y-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">Rate your driver</div>
-                      <div className="text-xs text-slate-500">1 star is lowest, 5 stars is highest. Help us improve our services.</div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        Rate your driver
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        1 star is lowest, 5 stars is highest. Help us improve
+                        our services.
+                      </div>
                     </div>
 
                     {ratingCheckLoading ? (
-                      <div className="text-xs text-slate-500">Checking survey status...</div>
+                      <div className="text-xs text-slate-500">
+                        Checking survey status...
+                      </div>
                     ) : ratingInfo?.already_rated && ratingInfo?.rating ? (
                       <div className="space-y-1 text-sm text-slate-700">
-                        <div>Your rating: {String(ratingInfo.rating.rating || "--")} / 5</div>
-                        <div>Feedback: {norm(ratingInfo.rating.feedback) || "--"}</div>
-                        <div className="text-xs text-slate-500">Submitted: {fmtDate(ratingInfo.rating.created_at)}</div>
+                        <div>
+                          Your rating:{" "}
+                          {String(ratingInfo.rating.rating || "--")} / 5
+                        </div>
+                        <div>
+                          Feedback: {norm(ratingInfo.rating.feedback) || "--"}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Submitted: {fmtDate(ratingInfo.rating.created_at)}
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -2118,26 +2480,42 @@ export default function RidePage() {
                             placeholder="Help us improve our services"
                             value={ratingFeedback}
                             maxLength={120}
-                            onChange={(e) => setRatingFeedback(e.target.value.slice(0, 120))}
+                            onChange={(e) =>
+                              setRatingFeedback(e.target.value.slice(0, 120))
+                            }
                           />
-                          <div className="mt-1 text-right text-[11px] text-slate-500">{ratingFeedback.length}/120</div>
+                          <div className="mt-1 text-right text-[11px] text-slate-500">
+                            {ratingFeedback.length}/120
+                          </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={submitRating}
-                            disabled={ratingSubmitting || !!ratingCheckLoading || ratingInfo?.can_rate === false}
+                            disabled={
+                              ratingSubmitting ||
+                              !!ratingCheckLoading ||
+                              ratingInfo?.can_rate === false
+                            }
                             className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] hover:bg-emerald-400 disabled:opacity-50"
                           >
-                            {ratingSubmitting ? "Submitting..." : "Submit rating"}
+                            {ratingSubmitting
+                              ? "Submitting..."
+                              : "Submit rating"}
                           </button>
-                          {ratingThanks ? <span className="text-xs text-emerald-700">Thank you for your feedback.</span> : null}
+                          {ratingThanks ? (
+                            <span className="text-xs text-emerald-700">
+                              Thank you for your feedback.
+                            </span>
+                          ) : null}
                         </div>
                       </>
                     )}
 
-                    {ratingErr ? <div className="text-xs text-red-600">{ratingErr}</div> : null}
+                    {ratingErr ? (
+                      <div className="text-xs text-red-600">{ratingErr}</div>
+                    ) : null}
                   </div>
                 )}
 
@@ -2159,7 +2537,9 @@ export default function RidePage() {
                         `Driver to pickup: ${km(numValue(lb?.driver_to_pickup_km))}`,
                         `Trip distance: ${km(numValue(lb?.trip_distance_km))}`,
                         `${normStatus(liveStatus) === "completed" ? "Completed" : "Cancelled"}: ${fmtDate(
-                          normStatus(liveStatus) === "completed" ? completedAt : cancelledAt
+                          normStatus(liveStatus) === "completed"
+                            ? completedAt
+                            : cancelledAt,
                         )}`,
                       ].join("\n");
                       try {
@@ -2192,7 +2572,10 @@ export default function RidePage() {
               <div className="text-sm font-semibold">Booking eligibility</div>
               <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                 {eligibilityRows.map((row) => (
-                  <div key={row.label} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div
+                    key={row.label}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  >
                     <div className="opacity-60">{row.label}</div>
                     <div className="font-semibold">{row.value}</div>
                   </div>
@@ -2202,7 +2585,9 @@ export default function RidePage() {
 
             {!!blockingReason && (
               <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-sm space-y-1">
-                <div className="text-sm font-semibold text-red-900">Booking blocked</div>
+                <div className="text-sm font-semibold text-red-900">
+                  Booking blocked
+                </div>
                 <div className="text-xs text-red-800">{blockingReason}</div>
               </div>
             )}
@@ -2210,7 +2595,9 @@ export default function RidePage() {
             {!geoOrLocalOk && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 shadow-sm space-y-2">
                 <div className="text-sm font-semibold text-amber-900">
-                  {geoPermission !== "granted" ? "Location permission required" : "Outside Ifugao"}
+                  {geoPermission !== "granted"
+                    ? "Location permission required"
+                    : "Outside Ifugao"}
                 </div>
                 <div className="text-xs text-amber-800">
                   {geoPermission !== "granted"
@@ -2223,29 +2610,40 @@ export default function RidePage() {
                 >
                   Enable location
                 </button>
-                {geoGateErr && <div className="text-xs text-red-700">{geoGateErr}</div>}
+                {geoGateErr && (
+                  <div className="text-xs text-red-700">{geoGateErr}</div>
+                )}
               </div>
             )}
 
             {unverifiedBlocked && (
               <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-sm space-y-2">
-                <div className="text-sm font-semibold text-red-900">Verification required</div>
+                <div className="text-sm font-semibold text-red-900">
+                  Verification required
+                </div>
                 <div className="text-xs text-red-800">
-                  Your account is not verified. Ride booking is restricted until verification is approved.
-                  {canInfo?.window ? ` Night gate window: ${canInfo.window}.` : ""}
+                  Your account is not verified. Ride booking is restricted until
+                  verification is approved.
+                  {canInfo?.window
+                    ? ` Night gate window: ${canInfo.window}.`
+                    : ""}
                 </div>
                 <button
                   onClick={() => setShowVerifyPanel(!showVerifyPanel)}
                   className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
                 >
-                  {showVerifyPanel ? "Hide verification" : "Request verification"}
+                  {showVerifyPanel
+                    ? "Hide verification"
+                    : "Request verification"}
                 </button>
               </div>
             )}
 
             {showVerifyPanel && (
               <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-2">
-                <div className="text-sm font-semibold">Verification Request</div>
+                <div className="text-sm font-semibold">
+                  Verification Request
+                </div>
                 <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-slate-200 bg-white p-2 text-xs">
                   {verifyRequestText()}
                 </pre>
@@ -2260,9 +2658,12 @@ export default function RidePage() {
 
             {walletBlocked && (
               <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-sm">
-                <div className="text-sm font-semibold text-red-900">Wallet requirement not met</div>
+                <div className="text-sm font-semibold text-red-900">
+                  Wallet requirement not met
+                </div>
                 <div className="text-xs text-red-800">
-                  Balance: {String(canInfo?.wallet_balance ?? "N/A")} | Min required: {String(canInfo?.min_wallet_required ?? "N/A")} |
+                  Balance: {String(canInfo?.wallet_balance ?? "N/A")} | Min
+                  required: {String(canInfo?.min_wallet_required ?? "N/A")} |
                   {walletLocked ? " Locked" : " Low balance"}
                 </div>
               </div>
@@ -2281,7 +2682,11 @@ export default function RidePage() {
                   </option>
                 ))}
               </select>
-              {!pilotTownAllowed && <div className="mt-1 text-xs text-amber-700">This town is not yet available for booking.</div>}
+              {!pilotTownAllowed && (
+                <div className="mt-1 text-xs text-amber-700">
+                  This town is not yet available for booking.
+                </div>
+              )}
             </div>
 
             <div>
@@ -2289,22 +2694,33 @@ export default function RidePage() {
               <input
                 className={[
                   "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm",
-                  signedInPassengerName ? "border-emerald-200 bg-emerald-50/50 text-slate-700" : "border-slate-200 bg-white",
+                  signedInPassengerName
+                    ? "border-emerald-200 bg-emerald-50/50 text-slate-700"
+                    : "border-slate-200 bg-white",
                 ].join(" ")}
                 placeholder="Name"
                 value={signedInPassengerName || passengerName}
                 onChange={(e) => {
                   if (signedInPassengerName) return;
-                  setPassengerName(e.target.value.replace(/[^A-Za-z\s]/g, "").replace(/\s+/g, " "));
+                  setPassengerName(
+                    e.target.value
+                      .replace(/[^A-Za-z\s]/g, "")
+                      .replace(/\s+/g, " "),
+                  );
                 }}
                 readOnly={!!norm(signedInPassengerName)}
               />
               {signedInPassengerName ? (
-                <div className="mt-1 text-xs text-slate-500">Autofilled from your signed-in passenger account.</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  Autofilled from your signed-in passenger account.
+                </div>
               ) : null}
-              {!isValidPassengerNameInput(signedInPassengerName || passengerName) ? (
+              {!isValidPassengerNameInput(
+                signedInPassengerName || passengerName,
+              ) ? (
                 <div className="mt-1 text-xs text-amber-700">
-                  Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.
+                  Passenger name must contain at least first name and last name,
+                  using letters only, with at least 2 letters per word.
                 </div>
               ) : null}
             </div>
@@ -2334,7 +2750,9 @@ export default function RidePage() {
                   max={vehicleType === "motorcycle" ? 1 : 4}
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                   value={passengerCount}
-                  onChange={(e) => setPassengerCount(clampPax(vehicleType, e.target.value))}
+                  onChange={(e) =>
+                    setPassengerCount(clampPax(vehicleType, e.target.value))
+                  }
                 />
               </div>
             </div>
@@ -2401,12 +2819,18 @@ export default function RidePage() {
                           (pickMode === "pickup"
                             ? "bg-emerald-500 text-white shadow-sm"
                             : hasPickupPoint
-                            ? "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm"
-                            : "border border-slate-200 bg-white text-slate-700")
+                              ? "border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm"
+                              : "border border-slate-200 bg-white text-slate-700")
                         }
-                        title={hasPickupPoint ? "Pickup point is set" : "Choose pickup point on the map"}
+                        title={
+                          hasPickupPoint
+                            ? "Pickup point is set"
+                            : "Choose pickup point on the map"
+                        }
                       >
-                        {hasPickupPoint && pickMode !== "pickup" ? "Pickup set" : "Set pickup"}
+                        {hasPickupPoint && pickMode !== "pickup"
+                          ? "Pickup set"
+                          : "Set pickup"}
                       </button>
                       <button
                         type="button"
@@ -2416,20 +2840,31 @@ export default function RidePage() {
                           (pickMode === "dropoff"
                             ? "bg-red-500 text-white shadow-sm"
                             : hasDropoffPoint
-                            ? "border border-red-300 bg-red-100 text-red-800 shadow-sm"
-                            : "border border-slate-200 bg-white text-slate-700")
+                              ? "border border-red-300 bg-red-100 text-red-800 shadow-sm"
+                              : "border border-slate-200 bg-white text-slate-700")
                         }
-                        title={hasDropoffPoint ? "Drop-off point is set" : "Choose drop-off point on the map"}
+                        title={
+                          hasDropoffPoint
+                            ? "Drop-off point is set"
+                            : "Choose drop-off point on the map"
+                        }
                       >
-                        {hasDropoffPoint && pickMode !== "dropoff" ? "Drop-off set" : "Set drop-off"}
+                        {hasDropoffPoint && pickMode !== "dropoff"
+                          ? "Drop-off set"
+                          : "Set drop-off"}
                       </button>
                     </div>
 
-                    <div key={mapResetKey} ref={mapDivRef} className="h-72 w-full rounded-2xl border border-emerald-100 bg-white shadow-inner" />
+                    <div
+                      key={mapResetKey}
+                      ref={mapDivRef}
+                      className="h-72 w-full rounded-2xl border border-emerald-100 bg-white shadow-inner"
+                    />
 
                     {routeInfo && (
                       <div className="text-xs opacity-70">
-                        Route: {(routeInfo.distance_m / 1000).toFixed(1)} km | ~{Math.ceil(routeInfo.duration_s / 60)} min
+                        Route: {(routeInfo.distance_m / 1000).toFixed(1)} km | ~
+                        {Math.ceil(routeInfo.duration_s / 60)} min
                       </div>
                     )}
                   </div>
@@ -2439,16 +2874,24 @@ export default function RidePage() {
 
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm space-y-2">
               <div className="text-xs text-slate-700">
-                Pickup is FREE within 1.5 km. Beyond 1.5 km, pickup fee is PHP 20 per 500 meters. Review your fare proposal before confirming.
+                Pickup is FREE within 1.5 km. Beyond 1.5 km, pickup fee is PHP
+                20 per 500 meters. Review your fare proposal before confirming.
               </div>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <input type="checkbox" checked={feesAck} onChange={(e) => setFeesAck(e.target.checked)} className="rounded" />
+                <input
+                  type="checkbox"
+                  checked={feesAck}
+                  onChange={(e) => setFeesAck(e.target.checked)}
+                  className="rounded"
+                />
                 I understand the fare shown
               </label>
             </div>
 
             <div>
-              <label className="text-xs font-medium">Local verification code (optional)</label>
+              <label className="text-xs font-medium">
+                Local verification code (optional)
+              </label>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
                 placeholder="Enter code if provided"
@@ -2456,7 +2899,10 @@ export default function RidePage() {
                 onChange={(e) => {
                   setLocalVerify(e.target.value);
                   try {
-                    window.localStorage.setItem(LOCAL_VERIFY_KEY, e.target.value);
+                    window.localStorage.setItem(
+                      LOCAL_VERIFY_KEY,
+                      e.target.value,
+                    );
                   } catch {}
                 }}
               />
@@ -2467,43 +2913,77 @@ export default function RidePage() {
               disabled={!allowSubmit}
               className="w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? "Booking..." : "Request Ride"}
+              {preBookingSearch
+                ? "Searching for drivers..."
+                : busy
+                  ? "Booking..."
+                  : "Request Ride"}
             </button>
 
             {result && (
               <div
                 className={
                   "rounded-2xl border p-4 text-sm shadow-sm " +
-                  (result.startsWith("BOOKED_OK") ? "border-green-200 bg-green-50 text-green-900" : "border-red-200 bg-red-50 text-red-700")
+                  (result.startsWith("BOOKED_OK")
+                    ? "border-green-200 bg-green-50 text-green-900"
+                    : result.includes("Searching for available drivers")
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                      : "border-red-200 bg-red-50 text-red-700")
                 }
               >
-                {result.startsWith("BOOKED_OK") ? "Booking submitted. Tracking will start automatically." : result}
+                {result.startsWith("BOOKED_OK")
+                  ? "Booking submitted. Tracking will start automatically."
+                  : result}
               </div>
             )}
 
-            {canInfoErr && <div className="text-xs text-red-600 opacity-70">{canInfoErr}</div>}
+            {canInfoErr && (
+              <div className="text-xs text-red-600 opacity-70">
+                {canInfoErr}
+              </div>
+            )}
 
             {recentTrips.length > 0 && (
               <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-3">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">Recent trips</div>
-                  <div className="text-xs text-slate-500">Last 7 days on this device, up to 10 trips.</div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Recent trips
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Last 7 days on this device, up to 10 trips.
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   {recentTrips.map((trip) => (
-                    <div key={trip.booking_code} className="rounded-3xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm">
+                    <div
+                      key={trip.booking_code}
+                      className="rounded-3xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm"
+                    >
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="space-y-1">
                           <div className="text-sm font-semibold text-slate-900">
-                            {trip.from_label || "--"} {"->"} {trip.to_label || "--"}
+                            {trip.from_label || "--"} {"->"}{" "}
+                            {trip.to_label || "--"}
                           </div>
                           <div className="text-xs text-slate-500">
-                            {fmtDate(trip.completed_at || trip.updated_at || trip.saved_at)} | {trip.driver_name || "Driver pending"} | {trip.status}
+                            {fmtDate(
+                              trip.completed_at ||
+                                trip.updated_at ||
+                                trip.saved_at,
+                            )}{" "}
+                            | {trip.driver_name || "Driver pending"} |{" "}
+                            {trip.status}
                           </div>
                           <div className="text-xs text-slate-600">
-                            Code: <span className="font-mono">{trip.booking_code}</span> | Total:{" "}
-                            {typeof trip.total === "number" ? money(trip.total) : "--"}
+                            Code:{" "}
+                            <span className="font-mono">
+                              {trip.booking_code}
+                            </span>{" "}
+                            | Total:{" "}
+                            {typeof trip.total === "number"
+                              ? money(trip.total)
+                              : "--"}
                           </div>
                         </div>
 
@@ -2517,7 +2997,11 @@ export default function RidePage() {
                               if (typeof window !== "undefined") {
                                 const url = new URL(window.location.href);
                                 url.searchParams.set("code", trip.booking_code);
-                                window.history.replaceState({}, "", url.toString());
+                                window.history.replaceState(
+                                  {},
+                                  "",
+                                  url.toString(),
+                                );
                                 window.scrollTo({ top: 0, behavior: "smooth" });
                               }
                             }}
@@ -2531,7 +3015,9 @@ export default function RidePage() {
                             onClick={() => {
                               handleClear();
                               setTown(trip.town || town);
-                              setPassengerName((prev) => prev || trip.passenger_name || "");
+                              setPassengerName(
+                                (prev) => prev || trip.passenger_name || "",
+                              );
                               setFromLabel(trip.from_label || "");
                               setToLabel(trip.to_label || "");
                             }}
