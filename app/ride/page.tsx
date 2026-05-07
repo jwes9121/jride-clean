@@ -883,6 +883,10 @@ export default function RidePage() {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
+      if (preBookingSearchRef.current) {
+        setResult("Searching for available drivers...");
+        return;
+      }
       storedSet("");
       setActiveCode("");
       setLiveBooking(null);
@@ -1858,7 +1862,12 @@ export default function RidePage() {
   async function submit() {
     setResult("");
     setBusy(true);
-    setPreBookingSearch(false);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    preBookingSearchRef.current = true;
+    setPreBookingSearch(true);
     searchAbortRef.current = false;
     storedSet("");
     setActiveCode("");
