@@ -45,7 +45,7 @@ function pickDriverName(row: any) {
 }
 
 function isAssignableDriver(row: any) {
-  const effective = String(row?.effective_status || row?.status || "").trim().toLowerCase();
+  const effective = String(row?.status || "").trim().toLowerCase();
   const fresh = row?.assign_fresh;
   const stale = row?.is_stale;
   const ageMinutes = minutesSince(row?.updated_at || row?.created_at);
@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
       lat: row?.lat ?? null,
       lng: row?.lng ?? null,
       status: row?.status || null,
-      effective_status: row?.effective_status || row?.status || null,
+      effective_status: row?.status || null,
       updated_at: row?.updated_at || null,
       age_minutes: ageMinutes,
       assign_eligible: isAssignableDriver(row),
@@ -267,5 +267,6 @@ export async function GET(req: NextRequest) {
     drivers: availableDrivers,
   });
 }
+
 
 
