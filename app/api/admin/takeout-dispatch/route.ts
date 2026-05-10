@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
 
   const ordersRes = await admin
     .from("bookings")
-    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,dropoff_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
+    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
     .eq("service_type", "takeout")
     .order("created_at", { ascending: false })
     .limit(500);
@@ -201,7 +201,7 @@ export async function GET(req: NextRequest) {
       customer_status: r.customer_status || null,
       status: r.status || null,
       customer_name: r.passenger_name || "Takeout Customer",
-      to_label: r.to_label || r.dropoff_label || null,
+      to_label: r.to_label || null,
       takeout_items_subtotal: subtotal,
       cash_required: subtotal >= 500,
       assigned_driver_id: assignedDriverId,
@@ -258,3 +258,4 @@ export async function GET(req: NextRequest) {
     drivers: availableDrivers,
   });
 }
+
