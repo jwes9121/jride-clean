@@ -46,22 +46,16 @@ function pickDriverName(row: any) {
 
 function isAssignableDriver(row: any) {
   const effective = String(row?.status || "").trim().toLowerCase();
-  const fresh = row?.assign_fresh;
-  const stale = row?.is_stale;
-  const ageMinutes = minutesSince(row?.updated_at || row?.created_at);
+      const ageMinutes = minutesSince(row?.updated_at || row?.created_at);
 
   const onlineLike = new Set(["online", "available", "idle", "waiting"]);
 
-  if (stale === true) return false;
-  if (fresh === false) return false;
-
+    
   // hard freshness cutoff for takeout dispatch pool
   if (ageMinutes > 10) return false;
 
-  const eligible = row?.assign_eligible;
-
-  if (eligible === true) return true;
-
+  
+  
   return onlineLike.has(effective);
 }
 
@@ -266,6 +260,7 @@ export async function GET(req: NextRequest) {
     drivers: availableDrivers,
   });
 }
+
 
 
 
