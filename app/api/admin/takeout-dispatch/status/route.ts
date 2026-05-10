@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   const existing = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_status")
+    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id")
     .eq("id", orderId)
     .eq("service_type", "takeout")
     .single();
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     return json(404, { ok: false, error: "TAKEOUT_ORDER_NOT_FOUND", message: existing.error?.message || "Takeout order not found" });
   }
 
-  const current = normStatus((existing.data as any).vendor_status || "requested");
+  const current = normStatus((existing.data as any).vendor_status || (existing.data as any).customer_status || "requested");
   if ((current === "completed" || current === "cancelled") && nextStatus !== "preparing") {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED", message: "Closed takeout orders can only be reopened to preparing" });
   }
@@ -75,10 +75,14 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "INVALID_STATUS_MOVEMENT", message: "pickup_ready cannot move back to preparing" });
   }
 
-  const patch = {
+  const patch: any = {
     vendor_status: nextStatus,
     customer_status: nextStatus === "requested" ? "requested" : nextStatus,
   };
+
+  if (nextStatus === "requested" || nextStatus === "cancelled") {
+    patch.assigned_driver_id = null;
+  }
 
   const up = await admin
     .from("bookings")
@@ -92,5 +96,5 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
   }
 
-  return json(200, { ok: true, order: up.data });
+  return json(200, { ok: true, order: up.data, guard: "manual_takeout_status_guard_v1" });
 }
