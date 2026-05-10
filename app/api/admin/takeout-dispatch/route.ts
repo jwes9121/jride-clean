@@ -184,7 +184,6 @@ export async function GET(req: NextRequest) {
       lat: row?.lat ?? null,
       lng: row?.lng ?? null,
       status: row?.status || null,
-      status: row?.status || null,
       updated_at: row?.updated_at || null,
       age_minutes: ageMinutes,
       assign_eligible: isAssignableDriver(row),
