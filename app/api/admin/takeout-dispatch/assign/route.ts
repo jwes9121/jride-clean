@@ -63,9 +63,9 @@ function minutesSince(value: any) {
 
 function isLocationAssignable(row: any) {
   if (!row) return false;
-  if (row?.assign_eligible === true) return true;
-  if (row?.is_stale === true) return false;
-  if (row?.assign_fresh === false) return false;
+  
+  
+  
   const age = minutesSince(row?.updated_at || row?.created_at);
   if (age > 15) return false;
   return isOnlineLike(row?.status);
@@ -75,7 +75,7 @@ async function getLatestDriverLocation(admin: any, driverId: string) {
   try {
     const res = await admin
       .from("driver_locations")
-      .select("driver_id,status,assign_eligible,assign_fresh,is_stale,updated_at,created_at")
+      .select("driver_id,status,updated_at")
       .eq("driver_id", driverId)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -205,4 +205,5 @@ export async function POST(req: NextRequest) {
 
   return json(200, { ok: true, order: up.data, guard: "manual_takeout_assignment_guard_v1" });
 }
+
 
