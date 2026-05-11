@@ -1,6 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+
+// JRIDE_ACTIVE_TRIP_TAKEOUT_STATUS_SHAPE_V1
+// Driver active-trip read shaping only.
+// Purpose: keep takeout status values as takeout workflow statuses for Android driver UI.
+// Does not write to DB and does not alter ride lifecycle rules.
+function jrideActiveTripText(v: any): string {
+  return String(v ?? "").trim();
+}
+
+function jrideActiveTripLower(v: any): string {
+  return jrideActiveTripText(v).toLowerCase();
+}
+
+function jrideIsTakeoutActiveTrip(row: any): boolean {
+  if (!row || typeof row !== "object") return false;
+  const serviceType = jrideActiveTripLower(row.service_type ?? row.serviceType ?? row.trip_type ?? row.tripType);
+  const bookingCode = jrideActiveTripText(row.booking_code ?? row.bookingCode ?? row.code ?? row.id);
+  return serviceType === "takeout" || serviceType === "food" || serviceType === "delivery" || bookingCode.toUpperCase().startsWith("TO-");
+}
+
+function jrideTakeoutDriverStatus(row: any): string | null {
+  if (!jrideIsTakeoutActiveTrip(row)) return null;
+
+  const raw = jrideActiveTripLower(
+    row.takeout_status ??
+      row.takeoutStatus ??
+      row.driver_takeout_status ??
+      row.driverTakeoutStatus ??
+      row.vendor_status ??
+      row.vendorStatus ??
+      row.customer_status ??
+      row.customerStatus ??
+      row.delivery_status ??
+      row.deliveryStatus ??
+      row.status
+  );
+
+  if (!raw) return "driver_assigned";
+
+  if (raw === "requested" || raw === "pending") return "preparing";
+  if (raw === "assigned" || raw === "accepted" || raw === "driver_assigned") return "driver_assigned";
+  if (raw === "pickup_ready") return "driver_assigned";
+  if (raw === "arrived_vendor" || raw === "at_vendor") return "arrived_vendor";
+  if (raw === "picked_up" || raw === "pickup_done") return "picked_up";
+  if (raw === "delivering" || raw === "on_delivery") return "delivering";
+  if (raw === "completed" || raw === "cancelled") return raw;
+
+  return raw;
+}
+
+function jrideShapeActiveTripForDriver(row: any): any {
+  if (!row || typeof row !== "object") return row;
+  if (!jrideIsTakeoutActiveTrip(row)) return row;
+
+  const shaped = { ...row };
+  const status = jrideTakeoutDriverStatus(row) ?? "driver_assigned";
+  shaped.status = status;
+  shaped.service_type = "takeout";
+  shaped.serviceType = "takeout";
+  shaped.takeout_status = status;
+  return shaped;
+}
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const x = Number(v);
@@ -192,7 +254,7 @@ export async function GET(req: NextRequest) {
     const booking = bookingRes.data;
     if (!booking) {
       return NextResponse.json(
-        { ok: true, trip: null, active_trip: null, auth_mode: authMode },
+        { ok: true, trip: jrideShapeActiveTripForDriver(null), active_trip: jrideShapeActiveTripForDriver(jrideShapeActiveTripForDriver)(null), auth_mode: authMode },
         { status: 200, headers: noStoreHeaders() }
       );
     }
@@ -338,7 +400,7 @@ export async function GET(req: NextRequest) {
       {
         ok: true,
         trip,
-        active_trip: trip,
+        active_trip: jrideShapeActiveTripForDriver(jrideShapeActiveTripForDriver)(trip),
         auth_mode: authMode,
       },
       { status: 200, headers: noStoreHeaders() }
