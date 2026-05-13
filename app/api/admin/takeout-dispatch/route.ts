@@ -184,7 +184,31 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const assignedDriverSet = new Set(rawOrders.map((r: any) => String(r?.assigned_driver_id || "").trim()).filter(Boolean));
+  // JRIDE_TAKEOUT_DISPATCH_ACTIVE_POOL_V2
+  // Only active takeout jobs should reserve a driver in the manual dispatch pool.
+  // Completed/cancelled takeout rows must not keep drivers hidden after delivery.
+  const terminalTakeoutStatuses = new Set(["completed", "cancelled", "canceled"]);
+  const isActiveTakeoutAssignment = (r: any) => {
+    const assignedDriverId = String(r?.assigned_driver_id || "").trim();
+    if (!assignedDriverId) return false;
+
+    const vendorStatus = normStatus(r?.vendor_status || r?.customer_status || r?.status || "requested");
+    const customerStatus = normStatus(r?.customer_status || "");
+    const bookingStatus = normStatus(r?.status || "");
+
+    if (terminalTakeoutStatuses.has(vendorStatus)) return false;
+    if (terminalTakeoutStatuses.has(customerStatus)) return false;
+    if (terminalTakeoutStatuses.has(bookingStatus)) return false;
+
+    return activeStatuses.has(vendorStatus) || activeStatuses.has(customerStatus) || activeStatuses.has(bookingStatus);
+  };
+
+  const assignedDriverSet = new Set(
+    rawOrders
+      .filter((r: any) => isActiveTakeoutAssignment(r))
+      .map((r: any) => String(r?.assigned_driver_id || "").trim())
+      .filter(Boolean)
+  );
   const availableDrivers = drivers.filter((d: any) => d.assign_eligible && !assignedDriverSet.has(String(d.driver_id || "")));
 
   const orders = rawOrders.map((r: any) => {
