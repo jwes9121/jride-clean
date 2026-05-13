@@ -187,6 +187,8 @@ export async function GET(req: NextRequest) {
   // JRIDE_TAKEOUT_DISPATCH_ACTIVE_POOL_V2
   // Only active takeout jobs should reserve a driver in the manual dispatch pool.
   // Completed/cancelled takeout rows must not keep drivers hidden after delivery.
+  const activeStatuses = new Set(["requested", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "picked_up", "delivering"]);
+
   const terminalTakeoutStatuses = new Set(["completed", "cancelled", "canceled"]);
   const isActiveTakeoutAssignment = (r: any) => {
     const assignedDriverId = String(r?.assigned_driver_id || "").trim();
@@ -242,8 +244,6 @@ export async function GET(req: NextRequest) {
       priority: op.priority,
     };
   });
-
-  const activeStatuses = new Set(["requested", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "picked_up", "delivering"]);
   const filtered = orders.filter((o: any) => {
     if (filter === "all") return true;
     if (filter === "active") return activeStatuses.has(o.vendor_status);
