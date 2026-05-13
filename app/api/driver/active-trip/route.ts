@@ -63,6 +63,23 @@ function jrideShapeActiveTripForDriver(row: any): any {
   shaped.takeout_status = status;
   return shaped;
 }
+
+// JRIDE_ACTIVE_TRIP_TAKEOUT_STATUS_SHAPE_V2
+// Completed/cancelled takeout orders must never be returned as an active driver job.
+function jrideIsTerminalTakeoutActiveTrip(row: any): boolean {
+  if (!jrideIsTakeoutActiveTrip(row)) return false;
+  const vendorStatus = jrideActiveTripLower(row.vendor_status ?? row.vendorStatus);
+  const customerStatus = jrideActiveTripLower(row.customer_status ?? row.customerStatus);
+  const takeoutStatus = jrideTakeoutDriverStatus(row);
+  return (
+    vendorStatus === "completed" ||
+    vendorStatus === "cancelled" ||
+    customerStatus === "completed" ||
+    customerStatus === "cancelled" ||
+    takeoutStatus === "completed" ||
+    takeoutStatus === "cancelled"
+  );
+}
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const x = Number(v);
@@ -241,8 +258,7 @@ export async function GET(req: NextRequest) {
       .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
       .in("status", ["assigned", "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip"])
       .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
 
     if (bookingRes.error) {
       return NextResponse.json(
@@ -251,10 +267,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const booking = bookingRes.data;
+    const bookingRows = Array.isArray(bookingRes.data) ? bookingRes.data : (bookingRes.data ? [bookingRes.data] : []);
+    const booking = bookingRows.find((row: any) => !jrideIsTerminalTakeoutActiveTrip(row)) ?? null;
     if (!booking) {
       return NextResponse.json(
-        { ok: true, trip: jrideShapeActiveTripForDriver(null), active_trip: jrideShapeActiveTripForDriver(jrideShapeActiveTripForDriver)(null), auth_mode: authMode },
+        { ok: true, trip: null, active_trip: null, auth_mode: authMode },
         { status: 200, headers: noStoreHeaders() }
       );
     }
@@ -302,7 +319,8 @@ export async function GET(req: NextRequest) {
       driverLng = n((driverLocRes.data as any).lng);
     }
 
-    const normalizedStatus = statusOf((booking as any).status);
+    const takeoutDriverStatus = jrideTakeoutDriverStatus(booking as any);
+    const normalizedStatus = takeoutDriverStatus ?? statusOf((booking as any).status);
     const pickupLat = n((booking as any).pickup_lat);
     const pickupLng = n((booking as any).pickup_lng);
     const dropoffLat = n((booking as any).dropoff_lat);
@@ -351,6 +369,11 @@ export async function GET(req: NextRequest) {
       booking_code: booking.booking_code,
       code: booking.booking_code,
       status: normalizedStatus,
+      service_type: jrideIsTakeoutActiveTrip(booking as any) ? "takeout" : s((booking as any).service_type),
+      serviceType: jrideIsTakeoutActiveTrip(booking as any) ? "takeout" : s((booking as any).serviceType),
+      takeout_status: takeoutDriverStatus,
+      vendor_status: s((booking as any).vendor_status),
+      customer_status: s((booking as any).customer_status),
       town: s((booking as any).town),
       from_label: s((booking as any).from_label),
       to_label: s((booking as any).to_label),
@@ -396,11 +419,12 @@ export async function GET(req: NextRequest) {
       cancelled_at: s((booking as any).cancelled_at),
     };
 
+    const shapedTrip = jrideShapeActiveTripForDriver(trip);
     return NextResponse.json(
       {
         ok: true,
-        trip,
-        active_trip: jrideShapeActiveTripForDriver(jrideShapeActiveTripForDriver)(trip),
+        trip: shapedTrip,
+        active_trip: shapedTrip,
         auth_mode: authMode,
       },
       { status: 200, headers: noStoreHeaders() }
