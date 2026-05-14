@@ -353,7 +353,12 @@ export async function GET(req: NextRequest) {
       .from("bookings")
       .select("*")
       .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
-      .in("status", ["assigned", "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip"])
+      // JRIDE_ACTIVE_TRIP_TAKEOUT_ASSIGNMENT_QUERY_V1
+      // Read-only active-trip query widening for takeout assignments.
+      // Ride lifecycle statuses remain unchanged. This only lets Android see
+      // assigned takeout rows where bookings.status is still "requested" but
+      // vendor_status/customer_status already shows driver assignment.
+      .or("status.in.(assigned,accepted,fare_proposed,ready,on_the_way,arrived,on_trip),and(service_type.eq.takeout,vendor_status.in.(driver_assigned,preparing,pickup_ready,rider_arrived_vendor,picked_up,delivering)),and(service_type.eq.takeout,customer_status.in.(driver_assigned,preparing,pickup_ready,rider_arrived_vendor,picked_up,delivering))")
       .order("updated_at", { ascending: false })
       .limit(10);
 
