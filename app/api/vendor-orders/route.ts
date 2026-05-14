@@ -693,7 +693,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
     dropoff_label: to_label || null,
 
-    note: note || null,
+    notes: note || null,
 
     items_text: items_text || null,
 
