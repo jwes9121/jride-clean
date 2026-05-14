@@ -211,6 +211,7 @@ function jrideTakeoutItemLine(row: any): string | null {
 
 async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Promise<{
   vendorName: string | null;
+  vendorLocationLabel: string | null;
   itemsSummary: string | null;
   computedSubtotal: number | null;
 }> {
@@ -254,7 +255,7 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
     }
   } catch (_) {}
 
-  return { vendorName, itemsSummary, computedSubtotal };
+  return { vendorName, vendorLocationLabel: null, itemsSummary, computedSubtotal };
 }
 
 function deriveStageHints(status: string, fareReady: boolean) {
@@ -426,7 +427,12 @@ export async function GET(req: NextRequest) {
     const normalizedStatus = takeoutDriverStatus ?? statusOf((booking as any).status);
     const takeoutReceipt = isTakeoutBooking
       ? await jrideLoadTakeoutReceiptV3(serviceSupabase, booking as any)
-      : { vendorName: null, itemsSummary: null, computedSubtotal: null };
+      : {
+        vendorName: null,
+        vendorLocationLabel: null,
+        itemsSummary: null,
+        computedSubtotal: null
+      };
     const takeoutAmount = isTakeoutBooking
       ? (jrideTakeoutReceiptAmount(booking as any) ?? takeoutReceipt.computedSubtotal)
       : null;
@@ -487,6 +493,7 @@ export async function GET(req: NextRequest) {
       vendor_name: takeoutReceipt.vendorName ?? s((booking as any).vendor_name),
       restaurant_name: takeoutReceipt.vendorName ?? s((booking as any).restaurant_name),
       store_name: takeoutReceipt.vendorName ?? s((booking as any).store_name),
+vendor_address: takeoutReceipt.vendorLocationLabel,
       items_summary: takeoutReceipt.itemsSummary ?? s((booking as any).items_summary),
       order_summary: takeoutReceipt.itemsSummary ?? s((booking as any).order_summary),
       // JRIDE_TAKEOUT_DRIVER_NOTES_DISPLAY_V1
@@ -498,7 +505,7 @@ export async function GET(req: NextRequest) {
       town: s((booking as any).town),
       from_label: s((booking as any).from_label),
       to_label: s((booking as any).to_label),
-      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorName ?? s((booking as any).from_label)) : s((booking as any).from_label),
+      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? takeoutReceipt.vendorName ?? s((booking as any).from_label)) : s((booking as any).from_label),
       dropoff_label: s((booking as any).to_label),
       pickup_lat: pickupLat,
       pickup_lng: pickupLng,
@@ -558,3 +565,9 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+
+
+
+
+
