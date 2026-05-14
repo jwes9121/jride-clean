@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -566,9 +566,14 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       driver_lat: driverLat,
       driver_lng: driverLng,
       driver_to_pickup_km: driverToPickupKm,
+      distance_to_pickup_km: driverToPickupKm,
+      pickup_distance_km: driverToPickupKm,
+      distance_to_pickup: driverToPickupKm,
       trip_distance_km: tripDistanceKm,
       pickup_eta_minutes: pickupEtaMinutes,
       eta_minutes: pickupEtaMinutes,
+      eta_to_pickup_minutes: pickupEtaMinutes,
+      pickup_eta: pickupEtaMinutes,
       proposed_fare: proposedFare,
       verified_fare: verifiedFare,
       submitted_regular_fare: submittedRegularFare,
@@ -610,7 +615,6 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
-
 
 
 
