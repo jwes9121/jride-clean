@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -166,6 +166,20 @@ function estimateEtaMinutes(distanceKm: number | null): number | null {
   return Math.max(1, Math.ceil((distanceKm / 25) * 60));
 }
 
+// JRIDE_TAKEOUT_ACTIVE_TRIP_DISTANCE_GUARD_V1
+// Read-side only: prevent impossible takeout distance and ETA values from leaking to Android.
+function jrideIsPhilippinesCoordPair(lat: number | null, lng: number | null): boolean {
+  if (lat == null || lng == null) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return lat >= 4 && lat <= 22 && lng >= 116 && lng <= 127;
+}
+
+function jrideIsSaneTakeoutDistanceKm(km: number | null): boolean {
+  if (km == null) return false;
+  if (!Number.isFinite(km)) return false;
+  return km >= 0 && km <= 100;
+}
+
 
 
 // JRIDE_ACTIVE_TRIP_TAKEOUT_RECEIPT_SCHEMA_V1`r`n// Align active-trip takeout receipt loader with production takeout_order_items schema.`r`n// JRIDE_TAKEOUT_DRIVER_ORDER_RECEIPT_V3
@@ -212,11 +226,15 @@ function jrideTakeoutItemLine(row: any): string | null {
 async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Promise<{
   vendorName: string | null;
   vendorLocationLabel: string | null;
+  vendorLat: number | null;
+  vendorLng: number | null;
   itemsSummary: string | null;
   computedSubtotal: number | null;
 }> {
   let vendorName: string | null = null;
   let vendorLocationLabel: string | null = null;
+  let vendorLat: number | null = null;
+  let vendorLng: number | null = null;
   let itemsSummary: string | null = null;
   let computedSubtotal: number | null = null;
 
@@ -232,6 +250,8 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
       if (!vendorRes.error && vendorRes.data) {
         vendorName = jrideTakeoutDisplayName(vendorRes.data);
         vendorLocationLabel = s((vendorRes.data as any).location_label);
+        vendorLat = n((vendorRes.data as any).lat);
+        vendorLng = n((vendorRes.data as any).lng);
       }
     } catch (_) {}
   }
@@ -257,7 +277,7 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
     }
   } catch (_) {}
 
-  return { vendorName, vendorLocationLabel, itemsSummary, computedSubtotal };
+  return { vendorName, vendorLocationLabel, vendorLat, vendorLng, itemsSummary, computedSubtotal };
 }
 
 function deriveStageHints(status: string, fareReady: boolean) {
@@ -432,31 +452,54 @@ export async function GET(req: NextRequest) {
       : {
         vendorName: null,
         vendorLocationLabel: null,
+        vendorLat: null,
+        vendorLng: null,
         itemsSummary: null,
         computedSubtotal: null
       };
     const takeoutAmount = isTakeoutBooking
       ? (jrideTakeoutReceiptAmount(booking as any) ?? takeoutReceipt.computedSubtotal)
       : null;
-    const pickupLat = n((booking as any).pickup_lat);
-    const pickupLng = n((booking as any).pickup_lng);
-    const dropoffLat = n((booking as any).dropoff_lat);
-    const dropoffLng = n((booking as any).dropoff_lng);
+    const rawPickupLat = n((booking as any).pickup_lat);
+    const rawPickupLng = n((booking as any).pickup_lng);
+    const rawDropoffLat = n((booking as any).dropoff_lat);
+    const rawDropoffLng = n((booking as any).dropoff_lng);
+
+    const hasVendorCoords = jrideIsPhilippinesCoordPair(takeoutReceipt.vendorLat, takeoutReceipt.vendorLng);
+    const pickupLat = isTakeoutBooking && hasVendorCoords ? takeoutReceipt.vendorLat : rawPickupLat;
+    const pickupLng = isTakeoutBooking && hasVendorCoords ? takeoutReceipt.vendorLng : rawPickupLng;
+    const dropoffLat = rawDropoffLat;
+    const dropoffLng = rawDropoffLng;
 
     let driverToPickupKm = n((booking as any).driver_to_pickup_km);
-    if (driverToPickupKm == null && driverLat != null && driverLng != null && pickupLat != null && pickupLng != null) {
+    if (isTakeoutBooking) {
+      const hasDriverCoords = jrideIsPhilippinesCoordPair(driverLat, driverLng);
+      const hasPickupCoords = jrideIsPhilippinesCoordPair(pickupLat, pickupLng);
+
+      if (hasDriverCoords && hasPickupCoords) {
+        driverToPickupKm = Number(haversineKm(driverLat as number, driverLng as number, pickupLat as number, pickupLng as number).toFixed(2));
+      } else if (!jrideIsSaneTakeoutDistanceKm(driverToPickupKm)) {
+        driverToPickupKm = null;
+      }
+    } else if (driverToPickupKm == null && driverLat != null && driverLng != null && pickupLat != null && pickupLng != null) {
       driverToPickupKm = Number(haversineKm(driverLat, driverLng, pickupLat, pickupLng).toFixed(1));
     }
 
     let tripDistanceKm = n((booking as any).trip_distance_km);
-    if (tripDistanceKm == null && pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
+    if (isTakeoutBooking) {
+      if (jrideIsPhilippinesCoordPair(pickupLat, pickupLng) && jrideIsPhilippinesCoordPair(dropoffLat, dropoffLng)) {
+        tripDistanceKm = Number(haversineKm(pickupLat as number, pickupLng as number, dropoffLat as number, dropoffLng as number).toFixed(2));
+      } else if (!jrideIsSaneTakeoutDistanceKm(tripDistanceKm)) {
+        tripDistanceKm = null;
+      }
+    } else if (tripDistanceKm == null && pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
       tripDistanceKm = Number(haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(2));
     }
 
-    const pickupEtaMinutes =
-      n((booking as any).pickup_eta_minutes) ??
-      n((booking as any).eta_minutes) ??
-      estimateEtaMinutes(driverToPickupKm);
+    const storedPickupEtaMinutes = n((booking as any).pickup_eta_minutes) ?? n((booking as any).eta_minutes);
+    const pickupEtaMinutes = isTakeoutBooking
+      ? estimateEtaMinutes(driverToPickupKm) ?? (jrideIsSaneTakeoutDistanceKm(driverToPickupKm) ? storedPickupEtaMinutes : null)
+      : storedPickupEtaMinutes ?? estimateEtaMinutes(driverToPickupKm);
 
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
@@ -567,6 +610,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
