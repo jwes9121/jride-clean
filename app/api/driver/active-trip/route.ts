@@ -40,6 +40,12 @@ function jrideTakeoutDriverStatus(row: any): string | null {
 
   if (!raw) return "driver_assigned";
 
+  // JRIDE_TAKEOUT_STATUS_ALIAS_V1
+  // Normalize backend takeout aliases to the Android takeout state machine.
+  if (raw === "rider_arrived_vendor" || raw === "arrived_at_vendor" || raw === "at_vendor") return "arrived_vendor";
+  if (raw === "order_picked_up" || raw === "pickedup" || raw === "picked-up") return "picked_up";
+  if (raw === "out_for_delivery" || raw === "in_delivery") return "delivering";
+
   if (raw === "requested" || raw === "pending") return "preparing";
   if (raw === "assigned" || raw === "accepted" || raw === "driver_assigned") return "driver_assigned";
   if (raw === "pickup_ready") return "driver_assigned";
@@ -158,6 +164,97 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 function estimateEtaMinutes(distanceKm: number | null): number | null {
   if (distanceKm == null || distanceKm <= 0) return null;
   return Math.max(1, Math.ceil((distanceKm / 25) * 60));
+}
+
+
+
+// JRIDE_ACTIVE_TRIP_TAKEOUT_RECEIPT_SCHEMA_V1`r`n// Align active-trip takeout receipt loader with production takeout_order_items schema.`r`n// JRIDE_TAKEOUT_DRIVER_ORDER_RECEIPT_V3
+// Read-only fields for Android driver takeout receipt. No DB writes. No ride lifecycle changes.
+function jrideTakeoutReceiptAmount(row: any): number | null {
+  return (
+    n(row?.takeout_items_subtotal) ??
+    n(row?.items_subtotal) ??
+    n(row?.order_total) ??
+    n(row?.food_total) ??
+    n(row?.total_food_price) ??
+    n(row?.subtotal) ??
+    n(row?.total_amount) ??
+    n(row?.grand_total)
+  );
+}
+
+function jrideTakeoutDisplayName(row: any): string | null {
+  return (
+    s(row?.display_name) ??
+    s(row?.vendor_name) ??
+    s(row?.restaurant_name) ??
+    s(row?.store_name) ??
+    s(row?.business_name) ??
+    s(row?.name) ??
+    s(row?.email) ??
+    s(row?.id)
+  );
+}
+
+function jrideTakeoutItemLine(row: any): string | null {
+  const qty = n(row?.quantity ?? row?.qty ?? row?.count) ?? 1;
+  const name =
+    s(row?.name) ??
+    s(row?.item_name) ??
+    s(row?.menu_name) ??
+    s(row?.product_name) ??
+    s(row?.title) ??
+    s(row?.description);
+  if (!name) return null;
+  return `${qty}x ${name}`;
+}
+
+async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Promise<{
+  vendorName: string | null;
+  itemsSummary: string | null;
+  computedSubtotal: number | null;
+}> {
+  let vendorName: string | null = null;
+  let itemsSummary: string | null = null;
+  let computedSubtotal: number | null = null;
+
+  const vendorId = s(booking?.vendor_id);
+  if (vendorId) {
+    try {
+      const vendorRes = await serviceSupabase
+        .from("vendor_accounts")
+        .select("*")
+        .eq("id", vendorId)
+        .limit(1)
+        .maybeSingle();
+      if (!vendorRes.error && vendorRes.data) {
+        vendorName = jrideTakeoutDisplayName(vendorRes.data);
+      }
+    } catch (_) {}
+  }
+
+  try {
+    const itemRes = await serviceSupabase
+      .from("takeout_order_items")
+      .select("booking_id,menu_item_id,name,price,quantity,snapshot_at")
+      .eq("booking_id", booking?.id)
+      .limit(20);
+    if (!itemRes.error && Array.isArray(itemRes.data) && itemRes.data.length) {
+      const lines: string[] = [];
+      let subtotal = 0;
+      for (const row of itemRes.data as any[]) {
+        const line = jrideTakeoutItemLine(row);
+        if (line) lines.push(line);
+        const price = n(row?.price) ?? 0;
+        const qty = n(row?.quantity ?? row?.qty) ?? 1;
+        subtotal += price * qty;
+      }
+      if (lines.length) itemsSummary = lines.join(", ");
+      if (subtotal > 0) computedSubtotal = Number(subtotal.toFixed(2));
+    }
+  } catch (_) {}
+
+  return { vendorName, itemsSummary, computedSubtotal };
 }
 
 function deriveStageHints(status: string, fareReady: boolean) {
@@ -319,8 +416,15 @@ export async function GET(req: NextRequest) {
       driverLng = n((driverLocRes.data as any).lng);
     }
 
+    const isTakeoutBooking = jrideIsTakeoutActiveTrip(booking as any);
     const takeoutDriverStatus = jrideTakeoutDriverStatus(booking as any);
     const normalizedStatus = takeoutDriverStatus ?? statusOf((booking as any).status);
+    const takeoutReceipt = isTakeoutBooking
+      ? await jrideLoadTakeoutReceiptV3(serviceSupabase, booking as any)
+      : { vendorName: null, itemsSummary: null, computedSubtotal: null };
+    const takeoutAmount = isTakeoutBooking
+      ? (jrideTakeoutReceiptAmount(booking as any) ?? takeoutReceipt.computedSubtotal)
+      : null;
     const pickupLat = n((booking as any).pickup_lat);
     const pickupLng = n((booking as any).pickup_lng);
     const dropoffLat = n((booking as any).dropoff_lat);
@@ -369,14 +473,25 @@ export async function GET(req: NextRequest) {
       booking_code: booking.booking_code,
       code: booking.booking_code,
       status: normalizedStatus,
-      service_type: jrideIsTakeoutActiveTrip(booking as any) ? "takeout" : s((booking as any).service_type),
-      serviceType: jrideIsTakeoutActiveTrip(booking as any) ? "takeout" : s((booking as any).serviceType),
+      service_type: isTakeoutBooking ? "takeout" : s((booking as any).service_type),
+      serviceType: isTakeoutBooking ? "takeout" : s((booking as any).serviceType),
       takeout_status: takeoutDriverStatus,
       vendor_status: s((booking as any).vendor_status),
       customer_status: s((booking as any).customer_status),
+      vendor_id: s((booking as any).vendor_id),
+      vendor_name: takeoutReceipt.vendorName ?? s((booking as any).vendor_name),
+      restaurant_name: takeoutReceipt.vendorName ?? s((booking as any).restaurant_name),
+      store_name: takeoutReceipt.vendorName ?? s((booking as any).store_name),
+      items_summary: takeoutReceipt.itemsSummary ?? s((booking as any).items_summary),
+      order_summary: takeoutReceipt.itemsSummary ?? s((booking as any).order_summary),
+      order_total: takeoutAmount,
+      food_total: takeoutAmount,
+      takeout_items_subtotal: takeoutAmount,
       town: s((booking as any).town),
       from_label: s((booking as any).from_label),
       to_label: s((booking as any).to_label),
+      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorName ?? s((booking as any).from_label)) : s((booking as any).from_label),
+      dropoff_label: s((booking as any).to_label),
       pickup_lat: pickupLat,
       pickup_lng: pickupLng,
       dropoff_lat: dropoffLat,
