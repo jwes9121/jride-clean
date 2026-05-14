@@ -216,6 +216,7 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
   computedSubtotal: number | null;
 }> {
   let vendorName: string | null = null;
+  let vendorLocationLabel: string | null = null;
   let itemsSummary: string | null = null;
   let computedSubtotal: number | null = null;
 
@@ -566,6 +567,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
