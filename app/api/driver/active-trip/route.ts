@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -354,7 +354,7 @@ export async function GET(req: NextRequest) {
 
     const bookingRes = await serviceSupabase
       .from("bookings")
-      .select("id,display_name,email,town,lat,lng,location_label")
+      .select("*")
       .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
       // JRIDE_ACTIVE_TRIP_TAKEOUT_ASSIGNMENT_QUERY_V1
       // Read-only active-trip query widening for takeout assignments.
