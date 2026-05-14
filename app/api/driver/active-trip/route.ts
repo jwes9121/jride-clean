@@ -224,12 +224,13 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
     try {
       const vendorRes = await serviceSupabase
         .from("vendor_accounts")
-        .select("*")
+        .select("id,display_name,email,town,lat,lng,location_label")
         .eq("id", vendorId)
         .limit(1)
         .maybeSingle();
       if (!vendorRes.error && vendorRes.data) {
         vendorName = jrideTakeoutDisplayName(vendorRes.data);
+        vendorLocationLabel = s((vendorRes.data as any).location_label);
       }
     } catch (_) {}
   }
@@ -255,7 +256,7 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
     }
   } catch (_) {}
 
-  return { vendorName, vendorLocationLabel: null, itemsSummary, computedSubtotal };
+  return { vendorName, vendorLocationLabel, itemsSummary, computedSubtotal };
 }
 
 function deriveStageHints(status: string, fareReady: boolean) {
@@ -352,7 +353,7 @@ export async function GET(req: NextRequest) {
 
     const bookingRes = await serviceSupabase
       .from("bookings")
-      .select("*")
+      .select("id,display_name,email,town,lat,lng,location_label")
       .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
       // JRIDE_ACTIVE_TRIP_TAKEOUT_ASSIGNMENT_QUERY_V1
       // Read-only active-trip query widening for takeout assignments.
@@ -565,6 +566,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
