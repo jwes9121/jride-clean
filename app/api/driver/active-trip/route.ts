@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -489,6 +489,9 @@ export async function GET(req: NextRequest) {
       store_name: takeoutReceipt.vendorName ?? s((booking as any).store_name),
       items_summary: takeoutReceipt.itemsSummary ?? s((booking as any).items_summary),
       order_summary: takeoutReceipt.itemsSummary ?? s((booking as any).order_summary),
+      // JRIDE_TAKEOUT_DRIVER_NOTES_DISPLAY_V1
+      // Read-only: expose saved takeout customer notes to Android driver UI.
+      notes: s((booking as any).notes),
       order_total: takeoutAmount,
       food_total: takeoutAmount,
       takeout_items_subtotal: takeoutAmount,
@@ -502,7 +505,6 @@ export async function GET(req: NextRequest) {
       dropoff_lat: dropoffLat,
       dropoff_lng: dropoffLng,
       passenger_name: s((booking as any).passenger_name),
-      notes: s((booking as any).notes),
       passenger_phone: passengerPhone,
       passenger_count: n((booking as any).passenger_count),
       driver_id: s((booking as any).driver_id) ?? driverId,
