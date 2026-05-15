@@ -117,6 +117,18 @@ function shapeOrder(row: any, items: SnapshotItem[] | null, computedSubtotal: nu
     items,
     items_subtotal: storedSubtotal != null ? Number(storedSubtotal) : computedSubtotal,
     total_bill: totalBill,
+    // JRIDE_TAKEOUT_PASSENGER_PRICING_READ_FIELDS_V1
+    // Read-only passenger visibility for takeout driver fee proposal.
+    // No assignment, lifecycle, ride fare, or accounting mutation happens here.
+    takeout_pricing_status: row?.takeout_pricing_status ?? null,
+    takeout_delivery_fee: row?.takeout_delivery_fee ?? null,
+    takeout_service_fee: row?.takeout_service_fee ?? null,
+    takeout_total_payable: row?.takeout_total_payable ?? null,
+    takeout_cash_collection_required: row?.takeout_cash_collection_required ?? null,
+    takeout_fee_proposed_by_driver_id: row?.takeout_fee_proposed_by_driver_id ?? null,
+    takeout_fee_proposed_at: row?.takeout_fee_proposed_at ?? null,
+    takeout_fee_expires_at: row?.takeout_fee_expires_at ?? null,
+    takeout_customer_confirmed_at: row?.takeout_customer_confirmed_at ?? null,
   };
 }
 
