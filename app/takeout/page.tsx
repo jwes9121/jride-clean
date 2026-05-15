@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -36,6 +36,39 @@ type VendorRow = {
   email?: string | null;
   town?: string | null;
 };
+
+
+type TakeoutPricingOrder = {
+  id?: string | null;
+  booking_code?: string | null;
+  code?: string | null;
+  takeout_pricing_status?: string | null;
+  takeout_delivery_fee?: number | string | null;
+  takeout_service_fee?: number | string | null;
+  takeout_total_payable?: number | string | null;
+  takeout_cash_collection_required?: boolean | null;
+  takeout_fee_proposed_at?: string | null;
+  takeout_fee_expires_at?: string | null;
+  takeout_customer_confirmed_at?: string | null;
+  total_bill?: number | string | null;
+  takeout_items_subtotal?: number | string | null;
+};
+
+function normText(v: any): string {
+  return String(v ?? "").trim();
+}
+
+function takeoutOrderId(o: TakeoutPricingOrder | null | undefined): string {
+  return normText(o?.id || o?.booking_code || o?.code);
+}
+
+function secondsUntil(value: any): number | null {
+  const raw = normText(value);
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.ceil((t - Date.now()) / 1000));
+}
 
 
 const LS_DEVICE_KEY = "JRIDE_PAX_DEVICE_KEY";
@@ -120,6 +153,14 @@ export default function TakeoutPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string>("");
   const [lastJson, setLastJson] = useState<ApiResp | null>(null);
+
+  // JRIDE_TAKEOUT_PASSENGER_PRICING_UI_V1
+  // Passenger-side visibility only for driver delivery fee proposals.
+  // This page does not assign drivers, mutate ride lifecycle, touch ride fare, or touch payout logic.
+  const [pricingOrder, setPricingOrder] = useState<TakeoutPricingOrder | null>(null);
+  const [pricingBusy, setPricingBusy] = useState(false);
+  const [pricingErr, setPricingErr] = useState<string | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const primary = useMemo(() => saved.find((a) => a.is_primary) || saved[0] || null, [saved]);
 
@@ -294,6 +335,18 @@ export default function TakeoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
+  // JRIDE_TAKEOUT_PASSENGER_PRICING_UI_V1
+  // Poll only the passenger takeout order read endpoint while waiting for a driver fee proposal.
+  useEffect(() => {
+    if (!submitted || !deviceKey) return;
+    refreshPricingOrder().catch(() => undefined);
+    const t = window.setInterval(() => {
+      refreshPricingOrder().catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, deviceKey]);
+
   async function saveAddressToDb(addressText: string, makePrimary: boolean) {
     const addr = String(addressText || "").trim();
     if (!addr) throw new Error("Address required");
@@ -311,6 +364,82 @@ export default function TakeoutPage() {
     const row = saved.find((a) => a.id === id);
     if (!row) return;
     await saveAddressToDb(row.address_text, true);
+  }
+
+  function normalizeTakeoutOrders(j: any): TakeoutPricingOrder[] {
+    if (Array.isArray(j)) return j as TakeoutPricingOrder[];
+    if (Array.isArray(j?.orders)) return j.orders as TakeoutPricingOrder[];
+    if (Array.isArray(j?.data)) return j.data as TakeoutPricingOrder[];
+    if (Array.isArray(j?.bookings)) return j.bookings as TakeoutPricingOrder[];
+    return [];
+  }
+
+  function findPricingOrder(rows: TakeoutPricingOrder[], current: TakeoutPricingOrder | null, createdId: string): TakeoutPricingOrder | null {
+    const keys = new Set<string>();
+    const currentKey = takeoutOrderId(current);
+    if (currentKey) keys.add(currentKey);
+    if (createdId) keys.add(createdId);
+    if (keys.size) {
+      const hit = rows.find((r) => {
+        const id = normText(r.id);
+        const code = normText(r.booking_code || r.code);
+        return keys.has(id) || keys.has(code);
+      });
+      if (hit) return hit;
+    }
+    return rows[0] || null;
+  }
+
+  async function refreshPricingOrder(current: TakeoutPricingOrder | null = pricingOrder) {
+    const dk = normText(deviceKey);
+    if (!dk) return;
+    setPricingBusy(true);
+    setPricingErr(null);
+    try {
+      const j = await getJson("/api/takeout/orders?device_key=" + encodeURIComponent(dk));
+      const rows = normalizeTakeoutOrders(j);
+      const createdId = normText(
+        lastJson?.order_id ||
+          lastJson?.orderId ||
+          lastJson?.booking_id ||
+          lastJson?.bookingId ||
+          lastJson?.id ||
+          lastJson?.booking_code ||
+          lastJson?.bookingCode
+      );
+      const found = findPricingOrder(rows, current, createdId);
+      if (found) setPricingOrder(found);
+    } catch (e: any) {
+      setPricingErr(String(e?.message || e || "Failed to refresh takeout pricing."));
+    } finally {
+      setPricingBusy(false);
+    }
+  }
+
+  async function confirmTakeoutFee() {
+    if (!pricingOrder) return;
+    const orderId = normText(pricingOrder.id);
+    const bookingCode = normText(pricingOrder.booking_code || pricingOrder.code);
+    if (!orderId && !bookingCode) {
+      setPricingErr("Missing takeout order id.");
+      return;
+    }
+    setConfirmBusy(true);
+    setPricingErr(null);
+    try {
+      const j = await postJson("/api/takeout/confirm-fee", {
+        order_id: orderId || undefined,
+        booking_code: bookingCode || undefined,
+        confirm: true,
+      });
+      const next = (j?.order || j?.data || j?.proposal || null) as TakeoutPricingOrder | null;
+      if (next) setPricingOrder(next);
+      setResult("Takeout total confirmed. Driver is now assigned.");
+    } catch (e: any) {
+      setPricingErr(String(e?.message || e || "Failed to confirm takeout total."));
+    } finally {
+      setConfirmBusy(false);
+    }
   }
 
   function setItemQty(id: string, nextQty: number) {
@@ -392,7 +521,7 @@ export default function TakeoutPage() {
         items_json: itemsJson,
         itemsJson: itemsJson,
 
-        // Client-only estimate (NO wallet math)
+        // Client-only item subtotal estimate
         estimated_items_subtotal: itemsSubtotal,
 
         note: note.trim(),
@@ -404,7 +533,16 @@ export default function TakeoutPage() {
       const maybeId =
         j?.order_id || j?.orderId || j?.booking_id || j?.bookingId || j?.id || "";
 
-      setResult("Created takeout order successfully." + (maybeId ? " ID: " + String(maybeId) : ""));
+      const maybeCode = normText(j?.booking_code || j?.bookingCode || j?.code);
+      setResult("Takeout order submitted. Waiting for a driver delivery fee proposal." + (maybeId ? " ID: " + String(maybeId) : ""));
+      setPricingOrder({
+        id: normText(maybeId) || null,
+        booking_code: maybeCode || null,
+        takeout_pricing_status: "pricing_pending",
+        total_bill: itemsSubtotal,
+        takeout_items_subtotal: itemsSubtotal,
+      });
+      setPricingErr(null);
       setQty({});
       setSubmitted(true);
       setMenu([]);
@@ -732,7 +870,7 @@ export default function TakeoutPage() {
                 <div className="font-semibold">{money(itemsSubtotal)}</div>
               </div>
               <div className="mt-1 text-[11px] text-slate-600">
-                {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. Delivery fees/wallet math are unchanged."}
+                {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. The final delivery fee appears after a driver proposal."}
               </div>
             </div>
 
@@ -784,6 +922,108 @@ export default function TakeoutPage() {
 
         {result ? (
           <div className="mt-3 rounded border bg-slate-50 p-3 text-sm">{result}</div>
+        ) : null}
+
+        {submitted ? (
+          <div className="mt-3 rounded border bg-white p-4 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-slate-900">Takeout pricing confirmation</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Waiting for a driver delivery fee proposal before the order is finally confirmed.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => refreshPricingOrder().catch(() => undefined)}
+                disabled={pricingBusy}
+                className="rounded border px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-60"
+              >
+                {pricingBusy ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+
+            {pricingErr ? (
+              <div className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{pricingErr}</div>
+            ) : null}
+
+            {(() => {
+              const order = pricingOrder;
+              const status = normText(order?.takeout_pricing_status || "pricing_pending").toLowerCase();
+              const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill ?? itemsSubtotal);
+              const deliveryFee = toNum(order?.takeout_delivery_fee);
+              const serviceFee = toNum(order?.takeout_service_fee || 15);
+              const totalPayable = toNum(order?.takeout_total_payable);
+              const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
+              const readyToConfirm = status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+
+              return (
+                <div className="mt-3 space-y-2">
+                  <div className="rounded border bg-slate-50 p-3">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-600">Status</span>
+                      <span className="font-semibold">{status.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between gap-3">
+                      <span className="text-slate-600">Food subtotal</span>
+                      <span>{money(foodSubtotal)}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between gap-3">
+                      <span className="text-slate-600">Driver delivery fee</span>
+                      <span>{deliveryFee > 0 ? money(deliveryFee) : "Waiting for driver"}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between gap-3">
+                      <span className="text-slate-600">JRide service fee</span>
+                      <span>{serviceFee > 0 ? money(serviceFee) : "--"}</span>
+                    </div>
+                    <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-base">
+                      <span className="font-semibold">Total payable</span>
+                      <span className="font-bold">{totalPayable > 0 ? money(totalPayable) : "Pending"}</span>
+                    </div>
+                    {order?.takeout_cash_collection_required === true ? (
+                      <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                        Cash collection required before vendor pickup.
+                      </div>
+                    ) : null}
+                    {status === "driver_fee_proposed" ? (
+                      <div className="mt-2 text-xs text-slate-600">
+                        Proposal expires in: <span className="font-semibold">{expiresIn === null ? "--" : String(expiresIn) + " sec"}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {status === "pricing_pending" ? (
+                    <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                      Looking for a nearby driver to propose the delivery fee. Do not close this page yet.
+                    </div>
+                  ) : null}
+
+                  {status === "expired" ? (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      The previous driver fee proposal expired. Please wait for another driver proposal.
+                    </div>
+                  ) : null}
+
+                  {status === "customer_confirmed" ? (
+                    <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                      Order confirmed. The driver is now assigned and the vendor workflow can proceed.
+                    </div>
+                  ) : null}
+
+                  {readyToConfirm ? (
+                    <button
+                      type="button"
+                      onClick={confirmTakeoutFee}
+                      disabled={confirmBusy}
+                      className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
+                    >
+                      {confirmBusy ? "Confirming..." : "Confirm order total"}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })()}
+          </div>
         ) : null}
 
         {lastJson ? (
