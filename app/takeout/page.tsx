@@ -368,6 +368,8 @@ export default function TakeoutPage() {
 
   function normalizeTakeoutOrders(j: any): TakeoutPricingOrder[] {
     if (Array.isArray(j)) return j as TakeoutPricingOrder[];
+    if (j?.order && typeof j.order === "object") return [j.order as TakeoutPricingOrder];
+    if (j?.data && !Array.isArray(j.data) && typeof j.data === "object") return [j.data as TakeoutPricingOrder];
     if (Array.isArray(j?.orders)) return j.orders as TakeoutPricingOrder[];
     if (Array.isArray(j?.data)) return j.data as TakeoutPricingOrder[];
     if (Array.isArray(j?.bookings)) return j.bookings as TakeoutPricingOrder[];
@@ -396,10 +398,9 @@ export default function TakeoutPage() {
     setPricingBusy(true);
     setPricingErr(null);
     try {
-      const j = await getJson("/api/takeout/orders?device_key=" + encodeURIComponent(dk));
-      const rows = normalizeTakeoutOrders(j);
       const createdId = normText(
-        lastJson?.order_id ||
+        takeoutOrderId(current) ||
+          lastJson?.order_id ||
           lastJson?.orderId ||
           lastJson?.booking_id ||
           lastJson?.bookingId ||
@@ -407,6 +408,14 @@ export default function TakeoutPage() {
           lastJson?.booking_code ||
           lastJson?.bookingCode
       );
+      const bookingCode = normText(current?.booking_code || current?.code || lastJson?.booking_code || lastJson?.bookingCode || lastJson?.code);
+      const qs = createdId
+        ? "order_id=" + encodeURIComponent(createdId)
+        : bookingCode
+          ? "booking_code=" + encodeURIComponent(bookingCode)
+          : "device_key=" + encodeURIComponent(dk);
+      const j = await getJson("/api/takeout/orders?" + qs);
+      const rows = normalizeTakeoutOrders(j);
       const found = findPricingOrder(rows, current, createdId);
       if (found) setPricingOrder(found);
     } catch (e: any) {
