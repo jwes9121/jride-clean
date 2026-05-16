@@ -283,7 +283,6 @@ export async function POST(req: NextRequest) {
       takeout_delivery_fee: deliveryFee,
       takeout_total_payable: totalPayable,
       takeout_cash_collection_required: cashRequired,
-      proposed_by_driver_id: driverAuth.driverId,
       proposed_at: nowIso,
       expires_at: expiresIso,
       takeout_route_plan: routePlan,
@@ -298,16 +297,13 @@ export async function POST(req: NextRequest) {
         takeout_service_fee: SERVICE_FEE,
         takeout_total_payable: totalPayable,
         takeout_cash_collection_required: cashRequired,
-        takeout_fee_proposed_by_driver_id: driverAuth.driverId,
         takeout_fee_proposed_at: nowIso,
         takeout_fee_expires_at: expiresIso,
         takeout_route_plan: routePlan,
-        takeout_pricing_snapshot: snapshot,
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
-      .eq("assigned_driver_id", driverAuth.driverId)
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at")
+      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at")
       .single();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });
@@ -317,7 +313,7 @@ export async function POST(req: NextRequest) {
       proposal: updateRes.data,
       pricing: snapshot,
       auth_mode: driverAuth.authMode,
-      guard: "takeout_driver_fee_proposal_v2_assigned_driver_only",
+      guard: "takeout_driver_fee_proposal_v4_known_columns_only",
     });
   } catch (err: any) {
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
