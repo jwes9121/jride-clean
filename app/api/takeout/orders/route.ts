@@ -44,7 +44,6 @@ const TAKEOUT_ORDER_SELECT = [
   "takeout_fee_proposed_at",
   "takeout_fee_expires_at",
   "takeout_customer_confirmed_at",
-  "total_bill",
   "takeout_items_subtotal",
   "takeout_route_plan",
   "created_at",
@@ -87,7 +86,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       order,
       orders,
-      guard: "takeout_orders_read_v1_no_bookings_device_key_no_ride_fare_no_wallet",
+      guard: "takeout_orders_read_v2_no_bookings_device_key_no_total_bill_no_ride_fare_no_wallet",
     });
   } catch (err: any) {
     return json(500, {
