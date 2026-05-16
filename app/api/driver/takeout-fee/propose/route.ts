@@ -226,10 +226,18 @@ export async function POST(req: NextRequest) {
     const orderId = text(body?.order_id || body?.orderId || body?.booking_id || body?.bookingId || body?.id);
     const bookingCode = text(body?.booking_code || body?.bookingCode || body?.code);
     const deliveryFee = money(body?.takeout_delivery_fee ?? body?.delivery_fee ?? body?.deliveryFee ?? body?.fee);
+    // JRIDE_TAKEOUT_ROUTE_PLAN_PROPOSE_ROUTE_V1
+    // Takeout-only route plan disclosure. This makes clear whether the proposed delivery fee
+    // covers vendor-first pickup or customer cash pickup before vendor pickup.
+    const routePlan = lower(body?.takeout_route_plan ?? body?.route_plan ?? body?.routePlan);
+    const allowedRoutePlans = new Set(["vendor_first", "customer_cash_first"]);
 
     if (!orderId && !bookingCode) return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
     if (deliveryFee === null || deliveryFee <= 0 || deliveryFee > MAX_DELIVERY_FEE) {
       return json(400, { ok: false, error: "BAD_DELIVERY_FEE", message: "Delivery fee must be greater than 0 and not excessive." });
+    }
+    if (!allowedRoutePlans.has(routePlan)) {
+      return json(400, { ok: false, error: "BAD_TAKEOUT_ROUTE_PLAN", message: "route_plan must be vendor_first or customer_cash_first." });
     }
 
     const driverOk = await assertDriverCanPropose(serviceSupabase, driverAuth.driverId);
@@ -268,6 +276,8 @@ export async function POST(req: NextRequest) {
       proposed_by_driver_id: driverAuth.driverId,
       proposed_at: nowIso,
       expires_at: expiresIso,
+      takeout_route_plan: routePlan,
+      route_plan: routePlan,
     };
 
     const updateRes = await serviceSupabase
@@ -281,12 +291,13 @@ export async function POST(req: NextRequest) {
         takeout_fee_proposed_by_driver_id: driverAuth.driverId,
         takeout_fee_proposed_at: nowIso,
         takeout_fee_expires_at: expiresIso,
+        takeout_route_plan: routePlan,
         takeout_pricing_snapshot: snapshot,
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
       .is("assigned_driver_id", null)
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at")
+      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at")
       .single();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });
