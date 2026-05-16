@@ -146,7 +146,7 @@ function isOnlineLike(value: any): boolean {
   return s === "online" || s === "available" || s === "idle" || s === "waiting";
 }
 
-async function assertDriverCanPropose(serviceSupabase: any, driverId: string): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
+async function assertDriverCanPropose(serviceSupabase: any, driverId: string, currentOrderId?: string): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
   const loc = await serviceSupabase
     .from("driver_locations")
     .select("driver_id,status,updated_at")
@@ -172,11 +172,15 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string): P
   const activeTakeout = new Set(["requested", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "picked_up", "delivering"]);
 
   for (const row of active.data || []) {
+    const rowId = text((row as any).id);
     const serviceType = lower((row as any).service_type);
     const rideStatus = lower((row as any).status);
     const takeoutStatus = lower((row as any).vendor_status || (row as any).customer_status || (row as any).status);
+    if (currentOrderId && rowId === currentOrderId) {
+      continue;
+    }
     if (serviceType === "takeout" && activeTakeout.has(takeoutStatus)) {
-      return { ok: false, error: "DRIVER_ALREADY_ACTIVE", message: "Driver already has an active takeout order." };
+      return { ok: false, error: "DRIVER_ALREADY_ACTIVE", message: "Driver already has another active takeout order." };
     }
     if (serviceType !== "takeout" && activeRide.has(rideStatus)) {
       return { ok: false, error: "DRIVER_ALREADY_ACTIVE", message: "Driver already has an active ride booking." };
@@ -240,14 +244,22 @@ export async function POST(req: NextRequest) {
       return json(400, { ok: false, error: "BAD_TAKEOUT_ROUTE_PLAN", message: "route_plan must be vendor_first or customer_cash_first." });
     }
 
-    const driverOk = await assertDriverCanPropose(serviceSupabase, driverAuth.driverId);
-    if (!driverOk.ok) return json(409, { ok: false, error: driverOk.error, message: driverOk.message });
-
     const orderRes = await loadTakeoutOrder(serviceSupabase, orderId, bookingCode);
     if (orderRes.error) return json(500, { ok: false, error: "TAKEOUT_ORDER_QUERY_FAILED", message: orderRes.error.message });
     const order = orderRes.data as any;
     if (!order?.id) return json(404, { ok: false, error: "TAKEOUT_ORDER_NOT_FOUND", message: "Takeout order not found." });
-    if (text(order.assigned_driver_id)) return json(409, { ok: false, error: "TAKEOUT_ALREADY_ASSIGNED", message: "Takeout order already has an assigned driver." });
+
+    const assignedDriverId = text(order.assigned_driver_id);
+    if (assignedDriverId && assignedDriverId !== driverAuth.driverId) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ASSIGNED_TO_DIFFERENT_DRIVER",
+        message: "Takeout order is assigned to a different driver.",
+      });
+    }
+
+    const driverOk = await assertDriverCanPropose(serviceSupabase, driverAuth.driverId, order.id);
+    if (!driverOk.ok) return json(409, { ok: false, error: driverOk.error, message: driverOk.message });
 
     const pricingStatus = lower(order.takeout_pricing_status || "pricing_pending");
     const allowedPricingStates = new Set(["", "pricing_pending", "expired", "cancelled"]);
@@ -296,8 +308,8 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
-      .is("assigned_driver_id", null)
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at")
+      .or(`assigned_driver_id.is.null,assigned_driver_id.eq.${driverAuth.driverId}`)
+      .select("id,booking_code,service_type,assigned_driver_id,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at")
       .single();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });
@@ -307,7 +319,7 @@ export async function POST(req: NextRequest) {
       proposal: updateRes.data,
       pricing: snapshot,
       auth_mode: driverAuth.authMode,
-      guard: "takeout_driver_fee_proposal_v1_no_assignment",
+      guard: "takeout_driver_fee_proposal_v2_allow_assigned_driver",
     });
   } catch (err: any) {
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
