@@ -48,6 +48,10 @@ function normStatus(value: any) {
   return s;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 function isOnlineLike(value: any) {
   const s = String(value || "").trim().toLowerCase();
   return s === "online" || s === "available" || s === "idle" || s === "waiting";
@@ -127,18 +131,36 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({} as any));
-  const orderId = String(body?.order_id || body?.orderId || body?.booking_id || body?.bookingId || body?.id || "").trim();
+  const orderRef = String(
+    body?.order_id ||
+      body?.orderId ||
+      body?.booking_id ||
+      body?.bookingId ||
+      body?.id ||
+      body?.booking_code ||
+      body?.bookingCode ||
+      ""
+  ).trim();
   const driverId = String(body?.driver_id || body?.driverId || "").trim();
 
-  if (!orderId) return json(400, { ok: false, error: "order_id_required", message: "order_id required" });
+  if (!orderRef) {
+    return json(400, {
+      ok: false,
+      error: "order_id_or_booking_code_required",
+      message: "order_id or booking_code required",
+    });
+  }
   if (!driverId) return json(400, { ok: false, error: "driver_id_required", message: "driver_id required" });
 
-  const existing = await admin
+  const existingQuery = admin
     .from("bookings")
     .select("id,booking_code,service_type,vendor_status,customer_status,status,assigned_driver_id")
-    .eq("id", orderId)
     .eq("service_type", "takeout")
-    .single();
+    .limit(1);
+
+  const existing = isUuid(orderRef)
+    ? await existingQuery.eq("id", orderRef).maybeSingle()
+    : await existingQuery.eq("booking_code", orderRef).maybeSingle();
 
   if (existing.error || !existing.data) {
     return json(404, { ok: false, error: "TAKEOUT_ORDER_NOT_FOUND", message: existing.error?.message || "Takeout order not found" });
@@ -175,7 +197,8 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "DB_ERROR", message: assigned.error.message });
   }
 
-  const conflict = findDriverConflict(Array.isArray(assigned.data) ? assigned.data : [], driverId, orderId);
+  const currentOrderId = String((existing.data as any).id || "");
+  const conflict = findDriverConflict(Array.isArray(assigned.data) ? assigned.data : [], driverId, currentOrderId);
   if (conflict) {
     return json(409, {
       ok: false,
@@ -194,7 +217,7 @@ export async function POST(req: NextRequest) {
   const up = await admin
     .from("bookings")
     .update(patch)
-    .eq("id", orderId)
+    .eq("id", currentOrderId)
     .eq("service_type", "takeout")
     .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,updated_at")
     .single();
@@ -205,5 +228,3 @@ export async function POST(req: NextRequest) {
 
   return json(200, { ok: true, order: up.data, guard: "manual_takeout_assignment_guard_v1" });
 }
-
-
