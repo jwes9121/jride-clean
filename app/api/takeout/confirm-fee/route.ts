@@ -24,10 +24,17 @@ function json(status: number, payload: any) {
 
 function createServiceSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!url || !key) throw new Error("Missing Supabase service configuration.");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
+
+  if (!url || !key) {
+    throw new Error("Missing Supabase service configuration.");
+  }
+
   return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
   });
 }
 
@@ -44,48 +51,126 @@ export async function POST(req: NextRequest) {
     const serviceSupabase = createServiceSupabase();
     const body = await req.json().catch(() => ({}));
 
-    const orderId = text(body?.order_id || body?.orderId || body?.booking_id || body?.bookingId || body?.id);
-    const bookingCode = text(body?.booking_code || body?.bookingCode || body?.code);
+    const orderId = text(
+      body?.order_id ||
+        body?.orderId ||
+        body?.booking_id ||
+        body?.bookingId ||
+        body?.id,
+    );
+
+    const bookingCode = text(
+      body?.booking_code || body?.bookingCode || body?.code,
+    );
+
     const confirm = body?.confirm === true || lower(body?.action) === "confirm";
 
     if (!confirm) {
-      return json(400, { ok: false, error: "CONFIRM_REQUIRED", message: "confirm=true is required." });
+      return json(400, {
+        ok: false,
+        error: "CONFIRM_REQUIRED",
+        message: "confirm=true or action=confirm is required.",
+      });
     }
 
     if (!orderId && !bookingCode) {
-      return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
+      return json(400, {
+        ok: false,
+        error: "ORDER_REQUIRED",
+        message: "order_id or booking_code is required.",
+      });
     }
 
     let q = serviceSupabase
       .from("bookings")
-      .select("id,booking_code,service_type,assigned_driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at")
+      .select(
+        "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+      )
       .eq("service_type", "takeout")
       .limit(1);
 
-    if (orderId) q = q.eq("id", orderId);
-    else q = q.eq("booking_code", bookingCode);
+    q = orderId ? q.eq("id", orderId) : q.eq("booking_code", bookingCode);
 
     const orderRes = await q.maybeSingle();
+
     if (orderRes.error) {
-      return json(500, { ok: false, error: "TAKEOUT_CONFIRM_QUERY_FAILED", message: orderRes.error.message });
+      return json(500, {
+        ok: false,
+        error: "TAKEOUT_CONFIRM_QUERY_FAILED",
+        message: orderRes.error.message,
+      });
     }
 
     const order = orderRes.data as any;
+
     if (!order?.id) {
-      return json(404, { ok: false, error: "TAKEOUT_ORDER_NOT_FOUND", message: "Takeout order not found." });
+      return json(404, {
+        ok: false,
+        error: "TAKEOUT_ORDER_NOT_FOUND",
+        message: "Takeout order not found.",
+      });
     }
 
-    if (text(order.assigned_driver_id)) {
-      return json(409, { ok: false, error: "TAKEOUT_ALREADY_ASSIGNED", message: "Takeout order already has an assigned driver." });
+    if (
+      lower(order.vendor_status) === "completed" ||
+      lower(order.customer_status) === "completed" ||
+      lower(order.status) === "completed"
+    ) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ALREADY_COMPLETED",
+        message: "Takeout order is already completed.",
+      });
+    }
+
+    if (
+      lower(order.vendor_status) === "cancelled" ||
+      lower(order.customer_status) === "cancelled" ||
+      lower(order.status) === "cancelled"
+    ) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ALREADY_CANCELLED",
+        message: "Takeout order is already cancelled.",
+      });
+    }
+
+    if (text(order.takeout_customer_confirmed_at)) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ALREADY_CONFIRMED",
+        message: "Takeout order was already confirmed.",
+      });
     }
 
     if (lower(order.takeout_pricing_status) !== "driver_fee_proposed") {
-      return json(409, { ok: false, error: "TAKEOUT_FEE_NOT_READY", message: "No active driver delivery fee proposal to confirm." });
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_FEE_NOT_READY",
+        message: "No active driver delivery fee proposal to confirm.",
+      });
     }
 
-    const proposedDriverId = text(order.takeout_fee_proposed_by_driver_id);
+    if (order.takeout_delivery_fee === null || order.takeout_delivery_fee === undefined) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_DELIVERY_FEE_MISSING",
+        message: "Driver delivery fee is missing.",
+      });
+    }
+
+    const proposedDriverId = text(
+      order.takeout_fee_proposed_by_driver_id ||
+        order.assigned_driver_id ||
+        order.driver_id,
+    );
+
     if (!proposedDriverId) {
-      return json(409, { ok: false, error: "TAKEOUT_PROPOSING_DRIVER_MISSING", message: "Driver proposal is missing." });
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_PROPOSING_DRIVER_MISSING",
+        message: "Driver proposal is missing.",
+      });
     }
 
     if (isExpired(order.takeout_fee_expires_at)) {
@@ -93,21 +178,22 @@ export async function POST(req: NextRequest) {
         .from("bookings")
         .update({ takeout_pricing_status: "expired" })
         .eq("id", order.id)
-        .eq("service_type", "takeout")
-        .is("assigned_driver_id", null);
+        .eq("service_type", "takeout");
 
-      return json(409, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_EXPIRED", message: "Delivery fee proposal expired. Please wait for a new proposal." });
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_FEE_PROPOSAL_EXPIRED",
+        message: "Delivery fee proposal expired. Please wait for a new proposal.",
+      });
     }
 
     const nowIso = new Date().toISOString();
 
-    // JRIDE_TAKEOUT_CONFIRM_FEE_ROUTE_V1
-    // Takeout-only customer confirmation. This is the first point where the proposing driver is assigned.
-    // No ride fare fields, ride lifecycle fields, wallet fields, or admin trip monitor logic are touched here.
     const updateRes = await serviceSupabase
       .from("bookings")
       .update({
         assigned_driver_id: proposedDriverId,
+        driver_id: proposedDriverId,
         takeout_pricing_status: "customer_confirmed",
         takeout_customer_confirmed_at: nowIso,
         vendor_status: "driver_assigned",
@@ -116,20 +202,29 @@ export async function POST(req: NextRequest) {
       .eq("id", order.id)
       .eq("service_type", "takeout")
       .eq("takeout_pricing_status", "driver_fee_proposed")
-      .is("assigned_driver_id", null)
-      .select("id,booking_code,service_type,assigned_driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at")
+      .select(
+        "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+      )
       .single();
 
     if (updateRes.error) {
-      return json(500, { ok: false, error: "TAKEOUT_CONFIRM_UPDATE_FAILED", message: updateRes.error.message });
+      return json(500, {
+        ok: false,
+        error: "TAKEOUT_CONFIRM_UPDATE_FAILED",
+        message: updateRes.error.message,
+      });
     }
 
     return json(200, {
       ok: true,
       order: updateRes.data,
-      guard: "takeout_confirm_fee_v1_no_ride_fare_no_wallet",
+      guard: "takeout_confirm_fee_v3_no_already_assigned_block",
     });
   } catch (err: any) {
-    return json(500, { ok: false, error: "TAKEOUT_CONFIRM_FEE_FAILED", message: err?.message || "Failed to confirm takeout delivery fee." });
+    return json(500, {
+      ok: false,
+      error: "TAKEOUT_CONFIRM_FEE_FAILED",
+      message: err?.message || "Failed to confirm takeout delivery fee.",
+    });
   }
 }
