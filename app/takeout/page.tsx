@@ -39,7 +39,9 @@ type VendorRow = {
 
 
 type TakeoutPricingOrder = {
-  id?: string | null;
+  
+  customer_status?: string | null;
+  vendor_status?: string | null;id?: string | null;
   booking_code?: string | null;
   code?: string | null;
   takeout_pricing_status?: string | null;
@@ -335,24 +337,15 @@ export default function TakeoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  // JRIDE_TAKEOUT_PASSENGER_PRICING_POLL_V2
-  // Poll only the passenger takeout order read endpoint while the submitted order is waiting
-  // for a driver delivery fee proposal. Keep this isolated from ride, dispatch, wallet,
-  // lifecycle, and driver routes.
+  // JRIDE_TAKEOUT_PASSENGER_ORDER_STATUS_POLL_V1
+  // Poll only the passenger takeout order read endpoint after submission so the passenger
+  // sees driver fee proposals and later takeout progress updates. This remains isolated
+  // from ride, dispatch, wallet, lifecycle, and driver routes.
   useEffect(() => {
     if (!submitted || !deviceKey) return;
 
-    const status = normText(pricingOrder?.takeout_pricing_status || "pricing_pending").toLowerCase();
-    const terminalStatuses = new Set([
-      "driver_fee_proposed",
-      "customer_confirmed",
-      "confirmed",
-      "expired",
-      "cancelled",
-      "completed",
-    ]);
-
-    if (terminalStatuses.has(status)) return;
+    const orderStatus = normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase();
+    if (orderStatus === "completed" || orderStatus === "cancelled") return;
 
     let stopped = false;
     const poll = () => {
@@ -368,9 +361,10 @@ export default function TakeoutPage() {
     };
     // The pricing order and lastJson dependencies are intentional: the poller must switch
     // from device fallback to the exact order_id/booking_code as soon as the submit
-    // response is available, and it must stop when a proposal arrives.
+    // response is available, and it must continue after fee confirmation until the takeout
+    // order reaches completed or cancelled.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, lastJson?.order_id, lastJson?.booking_code]);
+  }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, pricingOrder?.vendor_status, pricingOrder?.customer_status, lastJson?.order_id, lastJson?.booking_code]);
 
   async function saveAddressToDb(addressText: string, makePrimary: boolean) {
     const addr = String(addressText || "").trim();
@@ -984,6 +978,22 @@ export default function TakeoutPage() {
             {(() => {
               const order = pricingOrder;
               const status = normText(order?.takeout_pricing_status || "pricing_pending").toLowerCase();
+              const vendorStatus = normText(order?.vendor_status || "").toLowerCase();
+              const customerStatus = normText(order?.customer_status || "").toLowerCase();
+              const progressStatus = customerStatus || vendorStatus;
+              const progressLabels: Record<string, string> = {
+                requested: "Order submitted",
+                preparing: "Vendor preparing order",
+                pickup_ready: "Order ready for pickup",
+                driver_assigned: "Driver assigned",
+                rider_arrived_vendor: "Driver arrived at vendor",
+                arrived_vendor: "Driver arrived at vendor",
+                picked_up: "Order picked up",
+                delivering: "Driver delivering order",
+                completed: "Order completed",
+                cancelled: "Order cancelled",
+              };
+              const progressLabel = progressLabels[progressStatus] || (progressStatus ? progressStatus.replace(/_/g, " ") : "Waiting for driver update");
               const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill ?? itemsSubtotal);
               const deliveryFee = toNum(order?.takeout_delivery_fee);
               const serviceFee = toNum(order?.takeout_service_fee || 15);
@@ -995,8 +1005,12 @@ export default function TakeoutPage() {
                 <div className="mt-3 space-y-2">
                   <div className="rounded border bg-slate-50 p-3">
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">Status</span>
+                      <span className="text-slate-600">Pricing status</span>
                       <span className="font-semibold">{status.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between gap-3">
+                      <span className="text-slate-600">Order progress</span>
+                      <span className="font-semibold">{progressLabel}</span>
                     </div>
                     <div className="mt-1 flex justify-between gap-3">
                       <span className="text-slate-600">Food subtotal</span>
@@ -1044,6 +1058,15 @@ export default function TakeoutPage() {
                     </div>
                   ) : null}
 
+                  {status === "customer_confirmed" || progressStatus ? (
+                    <div className="rounded border border-slate-200 bg-white p-3 text-xs text-slate-700">
+                      <div className="font-semibold text-slate-900">Live takeout progress</div>
+                      <div className="mt-1">{progressLabel}</div>
+                      {vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {vendorStatus.replace(/_/g, " ")}</div> : null}
+                      {customerStatus ? <div className="mt-1 text-slate-500">Customer status: {customerStatus.replace(/_/g, " ")}</div> : null}
+                    </div>
+                  ) : null}
+
                   {readyToConfirm ? (
                     <button
                       type="button"
@@ -1069,5 +1092,8 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
+
+
 
 
