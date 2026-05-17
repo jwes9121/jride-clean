@@ -210,6 +210,8 @@ export async function POST(req: NextRequest) {
 
   const patch = {
     assigned_driver_id: driverId,
+    driver_id: driverId,
+    assigned_at: new Date().toISOString(),
     vendor_status: "driver_assigned",
     customer_status: "driver_assigned",
   };
@@ -219,7 +221,7 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", currentOrderId)
     .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,driver_id,assigned_at,updated_at")
     .single();
 
   if (up.error) {
