@@ -994,12 +994,14 @@ export default function TakeoutPage() {
                 cancelled: "Order cancelled",
               };
               const progressLabel = progressLabels[progressStatus] || (progressStatus ? progressStatus.replace(/_/g, " ") : "Waiting for driver update");
+              const isOrderCompleted = progressStatus === "completed";
+              const isOrderCancelled = progressStatus === "cancelled";
               const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill ?? itemsSubtotal);
               const deliveryFee = toNum(order?.takeout_delivery_fee);
               const serviceFee = toNum(order?.takeout_service_fee || 15);
               const totalPayable = toNum(order?.takeout_total_payable);
               const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
-              const readyToConfirm = status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+              const readyToConfirm = !isOrderCompleted && !isOrderCancelled && status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
 
               return (
                 <div className="mt-3 space-y-2">
@@ -1033,7 +1035,7 @@ export default function TakeoutPage() {
                         Cash collection required before vendor pickup.
                       </div>
                     ) : null}
-                    {status === "driver_fee_proposed" ? (
+                    {status === "driver_fee_proposed" && !isOrderCompleted && !isOrderCancelled ? (
                       <div className="mt-2 text-xs text-slate-600">
                         Proposal expires in: <span className="font-semibold">{expiresIn === null ? "--" : String(expiresIn) + " sec"}</span>
                       </div>
@@ -1064,6 +1066,45 @@ export default function TakeoutPage() {
                       <div className="mt-1">{progressLabel}</div>
                       {vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {vendorStatus.replace(/_/g, " ")}</div> : null}
                       {customerStatus ? <div className="mt-1 text-slate-500">Customer status: {customerStatus.replace(/_/g, " ")}</div> : null}
+                    </div>
+                  ) : null}
+
+                  {isOrderCompleted ? (
+                    <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                      <div className="font-semibold">Order completed.</div>
+                      <div className="mt-1">Thank you for using JRide Takeout.</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitted(false);
+                          setPricingOrder(null);
+                          setPricingErr(null);
+                          setResult("");
+                          setLastJson(null);
+                        }}
+                        className="mt-3 rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                      >
+                        Start new takeout order
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {isOrderCancelled ? (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      <div className="font-semibold">Order cancelled.</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitted(false);
+                          setPricingOrder(null);
+                          setPricingErr(null);
+                          setResult("");
+                          setLastJson(null);
+                        }}
+                        className="mt-3 rounded bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800"
+                      >
+                        Start new takeout order
+                      </button>
                     </div>
                   ) : null}
 
