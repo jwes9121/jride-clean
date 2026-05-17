@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const SERVICE_FEE = 15;
-const PROPOSAL_TTL_SECONDS = 60;
+const PROPOSAL_TTL_SECONDS = 300;
 const MAX_DELIVERY_FEE = 2000;
 
 function text(v: any): string {
@@ -313,7 +313,7 @@ export async function POST(req: NextRequest) {
       proposal: updateRes.data,
       pricing: snapshot,
       auth_mode: driverAuth.authMode,
-      guard: "takeout_driver_fee_proposal_v4_known_columns_only",
+      guard: "takeout_driver_fee_proposal_v5_5min_expiry_known_columns_only",
     });
   } catch (err: any) {
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
