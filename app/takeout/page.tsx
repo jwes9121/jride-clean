@@ -335,17 +335,42 @@ export default function TakeoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  // JRIDE_TAKEOUT_PASSENGER_PRICING_UI_V1
-  // Poll only the passenger takeout order read endpoint while waiting for a driver fee proposal.
+  // JRIDE_TAKEOUT_PASSENGER_PRICING_POLL_V2
+  // Poll only the passenger takeout order read endpoint while the submitted order is waiting
+  // for a driver delivery fee proposal. Keep this isolated from ride, dispatch, wallet,
+  // lifecycle, and driver routes.
   useEffect(() => {
     if (!submitted || !deviceKey) return;
-    refreshPricingOrder().catch(() => undefined);
-    const t = window.setInterval(() => {
-      refreshPricingOrder().catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(t);
+
+    const status = normText(pricingOrder?.takeout_pricing_status || "pricing_pending").toLowerCase();
+    const terminalStatuses = new Set([
+      "driver_fee_proposed",
+      "customer_confirmed",
+      "confirmed",
+      "expired",
+      "cancelled",
+      "completed",
+    ]);
+
+    if (terminalStatuses.has(status)) return;
+
+    let stopped = false;
+    const poll = () => {
+      if (stopped) return;
+      refreshPricingOrder(pricingOrder).catch(() => undefined);
+    };
+
+    poll();
+    const t = window.setInterval(poll, 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+    };
+    // The pricing order and lastJson dependencies are intentional: the poller must switch
+    // from device fallback to the exact order_id/booking_code as soon as the submit
+    // response is available, and it must stop when a proposal arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitted, deviceKey]);
+  }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, lastJson?.order_id, lastJson?.booking_code]);
 
   async function saveAddressToDb(addressText: string, makePrimary: boolean) {
     const addr = String(addressText || "").trim();
