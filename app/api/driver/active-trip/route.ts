@@ -166,6 +166,43 @@ function estimateEtaMinutes(distanceKm: number | null): number | null {
   return Math.max(1, Math.ceil((distanceKm / 25) * 60));
 }
 
+// JRIDE_TAKEOUT_ACTIVE_TRIP_PRICING_SYNC_V16
+// Read-side only: expose takeout fee proposal and customer confirmation fields to Android.
+// This does not write to DB and does not alter ride lifecycle, wallet, or dispatch rules.
+function jrideTakeoutConfirmedAt(row: any): string | null {
+  return (
+    s(row?.takeout_customer_confirmed_at) ??
+    s(row?.customer_confirmed_at) ??
+    s(row?.passenger_confirmed_at)
+  );
+}
+
+function jrideTakeoutPricingStatusForDriver(row: any): string | null {
+  const explicit = s(row?.takeout_pricing_status ?? row?.pricing_status ?? row?.driver_fee_status ?? row?.fee_status);
+  if (explicit) return explicit;
+  if (jrideTakeoutConfirmedAt(row)) return "customer_confirmed";
+  const fee = n(row?.takeout_delivery_fee ?? row?.driver_delivery_fee ?? row?.delivery_fee ?? row?.proposed_delivery_fee);
+  return fee != null && fee > 0 ? "driver_fee_proposed" : null;
+}
+
+function jrideTakeoutDeliveryFeeForDriver(row: any): number | null {
+  return (
+    n(row?.takeout_delivery_fee) ??
+    n(row?.driver_delivery_fee) ??
+    n(row?.delivery_fee) ??
+    n(row?.proposed_delivery_fee)
+  );
+}
+
+function jrideTakeoutTotalPayableForDriver(row: any): number | null {
+  return (
+    n(row?.takeout_total_payable) ??
+    n(row?.total_payable) ??
+    n(row?.payable_total) ??
+    n(row?.grand_total)
+  );
+}
+
 // JRIDE_TAKEOUT_ACTIVE_TRIP_DISTANCE_GUARD_V1
 // Read-side only: prevent impossible takeout distance and ETA values from leaking to Android.
 function jrideIsPhilippinesCoordPair(lat: number | null, lng: number | null): boolean {
@@ -523,6 +560,17 @@ export async function GET(req: NextRequest) {
 
     const hints = deriveStageHints(normalizedStatus, fare != null);
 
+    const takeoutPricingStatusForDriver = isTakeoutBooking ? jrideTakeoutPricingStatusForDriver(booking as any) : null;
+    const takeoutDeliveryFeeForDriver = isTakeoutBooking ? jrideTakeoutDeliveryFeeForDriver(booking as any) : null;
+    const takeoutConfirmedAtForDriver = isTakeoutBooking ? jrideTakeoutConfirmedAt(booking as any) : null;
+    const takeoutTotalPayableForDriver = isTakeoutBooking ? jrideTakeoutTotalPayableForDriver(booking as any) : null;
+    const takeoutPassengerConfirmedTotal = isTakeoutBooking && (
+      takeoutPricingStatusForDriver === "customer_confirmed" ||
+      takeoutPricingStatusForDriver === "confirmed" ||
+      takeoutPricingStatusForDriver === "accepted" ||
+      !!takeoutConfirmedAtForDriver
+    );
+
     const trip = {
       id: booking.id,
       booking_id: booking.id,
@@ -534,6 +582,17 @@ export async function GET(req: NextRequest) {
       takeout_status: takeoutDriverStatus,
       vendor_status: s((booking as any).vendor_status),
       customer_status: s((booking as any).customer_status),
+      takeout_pricing_status: takeoutPricingStatusForDriver,
+      pricing_status: takeoutPricingStatusForDriver,
+      fee_status: takeoutPricingStatusForDriver,
+      driver_fee_status: takeoutPricingStatusForDriver,
+      takeout_customer_confirmed_at: takeoutConfirmedAtForDriver,
+      customer_confirmed_at: takeoutConfirmedAtForDriver,
+      passenger_confirmed_total: takeoutPassengerConfirmedTotal,
+      takeout_delivery_fee: takeoutDeliveryFeeForDriver,
+      driver_delivery_fee: takeoutDeliveryFeeForDriver,
+      delivery_fee: takeoutDeliveryFeeForDriver,
+      takeout_total_payable: takeoutTotalPayableForDriver,
       vendor_id: s((booking as any).vendor_id),
       vendor_name: takeoutReceipt.vendorName ?? s((booking as any).vendor_name),
       restaurant_name: takeoutReceipt.vendorName ?? s((booking as any).restaurant_name),
