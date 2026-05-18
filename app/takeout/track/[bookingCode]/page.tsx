@@ -213,8 +213,8 @@ export default function TakeoutTrackPage() {
           <div className="mt-1 text-xs text-slate-500">Order: <span className="font-mono">{trackingKey || "--"}</span></div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href="/takeout" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">Back to takeout</a>
-          <a href="/takeout/orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">Order list</a>
+          <a href="/takeout" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">New order</a>
+          <a href="/takeout/orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">View orders</a>
         </div>
       </div>
 
@@ -319,7 +319,6 @@ export default function TakeoutTrackPage() {
                 <div className="mt-1">Thank you for using JRide Takeout.</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a href="/takeout" className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Order again</a>
-                  <a href="/takeout" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Back to takeout</a>
                   <a href="/takeout/orders" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">View orders</a>
                 </div>
               </div>
@@ -330,7 +329,7 @@ export default function TakeoutTrackPage() {
                 <div className="font-semibold">Order cancelled.</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a href="/takeout" className="rounded bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Start new order</a>
-                  <a href="/takeout" className="rounded border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">Back to takeout</a>
+                  <a href="/takeout/orders" className="rounded border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">View orders</a>
                 </div>
               </div>
             ) : null}
