@@ -948,7 +948,7 @@ export default function TakeoutPage() {
           </span>
         </div>
 
-        {result ? (
+        {result && !["completed", "cancelled"].includes(normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase()) ? (
           <div className="mt-3 rounded border bg-slate-50 p-3 text-sm">{result}</div>
         ) : null}
 
@@ -980,12 +980,25 @@ export default function TakeoutPage() {
               const status = normText(order?.takeout_pricing_status || "pricing_pending").toLowerCase();
               const vendorStatus = normText(order?.vendor_status || "").toLowerCase();
               const customerStatus = normText(order?.customer_status || "").toLowerCase();
-              const progressStatus = customerStatus || vendorStatus;
+              // JRIDE_TAKEOUT_PASSENGER_STATUS_CARD_CLEANUP_V4
+              // Do not let stale customer_confirmed pricing status hide later vendor/customer progress.
+              // Customer terminal states win, then vendor terminal states, then live vendor workflow, then customer status.
+              const terminalStatus = ["completed", "cancelled"].includes(customerStatus)
+                ? customerStatus
+                : ["completed", "cancelled"].includes(vendorStatus)
+                  ? vendorStatus
+                  : "";
+              const vendorWorkflowStatus = vendorStatus && !["requested", "vendor_pending"].includes(vendorStatus) ? vendorStatus : "";
+              const progressStatus = terminalStatus || vendorWorkflowStatus || customerStatus || vendorStatus;
               const progressLabels: Record<string, string> = {
                 requested: "Order submitted",
+                vendor_pending: "Waiting for vendor confirmation",
+                vendor_accepted: "Vendor accepted order",
                 preparing: "Vendor preparing order",
                 pickup_ready: "Order ready for pickup",
                 driver_assigned: "Driver assigned",
+                driver_fee_proposed: "Driver delivery fee proposed",
+                customer_confirmed: "Order confirmed",
                 rider_arrived_vendor: "Driver arrived at vendor",
                 arrived_vendor: "Driver arrived at vendor",
                 picked_up: "Order picked up",
@@ -996,12 +1009,43 @@ export default function TakeoutPage() {
               const progressLabel = progressLabels[progressStatus] || (progressStatus ? progressStatus.replace(/_/g, " ") : "Waiting for driver update");
               const isOrderCompleted = progressStatus === "completed";
               const isOrderCancelled = progressStatus === "cancelled";
+              const hasMovedPastCustomerConfirmation = ["rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed", "cancelled"].includes(progressStatus);
               const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill ?? itemsSubtotal);
               const deliveryFee = toNum(order?.takeout_delivery_fee);
               const serviceFee = toNum(order?.takeout_service_fee || 15);
               const totalPayable = toNum(order?.takeout_total_payable);
               const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
               const readyToConfirm = !isOrderCompleted && !isOrderCancelled && status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+
+              if (isOrderCompleted) {
+                return (
+                  <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                    <div className="font-semibold">Order completed.</div>
+                    <div className="mt-1">Thank you for using JRide Takeout.</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmitted(false);
+                          setPricingOrder(null);
+                          setPricingErr(null);
+                          setResult("");
+                          setLastJson(null);
+                        }}
+                        className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                      >
+                        Order again
+                      </button>
+                      <a href="/" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
+                        Back to home
+                      </a>
+                      <a href="/takeout/orders" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">
+                        View orders
+                      </a>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div className="mt-3 space-y-2">
@@ -1044,7 +1088,9 @@ export default function TakeoutPage() {
 
                   {status === "pricing_pending" ? (
                     <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
-                      Looking for a nearby driver to propose the delivery fee. Do not close this page yet.
+                      {vendorStatus === "vendor_pending"
+                        ? "Waiting for the vendor to accept the order before dispatch."
+                        : "Looking for a nearby driver to propose the delivery fee. Do not close this page yet."}
                     </div>
                   ) : null}
 
@@ -1054,7 +1100,7 @@ export default function TakeoutPage() {
                     </div>
                   ) : null}
 
-                  {status === "customer_confirmed" ? (
+                  {status === "customer_confirmed" && !hasMovedPastCustomerConfirmation ? (
                     <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
                       Order confirmed. The driver is now assigned and the vendor workflow can proceed.
                     </div>
@@ -1069,25 +1115,6 @@ export default function TakeoutPage() {
                     </div>
                   ) : null}
 
-                  {isOrderCompleted ? (
-                    <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                      <div className="font-semibold">Order completed.</div>
-                      <div className="mt-1">Thank you for using JRide Takeout.</div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSubmitted(false);
-                          setPricingOrder(null);
-                          setPricingErr(null);
-                          setResult("");
-                          setLastJson(null);
-                        }}
-                        className="mt-3 rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
-                      >
-                        Start new takeout order
-                      </button>
-                    </div>
-                  ) : null}
 
                   {isOrderCancelled ? (
                     <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -1124,7 +1151,7 @@ export default function TakeoutPage() {
           </div>
         ) : null}
 
-        {lastJson ? (
+        {lastJson && !["completed", "cancelled"].includes(normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase()) ? (
           <pre className="mt-3 overflow-auto rounded border bg-black p-3 text-xs text-white">
 {JSON.stringify(lastJson, null, 2)}
           </pre>
