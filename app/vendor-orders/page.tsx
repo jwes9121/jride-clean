@@ -65,7 +65,7 @@ function statusOf(order: TakeoutOrder): string {
 
 function displayStatus(order: TakeoutOrder): string {
   const s = statusOf(order);
-  if (s === "vendor_pending" || s === "requested" || s === "") return "vendor_pending";
+  if (s === "vendor_pending" || s === "waiting_vendor" || s === "requested" || s === "") return "vendor_pending";
   if (s === "accepted") return "vendor_accepted";
   if (s === "pickup_ready" || s === "ready" || s === "prepared" || s === "driver_arrived") return "ready_for_pickup";
   if (s === "preparing_order") return "preparing";
@@ -372,23 +372,27 @@ export default function VendorTakeoutOrdersPage() {
                       </button>
                     ) : null}
                     {currentStatus === "ready_for_pickup" ? (
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() => updateStatus(order, "completed")}
-                        className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Complete
-                      </button>
+                      <span className="self-center rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
+                        Waiting for driver pickup
+                      </span>
                     ) : null}
-                    {currentStatus !== "completed" && currentStatus !== "cancelled" ? (
+                    {currentStatus === "vendor_pending" ? (
                       <button
                         type="button"
                         disabled={isSaving}
                         onClick={() => updateStatus(order, "cancelled")}
                         className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Cancel
+                        Reject order
+                      </button>
+                    ) : currentStatus !== "completed" && currentStatus !== "cancelled" && currentStatus !== "canceled" ? (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => updateStatus(order, "cancelled")}
+                        className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Cancel order
                       </button>
                     ) : null}
                     {isSaving ? <span className="self-center text-sm text-slate-500">Saving...</span> : null}

@@ -7,6 +7,8 @@ type TakeoutOrder = {
   booking_code: string | null;
   vendor_name: string | null;
   vendor_status: string | null;
+  customer_status?: string | null;
+  status?: string | null;
   customer_name: string | null;
   to_label: string | null;
   takeout_items_subtotal: number | null;
@@ -27,7 +29,7 @@ type DriverRow = {
   phone: string | null;
   town: string | null;
   status: string | null;
-  effective_status: string | null;
+  effective_status?: string | null;
   age_minutes: number | null;
   assign_eligible: boolean;
 };
@@ -36,7 +38,6 @@ type PageData = {
   ok?: boolean;
   error?: string;
   message?: string;
-  counts?: Record<string, number>;
   orders?: TakeoutOrder[];
   drivers?: DriverRow[];
 };
@@ -44,7 +45,7 @@ type PageData = {
 const FILTERS = [
   "active",
   "unassigned",
-  "requested",
+  "vendor_accepted",
   "preparing",
   "pickup_ready",
   "driver_assigned",
@@ -67,9 +68,40 @@ const NEXT_ACTIONS = [
   { label: "Cancelled", status: "cancelled" },
 ];
 
+const DISPATCH_VISIBLE = new Set([
+  "vendor_accepted",
+  "preparing",
+  "pickup_ready",
+  "driver_assigned",
+  "driver_fee_proposed",
+  "customer_confirmed",
+  "rider_arrived_vendor",
+  "picked_up",
+  "delivering",
+]);
+
+const TERMINAL = new Set(["completed", "cancelled", "canceled"]);
+
 function money(v: any) {
   const n = Number(v || 0);
   return n.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+}
+
+function normStatus(value: any) {
+  const s = String(value || "").trim().toLowerCase();
+  if (s === "" || s === "requested" || s === "waiting_vendor") return "vendor_pending";
+  if (s === "accepted") return "vendor_accepted";
+  if (s === "ready" || s === "prepared" || s === "ready_for_pickup") return "pickup_ready";
+  if (s === "preparing_order") return "preparing";
+  if (s === "assigned") return "driver_assigned";
+  if (s === "arrived_vendor" || s === "rider_at_vendor") return "rider_arrived_vendor";
+  if (s === "pickedup") return "picked_up";
+  if (s === "canceled") return "cancelled";
+  return s;
+}
+
+function orderStatus(order: TakeoutOrder) {
+  return normStatus(order.vendor_status || order.customer_status || order.status || "vendor_pending");
 }
 
 function titleCase(value: any) {
@@ -87,20 +119,30 @@ function pillClass(active: boolean) {
 
 function statusClass(status: string | null, stuck: boolean) {
   if (stuck) return "border-red-300 bg-red-50 text-red-700";
-  const s = String(status || "").toLowerCase();
+  const s = normStatus(status);
+  if (s === "vendor_pending") return "border-slate-300 bg-slate-50 text-slate-700";
+  if (s === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (s === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
-  if (s === "driver_assigned" || s === "rider_arrived_vendor") return "border-blue-300 bg-blue-50 text-blue-800";
+  if (s === "driver_assigned" || s === "rider_arrived_vendor" || s === "driver_fee_proposed" || s === "customer_confirmed") return "border-blue-300 bg-blue-50 text-blue-800";
   if (s === "picked_up" || s === "delivering") return "border-purple-300 bg-purple-50 text-purple-800";
   if (s === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
   if (s === "cancelled") return "border-zinc-300 bg-zinc-50 text-zinc-700";
   return "border-amber-300 bg-amber-50 text-amber-800";
 }
 
+function dispatchVisible(order: TakeoutOrder) {
+  return DISPATCH_VISIBLE.has(orderStatus(order));
+}
+
+function activeVisible(order: TakeoutOrder) {
+  const s = orderStatus(order);
+  return DISPATCH_VISIBLE.has(s) && !TERMINAL.has(s);
+}
+
 export default function TakeoutDispatchPage() {
   const [filter, setFilter] = useState("active");
   const [orders, setOrders] = useState<TakeoutOrder[]>([]);
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
-  const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [lastAction, setLastAction] = useState("");
   const [selectedDrivers, setSelectedDrivers] = useState<Record<string, string>>({});
@@ -108,12 +150,11 @@ export default function TakeoutDispatchPage() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(`/api/admin/takeout-dispatch?filter=${encodeURIComponent(filter)}`, { cache: "no-store" });
+      const r = await fetch("/api/admin/takeout-dispatch?filter=all", { cache: "no-store" });
       const j: PageData = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.message || j.error || "TAKEOUT_DISPATCH_LOAD_FAILED");
       setOrders(Array.isArray(j.orders) ? j.orders : []);
       setDrivers(Array.isArray(j.drivers) ? j.drivers : []);
-      setCounts(j.counts || {});
     } catch (err: any) {
       setLastAction(err?.message || "Load failed");
     } finally {
@@ -123,9 +164,9 @@ export default function TakeoutDispatchPage() {
 
   useEffect(() => {
     load();
-    const t = setInterval(() => load(), 8000);
-    return () => clearInterval(t);
-  }, [filter]);
+    const t = window.setInterval(() => load(), 8000);
+    return () => window.clearInterval(t);
+  }, []);
 
   async function postJson(url: string, body: any) {
     const r = await fetch(url, {
@@ -167,6 +208,51 @@ export default function TakeoutDispatchPage() {
     }
   }
 
+  const counts = useMemo(() => {
+    const next: Record<string, number> = {};
+    for (const f of FILTERS) next[f] = 0;
+
+    for (const order of orders) {
+      const s = orderStatus(order);
+      next.all += 1;
+      if (activeVisible(order)) next.active += 1;
+      if (activeVisible(order) && !order.assigned_driver_id) next.unassigned += 1;
+      if (s === "vendor_accepted") next.vendor_accepted += 1;
+      if (s === "preparing") next.preparing += 1;
+      if (s === "pickup_ready") next.pickup_ready += 1;
+      if (s === "driver_assigned" || s === "driver_fee_proposed" || s === "customer_confirmed" || s === "rider_arrived_vendor") next.driver_assigned += 1;
+      if (s === "picked_up" || s === "delivering") next.picked_up += 1;
+      if (s === "completed") next.completed += 1;
+      if (s === "cancelled" || s === "canceled") next.cancelled += 1;
+      if (order.is_stuck) next.stuck += 1;
+      if (order.cash_required) next.cash += 1;
+    }
+
+    return next;
+  }, [orders]);
+
+  const visibleOrders = useMemo(() => {
+    const filtered = orders.filter((order) => {
+      const s = orderStatus(order);
+      if (filter === "all") return true;
+      if (filter === "active") return activeVisible(order);
+      if (filter === "unassigned") return activeVisible(order) && !order.assigned_driver_id;
+      if (filter === "cash") return dispatchVisible(order) && !!order.cash_required;
+      if (filter === "stuck") return dispatchVisible(order) && !!order.is_stuck;
+      if (filter === "driver_assigned") return ["driver_assigned", "driver_fee_proposed", "customer_confirmed", "rider_arrived_vendor"].includes(s);
+      if (filter === "picked_up") return s === "picked_up" || s === "delivering";
+      if (filter === "cancelled") return s === "cancelled" || s === "canceled";
+      return s === filter;
+    });
+
+    filtered.sort((a, b) => {
+      if ((a.priority || 0) !== (b.priority || 0)) return (a.priority || 0) - (b.priority || 0);
+      return Number(b.age_minutes || 0) - Number(a.age_minutes || 0);
+    });
+
+    return filtered;
+  }, [orders, filter]);
+
   const eligibleDrivers = useMemo(() => drivers.filter((d) => d.assign_eligible), [drivers]);
 
   return (
@@ -177,7 +263,7 @@ export default function TakeoutDispatchPage() {
             <div>
               <h1 className="text-2xl font-bold">Takeout Dispatch</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Manual takeout assignment board. This page is isolated from ride LiveTrips, ride lifecycle, fare, and wallet flows.
+                Manual takeout assignment board. Vendor-pending orders are intentionally hidden until the vendor accepts.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
@@ -197,7 +283,7 @@ export default function TakeoutDispatchPage() {
           </div>
 
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Rule lock: this board only writes takeout fields on service_type=takeout orders. It must not be used for ride dispatch.
+            Rule lock: vendor_pending is for the vendor queue only. Dispatch starts at vendor_accepted and stays isolated from ride lifecycle, ride fare, and wallet flows.
           </div>
 
           {lastAction ? <div className="mt-3 rounded-xl border bg-slate-50 p-3 text-sm text-slate-700">{lastAction}</div> : null}
@@ -205,11 +291,11 @@ export default function TakeoutDispatchPage() {
 
         <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
           <div className="space-y-3">
-            {orders.length === 0 ? (
+            {visibleOrders.length === 0 ? (
               <div className="rounded-2xl border bg-white p-6 text-center text-sm text-slate-500">No takeout orders in this view.</div>
             ) : (
-              orders.map((o) => {
-                const status = String(o.vendor_status || "requested");
+              visibleOrders.map((o) => {
+                const status = orderStatus(o);
                 return (
                   <article key={o.id} className="rounded-2xl border bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -247,7 +333,7 @@ export default function TakeoutDispatchPage() {
                                 </option>
                               ))}
                             </select>
-                            <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => assign(o.id)} disabled={!selectedDrivers[o.id]}>
+                            <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => assign(o.id)} disabled={!selectedDrivers[o.id] || !dispatchVisible(o)}>
                               Assign
                             </button>
                           </div>
