@@ -171,6 +171,16 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED", message: "Closed takeout orders cannot be assigned" });
   }
 
+  const vendorAcceptedForAssignment = new Set(["preparing", "pickup_ready", "driver_assigned"]);
+  if (!vendorAcceptedForAssignment.has(currentStatus)) {
+    return json(409, {
+      ok: false,
+      error: "VENDOR_ACCEPTANCE_REQUIRED",
+      message: "Vendor must accept or start preparing the order before driver assignment.",
+      current_status: currentStatus,
+    });
+  }
+
   const locationCheck = await getLatestDriverLocation(admin, driverId);
   if (!locationCheck.ok) {
     return json(409, {
@@ -229,5 +239,5 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
   }
 
-  return json(200, { ok: true, order: up.data, guard: "manual_takeout_assignment_guard_v1" });
+  return json(200, { ok: true, order: up.data, guard: "manual_takeout_assignment_vendor_acceptance_guard_v1" });
 }

@@ -97,6 +97,16 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "INVALID_STATUS_MOVEMENT", message: "pickup_ready cannot move back to preparing" });
   }
 
+  const vendorAcceptedForAssignment = new Set(["preparing", "pickup_ready", "driver_assigned"]);
+  if (nextStatus === "driver_assigned" && !vendorAcceptedForAssignment.has(current)) {
+    return json(409, {
+      ok: false,
+      error: "VENDOR_ACCEPTANCE_REQUIRED",
+      message: "Vendor must accept or start preparing the order before driver assignment.",
+      current_status: current,
+    });
+  }
+
   if (MOVEMENT_AFTER_CONFIRM.has(nextStatus) && !customerConfirmed) {
     return json(409, {
       ok: false,
@@ -160,5 +170,5 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
   }
 
-  return json(200, { ok: true, order: up.data, guard: "takeout_status_route_plan_guard_v1" });
+  return json(200, { ok: true, order: up.data, guard: "takeout_status_route_plan_vendor_acceptance_guard_v1" });
 }
