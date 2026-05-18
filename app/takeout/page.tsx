@@ -562,6 +562,15 @@ export default function TakeoutPage() {
         j?.order_id || j?.orderId || j?.booking_id || j?.bookingId || j?.id || "";
 
       const maybeCode = normText(j?.booking_code || j?.bookingCode || j?.code);
+
+      // JRIDE_TAKEOUT_TRACKING_PAGE_ISOLATION_V5
+      // After order creation, separate booking from live tracking.
+      // This avoids stacking booking form, pricing, progress, completion, and debug JSON in one long page.
+      const trackingKey = normText(maybeCode || maybeId);
+      if (trackingKey && typeof window !== "undefined") {
+        window.location.href = "/takeout/track/" + encodeURIComponent(trackingKey);
+        return;
+      }
       setResult("Takeout order submitted. Waiting for a driver delivery fee proposal." + (maybeId ? " ID: " + String(maybeId) : ""));
       setPricingOrder({
         id: normText(maybeId) || null,
@@ -593,7 +602,7 @@ export default function TakeoutPage() {
         <div>
           <div className="text-2xl font-bold">Takeout (Passenger) - Phase 2B</div>
           <div className="text-sm text-slate-600">
-            Passenger sees today menu, selects items, then submits a pilot order to <code>/vendor-orders</code>.
+            Passenger selects vendor, menu items, and address. Live tracking opens on a separate takeout tracking page after submit.
           </div>
         </div>
         <a href="/vendor-orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
