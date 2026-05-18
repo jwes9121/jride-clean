@@ -411,7 +411,9 @@ const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   }
 const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
-  const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
+  const vendor_status = order_id
+    ? String(body?.vendor_status ?? body?.vendorStatus ?? "").trim()
+    : "vendor_pending";
 
   // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
 // Phase 3A bridge: when vendor marks ready (driver_arrived), do not move booking.status to ride lifecycle values
@@ -432,7 +434,10 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     const nextVendor = String(vendor_status || "").trim().toLowerCase();
 
     const allowedForward: Record<string, string[]> = {
-      "": ["preparing"],
+      "": ["vendor_accepted", "cancelled"],
+      "requested": ["vendor_accepted", "cancelled"],
+      "vendor_pending": ["vendor_accepted", "cancelled"],
+      "vendor_accepted": ["preparing", "cancelled"],
       "preparing": ["pickup_ready", "cancelled"],
       "pickup_ready": ["completed", "cancelled"],
       "completed": [],
@@ -440,8 +445,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       "canceled": []
     };
 
-    const normalizedCurrent = curVendor === "canceled" ? "cancelled" : curVendor;
-    const normalizedNext = nextVendor === "canceled" ? "cancelled" : nextVendor;
+    const normalizedCurrent = curVendor === "canceled" ? "cancelled" : (curVendor || "vendor_pending");
+    const normalizedNextRaw = nextVendor === "accepted" ? "vendor_accepted" : nextVendor;
+    const normalizedNext = normalizedNextRaw === "canceled" ? "cancelled" : normalizedNextRaw;
 
     if (normalizedCurrent === "completed" || normalizedCurrent === "cancelled") {
       return json(409, {
@@ -467,25 +473,19 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
     const patch: any = { vendor_status: normalizedNext };
 
-    // Bridge rule: vendor ready -> takeout customer status only
-    // Only advance if booking hasn't progressed yet.
-    const stillRequested = !curStatus || curStatus === "requested";
-    const isReadySignal =
-      nextVendor === "driver_arrived" ||
-      nextVendor === "ready" ||
-      nextVendor === "prepared" ||
-      nextVendor === "pickup_ready";
-
-    // TAKEOUT_CUSTOMER_STATUS_COMPLETE_MAP_V1
-    const lowerVendor = String(nextVendor || "").toLowerCase();
-
-    if (lowerVendor === "completed") {
-      patch.customer_status = "completed";
-    } else if (lowerVendor === "cancelled" || lowerVendor === "canceled") {
-      patch.customer_status = "cancelled";
-    }
-    if (stillRequested && isReadySignal) {
+    // JRIDE_TAKEOUT_VENDOR_ACCEPTANCE_FLOW_V1
+    // Vendor state is separate from driver movement and passenger pricing.
+    // Do not call ride lifecycle or wallet logic here.
+    if (normalizedNext === "vendor_accepted") {
+      patch.customer_status = "vendor_accepted";
+    } else if (normalizedNext === "preparing") {
+      patch.customer_status = "preparing";
+    } else if (normalizedNext === "pickup_ready") {
       patch.customer_status = "ready_for_pickup";
+    } else if (normalizedNext === "completed") {
+      patch.customer_status = "completed";
+    } else if (normalizedNext === "cancelled") {
+      patch.customer_status = "cancelled";
     }
 
     const up = await admin

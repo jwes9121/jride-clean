@@ -65,9 +65,11 @@ function statusOf(order: TakeoutOrder): string {
 
 function displayStatus(order: TakeoutOrder): string {
   const s = statusOf(order);
+  if (s === "vendor_pending" || s === "requested" || s === "") return "vendor_pending";
+  if (s === "accepted") return "vendor_accepted";
   if (s === "pickup_ready" || s === "ready" || s === "prepared" || s === "driver_arrived") return "ready_for_pickup";
   if (s === "preparing_order") return "preparing";
-  return s || "requested";
+  return s || "vendor_pending";
 }
 
 function statusClass(status: string): string {
@@ -75,7 +77,19 @@ function statusClass(status: string): string {
   if (status === "cancelled" || status === "canceled") return "border-rose-200 bg-rose-50 text-rose-800";
   if (status === "ready_for_pickup" || status === "pickup_ready" || status === "ready") return "border-blue-200 bg-blue-50 text-blue-800";
   if (status === "preparing") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "vendor_accepted") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "vendor_pending") return "border-slate-200 bg-slate-50 text-slate-700";
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function vendorStatusLabel(status: string): string {
+  if (status === "vendor_pending") return "Waiting for vendor confirmation";
+  if (status === "vendor_accepted") return "Vendor accepted";
+  if (status === "preparing") return "Vendor preparing order";
+  if (status === "ready_for_pickup") return "Ready for pickup";
+  if (status === "completed") return "Completed";
+  if (status === "cancelled" || status === "canceled") return "Cancelled";
+  return status || "Waiting for vendor confirmation";
 }
 
 function isActive(order: TakeoutOrder): boolean {
@@ -287,7 +301,7 @@ export default function VendorTakeoutOrdersPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-bold">{code(order)}</h2>
                         <span className={"rounded-full border px-2 py-1 text-xs font-semibold " + statusClass(currentStatus)}>
-                          {currentStatus}
+                          {vendorStatusLabel(currentStatus)}
                         </span>
                       </div>
                       <div className="mt-1 text-sm text-slate-600">
@@ -327,38 +341,56 @@ export default function VendorTakeoutOrdersPage() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={isSaving || currentStatus === "completed" || currentStatus === "cancelled"}
-                      onClick={() => updateStatus(order, "preparing")}
-                      className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Preparing
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSaving || currentStatus === "completed" || currentStatus === "cancelled"}
-                      onClick={() => updateStatus(order, "pickup_ready")}
-                      className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Ready for pickup
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSaving || currentStatus === "completed" || currentStatus === "cancelled"}
-                      onClick={() => updateStatus(order, "completed")}
-                      className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Complete
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSaving || currentStatus === "completed" || currentStatus === "cancelled"}
-                      onClick={() => updateStatus(order, "cancelled")}
-                      className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Cancel
-                    </button>
+                    {currentStatus === "vendor_pending" ? (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => updateStatus(order, "vendor_accepted")}
+                        className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Accept order
+                      </button>
+                    ) : null}
+                    {currentStatus === "vendor_accepted" ? (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => updateStatus(order, "preparing")}
+                        className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Start preparing
+                      </button>
+                    ) : null}
+                    {currentStatus === "preparing" ? (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => updateStatus(order, "pickup_ready")}
+                        className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Pickup ready
+                      </button>
+                    ) : null}
+                    {currentStatus === "ready_for_pickup" ? (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => updateStatus(order, "completed")}
+                        className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Complete
+                      </button>
+                    ) : null}
+                    {currentStatus !== "completed" && currentStatus !== "cancelled" ? (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => updateStatus(order, "cancelled")}
+                        className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                     {isSaving ? <span className="self-center text-sm text-slate-500">Saving...</span> : null}
                   </div>
                 </article>
