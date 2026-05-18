@@ -19,6 +19,11 @@ type TakeoutOrder = {
   company_cut?: number | string | null;
   driver_payout?: number | string | null;
   total_bill?: number | string | null;
+  takeout_total_payable?: number | string | null;
+  takeout_delivery_fee?: number | string | null;
+  takeout_service_fee?: number | string | null;
+  takeout_items_subtotal?: number | string | null;
+  items_subtotal?: number | string | null;
 };
 
 type OrdersListResponse = {
@@ -35,6 +40,17 @@ function parseMoney(value: unknown): number {
 function formatMoney(value: unknown): string {
   const n = parseMoney(value);
   return n.toFixed(2);
+}
+
+function getOrderTotal(order: TakeoutOrder): number {
+  const explicitTotal = parseMoney(order.takeout_total_payable ?? order.total_bill);
+  if (explicitTotal > 0) return explicitTotal;
+
+  const items = parseMoney(order.takeout_items_subtotal ?? order.items_subtotal);
+  const delivery = parseMoney(order.takeout_delivery_fee);
+  const service = parseMoney(order.takeout_service_fee);
+  const derived = items + delivery + service;
+  return Number.isFinite(derived) ? derived : 0;
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -189,7 +205,7 @@ export default function TakeoutOrdersPage() {
                     {getDisplayStatus(order)}
                   </span>
                   <span className="text-right text-sm font-semibold text-slate-900">
-                    PHP {formatMoney(order.total_bill)}
+                    PHP {formatMoney(getOrderTotal(order))}
                   </span>
                 </div>
               </Link>
@@ -237,7 +253,7 @@ export default function TakeoutOrdersPage() {
                     {getDisplayStatus(order)}
                   </span>
                   <span className="text-right text-sm font-semibold text-slate-900">
-                    PHP {formatMoney(order.total_bill)}
+                    PHP {formatMoney(getOrderTotal(order))}
                   </span>
                 </div>
               </Link>

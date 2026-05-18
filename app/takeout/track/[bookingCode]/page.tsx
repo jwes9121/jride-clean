@@ -156,15 +156,17 @@ export default function TakeoutTrackPage() {
     const vendorStatus = normText(order?.vendor_status || "").toLowerCase();
     const customerStatus = normText(order?.customer_status || "").toLowerCase();
     const progressStatus = customerStatus || vendorStatus;
+    const vendorHasAccepted = ["vendor_accepted", "driver_assigned", "preparing", "pickup_ready", "completed"].includes(vendorStatus);
+    const passengerConfirmed = pricingStatus.includes("customer_confirmed") || pricingStatus.includes("confirmed") || customerStatus.includes("confirmed");
     const progressLabels: Record<string, string> = {
       requested: "Order submitted",
       vendor_pending: "Waiting for vendor confirmation",
-      vendor_accepted: "Vendor accepted your order",
+      vendor_accepted: "Vendor accepted. Looking for driver",
       preparing: "Vendor preparing order",
       pickup_ready: "Order ready for pickup",
-      driver_assigned: "Driver assigned",
+      driver_assigned: passengerConfirmed ? "Passenger confirmed total" : "Driver assigned",
       driver_fee_proposed: "Driver fee proposed",
-      customer_confirmed: "Order confirmed",
+      customer_confirmed: "Passenger confirmed total",
       rider_arrived_vendor: "Driver arrived at vendor",
       arrived_vendor: "Driver arrived at vendor",
       picked_up: "Order picked up",
@@ -188,6 +190,8 @@ export default function TakeoutTrackPage() {
       customerStatus,
       progressStatus,
       progressLabel,
+      vendorHasAccepted,
+      passengerConfirmed,
       isCompleted,
       isCancelled,
       foodSubtotal,
@@ -274,7 +278,15 @@ export default function TakeoutTrackPage() {
             </div>
 
             {state.pricingStatus === "pricing_pending" ? (
-              <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">Looking for a nearby driver to propose the delivery fee.</div>
+              <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                {state.vendorHasAccepted ? "Vendor accepted. Looking for a nearby driver to propose the delivery fee." : "Waiting for vendor acceptance before driver fee proposal."}
+              </div>
+            ) : null}
+
+            {state.passengerConfirmed && !state.isCompleted && !state.isCancelled ? (
+              <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                Passenger confirmed the total. The driver and vendor workflow can proceed.
+              </div>
             ) : null}
 
             {state.pricingStatus === "expired" ? (
@@ -307,7 +319,7 @@ export default function TakeoutTrackPage() {
                 <div className="mt-1">Thank you for using JRide Takeout.</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a href="/takeout" className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Order again</a>
-                  <a href="/" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Back to home</a>
+                  <a href="/takeout" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Back to takeout</a>
                   <a href="/takeout/orders" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">View orders</a>
                 </div>
               </div>
@@ -318,7 +330,7 @@ export default function TakeoutTrackPage() {
                 <div className="font-semibold">Order cancelled.</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a href="/takeout" className="rounded bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Start new order</a>
-                  <a href="/" className="rounded border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">Back to home</a>
+                  <a href="/takeout" className="rounded border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">Back to takeout</a>
                 </div>
               </div>
             ) : null}
