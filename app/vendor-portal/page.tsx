@@ -90,6 +90,7 @@ function statusLabel(s: any) {
   const x = normalizeVendorStatus(s);
   if (x === "vendor_pending") return "Waiting for vendor confirmation";
   if (x === "vendor_accepted") return "Vendor accepted";
+  if (x === "driver_assigned") return "Driver assigned";
   if (x === "pickup_ready") return "Pickup ready";
   if (x === "preparing") return "Preparing";
   if (x === "completed") return "Completed";
@@ -101,6 +102,7 @@ function orderClass(s: any) {
   const x = normalizeVendorStatus(s);
   if (x === "vendor_pending") return "border-blue-300 bg-blue-50 text-blue-800";
   if (x === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (x === "driver_assigned") return "border-blue-300 bg-blue-50 text-blue-800";
   if (x === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
   if (x === "cancelled") return "border-rose-300 bg-rose-50 text-rose-700";
@@ -170,7 +172,7 @@ export default function VendorPortalPage() {
   }, [vendors, vendorId]);
 
   const activeOrders = useMemo(() => {
-    return orders.filter((o) => ["vendor_pending", "vendor_accepted", "preparing", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
+    return orders.filter((o) => ["vendor_pending", "vendor_accepted", "driver_assigned", "preparing", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
 
   const historyOrders = useMemo(() => {
@@ -585,7 +587,13 @@ export default function VendorPortalPage() {
                             ) : null}
                             {s === "vendor_accepted" ? (
                               <>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "preparing")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Start preparing</button>
+                                <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Driver assignment can now proceed. Prepare the order only after the passenger confirms the driver delivery fee.</div>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                              </>
+                            ) : null}
+                            {s === "driver_assigned" ? (
+                              <>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Pickup ready</button>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
                               </>
                             ) : null}

@@ -62,6 +62,7 @@ function isAssignableDriver(row: any) {
 function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: number) {
   const stuck =
     (status === "requested" && ageMinutes >= 10) ||
+    (status === "vendor_accepted" && updateAgeMinutes >= 10) ||
     (status === "preparing" && ageMinutes >= 30) ||
     (status === "pickup_ready" && updateAgeMinutes >= 20) ||
     (status === "driver_assigned" && updateAgeMinutes >= 20) ||
@@ -72,6 +73,7 @@ function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: num
   let priority = 70;
   if (status === "pickup_ready") priority = stuck ? 1 : 10;
   else if (status === "requested") priority = stuck ? 2 : 15;
+  else if (status === "vendor_accepted") priority = stuck ? 2 : 16;
   else if (status === "driver_assigned") priority = stuck ? 3 : 18;
   else if (status === "rider_arrived_vendor") priority = stuck ? 4 : 20;
   else if (status === "preparing") priority = stuck ? 5 : 25;
@@ -187,7 +189,7 @@ export async function GET(req: NextRequest) {
   // JRIDE_TAKEOUT_DISPATCH_ACTIVE_POOL_V2
   // Only active takeout jobs should reserve a driver in the manual dispatch pool.
   // Completed/cancelled takeout rows must not keep drivers hidden after delivery.
-  const activeStatuses = new Set(["requested", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "picked_up", "delivering"]);
+  const activeStatuses = new Set(["requested", "vendor_accepted", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "picked_up", "delivering"]);
 
   const terminalTakeoutStatuses = new Set(["completed", "cancelled", "canceled"]);
   const isActiveTakeoutAssignment = (r: any) => {
@@ -264,6 +266,7 @@ export async function GET(req: NextRequest) {
     all: orders.length,
     active: orders.filter((o: any) => activeStatuses.has(o.vendor_status)).length,
     requested: orders.filter((o: any) => o.vendor_status === "requested").length,
+    vendor_accepted: orders.filter((o: any) => o.vendor_status === "vendor_accepted").length,
     preparing: orders.filter((o: any) => o.vendor_status === "preparing").length,
     pickup_ready: orders.filter((o: any) => o.vendor_status === "pickup_ready").length,
     driver_assigned: orders.filter((o: any) => o.vendor_status === "driver_assigned").length,
