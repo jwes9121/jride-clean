@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
+// JRIDE_TAKEOUT_VENDOR_PORTAL_VISIBILITY_V3
+
 type VendorRow = {
   id?: string | null;
   vendor_id?: string | null;
@@ -43,6 +45,8 @@ type TakeoutOrder = {
   customer_name: string | null;
   to_label: string | null;
   takeout_items_subtotal: number | null;
+  items_subtotal?: number | null;
+  total_bill?: number | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -74,21 +78,37 @@ function vendorLabel(v: VendorRow) {
   return clean(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor");
 }
 
-function statusLabel(s: any) {
+function normalizeVendorStatus(s: any) {
   const x = clean(s).toLowerCase();
+  if (!x || x === "requested") return "vendor_pending";
+  if (x === "accepted") return "vendor_accepted";
+  if (x === "canceled") return "cancelled";
+  return x;
+}
+
+function statusLabel(s: any) {
+  const x = normalizeVendorStatus(s);
+  if (x === "vendor_pending") return "Waiting for vendor confirmation";
+  if (x === "vendor_accepted") return "Vendor accepted";
   if (x === "pickup_ready") return "Pickup ready";
   if (x === "preparing") return "Preparing";
   if (x === "completed") return "Completed";
-  if (x === "cancelled" || x === "canceled") return "Cancelled";
-  return x || "Preparing";
+  if (x === "cancelled") return "Cancelled";
+  return x || "Waiting for vendor confirmation";
 }
 
 function orderClass(s: any) {
-  const x = clean(s).toLowerCase();
+  const x = normalizeVendorStatus(s);
+  if (x === "vendor_pending") return "border-blue-300 bg-blue-50 text-blue-800";
+  if (x === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
-  if (x === "cancelled" || x === "canceled") return "border-rose-300 bg-rose-50 text-rose-700";
+  if (x === "cancelled") return "border-rose-300 bg-rose-50 text-rose-700";
   return "border-amber-300 bg-amber-50 text-amber-800";
+}
+
+function orderSubtotal(o: TakeoutOrder) {
+  return o.takeout_items_subtotal ?? o.items_subtotal ?? o.total_bill ?? 0;
 }
 
 async function getJson(url: string) {
@@ -150,11 +170,11 @@ export default function VendorPortalPage() {
   }, [vendors, vendorId]);
 
   const activeOrders = useMemo(() => {
-    return orders.filter((o) => ["preparing", "pickup_ready", ""].includes(clean(o.vendor_status).toLowerCase()));
+    return orders.filter((o) => ["vendor_pending", "vendor_accepted", "preparing", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
 
   const historyOrders = useMemo(() => {
-    return orders.filter((o) => ["completed", "cancelled", "canceled"].includes(clean(o.vendor_status).toLowerCase()));
+    return orders.filter((o) => ["completed", "cancelled"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
 
   const usedCount = menu.length;
@@ -424,9 +444,9 @@ export default function VendorPortalPage() {
               </div>
 
               <label className="mt-4 block text-xs font-medium text-slate-700">Vendor name</label>
-              <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Restaurant or vendor name" />
+              <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Vendor name" />
 
-              <label className="mt-3 block text-xs font-medium text-slate-700">Restaurant logo</label>
+              <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
               <input
                 className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
                 type="file"
@@ -540,11 +560,11 @@ export default function VendorPortalPage() {
 
               <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold">Active and pickup-ready</h3>
+                  <h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
                   <div className="space-y-2">
                     {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
                     {activeOrders.map((o) => {
-                      const s = clean(o.vendor_status).toLowerCase() || "preparing";
+                      const s = normalizeVendorStatus(o.vendor_status);
                       return (
                         <div key={o.id || o.booking_code || Math.random()} className="rounded-2xl border p-3">
                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -555,11 +575,29 @@ export default function VendorPortalPage() {
                             </div>
                             <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
                           </div>
-                          <div className="mt-2 text-sm font-medium">Subtotal: {money(o.takeout_items_subtotal)}</div>
+                          <div className="mt-2 text-sm font-medium">Subtotal: {money(orderSubtotal(o))}</div>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" disabled={s !== "preparing" || busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Pickup ready</button>
-                            <button type="button" disabled={s !== "pickup_ready" || busy} onClick={() => moveOrder(o, "completed")} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Completed</button>
-                            <button type="button" disabled={busy || s === "completed" || s === "cancelled"} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                            {s === "vendor_pending" ? (
+                              <>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Accept order</button>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
+                              </>
+                            ) : null}
+                            {s === "vendor_accepted" ? (
+                              <>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "preparing")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Start preparing</button>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                              </>
+                            ) : null}
+                            {s === "preparing" ? (
+                              <>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Pickup ready</button>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                              </>
+                            ) : null}
+                            {s === "pickup_ready" ? (
+                              <button type="button" disabled={busy} onClick={() => moveOrder(o, "completed")} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Completed</button>
+                            ) : null}
                           </div>
                         </div>
                       );
@@ -577,7 +615,7 @@ export default function VendorPortalPage() {
                           <span className="font-semibold">{o.booking_code || o.id}</span>
                           <span className={cls("rounded-full border px-2 py-0.5 text-xs", orderClass(o.vendor_status))}>{statusLabel(o.vendor_status)}</span>
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{o.customer_name || "Customer"} | {money(o.takeout_items_subtotal)}</div>
+                        <div className="mt-1 text-xs text-slate-500">{o.customer_name || "Customer"} | {money(orderSubtotal(o))}</div>
                       </div>
                     ))}
                   </div>
