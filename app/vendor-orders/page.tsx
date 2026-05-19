@@ -355,16 +355,9 @@ export default function VendorTakeoutOrdersPage() {
                       <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">Vendor accepted. Driver assignment can proceed. No second vendor action is required until pickup is ready.</div>
                     ) : null}
                     {currentStatus === "preparing" ? (
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() => updateStatus(order, "pickup_ready")}
-                        className="rounded-xl border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Pickup ready
-                      </button>
+                      <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">Order is in preparation. Use Pickup ready only when the vendor is ready for driver pickup.</div>
                     ) : null}
-                    {currentStatus === "ready_for_pickup" ? (
+                    {(currentStatus === "ready_for_pickup" || currentStatus === "pickup_ready") ? (
                       <button
                         type="button"
                         disabled={isSaving}

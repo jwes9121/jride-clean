@@ -172,7 +172,7 @@ export default function VendorPortalPage() {
   }, [vendors, vendorId]);
 
   const activeOrders = useMemo(() => {
-    return orders.filter((o) => ["vendor_pending", "vendor_accepted", "driver_assigned", "preparing", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
+    return orders.filter((o) => ["vendor_pending", "vendor_accepted", "driver_assigned", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
 
   const historyOrders = useMemo(() => {
@@ -587,7 +587,7 @@ export default function VendorPortalPage() {
                             ) : null}
                             {s === "vendor_accepted" ? (
                               <>
-                                <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Driver assignment can now proceed. No second vendor action is required until pickup is ready.</div>
+                                <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. Do not press a second preparing button. Mark Pickup ready only when the order is ready.</div>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
                               </>
                             ) : null}
