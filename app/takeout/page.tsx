@@ -20,6 +20,8 @@ type MenuItem = {
   id: string;
   name: string;
   description?: string | null;
+  packaging_note?: string | null;
+  photo_url?: string | null;
   price: number;
   sort_order?: number | null;
   is_available: boolean | null;
@@ -35,6 +37,9 @@ type VendorRow = {
   vendor_name?: string | null;
   email?: string | null;
   town?: string | null;
+  premium_packaging_enabled?: boolean | null;
+  premium_packaging_fee?: number | string | null;
+  premium_packaging_label?: string | null;
 };
 
 
@@ -148,9 +153,12 @@ export default function TakeoutPage() {
   const [menuErr, setMenuErr] = useState<string | null>(null);
   const [vendorClosed, setVendorClosed] = useState(false);
   const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [menuVendorProfile, setMenuVendorProfile] = useState<any>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
 
   const [note, setNote] = useState("");
+  const [premiumPackagingSelected, setPremiumPackagingSelected] = useState(false);
+  const [receiptRequested, setReceiptRequested] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string>("");
@@ -185,11 +193,11 @@ export default function TakeoutPage() {
   }, [menu]);
 
   const selectedLines = useMemo(() => {
-    const lines: Array<{ id: string; name: string; price: number; qty: number; line_total: number }> = [];
+    const lines: Array<{ id: string; name: string; price: number; qty: number; line_total: number; packaging_note?: string | null }> = [];
     for (const m of menuSelectable) {
       const q = Math.max(0, Math.floor(toNum(qty[m.id])));
       if (q > 0) {
-        lines.push({ id: m.id, name: m.name, price: toNum(m.price), qty: q, line_total: q * toNum(m.price) });
+        lines.push({ id: m.id, name: m.name, price: toNum(m.price), qty: q, line_total: q * toNum(m.price), packaging_note: m.packaging_note || null });
       }
     }
     return lines;
@@ -197,14 +205,22 @@ export default function TakeoutPage() {
 
   const itemsSubtotal = useMemo(() => selectedLines.reduce((a, r) => a + toNum(r.line_total), 0), [selectedLines]);
 
+  const premiumPackagingEnabled = selectedVendor?.premium_packaging_enabled === true || menuVendorProfile?.premium_packaging_enabled === true;
+  const premiumPackagingFee = premiumPackagingEnabled ? toNum(menuVendorProfile?.premium_packaging_fee ?? selectedVendor?.premium_packaging_fee) : 0;
+  const premiumPackagingLabel = String(menuVendorProfile?.premium_packaging_label || selectedVendor?.premium_packaging_label || "Premium packaging").trim() || "Premium packaging";
+  const packagingEstimate = premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingFee : 0;
+
   // Human readable for vendor UI, and JSON snapshot for future lock
   const itemsText = useMemo(() => {
     if (!selectedLines.length) return "";
-    return selectedLines.map((r) => `${r.qty}x ${r.name} @ ${money(r.price)} = ${money(r.line_total)}`).join("\n");
+    return selectedLines.map((r) => {
+      const base = `${r.qty}x ${r.name} @ ${money(r.price)} = ${money(r.line_total)}`;
+      return r.packaging_note ? base + `\n   Packaging: ${r.packaging_note}` : base;
+    }).join("\n");
   }, [selectedLines]);
 
   const itemsJson = useMemo(() => {
-    return selectedLines.map((r) => ({ menu_item_id: r.id, name: r.name, unit_price: r.price, qty: r.qty, line_total: r.line_total }));
+    return selectedLines.map((r) => ({ menu_item_id: r.id, name: r.name, unit_price: r.price, qty: r.qty, line_total: r.line_total, packaging_note: r.packaging_note || null }));
   }, [selectedLines]);
 
   const canSubmit = useMemo(() => {
@@ -239,6 +255,7 @@ export default function TakeoutPage() {
     if (!vid) {
       setVendorClosed(false);
       setMenu([]);
+      setMenuVendorProfile(null);
       setQty({});
       return;
     }
@@ -261,6 +278,8 @@ export default function TakeoutPage() {
           id: String(r.id ?? r.menu_item_id ?? ""),
           name: String(r.name ?? ""),
           description: (r.description ?? null) as any,
+          packaging_note: (r.packaging_note ?? r.packagingNote ?? r.packaging ?? null) as any,
+          photo_url: (r.photo_url ?? r.image_url ?? r.menu_photo_url ?? r.item_photo_url ?? null) as any,
           price: toNum(r.price),
           sort_order: (r.sort_order ?? 0) as any,
           is_available: (typeof r.is_available === "boolean" ? r.is_available : null),
@@ -281,6 +300,7 @@ export default function TakeoutPage() {
         j?.isOpen === false;
       setVendorClosed(Boolean(closedByApi || (mapped.length > 0 && orderableCount === 0)));
 
+      setMenuVendorProfile(j?.vendor || j || null);
       setMenu(mapped);
       // Keep existing qty but drop unknown
       setQty((prev) => {
@@ -294,6 +314,7 @@ export default function TakeoutPage() {
       setMenuErr(String(e?.message || e || "Failed to load menu"));
       setVendorClosed(false);
       setMenu([]);
+      setMenuVendorProfile(null);
       setQty({});
     } finally {
       if (!silent) setMenuBusy(false);
@@ -517,6 +538,7 @@ export default function TakeoutPage() {
             name,
             price: Number.isFinite(price) ? price : 0,
             quantity: qty,
+            packaging_note: String(mm?.packaging_note || l?.packaging_note || "").trim() || null,
           };
         })
         .filter(Boolean);
@@ -551,8 +573,23 @@ export default function TakeoutPage() {
 
         // Client-only item subtotal estimate
         estimated_items_subtotal: itemsSubtotal,
+        premium_packaging_selected: premiumPackagingSelected && premiumPackagingEnabled,
+        premium_packaging_fee: packagingEstimate,
+        premium_packaging_label: premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingLabel : null,
+        receipt_requested: receiptRequested,
+        request_vendor_receipt: receiptRequested,
+        order_preferences: {
+          premium_packaging_selected: premiumPackagingSelected && premiumPackagingEnabled,
+          premium_packaging_fee: packagingEstimate,
+          premium_packaging_label: premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingLabel : null,
+          receipt_requested: receiptRequested,
+        },
 
-        note: note.trim(),
+        note: [
+          note.trim(),
+          premiumPackagingSelected && premiumPackagingEnabled ? "Premium packaging requested: " + premiumPackagingLabel + " (" + money(packagingEstimate) + ")" : "",
+          receiptRequested ? "Vendor receipt requested." : "",
+        ].filter(Boolean).join("\n"),
       };
 
       const j = await postJson("/api/vendor-orders", payload);
@@ -585,6 +622,8 @@ export default function TakeoutPage() {
       setMenu([]);
       setVendorId("");
       setNote("");
+      setPremiumPackagingSelected(false);
+      setReceiptRequested(false);
     } catch (e: any) {
       const msg = String(e?.message || "Unknown error");
       if (msg.includes("closed") || msg.includes("unavailable") || msg.includes("TAKEOUT_VENDOR_CLOSED")) {
@@ -600,13 +639,13 @@ export default function TakeoutPage() {
     <div className="mx-auto max-w-3xl p-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-2xl font-bold">Takeout (Passenger) - Phase 2B</div>
+          <div className="text-2xl font-bold">JRide Takeout</div>
           <div className="text-sm text-slate-600">
-            Passenger selects vendor, menu items, and address. Live tracking opens on a separate takeout tracking page after submit.
+            Choose a vendor, select menu items, set your delivery address, and confirm the delivery fee after a driver proposal.
           </div>
         </div>
-        <a href="/vendor-orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
-          Go to Vendor Orders
+        <a href="/takeout/orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
+          My takeout orders
         </a>
       </div>
 
@@ -621,6 +660,8 @@ export default function TakeoutPage() {
                   const nextVendorId = e.target.value;
                   setVendorId(nextVendorId);
                   setQty({});
+                  setPremiumPackagingSelected(false);
+                  setReceiptRequested(false);
                   setSubmitted(false);
                   refreshMenu(nextVendorId);
                 }}
@@ -854,7 +895,10 @@ export default function TakeoutPage() {
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-3">
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 rounded-xl border object-cover" /> : null}
+                          <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <div className="font-medium">{m.name}</div>
                           {m.sold_out_today ? (
@@ -867,7 +911,14 @@ export default function TakeoutPage() {
                         {m.description ? (
                           <div className="mt-1 text-xs text-slate-600">{m.description}</div>
                         ) : null}
+                        {m.packaging_note ? (
+                          <div className="mt-2 rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">
+                            Packaging: {m.packaging_note}
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-sm font-semibold">{money(toNum(m.price))}</div>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="shrink-0 flex items-center gap-2">
@@ -906,10 +957,41 @@ export default function TakeoutPage() {
                 <div className="font-medium">Estimated items subtotal</div>
                 <div className="font-semibold">{money(itemsSubtotal)}</div>
               </div>
+              {packagingEstimate > 0 ? (
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
+                  <span>{premiumPackagingLabel}</span>
+                  <span>{money(packagingEstimate)}</span>
+                </div>
+              ) : null}
               <div className="mt-1 text-[11px] text-slate-600">
                 {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. The final delivery fee appears after a driver proposal."}
               </div>
             </div>
+
+            {premiumPackagingEnabled || selectedLines.length > 0 ? (
+              <div className="mt-3 rounded border bg-white p-3 text-sm">
+                <div className="font-medium">Packaging and receipt options</div>
+                <div className="mt-2 space-y-2 text-xs text-slate-700">
+                  <div className="rounded-lg border bg-slate-50 p-2">Default item packaging is shown per menu item when the vendor provided a note.</div>
+                  {premiumPackagingEnabled ? (
+                    <label className="flex items-start gap-2 rounded-lg border p-2">
+                      <input type="checkbox" checked={premiumPackagingSelected} onChange={(e) => setPremiumPackagingSelected(e.target.checked)} />
+                      <span>
+                        <span className="block font-semibold">Add {premiumPackagingLabel}{premiumPackagingFee > 0 ? " - " + money(premiumPackagingFee) : ""}</span>
+                        <span className="block text-slate-500">Optional upgraded packaging selected by the passenger.</span>
+                      </span>
+                    </label>
+                  ) : null}
+                  <label className="flex items-start gap-2 rounded-lg border p-2">
+                    <input type="checkbox" checked={receiptRequested} onChange={(e) => setReceiptRequested(e.target.checked)} />
+                    <span>
+                      <span className="block font-semibold">Request vendor receipt</span>
+                      <span className="block text-slate-500">The vendor will see this request on the order queue.</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            ) : null}
 
             {itemsText ? (
               <details className="mt-3 rounded border bg-white p-3">
@@ -948,13 +1030,9 @@ export default function TakeoutPage() {
             <span className="text-xs font-medium text-rose-700">Cannot place order: vendor is closed.</span>
           ) : null}
 
-          <a href="/vendor-orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
-            View vendor orders
+          <a href="/takeout/orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
+            View my orders
           </a>
-
-          <span className="text-xs text-slate-600">
-            Test link: <code>/takeout</code>
-          </span>
         </div>
 
         {result && !["completed", "cancelled"].includes(normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase()) ? (

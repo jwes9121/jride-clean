@@ -245,6 +245,7 @@ type SnapshotItem = {
   name: string;
   price: number;
   quantity: number;
+  packaging_note?: string | null;
   snapshot_at?: string;
 };
 
@@ -266,7 +267,8 @@ function normalizeItems(body: any): SnapshotItem[] {
     const price = toNum(it?.price ?? it?.unit_price ?? 0);
     const qty = Math.max(1, parseInt(String(it?.quantity ?? it?.qty ?? 1), 10) || 1);
 
-    out.push({ menu_item_id, name, price, quantity: qty });
+    const packaging_note = String(it?.packaging_note ?? it?.packagingNote ?? it?.packaging ?? "").trim() || null;
+    out.push({ menu_item_id, name, price, quantity: qty, packaging_note });
   }
 
   return out;
@@ -383,6 +385,10 @@ export async function GET(req: NextRequest) {
       items: snapItems,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       total_bill,
+      premium_packaging_selected: r?.premium_packaging_selected ?? r?.order_preferences?.premium_packaging_selected ?? false,
+      premium_packaging_fee: r?.premium_packaging_fee ?? r?.order_preferences?.premium_packaging_fee ?? null,
+      premium_packaging_label: r?.premium_packaging_label ?? r?.order_preferences?.premium_packaging_label ?? null,
+      receipt_requested: r?.receipt_requested ?? r?.request_vendor_receipt ?? r?.order_preferences?.receipt_requested ?? false,
     };
   });
 
@@ -515,6 +521,10 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
   const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
   const note = String(body?.note ?? "").trim();
+  const premium_packaging_selected = Boolean(body?.premium_packaging_selected ?? body?.premiumPackagingSelected ?? body?.order_preferences?.premium_packaging_selected ?? false);
+  const premium_packaging_fee = toNum(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? body?.order_preferences?.premium_packaging_fee ?? 0);
+  const premium_packaging_label = String(body?.premium_packaging_label ?? body?.premiumPackagingLabel ?? body?.order_preferences?.premium_packaging_label ?? "").trim() || null;
+  const receipt_requested = Boolean(body?.receipt_requested ?? body?.request_vendor_receipt ?? body?.receiptRequested ?? body?.order_preferences?.receipt_requested ?? false);
 
   const items_text = String(body?.items_text ?? "").trim();
 
@@ -696,6 +706,17 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     notes: note || null,
 
     items_text: items_text || null,
+    premium_packaging_selected,
+    premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+    premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+    receipt_requested,
+    request_vendor_receipt: receipt_requested,
+    order_preferences: {
+      premium_packaging_selected,
+      premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+      premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+      receipt_requested,
+    },
 
     // Phase 2D requirement
 
@@ -953,6 +974,11 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     action: "created",
 
     order_id: bookingId,
+    booking_code: takeoutBookingCode,
+    premium_packaging_selected,
+    premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+    premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+    receipt_requested,
 
     
     resolved_pickup: pickupLL ?? vendorLL ?? null,

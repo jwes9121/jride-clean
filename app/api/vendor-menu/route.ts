@@ -130,6 +130,19 @@ function computeAcceptingOrders(rows: any[]): boolean {
   return rows.some((row) => row?.is_available !== false && row?.sold_out_today !== true);
 }
 
+
+async function loadVendorProfile(admin: any, vendor_id: string) {
+  const byId = await admin.from("vendor_accounts").select("*").eq("id", vendor_id).limit(1);
+  if (!byId.error && Array.isArray(byId.data) && byId.data[0]) return byId.data[0];
+  const byEmail = await admin.from("vendor_accounts").select("*").eq("email", vendor_id).limit(1);
+  if (!byEmail.error && Array.isArray(byEmail.data) && byEmail.data[0]) return byEmail.data[0];
+  return null;
+}
+
+function cleanString(v: any) {
+  return String(v ?? "").trim();
+}
+
 async function loadMenuWithAuthoritativeDayState(admin: any, vendor_id: string, service_date: string) {
   const menu = await admin
     .from("vendor_menu_today")
@@ -165,12 +178,27 @@ export async function GET(req: NextRequest) {
 
   try {
     const { items, accepting_orders } = await loadMenuWithAuthoritativeDayState(admin, vendor_id, service_date);
+    const vendor = await loadVendorProfile(admin, vendor_id);
+    const premiumPackagingEnabled = vendor?.premium_packaging_enabled === true || vendor?.premiumPackagingEnabled === true;
+    const premiumPackagingFee = Number(vendor?.premium_packaging_fee ?? vendor?.premiumPackagingFee ?? 0);
+    const premiumPackagingLabel = cleanString(vendor?.premium_packaging_label || vendor?.premiumPackagingLabel || "Premium packaging") || "Premium packaging";
 
     return json(200, {
       ok: true,
       vendor_id,
       service_date,
       accepting_orders,
+      vendor: vendor ? {
+        id: cleanString(vendor?.id || vendor_id),
+        vendor_id,
+        name: cleanString(vendor?.display_name || vendor?.vendor_name || vendor?.name || vendor_id),
+        premium_packaging_enabled: premiumPackagingEnabled,
+        premium_packaging_fee: Number.isFinite(premiumPackagingFee) ? premiumPackagingFee : 0,
+        premium_packaging_label: premiumPackagingLabel,
+      } : null,
+      premium_packaging_enabled: premiumPackagingEnabled,
+      premium_packaging_fee: Number.isFinite(premiumPackagingFee) ? premiumPackagingFee : 0,
+      premium_packaging_label: premiumPackagingLabel,
       vendor_accepting_orders: accepting_orders,
       vendor_open: accepting_orders,
       is_open: accepting_orders,
@@ -304,11 +332,26 @@ export async function POST(req: NextRequest) {
 
   try {
     const { items, accepting_orders } = await loadMenuWithAuthoritativeDayState(admin, vendor_id, service_date);
+    const vendor = await loadVendorProfile(admin, vendor_id);
+    const premiumPackagingEnabled = vendor?.premium_packaging_enabled === true || vendor?.premiumPackagingEnabled === true;
+    const premiumPackagingFee = Number(vendor?.premium_packaging_fee ?? vendor?.premiumPackagingFee ?? 0);
+    const premiumPackagingLabel = cleanString(vendor?.premium_packaging_label || vendor?.premiumPackagingLabel || "Premium packaging") || "Premium packaging";
     return json(200, {
       ok: true,
       vendor_id,
       service_date,
       accepting_orders,
+      vendor: vendor ? {
+        id: cleanString(vendor?.id || vendor_id),
+        vendor_id,
+        name: cleanString(vendor?.display_name || vendor?.vendor_name || vendor?.name || vendor_id),
+        premium_packaging_enabled: premiumPackagingEnabled,
+        premium_packaging_fee: Number.isFinite(premiumPackagingFee) ? premiumPackagingFee : 0,
+        premium_packaging_label: premiumPackagingLabel,
+      } : null,
+      premium_packaging_enabled: premiumPackagingEnabled,
+      premium_packaging_fee: Number.isFinite(premiumPackagingFee) ? premiumPackagingFee : 0,
+      premium_packaging_label: premiumPackagingLabel,
       vendor_accepting_orders: accepting_orders,
       vendor_open: accepting_orders,
       is_open: accepting_orders,

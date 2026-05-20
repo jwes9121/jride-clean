@@ -21,6 +21,9 @@ type VendorProfile = {
   town?: string | null;
   logo_url?: string | null;
   accepting_orders?: boolean;
+  premium_packaging_enabled?: boolean;
+  premium_packaging_fee?: number | string | null;
+  premium_packaging_label?: string | null;
 };
 
 type MenuItem = {
@@ -28,6 +31,7 @@ type MenuItem = {
   menu_item_id?: string | null;
   name: string;
   description?: string | null;
+  packaging_note?: string | null;
   price: number;
   photo_url?: string | null;
   sort_order?: number | null;
@@ -157,10 +161,14 @@ export default function VendorPortalPage() {
   const [acceptingOrders, setAcceptingOrders] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
+  const [premiumPackagingEnabled, setPremiumPackagingEnabled] = useState(false);
+  const [premiumPackagingFee, setPremiumPackagingFee] = useState("");
+  const [premiumPackagingLabel, setPremiumPackagingLabel] = useState("Premium packaging");
 
   const [editingId, setEditingId] = useState("");
   const [itemName, setItemName] = useState("");
   const [itemDescription, setItemDescription] = useState("");
+  const [itemPackagingNote, setItemPackagingNote] = useState("");
   const [itemPrice, setItemPrice] = useState("");
   const [itemAvailable, setItemAvailable] = useState(true);
   const [itemSoldOut, setItemSoldOut] = useState(false);
@@ -202,6 +210,9 @@ export default function VendorPortalPage() {
       setProfileName(clean(v?.name || selectedVendor ? vendorLabel(selectedVendor as any) : vid));
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
+      setPremiumPackagingEnabled(v?.premium_packaging_enabled === true);
+      setPremiumPackagingFee(clean(v?.premium_packaging_fee || ""));
+      setPremiumPackagingLabel(clean(v?.premium_packaging_label || "Premium packaging") || "Premium packaging");
       setMenu(items);
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor menu"));
@@ -254,6 +265,7 @@ export default function VendorPortalPage() {
     setEditingId("");
     setItemName("");
     setItemDescription("");
+    setItemPackagingNote("");
     setItemPrice("");
     setItemAvailable(true);
     setItemSoldOut(false);
@@ -265,6 +277,7 @@ export default function VendorPortalPage() {
     setEditingId(clean(m.id || m.menu_item_id));
     setItemName(m.name || "");
     setItemDescription(m.description || "");
+    setItemPackagingNote(m.packaging_note || "");
     setItemPrice(String(m.price || ""));
     setItemAvailable(m.is_available !== false);
     setItemSoldOut(m.sold_out_today === true);
@@ -285,6 +298,9 @@ export default function VendorPortalPage() {
         vendor_id: vid,
         name: profileName,
         accepting_orders: acceptingOrders,
+        premium_packaging_enabled: premiumPackagingEnabled,
+        premium_packaging_fee: premiumPackagingFee,
+        premium_packaging_label: premiumPackagingLabel,
         logo_data_url: logoDataUrl,
       });
       setMessage(j?.warning ? "Profile saved, but image warning: " + j.warning : "Vendor profile saved.");
@@ -315,6 +331,7 @@ export default function VendorPortalPage() {
         id: editingId || null,
         name: itemName,
         description: itemDescription,
+        packaging_note: itemPackagingNote,
         price: itemPrice,
         is_available: itemAvailable,
         sold_out_today: itemSoldOut,
@@ -468,6 +485,26 @@ export default function VendorPortalPage() {
                 <input type="checkbox" checked={acceptingOrders} onChange={(e) => setAcceptingOrders(e.target.checked)} />
               </label>
 
+              <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-sm">
+                <label className="flex items-center justify-between gap-3">
+                  <span>
+                    <span className="block font-medium">Optional premium packaging</span>
+                    <span className="block text-xs text-slate-500">Shown as an optional add-on during checkout.</span>
+                  </span>
+                  <input type="checkbox" checked={premiumPackagingEnabled} onChange={(e) => setPremiumPackagingEnabled(e.target.checked)} />
+                </label>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-700">Label</label>
+                    <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={premiumPackagingLabel} onChange={(e) => setPremiumPackagingLabel(e.target.value)} placeholder="Premium sealed packaging" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-700">Fee</label>
+                    <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={premiumPackagingFee} onChange={(e) => setPremiumPackagingFee(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0.00" />
+                  </div>
+                </div>
+              </div>
+
               <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400">
                 Save profile
               </button>
@@ -509,6 +546,11 @@ export default function VendorPortalPage() {
                   <label className="text-xs font-medium text-slate-700">Description</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} disabled={limitReached} placeholder="Optional item details" />
                 </div>
+                <div className="md:col-span-6">
+                  <label className="text-xs font-medium text-slate-700">Packaging note</label>
+                  <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
+                  <div className="mt-1 text-[11px] text-slate-500">Keep this separate from the menu description. This explains the default packaging included with the item.</div>
+                </div>
                 <div className="flex flex-wrap items-center gap-4 md:col-span-6">
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemAvailable} onChange={(e) => setItemAvailable(e.target.checked)} disabled={limitReached} /> Available</label>
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemSoldOut} onChange={(e) => setItemSoldOut(e.target.checked)} disabled={limitReached} /> Sold out today</label>
@@ -536,6 +578,7 @@ export default function VendorPortalPage() {
                           <button type="button" className="rounded-lg border px-2 py-1 text-xs hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
                         </div>
                         {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
+                        {m.packaging_note ? <div className="rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">Packaging: {m.packaging_note}</div> : null}
                         <div className="flex flex-wrap gap-2 text-xs">
                           <span className={cls("rounded-full border px-2 py-1", m.is_available ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-slate-50 text-slate-600")}>{m.is_available ? "Available" : "Unavailable"}</span>
                           {m.sold_out_today ? <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-rose-700">Sold out</span> : null}
@@ -578,6 +621,12 @@ export default function VendorPortalPage() {
                             <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
                           </div>
                           <div className="mt-2 text-sm font-medium">Subtotal: {money(orderSubtotal(o))}</div>
+                          {(o as any).premium_packaging_selected || (o as any).receipt_requested ? (
+                            <div className="mt-2 rounded-xl border bg-amber-50 p-2 text-xs text-amber-900">
+                              {(o as any).premium_packaging_selected ? <div>Premium packaging selected.</div> : null}
+                              {(o as any).receipt_requested ? <div>Receipt requested.</div> : null}
+                            </div>
+                          ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
                             {s === "vendor_pending" ? (
                               <>
