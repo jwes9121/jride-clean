@@ -450,8 +450,8 @@ export async function POST(req: NextRequest) {
       // but do not mark the driver online until valid coordinates arrive.
       const gpsPendingPayload: any = {
         driver_id: driverId,
-        lat: null,
-        lng: null,
+        lat: 0,
+        lng: 0,
         status: "gps_pending",
         town: town || null,
         updated_at: nowIso,
@@ -489,8 +489,8 @@ export async function POST(req: NextRequest) {
         claimed: !!(lock as any).claimed,
         active_device_id: (lock as any).active_device_id,
         coords_source: "missing_first_fix",
-        lat: null,
-        lng: null,
+        lat: 0,
+        lng: 0,
         vehicle_type: vehicleType,
       });
     }
