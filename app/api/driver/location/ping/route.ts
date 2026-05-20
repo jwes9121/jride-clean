@@ -308,7 +308,13 @@ export async function POST(req: NextRequest) {
 
     const incomingLat = Number(body?.lat);
     const incomingLng = Number(body?.lng);
-    const hasIncomingCoords = Number.isFinite(incomingLat) && Number.isFinite(incomingLng);
+    // JRIDE_PING_ZERO_COORDS_GPS_PENDING_V1
+    // Treat missing, invalid, or 0/0 coordinates as no usable GPS fix.
+    // 0/0 is only a placeholder for non-assignable gps_pending rows.
+    const hasIncomingCoords =
+      Number.isFinite(incomingLat) &&
+      Number.isFinite(incomingLng) &&
+      !(incomingLat === 0 && incomingLng === 0);
 
     const status = norm(body?.status ?? "online") || "online";
     const town = text(body?.town);
