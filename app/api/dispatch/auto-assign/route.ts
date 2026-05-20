@@ -508,33 +508,11 @@ export async function POST(req: Request) {
       : [];
 
     if (mode === "scan_requested") {
-      const expireNowIso = new Date().toISOString();
-      const expireCutoffIso = new Date(Date.now() - REQUEST_SEARCH_EXPIRY_SECONDS * 1000).toISOString();
-
-      const { data: expiredRows, error: expireError } = await supabase
-        .from("bookings")
-        .update({
-          status: "expired",
-          updated_at: expireNowIso,
-        })
-        .in("status", ["searching"])
-        .is("driver_id", null)
-        .lt("created_at", expireCutoffIso)
-        .select("id, booking_code, status, created_at");
-
-      if (expireError) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "expire_search_bookings_failed",
-            message: expireError.message,
-            search_expiry_seconds: REQUEST_SEARCH_EXPIRY_SECONDS,
-          },
-          { status: 500 }
-        );
-      }
-
-      const expiredSearchingCount = Array.isArray(expiredRows) ? expiredRows.length : 0;
+      // JRIDE_AUTO_ASSIGN_EXPIRE_BYPASS_V3
+      // Expiry cleanup is intentionally bypassed here because the canonical
+      // lifecycle guard currently rejects searching -> expired.
+      // Assignment scan must not be blocked by cleanup.
+      const expiredSearchingCount = 0;
 
       const { data: bookings, error } = await supabase
         .from("bookings")
