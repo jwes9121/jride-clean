@@ -444,11 +444,54 @@ export async function POST(req: NextRequest) {
     }
 
     if (!Number.isFinite(finalLat as any) || !Number.isFinite(finalLng as any)) {
-      return json(400, {
-        ok: false,
-        code: "MISSING_COORDS_AND_NO_PREVIOUS_LOCATION",
+      // JRIDE_DRIVER_PING_GPS_PENDING_V1
+      // First-time driver pings may arrive before Android has a GPS fix.
+      // Create a non-assignable presence row so LiveTrips can see the driver,
+      // but do not mark the driver online until valid coordinates arrive.
+      const gpsPendingPayload: any = {
         driver_id: driverId,
+        lat: null,
+        lng: null,
+        status: "gps_pending",
+        town: town || null,
+        updated_at: nowIso,
+        vehicle_type: vehicleType,
+      };
+
+      if ((prevLoc as any)?.id) {
+        gpsPendingPayload.id = (prevLoc as any).id;
+      }
+
+      const { error: gpsPendingErr } = await supabase
+        .from("driver_locations")
+        .upsert(gpsPendingPayload, { onConflict: "driver_id", ignoreDuplicates: false });
+
+      if (gpsPendingErr) {
+        return json(500, {
+          ok: false,
+          code: "GPS_PENDING_UPSERT_FAILED",
+          message: gpsPendingErr.message,
+          driver_id: driverId,
+          vehicle_type: vehicleType,
+        });
+      }
+
+      return json(200, {
+        ok: true,
+        code: "GPS_PENDING",
+        driver_id: driverId,
+        auth_mode: authRes.authMode,
+        status: "gps_pending",
         previous_status: previousStatus || null,
+        location_pending: true,
+        message: "Driver ping accepted but GPS coordinates are still pending.",
+        town: town || null,
+        claimed: !!(lock as any).claimed,
+        active_device_id: (lock as any).active_device_id,
+        coords_source: "missing_first_fix",
+        lat: null,
+        lng: null,
+        vehicle_type: vehicleType,
       });
     }
 
