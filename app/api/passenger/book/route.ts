@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -918,6 +918,49 @@ const boundaryOverrideRequested =
       }
     }
 
+    const activeStatuses = [
+      "searching",
+      "assigned",
+      "accepted",
+      "fare_proposed",
+      "ready",
+      "on_the_way",
+      "arrived",
+      "on_trip",
+    ];
+
+    const { data: existingActiveBooking, error: existingActiveBookingError } = await userSupabase
+      .from("bookings")
+      .select("id, booking_code, status, created_at")
+      .eq("created_by_user_id", createdByUserId)
+      .in("status", activeStatuses)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingActiveBookingError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "ACTIVE_BOOKING_CHECK_FAILED",
+          message: existingActiveBookingError.message || "Could not check active booking.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (existingActiveBooking?.id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "ACTIVE_BOOKING_EXISTS",
+          message: "You already have an active booking. Please complete or cancel your current booking before creating another one.",
+          active_booking_code: existingActiveBooking.booking_code,
+          active_status: existingActiveBooking.status,
+        },
+        { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
+      );
+    }
     const bookingCode = bookingCodeNow();
 
     const insert: Record<string, any> = {
