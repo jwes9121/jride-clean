@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type DriverRow = {
@@ -31,7 +31,7 @@ type BookingRow = {
 };
 
 const REQUEST_SEARCH_EXPIRY_SECONDS = 300; // JRIDE_SEARCHING_EXPIRE_5MIN_V1
-const ASSIGN_FRESHNESS_SECONDS = 10;
+const ASSIGN_FRESHNESS_SECONDS = 120;
 const SCAN_LIMIT = 5;
 
 function norm(v: any): string {
@@ -117,7 +117,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 function isAssignableSearchingState(status: any): boolean {
   const s = norm(status);
-  return s === "requested" || s === "searching";
+  return s === "searching";
 }
 
 function effectiveMinWalletRequired(v: any): number {
@@ -474,7 +474,7 @@ async function matchSingle(
       updated_at: nowIso,
     })
     .eq("id", booking.id)
-    .in("status", ["requested", "searching"])
+    .in("status", ["searching"])
     .is("driver_id", null);
 
   if (updateError) {
@@ -517,7 +517,7 @@ export async function POST(req: Request) {
           status: "expired",
           updated_at: expireNowIso,
         })
-        .in("status", ["requested", "searching"])
+        .in("status", ["searching"])
         .is("driver_id", null)
         .lt("created_at", expireCutoffIso)
         .select("id, booking_code, status, created_at");
@@ -534,12 +534,12 @@ export async function POST(req: Request) {
         );
       }
 
-      const expiredRequestedSearchCount = Array.isArray(expiredRows) ? expiredRows.length : 0;
+      const expiredSearchingCount = Array.isArray(expiredRows) ? expiredRows.length : 0;
 
       const { data: bookings, error } = await supabase
         .from("bookings")
         .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
-        .in("status", ["requested", "searching"])
+        .in("status", ["searching"])
         .is("driver_id", null)
         .order("created_at", { ascending: true })
         .limit(SCAN_LIMIT);
@@ -611,9 +611,9 @@ export async function POST(req: Request) {
         exclude_driver_ids: excludeDriverIds,
         results,
         debug: buildBaseDebug({
-          booking_status_target: "requested or searching",
+          booking_status_target: "searching",
           search_expiry_seconds: REQUEST_SEARCH_EXPIRY_SECONDS,
-          expired_requested_search_count: expiredRequestedSearchCount,
+          expired_searching_count: expiredSearchingCount,
           booking_driver_target: "driver_id is null",
           booking_town_rule: "same town only unless booking.is_emergency = true",
         }),
