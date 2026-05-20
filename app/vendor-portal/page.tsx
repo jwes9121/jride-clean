@@ -207,7 +207,7 @@ export default function VendorPortalPage() {
       const v = j?.vendor || null;
       const items = Array.isArray(j?.items) ? j.items : [];
       setProfile(v);
-      setProfileName(clean(v?.name || selectedVendor ? vendorLabel(selectedVendor as any) : vid));
+      setProfileName(clean(v?.name || (selectedVendor ? vendorLabel(selectedVendor as any) : vid)));
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
       setPremiumPackagingEnabled(v?.premium_packaging_enabled === true);
@@ -400,7 +400,7 @@ export default function VendorPortalPage() {
           <div>
             <h1 className="text-2xl font-semibold">Vendor Portal</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Manage vendor profile, logo, up to 15 menu items, and takeout orders only.
+              Manage profile, logo, menu items, packaging options, and takeout orders.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -441,12 +441,12 @@ export default function VendorPortalPage() {
         {!vendorId ? (
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <section className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+            <section className="self-start rounded-2xl border bg-white p-4 shadow-sm lg:sticky lg:top-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor profile</h2>
-                  <p className="text-xs text-slate-500">Logo, name, and open/closed status.</p>
+                  <p className="text-xs text-slate-500">Store identity and order availability.</p>
                 </div>
                 <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700")}>{acceptingOrders ? "Open" : "Closed"}</span>
               </div>
@@ -456,9 +456,9 @@ export default function VendorPortalPage() {
                   {logoPreview ? <img src={logoPreview} alt="Vendor logo" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">Logo</div>}
                 </div>
                 <div className="min-w-0 text-sm">
-                  <div className="font-semibold">{profile?.name || profileName || selectedVendor ? vendorLabel(selectedVendor as any) : "Vendor"}</div>
+                  <div className="font-semibold">{profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor as any) : "Vendor")}</div>
                   <div className="text-xs text-slate-500">{profile?.town || selectedVendor?.town || "Town not set"}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Photo upload is optional, but recommended.</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Logo is optional, but recommended for passenger trust.</div>
                 </div>
               </div>
 
@@ -488,8 +488,8 @@ export default function VendorPortalPage() {
               <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-sm">
                 <label className="flex items-center justify-between gap-3">
                   <span>
-                    <span className="block font-medium">Optional premium packaging</span>
-                    <span className="block text-xs text-slate-500">Shown as an optional add-on during checkout.</span>
+                    <span className="block font-medium">Offer upgraded packaging</span>
+                    <span className="block text-xs text-slate-500">Passengers may optionally pay extra for improved packaging.</span>
                   </span>
                   <input type="checkbox" checked={premiumPackagingEnabled} onChange={(e) => setPremiumPackagingEnabled(e.target.checked)} />
                 </label>
@@ -505,7 +505,7 @@ export default function VendorPortalPage() {
                 </div>
               </div>
 
-              <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400">
+              <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
                 Save profile
               </button>
             </section>
@@ -514,12 +514,12 @@ export default function VendorPortalPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
-                  <p className="text-xs text-slate-500">Free-tier limit: {usedCount}/{MAX_ITEMS} menu items used.</p>
+                  <p className="text-xs text-slate-500">Menu catalog. Free-tier limit: {usedCount}/{MAX_ITEMS} items used.</p>
                 </div>
                 <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", limitReached ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-300 bg-slate-50 text-slate-700")}>{limitReached ? "Limit reached" : `${MAX_ITEMS - usedCount} slots left`}</span>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 md:grid-cols-6">
+              <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 shadow-inner md:grid-cols-6">
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-slate-700">Menu name</label>
                   <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemName} onChange={(e) => setItemName(e.target.value)} disabled={limitReached} placeholder="Example: Chicken adobo" />
@@ -549,33 +549,33 @@ export default function VendorPortalPage() {
                 <div className="md:col-span-6">
                   <label className="text-xs font-medium text-slate-700">Packaging note</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
-                  <div className="mt-1 text-[11px] text-slate-500">Keep this separate from the menu description. This explains the default packaging included with the item.</div>
+                  <div className="mt-1 text-[11px] text-slate-500">This is separate from the menu description and explains the default packaging included with the item.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 md:col-span-6">
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemAvailable} onChange={(e) => setItemAvailable(e.target.checked)} disabled={limitReached} /> Available</label>
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemSoldOut} onChange={(e) => setItemSoldOut(e.target.checked)} disabled={limitReached} /> Sold out today</label>
                   {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
-                  <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400">{editingId ? "Update item" : "Add item"}</button>
-                  <button type="button" onClick={resetItemForm} className="rounded-xl border px-4 py-2 text-sm hover:bg-white">Clear</button>
+                  <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">{editingId ? "Update item" : "Add item"}</button>
+                  <button type="button" onClick={resetItemForm} className="rounded-xl border bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear</button>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
                 {menu.length === 0 ? (
                   <div className="rounded-xl border bg-white p-4 text-sm text-slate-600">No menu items yet.</div>
                 ) : (
                   menu.map((m) => (
-                    <div key={m.id || m.menu_item_id || m.name} className="overflow-hidden rounded-2xl border bg-white">
-                      <div className="h-32 bg-slate-100">
+                    <div key={m.id || m.menu_item_id || m.name} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                      <div className="h-36 bg-slate-100">
                         {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">No photo</div>}
                       </div>
                       <div className="space-y-2 p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <div className="font-semibold">{m.name}</div>
-                            <div className="text-sm font-medium text-slate-700">{money(m.price)}</div>
+                            <div className="line-clamp-2 font-semibold leading-snug">{m.name}</div>
+                            <div className="mt-1 text-base font-bold text-slate-900">{money(m.price)}</div>
                           </div>
-                          <button type="button" className="rounded-lg border px-2 py-1 text-xs hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
+                          <button type="button" className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
                         </div>
                         {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
                         {m.packaging_note ? <div className="rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">Packaging: {m.packaging_note}</div> : null}
@@ -584,8 +584,8 @@ export default function VendorPortalPage() {
                           {m.sold_out_today ? <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-rose-700">Sold out</span> : null}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          <button type="button" className="rounded-lg border px-2 py-2 text-xs hover:bg-slate-50" onClick={() => toggleItem(m, { is_available: !m.is_available })}>{m.is_available ? "Make unavailable" : "Make available"}</button>
-                          <button type="button" className="rounded-lg border px-2 py-2 text-xs hover:bg-slate-50" onClick={() => toggleItem(m, { sold_out_today: !m.sold_out_today })}>{m.sold_out_today ? "Clear sold out" : "Mark sold out"}</button>
+                          <button type="button" className="rounded-lg border bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => toggleItem(m, { is_available: !m.is_available })}>{m.is_available ? "Make unavailable" : "Make available"}</button>
+                          <button type="button" className={cls("rounded-lg border px-2 py-2 text-xs font-medium", m.sold_out_today ? "bg-white text-slate-700 hover:bg-slate-50" : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100")} onClick={() => toggleItem(m, { sold_out_today: !m.sold_out_today })}>{m.sold_out_today ? "Clear sold out" : "Mark sold out"}</button>
                         </div>
                       </div>
                     </div>
