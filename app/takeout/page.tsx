@@ -210,6 +210,24 @@ function extractPassengerAutofill(source: any) {
     ),
   };
 }
+function hasSignedInUser(source: any): boolean {
+  const root = source || {};
+  const user = root.user || root.session?.user || root.data?.user || root.account || null;
+  if (!user || typeof user !== "object") return false;
+  return !!firstString(user.id, user.sub, user.email, user.name);
+}
+
+function cleanDeliveryAddressLabel(v: any): string {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  const lower = s.toLowerCase();
+  if (lower.startsWith("pinned delivery spot")) return "Delivery spot marked on map";
+  if (lower.startsWith("delivery pin")) return "Delivery spot marked on map";
+  const coordOnly = /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(s);
+  if (coordOnly) return "Delivery spot marked on map";
+  return s;
+}
+
 
 function safeCoord(v: any): number | null {
   const n = Number(v);
@@ -354,6 +372,7 @@ export default function TakeoutPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [autofillNote, setAutofillNote] = useState("");
+  const [authState, setAuthState] = useState<"unknown" | "guest" | "signed_in_profile" | "signed_in_missing_profile">("unknown");
 
   // Phase 2B.0 - DB-backed addresses (pilot via device_key)
   const [deviceKey, setDeviceKey] = useState("");
@@ -409,8 +428,8 @@ export default function TakeoutPage() {
   }, [vendors, vendorId]);
 
   const resolvedDeliveryAddress = useMemo(() => {
-    if (addrMode === "saved") return (primary?.address_text || "").trim();
-    return (newAddr || "").trim();
+    if (addrMode === "saved") return cleanDeliveryAddressLabel(primary?.address_text || "");
+    return cleanDeliveryAddressLabel(newAddr || "");
   }, [addrMode, primary, newAddr]);
 
   const menuSelectable = useMemo(() => {
@@ -461,8 +480,11 @@ export default function TakeoutPage() {
 
 
   async function loadPassengerAutofill() {
-    // Do not use /api/auth/session display_name as the customer name.
-    // For takeout, contact details must come from the passenger profile or a value the passenger typed before.
+    // Authentication status is shown to the passenger, but customer name/phone must come from a real passenger profile.
+    // Do not use email display_name as the customer name.
+    const session = await fetchOptionalJson("/api/auth/session");
+    const signedIn = hasSignedInUser(session);
+
     const profileSources: any[] = [];
 
     const profile = await fetchOptionalJson("/api/passenger/profile");
@@ -479,10 +501,8 @@ export default function TakeoutPage() {
       const hit = extractPassengerAutofill(source);
       if (!profileName && hit.name) profileName = hit.name;
       if (!profilePhone && hit.phone) profilePhone = hit.phone;
-      if (!profileAddress && hit.address) profileAddress = hit.address;
+      if (!profileAddress && hit.address) profileAddress = cleanDeliveryAddressLabel(hit.address);
     }
-
-    const pickedAddress = profileAddress;
 
     if (profileName) {
       setCustomerName(profileName);
@@ -492,12 +512,22 @@ export default function TakeoutPage() {
       setCustomerPhone(profilePhone);
     }
 
-    if (pickedAddress) {
-      setNewAddr((prev) => prev.trim() ? prev : pickedAddress);
+    if (profileAddress) {
+      setNewAddr((prev) => prev.trim() ? prev : profileAddress);
     }
 
-    const loaded = [profileName ? "profile name" : "", profilePhone ? "profile phone" : "", pickedAddress ? "profile address" : ""].filter(Boolean);
-    setAutofillNote(loaded.length ? "Auto-filled from passenger profile: " + loaded.join(", ") + ". You can still edit before submitting." : "Passenger profile contact was not found. Please enter the name and phone manually.");
+    const loaded = [profileName ? "profile name" : "", profilePhone ? "profile phone" : "", profileAddress ? "profile address" : ""].filter(Boolean);
+
+    if (signedIn && loaded.length) {
+      setAuthState("signed_in_profile");
+      setAutofillNote("Signed in. Auto-filled from passenger profile: " + loaded.join(", ") + ". You can still edit before submitting.");
+    } else if (signedIn) {
+      setAuthState("signed_in_missing_profile");
+      setAutofillNote("Signed in, but passenger profile contact is incomplete. Please enter the name and phone manually.");
+    } else {
+      setAuthState("guest");
+      setAutofillNote("Not signed in. Sign in for faster checkout, saved contact details, and synced order history.");
+    }
   }
 
   async function refreshAddresses(k?: string) {
@@ -667,7 +697,7 @@ export default function TakeoutPage() {
   }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, pricingOrder?.vendor_status, pricingOrder?.customer_status, lastJson?.order_id, lastJson?.booking_code]);
 
   async function saveAddressToDb(addressText: string, makePrimary: boolean) {
-    const addr = String(addressText || "").trim();
+    const addr = cleanDeliveryAddressLabel(addressText);
     if (!addr) throw new Error("Address required");
 
     await postJson("/api/passenger-addresses", {
@@ -788,7 +818,7 @@ export default function TakeoutPage() {
       const addressText = resolvedDeliveryAddress || deliveryPinLabel(deliveryPin);
 
       // Persist address to DB if requested (ONLY in "new" mode)
-      if (addrMode === "new" && saveAddr) {
+      if (addrMode === "new" && saveAddr && newAddr.trim()) {
         await saveAddressToDb(addressText, !!setPrimary);
         if (setPrimary) setAddrMode("saved");
       }      // PHASE 2D: build structured items[] for snapshot lock (menu edits must NOT affect history)
@@ -934,6 +964,32 @@ export default function TakeoutPage() {
         </a>
       </div>
 
+      <div className="mt-4">
+        {authState === "guest" ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">You are not signed in</div>
+                <div className="text-xs">Sign in to autofill your verified passenger contact, phone number, saved address, and keep order history synced.</div>
+              </div>
+              <a href="/auth/signin?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
+                Sign in for faster checkout
+              </a>
+            </div>
+          </div>
+        ) : authState === "signed_in_missing_profile" ? (
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+            <div className="font-semibold">Signed in, but passenger profile contact is incomplete</div>
+            <div className="text-xs">Enter your name and phone for this order. Email display names are not used as passenger names.</div>
+          </div>
+        ) : authState === "signed_in_profile" ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <div className="font-semibold">Signed in passenger profile loaded</div>
+            <div className="text-xs">Name and phone were loaded from your passenger profile. You can still edit before submitting.</div>
+          </div>
+        ) : null}
+      </div>
+
       <div className="mt-4 rounded-lg border bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
@@ -1003,11 +1059,19 @@ export default function TakeoutPage() {
           </div>
 
           {autofillNote ? (
-            <div className="md:col-span-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+            <div
+              className={cls(
+                "md:col-span-2 rounded border p-2 text-xs",
+                authState === "guest" ? "border-amber-300 bg-amber-50 text-amber-900" :
+                authState === "signed_in_missing_profile" ? "border-sky-200 bg-sky-50 text-sky-900" :
+                "border-emerald-200 bg-emerald-50 text-emerald-800"
+              )}
+            >
               {autofillNote}
             </div>
           ) : null}
 
+          {/* JRIDE_TAKEOUT_AUTH_STATE_V4 */}
           {/* JRIDE_TAKEOUT_PASSENGER_AUTOFILL_V1 */}
           {/* JRIDE_TAKEOUT_DELIVERY_PIN_MAP_V1 */}
           {/* PHASE2B0_ADDRESS_PICKER_DB */}
@@ -1058,7 +1122,7 @@ export default function TakeoutPage() {
                 {primary ? (
                   <>
                     <div className="text-xs font-semibold text-slate-700">Primary address</div>
-                    <div className="mt-1 text-sm text-slate-900">{primary.address_text}</div>
+                    <div className="mt-1 text-sm text-slate-900">{cleanDeliveryAddressLabel(primary.address_text)}</div>
 
                     {saved.length > 1 ? (
                       <div className="mt-3">
@@ -1066,7 +1130,7 @@ export default function TakeoutPage() {
                         <div className={cls("mt-2 space-y-2", vendorClosed && "opacity-60")}>
                           {saved.filter((a) => a.id !== primary.id).slice(0, 5).map((a) => (
                             <div key={a.id} className="flex items-start justify-between gap-2 rounded border bg-white p-2">
-                              <div className="text-xs text-slate-800">{a.address_text}</div>
+                              <div className="text-xs text-slate-800">{cleanDeliveryAddressLabel(a.address_text)}</div>
                               <button
                                 type="button"
                                 onClick={() => makePrimaryExisting(a.id).catch(() => undefined)}
@@ -1149,7 +1213,7 @@ export default function TakeoutPage() {
                   onClick={() => setShowDeliveryPin((v) => !v)}
                   className="rounded border px-2 py-1 text-xs hover:bg-white"
                 >
-                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Change delivery spot" : "Mark delivery spot"}
+                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Edit delivery spot" : "Mark delivery spot"}
                 </button>
               </div>
               {deliveryPin ? (
@@ -1159,7 +1223,7 @@ export default function TakeoutPage() {
               )}
               {showDeliveryPin ? (
                 <div className="mt-3">
-                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); if (addrMode === "new" && !newAddr.trim()) setNewAddr(deliveryPinLabel(next)); setSubmitted(false); }} />
+                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); setSubmitted(false); }} />
                 </div>
               ) : null}
             </div>
