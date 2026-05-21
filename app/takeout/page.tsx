@@ -504,10 +504,10 @@ export default function TakeoutPage() {
     if (contact?.profile) profileSources.push(contact.profile);
     if (contact?.data) profileSources.push(contact.data);
 
-    const profile = await fetchOptionalJson("/api/passenger/profile");
+    const profile = null;
     if (profile) profileSources.push(profile);
 
-    const publicProfile = await fetchOptionalJson("/api/public/passenger/profile");
+    const publicProfile = null;
     if (publicProfile) profileSources.push(publicProfile);
 
     const passengerMe = await fetchOptionalJson("/api/passenger/me");
@@ -1653,6 +1653,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
