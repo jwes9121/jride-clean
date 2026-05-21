@@ -55,6 +55,11 @@ type TakeoutOrder = {
   vendor_name?: string | null;
   vendor_status: string | null;
   customer_name: string | null;
+  customer_phone?: string | null;
+  passenger_phone?: string | null;
+  phone?: string | null;
+  default_address?: string | null;
+  saved_address?: string | null;
   to_label: string | null;
   note?: string | null;
   items?: TakeoutOrderItem[] | null;
@@ -164,7 +169,13 @@ function orderItems(o: TakeoutOrder): TakeoutOrderItem[] {
 }
 
 function orderReceiptRequested(o: TakeoutOrder): boolean {
-  return Boolean(o.receipt_requested || o.request_vendor_receipt || o.order_preferences?.receipt_requested);
+  const note = clean(o.note).toLowerCase();
+  return Boolean(
+    o.receipt_requested ||
+    o.request_vendor_receipt ||
+    o.order_preferences?.receipt_requested ||
+    note.includes("vendor receipt requested")
+  );
 }
 
 function orderPremiumPackagingSelected(o: TakeoutOrder): boolean {
@@ -175,6 +186,18 @@ function orderOptionLabel(o: TakeoutOrder) {
   const label = clean(o.premium_packaging_label) || "Premium packaging";
   const fee = toNum(o.premium_packaging_fee);
   return fee > 0 ? `${label} (${money(fee)})` : label;
+}
+
+function orderCustomerName(o: TakeoutOrder) {
+  return clean(o.customer_name) || "Customer";
+}
+
+function orderCustomerPhone(o: TakeoutOrder) {
+  return clean(o.customer_phone) || clean(o.passenger_phone) || clean(o.phone) || "No phone provided";
+}
+
+function orderDeliveryAddress(o: TakeoutOrder) {
+  return clean(o.default_address) || clean(o.saved_address) || clean(o.to_label) || "No saved/default address shown";
 }
 
 async function getJson(url: string) {
@@ -675,8 +698,11 @@ export default function VendorPortalPage() {
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <div className="font-semibold">{o.booking_code || o.id}</div>
-                              <div className="text-sm text-slate-600">{o.customer_name || "Customer"}</div>
-                              <div className="text-xs text-slate-500">{o.to_label || "No address label"}</div>
+                              <div className="mt-1 grid gap-0.5 text-xs text-slate-600">
+                                <div><span className="font-semibold text-slate-700">Passenger:</span> {orderCustomerName(o)}</div>
+                                <div><span className="font-semibold text-slate-700">Phone:</span> {orderCustomerPhone(o)}</div>
+                                <div><span className="font-semibold text-slate-700">Default address:</span> {orderDeliveryAddress(o)}</div>
+                              </div>
                             </div>
                             <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
                           </div>
@@ -750,7 +776,11 @@ export default function VendorPortalPage() {
                           <span className="font-semibold">{o.booking_code || o.id}</span>
                           <span className={cls("rounded-full border px-2 py-0.5 text-xs", orderClass(o.vendor_status))}>{statusLabel(o.vendor_status)}</span>
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{o.customer_name || "Customer"} | {money(orderSubtotal(o))}</div>
+                        <div className="mt-1 space-y-0.5 text-xs text-slate-500">
+                          <div>{orderCustomerName(o)} | {money(orderSubtotal(o))}</div>
+                          <div>Phone: {orderCustomerPhone(o)}</div>
+                          <div>Default address: {orderDeliveryAddress(o)}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
