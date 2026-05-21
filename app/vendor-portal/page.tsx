@@ -68,6 +68,9 @@ type TakeoutOrder = {
   premium_packaging_label?: string | null;
   receipt_requested?: boolean;
   request_vendor_receipt?: boolean;
+  order_preferences?: any;
+  status?: string | null;
+  service_type?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -135,7 +138,37 @@ function orderSubtotal(o: TakeoutOrder) {
 }
 
 function orderItems(o: TakeoutOrder): TakeoutOrderItem[] {
-  return Array.isArray(o.items) ? o.items.filter((it) => clean(it?.name)) : [];
+  if (Array.isArray(o.items) && o.items.length) {
+    return o.items.filter((it) => clean(it?.name));
+  }
+
+  const text = clean(o.items_text);
+  if (!text) return [];
+
+  return text
+    .split(/\r?\n|,|;/)
+    .map((part) => clean(part))
+    .filter(Boolean)
+    .map((part) => {
+      const qtyMatch = part.match(/^(\d+)\s*x?\s+(.+)$/i);
+      if (qtyMatch) {
+        return {
+          name: clean(qtyMatch[2]),
+          quantity: Math.max(1, parseInt(qtyMatch[1], 10) || 1),
+          price: null,
+          packaging_note: null,
+        };
+      }
+      return { name: part, quantity: 1, price: null, packaging_note: null };
+    });
+}
+
+function orderReceiptRequested(o: TakeoutOrder): boolean {
+  return Boolean(o.receipt_requested || o.request_vendor_receipt || o.order_preferences?.receipt_requested);
+}
+
+function orderPremiumPackagingSelected(o: TakeoutOrder): boolean {
+  return Boolean(o.premium_packaging_selected || o.order_preferences?.premium_packaging_selected);
 }
 
 function orderOptionLabel(o: TakeoutOrder) {
@@ -656,7 +689,8 @@ export default function VendorPortalPage() {
                               <div className="space-y-2">
                                 {orderItems(o).map((it, idx) => {
                                   const qty = Math.max(1, parseInt(String(it.quantity ?? 1), 10) || 1);
-                                  const lineTotal = toNum(it.price) * qty;
+                                  const unitPrice = it.price == null || it.price === "" ? null : toNum(it.price);
+                                  const lineTotal = unitPrice == null ? null : unitPrice * qty;
                                   return (
                                     <div key={`${clean(it.menu_item_id) || clean(it.name) || idx}-${idx}`} className="rounded-lg bg-white px-3 py-2 text-sm">
                                       <div className="flex items-start justify-between gap-3">
@@ -664,7 +698,7 @@ export default function VendorPortalPage() {
                                           <div className="font-semibold text-slate-900">{qty} x {clean(it.name)}</div>
                                           {clean(it.packaging_note) ? <div className="mt-1 text-xs text-slate-500">Packaging: {clean(it.packaging_note)}</div> : null}
                                         </div>
-                                        <div className="shrink-0 font-semibold text-slate-900">{money(lineTotal)}</div>
+                                        <div className="shrink-0 font-semibold text-slate-900">{lineTotal == null ? "--" : money(lineTotal)}</div>
                                       </div>
                                     </div>
                                   );
@@ -675,13 +709,11 @@ export default function VendorPortalPage() {
                             )}
                           </div>
                           <div className="mt-2 text-sm font-medium">Subtotal: {money(orderSubtotal(o))}</div>
-                          {o.premium_packaging_selected || o.receipt_requested || o.request_vendor_receipt || clean(o.note) ? (
-                            <div className="mt-2 rounded-xl border bg-amber-50 p-2 text-xs text-amber-900">
-                              {o.premium_packaging_selected ? <div>Packaging: {orderOptionLabel(o)}</div> : null}
-                              {o.receipt_requested || o.request_vendor_receipt ? <div>Vendor receipt requested.</div> : null}
-                              {clean(o.note) ? <div>Customer note: {clean(o.note)}</div> : null}
-                            </div>
-                          ) : null}
+                          <div className="mt-2 rounded-xl border bg-amber-50 p-2 text-xs text-amber-900">
+                            <div>Receipt requested: {orderReceiptRequested(o) ? "YES" : "NO"}</div>
+                            <div>Packaging: {orderPremiumPackagingSelected(o) ? orderOptionLabel(o) : "Standard item packaging"}</div>
+                            {clean(o.note) ? <div>Customer note: {clean(o.note)}</div> : <div>Customer note: none</div>}
+                          </div>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {s === "vendor_pending" ? (
                               <>
