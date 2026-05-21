@@ -79,6 +79,8 @@ function secondsUntil(value: any): number | null {
 
 
 const LS_DEVICE_KEY = "JRIDE_PAX_DEVICE_KEY";
+const LS_TAKEOUT_CUSTOMER_NAME = "JRIDE_TAKEOUT_CUSTOMER_NAME";
+const LS_TAKEOUT_CUSTOMER_PHONE = "JRIDE_TAKEOUT_CUSTOMER_PHONE";
 
 function getOrCreateDeviceKey(): string {
   if (typeof window === "undefined") return "";
@@ -130,11 +132,86 @@ function vendorLabel(v: VendorRow): string {
   return String(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor").trim();
 }
 
+function firstString(...values: any[]): string {
+  for (const v of values) {
+    const s = String(v ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function onlyDigits(v: any): string {
+  return String(v ?? "").replace(/[^0-9]/g, "").slice(0, 20);
+}
+
+function readLocal(key: string): string {
+  if (typeof window === "undefined") return "";
+  return String(window.localStorage.getItem(key) || "").trim();
+}
+
+function writeLocal(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  const cleanValue = String(value || "").trim();
+  if (cleanValue) window.localStorage.setItem(key, cleanValue);
+}
+
+async function fetchOptionalJson(url: string): Promise<any> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
+function extractPassengerAutofill(source: any) {
+  const root = source || {};
+  const user = root.user || root.passenger || root.profile || root.data || root.account || root.customer || root;
+  return {
+    name: firstString(
+      user.name,
+      user.full_name,
+      user.fullName,
+      user.passenger_name,
+      user.passengerName,
+      user.display_name,
+      user.displayName
+    ),
+    phone: onlyDigits(firstString(
+      user.phone,
+      user.phone_number,
+      user.phoneNumber,
+      user.mobile,
+      user.mobile_number,
+      user.mobileNumber,
+      user.contact_number,
+      user.contactNumber
+    )),
+    address: firstString(
+      user.default_address,
+      user.defaultAddress,
+      user.saved_address,
+      user.savedAddress,
+      user.address_text,
+      user.addressText,
+      user.address,
+      user.home_address,
+      user.homeAddress
+    ),
+  };
+}
+
 export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [autofillNote, setAutofillNote] = useState("");
 
   // Phase 2B.0 - DB-backed addresses (pilot via device_key)
   const [deviceKey, setDeviceKey] = useState("");
@@ -231,6 +308,45 @@ export default function TakeoutPage() {
     return hasVendor && hasName && hasAddr && hasItems && !vendorClosed && !busy;
   }, [vendorId, customerName, resolvedDeliveryAddress, selectedLines.length, vendorClosed, busy]);
 
+
+  async function loadPassengerAutofill() {
+    const sources: any[] = [];
+
+    const session = await fetchOptionalJson("/api/auth/session");
+    if (session) sources.push(session);
+
+    const profile = await fetchOptionalJson("/api/passenger/profile");
+    if (profile) sources.push(profile);
+
+    const publicProfile = await fetchOptionalJson("/api/public/passenger/profile");
+    if (publicProfile) sources.push(publicProfile);
+
+    let pickedName = readLocal(LS_TAKEOUT_CUSTOMER_NAME);
+    let pickedPhone = onlyDigits(readLocal(LS_TAKEOUT_CUSTOMER_PHONE));
+    let pickedAddress = "";
+
+    for (const source of sources) {
+      const hit = extractPassengerAutofill(source);
+      if (!pickedName && hit.name) pickedName = hit.name;
+      if (!pickedPhone && hit.phone) pickedPhone = hit.phone;
+      if (!pickedAddress && hit.address) pickedAddress = hit.address;
+    }
+
+    if (pickedName) {
+      setCustomerName((prev) => prev.trim() ? prev : pickedName);
+    }
+    if (pickedPhone) {
+      setCustomerPhone((prev) => prev.trim() ? prev : pickedPhone);
+    }
+
+    if (pickedAddress) {
+      setNewAddr((prev) => prev.trim() ? prev : pickedAddress);
+    }
+
+    const loaded = [pickedName ? "name" : "", pickedPhone ? "phone" : "", pickedAddress ? "profile address" : ""].filter(Boolean);
+    setAutofillNote(loaded.length ? "Auto-filled: " + loaded.join(", ") + ". You can still edit before submitting." : "");
+  }
+
   async function refreshAddresses(k?: string) {
     const dk = String(k || deviceKey || "").trim();
     if (!dk) return;
@@ -325,8 +441,18 @@ export default function TakeoutPage() {
     const dk = getOrCreateDeviceKey();
     setDeviceKey(dk);
     refreshAddresses(dk).catch(() => undefined);
+    loadPassengerAutofill().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    writeLocal(LS_TAKEOUT_CUSTOMER_NAME, customerName);
+  }, [customerName]);
+
+  useEffect(() => {
+    writeLocal(LS_TAKEOUT_CUSTOMER_PHONE, customerPhone);
+  }, [customerPhone]);
+
 
   useEffect(() => {
     getJson("/api/admin/vendors")
@@ -710,13 +836,20 @@ export default function TakeoutPage() {
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerPhone}
               onChange={(e) => {
-  const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
-  setCustomerPhone(digitsOnly);
-}}
+                const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
+                setCustomerPhone(digitsOnly);
+              }}
               placeholder="09xx..."
             />
           </div>
 
+          {autofillNote ? (
+            <div className="md:col-span-2 rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800">
+              {autofillNote}
+            </div>
+          ) : null}
+
+          {/* JRIDE_TAKEOUT_PASSENGER_AUTOFILL_V1 */}
           {/* PHASE2B0_ADDRESS_PICKER_DB */}
           <div className="md:col-span-2">
             <div className="flex items-center justify-between gap-3">
