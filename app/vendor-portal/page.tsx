@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
-// JRIDE_TAKEOUT_VENDOR_PORTAL_VISIBILITY_V3
+// JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V4
 
 type VendorRow = {
   id?: string | null;
@@ -689,6 +689,7 @@ export default function VendorPortalPage() {
               <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
                 <div>
                   <h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
+                  <div className="mb-2 text-[11px] text-slate-500">Shows passenger, address, items, receipt request, packaging, and notes.</div>
                   <div className="space-y-2">
                     {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
                     {activeOrders.map((o) => {
@@ -708,7 +709,7 @@ export default function VendorPortalPage() {
                           </div>
                           <div className="mt-3 rounded-xl border bg-slate-50 p-3">
                             <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
-                              <span>Order items</span>
+                              <span>Order details</span>
                               <span>{orderItems(o).length} item{orderItems(o).length === 1 ? "" : "s"}</span>
                             </div>
                             {orderItems(o).length ? (
