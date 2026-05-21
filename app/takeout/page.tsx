@@ -223,6 +223,11 @@ type DeliveryPin = {
   lng: number;
 };
 
+function deliveryPinLabel(pin: DeliveryPin | null): string {
+  if (!pin) return "";
+  return `Pinned delivery spot (${pin.lat.toFixed(6)}, ${pin.lng.toFixed(6)})`;
+}
+
 function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onChange: (next: DeliveryPin) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -446,39 +451,50 @@ export default function TakeoutPage() {
   const canSubmit = useMemo(() => {
     const hasVendor = vendorId.trim().length > 0;
     const hasName = customerName.trim().length > 0;
-    const hasAddr = resolvedDeliveryAddress.length > 0;
+    const hasAddr = resolvedDeliveryAddress.length > 0 || !!deliveryPin;
     const hasItems = selectedLines.length > 0;
     return hasVendor && hasName && hasAddr && hasItems && !vendorClosed && !busy;
-  }, [vendorId, customerName, resolvedDeliveryAddress, selectedLines.length, vendorClosed, busy]);
+  }, [vendorId, customerName, resolvedDeliveryAddress, deliveryPin, selectedLines.length, vendorClosed, busy]);
 
 
   async function loadPassengerAutofill() {
-    const sources: any[] = [];
-
-    const session = await fetchOptionalJson("/api/auth/session");
-    if (session) sources.push(session);
+    // Do not use /api/auth/session display_name as the customer name.
+    // For takeout, contact details must come from the passenger profile or a value the passenger typed before.
+    const profileSources: any[] = [];
 
     const profile = await fetchOptionalJson("/api/passenger/profile");
-    if (profile) sources.push(profile);
+    if (profile) profileSources.push(profile);
 
     const publicProfile = await fetchOptionalJson("/api/public/passenger/profile");
-    if (publicProfile) sources.push(publicProfile);
+    if (publicProfile) profileSources.push(publicProfile);
 
-    let pickedName = readLocal(LS_TAKEOUT_CUSTOMER_NAME);
-    let pickedPhone = onlyDigits(readLocal(LS_TAKEOUT_CUSTOMER_PHONE));
-    let pickedAddress = "";
+    let profileName = "";
+    let profilePhone = "";
+    let profileAddress = "";
 
-    for (const source of sources) {
+    for (const source of profileSources) {
       const hit = extractPassengerAutofill(source);
-      if (!pickedName && hit.name) pickedName = hit.name;
-      if (!pickedPhone && hit.phone) pickedPhone = hit.phone;
-      if (!pickedAddress && hit.address) pickedAddress = hit.address;
+      if (!profileName && hit.name) profileName = hit.name;
+      if (!profilePhone && hit.phone) profilePhone = hit.phone;
+      if (!profileAddress && hit.address) profileAddress = hit.address;
     }
 
-    if (pickedName) {
+    const localName = readLocal(LS_TAKEOUT_CUSTOMER_NAME);
+    const localPhone = onlyDigits(readLocal(LS_TAKEOUT_CUSTOMER_PHONE));
+
+    const pickedName = profileName || localName;
+    const pickedPhone = profilePhone || localPhone;
+    const pickedAddress = profileAddress;
+
+    if (profileName) {
+      setCustomerName(profileName);
+    } else if (pickedName) {
       setCustomerName((prev) => prev.trim() ? prev : pickedName);
     }
-    if (pickedPhone) {
+
+    if (profilePhone) {
+      setCustomerPhone(profilePhone);
+    } else if (pickedPhone) {
       setCustomerPhone((prev) => prev.trim() ? prev : pickedPhone);
     }
 
@@ -486,7 +502,7 @@ export default function TakeoutPage() {
       setNewAddr((prev) => prev.trim() ? prev : pickedAddress);
     }
 
-    const loaded = [pickedName ? "name" : "", pickedPhone ? "phone" : "", pickedAddress ? "profile address" : ""].filter(Boolean);
+    const loaded = [profileName ? "profile name" : pickedName ? "saved name" : "", profilePhone ? "profile phone" : pickedPhone ? "saved phone" : "", pickedAddress ? "profile address" : ""].filter(Boolean);
     setAutofillNote(loaded.length ? "Auto-filled: " + loaded.join(", ") + ". You can still edit before submitting." : "");
   }
 
@@ -775,7 +791,7 @@ export default function TakeoutPage() {
       setResult("");
       setLastJson(null);
 
-      const addressText = resolvedDeliveryAddress;
+      const addressText = resolvedDeliveryAddress || deliveryPinLabel(deliveryPin);
 
       // Persist address to DB if requested (ONLY in "new" mode)
       if (addrMode === "new" && saveAddr) {
@@ -1129,25 +1145,25 @@ export default function TakeoutPage() {
             <div className="mt-3 rounded border bg-slate-50 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-xs font-semibold text-slate-700">Exact delivery pin (optional)</div>
-                  <div className="text-[11px] text-slate-500">Use this when the text address is not enough for the driver.</div>
+                  <div className="text-xs font-semibold text-slate-700">Exact delivery spot</div>
+                  <div className="text-[11px] text-slate-500">Use this when the written address is not enough for the driver.</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowDeliveryPin((v) => !v)}
                   className="rounded border px-2 py-1 text-xs hover:bg-white"
                 >
-                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Adjust pin" : "Pick on map"}
+                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Edit delivery spot" : "Mark delivery spot"}
                 </button>
               </div>
               {deliveryPin ? (
-                <div className="mt-2 text-[11px] text-emerald-700">Delivery pin saved for this order.</div>
+                <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order.</div>
               ) : (
-                <div className="mt-2 text-[11px] text-slate-500">No pin selected. The order can still use the text address.</div>
+                <div className="mt-2 text-[11px] text-slate-500">No delivery spot marked yet. The order can still use the written address.</div>
               )}
               {showDeliveryPin ? (
                 <div className="mt-3">
-                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); setSubmitted(false); }} />
+                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); if (addrMode === "new" && !newAddr.trim()) setNewAddr(deliveryPinLabel(next)); setSubmitted(false); }} />
                 </div>
               ) : null}
             </div>
