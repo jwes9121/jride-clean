@@ -61,6 +61,12 @@ type TakeoutOrder = {
   default_address?: string | null;
   saved_address?: string | null;
   to_label: string | null;
+  dropoff_lat?: number | string | null;
+  dropoff_lng?: number | string | null;
+  delivery_pin_lat?: number | string | null;
+  delivery_pin_lng?: number | string | null;
+  delivery_pin_label?: string | null;
+  delivery_pin_coordinates?: string | null;
   note?: string | null;
   items?: TakeoutOrderItem[] | null;
   item_count?: number | null;
@@ -196,8 +202,25 @@ function orderCustomerPhone(o: TakeoutOrder) {
   return clean(o.customer_phone) || clean(o.passenger_phone) || clean(o.phone) || "No phone provided";
 }
 
+function looksLikeRawPinnedAddress(v: string) {
+  const s = clean(v).toLowerCase();
+  return s.startsWith("pinned delivery spot (") || s === "delivery spot marked on map";
+}
+
+function hasDeliveryPin(o: TakeoutOrder) {
+  return Boolean(clean(o.delivery_pin_label) || clean(o.delivery_pin_coordinates) || clean(o.delivery_pin_lat) || clean(o.delivery_pin_lng) || clean(o.dropoff_lat) || clean(o.dropoff_lng));
+}
+
 function orderDeliveryAddress(o: TakeoutOrder) {
-  return clean(o.default_address) || clean(o.saved_address) || clean(o.to_label) || "No saved/default address shown";
+  const preferred = clean(o.default_address) || clean(o.saved_address);
+  if (preferred) return preferred;
+
+  const label = clean(o.to_label);
+  if (label && !looksLikeRawPinnedAddress(label)) return label;
+
+  if (hasDeliveryPin(o)) return "Delivery spot marked on map. Use the saved pin for exact location.";
+
+  return "No saved/default address shown";
 }
 
 async function getJson(url: string) {
@@ -702,7 +725,8 @@ export default function VendorPortalPage() {
                               <div className="mt-1 grid gap-0.5 text-xs text-slate-600">
                                 <div><span className="font-semibold text-slate-700">Passenger:</span> {orderCustomerName(o)}</div>
                                 <div><span className="font-semibold text-slate-700">Phone:</span> {orderCustomerPhone(o)}</div>
-                                <div><span className="font-semibold text-slate-700">Default address:</span> {orderDeliveryAddress(o)}</div>
+                                <div><span className="font-semibold text-slate-700">Delivery address:</span> {orderDeliveryAddress(o)}</div>
+                                {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
                               </div>
                             </div>
                             <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
@@ -780,7 +804,8 @@ export default function VendorPortalPage() {
                         <div className="mt-1 space-y-0.5 text-xs text-slate-500">
                           <div>{orderCustomerName(o)} | {money(orderSubtotal(o))}</div>
                           <div>Phone: {orderCustomerPhone(o)}</div>
-                          <div>Default address: {orderDeliveryAddress(o)}</div>
+                          <div>Delivery address: {orderDeliveryAddress(o)}</div>
+                          {hasDeliveryPin(o) ? <div>Map pin: Saved</div> : null}
                         </div>
                       </div>
                     ))}

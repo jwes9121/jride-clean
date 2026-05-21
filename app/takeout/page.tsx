@@ -185,9 +185,7 @@ function extractPassengerAutofill(source: any) {
       user.full_name,
       user.fullName,
       user.passenger_name,
-      user.passengerName,
-      user.display_name,
-      user.displayName
+      user.passengerName
     ),
     phone: onlyDigits(firstString(
       user.phone,
@@ -225,7 +223,12 @@ type DeliveryPin = {
 
 function deliveryPinLabel(pin: DeliveryPin | null): string {
   if (!pin) return "";
-  return `Pinned delivery spot (${pin.lat.toFixed(6)}, ${pin.lng.toFixed(6)})`;
+  return "Delivery spot marked on map";
+}
+
+function deliveryPinCoordinateText(pin: DeliveryPin | null): string {
+  if (!pin) return "";
+  return `${pin.lat.toFixed(6)}, ${pin.lng.toFixed(6)}`;
 }
 
 function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onChange: (next: DeliveryPin) => void }) {
@@ -479,31 +482,22 @@ export default function TakeoutPage() {
       if (!profileAddress && hit.address) profileAddress = hit.address;
     }
 
-    const localName = readLocal(LS_TAKEOUT_CUSTOMER_NAME);
-    const localPhone = onlyDigits(readLocal(LS_TAKEOUT_CUSTOMER_PHONE));
-
-    const pickedName = profileName || localName;
-    const pickedPhone = profilePhone || localPhone;
     const pickedAddress = profileAddress;
 
     if (profileName) {
       setCustomerName(profileName);
-    } else if (pickedName) {
-      setCustomerName((prev) => prev.trim() ? prev : pickedName);
     }
 
     if (profilePhone) {
       setCustomerPhone(profilePhone);
-    } else if (pickedPhone) {
-      setCustomerPhone((prev) => prev.trim() ? prev : pickedPhone);
     }
 
     if (pickedAddress) {
       setNewAddr((prev) => prev.trim() ? prev : pickedAddress);
     }
 
-    const loaded = [profileName ? "profile name" : pickedName ? "saved name" : "", profilePhone ? "profile phone" : pickedPhone ? "saved phone" : "", pickedAddress ? "profile address" : ""].filter(Boolean);
-    setAutofillNote(loaded.length ? "Auto-filled: " + loaded.join(", ") + ". You can still edit before submitting." : "");
+    const loaded = [profileName ? "profile name" : "", profilePhone ? "profile phone" : "", pickedAddress ? "profile address" : ""].filter(Boolean);
+    setAutofillNote(loaded.length ? "Auto-filled from passenger profile: " + loaded.join(", ") + ". You can still edit before submitting." : "Passenger profile contact was not found. Please enter the name and phone manually.");
   }
 
   async function refreshAddresses(k?: string) {
@@ -852,6 +846,8 @@ export default function TakeoutPage() {
         dropoff_lng: deliveryPin?.lng ?? null,
         delivery_pin_lat: deliveryPin?.lat ?? null,
         delivery_pin_lng: deliveryPin?.lng ?? null,
+        delivery_pin_label: deliveryPin ? deliveryPinLabel(deliveryPin) : null,
+        delivery_pin_coordinates: deliveryPin ? deliveryPinCoordinateText(deliveryPin) : null,
 
         // Human readable (helps vendor UI today)
         items_text: itemsText,
@@ -1102,7 +1098,7 @@ export default function TakeoutPage() {
                     setNewAddr(e.target.value);
                     setSubmitted(false);
                   }}
-                  placeholder="Complete address (Barangay / landmark / municipality)"
+                  placeholder="House / landmark / purok / barangay"
                 />
 
                 <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
@@ -1153,11 +1149,11 @@ export default function TakeoutPage() {
                   onClick={() => setShowDeliveryPin((v) => !v)}
                   className="rounded border px-2 py-1 text-xs hover:bg-white"
                 >
-                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Edit delivery spot" : "Mark delivery spot"}
+                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Change delivery spot" : "Mark delivery spot"}
                 </button>
               </div>
               {deliveryPin ? (
-                <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order.</div>
+                <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Add a landmark in the address box if needed.</div>
               ) : (
                 <div className="mt-2 text-[11px] text-slate-500">No delivery spot marked yet. The order can still use the written address.</div>
               )}
