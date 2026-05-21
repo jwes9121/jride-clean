@@ -1,5 +1,18 @@
 "use client";
 
+
+const passengerToken =
+  typeof window !== "undefined"
+    ? localStorage.getItem("jride_passenger_token")
+    : null;
+
+const authHeaders: HeadersInit = {
+  "Content-Type": "application/json",
+};
+
+if (passengerToken) {
+  authHeaders.Authorization = `Bearer ${passengerToken}`;
+}
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
@@ -481,17 +494,27 @@ export default function TakeoutPage() {
 
   async function loadPassengerAutofill() {
     // Authentication status is shown to the passenger, but customer name/phone must come from a real passenger profile.
-    // Do not use email display_name as the customer name.
+    // Do not use email display names as passenger names.
     const session = await fetchOptionalJson("/api/auth/session");
-    const signedIn = hasSignedInUser(session);
+    const contact = await fetchOptionalJson("/api/takeout/passenger-contact");
+    const signedIn = hasSignedInUser(session) || contact?.signed_in === true;
 
     const profileSources: any[] = [];
+
+    if (contact?.profile) profileSources.push(contact.profile);
+    if (contact?.data) profileSources.push(contact.data);
 
     const profile = await fetchOptionalJson("/api/passenger/profile");
     if (profile) profileSources.push(profile);
 
     const publicProfile = await fetchOptionalJson("/api/public/passenger/profile");
     if (publicProfile) profileSources.push(publicProfile);
+
+    const passengerMe = await fetchOptionalJson("/api/passenger/me");
+    if (passengerMe) profileSources.push(passengerMe);
+
+    const publicPassengerMe = await fetchOptionalJson("/api/public/passenger/me");
+    if (publicPassengerMe) profileSources.push(publicPassengerMe);
 
     let profileName = "";
     let profilePhone = "";
@@ -520,10 +543,10 @@ export default function TakeoutPage() {
 
     if (signedIn && loaded.length) {
       setAuthState("signed_in_profile");
-      setAutofillNote("Signed in. Auto-filled from passenger profile: " + loaded.join(", ") + ". You can still edit before submitting.");
+      setAutofillNote("Signed in. Loaded from verified passenger contact: " + loaded.join(", ") + ". You can still edit before submitting.");
     } else if (signedIn) {
       setAuthState("signed_in_missing_profile");
-      setAutofillNote("Signed in, but passenger profile contact is incomplete. Please enter the name and phone manually.");
+      setAutofillNote("Signed in. Passenger contact was not found on this page yet. Please confirm the delivery name and phone for this order.");
     } else {
       setAuthState("guest");
       setAutofillNote("Not signed in. Sign in for faster checkout, saved contact details, and synced order history.");
@@ -979,8 +1002,8 @@ export default function TakeoutPage() {
           </div>
         ) : authState === "signed_in_missing_profile" ? (
           <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-            <div className="font-semibold">Signed in, but passenger profile contact is incomplete</div>
-            <div className="text-xs">Enter your name and phone for this order. Email display names are not used as passenger names.</div>
+            <div className="font-semibold">Signed in. Confirm delivery contact</div>
+            <div className="text-xs">We could not load your passenger contact here yet. Please enter the name and phone the vendor or driver should use for this order.</div>
           </div>
         ) : authState === "signed_in_profile" ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
@@ -1041,12 +1064,12 @@ export default function TakeoutPage() {
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Juan Dela Cruz"
+              placeholder=""
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-700">Passenger phone (optional)</label>
+            <label className="text-xs font-medium text-slate-700">Passenger phone (recommended)</label>
             <input
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerPhone}
@@ -1213,7 +1236,7 @@ export default function TakeoutPage() {
                   onClick={() => setShowDeliveryPin((v) => !v)}
                   className="rounded border px-2 py-1 text-xs hover:bg-white"
                 >
-                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Edit delivery spot" : "Mark delivery spot"}
+                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Mark exact location" : "Mark exact location"}
                 </button>
               </div>
               {deliveryPin ? (
@@ -1630,6 +1653,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
