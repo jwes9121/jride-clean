@@ -1,5 +1,7 @@
 "use client";
 
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
 
 const passengerToken =
   typeof window !== "undefined"
@@ -13,8 +15,6 @@ const authHeaders: HeadersInit = {
 if (passengerToken) {
   authHeaders.Authorization = `Bearer ${passengerToken}`;
 }
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -1653,6 +1653,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
