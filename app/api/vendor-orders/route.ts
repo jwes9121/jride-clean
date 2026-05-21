@@ -580,47 +580,45 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     }
   }
 
-  // Create booking row (schema-safe: auto-drop unknown columns and retry)
+  // JRIDE TAKEOUT ORDER CREATE SCHEMA SAFE V1
+  // Create booking row (schema-safe: auto-drop unknown booking columns and retry).
+  // This must stay fail-safe because production schemas may not yet contain
+  // productization fields such as receipt_requested or premium_packaging_* .
   async function insertBookingSchemaSafe(initial: Record<string, any>) {
-    // Keep a mutable copy
     let payload: Record<string, any> = { ...initial };
+    let lastError: any = null;
 
-    for (let attempt = 0; attempt < 8; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       const res = await admin!.from("bookings").insert(payload).select("*").single();
 
       if (!res.error) return res;
 
+      lastError = res.error;
       const msg = String((res.error as any)?.message || "");
 
-      // Supabase schema cache error pattern
-      const m = msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i);
+      const m =
+        msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i) ||
+        msg.match(/column\s+"([^"]+)"\s+of\s+relation\s+"bookings"\s+does\s+not\s+exist/i);
+
       if (m && m[1]) {
-      
-
         const col = String(m[1]);
-
-        // Remove unknown column and retry
-
-        delete (payload as any)[col];
-
-        continue;
-
+        if (Object.prototype.hasOwnProperty.call(payload, col)) {
+          delete (payload as any)[col];
+          continue;
+        }
       }
 
-      // Any other DB error: stop
-
       return res;
-
     }
 
     return {
-
       data: null,
-
-      error: { message: "DB_ERROR: schema-safe insert retries exceeded" },
-
+      error: {
+        message:
+          "DB_ERROR: schema-safe insert retries exceeded. Last error: " +
+          String(lastError?.message || "unknown"),
+      },
     } as any;
-
   }
 
   // TAKEOUT_CREATE_COORDS_RESTORE_V1
