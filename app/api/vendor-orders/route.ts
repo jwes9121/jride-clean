@@ -337,6 +337,7 @@ export async function GET(req: NextRequest) {
           name: String(r?.name || ""),
           price: toNum(r?.price),
           quantity: Math.max(1, parseInt(String(r?.quantity ?? 1), 10) || 1),
+          packaging_note: r?.packaging_note ? String(r.packaging_note) : null,
           snapshot_at: r?.snapshot_at ? String(r.snapshot_at) : "",
         };
 
@@ -353,7 +354,8 @@ export async function GET(req: NextRequest) {
 
   const orders = rows.map((r) => {
     const bid = String(r?.id ?? "");
-    const snapItems = itemsByBooking[bid] || null;
+    const snapItems = itemsByBooking[bid] || [];
+    const preferences = (r?.order_preferences && typeof r.order_preferences === "object") ? r.order_preferences : {};
 
     // Prefer stored subtotal column per Phase 2D
     const storedSubtotal = r?.takeout_items_subtotal ?? null;
@@ -383,12 +385,18 @@ export async function GET(req: NextRequest) {
       to_label: r?.to_label ?? r?.dropoff_label ?? null,
 
       items: snapItems,
+      item_count: snapItems.length,
+      items_text: r?.items_text ?? null,
+      note: r?.notes ?? r?.note ?? null,
+      order_preferences: preferences,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
+      takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       total_bill,
-      premium_packaging_selected: r?.premium_packaging_selected ?? r?.order_preferences?.premium_packaging_selected ?? false,
-      premium_packaging_fee: r?.premium_packaging_fee ?? r?.order_preferences?.premium_packaging_fee ?? null,
-      premium_packaging_label: r?.premium_packaging_label ?? r?.order_preferences?.premium_packaging_label ?? null,
-      receipt_requested: r?.receipt_requested ?? r?.request_vendor_receipt ?? r?.order_preferences?.receipt_requested ?? false,
+      premium_packaging_selected: Boolean(r?.premium_packaging_selected ?? preferences?.premium_packaging_selected ?? false),
+      premium_packaging_fee: r?.premium_packaging_fee ?? preferences?.premium_packaging_fee ?? null,
+      premium_packaging_label: r?.premium_packaging_label ?? preferences?.premium_packaging_label ?? null,
+      receipt_requested: Boolean(r?.receipt_requested ?? r?.request_vendor_receipt ?? preferences?.receipt_requested ?? false),
+      request_vendor_receipt: Boolean(r?.request_vendor_receipt ?? r?.receipt_requested ?? preferences?.receipt_requested ?? false),
     };
   });
 

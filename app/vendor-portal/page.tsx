@@ -40,6 +40,14 @@ type MenuItem = {
   last_updated_at?: string | null;
 };
 
+type TakeoutOrderItem = {
+  menu_item_id?: string | null;
+  name?: string | null;
+  price?: number | string | null;
+  quantity?: number | string | null;
+  packaging_note?: string | null;
+};
+
 type TakeoutOrder = {
   id: string | null;
   booking_code: string | null;
@@ -48,9 +56,18 @@ type TakeoutOrder = {
   vendor_status: string | null;
   customer_name: string | null;
   to_label: string | null;
+  note?: string | null;
+  items?: TakeoutOrderItem[] | null;
+  item_count?: number | null;
+  items_text?: string | null;
   takeout_items_subtotal: number | null;
   items_subtotal?: number | null;
   total_bill?: number | null;
+  premium_packaging_selected?: boolean;
+  premium_packaging_fee?: number | string | null;
+  premium_packaging_label?: string | null;
+  receipt_requested?: boolean;
+  request_vendor_receipt?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -115,6 +132,16 @@ function orderClass(s: any) {
 
 function orderSubtotal(o: TakeoutOrder) {
   return o.takeout_items_subtotal ?? o.items_subtotal ?? o.total_bill ?? 0;
+}
+
+function orderItems(o: TakeoutOrder): TakeoutOrderItem[] {
+  return Array.isArray(o.items) ? o.items.filter((it) => clean(it?.name)) : [];
+}
+
+function orderOptionLabel(o: TakeoutOrder) {
+  const label = clean(o.premium_packaging_label) || "Premium packaging";
+  const fee = toNum(o.premium_packaging_fee);
+  return fee > 0 ? `${label} (${money(fee)})` : label;
 }
 
 async function getJson(url: string) {
@@ -620,11 +647,39 @@ export default function VendorPortalPage() {
                             </div>
                             <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
                           </div>
+                          <div className="mt-3 rounded-xl border bg-slate-50 p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+                              <span>Order items</span>
+                              <span>{orderItems(o).length} item{orderItems(o).length === 1 ? "" : "s"}</span>
+                            </div>
+                            {orderItems(o).length ? (
+                              <div className="space-y-2">
+                                {orderItems(o).map((it, idx) => {
+                                  const qty = Math.max(1, parseInt(String(it.quantity ?? 1), 10) || 1);
+                                  const lineTotal = toNum(it.price) * qty;
+                                  return (
+                                    <div key={`${clean(it.menu_item_id) || clean(it.name) || idx}-${idx}`} className="rounded-lg bg-white px-3 py-2 text-sm">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <div className="font-semibold text-slate-900">{qty} x {clean(it.name)}</div>
+                                          {clean(it.packaging_note) ? <div className="mt-1 text-xs text-slate-500">Packaging: {clean(it.packaging_note)}</div> : null}
+                                        </div>
+                                        <div className="shrink-0 font-semibold text-slate-900">{money(lineTotal)}</div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg bg-white px-3 py-2 text-xs text-rose-700">No item details returned. Refresh the queue before preparing this order.</div>
+                            )}
+                          </div>
                           <div className="mt-2 text-sm font-medium">Subtotal: {money(orderSubtotal(o))}</div>
-                          {(o as any).premium_packaging_selected || (o as any).receipt_requested ? (
+                          {o.premium_packaging_selected || o.receipt_requested || o.request_vendor_receipt || clean(o.note) ? (
                             <div className="mt-2 rounded-xl border bg-amber-50 p-2 text-xs text-amber-900">
-                              {(o as any).premium_packaging_selected ? <div>Premium packaging selected.</div> : null}
-                              {(o as any).receipt_requested ? <div>Receipt requested.</div> : null}
+                              {o.premium_packaging_selected ? <div>Packaging: {orderOptionLabel(o)}</div> : null}
+                              {o.receipt_requested || o.request_vendor_receipt ? <div>Vendor receipt requested.</div> : null}
+                              {clean(o.note) ? <div>Customer note: {clean(o.note)}</div> : null}
                             </div>
                           ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
