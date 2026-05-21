@@ -1,6 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 type ApiResp = any;
 
@@ -12,6 +15,10 @@ type AddressRow = {
   id: string;
   label?: string | null;
   address_text: string;
+  lat?: number | string | null;
+  lng?: number | string | null;
+  dropoff_lat?: number | string | null;
+  dropoff_lng?: number | string | null;
   is_primary: boolean;
   updated_at?: string | null;
 };
@@ -206,6 +213,133 @@ function extractPassengerAutofill(source: any) {
   };
 }
 
+function safeCoord(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+type DeliveryPin = {
+  lat: number;
+  lng: number;
+};
+
+function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onChange: (next: DeliveryPin) => void }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const [mapErr, setMapErr] = useState("");
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    if (!mapboxgl.accessToken) {
+      setMapErr("Map token is missing. You can still submit using the text address.");
+      return;
+    }
+
+    const initialLng = value?.lng ?? 121.1;
+    const initialLat = value?.lat ?? 16.8;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center: [initialLng, initialLat],
+      zoom: value ? 16 : 12,
+    });
+
+    mapRef.current = map;
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+
+    const placeMarker = (lng: number, lat: number) => {
+      if (!markerRef.current) {
+        const marker = new mapboxgl.Marker({ draggable: true })
+          .setLngLat([lng, lat])
+          .addTo(map);
+        marker.on("dragend", () => {
+          const pos = marker.getLngLat();
+          onChange({ lat: pos.lat, lng: pos.lng });
+        });
+        markerRef.current = marker;
+      } else {
+        markerRef.current.setLngLat([lng, lat]);
+      }
+    };
+
+    if (value) placeMarker(value.lng, value.lat);
+
+    map.on("click", (event: mapboxgl.MapMouseEvent) => {
+      const lng = event.lngLat.lng;
+      const lat = event.lngLat.lat;
+      placeMarker(lng, lat);
+      onChange({ lat, lng });
+    });
+
+    return () => {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      map.remove();
+      mapRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !value) return;
+    if (!markerRef.current) {
+      const marker = new mapboxgl.Marker({ draggable: true })
+        .setLngLat([value.lng, value.lat])
+        .addTo(map);
+      marker.on("dragend", () => {
+        const pos = marker.getLngLat();
+        onChange({ lat: pos.lat, lng: pos.lng });
+      });
+      markerRef.current = marker;
+    } else {
+      markerRef.current.setLngLat([value.lng, value.lat]);
+    }
+    map.flyTo({ center: [value.lng, value.lat], zoom: 16, essential: true });
+  }, [value, onChange]);
+
+  function useDeviceLocation() {
+    setMapErr("");
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setMapErr("Device location is not available on this browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onChange({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      },
+      () => setMapErr("Could not read device location. You can tap the map instead."),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  }
+
+  return (
+    <div className="rounded border bg-white p-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs font-semibold text-slate-700">Delivery pin</div>
+          <div className="text-[11px] text-slate-500">Tap the map or drag the pin to mark the exact delivery spot.</div>
+        </div>
+        <button type="button" onClick={useDeviceLocation} className="rounded border px-2 py-1 text-xs hover:bg-slate-50">
+          Use device location
+        </button>
+      </div>
+      {mapErr ? <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">{mapErr}</div> : null}
+      <div ref={containerRef} className="mt-2 h-64 w-full overflow-hidden rounded border bg-slate-100" />
+      {value ? (
+        <div className="mt-2 text-[11px] text-slate-600">
+          Pin set: <span className="font-semibold">{value.lat.toFixed(6)}, {value.lng.toFixed(6)}</span>
+        </div>
+      ) : (
+        <div className="mt-2 text-[11px] text-slate-500">No pin selected yet. Text address will still be used.</div>
+      )}
+    </div>
+  );
+}
+
 export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
@@ -224,6 +358,8 @@ export default function TakeoutPage() {
   const [newAddr, setNewAddr] = useState("");
   const [saveAddr, setSaveAddr] = useState(true);
   const [setPrimary, setSetPrimary] = useState(true);
+  const [showDeliveryPin, setShowDeliveryPin] = useState(false);
+  const [deliveryPin, setDeliveryPin] = useState<DeliveryPin | null>(null);
 
   // Phase 2B - menu consumption
   const [menuBusy, setMenuBusy] = useState(false);
@@ -250,6 +386,13 @@ export default function TakeoutPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   const primary = useMemo(() => saved.find((a) => a.is_primary) || saved[0] || null, [saved]);
+
+  useEffect(() => {
+    if (addrMode !== "saved" || !primary || deliveryPin) return;
+    const lat = safeCoord(primary.dropoff_lat ?? primary.lat);
+    const lng = safeCoord(primary.dropoff_lng ?? primary.lng);
+    if (lat != null && lng != null) setDeliveryPin({ lat, lng });
+  }, [addrMode, primary, deliveryPin]);
 
   const selectedVendor = useMemo(() => {
     const id = String(vendorId || "").trim();
@@ -689,6 +832,10 @@ export default function TakeoutPage() {
 
         to_label: addressText,
         toLabel: addressText,
+        dropoff_lat: deliveryPin?.lat ?? null,
+        dropoff_lng: deliveryPin?.lng ?? null,
+        delivery_pin_lat: deliveryPin?.lat ?? null,
+        delivery_pin_lng: deliveryPin?.lng ?? null,
 
         // Human readable (helps vendor UI today)
         items_text: itemsText,
@@ -850,6 +997,7 @@ export default function TakeoutPage() {
           ) : null}
 
           {/* JRIDE_TAKEOUT_PASSENGER_AUTOFILL_V1 */}
+          {/* JRIDE_TAKEOUT_DELIVERY_PIN_MAP_V1 */}
           {/* PHASE2B0_ADDRESS_PICKER_DB */}
           <div className="md:col-span-2">
             <div className="flex items-center justify-between gap-3">
@@ -977,6 +1125,32 @@ export default function TakeoutPage() {
                 Using: <span className="font-semibold">{resolvedDeliveryAddress}</span>
               </div>
             ) : null}
+
+            <div className="mt-3 rounded border bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-slate-700">Exact delivery pin (optional)</div>
+                  <div className="text-[11px] text-slate-500">Use this when the text address is not enough for the driver.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeliveryPin((v) => !v)}
+                  className="rounded border px-2 py-1 text-xs hover:bg-white"
+                >
+                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Adjust pin" : "Pick on map"}
+                </button>
+              </div>
+              {deliveryPin ? (
+                <div className="mt-2 text-[11px] text-emerald-700">Delivery pin saved for this order.</div>
+              ) : (
+                <div className="mt-2 text-[11px] text-slate-500">No pin selected. The order can still use the text address.</div>
+              )}
+              {showDeliveryPin ? (
+                <div className="mt-3">
+                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); setSubmitted(false); }} />
+                </div>
+              ) : null}
+            </div>
 
             <div className="mt-2 text-[11px] text-slate-500">
               Device key: <code>{deviceKey || "..."}</code>
