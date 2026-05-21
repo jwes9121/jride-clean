@@ -510,10 +510,10 @@ export default function TakeoutPage() {
     const publicProfile = null;
     if (publicProfile) profileSources.push(publicProfile);
 
-    const passengerMe = await fetchOptionalJson("/api/passenger/me");
+    const passengerMe = null;
     if (passengerMe) profileSources.push(passengerMe);
 
-    const publicPassengerMe = await fetchOptionalJson("/api/public/passenger/me");
+    const publicPassengerMe = null;
     if (publicPassengerMe) profileSources.push(publicPassengerMe);
 
     let profileName = "";
@@ -1653,6 +1653,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
