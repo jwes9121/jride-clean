@@ -109,6 +109,39 @@ async function findPrimaryAddress(userId: string | null): Promise<string | null>
   return null;
 }
 
+function originFromRequest(req: Request): string | null {
+  const url = new URL(req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+async function readPassengerCookieSession(req: Request): Promise<any | null> {
+  const cookie = req.headers.get("cookie") || "";
+  if (!cookie) return null;
+
+  const origin = originFromRequest(req);
+  if (!origin) return null;
+
+  try {
+    const res = await fetch(`${origin}/api/public/auth/session`, {
+      method: "GET",
+      headers: {
+        cookie,
+        accept: "application/json"
+      },
+      cache: "no-store"
+    });
+
+    if (!res.ok) return null;
+
+    const json = await res.json().catch(() => null);
+    if (!json || json.ok !== true || json.authed !== true) return null;
+
+    return json;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization") || "";
@@ -118,7 +151,7 @@ export async function GET(req: Request) {
     let userEmail: string | null = null;
     let userPhone: string | null = null;
     let meta: Record<string, unknown> = {};
-    let authMode: "bearer" | "nextauth" | "none" = "none";
+    let authMode: "bearer" | "nextauth" | "passenger_cookie" | "none" = "none";
 
     if (bearerToken) {
       const { data, error } = await supabase.auth.getUser(bearerToken);
@@ -129,6 +162,25 @@ export async function GET(req: Request) {
         meta = (user.user_metadata || {}) as Record<string, unknown>;
         userPhone = clean(meta.phone) || phoneFromAuthEmail(userEmail);
         authMode = "bearer";
+      }
+    }
+
+    if (!userId && !userEmail) {
+      const passengerSession = await readPassengerCookieSession(req);
+      const sessionUser = passengerSession?.user || null;
+
+      if (sessionUser) {
+        userId = clean(sessionUser.id);
+        userEmail = clean(sessionUser.email);
+        userPhone = clean(sessionUser.phone) || phoneFromAuthEmail(userEmail);
+        meta = {
+          full_name: sessionUser.full_name,
+          name: sessionUser.name,
+          phone: sessionUser.phone,
+          mobile: sessionUser.mobile,
+          address: sessionUser.address
+        };
+        authMode = "passenger_cookie";
       }
     }
 
