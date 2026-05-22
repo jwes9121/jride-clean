@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -32,6 +32,9 @@ type MenuItem = {
   name: string;
   description?: string | null;
   packaging_note?: string | null;
+  premium_packaging_enabled?: boolean | null;
+  premium_packaging_fee?: number | string | null;
+  premium_packaging_label?: string | null;
   price: number;
   photo_url?: string | null;
   sort_order?: number | null;
