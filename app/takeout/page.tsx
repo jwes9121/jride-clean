@@ -501,6 +501,7 @@ export default function TakeoutPage() {
 
     const profileSources: any[] = [];
 
+    if (contact?.full_name || contact?.phone || contact?.email || contact?.address) profileSources.push(contact);
     if (contact?.profile) profileSources.push(contact.profile);
     if (contact?.data) profileSources.push(contact.data);
 
@@ -1653,6 +1654,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
