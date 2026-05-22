@@ -11,7 +11,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("zone_capacity_view")
       .select("*")
-      .order("zone");
+      ;
 
     if (error) {
       console.error("[zone-capacity] error", error);
