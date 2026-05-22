@@ -496,14 +496,23 @@ export default function TakeoutPage() {
     // Authentication status is shown to the passenger, but customer name/phone must come from a real passenger profile.
     // Do not use email display names as passenger names.
     const session = await fetchOptionalJson("/api/auth/session");
+    const passengerSession = await fetchOptionalJson("/api/public/auth/session");
     const contact = await fetchOptionalJson("/api/takeout/passenger-contact");
-    const signedIn = hasSignedInUser(session) || contact?.signed_in === true;
+    const signedIn =
+      hasSignedInUser(passengerSession) ||
+      passengerSession?.ok === true ||
+      hasSignedInUser(session) ||
+      contact?.signed_in === true;
 
     const profileSources: any[] = [];
 
     if (contact?.full_name || contact?.phone || contact?.email || contact?.address) profileSources.push(contact);
     if (contact?.profile) profileSources.push(contact.profile);
     if (contact?.data) profileSources.push(contact.data);
+    if (passengerSession?.user) profileSources.push(passengerSession.user);
+    if (passengerSession?.profile) profileSources.push(passengerSession.profile);
+    if (passengerSession?.data) profileSources.push(passengerSession.data);
+    if (passengerSession?.full_name || passengerSession?.phone || passengerSession?.email || passengerSession?.address) profileSources.push(passengerSession);
 
     const profile = null;
     if (profile) profileSources.push(profile);
@@ -1654,6 +1663,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
