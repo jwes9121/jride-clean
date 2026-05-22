@@ -995,7 +995,7 @@ export default function TakeoutPage() {
                 <div className="font-semibold">You are not signed in</div>
                 <div className="text-xs">Sign in to autofill your verified passenger contact, phone number, saved address, and keep order history synced.</div>
               </div>
-              <a href="/auth/signin?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
+              <a href="/passenger-login?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
                 Sign in for faster checkout
               </a>
             </div>
@@ -1653,6 +1653,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
