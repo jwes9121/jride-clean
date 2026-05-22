@@ -33,6 +33,7 @@ type AddressRow = {
   dropoff_lat?: number | string | null;
   dropoff_lng?: number | string | null;
   is_primary: boolean;
+  is_active?: boolean | null;
   updated_at?: string | null;
 };
 
@@ -572,7 +573,36 @@ export default function TakeoutPage() {
       const j = await fetchOptionalJson("/api/passenger-addresses?device_key=" + encodeURIComponent(dk));
       const rows = Array.isArray(j?.addresses) ? (j.addresses as AddressRow[]) : [];
       setSaved(rows);
-      if (!rows.length) setAddrMode("new");
+
+      const primary =
+        rows.find((r) => r?.is_primary === true) ||
+        rows.find((r) => r?.is_active !== false) ||
+        rows[0] ||
+        null;
+
+      const primaryAddress = primary
+        ? cleanDeliveryAddressLabel(
+            String(
+              primary.address_text ||
+                primary.label ||
+                ""
+            )
+          )
+        : "";
+
+      if (primary && primaryAddress) {
+        setAddrMode("saved");
+        setNewAddr((prev) => prev.trim() ? prev : primaryAddress);
+
+        const latValue = Number(primary.lat ?? primary.dropoff_lat);
+        const lngValue = Number(primary.lng ?? primary.dropoff_lng);
+
+        if (Number.isFinite(latValue) && Number.isFinite(lngValue)) {
+          setDeliveryPin({ lat: latValue, lng: lngValue });
+        }
+      } else {
+        setAddrMode("new");
+      }
     } catch (e: any) {
       setAddrErr(String(e?.message || e || "Failed to load addresses"));
       setSaved([]);
@@ -1663,6 +1693,8 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
+
 
 
 
