@@ -116,6 +116,8 @@ function money(v: any) {
 }
 const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
 
+const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
+const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
 function prepMinutes(value: any) {
   const n = Number(value);
   return PREP_TIME_OPTIONS.includes(n) ? n : 15;
@@ -171,8 +173,6 @@ function orderItems(o: TakeoutOrder): TakeoutOrderItem[] {
 
   const text = clean(o.items_text);
   if (!text) return [];
-const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
-const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
 return text
     .split(/\r?\n|,|;/)
     .map((part) => clean(part))
