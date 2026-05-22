@@ -430,9 +430,6 @@ export default function VendorPortalPage() {
         name: profileName,
         town: profileTown,
         accepting_orders: acceptingOrders,
-        premium_packaging_enabled: premiumPackagingEnabled,
-        premium_packaging_fee: premiumPackagingFee,
-        premium_packaging_label: premiumPackagingLabel,
         logo_data_url: logoDataUrl,
       });
       setMessage(j?.warning ? "Profile saved, but image warning: " + j.warning : "Vendor profile saved.");
