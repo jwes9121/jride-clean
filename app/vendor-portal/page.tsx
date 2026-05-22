@@ -631,26 +631,6 @@ export default function VendorPortalPage() {
                 <input type="checkbox" checked={acceptingOrders} onChange={(e) => setAcceptingOrders(e.target.checked)} />
               </label>
 
-              <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-sm">
-                <label className="flex items-center justify-between gap-3">
-                  <span>
-                    <span className="block font-medium">Offer upgraded packaging</span>
-                    <span className="block text-xs text-slate-500">Passengers may optionally pay extra for improved packaging.</span>
-                  </span>
-                  <input type="checkbox" checked={premiumPackagingEnabled} onChange={(e) => setPremiumPackagingEnabled(e.target.checked)} />
-                </label>
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <label className="text-xs font-medium text-slate-700">Label</label>
-                    <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={premiumPackagingLabel} onChange={(e) => setPremiumPackagingLabel(e.target.value)} placeholder="Premium sealed packaging" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-700">Fee</label>
-                    <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={premiumPackagingFee} onChange={(e) => setPremiumPackagingFee(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="0.00" />
-                  </div>
-                </div>
-              </div>
-
               <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
                 Save profile
               </button>
