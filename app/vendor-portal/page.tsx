@@ -319,9 +319,10 @@ export default function VendorPortalPage() {
       const j = await getJson("/api/vendor-menu/manage?vendor_id=" + encodeURIComponent(vid));
       const v = j?.vendor || null;
       const items = Array.isArray(j?.items) ? j.items : [];
+      const vendorRowForTown = vendors.find((row) => vendorKey(row) === vid) || selectedVendor;
       setProfile(v);
-      setProfileName(clean(v?.name || (selectedVendor ? vendorLabel(selectedVendor as any) : vid)));
-      setProfileTown(normalizeTakeoutTown(v?.town || selectedVendor?.town));
+      setProfileName(clean(v?.name || (vendorRowForTown ? vendorLabel(vendorRowForTown as any) : vid)));
+      setProfileTown(normalizeTakeoutTown(v?.town || vendorRowForTown?.town));
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
       setPremiumPackagingEnabled(v?.premium_packaging_enabled === true);
@@ -374,6 +375,13 @@ export default function VendorPortalPage() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
+  useEffect(() => {
+    const town = normalizeTakeoutTown(profile?.town || selectedVendor?.town);
+    if (town && profileTown !== town) {
+      setProfileTown(town);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.town, selectedVendor?.town]);
 
   function resetItemForm() {
     setEditingId("");
