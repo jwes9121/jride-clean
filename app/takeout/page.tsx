@@ -1127,7 +1127,7 @@ export default function TakeoutPage() {
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <div>
-              <label className="text-xs font-medium text-slate-700">Select town first</label>
+              <label className="text-xs font-medium text-slate-700">Choose store location</label>
               <select
                 className="mt-1 w-full rounded border px-3 py-2 text-sm"
                 value={vendorTownFilter}
@@ -1143,7 +1143,7 @@ export default function TakeoutPage() {
                 ))}
               </select>
               <div className="mt-1 text-[11px] text-slate-500">
-                Vendors are filtered by town to avoid cross-town takeout orders.
+                Vendors are grouped by town for faster delivery.
               </div>
             </div>
 
@@ -1163,7 +1163,7 @@ export default function TakeoutPage() {
                     refreshMenu(nextVendorId);
                   }}
               >
-                <option value="">{vendorTownFilter ? "Select vendor" : "Select town first"}</option>
+                <option value="">{vendorTownFilter ? "Select vendor" : "Choose store location"}</option>
                 {visibleVendors.map((v) => {
                   const id = vendorKey(v);
                   if (!id) return null;

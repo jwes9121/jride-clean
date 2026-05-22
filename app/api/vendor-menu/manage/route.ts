@@ -121,9 +121,13 @@ async function updateSchemaSafe(admin: any, table: string, patchInitial: Json, e
     const res = await admin.from(table).update(patch).eq(eqField, eqValue).select(selectCols).limit(1);
     if (!res.error) return res;
     const msg = String(res.error?.message || "");
-    const m = msg.match(/Could not find the '([^']+)' column/i);
-    if (m?.[1] && Object.prototype.hasOwnProperty.call(patch, m[1])) {
-      delete patch[m[1]];
+    const missingColumn =
+      msg.match(/Could not find the '([^']+)' column/i)?.[1] ||
+      msg.match(/column\s+\w+\."?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
+      msg.match(/column\s+"?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
+      "";
+    if (missingColumn && Object.prototype.hasOwnProperty.call(patch, missingColumn)) {
+      delete patch[missingColumn];
       continue;
     }
     return res;
@@ -137,9 +141,13 @@ async function insertSchemaSafe(admin: any, table: string, payloadInitial: Json,
     const res = await admin.from(table).insert(payload).select(selectCols).single();
     if (!res.error) return res;
     const msg = String(res.error?.message || "");
-    const m = msg.match(/Could not find the '([^']+)' column/i);
-    if (m?.[1] && Object.prototype.hasOwnProperty.call(payload, m[1])) {
-      delete payload[m[1]];
+    const missingColumn =
+      msg.match(/Could not find the '([^']+)' column/i)?.[1] ||
+      msg.match(/column\s+\w+\."?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
+      msg.match(/column\s+"?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
+      "";
+    if (missingColumn && Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
+      delete payload[missingColumn];
       continue;
     }
     return res;
@@ -223,18 +231,7 @@ export async function POST(req: NextRequest) {
       }
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name || body?.vendor_name),
-        vendor_name: cleanString(body?.name || body?.display_name || body?.vendor_name),
-        name: cleanString(body?.name || body?.display_name || body?.vendor_name),
         town,
-        municipality: town,
-        vendor_town: town,
-        accepting_orders: toBool(body?.accepting_orders, true),
-        premium_packaging_enabled: toBool(body?.premium_packaging_enabled ?? body?.premiumPackagingEnabled, false),
-        premium_packaging_fee: toPrice(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? 0),
-        premium_packaging_label: cleanString(body?.premium_packaging_label || body?.premiumPackagingLabel || "Premium packaging"),
-        is_open: toBool(body?.accepting_orders, true),
-        open: toBool(body?.accepting_orders, true),
-        updated_at: new Date().toISOString(),
       };
       if (logoUpload.url) {
         patch.logo_url = logoUpload.url;

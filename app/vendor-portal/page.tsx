@@ -591,7 +591,7 @@ export default function VendorPortalPage() {
                   <option key={town} value={town}>{town}</option>
                 ))}
               </select>
-              <div className="mt-1 text-[11px] text-slate-500">Used to show this vendor only in the selected passenger town.</div>
+              <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct passenger store location.</div>
 
               <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
               <input

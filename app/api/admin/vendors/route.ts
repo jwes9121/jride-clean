@@ -21,30 +21,6 @@ function normalizeTakeoutTown(value: any): string {
   return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
-async function selectVendorsSchemaSafe(supabase: any) {
-  let cols = ["id", "email", "display_name", "vendor_name", "name", "town", "municipality", "vendor_town", "created_at"];
-
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const res = await supabase
-      .from("vendor_accounts")
-      .select(cols.join(","))
-      .order("created_at", { ascending: false });
-
-    if (!res.error) return res;
-
-    const msg = String(res.error?.message || "");
-    const m = msg.match(/Could not find the '([^']+)' column/i);
-    if (m?.[1] && cols.includes(m[1]) && cols.length > 4) {
-      cols = cols.filter((c) => c !== m[1]);
-      continue;
-    }
-
-    return res;
-  }
-
-  return { data: null, error: { message: "schema-safe vendor select retries exceeded" } } as any;
-}
-
 export async function GET() {
   const supabase = adminClient();
   if (!supabase) {
@@ -54,7 +30,10 @@ export async function GET() {
     );
   }
 
-  const { data, error } = await selectVendorsSchemaSafe(supabase);
+  const { data, error } = await supabase
+    .from("vendor_accounts")
+    .select("id,email,display_name,created_at,town,lat,lng,location_label")
+    .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ ok: false, error: "DB_ERROR", message: error.message }, { status: 500 });
@@ -62,7 +41,9 @@ export async function GET() {
 
   const vendors = (Array.isArray(data) ? data : []).map((v: any) => ({
     ...v,
-    town: normalizeTakeoutTown(v?.town || v?.municipality || v?.vendor_town),
+    name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
+    display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
+    town: normalizeTakeoutTown(v?.town),
   }));
 
   return NextResponse.json({ ok: true, vendors }, { status: 200 });
