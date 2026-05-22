@@ -72,7 +72,7 @@ function normalizeMenuRow(row: any) {
     name: cleanString(row?.name || ""),
     description: cleanString(row?.description || ""),
     packaging_note: cleanString(row?.packaging_note || ""),
-        prep_time_minutes: prepMinutes(body?.prep_time_minutes ?? body?.prepTimeMinutes),
+        prep_time_minutes: prepMinutes(row?.prep_time_minutes),
     premium_packaging_enabled: toBool(row?.premium_packaging_enabled, false),
     premium_packaging_fee: toPrice(row?.premium_packaging_fee || 0),
     premium_packaging_label: cleanString(row?.premium_packaging_label || "Premium packaging") || "Premium packaging",
