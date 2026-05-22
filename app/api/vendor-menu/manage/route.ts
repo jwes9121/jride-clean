@@ -30,6 +30,12 @@ function toPrice(v: any) {
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.round(n * 100) / 100;
 }
+
+function toStockQty(v: any) {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
 function prepMinutes(value: any) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 15;
@@ -76,6 +82,8 @@ function normalizeMenuRow(row: any) {
     premium_packaging_enabled: toBool(row?.premium_packaging_enabled, false),
     premium_packaging_fee: toPrice(row?.premium_packaging_fee || 0),
     premium_packaging_label: cleanString(row?.premium_packaging_label || "Premium packaging") || "Premium packaging",
+    daily_available_quantity: toStockQty(row?.daily_available_quantity),
+    remaining_quantity: toStockQty(row?.remaining_quantity ?? row?.daily_available_quantity),
     price: toPrice(row?.price || 0),
     photo_url: pickItemPhoto(row) || null,
     sort_order: Number.isFinite(Number(row?.sort_order)) ? Number(row?.sort_order) : 0,
@@ -197,7 +205,7 @@ export async function GET(req: NextRequest) {
             name: pickVendorName(vendor),
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
-            accepting_orders: true,
+            accepting_orders: toBool(vendor?.accepting_orders, true),
           }
         : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true },
       items: menu,
@@ -225,6 +233,7 @@ export async function POST(req: NextRequest) {
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name),
         town: cleanString(body?.town),
+        accepting_orders: toBool(body?.accepting_orders ?? body?.acceptingOrders, true),
       };
       if (logoUpload.url) patch.logo_url = logoUpload.url;
       for (const k of Object.keys(patch)) {
@@ -258,6 +267,8 @@ export async function POST(req: NextRequest) {
         premium_packaging_enabled: toBool(body?.premium_packaging_enabled ?? body?.premiumPackagingEnabled, false),
         premium_packaging_fee: toPrice(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? 0),
         premium_packaging_label: cleanString(body?.premium_packaging_label || body?.premiumPackagingLabel || "Premium packaging") || "Premium packaging",
+        daily_available_quantity: toStockQty(body?.daily_available_quantity ?? body?.dailyAvailableQuantity),
+        remaining_quantity: toStockQty(body?.remaining_quantity ?? body?.remainingQuantity ?? body?.daily_available_quantity ?? body?.dailyAvailableQuantity),
         price: toPrice(body?.price),
         sort_order: Number.isFinite(Number(body?.sort_order)) ? Number(body?.sort_order) : existing.length + 1,
         is_active: active,
@@ -287,6 +298,7 @@ export async function POST(req: NextRequest) {
       const patch: Json = {
         is_active: available && !soldOut,
         sold_out_today: soldOut,
+        remaining_quantity: toStockQty(body?.remaining_quantity ?? body?.remainingQuantity),
         updated_at: new Date().toISOString(),
       };
       const up = await updateSchemaSafe(admin, "vendor_menu_items", patch, "id", itemId);

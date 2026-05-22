@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -543,6 +543,22 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   const subtotal = computeSubtotal(items);
 
+  // JRIDE_TAKEOUT_VENDOR_OPEN_GATE_V42
+  // Block new takeout orders when the vendor has turned ordering off.
+  const vendorGate =
+    (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
+    (await tryFetchRowById(admin, "vendor_accounts", "email", vendor_id)) ||
+    (await tryFetchRowById(admin, "vendor_accounts", "display_name", vendor_id)) ||
+    null;
+
+  if (vendorGate && vendorGate.accepting_orders === false) {
+    return json(409, {
+      ok: false,
+      error: "TAKEOUT_VENDOR_CLOSED",
+      message: "This vendor is currently closed and cannot accept new orders.",
+    });
+  }
+
   // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
   // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
   // Ride dispatch, fare proposal, and trip lifecycle routes are not called here.
@@ -573,9 +589,13 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       const row = byId.get(id);
       const availableRaw = row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
       const soldRaw = row?.sold_out_today ?? row?.is_sold_out_today;
+      const dailyQty = Math.max(0, Math.floor(Number(row?.daily_available_quantity ?? 0)) || 0);
+      const remainingQty = Math.max(0, Math.floor(Number(row?.remaining_quantity ?? dailyQty)) || 0);
+      const requestedQty = Math.max(1, Math.floor(Number(item.quantity ?? 1)) || 1);
       const available = typeof availableRaw === "boolean" ? availableRaw : true;
       const soldOut = typeof soldRaw === "boolean" ? soldRaw : false;
-      if (!row || !available || soldOut) blocked.push(item.name || id);
+      const stockBlocked = dailyQty > 0 && remainingQty < requestedQty;
+      if (!row || !available || soldOut || stockBlocked) blocked.push(item.name || id);
     }
 
     if (blocked.length) {

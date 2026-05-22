@@ -52,6 +52,8 @@ type MenuItem = {
   sold_out_today: boolean | null;
   last_updated_at?: string | null;
   prep_time_minutes?: number | string | null;
+  daily_available_quantity?: number | string | null;
+  remaining_quantity?: number | string | null;
 };
 
 type VendorRow = {
@@ -492,8 +494,11 @@ export default function TakeoutPage() {
 
   const menuSelectable = useMemo(() => {
     return (menu || []).map((m) => {
-      const available = (m.is_available !== false) && (m.sold_out_today !== true);
-      return { ...m, _available: available };
+      const dailyQty = Math.max(0, Math.floor(toNum(m.daily_available_quantity)));
+      const remainingQty = Math.max(0, Math.floor(toNum(m.remaining_quantity)));
+      const stockOk = dailyQty <= 0 || remainingQty > 0;
+      const available = (m.is_available !== false) && (m.sold_out_today !== true) && stockOk;
+      return { ...m, _available: available, _dailyQty: dailyQty, _remainingQty: remainingQty };
     });
   }, [menu]);
 
@@ -694,6 +699,8 @@ export default function TakeoutPage() {
           premium_packaging_label: (r.premium_packaging_label ?? "Premium packaging") as any,
           photo_url: (r.photo_url ?? r.image_url ?? r.menu_photo_url ?? r.item_photo_url ?? null) as any,
           prep_time_minutes: (r.prep_time_minutes ?? 15) as any,
+          daily_available_quantity: (r.daily_available_quantity ?? 0) as any,
+          remaining_quantity: (r.remaining_quantity ?? 0) as any,
           price: toNum(r.price),
           sort_order: (r.sort_order ?? 0) as any,
           is_available: (typeof r.is_available === "boolean" ? r.is_available : null),
@@ -702,7 +709,11 @@ export default function TakeoutPage() {
         }))
         .filter((r: MenuItem) => r.id && r.name);
 
-      const orderableCount = mapped.filter((r) => (r.is_available !== false) && (r.sold_out_today !== true)).length;
+      const orderableCount = mapped.filter((r) => {
+        const dailyQty = Math.max(0, Math.floor(toNum(r.daily_available_quantity)));
+        const remainingQty = Math.max(0, Math.floor(toNum(r.remaining_quantity)));
+        return (r.is_available !== false) && (r.sold_out_today !== true) && (dailyQty <= 0 || remainingQty > 0);
+      }).length;
       const closedByApi =
         j?.accepting_orders === false ||
         j?.acceptingOrders === false ||
@@ -1481,6 +1492,11 @@ export default function TakeoutPage() {
                           <div className="mt-1 text-xs text-slate-600">{m.description}</div>
                         ) : null}
                         <div className="text-[11px] font-medium text-slate-600">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        {toNum(m.daily_available_quantity) > 0 ? (
+                          <div className="mt-1 text-[11px] font-semibold text-slate-700">
+                            Remaining today: {Math.max(0, Math.floor(toNum(m.remaining_quantity)))} / {Math.max(0, Math.floor(toNum(m.daily_available_quantity)))}
+                          </div>
+                        ) : null}
                         {m.packaging_note ? (
                           <div className="mt-2 rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">
                             Packaging: {m.packaging_note}

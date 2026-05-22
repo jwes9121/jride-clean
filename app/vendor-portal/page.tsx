@@ -42,6 +42,8 @@ type MenuItem = {
   sold_out_today: boolean;
   last_updated_at?: string | null;
   prep_time_minutes?: number | string | null;
+  daily_available_quantity?: number | string | null;
+  remaining_quantity?: number | string | null;
 };
 
 type TakeoutOrderItem = {
@@ -297,6 +299,8 @@ export default function VendorPortalPage() {
   const [itemPremiumPackagingLabel, setItemPremiumPackagingLabel] = useState("Premium packaging");
   const [itemPrice, setItemPrice] = useState("");
   const [itemPrepTimeMinutes, setItemPrepTimeMinutes] = useState(15);
+  const [itemDailyQuantity, setItemDailyQuantity] = useState("");
+  const [itemRemainingQuantity, setItemRemainingQuantity] = useState("");
   const [itemAvailable, setItemAvailable] = useState(true);
   const [itemSoldOut, setItemSoldOut] = useState(false);
   const [itemFile, setItemFile] = useState<File | null>(null);
@@ -431,6 +435,8 @@ export default function VendorPortalPage() {
     setItemDescription("");
     setItemPackagingNote("");
     setItemPrepTimeMinutes(15);
+    setItemDailyQuantity("");
+    setItemRemainingQuantity("");
     setItemPremiumPackagingEnabled(false);
     setItemPremiumPackagingFee("");
     setItemPremiumPackagingLabel("Premium packaging");
@@ -448,6 +454,8 @@ export default function VendorPortalPage() {
     setItemDescription(m.description || "");
     setItemPackagingNote(m.packaging_note || "");
     setItemPrepTimeMinutes(prepMinutes(m.prep_time_minutes));
+    setItemDailyQuantity(clean(m.daily_available_quantity || ""));
+    setItemRemainingQuantity(clean(m.remaining_quantity || m.daily_available_quantity || ""));
     setItemPremiumPackagingEnabled(m.premium_packaging_enabled === true);
     setItemPremiumPackagingFee(clean(m.premium_packaging_fee || ""));
     setItemPremiumPackagingLabel(clean(m.premium_packaging_label || "Premium packaging") || "Premium packaging");
@@ -505,6 +513,8 @@ export default function VendorPortalPage() {
         description: itemDescription,
         packaging_note: itemPackagingNote,
         prep_time_minutes: itemPrepTimeMinutes,
+        daily_available_quantity: itemDailyQuantity,
+        remaining_quantity: itemRemainingQuantity || itemDailyQuantity,
         premium_packaging_enabled: itemPremiumPackagingEnabled,
         premium_packaging_fee: itemPremiumPackagingFee,
         premium_packaging_label: itemPremiumPackagingLabel,
@@ -722,6 +732,16 @@ export default function VendorPortalPage() {
                     {PREP_TIME_OPTIONS.map((mins) => <option key={mins} value={mins}>{mins} minutes</option>)}
                   </select>
                 </div>
+                <div className="md:col-span-3">
+                  <label className="text-xs font-medium text-slate-700">Daily available quantity</label>
+                  <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={itemDailyQuantity} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setItemDailyQuantity(v); if (!editingId) setItemRemainingQuantity(v); }} inputMode="numeric" placeholder="Example: 20" />
+                  <div className="mt-1 text-[11px] text-slate-500">Set 0 or leave blank if you do not want stock tracking for this item.</div>
+                </div>
+                <div className="md:col-span-3">
+                  <label className="text-xs font-medium text-slate-700">Remaining today</label>
+                  <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={itemRemainingQuantity} onChange={(e) => setItemRemainingQuantity(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="Auto-filled from daily quantity" />
+                  <div className="mt-1 text-[11px] text-slate-500">Orders reduce this after passenger confirms the total bill.</div>
+                </div>
                   <label className="text-xs font-medium text-slate-700">Packaging note</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
                   <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
@@ -773,6 +793,11 @@ export default function VendorPortalPage() {
                         </div>
                         {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
                         <div className="text-[11px] font-medium text-slate-600">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        {toNum(m.daily_available_quantity) > 0 ? (
+                          <div className="text-[11px] font-semibold text-slate-700">
+                            Remaining today: {Math.max(0, Math.floor(toNum(m.remaining_quantity)))} / {Math.max(0, Math.floor(toNum(m.daily_available_quantity)))}
+                          </div>
+                        ) : null}
                         {m.packaging_note ? <div className="rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">Packaging: {m.packaging_note}</div> : null}
                         {m.premium_packaging_enabled ? (
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
