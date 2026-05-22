@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -392,6 +392,7 @@ export default function TakeoutPage() {
   const [deviceKey, setDeviceKey] = useState("");
   const [addrMode, setAddrMode] = useState<"saved" | "new">("saved");
   const [saved, setSaved] = useState<AddressRow[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [addrBusy, setAddrBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [addrErr, setAddrErr] = useState<string | null>(null);
@@ -426,13 +427,24 @@ export default function TakeoutPage() {
   const [pricingErr, setPricingErr] = useState<string | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  const primary = useMemo(() => saved.find((a) => a.is_primary) || saved[0] || null, [saved]);
+  const primary = useMemo(() => {
+    const selected = selectedAddressId ? saved.find((a) => String(a.id) === selectedAddressId) : null;
+    return selected || saved.find((a) => a.is_primary === true) || saved.find((a) => a.is_active !== false) || saved[0] || null;
+  }, [saved, selectedAddressId]);
 
   useEffect(() => {
-    if (addrMode !== "saved" || !primary || deliveryPin) return;
+    if (addrMode !== "saved" || !primary) return;
+
+    const addressText = cleanDeliveryAddressLabel(String(primary.address_text || primary.label || ""));
+    if (addressText) {
+      setNewAddr((prev) => prev.trim() ? prev : addressText);
+    }
+
     const lat = safeCoord(primary.dropoff_lat ?? primary.lat);
     const lng = safeCoord(primary.dropoff_lng ?? primary.lng);
-    if (lat != null && lng != null) setDeliveryPin({ lat, lng });
+    if (!deliveryPin && lat != null && lng != null) {
+      setDeliveryPin({ lat, lng });
+    }
   }, [addrMode, primary, deliveryPin]);
 
   const selectedVendor = useMemo(() => {
@@ -574,38 +586,42 @@ export default function TakeoutPage() {
       const rows = Array.isArray(j?.addresses) ? (j.addresses as AddressRow[]) : [];
       setSaved(rows);
 
-      const primary =
+      const nextPrimary =
         rows.find((r) => r?.is_primary === true) ||
         rows.find((r) => r?.is_active !== false) ||
         rows[0] ||
         null;
 
-      const primaryAddress = primary
-        ? cleanDeliveryAddressLabel(
-            String(
-              primary.address_text ||
-                primary.label ||
-                ""
-            )
-          )
-        : "";
-
-      if (primary && primaryAddress) {
-        setAddrMode("saved");
-        setNewAddr((prev) => prev.trim() ? prev : primaryAddress);
-
-        const latValue = Number(primary.lat ?? primary.dropoff_lat);
-        const lngValue = Number(primary.lng ?? primary.dropoff_lng);
-
-        if (Number.isFinite(latValue) && Number.isFinite(lngValue)) {
-          setDeliveryPin({ lat: latValue, lng: lngValue });
-        }
-      } else {
+      if (!nextPrimary) {
+        setSelectedAddressId("");
         setAddrMode("new");
+        return;
+      }
+
+      const nextAddress = cleanDeliveryAddressLabel(
+        String(nextPrimary.address_text || nextPrimary.label || "")
+      );
+
+      if (!nextAddress) {
+        setSelectedAddressId("");
+        setAddrMode("new");
+        return;
+      }
+
+      setSelectedAddressId(String(nextPrimary.id || ""));
+      setAddrMode("saved");
+      setNewAddr((prev) => prev.trim() ? prev : nextAddress);
+
+      const latValue = safeCoord(nextPrimary.dropoff_lat ?? nextPrimary.lat);
+      const lngValue = safeCoord(nextPrimary.dropoff_lng ?? nextPrimary.lng);
+
+      if (latValue != null && lngValue != null) {
+        setDeliveryPin({ lat: latValue, lng: lngValue });
       }
     } catch (e: any) {
       setAddrErr(String(e?.message || e || "Failed to load addresses"));
       setSaved([]);
+      setSelectedAddressId("");
       setAddrMode("new");
     } finally {
       setAddrBusy(false);
@@ -1196,7 +1212,16 @@ export default function TakeoutPage() {
                               <div className="text-xs text-slate-800">{cleanDeliveryAddressLabel(a.address_text)}</div>
                               <button
                                 type="button"
-                                onClick={() => makePrimaryExisting(a.id).catch(() => undefined)}
+                                onClick={() => {
+                                  setSelectedAddressId(String(a.id || ""));
+                                  setAddrMode("saved");
+                                  const nextAddress = cleanDeliveryAddressLabel(String(a.address_text || a.label || ""));
+                                  if (nextAddress) setNewAddr((prev) => prev.trim() ? prev : nextAddress);
+                                  const latValue = safeCoord(a.dropoff_lat ?? a.lat);
+                                  const lngValue = safeCoord(a.dropoff_lng ?? a.lng);
+                                  if (latValue != null && lngValue != null) setDeliveryPin({ lat: latValue, lng: lngValue });
+                                  makePrimaryExisting(a.id).catch(() => undefined);
+                                }}
                                 className="shrink-0 rounded border px-2 py-1 text-[11px] hover:bg-black/5"
                               >
                                 Make primary
