@@ -124,7 +124,7 @@ async function getJson(url: string) {
 async function postJson(url: string, body: any) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders,
     body: JSON.stringify(body),
   });
   const j = await res.json().catch(() => ({}));
@@ -569,7 +569,7 @@ export default function TakeoutPage() {
     setAddrBusy(true);
     setAddrErr(null);
     try {
-      const j = await getJson("/api/passenger-addresses?device_key=" + encodeURIComponent(dk));
+      const j = await fetchOptionalJson("/api/passenger-addresses?device_key=" + encodeURIComponent(dk));
       const rows = Array.isArray(j?.addresses) ? (j.addresses as AddressRow[]) : [];
       setSaved(rows);
       if (!rows.length) setAddrMode("new");
@@ -1663,6 +1663,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
