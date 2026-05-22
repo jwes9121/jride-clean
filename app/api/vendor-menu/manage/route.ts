@@ -5,7 +5,6 @@ export const dynamic = "force-dynamic";
 
 const MAX_FREE_MENU_ITEMS = 15;
 const ASSET_BUCKET = "vendor-assets";
-const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
 
 type Json = Record<string, any>;
 
@@ -26,11 +25,6 @@ function cleanString(v: any) {
   return String(v ?? "").trim();
 }
 
-function normalizeTakeoutTown(value: any): string {
-  const raw = cleanString(value).toLowerCase();
-  return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
-}
-
 function toPrice(v: any) {
   const n = Number(v);
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -39,21 +33,22 @@ function toPrice(v: any) {
 
 function toBool(v: any, fallback: boolean) {
   if (typeof v === "boolean") return v;
-  if (String(v).toLowerCase() === "true") return true;
-  if (String(v).toLowerCase() === "false") return false;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "true") return true;
+  if (s === "false") return false;
   return fallback;
 }
 
 function pickVendorName(row: any) {
-  return cleanString(row?.display_name || row?.vendor_name || row?.name || row?.email || row?.id || "Vendor");
+  return cleanString(row?.display_name || row?.email || row?.id || "Vendor");
 }
 
 function pickLogo(row: any) {
-  return cleanString(row?.logo_url || row?.vendor_logo_url || row?.image_url || row?.photo_url || row?.avatar_url || "");
+  return cleanString(row?.logo_url || "");
 }
 
 function pickItemPhoto(row: any) {
-  return cleanString(row?.photo_url || row?.image_url || row?.menu_photo_url || row?.item_photo_url || "");
+  return cleanString(row?.photo_url || "");
 }
 
 function menuId(row: any) {
@@ -62,18 +57,22 @@ function menuId(row: any) {
 
 function normalizeMenuRow(row: any) {
   const id = menuId(row);
+  const active = toBool(row?.is_active ?? row?.is_available_today ?? row?.is_available, true);
+  const soldOut = toBool(row?.sold_out_today ?? row?.is_sold_out_today, false);
   return {
     id,
     menu_item_id: id,
     vendor_id: cleanString(row?.vendor_id || ""),
-    name: cleanString(row?.name || row?.item_name || row?.menu_name || ""),
+    name: cleanString(row?.name || ""),
     description: cleanString(row?.description || ""),
-    packaging_note: cleanString(row?.packaging_note || row?.packagingNote || row?.packaging || ""),
-    price: toPrice(row?.price || row?.unit_price || 0),
+    packaging_note: cleanString(row?.packaging_note || ""),
+    price: toPrice(row?.price || 0),
     photo_url: pickItemPhoto(row) || null,
     sort_order: Number.isFinite(Number(row?.sort_order)) ? Number(row?.sort_order) : 0,
-    is_available: toBool(row?.is_available ?? row?.available ?? row?.available_today, true),
-    sold_out_today: toBool(row?.sold_out_today ?? row?.is_sold_out_today, false),
+    is_active: active,
+    is_available: active,
+    sold_out_today: soldOut,
+    is_sold_out_today: soldOut,
     last_updated_at: row?.last_updated_at || row?.updated_at || null,
   };
 }
@@ -121,13 +120,9 @@ async function updateSchemaSafe(admin: any, table: string, patchInitial: Json, e
     const res = await admin.from(table).update(patch).eq(eqField, eqValue).select(selectCols).limit(1);
     if (!res.error) return res;
     const msg = String(res.error?.message || "");
-    const missingColumn =
-      msg.match(/Could not find the '([^']+)' column/i)?.[1] ||
-      msg.match(/column\s+\w+\."?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
-      msg.match(/column\s+"?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
-      "";
-    if (missingColumn && Object.prototype.hasOwnProperty.call(patch, missingColumn)) {
-      delete patch[missingColumn];
+    const m = msg.match(/Could not find the '([^']+)' column/i);
+    if (m?.[1] && Object.prototype.hasOwnProperty.call(patch, m[1])) {
+      delete patch[m[1]];
       continue;
     }
     return res;
@@ -141,13 +136,9 @@ async function insertSchemaSafe(admin: any, table: string, payloadInitial: Json,
     const res = await admin.from(table).insert(payload).select(selectCols).single();
     if (!res.error) return res;
     const msg = String(res.error?.message || "");
-    const missingColumn =
-      msg.match(/Could not find the '([^']+)' column/i)?.[1] ||
-      msg.match(/column\s+\w+\."?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
-      msg.match(/column\s+"?([A-Za-z0-9_]+)"?\s+does not exist/i)?.[1] ||
-      "";
-    if (missingColumn && Object.prototype.hasOwnProperty.call(payload, missingColumn)) {
-      delete payload[missingColumn];
+    const m = msg.match(/Could not find the '([^']+)' column/i);
+    if (m?.[1] && Object.prototype.hasOwnProperty.call(payload, m[1])) {
+      delete payload[m[1]];
       continue;
     }
     return res;
@@ -156,10 +147,9 @@ async function insertSchemaSafe(admin: any, table: string, payloadInitial: Json,
 }
 
 async function getVendor(admin: any, vendorId: string) {
-  const fields = "*";
-  const byId = await admin.from("vendor_accounts").select(fields).eq("id", vendorId).limit(1);
+  const byId = await admin.from("vendor_accounts").select("*").eq("id", vendorId).limit(1);
   if (!byId.error && Array.isArray(byId.data) && byId.data[0]) return byId.data[0];
-  const byEmail = await admin.from("vendor_accounts").select(fields).eq("email", vendorId).limit(1);
+  const byEmail = await admin.from("vendor_accounts").select("*").eq("email", vendorId).limit(1);
   if (!byEmail.error && Array.isArray(byEmail.data) && byEmail.data[0]) return byEmail.data[0];
   return null;
 }
@@ -195,12 +185,12 @@ export async function GET(req: NextRequest) {
             id: cleanString(vendor?.id || vendorId),
             vendor_id: vendorId,
             name: pickVendorName(vendor),
-            town: normalizeTakeoutTown(vendor?.town || vendor?.municipality || vendor?.vendor_town),
+            town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
-            accepting_orders: toBool(vendor?.accepting_orders ?? vendor?.is_open ?? vendor?.open, true),
-            premium_packaging_enabled: toBool(vendor?.premium_packaging_enabled ?? vendor?.premiumPackagingEnabled, false),
-            premium_packaging_fee: toPrice(vendor?.premium_packaging_fee ?? vendor?.premiumPackagingFee ?? 0),
-            premium_packaging_label: cleanString(vendor?.premium_packaging_label || vendor?.premiumPackagingLabel || "Premium packaging"),
+            accepting_orders: true,
+            premium_packaging_enabled: false,
+            premium_packaging_fee: 0,
+            premium_packaging_label: "Premium packaging",
           }
         : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true, premium_packaging_enabled: false, premium_packaging_fee: 0, premium_packaging_label: "Premium packaging" },
       items: menu,
@@ -225,19 +215,11 @@ export async function POST(req: NextRequest) {
   try {
     if (action === "profile") {
       const logoUpload = await uploadImage(admin, vendorId, "logo", body?.logo_data_url || body?.logoDataUrl);
-      const town = normalizeTakeoutTown(body?.town || body?.municipality || body?.vendor_town);
-      if (!town) {
-        return json(400, { ok: false, error: "INVALID_TOWN", message: "Select a valid vendor town: Lamut, Kiangan, Lagawe, Hingyon, or Banaue." });
-      }
       const patch: Json = {
-        display_name: cleanString(body?.name || body?.display_name || body?.vendor_name),
-        town,
+        display_name: cleanString(body?.name || body?.display_name),
+        town: cleanString(body?.town),
       };
-      if (logoUpload.url) {
-        patch.logo_url = logoUpload.url;
-        patch.vendor_logo_url = logoUpload.url;
-        patch.image_url = logoUpload.url;
-      }
+      if (logoUpload.url) patch.logo_url = logoUpload.url;
       for (const k of Object.keys(patch)) {
         if (patch[k] === "") delete patch[k];
       }
@@ -259,6 +241,7 @@ export async function POST(req: NextRequest) {
       }
 
       const photoUpload = await uploadImage(admin, vendorId, "menu", body?.photo_data_url || body?.photoDataUrl);
+      const active = toBool(body?.is_available, true) && !toBool(body?.sold_out_today, false);
       const base: Json = {
         vendor_id: vendorId,
         name: cleanString(body?.name),
@@ -266,34 +249,21 @@ export async function POST(req: NextRequest) {
         packaging_note: cleanString(body?.packaging_note || body?.packagingNote),
         price: toPrice(body?.price),
         sort_order: Number.isFinite(Number(body?.sort_order)) ? Number(body?.sort_order) : existing.length + 1,
-        is_available: toBool(body?.is_available, true),
-        available: toBool(body?.is_available, true),
+        is_active: active,
         sold_out_today: toBool(body?.sold_out_today, false),
-        is_sold_out_today: toBool(body?.sold_out_today, false),
-        last_updated_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      if (photoUpload.url) {
-        base.photo_url = photoUpload.url;
-        base.image_url = photoUpload.url;
-        base.menu_photo_url = photoUpload.url;
-        base.item_photo_url = photoUpload.url;
-      }
+      if (photoUpload.url) base.photo_url = photoUpload.url;
       if (!base.name) return json(400, { ok: false, error: "MISSING_NAME", message: "Menu item name is required" });
       if (base.price <= 0) return json(400, { ok: false, error: "INVALID_PRICE", message: "Menu item price must be greater than zero" });
 
       if (itemId) {
-        const upByMenu = await updateSchemaSafe(admin, "vendor_menu_today", base, "menu_item_id", itemId);
-        if (!upByMenu.error && Array.isArray(upByMenu.data) && upByMenu.data.length) {
-          return json(200, { ok: true, action: "updated", warning: photoUpload.warning, item: normalizeMenuRow(upByMenu.data[0]) });
-        }
-        const upById = await updateSchemaSafe(admin, "vendor_menu_today", base, "id", itemId);
-        if (upById.error) return json(500, { ok: false, error: "DB_ERROR", message: upById.error.message, warning: photoUpload.warning });
-        return json(200, { ok: true, action: "updated", warning: photoUpload.warning, item: normalizeMenuRow(Array.isArray(upById.data) ? upById.data[0] : upById.data) });
+        const up = await updateSchemaSafe(admin, "vendor_menu_items", base, "id", itemId);
+        if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message, warning: photoUpload.warning });
+        return json(200, { ok: true, action: "updated", warning: photoUpload.warning, item: normalizeMenuRow(Array.isArray(up.data) ? up.data[0] : up.data) });
       }
 
-      base.menu_item_id = `mi_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-      const ins = await insertSchemaSafe(admin, "vendor_menu_today", base);
+      const ins = await insertSchemaSafe(admin, "vendor_menu_items", base);
       if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message, warning: photoUpload.warning });
       return json(200, { ok: true, action: "created", warning: photoUpload.warning, item: normalizeMenuRow(ins.data) });
     }
@@ -301,21 +271,16 @@ export async function POST(req: NextRequest) {
     if (action === "toggle_item") {
       const itemId = cleanString(body?.id || body?.menu_item_id || body?.menuItemId);
       if (!itemId) return json(400, { ok: false, error: "MISSING_ITEM_ID", message: "Menu item id is required" });
+      const soldOut = toBool(body?.sold_out_today, false);
+      const available = toBool(body?.is_available, true);
       const patch: Json = {
-        is_available: toBool(body?.is_available, true),
-        available: toBool(body?.is_available, true),
-        sold_out_today: toBool(body?.sold_out_today, false),
-        is_sold_out_today: toBool(body?.sold_out_today, false),
-        last_updated_at: new Date().toISOString(),
+        is_active: available && !soldOut,
+        sold_out_today: soldOut,
         updated_at: new Date().toISOString(),
       };
-      const upByMenu = await updateSchemaSafe(admin, "vendor_menu_today", patch, "menu_item_id", itemId);
-      if (!upByMenu.error && Array.isArray(upByMenu.data) && upByMenu.data.length) {
-        return json(200, { ok: true, action: "toggled", item: normalizeMenuRow(upByMenu.data[0]) });
-      }
-      const upById = await updateSchemaSafe(admin, "vendor_menu_today", patch, "id", itemId);
-      if (upById.error) return json(500, { ok: false, error: "DB_ERROR", message: upById.error.message });
-      return json(200, { ok: true, action: "toggled", item: normalizeMenuRow(Array.isArray(upById.data) ? upById.data[0] : upById.data) });
+      const up = await updateSchemaSafe(admin, "vendor_menu_items", patch, "id", itemId);
+      if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
+      return json(200, { ok: true, action: "toggled", item: normalizeMenuRow(Array.isArray(up.data) ? up.data[0] : up.data) });
     }
 
     return json(400, { ok: false, error: "INVALID_ACTION", message: "Supported actions: profile, save_item, toggle_item" });
