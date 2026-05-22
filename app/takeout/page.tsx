@@ -51,6 +51,7 @@ type MenuItem = {
   is_available: boolean | null;
   sold_out_today: boolean | null;
   last_updated_at?: string | null;
+  prep_time_minutes?: number | string | null;
 };
 
 type VendorRow = {
@@ -148,6 +149,10 @@ function toNum(v: any): number {
 function money(n: number) {
   const v = Number(n || 0);
   return "PHP " + v.toFixed(2);
+}
+function prepMinutes(value: any) {
+  const n = Number(value);
+  return PREP_TIME_OPTIONS.includes(n) ? n : 15;
 }
 
 function vendorKey(v: VendorRow): string {
@@ -464,7 +469,9 @@ export default function TakeoutPage() {
 
   const vendorTowns = useMemo(() => {
     return [...CANONICAL_TAKEOUT_TOWNS];
-  }, []);
+  
+const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
+}, []);
 
   const visibleVendors = useMemo(() => {
     const town = normalizeTakeoutTown(vendorTownFilter);
@@ -686,6 +693,7 @@ export default function TakeoutPage() {
           premium_packaging_fee: (r.premium_packaging_fee ?? 0) as any,
           premium_packaging_label: (r.premium_packaging_label ?? "Premium packaging") as any,
           photo_url: (r.photo_url ?? r.image_url ?? r.menu_photo_url ?? r.item_photo_url ?? null) as any,
+          prep_time_minutes: (r.prep_time_minutes ?? 15) as any,
           price: toNum(r.price),
           sort_order: (r.sort_order ?? 0) as any,
           is_available: (typeof r.is_available === "boolean" ? r.is_available : null),
@@ -1192,6 +1200,7 @@ export default function TakeoutPage() {
             {vendorId ? (
               <div className="mt-1 text-[11px] text-slate-500">
                 Selected: <span className="font-medium">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</span>
+                {vendorClosed ? <div className="mt-1 text-xs font-semibold text-red-700">This vendor is currently closed and cannot accept new orders.</div> : null}
               </div>
             ) : null}
           </div>
@@ -1471,6 +1480,7 @@ export default function TakeoutPage() {
                         {m.description ? (
                           <div className="mt-1 text-xs text-slate-600">{m.description}</div>
                         ) : null}
+                        <div className="text-[11px] font-medium text-slate-600">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {m.packaging_note ? (
                           <div className="mt-2 rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">
                             Packaging: {m.packaging_note}
@@ -1812,6 +1822,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 

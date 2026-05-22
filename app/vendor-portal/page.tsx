@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -41,6 +41,7 @@ type MenuItem = {
   is_available: boolean;
   sold_out_today: boolean;
   last_updated_at?: string | null;
+  prep_time_minutes?: number | string | null;
 };
 
 type TakeoutOrderItem = {
@@ -113,6 +114,10 @@ function toNum(v: any) {
 function money(v: any) {
   return "PHP " + toNum(v).toFixed(2);
 }
+function prepMinutes(value: any) {
+  const n = Number(value);
+  return PREP_TIME_OPTIONS.includes(n) ? n : 15;
+}
 
 function vendorKey(v: VendorRow) {
   return clean(v.id || v.vendor_id || v.email || "");
@@ -165,7 +170,11 @@ function orderItems(o: TakeoutOrder): TakeoutOrderItem[] {
   const text = clean(o.items_text);
   if (!text) return [];
 
-  return text
+  
+const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
+const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
+const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
+return text
     .split(/\r?\n|,|;/)
     .map((part) => clean(part))
     .filter(Boolean)
@@ -288,10 +297,14 @@ export default function VendorPortalPage() {
   const [itemPremiumPackagingFee, setItemPremiumPackagingFee] = useState("");
   const [itemPremiumPackagingLabel, setItemPremiumPackagingLabel] = useState("Premium packaging");
   const [itemPrice, setItemPrice] = useState("");
+  const [itemPrepTimeMinutes, setItemPrepTimeMinutes] = useState(15);
   const [itemAvailable, setItemAvailable] = useState(true);
   const [itemSoldOut, setItemSoldOut] = useState(false);
   const [itemFile, setItemFile] = useState<File | null>(null);
   const [itemPreview, setItemPreview] = useState("");
+  const vendorAlertAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastVendorAlertRingRef = useRef(0);
+  const [vendorAlertSoundEnabled, setVendorAlertSoundEnabled] = useState(false);
 
   const selectedVendor = useMemo(() => {
     return vendors.find((v) => vendorKey(v) === vendorId) || null;
@@ -300,6 +313,34 @@ export default function VendorPortalPage() {
   const activeOrders = useMemo(() => {
     return orders.filter((o) => ["vendor_pending", "vendor_accepted", "driver_assigned", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
+  const pendingVendorOrdersForAlert = useMemo(() => {
+    const now = Date.now();
+    return activeOrders.filter((o) => {
+      const s = normalizeVendorStatus(o.vendor_status);
+      const created = new Date(String(o.created_at || o.updated_at || "")).getTime();
+      const age = Number.isFinite(created) ? now - created : 0;
+      return s === "vendor_pending" && age <= VENDOR_ACCEPT_RING_WINDOW_MS;
+    });
+  }, [activeOrders]);
+
+  useEffect(() => {
+    if (!vendorAlertSoundEnabled) return;
+    if (pendingVendorOrdersForAlert.length === 0) return;
+    const ring = () => {
+      const audio = vendorAlertAudioRef.current;
+      if (!audio) return;
+      const now = Date.now();
+      if (now - lastVendorAlertRingRef.current < VENDOR_ACCEPT_RING_INTERVAL_MS - 1000) return;
+      lastVendorAlertRingRef.current = now;
+      try {
+        audio.currentTime = 0;
+        void audio.play();
+      } catch (_) {}
+    };
+    ring();
+    const t = window.setInterval(ring, VENDOR_ACCEPT_RING_INTERVAL_MS);
+    return () => window.clearInterval(t);
+  }, [pendingVendorOrdersForAlert.length, vendorAlertSoundEnabled]);
 
   const historyOrders = useMemo(() => {
     return orders.filter((o) => ["completed", "cancelled"].includes(normalizeVendorStatus(o.vendor_status)));
@@ -390,6 +431,7 @@ export default function VendorPortalPage() {
     setItemName("");
     setItemDescription("");
     setItemPackagingNote("");
+    setItemPrepTimeMinutes(15);
     setItemPremiumPackagingEnabled(false);
     setItemPremiumPackagingFee("");
     setItemPremiumPackagingLabel("Premium packaging");
@@ -406,6 +448,7 @@ export default function VendorPortalPage() {
     setItemName(m.name || "");
     setItemDescription(m.description || "");
     setItemPackagingNote(m.packaging_note || "");
+    setItemPrepTimeMinutes(prepMinutes(m.prep_time_minutes));
     setItemPremiumPackagingEnabled(m.premium_packaging_enabled === true);
     setItemPremiumPackagingFee(clean(m.premium_packaging_fee || ""));
     setItemPremiumPackagingLabel(clean(m.premium_packaging_label || "Premium packaging") || "Premium packaging");
@@ -462,6 +505,7 @@ export default function VendorPortalPage() {
         name: itemName,
         description: itemDescription,
         packaging_note: itemPackagingNote,
+        prep_time_minutes: itemPrepTimeMinutes,
         premium_packaging_enabled: itemPremiumPackagingEnabled,
         premium_packaging_fee: itemPremiumPackagingFee,
         premium_packaging_label: itemPremiumPackagingLabel,
@@ -625,10 +669,10 @@ export default function VendorPortalPage() {
 
               <label className="mt-4 flex items-center justify-between rounded-xl border bg-slate-50 p-3 text-sm">
                 <span>
-                  <span className="block font-medium">Accepting orders</span>
-                  <span className="block text-xs text-slate-500">Closed vendors are blocked from new orders.</span>
+                  <span className="block font-medium">Vendor order status</span>
+                  <span className="block text-xs text-slate-500">Open vendors can receive orders. Closed vendors are blocked from new orders.</span>
                 </span>
-                <input type="checkbox" checked={acceptingOrders} onChange={(e) => setAcceptingOrders(e.target.checked)} />
+                <button type="button" className={cls("rounded-full border px-3 py-1 text-xs font-semibold", acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700")} onClick={() => setAcceptingOrders(!acceptingOrders)}>{acceptingOrders ? "Open" : "Closed"}</button>
               </label>
 
               <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
@@ -673,7 +717,12 @@ export default function VendorPortalPage() {
                   <label className="text-xs font-medium text-slate-700">Description</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} disabled={limitReached} placeholder="Optional item details" />
                 </div>
-                <div className="md:col-span-6">
+                <div className="md:col-span-6">                <div>
+                  <label className="text-xs font-medium text-slate-700">Preparation time</label>
+                  <select className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemPrepTimeMinutes} onChange={(e) => setItemPrepTimeMinutes(prepMinutes(e.target.value))}>
+                    {PREP_TIME_OPTIONS.map((mins) => <option key={mins} value={mins}>{mins} minutes</option>)}
+                  </select>
+                </div>
                   <label className="text-xs font-medium text-slate-700">Packaging note</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
                   <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
@@ -724,6 +773,7 @@ export default function VendorPortalPage() {
                           <button type="button" className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
                         </div>
                         {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
+                        <div className="text-[11px] font-medium text-slate-600">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {m.packaging_note ? <div className="rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">Packaging: {m.packaging_note}</div> : null}
                         {m.premium_packaging_enabled ? (
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
@@ -752,7 +802,12 @@ export default function VendorPortalPage() {
                   <p className="text-xs text-slate-500">Large simple controls for vendor processing.</p>
                 </div>
                 <div className="text-xs text-slate-500">Active: {activeOrders.length} | History: {historyOrders.length}</div>
-              </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                  <button type="button" className="rounded-xl border px-3 py-1 hover:bg-slate-50" onClick={() => setVendorAlertSoundEnabled(true)}>Enable vendor sound</button>
+                  <span>Vendor alert sound: {vendorAlertSoundEnabled ? "on" : "off"}</span>
+                  {pendingVendorOrdersForAlert.length > 0 ? <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">Pending accept: {pendingVendorOrdersForAlert.length}</span> : null}
+                </div>
+                <audio ref={vendorAlertAudioRef} src="/audio/jride_audio.mp3" preload="auto" />              </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
                 <div>
@@ -864,4 +919,5 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 

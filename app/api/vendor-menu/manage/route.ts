@@ -30,6 +30,12 @@ function toPrice(v: any) {
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.round(n * 100) / 100;
 }
+function prepMinutes(value: any) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 15;
+  const allowed = [15, 20, 30, 45, 60];
+  return allowed.includes(n) ? n : 15;
+}
 
 function toBool(v: any, fallback: boolean) {
   if (typeof v === "boolean") return v;
@@ -66,6 +72,7 @@ function normalizeMenuRow(row: any) {
     name: cleanString(row?.name || ""),
     description: cleanString(row?.description || ""),
     packaging_note: cleanString(row?.packaging_note || ""),
+    prep_time_minutes: prepMinutes(row?.prep_time_minutes ?? body?.prep_time_minutes ?? body?.prepTimeMinutes),
     premium_packaging_enabled: toBool(row?.premium_packaging_enabled, false),
     premium_packaging_fee: toPrice(row?.premium_packaging_fee || 0),
     premium_packaging_label: cleanString(row?.premium_packaging_label || "Premium packaging") || "Premium packaging",
@@ -159,7 +166,7 @@ async function getVendor(admin: any, vendorId: string) {
 
 async function getMenu(admin: any, vendorId: string) {
   const q = await admin
-    .from("vendor_menu_today")
+    .from("vendor_menu_items")
     .select("*")
     .eq("vendor_id", vendorId)
     .order("sort_order", { ascending: true });
@@ -247,6 +254,7 @@ export async function POST(req: NextRequest) {
         name: cleanString(body?.name),
         description: cleanString(body?.description),
         packaging_note: cleanString(body?.packaging_note || body?.packagingNote),
+    prep_time_minutes: prepMinutes(row?.prep_time_minutes ?? body?.prep_time_minutes ?? body?.prepTimeMinutes),
         premium_packaging_enabled: toBool(body?.premium_packaging_enabled ?? body?.premiumPackagingEnabled, false),
         premium_packaging_fee: toPrice(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? 0),
         premium_packaging_label: cleanString(body?.premium_packaging_label || body?.premiumPackagingLabel || "Premium packaging") || "Premium packaging",
@@ -291,4 +299,5 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
   }
 }
+
 
