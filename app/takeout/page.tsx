@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -103,6 +103,8 @@ const LS_DEVICE_KEY = "JRIDE_PAX_DEVICE_KEY";
 const LS_TAKEOUT_CUSTOMER_NAME = "JRIDE_TAKEOUT_CUSTOMER_NAME";
 const LS_TAKEOUT_CUSTOMER_PHONE = "JRIDE_TAKEOUT_CUSTOMER_PHONE";
 
+const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
+
 function getOrCreateDeviceKey(): string {
   if (typeof window === "undefined") return "";
   const existing = String(window.localStorage.getItem(LS_DEVICE_KEY) || "").trim();
@@ -153,9 +155,13 @@ function vendorLabel(v: VendorRow): string {
   return String(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor").trim();
 }
 
+function normalizeTakeoutTown(value: any): string {
+  const raw = String(value || "").trim().toLowerCase();
+  return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
+}
+
 function vendorTown(v: VendorRow): string {
-  const raw = String(v.town || "").trim();
-  return raw || "Unclassified";
+  return normalizeTakeoutTown(v.town);
 }
 
 function firstString(...values: any[]): string {
@@ -454,15 +460,11 @@ export default function TakeoutPage() {
   }, [addrMode, primary, deliveryPin]);
 
   const vendorTowns = useMemo(() => {
-    const towns = new Set<string>();
-    for (const v of vendors) {
-      towns.add(vendorTown(v));
-    }
-    return Array.from(towns).sort((a, b) => a.localeCompare(b, "en"));
-  }, [vendors]);
+    return [...CANONICAL_TAKEOUT_TOWNS];
+  }, []);
 
   const visibleVendors = useMemo(() => {
-    const town = String(vendorTownFilter || "").trim();
+    const town = normalizeTakeoutTown(vendorTownFilter);
     if (!town) return [];
     return vendors.filter((v) => vendorTown(v) === town);
   }, [vendors, vendorTownFilter]);
@@ -1167,7 +1169,7 @@ export default function TakeoutPage() {
                   if (!id) return null;
                   return (
                     <option key={id} value={id}>
-                      {vendorLabel(v)}{vendorTown(v) ? " - " + vendorTown(v) : ""}
+                      {vendorLabel(v)}
                     </option>
                   );
                 })}

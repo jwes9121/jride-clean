@@ -87,6 +87,7 @@ type TakeoutOrder = {
 };
 
 const MAX_ITEMS = 15;
+const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
 
 function cls(...v: Array<string | false | null | undefined>) {
   return v.filter(Boolean).join(" ");
@@ -94,6 +95,11 @@ function cls(...v: Array<string | false | null | undefined>) {
 
 function clean(v: any) {
   return String(v ?? "").trim();
+}
+
+function normalizeTakeoutTown(value: any): string {
+  const raw = clean(value).toLowerCase();
+  return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
 function toNum(v: any) {
@@ -264,6 +270,7 @@ export default function VendorPortalPage() {
   const [error, setError] = useState("");
 
   const [profileName, setProfileName] = useState("");
+  const [profileTown, setProfileTown] = useState("");
   const [acceptingOrders, setAcceptingOrders] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
@@ -314,6 +321,7 @@ export default function VendorPortalPage() {
       const items = Array.isArray(j?.items) ? j.items : [];
       setProfile(v);
       setProfileName(clean(v?.name || (selectedVendor ? vendorLabel(selectedVendor as any) : vid)));
+      setProfileTown(normalizeTakeoutTown(v?.town || selectedVendor?.town));
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
       setPremiumPackagingEnabled(v?.premium_packaging_enabled === true);
@@ -403,6 +411,7 @@ export default function VendorPortalPage() {
         action: "profile",
         vendor_id: vid,
         name: profileName,
+        town: profileTown,
         accepting_orders: acceptingOrders,
         premium_packaging_enabled: premiumPackagingEnabled,
         premium_packaging_fee: premiumPackagingFee,
@@ -525,7 +534,7 @@ export default function VendorPortalPage() {
                 const id = vendorKey(v);
                 return (
                   <option key={id} value={id}>
-                    {vendorLabel(v)}{v.town ? " - " + v.town : ""}
+                    {vendorLabel(v)}{normalizeTakeoutTown(v.town) ? " - " + normalizeTakeoutTown(v.town) : ""}
                   </option>
                 );
               })}
@@ -563,13 +572,26 @@ export default function VendorPortalPage() {
                 </div>
                 <div className="min-w-0 text-sm">
                   <div className="font-semibold">{profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor as any) : "Vendor")}</div>
-                  <div className="text-xs text-slate-500">{profile?.town || selectedVendor?.town || "Town not set"}</div>
+                  <div className="text-xs text-slate-500">{profileTown || "Town not set"}</div>
                   <div className="mt-1 text-[11px] text-slate-500">Logo is optional, but recommended for passenger trust.</div>
                 </div>
               </div>
 
               <label className="mt-4 block text-xs font-medium text-slate-700">Vendor name</label>
               <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Vendor name" />
+
+              <label className="mt-3 block text-xs font-medium text-slate-700">Town location</label>
+              <select
+                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                value={profileTown}
+                onChange={(e) => setProfileTown(e.target.value)}
+              >
+                <option value="">Select town</option>
+                {CANONICAL_TAKEOUT_TOWNS.map((town) => (
+                  <option key={town} value={town}>{town}</option>
+                ))}
+              </select>
+              <div className="mt-1 text-[11px] text-slate-500">Used to show this vendor only in the selected passenger town.</div>
 
               <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
               <input

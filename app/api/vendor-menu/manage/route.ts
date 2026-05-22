@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 const MAX_FREE_MENU_ITEMS = 15;
 const ASSET_BUCKET = "vendor-assets";
+const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
 
 type Json = Record<string, any>;
 
@@ -23,6 +24,11 @@ function getAdmin() {
 
 function cleanString(v: any) {
   return String(v ?? "").trim();
+}
+
+function normalizeTakeoutTown(value: any): string {
+  const raw = cleanString(value).toLowerCase();
+  return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
 function toPrice(v: any) {
@@ -181,7 +187,7 @@ export async function GET(req: NextRequest) {
             id: cleanString(vendor?.id || vendorId),
             vendor_id: vendorId,
             name: pickVendorName(vendor),
-            town: cleanString(vendor?.town || vendor?.municipality || ""),
+            town: normalizeTakeoutTown(vendor?.town || vendor?.municipality || vendor?.vendor_town),
             logo_url: pickLogo(vendor) || null,
             accepting_orders: toBool(vendor?.accepting_orders ?? vendor?.is_open ?? vendor?.open, true),
             premium_packaging_enabled: toBool(vendor?.premium_packaging_enabled ?? vendor?.premiumPackagingEnabled, false),
@@ -211,10 +217,17 @@ export async function POST(req: NextRequest) {
   try {
     if (action === "profile") {
       const logoUpload = await uploadImage(admin, vendorId, "logo", body?.logo_data_url || body?.logoDataUrl);
+      const town = normalizeTakeoutTown(body?.town || body?.municipality || body?.vendor_town);
+      if (!town) {
+        return json(400, { ok: false, error: "INVALID_TOWN", message: "Select a valid vendor town: Lamut, Kiangan, Lagawe, Hingyon, or Banaue." });
+      }
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name || body?.vendor_name),
         vendor_name: cleanString(body?.name || body?.display_name || body?.vendor_name),
         name: cleanString(body?.name || body?.display_name || body?.vendor_name),
+        town,
+        municipality: town,
+        vendor_town: town,
         accepting_orders: toBool(body?.accepting_orders, true),
         premium_packaging_enabled: toBool(body?.premium_packaging_enabled ?? body?.premiumPackagingEnabled, false),
         premium_packaging_fee: toPrice(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? 0),
