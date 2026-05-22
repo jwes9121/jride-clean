@@ -153,6 +153,11 @@ function vendorLabel(v: VendorRow): string {
   return String(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor").trim();
 }
 
+function vendorTown(v: VendorRow): string {
+  const raw = String(v.town || "").trim();
+  return raw || "Unclassified";
+}
+
 function firstString(...values: any[]): string {
   for (const v of values) {
     const s = String(v ?? "").trim();
@@ -383,6 +388,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
 export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
+  const [vendorTownFilter, setVendorTownFilter] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [autofillNote, setAutofillNote] = useState("");
@@ -446,6 +452,20 @@ export default function TakeoutPage() {
       setDeliveryPin({ lat, lng });
     }
   }, [addrMode, primary, deliveryPin]);
+
+  const vendorTowns = useMemo(() => {
+    const towns = new Set<string>();
+    for (const v of vendors) {
+      towns.add(vendorTown(v));
+    }
+    return Array.from(towns).sort((a, b) => a.localeCompare(b, "en"));
+  }, [vendors]);
+
+  const visibleVendors = useMemo(() => {
+    const town = String(vendorTownFilter || "").trim();
+    if (!town) return [];
+    return vendors.filter((v) => vendorTown(v) === town);
+  }, [vendors, vendorTownFilter]);
 
   const selectedVendor = useMemo(() => {
     const id = String(vendorId || "").trim();
@@ -724,6 +744,38 @@ export default function TakeoutPage() {
       })
       .catch(() => setVendors([]));
   }, []);
+
+  useEffect(() => {
+    if (!vendorTownFilter) {
+      if (vendorId) {
+        setVendorId("");
+        setQty({});
+        setMenu([]);
+        setVendorClosed(false);
+        setMenuVendorProfile(null);
+        setMenuErr(null);
+        setPremiumPackagingSelected(false);
+        setReceiptRequested(false);
+        setSubmitted(false);
+      }
+      return;
+    }
+
+    if (!vendorId) return;
+
+    const stillAllowed = visibleVendors.some((v) => vendorKey(v) === vendorId);
+    if (!stillAllowed) {
+      setVendorId("");
+      setQty({});
+      setMenu([]);
+      setVendorClosed(false);
+      setMenuVendorProfile(null);
+      setMenuErr(null);
+      setPremiumPackagingSelected(false);
+      setReceiptRequested(false);
+      setSubmitted(false);
+    }
+  }, [vendorTownFilter, vendorId, visibleVendors]);
 
   // Auto refresh menu when vendorId changes (debounced-ish)
   useEffect(() => {
@@ -1071,34 +1123,63 @@ export default function TakeoutPage() {
 
       <div className="mt-4 rounded-lg border bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="text-xs font-medium text-slate-700">Select vendor</label>
-            <select
-              className="mt-1 w-full rounded border px-3 py-2 text-sm"
-              value={vendorId}
-              onChange={(e) => {
-                  const nextVendorId = e.target.value;
-                  setVendorId(nextVendorId);
-                  setQty({});
-                  setPremiumPackagingSelected(false);
-                  setReceiptRequested(false);
-                  setSubmitted(false);
-                  refreshMenu(nextVendorId);
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs font-medium text-slate-700">Select town first</label>
+              <select
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                value={vendorTownFilter}
+                onChange={(e) => {
+                  setVendorTownFilter(e.target.value);
                 }}
-            >
-              <option value="">Select vendor</option>
-              {vendors.map((v) => {
-                const id = vendorKey(v);
-                if (!id) return null;
-                return (
-                  <option key={id} value={id}>
-                    {vendorLabel(v)}{v.town ? " - " + v.town : ""}
+              >
+                <option value="">Select town</option>
+                {vendorTowns.map((town) => (
+                  <option key={town} value={town}>
+                    {town}
                   </option>
-                );
-              })}
-            </select>
-            <div className="mt-1 text-[11px] text-slate-500">
-              Menu loads automatically after you select a vendor.
+                ))}
+              </select>
+              <div className="mt-1 text-[11px] text-slate-500">
+                Vendors are filtered by town to avoid cross-town takeout orders.
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-700">Select vendor</label>
+              <select
+                className="mt-1 w-full rounded border px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                value={vendorId}
+                disabled={!vendorTownFilter}
+                onChange={(e) => {
+                    const nextVendorId = e.target.value;
+                    setVendorId(nextVendorId);
+                    setQty({});
+                    setPremiumPackagingSelected(false);
+                    setReceiptRequested(false);
+                    setSubmitted(false);
+                    refreshMenu(nextVendorId);
+                  }}
+              >
+                <option value="">{vendorTownFilter ? "Select vendor" : "Select town first"}</option>
+                {visibleVendors.map((v) => {
+                  const id = vendorKey(v);
+                  if (!id) return null;
+                  return (
+                    <option key={id} value={id}>
+                      {vendorLabel(v)}{vendorTown(v) ? " - " + vendorTown(v) : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              <div className="mt-1 text-[11px] text-slate-500">
+                Menu loads automatically after you select a vendor.
+              </div>
+              {vendorTownFilter && visibleVendors.length === 0 ? (
+                <div className="mt-1 text-[11px] text-amber-700">
+                  No vendors are listed for this town yet.
+                </div>
+              ) : null}
             </div>
             {vendorId ? (
               <div className="mt-1 text-[11px] text-slate-500">
@@ -1718,6 +1799,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
