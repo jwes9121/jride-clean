@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +66,9 @@ function normalizeMenuRow(row: any) {
     name: cleanString(row?.name || ""),
     description: cleanString(row?.description || ""),
     packaging_note: cleanString(row?.packaging_note || ""),
+    premium_packaging_enabled: toBool(row?.premium_packaging_enabled, false),
+    premium_packaging_fee: toPrice(row?.premium_packaging_fee || 0),
+    premium_packaging_label: cleanString(row?.premium_packaging_label || "Premium packaging") || "Premium packaging",
     price: toPrice(row?.price || 0),
     photo_url: pickItemPhoto(row) || null,
     sort_order: Number.isFinite(Number(row?.sort_order)) ? Number(row?.sort_order) : 0,
@@ -188,11 +191,8 @@ export async function GET(req: NextRequest) {
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
             accepting_orders: true,
-            premium_packaging_enabled: false,
-            premium_packaging_fee: 0,
-            premium_packaging_label: "Premium packaging",
           }
-        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true, premium_packaging_enabled: false, premium_packaging_fee: 0, premium_packaging_label: "Premium packaging" },
+        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true },
       items: menu,
       used: menu.length,
     });
@@ -247,6 +247,9 @@ export async function POST(req: NextRequest) {
         name: cleanString(body?.name),
         description: cleanString(body?.description),
         packaging_note: cleanString(body?.packaging_note || body?.packagingNote),
+        premium_packaging_enabled: toBool(body?.premium_packaging_enabled ?? body?.premiumPackagingEnabled, false),
+        premium_packaging_fee: toPrice(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? 0),
+        premium_packaging_label: cleanString(body?.premium_packaging_label || body?.premiumPackagingLabel || "Premium packaging") || "Premium packaging",
         price: toPrice(body?.price),
         sort_order: Number.isFinite(Number(body?.sort_order)) ? Number(body?.sort_order) : existing.length + 1,
         is_active: active,
@@ -288,3 +291,4 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
   }
 }
+

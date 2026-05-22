@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V4
 
@@ -274,14 +274,16 @@ export default function VendorPortalPage() {
   const [acceptingOrders, setAcceptingOrders] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
-  const [premiumPackagingEnabled, setPremiumPackagingEnabled] = useState(false);
-  const [premiumPackagingFee, setPremiumPackagingFee] = useState("");
-  const [premiumPackagingLabel, setPremiumPackagingLabel] = useState("Premium packaging");
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const itemInputRef = useRef<HTMLInputElement | null>(null);
 
   const [editingId, setEditingId] = useState("");
   const [itemName, setItemName] = useState("");
   const [itemDescription, setItemDescription] = useState("");
   const [itemPackagingNote, setItemPackagingNote] = useState("");
+  const [itemPremiumPackagingEnabled, setItemPremiumPackagingEnabled] = useState(false);
+  const [itemPremiumPackagingFee, setItemPremiumPackagingFee] = useState("");
+  const [itemPremiumPackagingLabel, setItemPremiumPackagingLabel] = useState("Premium packaging");
   const [itemPrice, setItemPrice] = useState("");
   const [itemAvailable, setItemAvailable] = useState(true);
   const [itemSoldOut, setItemSoldOut] = useState(false);
@@ -325,9 +327,6 @@ export default function VendorPortalPage() {
       setProfileTown(normalizeTakeoutTown(v?.town || vendorRowForTown?.town));
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
-      setPremiumPackagingEnabled(v?.premium_packaging_enabled === true);
-      setPremiumPackagingFee(clean(v?.premium_packaging_fee || ""));
-      setPremiumPackagingLabel(clean(v?.premium_packaging_label || "Premium packaging") || "Premium packaging");
       setMenu(items);
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor menu"));
@@ -388,11 +387,15 @@ export default function VendorPortalPage() {
     setItemName("");
     setItemDescription("");
     setItemPackagingNote("");
+    setItemPremiumPackagingEnabled(false);
+    setItemPremiumPackagingFee("");
+    setItemPremiumPackagingLabel("Premium packaging");
     setItemPrice("");
     setItemAvailable(true);
     setItemSoldOut(false);
     setItemFile(null);
     setItemPreview("");
+    if (itemInputRef.current) itemInputRef.current.value = "";
   }
 
   function editItem(m: MenuItem) {
@@ -400,6 +403,9 @@ export default function VendorPortalPage() {
     setItemName(m.name || "");
     setItemDescription(m.description || "");
     setItemPackagingNote(m.packaging_note || "");
+    setItemPremiumPackagingEnabled(m.premium_packaging_enabled === true);
+    setItemPremiumPackagingFee(clean(m.premium_packaging_fee || ""));
+    setItemPremiumPackagingLabel(clean(m.premium_packaging_label || "Premium packaging") || "Premium packaging");
     setItemPrice(String(m.price || ""));
     setItemAvailable(m.is_available !== false);
     setItemSoldOut(m.sold_out_today === true);
@@ -428,6 +434,7 @@ export default function VendorPortalPage() {
       });
       setMessage(j?.warning ? "Profile saved, but image warning: " + j.warning : "Vendor profile saved.");
       setLogoFile(null);
+      if (logoInputRef.current) logoInputRef.current.value = "";
       await loadVendorData(vid, true);
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -455,6 +462,9 @@ export default function VendorPortalPage() {
         name: itemName,
         description: itemDescription,
         packaging_note: itemPackagingNote,
+        premium_packaging_enabled: itemPremiumPackagingEnabled,
+        premium_packaging_fee: itemPremiumPackagingFee,
+        premium_packaging_label: itemPremiumPackagingLabel,
         price: itemPrice,
         is_available: itemAvailable,
         sold_out_today: itemSoldOut,
@@ -667,6 +677,7 @@ export default function VendorPortalPage() {
                 <div className="md:col-span-3">
                   <label className="text-xs font-medium text-slate-700">Photo</label>
                   <input
+                    ref={itemInputRef}
                     className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
@@ -685,7 +696,26 @@ export default function VendorPortalPage() {
                 <div className="md:col-span-6">
                   <label className="text-xs font-medium text-slate-700">Packaging note</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
-                  <div className="mt-1 text-[11px] text-slate-500">This is separate from the menu description and explains the default packaging included with the item.</div>
+                  <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
+                </div>
+                <div className="rounded-2xl border bg-white p-3 md:col-span-6">
+                  <label className="flex items-start justify-between gap-3 text-sm">
+                    <span>
+                      <span className="block font-semibold">Premium packaging available</span>
+                      <span className="block text-xs text-slate-500">Shown on the passenger menu as Premium packaging available (+PHP fee).</span>
+                    </span>
+                    <input type="checkbox" checked={itemPremiumPackagingEnabled} onChange={(e) => setItemPremiumPackagingEnabled(e.target.checked)} disabled={limitReached} />
+                  </label>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <label className="text-xs text-slate-600">
+                      Label
+                      <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={itemPremiumPackagingLabel} onChange={(e) => setItemPremiumPackagingLabel(e.target.value)} disabled={limitReached || !itemPremiumPackagingEnabled} placeholder="Premium packaging" />
+                    </label>
+                    <label className="text-xs text-slate-600">
+                      Fee
+                      <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={itemPremiumPackagingFee} onChange={(e) => setItemPremiumPackagingFee(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached || !itemPremiumPackagingEnabled} inputMode="decimal" placeholder="10.00" />
+                    </label>
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 md:col-span-6">
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemAvailable} onChange={(e) => setItemAvailable(e.target.checked)} disabled={limitReached} /> Available</label>
@@ -715,6 +745,11 @@ export default function VendorPortalPage() {
                         </div>
                         {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
                         {m.packaging_note ? <div className="rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">Packaging: {m.packaging_note}</div> : null}
+                        {m.premium_packaging_enabled ? (
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
+                            Premium packaging available (+{money(toNum(m.premium_packaging_fee))})
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2 text-xs">
                           <span className={cls("rounded-full border px-2 py-1", m.is_available ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-slate-50 text-slate-600")}>{m.is_available ? "Available" : "Unavailable"}</span>
                           {m.sold_out_today ? <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-rose-700">Sold out</span> : null}
@@ -849,3 +884,4 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+

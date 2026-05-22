@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -42,6 +42,9 @@ type MenuItem = {
   name: string;
   description?: string | null;
   packaging_note?: string | null;
+  premium_packaging_enabled?: boolean | null;
+  premium_packaging_fee?: number | string | null;
+  premium_packaging_label?: string | null;
   photo_url?: string | null;
   price: number;
   sort_order?: number | null;
@@ -679,6 +682,9 @@ export default function TakeoutPage() {
           name: String(r.name ?? ""),
           description: (r.description ?? null) as any,
           packaging_note: (r.packaging_note ?? r.packagingNote ?? r.packaging ?? null) as any,
+          premium_packaging_enabled: (r.premium_packaging_enabled === true) as any,
+          premium_packaging_fee: (r.premium_packaging_fee ?? 0) as any,
+          premium_packaging_label: (r.premium_packaging_label ?? "Premium packaging") as any,
           photo_url: (r.photo_url ?? r.image_url ?? r.menu_photo_url ?? r.item_photo_url ?? null) as any,
           price: toNum(r.price),
           sort_order: (r.sort_order ?? 0) as any,
@@ -1470,6 +1476,11 @@ export default function TakeoutPage() {
                             Packaging: {m.packaging_note}
                           </div>
                         ) : null}
+                        {m.premium_packaging_enabled ? (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
+                            Premium packaging available (+{money(toNum(m.premium_packaging_fee))})
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-sm font-semibold">{money(toNum(m.price))}</div>
                           </div>
                         </div>
@@ -1801,6 +1812,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
