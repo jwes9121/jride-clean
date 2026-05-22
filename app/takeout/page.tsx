@@ -150,6 +150,8 @@ function money(n: number) {
   const v = Number(n || 0);
   return "PHP " + v.toFixed(2);
 }
+const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
+
 function prepMinutes(value: any) {
   const n = Number(value);
   return PREP_TIME_OPTIONS.includes(n) ? n : 15;
@@ -469,8 +471,6 @@ export default function TakeoutPage() {
 
   const vendorTowns = useMemo(() => {
     return [...CANONICAL_TAKEOUT_TOWNS];
-  
-const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
 }, []);
 
   const visibleVendors = useMemo(() => {
