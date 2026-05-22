@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -114,6 +114,8 @@ function toNum(v: any) {
 function money(v: any) {
   return "PHP " + toNum(v).toFixed(2);
 }
+const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
+
 function prepMinutes(value: any) {
   const n = Number(value);
   return PREP_TIME_OPTIONS.includes(n) ? n : 15;
@@ -169,9 +171,6 @@ function orderItems(o: TakeoutOrder): TakeoutOrderItem[] {
 
   const text = clean(o.items_text);
   if (!text) return [];
-
-  
-const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
 const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
 const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
 return text
