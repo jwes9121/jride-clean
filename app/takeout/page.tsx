@@ -1617,7 +1617,7 @@ export default function TakeoutPage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="sticky bottom-0 z-20 mt-4 flex flex-wrap items-center gap-2 border-t bg-white/95 p-3 backdrop-blur">
           <button
             type="button"
             onClick={submit}
@@ -1851,6 +1851,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
