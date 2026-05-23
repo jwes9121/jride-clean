@@ -706,17 +706,22 @@ export default function TakeoutPage() {
         }))
         .filter((r: MenuItem) => r.id && r.name);
 
-      const orderableCount = mapped.filter((r) => (r.is_available !== false) && (r.sold_out_today !== true)).length;
+      const orderableCount = mapped.filter(
+        (r) => r.is_available !== false && r.sold_out_today !== true,
+      ).length;
+
       const closedByApi =
-        j?.accepting_orders === false ||`r`n        j?.vendor?.accepting_orders === false ||`r`n        j?.vendor?.acceptingOrders === false ||
+        j?.accepting_orders === false ||
+        j?.vendor?.accepting_orders === false ||
+        j?.vendor?.acceptingOrders === false ||
         j?.acceptingOrders === false ||
         j?.vendor_accepting_orders === false ||
-        j?.vendorAcceptingOrders === false ||
-        j?.vendor_open === false ||
-        j?.vendorOpen === false ||
-        j?.is_open === false ||
-        j?.isOpen === false;
-      setVendorClosed(Boolean(closedByApi || (mapped.length > 0 && orderableCount === 0)));
+        j?.vendorAcceptingOrders === false;
+
+      setVendorClosed(
+        closedByApi ||
+        orderableCount <= 0,
+      );
 
       setMenuVendorProfile(j?.vendor || j || null);
       setMenu(mapped);
