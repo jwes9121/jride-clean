@@ -837,7 +837,7 @@ export default function VendorPortalPage() {
                     <label className="text-xs font-medium text-slate-700">Daily available quantity
                       <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="number" min="0" value={itemDailyAvailableQuantity} onChange={(e) => setItemDailyAvailableQuantity(e.target.value)} disabled={limitReached} />
                     </label>
-                    <label className="text-xs font-medium text-slate-700">Remaining today (auto-calculated) (auto-calculated)
+                    <label className="text-xs font-medium text-slate-700">Remaining today (auto-calculated)
                       <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="number" min="0" value={itemRemainingQuantity} onChange={(e) => setItemRemainingQuantity(e.target.value)} disabled={limitReached} />
                     </label>
                   </div>
@@ -1013,6 +1013,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
