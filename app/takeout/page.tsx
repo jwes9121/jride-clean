@@ -679,7 +679,7 @@ export default function TakeoutPage() {
       // Fallback to the legacy takeout menu read so the page does not break on older deploys.
       let j: any;
       try {
-        j = await getJson("/api/vendor-menu?vendor_id=" + encodeURIComponent(vid));
+        j = await getJson("/api/vendor-menu/manage?vendor_id=" + encodeURIComponent(vid));
       } catch {
         j = await getJson("/api/takeout/menu?vendor_id=" + encodeURIComponent(vid));
       }
@@ -708,7 +708,7 @@ export default function TakeoutPage() {
 
       const orderableCount = mapped.filter((r) => (r.is_available !== false) && (r.sold_out_today !== true)).length;
       const closedByApi =
-        j?.accepting_orders === false ||
+        j?.accepting_orders === false ||`r`n        j?.vendor?.accepting_orders === false ||`r`n        j?.vendor?.acceptingOrders === false ||
         j?.acceptingOrders === false ||
         j?.vendor_accepting_orders === false ||
         j?.vendorAcceptingOrders === false ||

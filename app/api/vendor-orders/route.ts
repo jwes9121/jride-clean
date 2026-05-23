@@ -560,6 +560,27 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   const subtotal = computeSubtotal(items);
 
+  // JRIDE_VENDOR_CLOSED_HARD_BLOCK_V46
+  // Server-authoritative guard. UI state can be stale, but closed vendors must never create new takeout orders.
+  const vendorOpenCheck = await admin
+    .from("vendor_accounts")
+    .select("id,accepting_orders")
+    .eq("id", vendor_id)
+    .limit(1);
+
+  if (vendorOpenCheck.error) {
+    return json(500, { ok: false, error: "DB_ERROR", message: vendorOpenCheck.error.message });
+  }
+
+  const vendorOpenRow = Array.isArray(vendorOpenCheck.data) ? vendorOpenCheck.data[0] : null;
+  if (vendorOpenRow && vendorOpenRow.accepting_orders === false) {
+    return json(409, {
+      ok: false,
+      error: "VENDOR_CLOSED",
+      message: "This vendor is currently closed and cannot accept new orders.",
+    });
+  }
+
   // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
   // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
   // Ride dispatch, fare proposal, and trip lifecycle routes are not called here.

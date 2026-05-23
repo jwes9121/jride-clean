@@ -200,7 +200,7 @@ export async function GET(req: NextRequest) {
             name: pickVendorName(vendor),
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
-            accepting_orders: true,
+            accepting_orders: vendor?.accepting_orders !== false,
           }
         : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true },
       items: menu,
