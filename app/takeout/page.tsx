@@ -386,7 +386,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
           <div className="text-xs font-semibold text-slate-700">Delivery pin</div>
           <div className="text-[11px] text-slate-500">Tap the map or drag the pin to mark the exact delivery spot.</div>
         </div>
-        <button type="button" onClick={useDeviceLocation} className="rounded border px-2 py-1 text-xs hover:bg-slate-50">
+        <button type="button" onClick={useDeviceLocation} className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50">
           Use device location
         </button>
       </div>
@@ -1283,7 +1283,7 @@ export default function TakeoutPage() {
               <button
                 type="button"
                 onClick={() => refreshAddresses().catch(() => undefined)}
-                className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
                 disabled={addrBusy}
               >
                 {addrBusy ? "Refreshing..." : "Refresh saved"}
@@ -1345,7 +1345,7 @@ export default function TakeoutPage() {
                                   if (latValue != null && lngValue != null) setDeliveryPin({ lat: latValue, lng: lngValue });
                                   makePrimaryExisting(a.id).catch(() => undefined);
                                 }}
-                                className="shrink-0 rounded border px-2 py-1 text-[11px] hover:bg-black/5"
+                                className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
                               >
                                 Make primary
                               </button>
@@ -1422,7 +1422,7 @@ export default function TakeoutPage() {
                 <button
                   type="button"
                   onClick={() => setShowDeliveryPin((v) => !v)}
-                  className="rounded border px-2 py-1 text-xs hover:bg-white"
+                  className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
                 >
                   {showDeliveryPin ? "Hide map" : deliveryPin ? "Mark exact location" : "Mark exact location"}
                 </button>
@@ -1454,7 +1454,7 @@ export default function TakeoutPage() {
               <button
                 type="button"
                 onClick={() => refreshMenu().catch(() => undefined)}
-                className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
                 disabled={menuBusy || !vendorId.trim()}
               >
                 {menuBusy ? "Loading..." : "Refresh menu"}
@@ -1558,7 +1558,7 @@ export default function TakeoutPage() {
 
             <div className="sticky bottom-3 z-20 mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
               <div className="flex items-center justify-between">
-                <div className="font-medium">Estimated items subtotal</div>
+                <div className="font-medium">Estimated subtotal</div>
                 <div className="font-semibold">{money(itemsSubtotal)}</div>
               </div>
               {packagingEstimate > 0 ? (
@@ -1851,6 +1851,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
