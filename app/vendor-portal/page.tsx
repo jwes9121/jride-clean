@@ -749,7 +749,7 @@ export default function VendorPortalPage() {
 
                 <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
                 <input
-                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm"
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={(e) => {
@@ -787,7 +787,7 @@ export default function VendorPortalPage() {
                   <label className="text-xs font-medium text-slate-700">Photo</label>
                   <input
                     ref={itemInputRef}
-                    className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     disabled={limitReached}
@@ -823,11 +823,11 @@ export default function VendorPortalPage() {
                   <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                     <label className="text-xs text-slate-600">
                       Label
-                      <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={itemPremiumPackagingLabel} onChange={(e) => setItemPremiumPackagingLabel(e.target.value)} disabled={limitReached || !itemPremiumPackagingEnabled} placeholder="Premium packaging" />
+                      <input className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm" value={itemPremiumPackagingLabel} onChange={(e) => setItemPremiumPackagingLabel(e.target.value)} disabled={limitReached || !itemPremiumPackagingEnabled} placeholder="Premium packaging" />
                     </label>
                     <label className="text-xs text-slate-600">
                       Fee
-                      <input className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm" value={itemPremiumPackagingFee} onChange={(e) => setItemPremiumPackagingFee(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached || !itemPremiumPackagingEnabled} inputMode="decimal" placeholder="10.00" />
+                      <input className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm" value={itemPremiumPackagingFee} onChange={(e) => setItemPremiumPackagingFee(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached || !itemPremiumPackagingEnabled} inputMode="decimal" placeholder="10.00" />
                     </label>
                   </div>
                 </div>
@@ -844,13 +844,13 @@ export default function VendorPortalPage() {
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemSoldOut} onChange={(e) => setItemSoldOut(e.target.checked)} disabled={limitReached} /> Sold out today</label>
                   {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
                   <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">{editingId ? "Update item" : "Add item"}</button>
-                  <button type="button" onClick={resetItemForm} className="rounded-xl border bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear</button>
+                  <button type="button" onClick={resetItemForm} className="rounded-2xl border bg-white shadow-sm px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear</button>
                 </div>
               </div>
 
               <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
                 {menu.length === 0 ? (
-                  <div className="rounded-xl border bg-white p-4 text-sm text-slate-600">No menu items yet.</div>
+                  <div className="rounded-2xl border bg-white shadow-sm p-4 text-sm text-slate-600">No menu items yet.</div>
                 ) : (
                   menu.map((m) => (
                     <div key={m.id || m.menu_item_id || m.name} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -1013,6 +1013,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 

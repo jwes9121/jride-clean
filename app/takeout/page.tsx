@@ -1146,7 +1146,7 @@ export default function TakeoutPage() {
         ) : null}
       </div>
 
-      <div className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="mt-4 rounded-2xl border bg-white p-5 shadow-md">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <div>
@@ -1851,6 +1851,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
