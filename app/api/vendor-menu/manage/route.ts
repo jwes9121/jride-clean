@@ -228,6 +228,7 @@ export async function POST(req: NextRequest) {
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name),
         town: cleanString(body?.town),
+        accepting_orders: body?.accepting_orders !== false && body?.acceptingOrders !== false,
       };
       if (logoUpload.url) patch.logo_url = logoUpload.url;
       for (const k of Object.keys(patch)) {
