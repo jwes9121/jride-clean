@@ -46,90 +46,6 @@ function isExpired(value: any): boolean {
   return t <= Date.now();
 }
 
-function positiveInt(v: any): number {
-  const n = Math.floor(Number(v));
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return n;
-}
-
-async function getTakeoutInventoryItems(serviceSupabase: any, bookingId: string) {
-  const res = await serviceSupabase
-    .from("takeout_order_items")
-    .select("menu_item_id,quantity,name")
-    .eq("booking_id", bookingId);
-
-  if (res.error) throw new Error(res.error.message || "takeout_order_items query failed");
-
-  const totals = new Map<string, { qty: number; name: string }>();
-  for (const row of Array.isArray(res.data) ? res.data : []) {
-    const id = text(row?.menu_item_id);
-    if (!id) continue;
-    const qty = Math.max(1, positiveInt(row?.quantity) || 1);
-    const prev = totals.get(id) || { qty: 0, name: text(row?.name) || id };
-    prev.qty += qty;
-    totals.set(id, prev);
-  }
-  return Array.from(totals.entries()).map(([menu_item_id, v]) => ({ menu_item_id, ...v }));
-}
-
-async function assertTakeoutInventoryAvailable(serviceSupabase: any, bookingId: string) {
-  const items = await getTakeoutInventoryItems(serviceSupabase, bookingId);
-  const blocked: string[] = [];
-
-  for (const item of items) {
-    const q = await serviceSupabase
-      .from("vendor_menu_items")
-      .select("id,name,daily_available_quantity,remaining_quantity,sold_out_today")
-      .eq("id", item.menu_item_id)
-      .maybeSingle();
-
-    if (q.error) throw new Error(q.error.message || "vendor_menu_items query failed");
-    const row = q.data as any;
-    const daily = positiveInt(row?.daily_available_quantity);
-    const remaining = positiveInt(row?.remaining_quantity ?? daily);
-    const soldOut = row?.sold_out_today === true;
-
-    if (soldOut || (daily > 0 && remaining < item.qty)) {
-      blocked.push(row?.name || item.name || item.menu_item_id);
-    }
-  }
-
-  return blocked;
-}
-
-async function decrementTakeoutInventory(serviceSupabase: any, bookingId: string) {
-  const items = await getTakeoutInventoryItems(serviceSupabase, bookingId);
-  const changed: any[] = [];
-
-  for (const item of items) {
-    const q = await serviceSupabase
-      .from("vendor_menu_items")
-      .select("id,daily_available_quantity,remaining_quantity")
-      .eq("id", item.menu_item_id)
-      .maybeSingle();
-
-    if (q.error || !q.data) continue;
-    const row = q.data as any;
-    const daily = positiveInt(row?.daily_available_quantity);
-    if (daily <= 0) continue;
-
-    const remaining = positiveInt(row?.remaining_quantity ?? daily);
-    const nextRemaining = Math.max(0, remaining - item.qty);
-    const up = await serviceSupabase
-      .from("vendor_menu_items")
-      .update({
-        remaining_quantity: nextRemaining,
-        sold_out_today: nextRemaining <= 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", item.menu_item_id);
-
-    if (!up.error) changed.push({ menu_item_id: item.menu_item_id, quantity: item.qty, remaining_quantity: nextRemaining });
-  }
-
-  return changed;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const serviceSupabase = createServiceSupabase();
@@ -271,16 +187,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const blockedInventory = await assertTakeoutInventoryAvailable(serviceSupabase, order.id);
-    if (blockedInventory.length) {
-      return json(409, {
-        ok: false,
-        error: "TAKEOUT_INVENTORY_UNAVAILABLE",
-        message: "One or more selected items are sold out or no longer have enough stock.",
-        blocked_items: blockedInventory,
-      });
-    }
-
     const nowIso = new Date().toISOString();
 
     const updateRes = await serviceSupabase
@@ -309,13 +215,51 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const inventory_updates = await decrementTakeoutInventory(serviceSupabase, order.id);
+    // JRIDE_TAKEOUT_INVENTORY_DECREMENT_V43
+    // Inventory is decremented only after passenger confirms the total.
+    const orderItems = await serviceSupabase
+      .from("takeout_order_items")
+      .select("menu_item_id,quantity")
+      .eq("booking_id", order.id);
+
+    if (orderItems.error) {
+      return json(500, {
+        ok: false,
+        error: "TAKEOUT_INVENTORY_ITEMS_LOAD_FAILED",
+        message: orderItems.error.message,
+      });
+    }
+
+    for (const item of Array.isArray(orderItems.data) ? orderItems.data : []) {
+      const menuItemId = String((item as any)?.menu_item_id || "").trim();
+      const qty = Math.max(1, parseInt(String((item as any)?.quantity ?? 1), 10) || 1);
+      if (!menuItemId) continue;
+
+      const menuRow = await serviceSupabase
+        .from("vendor_menu_items")
+        .select("id,remaining_quantity")
+        .eq("id", menuItemId)
+        .single();
+
+      if (menuRow.error || !menuRow.data) continue;
+
+      const currentRemaining = Math.max(0, parseInt(String((menuRow.data as any).remaining_quantity ?? 0), 10) || 0);
+      const nextRemaining = Math.max(0, currentRemaining - qty);
+
+      await serviceSupabase
+        .from("vendor_menu_items")
+        .update({
+          remaining_quantity: nextRemaining,
+          sold_out_today: nextRemaining <= 0,
+          updated_at: nowIso,
+        })
+        .eq("id", menuItemId);
+    }
 
     return json(200, {
       ok: true,
       order: updateRes.data,
-      inventory_updates,
-      guard: "takeout_confirm_fee_v3_no_already_assigned_block_inventory_v42",
+      guard: "takeout_confirm_fee_v3_no_already_assigned_block",
     });
   } catch (err: any) {
     return json(500, {

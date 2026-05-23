@@ -43,6 +43,7 @@ function getAdmin() {
 function normStatus(value: any) {
   const s = String(value || "").trim().toLowerCase();
   if (s === "ready" || s === "prepared" || s === "ready_for_pickup") return "pickup_ready";
+  if (s === "driver_cancelled" || s === "driver_canceled" || s === "reassign") return "requested";
   if (s === "canceled") return "cancelled";
   if (s === "arrived_vendor" || s === "rider_at_vendor") return "rider_arrived_vendor";
   if (s === "arrived_customer" || s === "rider_arrived_customer") return "arrived_customer_cash";

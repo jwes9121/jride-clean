@@ -541,23 +541,24 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     return json(400, { ok: false, error: "items_required", message: "items[] required" });
   }
 
-  const subtotal = computeSubtotal(items);
-
-  // JRIDE_TAKEOUT_VENDOR_OPEN_GATE_V42
-  // Block new takeout orders when the vendor has turned ordering off.
-  const vendorGate =
+  // JRIDE_TAKEOUT_VENDOR_CLOSED_ENFORCEMENT_V43
+  // Server-authoritative check. Passenger UI is not trusted for open/closed state.
+  const vendorMetaForOrder =
     (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
     (await tryFetchRowById(admin, "vendor_accounts", "email", vendor_id)) ||
     (await tryFetchRowById(admin, "vendor_accounts", "display_name", vendor_id)) ||
+    (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
     null;
 
-  if (vendorGate && vendorGate.accepting_orders === false) {
+  if (vendorMetaForOrder && (vendorMetaForOrder as any).accepting_orders === false) {
     return json(409, {
       ok: false,
       error: "TAKEOUT_VENDOR_CLOSED",
-      message: "This vendor is currently closed and cannot accept new orders.",
+      message: "This vendor is currently closed and cannot accept new takeout orders.",
     });
   }
+
+  const subtotal = computeSubtotal(items);
 
   // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
   // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
@@ -568,7 +569,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   if (submittedMenuIds.length) {
     const menuState = await admin
-      .from("vendor_menu_today")
+      .from("vendor_menu_items")
       .select("*")
       .eq("vendor_id", vendor_id);
 
@@ -587,15 +588,15 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       const id = String(item.menu_item_id || "").trim();
       if (!id) continue;
       const row = byId.get(id);
-      const availableRaw = row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
+      const availableRaw = row?.is_active ?? row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
       const soldRaw = row?.sold_out_today ?? row?.is_sold_out_today;
-      const dailyQty = Math.max(0, Math.floor(Number(row?.daily_available_quantity ?? 0)) || 0);
-      const remainingQty = Math.max(0, Math.floor(Number(row?.remaining_quantity ?? dailyQty)) || 0);
-      const requestedQty = Math.max(1, Math.floor(Number(item.quantity ?? 1)) || 1);
       const available = typeof availableRaw === "boolean" ? availableRaw : true;
       const soldOut = typeof soldRaw === "boolean" ? soldRaw : false;
-      const stockBlocked = dailyQty > 0 && remainingQty < requestedQty;
-      if (!row || !available || soldOut || stockBlocked) blocked.push(item.name || id);
+      const remainingRaw = Number(row?.remaining_quantity);
+      const hasDailyLimit = Number.isFinite(remainingRaw) && remainingRaw > 0;
+      const requestedQty = Math.max(1, Number(item.quantity || 1) || 1);
+      const overStock = hasDailyLimit && requestedQty > remainingRaw;
+      if (!row || !available || soldOut || overStock) blocked.push(item.name || id);
     }
 
     if (blocked.length) {
