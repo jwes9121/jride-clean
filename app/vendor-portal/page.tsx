@@ -654,17 +654,25 @@ export default function VendorPortalPage() {
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
         ) : (
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-            <section className="self-start rounded-2xl border bg-white p-4 shadow-sm lg:sticky lg:top-4">
-              <div className="flex items-center justify-between gap-3">
+            <section className={cls("self-start rounded-2xl border bg-white p-4 shadow-sm lg:sticky lg:top-4", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
+              <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor profile</h2>
-                  <p className="text-xs text-slate-500">Store identity and order availability.</p>
+                  <p className="text-xs text-slate-500">Store identity and live order availability.</p>
                 </div>
-                <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700")}>{acceptingOrders ? "Open" : "Closed"}</span>
+                <span
+                  className={cls(
+                    "inline-flex min-w-24 items-center justify-center rounded-2xl border px-3 py-2 text-xs font-bold uppercase tracking-wide",
+                    acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700",
+                  )}
+                >
+                  <span className={cls("mr-2 h-2.5 w-2.5 rounded-full", acceptingOrders ? "bg-emerald-600" : "bg-rose-600")} />
+                  {acceptingOrders ? "Open" : "Closed"}
+                </span>
               </div>
 
               <div className="mt-4 flex items-center gap-3">
-                <div className="h-20 w-20 overflow-hidden rounded-2xl border bg-slate-100">
+                <div className={cls("h-20 w-20 overflow-hidden rounded-2xl border", acceptingOrders ? "bg-emerald-50" : "bg-rose-50")}>
                   {logoPreview ? <img src={logoPreview} alt="Vendor logo" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">Logo</div>}
                 </div>
                 <div className="min-w-0 text-sm">
@@ -674,54 +682,86 @@ export default function VendorPortalPage() {
                 </div>
               </div>
 
-              <label className="mt-4 block text-xs font-medium text-slate-700">Vendor name</label>
-              <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Vendor name" />
+              <div className={cls("mt-4 rounded-2xl border p-3", acceptingOrders ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Order availability</div>
+                    <div className="text-xs text-slate-600">This control saves immediately and controls passenger ordering.</div>
+                  </div>
+                  <span className={cls("rounded-full border px-2.5 py-1 text-[11px] font-semibold", acceptingOrders ? "border-emerald-300 bg-white text-emerald-800" : "border-rose-300 bg-white text-rose-700")}>
+                    {busy ? "Saving" : "Auto-saved"}
+                  </span>
+                </div>
 
-              <label className="mt-3 block text-xs font-medium text-slate-700">Town location</label>
-              <select
-                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-                value={profileTown}
-                onChange={(e) => setProfileTown(e.target.value)}
-              >
-                <option value="">Select town</option>
-                {CANONICAL_TAKEOUT_TOWNS.map((town) => (
-                  <option key={town} value={town}>{town}</option>
-                ))}
-              </select>
-              <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct passenger store location.</div>
+                <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-2xl border bg-white">
+                  <button
+                    type="button"
+                    disabled={busy || acceptingOrders}
+                    onClick={() => setVendorOpenState(true)}
+                    className={cls(
+                      "min-h-16 px-3 py-3 text-left text-sm font-bold transition disabled:cursor-not-allowed",
+                      acceptingOrders ? "bg-emerald-600 text-white" : "bg-white text-slate-700 hover:bg-emerald-50",
+                      busy && !acceptingOrders ? "opacity-60" : "",
+                    )}
+                  >
+                    <span className="block">OPEN FOR ORDERS</span>
+                    <span className={cls("block text-[11px] font-medium", acceptingOrders ? "text-emerald-50" : "text-slate-500")}>Customers can place orders.</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !acceptingOrders}
+                    onClick={() => setVendorOpenState(false)}
+                    className={cls(
+                      "min-h-16 border-l px-3 py-3 text-left text-sm font-bold transition disabled:cursor-not-allowed",
+                      !acceptingOrders ? "bg-rose-600 text-white" : "bg-white text-slate-700 hover:bg-rose-50",
+                      busy && acceptingOrders ? "opacity-60" : "",
+                    )}
+                  >
+                    <span className="block">CLOSED</span>
+                    <span className={cls("block text-[11px] font-medium", !acceptingOrders ? "text-rose-50" : "text-slate-500")}>No new orders accepted.</span>
+                  </button>
+                </div>
 
-              <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
-              <input
-                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] || null;
-                  setLogoFile(f);
-                  if (f) setLogoPreview(URL.createObjectURL(f));
-                }}
-              />
+                <div className={cls("mt-3 rounded-xl border px-3 py-2 text-xs font-medium", acceptingOrders ? "border-emerald-200 bg-white text-emerald-800" : "border-rose-200 bg-white text-rose-700")}>
+                  {busy ? "Saving vendor availability..." : acceptingOrders ? "Vendor is open. Customers can place takeout orders." : "Vendor is closed. New passenger orders are blocked until reopened."}
+                </div>
+              </div>
 
-              <label className="mt-4 flex items-center justify-between rounded-xl border bg-slate-50 p-3 text-sm">
-                <span>
-                  <span className="block font-medium">Vendor order status</span>
-                  <span className="block text-xs text-slate-500">Open vendors can receive orders. Closed vendors are blocked from new orders.</span>
-                </span>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className={cls(
-                    "rounded-full border px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60",
-                    acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700",
-                  )}
-                  onClick={() => setVendorOpenState(!acceptingOrders)}
+              <div className="mt-4 rounded-2xl border bg-slate-50 p-3">
+                <div className="text-sm font-semibold text-slate-900">General profile details</div>
+                <div className="text-xs text-slate-500">Use Save profile only for vendor name, town, and logo changes.</div>
+
+                <label className="mt-3 block text-xs font-medium text-slate-700">Vendor name</label>
+                <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Vendor name" />
+
+                <label className="mt-3 block text-xs font-medium text-slate-700">Town location</label>
+                <select
+                  className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                  value={profileTown}
+                  onChange={(e) => setProfileTown(e.target.value)}
                 >
-                  {busy ? "Saving..." : acceptingOrders ? "Open" : "Closed"}
-                </button>
-              </label>
+                  <option value="">Select town</option>
+                  {CANONICAL_TAKEOUT_TOWNS.map((town) => (
+                    <option key={town} value={town}>{town}</option>
+                  ))}
+                </select>
+                <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct passenger store location.</div>
 
-              <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
-                Save profile
+                <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
+                <input
+                  className="mt-1 w-full rounded-xl border bg-white px-3 py-2 text-sm"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setLogoFile(f);
+                    if (f) setLogoPreview(URL.createObjectURL(f));
+                  }}
+                />
+              </div>
+
+              <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
+                {busy ? "Saving..." : "Save profile details"}
               </button>
             </section>
 
