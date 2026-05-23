@@ -493,6 +493,32 @@ export default function VendorPortalPage() {
     }
   }
 
+
+  async function setVendorOpenState(nextOpen: boolean) {
+    const vid = clean(vendorId);
+    if (!vid) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const j = await postJson("/api/vendor-menu/manage", {
+        action: "profile",
+        vendor_id: vid,
+        name: profileName,
+        town: profileTown,
+        accepting_orders: nextOpen,
+      });
+      setAcceptingOrders(nextOpen);
+      setMessage(j?.warning ? "Vendor status saved, but image warning: " + j.warning : nextOpen ? "Vendor is now open for orders." : "Vendor is now closed for new orders.");
+      await loadVendorData(vid, true);
+    } catch (e: any) {
+      setError(String(e?.message || e));
+      await loadVendorData(vid, true).catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveItem() {
     const vid = clean(vendorId);
     if (!vid) return;
@@ -681,7 +707,17 @@ export default function VendorPortalPage() {
                   <span className="block font-medium">Vendor order status</span>
                   <span className="block text-xs text-slate-500">Open vendors can receive orders. Closed vendors are blocked from new orders.</span>
                 </span>
-                <button type="button" className={cls("rounded-full border px-3 py-1 text-xs font-semibold", acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700")} onClick={() => setAcceptingOrders(!acceptingOrders)}>{acceptingOrders ? "Open" : "Closed"}</button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={cls(
+                    "rounded-full border px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60",
+                    acceptingOrders ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-700",
+                  )}
+                  onClick={() => setVendorOpenState(!acceptingOrders)}
+                >
+                  {busy ? "Saving..." : acceptingOrders ? "Open" : "Closed"}
+                </button>
               </label>
 
               <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
