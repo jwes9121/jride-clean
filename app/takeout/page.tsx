@@ -1486,16 +1486,16 @@ export default function TakeoutPage() {
                     <div
                       key={m.id}
                       className={cls(
-                        "flex items-start justify-between gap-3 rounded border p-3",
+                        "flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 rounded-xl border object-cover" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 rounded-2xl border object-cover shadow-sm" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <div className="font-medium">{m.name}</div>
+                          <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1504,14 +1504,14 @@ export default function TakeoutPage() {
                           ) : null}
                         </div>
                         {m.description ? (
-                          <div className="mt-1 text-xs text-slate-600">{m.description}</div>
+                          <div className="mt-1 text-sm leading-relaxed text-slate-600">{m.description}</div>
                         ) : null}
-                        <div className="text-[11px] font-medium text-slate-600">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {Number(m.remaining_quantity) > 0 ? (
-                          <div className="text-[11px] font-medium text-slate-600">Remaining today: {Number(m.remaining_quantity)}</div>
+                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity)}</div>
                         ) : null}
                         {m.packaging_note ? (
-                          <div className="mt-2 rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">
+                          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
                             Packaging: {m.packaging_note}
                           </div>
                         ) : null}
@@ -1520,7 +1520,7 @@ export default function TakeoutPage() {
                             Premium packaging available (+{money(toNum(m.premium_packaging_fee))})
                           </div>
                         ) : null}
-                        <div className="mt-2 text-sm font-semibold">{money(toNum(m.price))}</div>
+                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
@@ -1528,14 +1528,14 @@ export default function TakeoutPage() {
                       <div className="shrink-0 flex items-center gap-2">
                         <button
                           type="button"
-                          className="h-8 w-8 rounded border text-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-8 w-14 rounded border px-2 text-center text-sm"
+                          className="h-11 w-16 rounded-xl border px-2 text-center text-base font-black"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -1543,7 +1543,7 @@ export default function TakeoutPage() {
                         />
                         <button
                           type="button"
-                          className="h-8 w-8 rounded border text-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled}
                           onClick={() => setItemQty(m.id, q + 1)}
                         >

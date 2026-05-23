@@ -848,27 +848,27 @@ export default function VendorPortalPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+              <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
                 {menu.length === 0 ? (
                   <div className="rounded-2xl border bg-white shadow-sm p-4 text-sm text-slate-600">No menu items yet.</div>
                 ) : (
                   menu.map((m) => (
                     <div key={m.id || m.menu_item_id || m.name} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                      <div className="h-36 bg-slate-100">
+                      <div className="h-44 bg-slate-100">
                         {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">No photo</div>}
                       </div>
-                      <div className="space-y-2 p-3">
+                      <div className="space-y-3 p-4">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <div className="line-clamp-2 font-semibold leading-snug">{m.name}</div>
-                            <div className="mt-1 text-base font-bold text-slate-900">{money(m.price)}</div>
+                            <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
+                            <div className="mt-2 text-xl font-black tracking-tight text-slate-900">{money(m.price)}</div>
                           </div>
                           <button type="button" className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
                         </div>
-                        {m.description ? <div className="text-xs text-slate-500">{m.description}</div> : null}
-                        <div className="text-[11px] font-medium text-slate-600">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
-                        <div className="text-[11px] font-medium text-slate-600">Stock today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
-                        {m.packaging_note ? <div className="rounded-lg border bg-slate-50 p-2 text-[11px] text-slate-600">Packaging: {m.packaging_note}</div> : null}
+                        {m.description ? <div className="text-sm leading-relaxed text-slate-600">{m.description}</div> : null}
+                        <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        <div className="text-[11px] font-semibold text-emerald-700">Stock today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
+                        {m.packaging_note ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">Packaging: {m.packaging_note}</div> : null}
                         {m.premium_packaging_enabled ? (
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
                             Premium packaging available (+{money(toNum(m.premium_packaging_fee))})
