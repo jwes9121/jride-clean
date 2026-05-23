@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1107,15 +1107,15 @@ export default function TakeoutPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-5xl p-4 pb-28 md:p-6">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-2xl font-bold">JRide Takeout</div>
           <div className="text-sm text-slate-600">
-            Choose a vendor, select menu items, set your delivery address, and confirm the delivery fee after a driver proposal.
+            Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
           </div>
         </div>
-        <a href="/takeout/orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
+        <a href="/takeout/orders" className="rounded-lg border px-3 py-3 text-sm font-medium hover:bg-slate-50">
           My takeout orders
         </a>
       </div>
@@ -1146,7 +1146,7 @@ export default function TakeoutPage() {
         ) : null}
       </div>
 
-      <div className="mt-4 rounded-lg border bg-white p-4">
+      <div className="mt-4 rounded-2xl border bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <div>
@@ -1207,9 +1207,25 @@ export default function TakeoutPage() {
               ) : null}
             </div>
             {vendorId ? (
-              <div className="mt-1 text-[11px] text-slate-500">
-                Selected: <span className="font-medium">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</span>
-                {vendorClosed ? <div className="mt-1 text-xs font-semibold text-red-700">This vendor is currently closed and cannot accept new orders.</div> : null}
+              <div className={cls(
+                "mt-3 rounded-xl border p-3 text-xs",
+                vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              )}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Selected vendor</div>
+                    <div className="mt-0.5 font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
+                  </div>
+                  <div className={cls(
+                    "rounded-full border px-2 py-1 text-[11px] font-semibold",
+                    vendorClosed ? "border-rose-300 bg-white text-rose-700" : "border-emerald-300 bg-white text-emerald-700"
+                  )}>
+                    {vendorClosed ? "Closed" : "Open"}
+                  </div>
+                </div>
+                <div className="mt-2 text-[11px]">
+                  {vendorClosed ? "This vendor is not accepting new orders right now." : "This vendor is accepting takeout orders."}
+                </div>
               </div>
             ) : null}
           </div>
@@ -1451,8 +1467,9 @@ export default function TakeoutPage() {
 
 
             {!vendorId.trim() ? (
-              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
-                Select a vendor to load today's menu.
+              <div className="mt-2 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="font-semibold text-slate-900">Select a vendor to view today's menu.</div>
+                <div className="mt-1 text-xs text-slate-500">Available items, prep time, packaging notes, and subtotal will appear here.</div>
               </div>
             ) : menuBusy ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menu...</div>
@@ -1539,7 +1556,7 @@ export default function TakeoutPage() {
               </div>
             )}
 
-            <div className="mt-3 rounded border bg-slate-50 p-3 text-sm">
+            <div className="sticky bottom-3 z-20 mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
               <div className="flex items-center justify-between">
                 <div className="font-medium">Estimated items subtotal</div>
                 <div className="font-semibold">{money(itemsSubtotal)}</div>
@@ -1606,24 +1623,24 @@ export default function TakeoutPage() {
             onClick={submit}
             disabled={!canSubmit || busy || submitted}
             className={cls(
-              "rounded px-4 py-2 text-sm font-medium text-white",
+              "rounded-lg px-4 py-3 text-sm font-semibold text-white shadow-sm",
               canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
-            {submitted ? "Order submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : "Submit takeout order"}
+            {submitted ? "Order submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : "Review order and request delivery fee"}
           </button>
 
           {vendorClosed ? (
             <span className="text-xs font-medium text-rose-700">Cannot place order: vendor is closed.</span>
           ) : null}
 
-          <a href="/takeout/orders" className="rounded border px-3 py-2 text-sm hover:bg-slate-50">
+          <a href="/takeout/orders" className="rounded-lg border px-3 py-3 text-sm font-medium hover:bg-slate-50">
             View my orders
           </a>
         </div>
 
         {result && !["completed", "cancelled"].includes(normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase()) ? (
-          <div className="mt-3 rounded border bg-slate-50 p-3 text-sm">{result}</div>
+          <div className="sticky bottom-3 z-20 mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">{result}</div>
         ) : null}
 
         {submitted ? (
@@ -1834,6 +1851,7 @@ export default function TakeoutPage() {
     </div>
   );
 }
+
 
 
 
