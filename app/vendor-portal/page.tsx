@@ -120,6 +120,15 @@ function money(v: any) {
 }
 const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
 
+const VENDOR_CANCEL_REASONS = [
+  "Item sold out",
+  "Vendor too busy",
+  "Store closing soon",
+  "Cannot prepare on time",
+  "Wrong or unavailable menu item",
+  "Other reason",
+] as const;
+
 const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
 const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
 function prepMinutes(value: any) {
@@ -327,6 +336,11 @@ export default function VendorPortalPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const [cancelTargetOrder, setCancelTargetOrder] = useState<TakeoutOrder | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelOtherReason, setCancelOtherReason] = useState("");
+  const [cancelNote, setCancelNote] = useState("");
 
   const [profileName, setProfileName] = useState("");
   const [profileTown, setProfileTown] = useState("");
@@ -675,11 +689,40 @@ export default function VendorPortalPage() {
     }
   }
 
-  async function moveOrder(order: TakeoutOrder, nextStatus: string) {
+  function openCancelOrderDialog(order: TakeoutOrder) {
+    setCancelTargetOrder(order);
+    setCancelReason("");
+    setCancelOtherReason("");
+    setCancelNote("");
+    setError("");
+    setMessage("");
+  }
+
+  function closeCancelOrderDialog() {
+    if (busy) return;
+    setCancelTargetOrder(null);
+    setCancelReason("");
+    setCancelOtherReason("");
+    setCancelNote("");
+  }
+
+  async function moveOrder(
+    order: TakeoutOrder,
+    nextStatus: string,
+    options?: { cancelReason?: string; cancelNote?: string }
+  ) {
     const vid = clean(vendorId);
     const oid = clean(order.id);
     if (!vid || !oid) return;
-    if (nextStatus === "cancelled" && !window.confirm("Cancel this takeout order?")) return;
+
+    const finalCancelReason = clean(options?.cancelReason);
+    const finalCancelNote = clean(options?.cancelNote);
+
+    if (nextStatus === "cancelled" && !finalCancelReason) {
+      setError("Cancellation reason is required before cancelling an order.");
+      return;
+    }
+
     setBusy(true);
     setError("");
     setMessage("");
@@ -688,14 +731,48 @@ export default function VendorPortalPage() {
         vendor_id: vid,
         order_id: oid,
         vendor_status: nextStatus,
+        cancel_reason: finalCancelReason || null,
+        cancellation_reason: finalCancelReason || null,
+        vendor_cancel_reason: finalCancelReason || null,
+        cancel_note: finalCancelNote || null,
+        cancellation_note: finalCancelNote || null,
+        vendor_cancel_note: finalCancelNote || null,
+        cancelled_by: nextStatus === "cancelled" ? "vendor" : null,
       });
-      setMessage("Order updated to " + statusLabel(nextStatus) + ".");
+      setMessage(
+        nextStatus === "cancelled"
+          ? "Order cancelled. Reason saved: " + finalCancelReason
+          : "Order updated to " + statusLabel(nextStatus) + "."
+      );
+      if (nextStatus === "cancelled") closeCancelOrderDialog();
       await loadOrders(vid, true);
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirmCancelOrder() {
+    if (!cancelTargetOrder) return;
+    const selected = clean(cancelReason);
+    const other = clean(cancelOtherReason);
+    const finalReason = selected === "Other reason" ? other : selected;
+
+    if (!selected) {
+      setError("Select a cancellation reason before proceeding.");
+      return;
+    }
+
+    if (selected === "Other reason" && !other) {
+      setError("Type the cancellation reason before proceeding.");
+      return;
+    }
+
+    await moveOrder(cancelTargetOrder, "cancelled", {
+      cancelReason: finalReason,
+      cancelNote,
+    });
   }
 
   return (
@@ -742,6 +819,109 @@ export default function VendorPortalPage() {
 
         {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
         {message ? <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div> : null}
+
+        {cancelTargetOrder ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-lg rounded-2xl border bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Cancel takeout order</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Cancelling this order will notify the passenger and JRide admin. A reason is required.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCancelOrderDialog}
+                  disabled={busy}
+                  className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-xs text-slate-700">
+                <div className="font-semibold text-slate-900">Order</div>
+                <div className="mt-1">
+                  {clean(cancelTargetOrder.booking_code) || clean(cancelTargetOrder.id) || "Selected order"}
+                </div>
+                <div className="mt-1">{orderCustomerName(cancelTargetOrder)}</div>
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Reason for cancellation
+                </label>
+                <select
+                  value={cancelReason}
+                  onChange={(e) => {
+                    setCancelReason(e.target.value);
+                    if (e.target.value !== "Other reason") setCancelOtherReason("");
+                  }}
+                  className="mt-1 w-full rounded-xl border px-3 py-3 text-sm"
+                  disabled={busy}
+                >
+                  <option value="">Select reason</option>
+                  {VENDOR_CANCEL_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>{reason}</option>
+                  ))}
+                </select>
+              </div>
+
+              {cancelReason === "Other reason" ? (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Type the reason
+                  </label>
+                  <input
+                    value={cancelOtherReason}
+                    onChange={(e) => setCancelOtherReason(e.target.value)}
+                    className="mt-1 w-full rounded-xl border px-3 py-3 text-sm"
+                    placeholder="Enter the cancellation reason"
+                    disabled={busy}
+                  />
+                </div>
+              ) : null}
+
+              <div className="mt-3">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Note to passenger/admin (optional)
+                </label>
+                <textarea
+                  value={cancelNote}
+                  onChange={(e) => setCancelNote(e.target.value)}
+                  className="mt-1 w-full rounded-xl border px-3 py-3 text-sm"
+                  rows={3}
+                  placeholder="Add details if needed"
+                  disabled={busy}
+                />
+              </div>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeCancelOrderDialog}
+                  disabled={busy}
+                  className="rounded-xl border px-4 py-3 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Keep order
+                </button>
+                <button
+                  type="button"
+                  onClick={() => confirmCancelOrder().catch((e) => setError(String(e?.message || e)))}
+                  disabled={
+                    busy ||
+                    !cancelReason ||
+                    (cancelReason === "Other reason" && !clean(cancelOtherReason))
+                  }
+                  className="rounded-xl bg-rose-700 px-4 py-3 text-sm font-bold text-white hover:bg-rose-800 disabled:bg-slate-400"
+                >
+                  {busy ? "Cancelling..." : "Confirm cancellation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {!vendorId ? (
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
@@ -1162,7 +1342,7 @@ export default function VendorPortalPage() {
                             {s === "driver_assigned" ? (
                               <>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Pickup ready</button>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                                <button type="button" disabled={busy} onClick={() => openCancelOrderDialog(o)} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
                               </>
                             ) : null}
                             {s === "pickup_ready" ? (
