@@ -118,6 +118,15 @@ function toNum(v: any) {
 function money(v: any) {
   return "PHP " + toNum(v).toFixed(2);
 }
+
+function positiveInt(v: any) {
+  const n = Math.floor(toNum(v));
+  return n > 0 ? n : 0;
+}
+
+function hasPositiveJrideStock(daily: any, remaining: any) {
+  return positiveInt(daily) > 0 && positiveInt(remaining) > 0;
+}
 const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
 
 const VENDOR_CANCEL_REASONS = [
@@ -638,6 +647,10 @@ export default function VendorPortalPage() {
     setMessage("");
     try {
       const photoDataUrl = await fileToDataUrl(itemFile);
+      const stockIsPositive = hasPositiveJrideStock(itemDailyAvailableQuantity, itemRemainingQuantity);
+      const nextAvailable = stockIsPositive ? true : itemAvailable;
+      const nextSoldOut = stockIsPositive ? false : itemSoldOut;
+
       const j = await postJson("/api/vendor-menu/manage", {
         action: "save_item",
         vendor_id: vid,
@@ -650,8 +663,8 @@ export default function VendorPortalPage() {
         premium_packaging_fee: itemPremiumPackagingFee,
         premium_packaging_label: itemPremiumPackagingLabel,
         price: itemPrice,
-        is_available: itemAvailable,
-        sold_out_today: itemSoldOut,
+        is_available: nextAvailable,
+        sold_out_today: nextSoldOut,
         daily_available_quantity: itemDailyAvailableQuantity,
         remaining_quantity: itemRemainingQuantity,
         photo_data_url: photoDataUrl,
@@ -669,8 +682,19 @@ export default function VendorPortalPage() {
   async function toggleItem(m: MenuItem, next: Partial<MenuItem>) {
     const vid = clean(vendorId);
     if (!vid) return;
-    const actionText = next.sold_out_today === true ? "mark this item as sold out" : next.is_available === false ? "make this item unavailable" : "update this item";
-    if ((next.sold_out_today === true || next.is_available === false) && !window.confirm("Confirm: " + actionText + "?")) return;
+
+    const nextAvailable = next.is_available ?? m.is_available;
+    const nextSoldOut = next.sold_out_today ?? m.sold_out_today;
+
+    const actionText =
+      nextSoldOut === true
+        ? "mark this item as sold out"
+        : nextAvailable === false
+          ? "make this item unavailable"
+          : "make this item available";
+
+    if ((nextSoldOut === true || nextAvailable === false) && !window.confirm("Confirm: " + actionText + "?")) return;
+
     setBusy(true);
     setError("");
     try {
@@ -678,8 +702,8 @@ export default function VendorPortalPage() {
         action: "toggle_item",
         vendor_id: vid,
         id: m.id || m.menu_item_id,
-        is_available: next.is_available ?? m.is_available,
-        sold_out_today: next.sold_out_today ?? m.sold_out_today,
+        is_available: nextAvailable,
+        sold_out_today: nextSoldOut,
       });
       await loadVendorData(vid, true);
     } catch (e: any) {
@@ -687,6 +711,18 @@ export default function VendorPortalPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function makeItemOrderable(m: MenuItem) {
+    await toggleItem(m, { is_available: true, sold_out_today: false });
+  }
+
+  async function markItemUnavailable(m: MenuItem) {
+    await toggleItem(m, { is_available: false, sold_out_today: m.sold_out_today });
+  }
+
+  async function markItemSoldOut(m: MenuItem) {
+    await toggleItem(m, { is_available: false, sold_out_today: true });
   }
 
   function openCancelOrderDialog(order: TakeoutOrder) {
@@ -1107,7 +1143,7 @@ export default function VendorPortalPage() {
                 <div className="flex flex-wrap items-center gap-4 md:col-span-6">
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemAvailable} onChange={(e) => setItemAvailable(e.target.checked)} disabled={limitReached} /> Available</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <label className="text-xs font-medium text-slate-700">Daily available quantity
+                    <label className="text-xs font-medium text-slate-700">Available for JRide orders
                       <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="number" min="0" value={itemDailyAvailableQuantity} onChange={(e) => setItemDailyAvailableQuantity(e.target.value)} disabled={limitReached} />
                     </label>
                     <label className="text-xs font-medium text-slate-700">Remaining today (auto-calculated)
@@ -1115,6 +1151,9 @@ export default function VendorPortalPage() {
                     </label>
                   </div>
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemSoldOut} onChange={(e) => setItemSoldOut(e.target.checked)} disabled={limitReached} /> Sold out today</label>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-[11px] text-blue-800 md:col-span-2">
+                    Set how many items are available for JRide customers. Keep a buffer for walk-in and in-store customers. Update availability throughout the day as items are sold or restocked.
+                  </div>
                   {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
                   <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">{editingId ? "Update item" : "Add item"}</button>
                   <button type="button" onClick={resetItemForm} className="rounded-2xl border bg-white shadow-sm px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear</button>
@@ -1151,9 +1190,46 @@ export default function VendorPortalPage() {
                           <span className={cls("rounded-full border px-2 py-1", m.is_available ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-slate-50 text-slate-600")}>{m.is_available ? "Available" : "Unavailable"}</span>
                           {m.sold_out_today ? <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-rose-700">Sold out</span> : null}
                         </div>
+                        {m.sold_out_today || !m.is_available ? (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
+                            This item is blocked from passenger ordering until it is made available and sold-out status is cleared.
+                          </div>
+                        ) : null}
                         <div className="grid grid-cols-2 gap-2">
-                          <button type="button" className="rounded-lg border bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50" onClick={() => toggleItem(m, { is_available: !m.is_available })}>{m.is_available ? "Make unavailable" : "Make available"}</button>
-                          <button type="button" className={cls("rounded-lg border px-2 py-2 text-xs font-medium", m.sold_out_today ? "bg-white text-slate-700 hover:bg-slate-50" : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100")} onClick={() => toggleItem(m, { sold_out_today: !m.sold_out_today })}>{m.sold_out_today ? "Clear sold out" : "Mark sold out"}</button>
+                          {m.is_available && !m.sold_out_today ? (
+                            <button
+                              type="button"
+                              className="rounded-lg border bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={() => markItemUnavailable(m)}
+                            >
+                              Make unavailable
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                              onClick={() => makeItemOrderable(m)}
+                            >
+                              Make available
+                            </button>
+                          )}
+                          {m.sold_out_today ? (
+                            <button
+                              type="button"
+                              className="rounded-lg border bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              onClick={() => makeItemOrderable(m)}
+                            >
+                              Clear sold out
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                              onClick={() => markItemSoldOut(m)}
+                            >
+                              Mark sold out
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
