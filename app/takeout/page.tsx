@@ -199,6 +199,13 @@ function writeLocal(key: string, value: string) {
   if (cleanValue) window.localStorage.setItem(key, cleanValue);
 }
 
+function logoutPassengerProfile() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(LS_TAKEOUT_CUSTOMER_NAME);
+  window.localStorage.removeItem(LS_TAKEOUT_CUSTOMER_PHONE);
+  window.location.href = "/api/auth/signout?callbackUrl=/takeout";
+}
+
 async function fetchOptionalJson(url: string): Promise<any> {
   try {
     const res = await fetch(url, {
@@ -386,7 +393,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
           <div className="text-xs font-semibold text-slate-700">Delivery pin</div>
           <div className="text-[11px] text-slate-500">Tap the map or drag the pin to mark the exact delivery spot.</div>
         </div>
-        <button type="button" onClick={useDeviceLocation} className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50">
+        <button type="button" onClick={useDeviceLocation} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold shadow-sm hover:bg-slate-50">
           Use device location
         </button>
       </div>
@@ -1140,8 +1147,19 @@ export default function TakeoutPage() {
           </div>
         ) : authState === "signed_in_profile" ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-            <div className="font-semibold">Signed in passenger profile loaded</div>
-            <div className="text-xs">Name and phone were loaded from your passenger profile. You can still edit before submitting.</div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold">Signed in passenger profile loaded</div>
+                <div className="text-xs">Name and phone were loaded from your passenger profile. You can still edit before submitting.</div>
+              </div>
+              <button
+                type="button"
+                onClick={logoutPassengerProfile}
+                className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         ) : null}
       </div>
@@ -1279,7 +1297,7 @@ export default function TakeoutPage() {
           {/* PHASE2B0_ADDRESS_PICKER_DB */}
           <div className="md:col-span-2">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-xs font-medium text-slate-700">Delivery address (required)</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Delivery details</label>
               <button
                 type="button"
                 onClick={() => refreshAddresses().catch(() => undefined)}
@@ -1413,18 +1431,18 @@ export default function TakeoutPage() {
               </div>
             ) : null}
 
-            <div className="mt-3 rounded border bg-slate-50 p-3">
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-xs font-semibold text-slate-700">Exact delivery spot</div>
-                  <div className="text-[11px] text-slate-500">Use this when the written address is not enough for the driver.</div>
+                  <div className="text-sm font-semibold text-slate-900">Delivery location options</div>
+                  <div className="text-[11px] text-slate-500">Optional: add an exact pin only when the written address is not enough.</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowDeliveryPin((v) => !v)}
                   className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
                 >
-                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Mark exact location" : "Mark exact location"}
+                  {showDeliveryPin ? "Hide location options" : deliveryPin ? "Change exact location" : "Add exact location"}
                 </button>
               </div>
               {deliveryPin ? (
@@ -1486,7 +1504,7 @@ export default function TakeoutPage() {
                     <div
                       key={m.id}
                       className={cls(
-                        "flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md",
+                        "flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -1617,13 +1635,13 @@ export default function TakeoutPage() {
           </div>
         </div>
 
-        <div className="sticky bottom-0 z-20 mt-4 flex flex-wrap items-center gap-2 border-t bg-white/95 p-3 backdrop-blur">
+        <div className="sticky bottom-0 z-30 mt-4 flex flex-wrap items-center gap-3 border-t bg-white/95 p-4 shadow-[0_-6px_18px_rgba(15,23,42,0.10)] backdrop-blur">
           <button
             type="button"
             onClick={submit}
             disabled={!canSubmit || busy || submitted}
             className={cls(
-              "rounded-lg px-4 py-3 text-sm font-semibold text-white shadow-sm",
+              "rounded-xl px-5 py-4 text-sm font-bold text-white shadow-md",
               canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
