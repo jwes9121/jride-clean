@@ -320,9 +320,41 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
     mapRef.current = map;
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
+    const createYouAreHereMarker = () => {
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.flexDirection = "column";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "4px";
+
+      const dot = document.createElement("div");
+      dot.style.width = "18px";
+      dot.style.height = "18px";
+      dot.style.borderRadius = "9999px";
+      dot.style.background = "#2563eb";
+      dot.style.border = "3px solid #ffffff";
+      dot.style.boxShadow = "0 0 0 4px rgba(37, 99, 235, 0.25)";
+
+      const label = document.createElement("div");
+      label.textContent = "You are here";
+      label.style.whiteSpace = "nowrap";
+      label.style.borderRadius = "9999px";
+      label.style.background = "#ffffff";
+      label.style.border = "1px solid #cbd5e1";
+      label.style.padding = "3px 8px";
+      label.style.fontSize = "11px";
+      label.style.fontWeight = "700";
+      label.style.color = "#1e293b";
+      label.style.boxShadow = "0 4px 10px rgba(15, 23, 42, 0.12)";
+
+      wrap.appendChild(label);
+      wrap.appendChild(dot);
+      return wrap;
+    };
+
     const placeMarker = (lng: number, lat: number) => {
       if (!markerRef.current) {
-        const marker = new mapboxgl.Marker({ draggable: true })
+        const marker = new mapboxgl.Marker({ element: createYouAreHereMarker(), draggable: true })
           .setLngLat([lng, lat])
           .addTo(map);
         marker.on("dragend", () => {
@@ -391,7 +423,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-xs font-semibold text-slate-700">Delivery pin</div>
-          <div className="text-[11px] text-slate-500">Tap the map or drag the pin to mark the exact delivery spot.</div>
+          <div className="text-[11px] text-slate-500">Tap the map or drag the "You are here" pin to mark the exact delivery spot.</div>
         </div>
         <button type="button" onClick={useDeviceLocation} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold shadow-sm hover:bg-slate-50">
           Use device location
@@ -401,7 +433,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
       <div ref={containerRef} className="mt-2 h-64 w-full overflow-hidden rounded border bg-slate-100" />
       {value ? (
         <div className="mt-2 text-[11px] text-slate-600">
-          Pin set: <span className="font-semibold">{value.lat.toFixed(6)}, {value.lng.toFixed(6)}</span>
+          You are here: <span className="font-semibold">{value.lat.toFixed(6)}, {value.lng.toFixed(6)}</span>
         </div>
       ) : (
         <div className="mt-2 text-[11px] text-slate-500">No pin selected yet. Text address will still be used.</div>
@@ -523,6 +555,7 @@ export default function TakeoutPage() {
   const premiumPackagingFee = premiumPackagingEnabled ? toNum(menuVendorProfile?.premium_packaging_fee ?? selectedVendor?.premium_packaging_fee) : 0;
   const premiumPackagingLabel = String(menuVendorProfile?.premium_packaging_label || selectedVendor?.premium_packaging_label || "Premium packaging").trim() || "Premium packaging";
   const packagingEstimate = premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingFee : 0;
+  const cashCollectionRequired = itemsSubtotal + packagingEstimate >= 500;
 
   // Human readable for vendor UI, and JSON snapshot for future lock
   const itemsText = useMemo(() => {
@@ -1054,17 +1087,21 @@ export default function TakeoutPage() {
         premium_packaging_selected: premiumPackagingSelected && premiumPackagingEnabled,
         premium_packaging_fee: packagingEstimate,
         premium_packaging_label: premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingLabel : null,
+        cash_collection_required: cashCollectionRequired,
+        takeout_cash_collection_required: cashCollectionRequired,
         receipt_requested: receiptRequested,
         request_vendor_receipt: receiptRequested,
         order_preferences: {
           premium_packaging_selected: premiumPackagingSelected && premiumPackagingEnabled,
           premium_packaging_fee: packagingEstimate,
           premium_packaging_label: premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingLabel : null,
+          cash_collection_required: cashCollectionRequired,
           receipt_requested: receiptRequested,
         },
 
         note: [
           note.trim(),
+          cashCollectionRequired ? "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase." : "",
           premiumPackagingSelected && premiumPackagingEnabled ? "Premium packaging requested: " + premiumPackagingLabel + " (" + money(packagingEstimate) + ")" : "",
           receiptRequested ? "Vendor receipt requested." : "",
         ].filter(Boolean).join("\n"),
@@ -1590,6 +1627,15 @@ export default function TakeoutPage() {
               </div>
             </div>
 
+            {cashCollectionRequired ? (
+              <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm">
+                <div className="font-bold">Cash collection required.</div>
+                <div className="mt-1">
+                  Because this order exceeds PHP 500, your driver will collect the cash payment from you before proceeding to the vendor purchase.
+                </div>
+              </div>
+            ) : null}
+
             {premiumPackagingEnabled || selectedLines.length > 0 ? (
               <div className="mt-3 rounded border bg-white p-3 text-sm">
                 <div className="font-medium">Packaging and receipt options</div>
@@ -1785,7 +1831,7 @@ export default function TakeoutPage() {
                     </div>
                     {order?.takeout_cash_collection_required === true ? (
                       <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                        Cash collection required before vendor pickup.
+                        Driver will collect the cash payment from you before proceeding to the vendor purchase.
                       </div>
                     ) : null}
                     {status === "driver_fee_proposed" && !isOrderCompleted && !isOrderCancelled ? (
@@ -1811,7 +1857,9 @@ export default function TakeoutPage() {
 
                   {status === "customer_confirmed" && !hasMovedPastCustomerConfirmation ? (
                     <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                      Order confirmed. The driver is now assigned and the vendor workflow can proceed.
+                      {order?.takeout_cash_collection_required === true
+                        ? "Order confirmed. The driver is on the way to collect the cash payment before proceeding to the vendor."
+                        : "Order confirmed. The driver is now assigned and the vendor workflow can proceed."}
                     </div>
                   ) : null}
 
