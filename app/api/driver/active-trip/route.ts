@@ -610,6 +610,7 @@ export async function GET(req: NextRequest) {
       booking_code: booking.booking_code,
       code: booking.booking_code,
       status: normalizedStatus,
+      lifecycle_locked: normalizedStatus === "cancelled" || normalizedStatus === "completed",
       service_type: isTakeoutBooking ? "takeout" : s((booking as any).service_type),
       serviceType: isTakeoutBooking ? "takeout" : s((booking as any).serviceType),
       takeout_status: takeoutDriverStatus,
