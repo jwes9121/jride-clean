@@ -867,7 +867,7 @@ export default function VendorPortalPage() {
                         </div>
                         {m.description ? <div className="text-sm leading-relaxed text-slate-600">{m.description}</div> : null}
                         <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
-                        <div className="text-[11px] font-semibold text-emerald-700">Stock today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
+                        <div className="text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
                         {m.packaging_note ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">Packaging: {m.packaging_note}</div> : null}
                         {m.premium_packaging_enabled ? (
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
