@@ -42,6 +42,8 @@ function jrideTakeoutDriverStatus(row: any): string | null {
 
   // JRIDE_TAKEOUT_STATUS_ALIAS_V1
   // Normalize backend takeout aliases to the Android takeout state machine.
+  if (raw === "arrived_customer_cash") return "driver_assigned";
+  if (raw === "cash_collected" || raw === "customer_cash_collected") return "cash_collected";
   if (raw === "rider_arrived_vendor" || raw === "arrived_at_vendor" || raw === "at_vendor") return "arrived_vendor";
   if (raw === "order_picked_up" || raw === "pickedup" || raw === "picked-up") return "picked_up";
   if (raw === "out_for_delivery" || raw === "in_delivery") return "delivering";
@@ -418,7 +420,7 @@ export async function GET(req: NextRequest) {
       // Ride lifecycle statuses remain unchanged. This only lets Android see
       // assigned takeout rows where bookings.status is still "requested" but
       // vendor_status/customer_status already shows driver assignment.
-      .or("status.in.(assigned,accepted,fare_proposed,ready,on_the_way,arrived,on_trip),and(service_type.eq.takeout,vendor_status.in.(driver_assigned,preparing,pickup_ready,rider_arrived_vendor,picked_up,delivering)),and(service_type.eq.takeout,customer_status.in.(driver_assigned,preparing,pickup_ready,rider_arrived_vendor,picked_up,delivering))")
+      .or("status.in.(assigned,accepted,fare_proposed,ready,on_the_way,arrived,on_trip),and(service_type.eq.takeout,vendor_status.in.(driver_assigned,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering)),and(service_type.eq.takeout,customer_status.in.(driver_assigned,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering))")
       .order("updated_at", { ascending: false })
       .limit(10);
 
@@ -452,6 +454,14 @@ export async function GET(req: NextRequest) {
         passengerPhone = s((passengerProfileRes.data as any).phone);
       }
     }
+
+    passengerPhone =
+      passengerPhone ??
+      s((booking as any).passenger_phone) ??
+      s((booking as any).customer_phone) ??
+      s((booking as any).phone) ??
+      s((booking as any).contact_phone) ??
+      s((booking as any).rider_phone);
 
     let driverName: string | null = null;
     let driverPhone: string | null = null;
@@ -507,6 +517,29 @@ export async function GET(req: NextRequest) {
     const pickupLng = isTakeoutBooking && hasVendorCoords ? takeoutReceipt.vendorLng : rawPickupLng;
     const dropoffLat = rawDropoffLat;
     const dropoffLng = rawDropoffLng;
+
+    const takeoutRoutePlan = s((booking as any).takeout_route_plan) ?? s((booking as any).route_plan);
+    const cashCollectionRequired =
+      (booking as any).takeout_cash_collection_required === true ||
+      (booking as any).cash_collection_required === true ||
+      takeoutRoutePlan === "customer_cash_first";
+    const cashCollectionConfirmed =
+      takeoutDriverStatus === "cash_collected" ||
+      Boolean((booking as any).takeout_cash_collected_at) ||
+      Boolean((booking as any).cash_collected_at) ||
+      (booking as any).takeout_cash_collection_confirmed === true ||
+      (booking as any).cash_collection_confirmed === true;
+    const cashCollectionAddress =
+      s((booking as any).delivery_pin_label) ??
+      s((booking as any).to_label) ??
+      s((booking as any).dropoff_label) ??
+      "Passenger delivery location";
+    const cashCollectionLat =
+      n((booking as any).delivery_pin_lat) ??
+      n((booking as any).dropoff_lat);
+    const cashCollectionLng =
+      n((booking as any).delivery_pin_lng) ??
+      n((booking as any).dropoff_lng);
 
     let driverToPickupKm = n((booking as any).driver_to_pickup_km);
     if (isTakeoutBooking) {
@@ -593,6 +626,19 @@ export async function GET(req: NextRequest) {
       driver_delivery_fee: takeoutDeliveryFeeForDriver,
       delivery_fee: takeoutDeliveryFeeForDriver,
       takeout_total_payable: takeoutTotalPayableForDriver,
+      cash_collection_required: cashCollectionRequired,
+      takeout_cash_collection_required: cashCollectionRequired,
+      cash_collection_confirmed: cashCollectionConfirmed,
+      takeout_cash_collection_confirmed: cashCollectionConfirmed,
+      route_plan: takeoutRoutePlan,
+      takeout_route_plan: takeoutRoutePlan,
+      cash_collection_address: cashCollectionAddress,
+      cash_collection_label: cashCollectionAddress,
+      cash_collection_lat: cashCollectionLat,
+      cash_collection_lng: cashCollectionLng,
+      customer_cash_collection_address: cashCollectionAddress,
+      customer_cash_collection_lat: cashCollectionLat,
+      customer_cash_collection_lng: cashCollectionLng,
       vendor_id: s((booking as any).vendor_id),
       vendor_name: takeoutReceipt.vendorName ?? s((booking as any).vendor_name),
       restaurant_name: takeoutReceipt.vendorName ?? s((booking as any).restaurant_name),
@@ -617,6 +663,8 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       dropoff_lng: dropoffLng,
       passenger_name: s((booking as any).passenger_name),
       passenger_phone: passengerPhone,
+      customer_phone: passengerPhone,
+      phone: passengerPhone,
       passenger_count: n((booking as any).passenger_count),
       driver_id: s((booking as any).driver_id) ?? driverId,
       assigned_driver_id: s((booking as any).assigned_driver_id) ?? driverId,
