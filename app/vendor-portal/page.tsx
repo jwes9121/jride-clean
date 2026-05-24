@@ -92,6 +92,8 @@ type TakeoutOrder = {
   updated_at: string | null;
 };
 
+type VendorAnalyticsRange = "today" | "week" | "month" | "all";
+
 const MAX_ITEMS = 15;
 const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
 
@@ -242,6 +244,50 @@ function orderDeliveryAddress(o: TakeoutOrder) {
   return "No saved/default address shown";
 }
 
+function orderCreatedMs(o: TakeoutOrder) {
+  const raw = clean(o.created_at) || clean(o.updated_at);
+  const t = new Date(raw).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function startOfTodayMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function startOfWeekMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  return d.getTime();
+}
+
+function startOfMonthMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(1);
+  return d.getTime();
+}
+
+function inAnalyticsRange(o: TakeoutOrder, range: VendorAnalyticsRange) {
+  if (range === "all") return true;
+  const t = orderCreatedMs(o);
+  if (!t) return false;
+  if (range === "today") return t >= startOfTodayMs();
+  if (range === "week") return t >= startOfWeekMs();
+  if (range === "month") return t >= startOfMonthMs();
+  return true;
+}
+
+function premiumPackagingAmount(o: TakeoutOrder) {
+  const selected = orderPremiumPackagingSelected(o);
+  if (!selected) return 0;
+  return toNum(o.premium_packaging_fee || o.order_preferences?.premium_packaging_fee || 0);
+}
+
 async function getJson(url: string) {
   const r = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
   const j = await r.json().catch(() => ({}));
@@ -308,6 +354,7 @@ export default function VendorPortalPage() {
   const vendorAlertAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastVendorAlertRingRef = useRef(0);
   const [vendorAlertSoundEnabled, setVendorAlertSoundEnabled] = useState(false);
+  const [analyticsRange, setAnalyticsRange] = useState<VendorAnalyticsRange>("today");
 
   const selectedVendor = useMemo(() => {
     return vendors.find((v) => vendorKey(v) === vendorId) || null;
@@ -348,6 +395,52 @@ export default function VendorPortalPage() {
   const historyOrders = useMemo(() => {
     return orders.filter((o) => ["completed", "cancelled"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
+
+  const analyticsOrders = useMemo(() => {
+    return orders.filter((o) => inAnalyticsRange(o, analyticsRange));
+  }, [orders, analyticsRange]);
+
+  const vendorAnalytics = useMemo(() => {
+    const completed = analyticsOrders.filter((o) => normalizeVendorStatus(o.vendor_status) === "completed");
+    const cancelled = analyticsOrders.filter((o) => normalizeVendorStatus(o.vendor_status) === "cancelled");
+    const active = analyticsOrders.filter((o) => !["completed", "cancelled"].includes(normalizeVendorStatus(o.vendor_status)));
+
+    const grossFoodSales = completed.reduce((sum, o) => sum + toNum(orderSubtotal(o)), 0);
+    const packagingSales = completed.reduce((sum, o) => sum + premiumPackagingAmount(o), 0);
+    const completedSales = grossFoodSales + packagingSales;
+    const estimatedCommission = completedSales * 0.1;
+    const averageOrderValue = completed.length ? completedSales / completed.length : 0;
+
+    const itemMap = new Map<string, { name: string; qty: number; sales: number }>();
+    completed.forEach((order) => {
+      orderItems(order).forEach((item) => {
+        const name = clean(item.name) || "Unnamed item";
+        const qty = Math.max(1, parseInt(String(item.quantity ?? 1), 10) || 1);
+        const price = item.price == null || item.price === "" ? 0 : toNum(item.price);
+        const current = itemMap.get(name) || { name, qty: 0, sales: 0 };
+        current.qty += qty;
+        current.sales += price * qty;
+        itemMap.set(name, current);
+      });
+    });
+
+    const topItems = Array.from(itemMap.values())
+      .sort((a, b) => b.qty - a.qty || b.sales - a.sales)
+      .slice(0, 5);
+
+    return {
+      receivedCount: analyticsOrders.length,
+      completedCount: completed.length,
+      cancelledCount: cancelled.length,
+      activeCount: active.length,
+      grossFoodSales,
+      packagingSales,
+      completedSales,
+      estimatedCommission,
+      averageOrderValue,
+      topItems,
+    };
+  }, [analyticsOrders]);
 
   const usedCount = menu.length;
   const limitReached = usedCount >= MAX_ITEMS && !editingId;
@@ -886,6 +979,103 @@ export default function VendorPortalPage() {
                     </div>
                   ))
                 )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border bg-white p-4 shadow-sm lg:col-span-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Vendor summary</h2>
+                  <p className="text-xs text-slate-500">Read-only sales and order overview based on loaded vendor orders.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(["today", "week", "month", "all"] as VendorAnalyticsRange[]).map((range) => (
+                    <button
+                      key={range}
+                      type="button"
+                      onClick={() => setAnalyticsRange(range)}
+                      className={cls(
+                        "rounded-full border px-3 py-1 text-xs font-semibold",
+                        analyticsRange === range ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      )}
+                    >
+                      {range === "today" ? "Today" : range === "week" ? "This week" : range === "month" ? "This month" : "All time"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-2xl border bg-slate-50 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Orders received</div>
+                  <div className="mt-1 text-2xl font-black text-slate-900">{vendorAnalytics.receivedCount}</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Active: {vendorAnalytics.activeCount}</div>
+                </div>
+                <div className="rounded-2xl border bg-emerald-50 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Completed</div>
+                  <div className="mt-1 text-2xl font-black text-emerald-800">{vendorAnalytics.completedCount}</div>
+                  <div className="mt-1 text-[11px] text-emerald-700">Cancelled: {vendorAnalytics.cancelledCount}</div>
+                </div>
+                <div className="rounded-2xl border bg-white p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Food sales</div>
+                  <div className="mt-1 text-xl font-black text-slate-900">{money(vendorAnalytics.grossFoodSales)}</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Completed food only</div>
+                </div>
+                <div className="rounded-2xl border bg-white p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Avg order value</div>
+                  <div className="mt-1 text-xl font-black text-slate-900">{money(vendorAnalytics.averageOrderValue)}</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Completed orders</div>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div className="rounded-2xl border bg-white p-3">
+                  <div className="text-sm font-semibold text-slate-900">Sales breakdown</div>
+                  <div className="mt-2 space-y-1 text-xs text-slate-600">
+                    <div className="flex justify-between gap-3">
+                      <span>Food/item sales</span>
+                      <span className="font-semibold text-slate-900">{money(vendorAnalytics.grossFoodSales)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Packaging/add-ons</span>
+                      <span className="font-semibold text-slate-900">{money(vendorAnalytics.packagingSales)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 border-t pt-1">
+                      <span>Total vendor sales shown</span>
+                      <span className="font-bold text-slate-900">{money(vendorAnalytics.completedSales)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 text-amber-700">
+                      <span>Estimated JRide commission</span>
+                      <span className="font-semibold">{money(vendorAnalytics.estimatedCommission)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border bg-white p-3 lg:col-span-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-900">Top-selling items</div>
+                    <div className="text-[11px] text-slate-500">By completed quantity</div>
+                  </div>
+                  {vendorAnalytics.topItems.length === 0 ? (
+                    <div className="mt-2 rounded-xl border bg-slate-50 p-3 text-xs text-slate-500">No completed item sales in this period.</div>
+                  ) : (
+                    <div className="mt-2 grid gap-2">
+                      {vendorAnalytics.topItems.map((item) => (
+                        <div key={item.name} className="flex items-center justify-between gap-3 rounded-xl border bg-slate-50 px-3 py-2 text-xs">
+                          <div className="font-semibold text-slate-900">{item.name}</div>
+                          <div className="text-right">
+                            <div className="font-bold text-slate-900">{item.qty} sold</div>
+                            <div className="text-slate-500">{money(item.sales)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
+                Vendor analytics show food/item sales and packaging/add-ons from completed orders only. Driver delivery fees are not counted as vendor sales.
               </div>
             </section>
 
