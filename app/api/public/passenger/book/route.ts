@@ -1,1113 +1,1051 @@
-﻿import { NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/utils/supabase/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { auth } from "@/auth";
 
-type BookBody = {
-  town?: string;
-
-  pickup_label?: string;
-  dropoff_label?: string;
-  vehicle_type?: string;
-
-  from_label?: string;
-  to_label?: string;
-  service_type?: string;
-
-  pickup_lat?: number | string | null;
-  pickup_lng?: number | string | null;
-  dropoff_lat?: number | string | null;
-  dropoff_lng?: number | string | null;
-
-  passenger_count?: number | string | null;
-  fees_acknowledged?: boolean;
-  emergency_mode?: boolean;
-  emergency_fee_acknowledged?: boolean;
-
-  passenger_name?: string;
-  full_name?: string;
-  user_id?: string;
-  created_by_user_id?: string;
-  phone?: string;
-  role?: string;
-  promo_code?: string;
-  promoCode?: string;
-  device_id?: string;
-  deviceId?: string;
-  platform?: string;
-  notes?: string;
-};
-
-function text(v: unknown): string {
-  return String(v ?? "").trim();
+function isTakeoutEnabled() {
+  return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
 }
 
-function num(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function takeoutDisabledResponse() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "TAKEOUT_DISABLED",
+      message: "Takeout is not enabled yet. Ride booking remains the active service."
+    },
+    { status: 503 }
+  );
+}
+// PHASE_3D_TAKEOUT_COORDS_HELPERS
+type LatLng = { lat: number | null; lng: number | null };
+
+function isFiniteNum(n: any) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : null;
 }
 
-function norm(v: unknown): string {
-  return String(v ?? "").trim().toLowerCase();
+// Treat 0/0 as invalid for this app (Ifugao coords will never be 0/0)
+function normalizeLL(ll: LatLng): LatLng {
+  const lat = isFiniteNum(ll?.lat);
+  const lng = isFiniteNum(ll?.lng);
+  if (lat == null || lng == null) return { lat: null, lng: null };
+  if (lat === 0 || lng === 0) return { lat: null, lng: null };
+  return { lat, lng };
 }
 
-function normalizeVehicleType(v: unknown): string {
-  const s = norm(v);
-  if (!s) return "";
-  if (s.includes("motor")) return "motorcycle";
-  if (s.includes("trike")) return "tricycle";
-  if (s.includes("tricycle")) return "tricycle";
-  return s;
+function pickLatLng(obj: any): LatLng {
+  if (!obj || typeof obj !== "object") return { lat: null, lng: null };
+
+  const keys = Object.keys(obj);
+  const lowerMap: Record<string, any> = {};
+  for (const k of keys) lowerMap[k.toLowerCase()] = (obj as any)[k];
+
+  const latKeys = ["lat","latitude","location_lat","pickup_lat","from_lat","start_lat","vendor_lat","store_lat","merchant_lat"];
+  const lngKeys = ["lng","lon","longitude","location_lng","pickup_lng","from_lng","start_lng","vendor_lng","store_lng","merchant_lng"];
+
+  function firstNum(cands: string[]) {
+    for (const k of cands) {
+      if (k in lowerMap) {
+        const n = Number(lowerMap[k]);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+    return null;
+  }
+
+  const lat = firstNum(latKeys);
+  const lng = firstNum(lngKeys);
+
+  return normalizeLL({ lat, lng });
 }
 
-function oppositeVehicleType(v: string): string | null {
-  if (v === "tricycle") return "motorcycle";
-  if (v === "motorcycle") return "tricycle";
+function pickTown(obj: any): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  const keys = Object.keys(obj);
+  const lower: Record<string, any> = {};
+  for (const k of keys) lower[k.toLowerCase()] = (obj as any)[k];
+  const cands = ["town","municipality","lgu","city"];
+  for (const k of cands) {
+    if (k in lower) {
+      const v = String(lower[k] ?? "").trim();
+      if (v) return v;
+    }
+  }
   return null;
 }
 
-function vehicleLabel(v: string): string {
-  if (v === "tricycle") return "tricycle";
-  if (v === "motorcycle") return "motorcycle";
-  return v || "vehicle";
+function inferTownFromLabel(label: string | null): string | null {
+  const s = String(label || "").toLowerCase();
+  if (!s) return null;
+  const towns = ["kiangan","lagawe","hingyon","lamut","banaue"];
+  for (const t of towns) {
+    if (s.includes(t)) return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  return null;
 }
 
-function isMotorcycleCapacityExceeded(vehicleType: string, passengerCount: number): boolean {
-  return vehicleType === "motorcycle" && passengerCount > 1;
-}
-
-function motorcycleCapacityMessage(passengerCount: number): string {
-  return `Motorcycle rides can take only 1 passenger. This booking has ${passengerCount} passengers. Please book a tricycle or make separate motorcycle bookings, one passenger per ride.`;
-}
-
-type DriverLocationRow = {
-  driver_id?: string | null;
-  status?: string | null;
-  updated_at?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-  town?: string | null;
-  vehicle_type?: string | null;
-};
-
-type DriverWalletRow = {
-  id?: string | null;
-  wallet_balance?: number | null;
-  min_wallet_required?: number | null;
-  wallet_locked?: boolean | null;
-};
-
-type AvailabilitySummary = {
-  requested_vehicle_type: string;
-  alternate_vehicle_type: string | null;
-  local_requested_count: number;
-  local_alternate_count: number;
-  emergency_requested_count: number;
-  emergency_alternate_count: number;
-};
-
-async function logDriverSearchFailure(input: {
-  passengerId?: string | null;
-  passengerName?: string | null;
-  town?: string | null;
-  fromLabel?: string | null;
-  toLabel?: string | null;
-  pickupLat?: number | null;
-  pickupLng?: number | null;
-  dropoffLat?: number | null;
-  dropoffLng?: number | null;
-  requestedVehicleType?: string | null;
-  alternateVehicleType?: string | null;
-  code?: string | null;
-  message?: string | null;
-  availability?: AvailabilitySummary | null;
-}) {
+async function tryFetchRowById(admin: any, table: string, idField: string, idValue: string) {
   try {
-    const admin = supabaseAdmin();
-    const availability = input.availability || null;
-
-    await admin.from("driver_search_failures").insert({
-      passenger_id: text(input.passengerId) || null,
-      passenger_name: text(input.passengerName) || null,
-      town: text(input.town) || null,
-      from_label: text(input.fromLabel) || null,
-      to_label: text(input.toLabel) || null,
-      pickup_lat: input.pickupLat ?? null,
-      pickup_lng: input.pickupLng ?? null,
-      dropoff_lat: input.dropoffLat ?? null,
-      dropoff_lng: input.dropoffLng ?? null,
-      requested_vehicle_type: text(input.requestedVehicleType) || null,
-      alternate_vehicle_type: text(input.alternateVehicleType) || null,
-      code: text(input.code) || "NO_DRIVERS_AVAILABLE",
-      message: text(input.message) || null,
-      local_requested_count: Number((availability as any)?.local_requested_count || 0),
-      local_alternate_count: Number((availability as any)?.local_alternate_count || 0),
-      emergency_requested_count: Number((availability as any)?.emergency_requested_count || 0),
-      emergency_alternate_count: Number((availability as any)?.emergency_alternate_count || 0),
-    });
-  } catch (e) {
-    console.warn("[BOOK] driver_search_failures insert failed", {
-      code: text(input.code) || "NO_DRIVERS_AVAILABLE",
-      town: text(input.town) || null,
-      requested_vehicle_type: text(input.requestedVehicleType) || null,
-      passenger_id: text(input.passengerId) || null,
-      error: e,
-    });
+    const res = await admin.from(table).select("*").eq(idField, idValue).limit(1);
+    if (res.error) return null;
+    const row = Array.isArray(res.data) ? res.data[0] : null;
+    return row || null;
+  } catch {
+    return null;
   }
 }
 
+async function mapboxGeocode(label: string): Promise<LatLng> {
+  const q = String(label || "").trim();
+  if (!q) return { lat: null, lng: null };
 
-const DRIVER_STALE_AFTER_SECONDS = 120;
-const DRIVER_ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
+  const token =
+    process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+    process.env.MAPBOX_ACCESS_TOKEN ||
+    process.env.MAPBOX_TOKEN ||
+    "";
 
-function getNearbyTowns(town: string): string[] {
-  const map: Record<string, string[]> = {
-    Lagawe: ["Lamut", "Hingyon"],
-    Lamut: ["Lagawe", "Kiangan"],
-    Hingyon: ["Lagawe"],
-    Banaue: ["Hingyon"],
-  };
-  return map[town] || [];
-}
-
-function effectiveMinWalletRequired(v: unknown): number {
-  const n = num(v);
-  if (n == null) return 250;
-  return Math.max(250, n);
-}
-
-function driverAssignCutoffMinutes(): number {
-  const n = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
-  return Number.isFinite(n) && n > 0 ? n : 10;
-}
-
-function bookingAvailabilityFreshnessSeconds(): number {
-  const assignCutoffSeconds = driverAssignCutoffMinutes() * 60;
-  return Math.min(DRIVER_STALE_AFTER_SECONDS, assignCutoffSeconds);
-}
-
-async function getAvailabilitySummary(bookingTown: string, requestedVehicleType: string): Promise<AvailabilitySummary> {
-  const supabase = supabaseAdmin();
-  const localTown = text(bookingTown);
-  const requested = normalizeVehicleType(requestedVehicleType) || "tricycle";
-  const alternate = oppositeVehicleType(requested);
-  const localTownSet = new Set([localTown.toLowerCase()]);
-  const emergencyTownSet = new Set([localTown.toLowerCase(), ...getNearbyTowns(localTown).map((x) => text(x).toLowerCase())]);
-
-  const summary: AvailabilitySummary = {
-    requested_vehicle_type: requested,
-    alternate_vehicle_type: alternate,
-    local_requested_count: 0,
-    local_alternate_count: 0,
-    emergency_requested_count: 0,
-    emergency_alternate_count: 0,
-  };
-
-  if (!localTown) {
-    return summary;
-  }
-
-  const { data: driverRows, error: driverError } = await supabase
-    .from("driver_locations")
-    .select("driver_id, status, updated_at, lat, lng, town, vehicle_type");
-
-  if (driverError) {
-    throw {
-      code: "DRIVER_AVAILABILITY_SCAN_FAILED",
-      message: driverError.message || "Could not scan driver availability.",
-      status: 500,
-    };
-  }
-
-  const allDrivers = Array.isArray(driverRows) ? (driverRows as DriverLocationRow[]) : [];
-  const driverIds = allDrivers.map((row) => text(row.driver_id)).filter(Boolean);
-
-  const walletByDriverId = new Map<string, DriverWalletRow>();
-  if (driverIds.length > 0) {
-    const { data: walletRows, error: walletError } = await supabase
-      .from("drivers")
-      .select("id, wallet_balance, min_wallet_required, wallet_locked")
-      .in("id", driverIds);
-
-    if (walletError) {
-      throw {
-        code: "DRIVER_WALLET_SCAN_FAILED",
-        message: walletError.message || "Could not scan driver wallets.",
-        status: 500,
-      };
-    }
-
-    for (const row of Array.isArray(walletRows) ? (walletRows as DriverWalletRow[]) : []) {
-      walletByDriverId.set(text(row.id), row);
-    }
-  }
-
-  const nowMs = Date.now();
-  const freshnessSeconds = bookingAvailabilityFreshnessSeconds();
-
-  for (const row of allDrivers) {
-    const driverId = text(row.driver_id);
-    if (!driverId) continue;
-
-    const rawStatus = norm(row.status);
-    if (!DRIVER_ONLINE_LIKE.has(rawStatus)) continue;
-
-    const driverTown = text(row.town).toLowerCase();
-    if (!driverTown) continue;
-
-    const updatedAt = text(row.updated_at);
-    if (!updatedAt) continue;
-
-    const updatedMs = new Date(updatedAt).getTime();
-    if (!Number.isFinite(updatedMs)) continue;
-
-    const ageSec = (nowMs - updatedMs) / 1000;
-    if (ageSec > freshnessSeconds) continue;
-
-    const wallet = walletByDriverId.get(driverId);
-    if (Boolean(wallet?.wallet_locked)) continue;
-
-    const walletBalance = num(wallet?.wallet_balance) ?? 0;
-    const walletMinRequired = effectiveMinWalletRequired(wallet?.min_wallet_required);
-    if (walletBalance < walletMinRequired) continue;
-
-    const driverVehicleType = normalizeVehicleType(row.vehicle_type);
-    if (!driverVehicleType) continue;
-
-    const inLocal = localTownSet.has(driverTown);
-    const inEmergency = emergencyTownSet.has(driverTown);
-
-    if (driverVehicleType === requested) {
-      if (inLocal) summary.local_requested_count++;
-      if (inEmergency) summary.emergency_requested_count++;
-    } else if (alternate && driverVehicleType === alternate) {
-      if (inLocal) summary.local_alternate_count++;
-      if (inEmergency) summary.emergency_alternate_count++;
-    }
-  }
-
-  return summary;
-}
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function bookingCodeNow(): string {
-  const d = new Date();
-  const stamp =
-    d.getFullYear().toString() +
-    pad2(d.getMonth() + 1) +
-    pad2(d.getDate()) +
-    pad2(d.getHours()) +
-    pad2(d.getMinutes()) +
-    pad2(d.getSeconds());
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `JR-UI-${stamp}-${rand}`;
-}
-
-function getBearerToken(req: Request): string | null {
-  const auth = req.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7).trim();
-  return token || null;
-}
-
-function createUserClient(accessToken: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-
-  if (!url || !anon) {
-    throw {
-      code: "SUPABASE_ENV_MISSING",
-      message: "Supabase environment is missing for authenticated booking.",
-      status: 500,
-    };
-  }
-
-  return createSupabaseClient(url, anon, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-    global: {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  });
-}
-
-function envAny(names: string[]): string {
-  for (const n of names) {
-    const v = process.env[n];
-    if (v && String(v).trim()) return String(v).trim();
-  }
-  return "";
-}
-
-function getMapboxToken(): string {
-  return envAny([
-    "MAPBOX_ACCESS_TOKEN",
-    "MAPBOX_TOKEN",
-    "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN",
-    "NEXT_PUBLIC_MAPBOX_TOKEN",
-  ]);
-}
-
-function normalizeTownKey(v: unknown): string {
-  return text(v).replace(/\s+/g, " ").toLowerCase();
-}
-
-function canApplyBoundaryOverride(selectedTown: string, derivedTown: string, requested: boolean): boolean {
-  if (!requested) return false;
-  const selectedKey = normalizeTownKey(selectedTown);
-  const derivedKey = normalizeTownKey(derivedTown);
-  const map: Record<string, string[]> = {
-    lagawe: ["kiangan"],
-  };
-  return !!map[selectedKey]?.includes(derivedKey);
-}
-
-function normalizePassengerName(v: unknown): string {
-  return String(v ?? "").trim().replace(/\s+/g, " ");
-}
-
-function isValidPassengerName(v: string): boolean {
-  const parts = String(v ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return false;
-  return parts.every((part) => /^[A-Za-z]{2,}$/.test(part));
-}
-
-function userDisplayName(user: any): string {
-  const direct = [
-    user?.user_metadata?.full_name,
-    user?.user_metadata?.name,
-    user?.user_metadata?.display_name,
-    user?.user_metadata?.passenger_name,
-    user?.raw_user_meta_data?.full_name,
-    user?.raw_user_meta_data?.name,
-    user?.raw_user_meta_data?.display_name,
-    user?.email,
-  ];
-
-  for (const v of direct) {
-    const s = text(v);
-    if (s) return s;
-  }
-
-  return "";
-}
-
-async function resolvePickupTownFromCoords(pickupLng: number, pickupLat: number): Promise<string> {
-  const token = getMapboxToken();
-  if (!token) {
-    throw {
-      code: "PICKUP_TOWN_VALIDATION_UNAVAILABLE",
-      message: "Mapbox token missing for pickup town validation.",
-      status: 500,
-    };
-  }
+  if (!token) return { lat: null, lng: null };
 
   const url =
     "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
-    `${pickupLng},${pickupLat}.json` +
-    `?types=place&limit=1&access_token=${encodeURIComponent(token)}`;
-
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) {
-    throw {
-      code: "PICKUP_TOWN_VALIDATION_UNAVAILABLE",
-      message: `Mapbox reverse geocode failed with status ${res.status}.`,
-      status: 500,
-    };
-  }
-
-  const json: any = await res.json().catch(() => ({}));
-  const features = Array.isArray(json?.features) ? json.features : [];
-  const placeFeature = features.find((f: any) => Array.isArray(f?.place_type) && f.place_type.includes("place"));
-  const derivedTown = text(placeFeature?.text);
-
-  if (!derivedTown) {
-    throw {
-      code: "PICKUP_TOWN_VALIDATION_UNAVAILABLE",
-      message: "Pickup town could not be resolved from coordinates.",
-      status: 500,
-    };
-  }
-
-  return derivedTown;
-}
-
-async function getTokenUserAndVerified(
-  supabase: ReturnType<typeof createClient>,
-  accessToken: string
-) {
-  const { data, error } = await supabase.auth.getUser(accessToken);
-  if (error || !data?.user?.id) {
-    return { user: null, verified: false };
-  }
-
-  const user = data.user;
-  let verified = false;
+    encodeURIComponent(q) +
+    ".json?limit=1&language=en&access_token=" +
+    encodeURIComponent(token);
 
   try {
-    const pv = await supabase
-      .from("passenger_verifications")
-      .select("status")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const r = await fetch(url, { method: "GET" });
+    const j: any = await r.json().catch(() => null);
+    const f = j?.features?.[0];
+    const center = Array.isArray(f?.center) ? f.center : null; // [lng,lat]
+    const lng = center && center.length >= 2 ? Number(center[0]) : null;
+    const lat = center && center.length >= 2 ? Number(center[1]) : null;
+    return normalizeLL({ lat, lng });
+  } catch {
+    return { lat: null, lng: null };
+  }
+}
 
-    const s = String((pv.data as any)?.status ?? "").toLowerCase().trim();
-    verified = s === "approved_admin";
+async function fetchVendorCoordsAndTown(admin: any, vendorId: string): Promise<{ ll: LatLng; town: string | null }> {
+  const candidates: Array<[string, string]> = [
+    ["vendor_accounts", "id"],
+    ["vendor_accounts", "email"],
+    ["vendor_accounts", "display_name"],
+    ["vendor_accounts", "location_label"],
+  ];
+
+  for (const [table, key] of candidates) {
+    const row = await tryFetchRowById(admin, table, key, vendorId);
+    if (!row) continue;
+    const ll = pickLatLng(row);
+    const town = pickTown(row);
+    if (ll.lat != null && ll.lng != null) return { ll, town };
+    if (town) return { ll: { lat: null, lng: null }, town };
+  }
+
+  return { ll: { lat: null, lng: null }, town: null };
+}
+
+async function fetchAddressCoords(admin: any, deviceKey: string, addressId: string | null, addressText: string | null): Promise<LatLng> {
+  try {
+    if (addressId) {
+      const byId = await admin.from("passenger_addresses").select("*").eq("id", addressId).limit(1);
+      const row = Array.isArray(byId.data) ? byId.data[0] : null;
+      const ll = pickLatLng(row);
+      if (ll.lat != null && ll.lng != null) return ll;
+    }
   } catch {}
 
-  if (!verified) {
-    try {
-      const pr = await supabase
-        .from("passenger_verification_requests")
-        .select("status")
-        .eq("passenger_id", user.id)
-        .maybeSingle();
+  try {
+    const dk = String(deviceKey || "").trim();
+    if (dk) {
+      const pri = await admin
+        .from("passenger_addresses")
+        .select("*")
+        .eq("device_key", dk)
+        .order("is_primary", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .limit(1);
 
-      const s = String((pr.data as any)?.status ?? "").toLowerCase().trim();
-      verified = s === "approved_admin";
-    } catch {}
+      const row = Array.isArray(pri.data) ? pri.data[0] : null;
+      const ll = pickLatLng(row);
+      if (ll.lat != null && ll.lng != null) return ll;
+    }
+  } catch {}
+
+  if (addressText) {
+    const ll = await mapboxGeocode(addressText);
+    if (ll.lat != null && ll.lng != null) return ll;
   }
 
-  if (!verified) {
-    try {
-      const truthy = (v: unknown) =>
-        v === true ||
-        (typeof v === "string" &&
-          v.trim().toLowerCase() !== "" &&
-          v.trim().toLowerCase() !== "false" &&
-          v.trim().toLowerCase() !== "0" &&
-          v.trim().toLowerCase() !== "no") ||
-        (typeof v === "number" && v > 0);
+  return { lat: null, lng: null };
+}
+// PHASE_3D_TAKEOUT_COORDS_HELPERS_END
 
-      const selV = "is_verified,verified,verification_tier";
-      const tries: Array<["auth_user_id" | "user_id", string]> = [
-        ["auth_user_id", user.id],
-        ["user_id", user.id],
-      ];
+export const dynamic = "force-dynamic";
+/* PHASE_3E_TOWNZONE_DERIVE_START */
+function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+  const la = (lat == null ? NaN : Number(lat));
+  const lo = (lng == null ? NaN : Number(lng));
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
 
-      for (const [col, val] of tries) {
-        const r = await supabase
-          .from("passengers")
-          .select(selV)
-          .eq(col, val)
-          .limit(1)
-          .maybeSingle();
+  // Rough Ifugao municipality boxes (fallback).
+  const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+    { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+    { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+    { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+    { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+    { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  ];
 
-        if (!r.error && r.data) {
-          const row: any = r.data;
-          verified =
-            truthy(row.is_verified) ||
-            truthy(row.verified) ||
-            truthy(row.verification_tier);
+  for (const b of BOXES) {
+    if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  }
+  return null;
+}
 
-          if (verified) break;
-        }
+function deriveZoneFromTown(town: string | null): string | null {
+  const t = String(town || "").trim();
+  return t ? t : null; // zone==town for now
+}
+/* PHASE_3E_TOWNZONE_DERIVE_END */
+
+function json(status: number, payload: any) {
+  return NextResponse.json(payload, { status });
+}
+
+function toNum(v: any): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getServiceRoleAdmin() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (!url || !serviceKey) return null;
+
+  return createAdminClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+async function isAuthedWithEither(supabase: any) {
+  // Do NOT change auth system; keep soft check (some environments may rely on session cookies)
+  const session = await auth().catch(() => null as any);
+  if (session?.user) return true;
+  const { data } = await supabase.auth.getUser();
+  return !!data?.user;
+}
+
+type SnapshotItem = {
+  booking_id?: string;
+  menu_item_id: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  packaging_note?: string | null;
+  snapshot_at?: string;
+};
+
+function normalizeItems(body: any): SnapshotItem[] {
+  // Prefer body.items (from /takeout/page.tsx), fallback to items_json/itemsJson
+  const rawA = Array.isArray(body?.items) ? body.items : null;
+  const rawB = Array.isArray(body?.items_json) ? body.items_json : (Array.isArray(body?.itemsJson) ? body.itemsJson : null);
+  const raw = (rawA && rawA.length ? rawA : rawB) || [];
+  const out: SnapshotItem[] = [];
+
+  for (const it of raw) {
+    if (!it) continue;
+    const midRaw = String(it?.menu_item_id || it?.menuItemId || it?.id || it?.item_id || "").trim();
+    const menu_item_id = midRaw ? midRaw : null;
+
+    const name = String(it?.name || "").trim();
+    if (!name) continue;
+
+    const price = toNum(it?.price ?? it?.unit_price ?? 0);
+    const qty = Math.max(1, parseInt(String(it?.quantity ?? it?.qty ?? 1), 10) || 1);
+
+    const packaging_note = String(it?.packaging_note ?? it?.packagingNote ?? it?.packaging ?? "").trim() || null;
+    out.push({ menu_item_id, name, price, quantity: qty, packaging_note });
+  }
+
+  return out;
+}
+
+function computeSubtotal(items: SnapshotItem[]): number {
+  let s = 0;
+  for (const it of items) s += toNum(it.price) * Math.max(1, it.quantity || 1);
+  return s;
+}
+
+export async function GET(req: NextRequest) {
+  const supabase = createRouteHandlerClient({ cookies });
+
+  // Optional: keep auth check in place (but do not hard-fail pilot flows unless you want it later)
+  // await isAuthedWithEither(supabase).catch(() => false);
+
+  const vendor_id = String(
+    req.nextUrl.searchParams.get("vendor_id") ||
+      req.nextUrl.searchParams.get("vendorId") ||
+      ""
+  ).trim();
+
+  if (!vendor_id) {
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required (pilot mode)" });
+  }
+
+  const admin = getServiceRoleAdmin();
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    });
+  }
+
+  const b = await admin
+    .from("bookings")
+    .select("*")
+    .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout")
+    .order("created_at", { ascending: false });
+
+  if (b.error) return json(500, { ok: false, error: "DB_ERROR", message: b.error.message });
+
+  const rows = (Array.isArray(b.data) ? b.data : []) as any[];
+  const ids = rows.map((r) => r?.id).filter(Boolean);
+
+  const itemsByBooking: Record<string, SnapshotItem[]> = {};
+  const subtotalByBooking: Record<string, number> = {};
+
+  if (ids.length) {
+    const it = await admin
+      .from("takeout_order_items")
+      .select("booking_id,menu_item_id,name,price,quantity,snapshot_at")
+      .in("booking_id", ids);
+
+    if (!it.error && Array.isArray(it.data)) {
+      for (const r of it.data as any[]) {
+        const bid = String(r?.booking_id || "");
+        if (!bid) continue;
+
+        const item: SnapshotItem = {
+          booking_id: bid,
+          menu_item_id: r?.menu_item_id ? String(r.menu_item_id) : null,
+          name: String(r?.name || ""),
+          price: toNum(r?.price),
+          quantity: Math.max(1, parseInt(String(r?.quantity ?? 1), 10) || 1),
+          packaging_note: r?.packaging_note ? String(r.packaging_note) : null,
+          snapshot_at: r?.snapshot_at ? String(r.snapshot_at) : "",
+        };
+
+        if (!itemsByBooking[bid]) itemsByBooking[bid] = [];
+        itemsByBooking[bid].push(item);
+        subtotalByBooking[bid] = (subtotalByBooking[bid] || 0) + item.price * item.quantity;
       }
-    } catch {}
-  }
 
-  return { user, verified };
-}
-
-function jrideNightGateBypass(): boolean {
-  const v = String(process.env.JRIDE_NIGHT_GATE_BYPASS || "")
-    .trim()
-    .toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
-async function canBookOrThrow(
-  supabase: ReturnType<typeof createClient>,
-  accessToken: string
-) {
-  const uv = await getTokenUserAndVerified(supabase, accessToken);
-
-  if (!uv.user?.id) {
-    return NextResponse.json(
-      { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-      { status: 401 }
-    );
-  }
-
-  if (!uv.verified) {
-    const priorCountRes = await supabase
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("created_by_user_id", uv.user.id);
-
-    if (priorCountRes.error) {
-      throw {
-        code: "UNVERIFIED_BOOKING_CHECK_FAILED",
-        message: priorCountRes.error.message || "Could not validate prior unverified bookings.",
-        status: 500,
-      };
-    }
-
-    const priorCount = Number(priorCountRes.count || 0);
-
-    if (priorCount >= 1) {
-      throw {
-        code: "UNVERIFIED_BOOKING_LIMIT",
-        message: "Passenger verification is required after the first unverified booking.",
-        status: 403,
-      };
+      for (const k of Object.keys(itemsByBooking)) {
+        itemsByBooking[k].sort((a, b2) => String(a.snapshot_at || "").localeCompare(String(b2.snapshot_at || "")));
+      }
     }
   }
 
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    hour12: false,
-    hour: "2-digit",
+  const orders = rows.map((r) => {
+    const bid = String(r?.id ?? "");
+    const snapItems = itemsByBooking[bid] || [];
+    const preferences = (r?.order_preferences && typeof r.order_preferences === "object") ? r.order_preferences : {};
+
+    // Prefer stored subtotal column per Phase 2D
+    const storedSubtotal = r?.takeout_items_subtotal ?? null;
+    const computed = subtotalByBooking[bid] ?? null;
+
+    // total_bill is legacy-shaped in your UI; keep it stable
+    const fallbackBill =
+      r?.items_subtotal ?? r?.subtotal ?? r?.total_bill ?? r?.totalBill ?? r?.fare ?? null;
+
+    const total_bill =
+      (storedSubtotal != null && Number.isFinite(Number(storedSubtotal))) ? Number(storedSubtotal) :
+      (computed != null && Number.isFinite(Number(computed))) ? Number(computed) :
+      (fallbackBill != null && Number.isFinite(Number(fallbackBill))) ? Number(fallbackBill) : 0;
+
+    return {
+      id: r?.id ?? null,
+      booking_code: r?.booking_code ?? null,
+      vendor_id: r?.vendor_id ?? vendor_id,
+      vendor_status: r?.vendor_status ?? r?.vendorStatus ?? null,
+      status: r?.status ?? null,
+      service_type: r?.service_type ?? null,
+      created_at: r?.created_at ?? null,
+      updated_at: r?.updated_at ?? null,
+
+      customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
+      customer_phone: r?.customer_phone ?? r?.rider_phone ?? null,
+      to_label: r?.to_label ?? r?.dropoff_label ?? null,
+
+      items: snapItems,
+      item_count: snapItems.length,
+      items_text: r?.items_text ?? null,
+      note: r?.notes ?? r?.note ?? null,
+      order_preferences: preferences,
+      items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
+      takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
+      total_bill,
+      premium_packaging_selected: Boolean(r?.premium_packaging_selected ?? preferences?.premium_packaging_selected ?? false),
+      premium_packaging_fee: r?.premium_packaging_fee ?? preferences?.premium_packaging_fee ?? null,
+      premium_packaging_label: r?.premium_packaging_label ?? preferences?.premium_packaging_label ?? null,
+      receipt_requested: Boolean(r?.receipt_requested ?? r?.request_vendor_receipt ?? preferences?.receipt_requested ?? false),
+      request_vendor_receipt: Boolean(r?.request_vendor_receipt ?? r?.receipt_requested ?? preferences?.receipt_requested ?? false),
+    };
   });
 
-  const hour = parseInt(fmt.format(new Date()), 10);
-  const nightGate = hour >= 20 || hour < 5;
-
-  if (nightGate && !uv.verified && !jrideNightGateBypass()) {
-    throw {
-      code: "NIGHT_GATE_UNVERIFIED",
-      message: "Booking is restricted from 8PM to 5AM unless verified.",
-      status: 403,
-    };
-  }
-
-  return { ok: true, userId: uv.user.id, user: uv.user, verified: uv.verified };
+  return json(200, { ok: true, vendor_id, orders });
 }
 
-export async function POST(req: Request) {
-  try {
-    const supabase = createClient();
-    const accessToken = getBearerToken(req);
-
-    if (!accessToken) {
-      return NextResponse.json(
-        { ok: false, code: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401 }
-      );
-    }
-
-    const userSupabase = createUserClient(accessToken);
-
-    const body = (await req.json().catch(() => ({}))) as BookBody;
-
-const boundaryOverrideRequested =
-  (body as any).boundary_override === true ||
-  (body as any).boundaryOverride === true ||
-  String((body as any).boundary_override || "").trim() === "1" ||
-  String((body as any).boundaryOverride || "").trim().toLowerCase() === "true";
-
-    const selectedTown = text(body.town);
-    const pickupLabel = text(body.from_label || body.pickup_label);
-    const dropoffLabel = text(body.to_label || body.dropoff_label);
-    const vehicleType = normalizeVehicleType(body.service_type || body.vehicle_type || "tricycle") || "tricycle";
-
-    const pickupLat = num(body.pickup_lat);
-    const pickupLng = num(body.pickup_lng);
-    const dropoffLat = num(body.dropoff_lat);
-    const dropoffLng = num(body.dropoff_lng);
-
-    const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
-    const feesAcknowledged = !!body.fees_acknowledged;
-    const emergencyMode = !!body.emergency_mode;
-    const emergencyFeeAcknowledged = !!body.emergency_fee_acknowledged;
-    const promoCode = text(body.promo_code || body.promoCode).toUpperCase();
-    const deviceId = text(body.device_id || body.deviceId);
-    const promoProgramCode =
-      promoCode && text(body.platform).toLowerCase() === "android"
-        ? "ANDROID_FIRST_RIDE_40"
-        : "";
-    const platform = norm(body.platform || "android") || "android";
-    const notes = text(body.notes).slice(0, 300) || null;
-
-    if (!selectedTown) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_TOWN", message: "Town is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!pickupLabel || pickupLat == null || pickupLng == null) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_PICKUP", message: "Pickup location is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!dropoffLabel || dropoffLat == null || dropoffLng == null) {
-      return NextResponse.json(
-        { ok: false, code: "MISSING_DROPOFF", message: "Drop-off location is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!feesAcknowledged) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "ACK_REQUIRED",
-          message: "You must acknowledge the fee notice first.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const derivedTown = await resolvePickupTownFromCoords(pickupLng, pickupLat);
-    const boundaryOverrideApplied =
-      normalizeTownKey(derivedTown) !== normalizeTownKey(selectedTown) &&
-      canApplyBoundaryOverride(selectedTown, derivedTown, boundaryOverrideRequested);
-    const effectiveTown = boundaryOverrideApplied ? selectedTown : derivedTown;
-
-    if (!boundaryOverrideApplied && normalizeTownKey(derivedTown) !== normalizeTownKey(selectedTown)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "PICKUP_TOWN_MISMATCH",
-          message: `Pickup point belongs to ${derivedTown}, not ${selectedTown}.`,
-          selected_town: selectedTown,
-          derived_town: derivedTown,
-        },
-        { status: 409 }
-      );
-    }
-
-    const canRes: any = await canBookOrThrow(userSupabase as any, accessToken);
-    if (canRes && typeof canRes.headers?.get === "function") {
-      return canRes;
-    }
-
-    const createdByUserId = String((canRes as any).userId || "").trim();
-    if (!createdByUserId) {
-      return NextResponse.json(
-        { ok: false, code: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401 }
-      );
-    }
-
-    const passengerName = normalizePassengerName(
-      text(body.passenger_name) ||
-      text(body.full_name) ||
-      userDisplayName((canRes as any).user)
-    );
-
-    if (!isValidPassengerName(passengerName)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "INVALID_PASSENGER_NAME",
-          message: "Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (isMotorcycleCapacityExceeded(vehicleType, passengerCount)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "MOTORCYCLE_CAPACITY_LIMIT",
-          message: motorcycleCapacityMessage(passengerCount),
-          requested_vehicle_type: vehicleType,
-          passenger_count: passengerCount,
-          max_passengers: 1,
-          can_make_separate_motorcycle_bookings: true,
-        },
-        { status: 409 }
-      );
-    }
-
-    const availability = await getAvailabilitySummary(effectiveTown, vehicleType);
-
-    if (!emergencyMode) {
-      if (availability.local_requested_count <= 0 && availability.local_alternate_count > 0) {
-        if (isMotorcycleCapacityExceeded(String(availability.alternate_vehicle_type || ""), passengerCount)) {
-          await logDriverSearchFailure({
-            passengerId: createdByUserId,
-            passengerName,
-            town: effectiveTown,
-            fromLabel: pickupLabel,
-            toLabel: dropoffLabel,
-            pickupLat,
-            pickupLng,
-            dropoffLat,
-            dropoffLng,
-            requestedVehicleType: vehicleType,
-            alternateVehicleType: availability.alternate_vehicle_type,
-            code: "ALTERNATE_VEHICLE_CAPACITY_LIMIT",
-            message: `Only motorcycle drivers are available in ${derivedTown}, but motorcycles can take only 1 passenger. This booking has ${passengerCount} passengers.`,
-            availability,
-          });
-
-          return NextResponse.json(
-            {
-              ok: false,
-              code: "ALTERNATE_VEHICLE_CAPACITY_LIMIT",
-              message: "Only motorcycle drivers are available right now, but motorcycles can take only 1 passenger. Please book a tricycle later or make separate motorcycle bookings, one passenger per ride.",
-              requested_vehicle_type: vehicleType,
-              blocked_alternate_vehicle_type: availability.alternate_vehicle_type,
-              passenger_count: passengerCount,
-              max_passengers: 1,
-              can_make_separate_motorcycle_bookings: true,
-              availability,
-            },
-            { status: 409 }
-          );
-        }
-
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "ALTERNATE_VEHICLE_AVAILABLE",
-            message: `No available ${vehicleLabel(vehicleType)} drivers in ${derivedTown}. ${vehicleLabel(availability.alternate_vehicle_type || "")} is available now.`,
-            requested_vehicle_type: vehicleType,
-            alternate_vehicle_type: availability.alternate_vehicle_type,
-            availability,
-          },
-          { status: 409 }
-        );
-      }
-
-      if (availability.local_requested_count <= 0 && availability.local_alternate_count <= 0) {
-        if (availability.emergency_requested_count > 0) {
-          await logDriverSearchFailure({
-            passengerId: createdByUserId,
-            passengerName,
-            town: effectiveTown,
-            fromLabel: pickupLabel,
-            toLabel: dropoffLabel,
-            pickupLat,
-            pickupLng,
-            dropoffLat,
-            dropoffLng,
-            requestedVehicleType: vehicleType,
-            alternateVehicleType: availability.alternate_vehicle_type,
-            code: "EMERGENCY_BOOKING_AVAILABLE",
-            message: `No local ${vehicleLabel(vehicleType)} drivers were found for ${derivedTown}. Emergency search in nearby towns is available.`,
-            availability,
-          });
-
-          return NextResponse.json(
-            {
-              ok: false,
-              code: "EMERGENCY_BOOKING_AVAILABLE",
-              message: "No drivers are currently available in your town. You can continue with Emergency Booking to search nearby towns. A pickup distance fee may apply depending on how far the assigned driver is from your pickup point.",
-              requested_vehicle_type: vehicleType,
-              alternate_vehicle_type: availability.alternate_vehicle_type,
-              availability,
-            },
-            { status: 409 }
-          );
-        }
-
-        await logDriverSearchFailure({
-          passengerId: createdByUserId,
-          passengerName,
-          town: effectiveTown,
-          fromLabel: pickupLabel,
-          toLabel: dropoffLabel,
-          pickupLat,
-          pickupLng,
-          dropoffLat,
-          dropoffLng,
-          requestedVehicleType: vehicleType,
-          alternateVehicleType: availability.alternate_vehicle_type,
-          code: "NO_DRIVERS_AVAILABLE",
-          message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
-          availability,
-        });
-
-
-        return NextResponse.json(
-
-
-          {
-
-
-            ok: false,
-
-
-            code: "NO_DRIVERS_AVAILABLE",
-
-
-            message: `No available ${vehicleLabel(vehicleType)} or alternate local drivers were found for ${derivedTown} right now.`,
-
-
-            requested_vehicle_type: vehicleType,
-
-
-            alternate_vehicle_type: availability.alternate_vehicle_type,
-
-
-            availability,
-
-
-          },
-
-
-          { status: 409 }
-
-
-        );
-      }
-    } else {
-      if (!emergencyFeeAcknowledged) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "EMERGENCY_ACK_REQUIRED",
-            message: "You must acknowledge the emergency pickup distance fee notice first.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (availability.emergency_requested_count <= 0) {
-        await logDriverSearchFailure({
-          passengerId: createdByUserId,
-          passengerName,
-          town: effectiveTown,
-          fromLabel: pickupLabel,
-          toLabel: dropoffLabel,
-          pickupLat,
-          pickupLng,
-          dropoffLat,
-          dropoffLng,
-          requestedVehicleType: vehicleType,
-          alternateVehicleType: availability.alternate_vehicle_type,
-          code: "NO_DRIVERS_AVAILABLE",
-          message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
-          availability,
-        });
-
-
-        return NextResponse.json(
-
-
-          {
-
-
-            ok: false,
-
-
-            code: "NO_DRIVERS_AVAILABLE",
-
-
-            message: `No emergency ${vehicleLabel(vehicleType)} drivers were found in nearby towns right now.`,
-
-
-            requested_vehicle_type: vehicleType,
-
-
-            alternate_vehicle_type: availability.alternate_vehicle_type,
-
-
-            availability,
-
-
-          },
-
-
-          { status: 409 }
-
-
-        );
-      }
-    }
-
-    const bookingCode = bookingCodeNow();
-
-    const insert: Record<string, any> = {
-      booking_code: bookingCode,
-      status: "searching",
-      town: effectiveTown,
-      from_label: pickupLabel,
-      to_label: dropoffLabel,
-      pickup_lat: pickupLat,
-      pickup_lng: pickupLng,
-      dropoff_lat: dropoffLat,
-      dropoff_lng: dropoffLng,
-      service_type: vehicleType,
-      passenger_count: passengerCount,
-      created_by_user_id: createdByUserId,
-      passenger_name: passengerName,
-      notes,
-      customer_status: "pending",
-      is_emergency: emergencyMode,
+export async function POST(req: NextRequest) {
+  if (!isTakeoutEnabled()) return takeoutDisabledResponse();
+  const supabase = createRouteHandlerClient({ cookies });
+  // Keep auth system untouched; do not enforce hard fail unless you want later
+  // const authed = await isAuthedWithEither(supabase).catch(() => false);
+
+  const admin = getServiceRoleAdmin();
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    });
+  }
+
+  const body = await req.json().catch(() => ({} as any));
+const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
+  if (!vendor_id) {
+    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
+  }
+const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
+
+  const vendor_status = order_id
+    ? String(body?.vendor_status ?? body?.vendorStatus ?? "").trim()
+    : "vendor_pending";
+
+  // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
+// Phase 3A bridge: when vendor marks ready (driver_arrived), do not move booking.status to ride lifecycle values
+// so it becomes dispatch-visible. Idempotent: only if status is still requested/empty.
+  if (order_id) {
+    const cur = await admin
+      .from("bookings")
+      .select("id,status,vendor_status")
+      .eq("id", order_id)
+      .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout")
+      .single();
+
+    if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
+
+    const curStatus = String((cur.data as any)?.status || "").trim();
+    const curVendor = String((cur.data as any)?.vendor_status || "").trim().toLowerCase();
+    const nextVendor = String(vendor_status || "").trim().toLowerCase();
+
+    const allowedForward: Record<string, string[]> = {
+      "": ["vendor_accepted", "cancelled"],
+      "requested": ["vendor_accepted", "cancelled"],
+      "vendor_pending": ["vendor_accepted", "cancelled"],
+      "vendor_accepted": ["preparing", "cancelled"],
+      "preparing": ["pickup_ready", "cancelled"],
+      "pickup_ready": ["completed", "cancelled"],
+      "completed": [],
+      "cancelled": [],
+      "canceled": []
     };
 
-    const { data: booking, error } = await userSupabase
+    const normalizedCurrent = curVendor === "canceled" ? "cancelled" : (curVendor || "vendor_pending");
+    const normalizedNextRaw = nextVendor === "accepted" ? "vendor_accepted" : nextVendor;
+    const normalizedNext = normalizedNextRaw === "canceled" ? "cancelled" : normalizedNextRaw;
+
+    if (normalizedCurrent === "completed" || normalizedCurrent === "cancelled") {
+      return json(409, {
+        ok: false,
+        error: "TERMINAL_STATE_LOCKED",
+        message: "Order already " + normalizedCurrent + ". No further updates allowed.",
+        current: normalizedCurrent,
+        attempted: normalizedNext
+      });
+    }
+
+    const allowed = allowedForward[normalizedCurrent] || [];
+    if (!allowed.includes(normalizedNext)) {
+      return json(409, {
+        ok: false,
+        error: "INVALID_VENDOR_STATUS_TRANSITION",
+        message: "Invalid transition: " + normalizedCurrent + " -> " + normalizedNext,
+        current: normalizedCurrent,
+        attempted: normalizedNext,
+        allowed
+      });
+    }
+
+    const patch: any = { vendor_status: normalizedNext };
+
+    // JRIDE_TAKEOUT_VENDOR_ACCEPTANCE_FLOW_V1
+    // Vendor state is separate from driver movement and passenger pricing.
+    // Do not call ride lifecycle or wallet logic here.
+    if (normalizedNext === "vendor_accepted") {
+      patch.customer_status = "vendor_accepted";
+    } else if (normalizedNext === "preparing") {
+      patch.customer_status = "preparing";
+    } else if (normalizedNext === "pickup_ready") {
+      patch.customer_status = "ready_for_pickup";
+    } else if (normalizedNext === "completed") {
+      patch.customer_status = "completed";
+    } else if (normalizedNext === "cancelled") {
+      patch.customer_status = "cancelled";
+    }
+
+    const up = await admin
       .from("bookings")
-      .insert(insert)
+      .update(patch)
+      .eq("id", order_id)
+      .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout")
       .select("*")
       .single();
 
-    if (error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "BOOKING_INSERT_FAILED",
-          message: error.message || "Booking insert failed.",
-        },
-        { status: 500 }
-      );
-    }
+    if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
 
-    let promo: Record<string, any> | null = null;
-
-    if (promoCode && deviceId && booking?.id && bookingCode) {
-      const ensureRes = await userSupabase.rpc("jride_promo_ensure_android_credit", {
-        p_user_id: createdByUserId,
-        p_device_id: deviceId,
-        p_program_code: promoProgramCode,
-      });
-
-      if (ensureRes.error) {
-        promo = {
-          ok: false,
-          stage: "ensure",
-          error: ensureRes.error.message || "PROMO_ENSURE_FAILED",
-        };
-      } else {
-        const ensureData = (ensureRes.data as any) || null;
-
-        if ((ensureData as any)?.ok === false) {
-          await userSupabase.from("bookings").delete().eq("id", booking.id);
-
-          return NextResponse.json(
-            {
-              ok: false,
-              code: "PROMO_ENSURE_BLOCKED",
-              message: String((ensureData as any)?.error || "Promo is not available for this account or device."),
-              promo: {
-                ok: false,
-                stage: "ensure",
-                ensure: ensureData,
-                error: String((ensureData as any)?.error || "PROMO_ENSURE_BLOCKED"),
-              },
-            },
-            { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
-          );
-        }
-
-        const reserveRes = await userSupabase.rpc("jride_promo_reserve_for_booking", {
-          p_user_id: createdByUserId,
-          p_device_id: deviceId,
-          p_booking_id: booking.id,
-          p_booking_code: bookingCode,
-          p_program_code: promoProgramCode,
-        });
-        const reserveData = (reserveRes.data as any) || null;
-
-        if (reserveRes.error || (reserveData as any)?.ok === false) {
-          await userSupabase.from("bookings").delete().eq("id", booking.id);
-
-          return NextResponse.json(
-            {
-              ok: false,
-              code: "PROMO_RESERVE_BLOCKED",
-              message: String(
-                reserveRes.error?.message ||
-                  (reserveData as any)?.error ||
-                  "Promo could not be reserved for this booking."
-              ),
-              promo: {
-                ok: false,
-                stage: "reserve",
-                ensure: ensureData,
-                reserve: reserveData,
-                error: String(
-                  reserveRes.error?.message ||
-                    (reserveData as any)?.error ||
-                    "PROMO_RESERVE_BLOCKED"
-                ),
-              },
-            },
-            { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
-          );
-        }
-
-        const reservedPromo = reserveData;
-        const reservedCreditId = text((reservedPromo as any)?.credit_id);
-        const reservedStatus =
-          text((reservedPromo as any)?.reservation_status || (reservedPromo as any)?.status) || "reserved";
-        const reservedAmountRaw = Number((reservedPromo as any)?.credit_amount ?? 40);
-        const reservedAmount = Number.isFinite(reservedAmountRaw)
-          ? Math.max(0, reservedAmountRaw)
-          : 40;
-
-        if (!((reserveRes as any)?.error) && reservedCreditId) {
-          const promoBookingPatch = {
-            promo_program_code: promoProgramCode || "ANDROID_FIRST_RIDE_40",
-            promo_credit_id: reservedCreditId,
-            promo_status: reservedStatus,
-            promo_applied_amount: reservedAmount,
-            updated_at: new Date().toISOString(),
-          };
-
-          const persistPromoRes = await userSupabase
-            .from("bookings")
-            .update(promoBookingPatch)
-            .eq("id", booking.id)
-            .select("id, promo_program_code, promo_credit_id, promo_status, promo_applied_amount")
-            .single();
-
-          if (!(persistPromoRes as any)?.error && (persistPromoRes as any)?.data) {
-            (booking as any).promo_program_code =
-              ((persistPromoRes as any).data as any).promo_program_code ?? promoBookingPatch.promo_program_code;
-            (booking as any).promo_credit_id =
-              ((persistPromoRes as any).data as any).promo_credit_id ?? promoBookingPatch.promo_credit_id;
-            (booking as any).promo_status =
-              ((persistPromoRes as any).data as any).promo_status ?? promoBookingPatch.promo_status;
-            (booking as any).promo_applied_amount =
-              ((persistPromoRes as any).data as any).promo_applied_amount ?? promoBookingPatch.promo_applied_amount;
-          }
-        }
-
-
-        promo = {
-          ok: true,
-          stage: "reserve",
-          ensure: ensureData,
-          reserve: reserveData,
-        };
-      }
-    } else if (promoCode || deviceId) {
-      promo = {
-        ok: false,
-        stage: "skipped",
-        error: !promoCode ? "MISSING_PROMO_CODE" : !deviceId ? "MISSING_DEVICE_ID" : "PROMO_SKIPPED",
-      };
-    }
-
-    return NextResponse.json(
-      {
-        ok: true,
-        booking_code: bookingCode,
-        booking,
-        validated_town: derivedTown,
-        service_town: effectiveTown,
-        boundary_override_applied: boundaryOverrideApplied,
-        promo,
-      },
-      { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
-    );
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: e?.code || "BOOK_ROUTE_FAILED",
-        message: e?.message || "Unknown error",
-      },
-      { status: e?.status || 500, headers: { "Cache-Control": "no-store, max-age=0" } }
-    );
+    return json(200, {
+      ok: true,
+      action: "updated",
+      order_id: up.data?.id ?? order_id,
+      vendor_status: up.data?.vendor_status ?? nextVendor,
+      status: up.data?.status ?? curStatus,
+      bridgedToDispatch: !!patch.status,
+    });
   }
+
+  // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
+
+  const customer_name = String(body?.customer_name ?? body?.customerName ?? "").trim();
+  const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
+  const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
+  const note = String(body?.note ?? "").trim();
+  const premium_packaging_selected = Boolean(body?.premium_packaging_selected ?? body?.premiumPackagingSelected ?? body?.order_preferences?.premium_packaging_selected ?? false);
+  const premium_packaging_fee = toNum(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? body?.order_preferences?.premium_packaging_fee ?? 0);
+  const premium_packaging_label = String(body?.premium_packaging_label ?? body?.premiumPackagingLabel ?? body?.order_preferences?.premium_packaging_label ?? "").trim() || null;
+  const receipt_requested = Boolean(body?.receipt_requested ?? body?.request_vendor_receipt ?? body?.receiptRequested ?? body?.order_preferences?.receipt_requested ?? false);
+
+  const items_text = String(body?.items_text ?? "").trim();
+
+  const items = normalizeItems(body);
+  if (!items.length) {
+    return json(400, { ok: false, error: "items_required", message: "items[] required" });
+  }
+
+  // JRIDE_TAKEOUT_VENDOR_CLOSED_ENFORCEMENT_V43
+  // Server-authoritative check. Passenger UI is not trusted for open/closed state.
+  const vendorMetaForOrder =
+    (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
+    (await tryFetchRowById(admin, "vendor_accounts", "email", vendor_id)) ||
+    (await tryFetchRowById(admin, "vendor_accounts", "display_name", vendor_id)) ||
+    (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
+    null;
+
+  if (vendorMetaForOrder && (vendorMetaForOrder as any).accepting_orders === false) {
+    return json(409, {
+      ok: false,
+      error: "TAKEOUT_VENDOR_CLOSED",
+      message: "This vendor is currently closed and cannot accept new takeout orders.",
+    });
+  }
+
+  const subtotal = computeSubtotal(items);
+
+  // JRIDE_VENDOR_CLOSED_HARD_BLOCK_V46
+  // Server-authoritative guard. UI state can be stale, but closed vendors must never create new takeout orders.
+  const vendorOpenCheck = await admin
+    .from("vendor_accounts")
+    .select("id,accepting_orders")
+    .eq("id", vendor_id)
+    .limit(1);
+
+  if (vendorOpenCheck.error) {
+    return json(500, { ok: false, error: "DB_ERROR", message: vendorOpenCheck.error.message });
+  }
+
+  const vendorOpenRow = Array.isArray(vendorOpenCheck.data) ? vendorOpenCheck.data[0] : null;
+  if (vendorOpenRow && vendorOpenRow.accepting_orders === false) {
+    return json(409, {
+      ok: false,
+      error: "VENDOR_CLOSED",
+      message: "This vendor is currently closed and cannot accept new orders.",
+    });
+  }
+
+  // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
+  // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
+  // Ride dispatch, fare proposal, and trip lifecycle routes are not called here.
+  const submittedMenuIds = items
+    .map((it) => String(it.menu_item_id || "").trim())
+    .filter(Boolean);
+
+  if (submittedMenuIds.length) {
+    const menuState = await admin
+      .from("vendor_menu_items")
+      .select("*")
+      .eq("vendor_id", vendor_id);
+
+    if (menuState.error) {
+      return json(500, { ok: false, error: "DB_ERROR", message: menuState.error.message });
+    }
+
+    const byId = new Map<string, any>();
+    for (const row of Array.isArray(menuState.data) ? (menuState.data as any[]) : []) {
+      const id = String(row?.menu_item_id ?? row?.id ?? "").trim();
+      if (id) byId.set(id, row);
+    }
+
+    const blocked: string[] = [];
+    for (const item of items) {
+      const id = String(item.menu_item_id || "").trim();
+      if (!id) continue;
+      const row = byId.get(id);
+      const availableRaw = row?.is_active ?? row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
+      const soldRaw = row?.sold_out_today ?? row?.is_sold_out_today;
+      const available = typeof availableRaw === "boolean" ? availableRaw : true;
+      const soldOut = typeof soldRaw === "boolean" ? soldRaw : false;
+      const remainingRaw = Number(row?.remaining_quantity);
+      const hasDailyLimit = Number.isFinite(remainingRaw) && remainingRaw > 0;
+      const requestedQty = Math.max(1, Number(item.quantity || 1) || 1);
+      const overStock = hasDailyLimit && requestedQty > remainingRaw;
+      if (!row || !available || soldOut || overStock) blocked.push(item.name || id);
+    }
+
+    if (blocked.length) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_VENDOR_CLOSED_OR_ITEM_UNAVAILABLE",
+        message: "This vendor is closed or one or more selected items are unavailable. Please refresh the menu.",
+        blocked_items: blocked,
+      });
+    }
+  }
+
+  // JRIDE TAKEOUT ORDER CREATE SCHEMA SAFE V1
+  // Create booking row (schema-safe: auto-drop unknown booking columns and retry).
+  // This must stay fail-safe because production schemas may not yet contain
+  // productization fields such as receipt_requested or premium_packaging_* .
+  async function insertBookingSchemaSafe(initial: Record<string, any>) {
+    let payload: Record<string, any> = { ...initial };
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const res = await admin!.from("bookings").insert(payload).select("*").single();
+
+      if (!res.error) return res;
+
+      lastError = res.error;
+      const msg = String((res.error as any)?.message || "");
+
+      const m =
+        msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i) ||
+        msg.match(/column\s+"([^"]+)"\s+of\s+relation\s+"bookings"\s+does\s+not\s+exist/i);
+
+      if (m && m[1]) {
+        const col = String(m[1]);
+        if (Object.prototype.hasOwnProperty.call(payload, col)) {
+          delete (payload as any)[col];
+          continue;
+        }
+      }
+
+      return res;
+    }
+
+    return {
+      data: null,
+      error: {
+        message:
+          "DB_ERROR: schema-safe insert retries exceeded. Last error: " +
+          String(lastError?.message || "unknown"),
+      },
+    } as any;
+  }
+
+  // TAKEOUT_CREATE_COORDS_RESTORE_V1
+  // Create path only: resolve pickup/dropoff/town before inserting booking.
+  const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
+  const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
+  const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
+
+  const v = await fetchVendorCoordsAndTown(admin, vendor_id);
+  const vendorLL = v.ll;
+  const vendorTown = v.town;
+
+  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
+
+  const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
+  const derivedTown =
+    explicitTown ||
+    vendorTown ||
+    inferTownFromLabel(to_label_hint) ||
+    deriveTownFromLatLng(vendorLL.lat, vendorLL.lng) ||
+    null;
+
+  const pickupLL = normalizeLL(vendorLL);
+  const dropoffLL = normalizeLL(dropLL);
+
+  if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
+    return json(400, {
+      ok: false,
+      error: "TAKEOUT_COORDS_MISSING",
+      message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng.",
+      details: {
+        pickup_lat: (pickupLL as any)?.lat ?? null,
+        pickup_lng: (pickupLL as any)?.lng ?? null,
+        dropoff_lat: (dropoffLL as any)?.lat ?? null,
+        dropoff_lng: (dropoffLL as any)?.lng ?? null,
+        town: derivedTown,
+      },
+    });
+  }
+  // TAKEOUT_BOOKING_CODE_CREATE_V1
+  const takeoutBookingCode =
+    String(body?.booking_code ?? body?.bookingCode ?? "").trim() ||
+    ("TO-" +
+      new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14) +
+      "-" +
+      Math.floor(1000 + Math.random() * 9000));
+  const createPayload: Record<string, any> = {    // PHASE_3D_TAKEOUT_COORDS_FIX fields
+
+    // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
+    // bookings has 'town' column (no 'zone' column) - keep town only
+
+    // Likely required / core
+
+    vendor_id,
+
+    service_type: "takeout",
+
+    vendor_status,
+    booking_code: takeoutBookingCode,
+  // PHASE_3F create-time town + coords (no 0/0)
+  town: (typeof derivedTown !== "undefined" ? derivedTown : null),
+        pickup_lat: (pickupLL as any)?.lat ?? null,
+        pickup_lng: (pickupLL as any)?.lng ?? null,
+        dropoff_lat: (dropoffLL as any)?.lat ?? null,
+        dropoff_lng: (dropoffLL as any)?.lng ?? null,
+    status: "requested",
+
+    // Optional fields (will be auto-dropped if columns don't exist)
+
+    passenger_name: customer_name || "Takeout Customer",
+    rider_name: customer_name || null,
+
+    rider_phone: customer_phone || null,
+
+    customer_name: customer_name || null,
+
+    customer_phone: customer_phone || null,
+
+    to_label: to_label || null,
+
+    dropoff_label: to_label || null,
+
+    notes: note || null,
+
+    items_text: items_text || null,
+    premium_packaging_selected,
+    premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+    premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+    receipt_requested,
+    request_vendor_receipt: receipt_requested,
+    order_preferences: {
+      premium_packaging_selected,
+      premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+      premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+      receipt_requested,
+    },
+
+    // Phase 2D requirement
+
+    takeout_items_subtotal: subtotal,
+
+  };
+
+  const ins = await insertBookingSchemaSafe(createPayload);
+
+  if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
+
+  const bookingId = String(ins.data?.id ?? "");
+  if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
+  // PHASE3I_FORCE_COORDS_AUTHORITATIVE_START
+  // DB appears to default coords to 0/0 on INSERT for takeout in some cases.
+  // Force-correct via UPDATE immediately and surface any error (do NOT swallow).
+  const forcePayload: Record<string, any> = {
+    vendor_id,
+      pickup_lat: (pickupLL as any)?.lat ?? null,
+      pickup_lng: (pickupLL as any)?.lng ?? null,
+      dropoff_lat: (dropoffLL as any)?.lat ?? null,
+      dropoff_lng: (dropoffLL as any)?.lng ?? null,
+    town: (typeof derivedTown !== "undefined" ? derivedTown : null),
+  };
+
+  const forceRes = await admin
+    .from("bookings")
+    .update(forcePayload)
+    .eq("id", bookingId)
+    .select("id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town")
+    .single();
+
+  if (forceRes.error) {
+    return json(500, {
+      ok: false,
+      error: "FORCE_UPDATE_FAILED",
+      message: forceRes.error.message,
+      forcePayload,
+    });
+  }
+  // PHASE3I_FORCE_COORDS_AUTHORITATIVE_END
+
+  // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_START
+
+  try {
+
+    // 1) vendor pickup coords (preferred)
+    const vendorMeta =
+      (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "email", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "display_name", vendor_id)) ||
+      (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
+      null;
+    const vLL = pickLatLng(vendorMeta);
+
+    const vTown = pickTown(vendorMeta);
+    const vLabel =
+      String((body as any)?.pickup_label ?? (body as any)?.from_label ?? (body as any)?.vendor_label ?? "").trim() ||
+      null;
+    // 2) dropoff coords from passenger primary address if available (device_key comes from takeout page)
+    const _dk = String(body?.device_key ?? body?.deviceKey ?? "").trim();
+    const _addrRes =
+      _dk
+        ? await admin
+            .from("passenger_addresses")
+            .select("*")
+            .eq("device_key", _dk)
+            .order("is_primary", { ascending: false })
+            .order("updated_at", { ascending: false })
+            .limit(1)
+        : null;
+
+    const addr =
+      (_addrRes && !(_addrRes as any).error && Array.isArray((_addrRes as any).data) && (_addrRes as any).data[0])
+        ? (_addrRes as any).data[0]
+        : null;
+    const aLat =
+      isFiniteNum(addr?.lat) ?? null;
+    const aLng =
+      isFiniteNum(addr?.lng) ?? null;
+    // 3) accept coords if caller provided them (future-proof)
+
+    const bPickupLat = isFiniteNum(body?.pickup_lat ?? body?.pickupLat ?? null);
+
+    const bPickupLng = isFiniteNum(body?.pickup_lng ?? body?.pickupLng ?? null);
+
+    const bDropLat = isFiniteNum(body?.dropoff_lat ?? body?.dropoffLat ?? body?.to_lat ?? body?.toLat ?? null);
+
+    const bDropLng = isFiniteNum(body?.dropoff_lng ?? body?.dropoffLng ?? body?.to_lng ?? body?.toLng ?? null);
+
+    const pickup_lat = bPickupLat ?? vLL.lat;
+
+    const pickup_lng = bPickupLng ?? vLL.lng;
+
+    // If we can't find a dropoff coordinate, fallback to pickup coords (pilot-safe: removes PROBLEM trips)
+
+    const dropoff_lat = bDropLat ?? aLat ?? pickup_lat ?? null;
+
+    const dropoff_lng = bDropLng ?? aLng ?? pickup_lng ?? null;
+
+    const updatePayload: Record<string, any> = {
+
+      // labels (schema-safe; unknown cols auto-dropped)
+
+      pickup_label: vLabel || null,
+
+      from_label: vLabel || null,
+
+      dropoff_label: to_label || null,
+
+      to_label: to_label || null,
+
+      // coords
+      // town defaults help zoning
+
+      town: vTown || null,
+
+    };
+
+    // only update if we have at least pickup coords (and ideally dropoff coords too)
+
+    const hasAny =
+
+      (pickup_lat != null && pickup_lng != null) || (dropoff_lat != null && dropoff_lng != null);
+
+    if (hasAny) {
+      // Inline schema-safe update (drop unknown booking columns and retry)
+      let _payload: any = { ...(updatePayload as any) };
+
+      let _lastErr: any = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const _res = await admin
+          .from("bookings")
+          .update(_payload)
+          .eq("id", bookingId)
+          .select("id")
+          .single();
+
+        if (!_res.error) {
+          _lastErr = null;
+          break;
+        }
+
+        _lastErr = _res.error;
+        const msg = String((_res.error as any)?.message || "");
+        const m =
+          msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i) ||
+          msg.match(/column\s+"([^"]+)"\s+of\s+relation\s+"bookings"\s+does\s+not\s+exist/i);
+
+        if (m && m[1]) {
+          const col = String(m[1]);
+          delete (_payload as any)[col];
+          continue;
+        }
+
+        break; // unknown error -> stop retrying
+      }
+
+      if (_lastErr) {
+        throw _lastErr;
+      }
+    }
+
+  } catch {
+
+    // fail-open: creation must succeed even if hydration fails
+
+  }
+
+  // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_END
+
+  // Snapshot lock (idempotent): if already exists, do not insert again
+
+  let takeoutSnapshot: any = null;
+
+  try {
+
+    const already = await admin
+
+      .from("takeout_order_items")
+
+      .select("id", { count: "exact", head: true })
+
+      .eq("booking_id", bookingId);
+
+    const existingCount = (already as any)?.count ?? 0;
+
+    if (existingCount > 0) {
+
+      // Ensure booking subtotal is set (repair only; do not re-snapshot)
+
+      const cur = toNum((ins.data as any)?.takeout_items_subtotal);
+
+      if (!(cur > 0) && subtotal > 0) {
+
+        await admin!.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
+
+      }
+
+      takeoutSnapshot = { ok: true, inserted: 0, subtotal, note: "already_snapshotted" };
+
+    } else {
+
+      const rowsToInsert = items.map((it) => ({
+
+        booking_id: bookingId,
+
+        menu_item_id: it.menu_item_id,
+
+        name: it.name,
+
+        price: toNum(it.price),
+
+        quantity: Math.max(1, it.quantity || 1),
+
+        snapshot_at: new Date().toISOString(),
+
+      }));
+
+      const snapIns = await admin.from("takeout_order_items").insert(rowsToInsert);
+
+      if (snapIns.error) {
+
+        takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Insert failed: " + snapIns.error.message };
+
+      } else {
+
+        takeoutSnapshot = { ok: true, inserted: rowsToInsert.length, subtotal, note: "OK" };
+
+      }
+
+    }
+
+  } catch (e: any) {
+
+    takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Snapshot exception: " + String(e?.message || e) };
+
+  }
+
+  // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG
+  let coords_debug: any = null;
+  try {
+    const chk = await admin
+      .from("bookings")
+      .select("id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,town")
+      .eq("id", bookingId)
+      .single();
+    coords_debug = (chk && !chk.error) ? chk.data : null;
+  } catch {}
+  // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG_END
+  return json(200, {
+
+    ok: true,
+
+    action: "created",
+
+    order_id: bookingId,
+    booking_code: takeoutBookingCode,
+    premium_packaging_selected,
+    premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+    premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+    receipt_requested,
+
+    
+    resolved_pickup: pickupLL ?? vendorLL ?? null,
+    resolved_dropoff: dropoffLL ?? dropLL ?? null,
+    db_coords: coords_debug,
+
+takeout_items_subtotal: subtotal,
+
+    takeoutSnapshot,
+
+  });
+
 }
+
+
+
+
+
+
 
 
 

@@ -1409,7 +1409,14 @@ export default function VendorPortalPage() {
                             {s === "vendor_pending" ? (
                               <>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Accept order</button>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
+                                <button type="button" disabled={busy} onClick={() => {
+                                  const reason = window.prompt("Enter cancellation reason before rejecting this order.");
+                                  if (!reason || !reason.trim()) {
+                                    window.alert("Cancellation reason is required.");
+                                    return;
+                                  }
+                                  moveOrder(o, "cancelled", { cancelReason: reason.trim() });
+                                }} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
                               </>
                             ) : null}
                             {s === "vendor_accepted" ? (
