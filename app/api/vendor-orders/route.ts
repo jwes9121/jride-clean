@@ -381,7 +381,9 @@ export async function GET(req: NextRequest) {
       updated_at: r?.updated_at ?? null,
 
       customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
-      customer_phone: r?.customer_phone ?? r?.rider_phone ?? null,
+      customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
+      passenger_phone: r?.passenger_phone ?? r?.customer_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
+      phone: r?.phone ?? r?.passenger_phone ?? r?.customer_phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
       to_label: r?.to_label ?? r?.dropoff_label ?? null,
 
       items: snapItems,
@@ -428,6 +430,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   const vendor_status = order_id
     ? String(body?.vendor_status ?? body?.vendorStatus ?? "").trim()
     : "vendor_pending";
+  const cancelReason = String(body?.cancel_reason ?? body?.cancellation_reason ?? body?.vendor_cancel_reason ?? "").trim();
+  const cancelNote = String(body?.cancel_note ?? body?.cancellation_note ?? body?.vendor_cancel_note ?? "").trim();
 
   // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
 // Phase 3A bridge: when vendor marks ready (driver_arrived), do not move booking.status to ride lifecycle values
@@ -499,7 +503,16 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     } else if (normalizedNext === "completed") {
       patch.customer_status = "completed";
     } else if (normalizedNext === "cancelled") {
+      if (!cancelReason) {
+        return json(400, { ok: false, error: "CANCEL_REASON_REQUIRED", message: "Cancellation reason is required." });
+      }
       patch.customer_status = "cancelled";
+      patch.vendor_cancel_reason = cancelReason;
+      patch.cancel_reason = cancelReason;
+      patch.cancellation_reason = cancelReason;
+      patch.vendor_cancel_note = cancelNote || null;
+      patch.cancel_note = cancelNote || null;
+      patch.cancelled_by = "vendor";
     }
 
     const up = await admin
@@ -746,6 +759,12 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     customer_name: customer_name || null,
 
     customer_phone: customer_phone || null,
+
+    passenger_phone: customer_phone || null,
+
+    phone: customer_phone || null,
+
+    contact_phone: customer_phone || null,
 
     to_label: to_label || null,
 

@@ -963,7 +963,7 @@ export default function VendorPortalPage() {
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
         ) : (
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-            <section className={cls("self-start rounded-2xl border bg-white p-4 shadow-sm lg:sticky lg:top-4", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
+            <section className={cls("self-start rounded-2xl border bg-white p-4 shadow-sm", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor profile</h2>
@@ -1409,14 +1409,7 @@ export default function VendorPortalPage() {
                             {s === "vendor_pending" ? (
                               <>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Accept order</button>
-                                <button type="button" disabled={busy} onClick={() => {
-                                  const reason = window.prompt("Enter cancellation reason before rejecting this order.");
-                                  if (!reason || !reason.trim()) {
-                                    window.alert("Cancellation reason is required.");
-                                    return;
-                                  }
-                                  moveOrder(o, "cancelled", { cancelReason: reason.trim() });
-                                }} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
                               </>
                             ) : null}
                             {s === "vendor_accepted" ? (
