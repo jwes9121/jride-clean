@@ -538,8 +538,19 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
 
-  const customer_name = String(body?.customer_name ?? body?.customerName ?? "").trim();
-  const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
+  const customer_name = String(body?.customer_name ?? body?.customerName ?? body?.passenger_name ?? body?.passengerName ?? "").trim();
+  const customer_phone = String(
+    body?.customer_phone ??
+    body?.customerPhone ??
+    body?.passenger_phone ??
+    body?.passengerPhone ??
+    body?.phone ??
+    body?.contact_phone ??
+    body?.contactPhone ??
+    body?.mobile ??
+    body?.mobile_number ??
+    ""
+  ).trim();
   const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
   const note = String(body?.note ?? "").trim();
   const premium_packaging_selected = Boolean(body?.premium_packaging_selected ?? body?.premiumPackagingSelected ?? body?.order_preferences?.premium_packaging_selected ?? false);
@@ -760,7 +771,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
     customer_phone: customer_phone || null,
 
-    passenger_phone: customer_phone || null,
+      passenger_phone: customer_phone || null,
 
     phone: customer_phone || null,
 
