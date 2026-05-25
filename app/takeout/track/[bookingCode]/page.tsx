@@ -165,9 +165,9 @@ export default function TakeoutTrackPage() {
       vendor_accepted: "Vendor accepted. Looking for driver",
       preparing: "Vendor preparing order",
       pickup_ready: "Order ready for pickup",
-      driver_assigned: passengerConfirmed ? "Passenger confirmed total" : "Driver assigned",
+      driver_assigned: passengerConfirmed ? "Customer confirmed total" : "Driver assigned",
       driver_fee_proposed: "Driver fee proposed",
-      customer_confirmed: "Passenger confirmed total",
+      customer_confirmed: "Customer confirmed total",
       rider_arrived_vendor: "Driver arrived at vendor",
       arrived_vendor: "Driver arrived at vendor",
       picked_up: "Order picked up",
@@ -294,7 +294,7 @@ export default function TakeoutTrackPage() {
 
             {state.passengerConfirmed && !state.isCompleted && !state.isCancelled ? (
               <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                Passenger confirmed the total. The driver and vendor workflow can proceed.
+                Customer confirmed the total. The driver and vendor workflow can proceed.
               </div>
             ) : null}
 

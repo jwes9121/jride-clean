@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -389,8 +389,8 @@ export async function GET(req: NextRequest) {
       items: snapItems,
       item_count: snapItems.length,
       items_text: r?.items_text ?? null,
-      customer_note: r?.notes ?? r?.note ?? null,
-      note: r?.notes ?? r?.note ?? null,
+      customer_note: r?.customer_note ?? r?.customerNote ?? r?.notes ?? r?.note ?? null,
+      note: r?.customer_note ?? r?.customerNote ?? r?.notes ?? r?.note ?? null,
       payment_instruction:
         r?.takeout_cash_collection_required === true || r?.takeout_route_plan === "customer_cash_first"
           ? "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase."
@@ -468,8 +468,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       "": ["vendor_accepted", "cancelled"],
       "requested": ["vendor_accepted", "cancelled"],
       "vendor_pending": ["vendor_accepted", "cancelled"],
-      "vendor_accepted": ["preparing", "cancelled"],
-      "preparing": ["pickup_ready", "cancelled"],
+      "vendor_accepted": ["preparing", "driver_assigned", "cancelled"],
+      "driver_assigned": ["pickup_ready", "cancelled"],
+      "preparing": ["pickup_ready", "driver_assigned", "cancelled"],
       "pickup_ready": ["completed", "cancelled"],
       "completed": [],
       "cancelled": [],
