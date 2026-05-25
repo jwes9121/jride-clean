@@ -19,6 +19,12 @@ type TakeoutOrder = {
   takeout_route_plan?: string | null;
   total_bill?: number | string | null;
   takeout_items_subtotal?: number | string | null;
+  driver_to_pickup_km?: number | string | null;
+  distance_to_pickup_km?: number | string | null;
+  pickup_distance_km?: number | string | null;
+  takeout_pickup_free_km?: number | string | null;
+  takeout_pickup_excess_km?: number | string | null;
+  takeout_pickup_excess_fee?: number | string | null;
   created_at?: string | null;
 };
 

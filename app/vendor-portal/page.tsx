@@ -74,6 +74,11 @@ type TakeoutOrder = {
   delivery_pin_label?: string | null;
   delivery_pin_coordinates?: string | null;
   note?: string | null;
+  customer_note?: string | null;
+  payment_instruction?: string | null;
+  receipt_instruction?: string | null;
+  packaging_instruction?: string | null;
+  cash_collection_required?: boolean | null;
   items?: TakeoutOrderItem[] | null;
   item_count?: number | null;
   items_text?: string | null;
@@ -239,6 +244,60 @@ function orderCustomerName(o: TakeoutOrder) {
 
 function orderCustomerPhone(o: TakeoutOrder) {
   return clean(o.customer_phone) || clean(o.passenger_phone) || clean(o.phone) || "No phone provided";
+}
+
+
+function orderCustomerNoteOnly(o: TakeoutOrder) {
+  const direct = clean(o.customer_note);
+  if (direct) return direct;
+
+  const legacy = clean(o.note);
+  if (!legacy) return "";
+
+  const cutMarkers = [
+    "Cash collection required:",
+    "Driver will collect cash",
+    "Vendor receipt requested.",
+    "Receipt requested:",
+    "Packaging:",
+    "Payment instruction:",
+  ];
+
+  let out = legacy;
+  for (const marker of cutMarkers) {
+    const idx = out.toLowerCase().indexOf(marker.toLowerCase());
+    if (idx >= 0) out = out.slice(0, idx);
+  }
+  return clean(out);
+}
+
+function orderPaymentInstruction(o: TakeoutOrder) {
+  const direct = clean(o.payment_instruction);
+  if (direct) return direct;
+
+  const note = clean(o.note);
+  const cashText = "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase.";
+  if (o.cash_collection_required || note.toLowerCase().includes("cash collection required")) {
+    return cashText;
+  }
+  return "";
+}
+
+function orderReceiptInstruction(o: TakeoutOrder) {
+  const direct = clean(o.receipt_instruction);
+  if (direct) return direct;
+
+  const note = clean(o.note).toLowerCase();
+  if (orderReceiptRequested(o) || note.includes("vendor receipt requested")) return "Vendor receipt requested.";
+  return "";
+}
+
+function orderPackagingInstruction(o: TakeoutOrder) {
+  const direct = clean(o.packaging_instruction);
+  if (direct) return direct;
+
+  if (orderPremiumPackagingSelected(o)) return orderOptionLabel(o);
+  return "Standard item packaging";
 }
 
 function looksLikeRawPinnedAddress(v: string) {
