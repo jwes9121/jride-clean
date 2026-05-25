@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 
   const res = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_id,vendor_status,customer_status,status,customer_name,passenger_name,rider_name,from_label,pickup_label,to_label,dropoff_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
+    .select("id,booking_code,service_type,vendor_id,vendor_status,customer_status,status,passenger_name,rider_name,from_label,pickup_label,to_label,dropoff_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .in("vendor_status", activeStatuses)
@@ -80,8 +80,8 @@ export async function GET(req: NextRequest) {
   let vendorName = "Vendor";
   if (row.vendor_id) {
     const v = await admin
-      .from("vendor_profiles")
-      .select("id,display_name,vendor_name,name,email")
+      .from("vendor_accounts")
+      .select("id,display_name,email")
       .eq("id", row.vendor_id)
       .limit(1)
       .maybeSingle();
@@ -103,8 +103,8 @@ export async function GET(req: NextRequest) {
     customer_status: row.customer_status || status,
     vendor_id: row.vendor_id,
     vendor_name: vendorName,
-    passenger_name: pickLabel(row.customer_name, row.passenger_name, row.rider_name, "Takeout Customer"),
-    customer_name: pickLabel(row.customer_name, row.passenger_name, row.rider_name, "Takeout Customer"),
+    passenger_name: pickLabel(row.passenger_name, row.rider_name, "Takeout Customer"),
+    customer_name: pickLabel(row.passenger_name, row.rider_name, "Takeout Customer"),
     pickup_label: pickLabel(row.from_label, row.pickup_label, vendorName),
     from_label: pickLabel(row.from_label, row.pickup_label, vendorName),
     dropoff_label: pickLabel(row.to_label, row.dropoff_label),

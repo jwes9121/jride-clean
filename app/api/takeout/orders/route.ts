@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ function pickupExcessFee(km: any): number {
 
 function shapeOrder(row: any) {
   if (!row) return row;
-  const km = num(row.driver_to_pickup_km ?? row.distance_to_pickup_km ?? row.pickup_distance_km);
+  const km = num(row.driver_to_pickup_km ?? row.distance_to_pickup_km);
   const excessKm = km != null && km > 1.5 ? Number((km - 1.5).toFixed(2)) : 0;
   const excessFee = pickupExcessFee(km);
   const baseDelivery = num(row.takeout_delivery_fee);
@@ -71,7 +71,6 @@ const TAKEOUT_ORDER_SELECT = [
   "takeout_service_fee",
   "takeout_total_payable",
   "driver_to_pickup_km",
-  "pickup_distance_km",
   "distance_to_pickup_km",
   "takeout_cash_collection_required",
   "takeout_fee_proposed_by_driver_id",
@@ -130,3 +129,4 @@ export async function GET(req: NextRequest) {
     });
   }
 }
+

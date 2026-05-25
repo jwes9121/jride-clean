@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -21,7 +21,6 @@ type TakeoutOrder = {
   takeout_items_subtotal?: number | string | null;
   driver_to_pickup_km?: number | string | null;
   distance_to_pickup_km?: number | string | null;
-  pickup_distance_km?: number | string | null;
   takeout_pickup_free_km?: number | string | null;
   takeout_pickup_excess_km?: number | string | null;
   takeout_pickup_excess_fee?: number | string | null;
@@ -186,7 +185,7 @@ export default function TakeoutTrackPage() {
     const isCancelled = progressStatus === "cancelled";
     const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill);
     const deliveryFee = toNum(order?.takeout_delivery_fee);
-    const pickupDistanceKm = toNum(order?.driver_to_pickup_km ?? order?.distance_to_pickup_km ?? order?.pickup_distance_km);
+    const pickupDistanceKm = toNum(order?.driver_to_pickup_km ?? order?.distance_to_pickup_km);
     const pickupFreeKm = toNum(order?.takeout_pickup_free_km ?? 1.5);
     const pickupExcessKm = toNum(order?.takeout_pickup_excess_km);
     const pickupExcessFee = toNum(order?.takeout_pickup_excess_fee);
@@ -376,3 +375,5 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
+
+

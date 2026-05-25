@@ -222,23 +222,35 @@ export async function GET(req: NextRequest) {
       n((booking as any).eta_minutes) ??
       estimateEtaMinutes(driverToPickupKm);
 
-    const proposedFare = n((booking as any).proposed_fare);
+    const proposedFareRaw = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
+    const submittedRegularFare = n((booking as any).submitted_regular_fare);
     const pickupDistanceFee = n((booking as any).pickup_distance_fee);
     const promoAppliedAmount = n((booking as any).promo_applied_amount) ?? 0;
     const promoStatus = s((booking as any).promo_status);
     const promoProgramCode = s((booking as any).promo_program_code);
     const promoApplied = promoAppliedAmount > 0;
     const platformFee = 15;
-    const fare = verifiedFare ?? proposedFare;
+    const proposedFare = proposedFareRaw ?? (status === "fare_proposed" ? submittedRegularFare : null);
+    const fare = verifiedFare ?? proposedFare ?? submittedRegularFare;
+    const storedSubtotalBeforeDiscount =
+      n((booking as any).subtotal_before_discount) ??
+      n((booking as any).subtotalBeforeDiscount);
+    const storedTotalFare =
+      n((booking as any).total_fare) ??
+      n((booking as any).totalFare) ??
+      n((booking as any).total_amount) ??
+      n((booking as any).grand_total);
     const subtotalBeforeDiscount =
-      fare == null
+      storedSubtotalBeforeDiscount ??
+      (fare == null
         ? null
-        : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2));
+        : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2)));
     const totalFare =
-      subtotalBeforeDiscount == null
+      storedTotalFare ??
+      (subtotalBeforeDiscount == null
         ? null
-        : Number(Math.max(subtotalBeforeDiscount - promoAppliedAmount, 0).toFixed(2));
+        : Number(Math.max(subtotalBeforeDiscount - promoAppliedAmount, 0).toFixed(2)));
 
     const payload = {
       ok: true,
@@ -279,7 +291,7 @@ export async function GET(req: NextRequest) {
       total_fare: totalFare,
 
       // === JRIDE TRANSPARENCY FIELDS (SAFE ADD) ===
-      submitted_regular_fare: n((booking as any).submitted_regular_fare),
+      submitted_regular_fare: submittedRegularFare,
       night_rate_mode: s((booking as any).night_rate_mode),
       night_rate_hour_ph: n((booking as any).night_rate_hour_ph),
       total_amount: totalFare,

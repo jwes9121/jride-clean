@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,customer_name,passenger_name,rider_name,to_label,dropoff_label,takeout_items_subtotal,created_at,updated_at,town")
+    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,rider_name,to_label,dropoff_label,takeout_items_subtotal,created_at,updated_at,town")
     .eq("service_type", "takeout")
     .order("created_at", { ascending: false })
     .limit(500);
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
       vendor_status: vendorStatus,
       customer_status: r.customer_status || null,
       status: r.status || null,
-      customer_name: r.customer_name || r.passenger_name || r.rider_name || "Takeout Customer",
+      customer_name: r.passenger_name || r.rider_name || "Takeout Customer",
       to_label: r.to_label || r.dropoff_label || null,
       takeout_items_subtotal: Number(r.takeout_items_subtotal || 0),
       created_at: r.created_at || null,

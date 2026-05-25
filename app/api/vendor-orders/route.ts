@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -432,8 +432,8 @@ export async function GET(req: NextRequest) {
         preferences?.premium_packaging_selected === true || r?.premium_packaging_selected === true
           ? "Premium packaging requested."
           : "Standard item packaging",
-      pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km ?? r?.pickup_distance_km),
-      takeout_pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km ?? r?.pickup_distance_km),
+      pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km),
+      takeout_pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km),
       order_preferences: preferences,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
@@ -1132,6 +1132,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
