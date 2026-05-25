@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -719,7 +719,6 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       driver_lng: driverLng,
       driver_to_pickup_km: driverToPickupKm,
       distance_to_pickup_km: driverToPickupKm,
-      pickup_distance_km: driverToPickupKm,
       distance_to_pickup: driverToPickupKm,
       takeout_pickup_distance_basis: takeoutPickupDistanceBasis,
       takeout_pickup_free_km: takeoutPickupFreeKm,
@@ -770,6 +769,8 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
+
 
 
 
