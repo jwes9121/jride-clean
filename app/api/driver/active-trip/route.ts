@@ -782,3 +782,4 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
 
 
 
+
