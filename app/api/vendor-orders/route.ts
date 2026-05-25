@@ -583,6 +583,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   }
 
   const subtotal = computeSubtotal(items);
+  const takeoutCashFirstThreshold = 500;
+  const takeoutCashCollectionRequired = subtotal >= takeoutCashFirstThreshold;
+  const takeoutRoutePlan = takeoutCashCollectionRequired ? "customer_cash_first" : "vendor_first";
 
   // JRIDE_VENDOR_CLOSED_HARD_BLOCK_V46
   // Server-authoritative guard. UI state can be stale, but closed vendors must never create new takeout orders.
@@ -799,6 +802,10 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     // Phase 2D requirement
 
     takeout_items_subtotal: subtotal,
+    takeout_service_fee: 15,
+    takeout_cash_collection_required: takeoutCashCollectionRequired,
+    takeout_route_plan: takeoutRoutePlan,
+    takeout_pricing_status: "pricing_pending",
 
   };
 
@@ -818,6 +825,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       dropoff_lat: (dropoffLL as any)?.lat ?? null,
       dropoff_lng: (dropoffLL as any)?.lng ?? null,
     town: (typeof derivedTown !== "undefined" ? derivedTown : null),
+    takeout_cash_collection_required: takeoutCashCollectionRequired,
+    takeout_route_plan: takeoutRoutePlan,
+    takeout_service_fee: 15,
   };
 
   const forceRes = await admin
@@ -1064,6 +1074,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     db_coords: coords_debug,
 
 takeout_items_subtotal: subtotal,
+    takeout_cash_collection_required: takeoutCashCollectionRequired,
+    takeout_route_plan: takeoutRoutePlan,
 
     takeoutSnapshot,
 

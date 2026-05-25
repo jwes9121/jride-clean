@@ -188,6 +188,11 @@ export async function POST(req: NextRequest) {
     }
 
     const nowIso = new Date().toISOString();
+    const payable = Number(order.takeout_total_payable ?? 0);
+    const cashCollectionRequired =
+      order.takeout_cash_collection_required === true ||
+      (Number.isFinite(payable) && payable >= 500);
+    const routePlan = cashCollectionRequired ? "customer_cash_first" : (text(order.takeout_route_plan) || "vendor_first");
 
     const updateRes = await serviceSupabase
       .from("bookings")
@@ -196,6 +201,8 @@ export async function POST(req: NextRequest) {
         driver_id: proposedDriverId,
         takeout_pricing_status: "customer_confirmed",
         takeout_customer_confirmed_at: nowIso,
+        takeout_cash_collection_required: cashCollectionRequired,
+        takeout_route_plan: routePlan,
         vendor_status: "driver_assigned",
         customer_status: "driver_assigned",
       })
@@ -215,46 +222,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // JRIDE_TAKEOUT_INVENTORY_DECREMENT_V43
-    // Inventory is decremented only after passenger confirms the total.
-    const orderItems = await serviceSupabase
-      .from("takeout_order_items")
-      .select("menu_item_id,quantity")
-      .eq("booking_id", order.id);
-
-    if (orderItems.error) {
-      return json(500, {
-        ok: false,
-        error: "TAKEOUT_INVENTORY_ITEMS_LOAD_FAILED",
-        message: orderItems.error.message,
-      });
-    }
-
-    for (const item of Array.isArray(orderItems.data) ? orderItems.data : []) {
-      const menuItemId = String((item as any)?.menu_item_id || "").trim();
-      const qty = Math.max(1, parseInt(String((item as any)?.quantity ?? 1), 10) || 1);
-      if (!menuItemId) continue;
-
-      const menuRow = await serviceSupabase
-        .from("vendor_menu_items")
-        .select("id,remaining_quantity")
-        .eq("id", menuItemId)
-        .single();
-
-      if (menuRow.error || !menuRow.data) continue;
-
-      const currentRemaining = Math.max(0, parseInt(String((menuRow.data as any).remaining_quantity ?? 0), 10) || 0);
-      const nextRemaining = Math.max(0, currentRemaining - qty);
-
-      await serviceSupabase
-        .from("vendor_menu_items")
-        .update({
-          remaining_quantity: nextRemaining,
-          sold_out_today: nextRemaining <= 0,
-          updated_at: nowIso,
-        })
-        .eq("id", menuItemId);
-    }
+    // JRIDE_TAKEOUT_INVENTORY_TIMING_V72
+    // Do not deduct vendor menu stock when the passenger confirms the driver fee.
+    // Stock is deducted only when the takeout delivery is completed.
 
     return json(200, {
       ok: true,

@@ -81,7 +81,7 @@ async function updateBookingSchemaSafe(admin: any, orderId: string, patchInitial
       .update(patch)
       .eq("id", orderId)
       .eq("service_type", "takeout")
-      .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_service_fee,updated_at")
+      .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_delivery_fee,takeout_service_fee,updated_at")
       .single();
 
     if (!res.error) return res;
@@ -151,7 +151,8 @@ async function deductTakeoutDriverWalletOnCompletion(admin: any, order: any) {
   const bookingId = String(order?.id || "").trim();
   const bookingCode = String(order?.booking_code || "").trim();
   const driverId = String(order?.assigned_driver_id || order?.driver_id || "").trim();
-  const amount = firstPositiveMoney(order?.takeout_service_fee, 15);
+  const deliveryFee = money(order?.takeout_delivery_fee);
+  const amount = deliveryFee >= 50 ? 20 : 15;
 
   if (!bookingId) return { ok: false, skipped: true, reason: "missing_booking_id" };
   if (!driverId) return { ok: false, skipped: true, reason: "missing_driver_id" };
@@ -238,7 +239,7 @@ export async function POST(req: NextRequest) {
 
   const existing = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_service_fee")
+    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_delivery_fee,takeout_service_fee")
     .eq("id", orderId)
     .eq("service_type", "takeout")
     .single();

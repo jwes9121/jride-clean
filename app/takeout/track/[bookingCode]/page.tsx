@@ -16,6 +16,7 @@ type TakeoutOrder = {
   takeout_total_payable?: number | string | null;
   takeout_cash_collection_required?: boolean | null;
   takeout_fee_expires_at?: string | null;
+  takeout_route_plan?: string | null;
   total_bill?: number | string | null;
   takeout_items_subtotal?: number | string | null;
   created_at?: string | null;
@@ -183,6 +184,8 @@ export default function TakeoutTrackPage() {
     const totalPayable = toNum(order?.takeout_total_payable);
     const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
     const readyToConfirm = !isCompleted && !isCancelled && pricingStatus === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+    const routePlan = normText(order?.takeout_route_plan || "vendor_first").toLowerCase();
+    const cashFirst = routePlan === "customer_cash_first" || order?.takeout_cash_collection_required === true;
 
     return {
       pricingStatus,
@@ -200,6 +203,8 @@ export default function TakeoutTrackPage() {
       totalPayable,
       expiresIn,
       readyToConfirm,
+      routePlan,
+      cashFirst,
     };
     // nowTick keeps expiry text fresh without changing backend state.
   }, [order, nowTick]);
@@ -241,6 +246,13 @@ export default function TakeoutTrackPage() {
           <div className="mt-3 rounded border bg-slate-50 p-3 text-xs text-slate-700">Loading takeout order...</div>
         ) : (
           <div className="mt-3 space-y-2">
+            {state.cashFirst ? (
+              <div className="rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <div className="font-semibold">Cash collection required before vendor purchase.</div>
+                <div className="mt-1">The driver will proceed to your location first to collect the cash payment before going to the vendor.</div>
+              </div>
+            ) : null}
+
             <div className="rounded border bg-slate-50 p-3">
               <div className="flex justify-between gap-3">
                 <span className="text-slate-600">Pricing status</span>
