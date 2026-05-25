@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -389,7 +389,20 @@ export async function GET(req: NextRequest) {
       items: snapItems,
       item_count: snapItems.length,
       items_text: r?.items_text ?? null,
+      customer_note: r?.notes ?? r?.note ?? null,
       note: r?.notes ?? r?.note ?? null,
+      payment_instruction:
+        r?.takeout_cash_collection_required === true || r?.takeout_route_plan === "customer_cash_first"
+          ? "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase."
+          : null,
+      receipt_instruction:
+        r?.receipt_requested === true || r?.request_vendor_receipt === true || preferences?.receipt_requested === true
+          ? "Vendor receipt requested."
+          : null,
+      packaging_instruction:
+        preferences?.premium_packaging_selected === true || r?.premium_packaging_selected === true
+          ? "Premium packaging requested."
+          : "Standard item packaging",
       order_preferences: preferences,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
@@ -1082,6 +1095,8 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
+
 
 
 

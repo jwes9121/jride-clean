@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -542,15 +542,38 @@ export async function GET(req: NextRequest) {
       n((booking as any).dropoff_lng);
 
     let driverToPickupKm = n((booking as any).driver_to_pickup_km);
+    let takeoutPickupDistanceBasis: string | null = null;
+    let takeoutPickupFreeKm: number | null = null;
+    let takeoutPickupExcessKm: number | null = null;
+
     if (isTakeoutBooking) {
       const hasDriverCoords = jrideIsPhilippinesCoordPair(driverLat, driverLng);
-      const hasPickupCoords = jrideIsPhilippinesCoordPair(pickupLat, pickupLng);
+      const pickupTargetLat =
+        takeoutRoutePlan === "customer_cash_first" && !cashCollectionConfirmed
+          ? cashCollectionLat
+          : pickupLat;
+      const pickupTargetLng =
+        takeoutRoutePlan === "customer_cash_first" && !cashCollectionConfirmed
+          ? cashCollectionLng
+          : pickupLng;
+      const hasPickupTargetCoords = jrideIsPhilippinesCoordPair(pickupTargetLat, pickupTargetLng);
 
-      if (hasDriverCoords && hasPickupCoords) {
-        driverToPickupKm = Number(haversineKm(driverLat as number, driverLng as number, pickupLat as number, pickupLng as number).toFixed(2));
+      takeoutPickupDistanceBasis =
+        takeoutRoutePlan === "customer_cash_first" && !cashCollectionConfirmed
+          ? "driver_to_customer"
+          : "driver_to_vendor";
+
+      if (hasDriverCoords && hasPickupTargetCoords) {
+        driverToPickupKm = Number(haversineKm(driverLat as number, driverLng as number, pickupTargetLat as number, pickupTargetLng as number).toFixed(2));
       } else if (!jrideIsSaneTakeoutDistanceKm(driverToPickupKm)) {
         driverToPickupKm = null;
       }
+
+      takeoutPickupFreeKm = 1.5;
+      takeoutPickupExcessKm =
+        driverToPickupKm != null && driverToPickupKm > takeoutPickupFreeKm
+          ? Number((driverToPickupKm - takeoutPickupFreeKm).toFixed(2))
+          : 0;
     } else if (driverToPickupKm == null && driverLat != null && driverLng != null && pickupLat != null && pickupLng != null) {
       driverToPickupKm = Number(haversineKm(driverLat, driverLng, pickupLat, pickupLng).toFixed(1));
     }
@@ -631,6 +654,8 @@ export async function GET(req: NextRequest) {
       takeout_cash_collection_required: cashCollectionRequired,
       cash_collection_confirmed: cashCollectionConfirmed,
       takeout_cash_collection_confirmed: cashCollectionConfirmed,
+      cash_collected_amount: n((booking as any).cash_collected_amount) ?? n((booking as any).takeout_cash_collected_amount),
+      takeout_cash_collected_amount: n((booking as any).takeout_cash_collected_amount) ?? n((booking as any).cash_collected_amount),
       route_plan: takeoutRoutePlan,
       takeout_route_plan: takeoutRoutePlan,
       cash_collection_address: cashCollectionAddress,
@@ -678,6 +703,9 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       distance_to_pickup_km: driverToPickupKm,
       pickup_distance_km: driverToPickupKm,
       distance_to_pickup: driverToPickupKm,
+      takeout_pickup_distance_basis: takeoutPickupDistanceBasis,
+      takeout_pickup_free_km: takeoutPickupFreeKm,
+      takeout_pickup_excess_km: takeoutPickupExcessKm,
       trip_distance_km: tripDistanceKm,
       pickup_eta_minutes: pickupEtaMinutes,
       eta_minutes: pickupEtaMinutes,
@@ -724,6 +752,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
