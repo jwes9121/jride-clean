@@ -21,27 +21,8 @@ type DriverLocation = {
   lng: number;
 };
 
-type DriverWallet = {
-  id: string;
-  wallet_balance: number | null;
-  min_wallet_required: number | null;
-  wallet_locked: boolean | null;
-};
-
-function num(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function effectiveMinWalletRequired(v: unknown): number {
-  const n = num(v);
-  if (n == null) return 250;
-  return Math.max(250, n);
-}
-
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371;
+  const R = 6371; // km
   const dLat = ((bLat - aLat) * Math.PI) / 180;
   const dLng = ((bLng - aLng) * Math.PI) / 180;
   const aa =
@@ -60,12 +41,13 @@ async function getRoadDurationsSeconds(
 ): Promise<{ driver_id: string; duration: number }[]> {
   if (!drivers.length) return [];
 
+  // Mapbox matrix: coord0;coord1;...;pickup
   const allCoords = [
     ...drivers.map((d) => `${d.lng},${d.lat}`),
     `${pickup.lng},${pickup.lat}`,
   ].join(";");
 
-  const destinationsIndex = drivers.length;
+  const destinationsIndex = drivers.length; // last coord is pickup
 
   const url = `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${allCoords}?sources=${drivers
     .map((_, idx) => idx)
@@ -107,6 +89,7 @@ export async function POST(req: Request) {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    // 1) Load booking
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select("id, pickup_lat, pickup_lng, status, assigned_driver_id")
@@ -121,13 +104,17 @@ export async function POST(req: Request) {
       );
     }
 
-    if (booking.pickup_lat == null || booking.pickup_lng == null) {
+    if (
+      booking.pickup_lat == null ||
+      booking.pickup_lng == null
+    ) {
       return NextResponse.json(
         { success: false, error: "Booking missing pickup coordinates" },
         { status: 400 }
       );
     }
 
+    // 2) Get online drivers
     const { data: driverLocs, error: driverError } = await supabase
       .from("driver_locations")
       .select("driver_id, lat, lng, is_online")
@@ -141,7 +128,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const rawDrivers: DriverLocation[] =
+    const drivers: DriverLocation[] =
       (driverLocs || [])
         .filter((d: any) => d.lat != null && d.lng != null)
         .map((d: any) => ({
@@ -150,48 +137,14 @@ export async function POST(req: Request) {
           lng: d.lng,
         })) || [];
 
-    if (!rawDrivers.length) {
+    if (!drivers.length) {
       return NextResponse.json(
         { success: false, error: "No online drivers available" },
         { status: 409 }
       );
     }
 
-    const driverIds = rawDrivers.map((d) => d.driver_id);
-    const { data: walletRows, error: walletError } = await supabase
-      .from("drivers")
-      .select("id, wallet_balance, min_wallet_required, wallet_locked")
-      .in("id", driverIds);
-
-    if (walletError) {
-      console.error("AUTO_ASSIGN_DRIVER_WALLET_ERROR", walletError);
-      return NextResponse.json(
-        { success: false, error: "Failed to load driver wallets" },
-        { status: 500 }
-      );
-    }
-
-    const walletByDriverId = new Map<string, DriverWallet>();
-    for (const row of (walletRows || []) as DriverWallet[]) {
-      walletByDriverId.set(row.id, row);
-    }
-
-    const drivers = rawDrivers.filter((d) => {
-      const wallet = walletByDriverId.get(d.driver_id);
-      if (!wallet) return false;
-      if (Boolean(wallet.wallet_locked)) return false;
-      const balance = num(wallet.wallet_balance) ?? 0;
-      const minRequired = effectiveMinWalletRequired(wallet.min_wallet_required);
-      return balance >= minRequired;
-    });
-
-    if (!drivers.length) {
-      return NextResponse.json(
-        { success: false, error: "No wallet-eligible online drivers available" },
-        { status: 409 }
-      );
-    }
-
+    // 3) Pre-filter by straight line
     const withDist = drivers.map((d) => ({
       ...d,
       km: haversineKm(booking.pickup_lat, booking.pickup_lng, d.lat, d.lng),
@@ -201,6 +154,7 @@ export async function POST(req: Request) {
 
     const candidates = withDist.slice(0, MAX_DRIVERS);
 
+    // 4) Road durations via Mapbox
     const durations = await getRoadDurationsSeconds(
       { lat: booking.pickup_lat, lng: booking.pickup_lng },
       candidates
@@ -222,6 +176,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // 5) Assign and move to in_progress
     const { data: updated, error: updateError } = await supabase
       .from("bookings")
       .update({

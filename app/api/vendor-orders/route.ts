@@ -4,20 +4,6 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
-function isTakeoutEnabled() {
-  return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
-}
-
-function takeoutDisabledResponse() {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "TAKEOUT_DISABLED",
-      message: "Takeout is not enabled yet. Ride booking remains the active service."
-    },
-    { status: 503 }
-  );
-}
 // PHASE_3D_TAKEOUT_COORDS_HELPERS
 type LatLng = { lat: number | null; lng: number | null };
 
@@ -184,6 +170,7 @@ async function fetchAddressCoords(admin: any, deviceKey: string, addressId: stri
 }
 // PHASE_3D_TAKEOUT_COORDS_HELPERS_END
 
+
 export const dynamic = "force-dynamic";
 /* PHASE_3E_TOWNZONE_DERIVE_START */
 function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
@@ -213,34 +200,6 @@ function deriveZoneFromTown(town: string | null): string | null {
 /* PHASE_3E_TOWNZONE_DERIVE_END */
 
 
-function jrideTakeoutCustomerNoteOnly(row: any): string | null {
-  const raw = String(row?.customer_note ?? row?.customerNote ?? row?.notes ?? row?.note ?? "").trim();
-  if (!raw) return null;
-  const markers = [
-    "Cash collection required:",
-    "cash collection required:",
-    "Vendor receipt requested.",
-    "vendor receipt requested.",
-    "Receipt requested:",
-    "receipt requested:",
-    "Packaging:",
-    "packaging:"
-  ];
-  let cut = raw.length;
-  for (const marker of markers) {
-    const idx = raw.indexOf(marker);
-    if (idx >= 0 && idx < cut) cut = idx;
-  }
-  const cleaned = raw.slice(0, cut).replace(/\s+/g, " ").trim();
-  return cleaned || null;
-}
-
-function jrideTakeoutPickupExcessFee(km: any): number {
-  const distance = Number(km);
-  if (!Number.isFinite(distance) || distance <= 1.5) return 0;
-  return Math.ceil((distance - 1.5) / 0.5) * 20;
-}
-
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
 }
@@ -267,6 +226,26 @@ async function isAuthedWithEither(supabase: any) {
   const { data } = await supabase.auth.getUser();
   return !!data?.user;
 }
+async function jrideResolveTakeoutAuthUserId(supabase: any): Promise<string | null> {
+  // JRIDE_TAKEOUT_AUTH_USER_ID_V1
+  // Server-side identity only. Do not trust client-submitted user ids.
+  try {
+    const session = await auth().catch(() => null as any);
+    const sid =
+      (session as any)?.user?.id ||
+      (session as any)?.user?.sub ||
+      null;
+    if (sid) return String(sid);
+  } catch {}
+
+  try {
+    const res = await supabase.auth.getUser();
+    const uid = (res as any)?.data?.user?.id || null;
+    if (uid) return String(uid);
+  } catch {}
+
+  return null;
+}
 
 type SnapshotItem = {
   booking_id?: string;
@@ -274,7 +253,6 @@ type SnapshotItem = {
   name: string;
   price: number;
   quantity: number;
-  packaging_note?: string | null;
   snapshot_at?: string;
 };
 
@@ -296,8 +274,7 @@ function normalizeItems(body: any): SnapshotItem[] {
     const price = toNum(it?.price ?? it?.unit_price ?? 0);
     const qty = Math.max(1, parseInt(String(it?.quantity ?? it?.qty ?? 1), 10) || 1);
 
-    const packaging_note = String(it?.packaging_note ?? it?.packagingNote ?? it?.packaging ?? "").trim() || null;
-    out.push({ menu_item_id, name, price, quantity: qty, packaging_note });
+    out.push({ menu_item_id, name, price, quantity: qty });
   }
 
   return out;
@@ -331,20 +308,46 @@ export async function GET(req: NextRequest) {
       ok: false,
       error: "SERVER_MISCONFIG",
       message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-    });
+    }
+
+  const authedUserId = await jrideResolveTakeoutAuthUserId(supabase).catch(() => null););
   }
 
   const b = await admin
     .from("bookings")
     .select("*")
     .eq("vendor_id", vendor_id)
-      .eq("service_type", "takeout")
     .order("created_at", { ascending: false });
 
   if (b.error) return json(500, { ok: false, error: "DB_ERROR", message: b.error.message });
 
   const rows = (Array.isArray(b.data) ? b.data : []) as any[];
   const ids = rows.map((r) => r?.id).filter(Boolean);
+
+  // JRIDE_TAKEOUT_VENDOR_PROFILE_PHONE_MAP_V1
+  const profileIds = Array.from(
+    new Set(
+      rows
+        .map((r) => String(r?.created_by_user_id || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const profileByUserId = new Map<string, any>();
+
+  if (profileIds.length) {
+    const prof = await admin
+      .from("passenger_profiles")
+      .select("user_id,full_name,phone,email")
+      .in("user_id", profileIds);
+
+    if (!prof.error && Array.isArray(prof.data)) {
+      for (const p of prof.data as any[]) {
+        const uid = String(p?.user_id || "").trim();
+        if (uid) profileByUserId.set(uid, p);
+      }
+    }
+  }
 
   const itemsByBooking: Record<string, SnapshotItem[]> = {};
   const subtotalByBooking: Record<string, number> = {};
@@ -366,7 +369,6 @@ export async function GET(req: NextRequest) {
           name: String(r?.name || ""),
           price: toNum(r?.price),
           quantity: Math.max(1, parseInt(String(r?.quantity ?? 1), 10) || 1),
-          packaging_note: r?.packaging_note ? String(r.packaging_note) : null,
           snapshot_at: r?.snapshot_at ? String(r.snapshot_at) : "",
         };
 
@@ -383,8 +385,7 @@ export async function GET(req: NextRequest) {
 
   const orders = rows.map((r) => {
     const bid = String(r?.id ?? "");
-    const snapItems = itemsByBooking[bid] || [];
-    const preferences = (r?.order_preferences && typeof r.order_preferences === "object") ? r.order_preferences : {};
+    const snapItems = itemsByBooking[bid] || null;
 
     // Prefer stored subtotal column per Phase 2D
     const storedSubtotal = r?.takeout_items_subtotal ?? null;
@@ -409,40 +410,13 @@ export async function GET(req: NextRequest) {
       created_at: r?.created_at ?? null,
       updated_at: r?.updated_at ?? null,
 
-      customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
-      customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
-      passenger_phone: r?.passenger_phone ?? r?.customer_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
-      phone: r?.phone ?? r?.passenger_phone ?? r?.customer_phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
+      customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? profileByUserId.get(String(r?.created_by_user_id || ""))?.full_name ?? null,
+      customer_phone: r?.customer_phone ?? r?.rider_phone ?? profileByUserId.get(String(r?.created_by_user_id || ""))?.phone ?? null,
       to_label: r?.to_label ?? r?.dropoff_label ?? null,
 
       items: snapItems,
-      item_count: snapItems.length,
-      items_text: r?.items_text ?? null,
-      customer_note: jrideTakeoutCustomerNoteOnly(r),
-      note: jrideTakeoutCustomerNoteOnly(r),
-      payment_instruction:
-        r?.takeout_cash_collection_required === true || r?.takeout_route_plan === "customer_cash_first"
-          ? "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase."
-          : null,
-      receipt_instruction:
-        r?.receipt_requested === true || r?.request_vendor_receipt === true || preferences?.receipt_requested === true
-          ? "Vendor receipt requested."
-          : null,
-      packaging_instruction:
-        preferences?.premium_packaging_selected === true || r?.premium_packaging_selected === true
-          ? "Premium packaging requested."
-          : "Standard item packaging",
-      pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km),
-      takeout_pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km),
-      order_preferences: preferences,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
-      takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       total_bill,
-      premium_packaging_selected: Boolean(r?.premium_packaging_selected ?? preferences?.premium_packaging_selected ?? false),
-      premium_packaging_fee: r?.premium_packaging_fee ?? preferences?.premium_packaging_fee ?? null,
-      premium_packaging_label: r?.premium_packaging_label ?? preferences?.premium_packaging_label ?? null,
-      receipt_requested: Boolean(r?.receipt_requested ?? r?.request_vendor_receipt ?? preferences?.receipt_requested ?? false),
-      request_vendor_receipt: Boolean(r?.request_vendor_receipt ?? r?.receipt_requested ?? preferences?.receipt_requested ?? false),
     };
   });
 
@@ -450,7 +424,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isTakeoutEnabled()) return takeoutDisabledResponse();
   const supabase = createRouteHandlerClient({ cookies });
   // Keep auth system untouched; do not enforce hard fail unless you want later
   // const authed = await isAuthedWithEither(supabase).catch(() => false);
@@ -461,7 +434,9 @@ export async function POST(req: NextRequest) {
       ok: false,
       error: "SERVER_MISCONFIG",
       message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-    });
+    }
+
+  const authedUserId = await jrideResolveTakeoutAuthUserId(supabase).catch(() => null););
   }
 
   const body = await req.json().catch(() => ({} as any));
@@ -469,289 +444,11 @@ const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
   if (!vendor_id) {
     return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
   }
-const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
 
-  const vendor_status = order_id
-    ? String(body?.vendor_status ?? body?.vendorStatus ?? "").trim()
-    : "vendor_pending";
-  const cancelReason = String(body?.cancel_reason ?? body?.cancellation_reason ?? body?.vendor_cancel_reason ?? "").trim();
-  const cancelNote = String(body?.cancel_note ?? body?.cancellation_note ?? body?.vendor_cancel_note ?? "").trim();
-
-  // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
-// Phase 3A bridge: when vendor marks ready (driver_arrived), do not move booking.status to ride lifecycle values
-// so it becomes dispatch-visible. Idempotent: only if status is still requested/empty.
-  if (order_id) {
-    const cur = await admin
-      .from("bookings")
-      .select("id,status,vendor_status")
-      .eq("id", order_id)
-      .eq("vendor_id", vendor_id)
-      .eq("service_type", "takeout")
-      .single();
-
-    if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
-
-    const curStatus = String((cur.data as any)?.status || "").trim();
-    const curVendor = String((cur.data as any)?.vendor_status || "").trim().toLowerCase();
-    const nextVendor = String(vendor_status || "").trim().toLowerCase();
-
-    const allowedForward: Record<string, string[]> = {
-      "": ["vendor_accepted", "cancelled"],
-      "requested": ["vendor_accepted", "cancelled"],
-      "vendor_pending": ["vendor_accepted", "cancelled"],
-      "vendor_accepted": ["preparing", "cancelled"],
-      "preparing": ["pickup_ready", "cancelled"],
-      "pickup_ready": ["completed", "cancelled"],
-      "driver_assigned": ["cancelled", "preparing", "pickup_ready"],
-      "arrived_customer_cash": ["cancelled", "cash_collected"],
-      "cash_collected": ["cancelled", "driver_assigned", "preparing", "pickup_ready"],
-      "rider_arrived_vendor": ["cancelled", "pickup_ready"],
-      "picked_up": ["cancelled", "completed"],
-      "delivering": ["cancelled", "completed"],
-      "completed": [],
-      "cancelled": [],
-      "canceled": []
-    };
-
-    const normalizedCurrent = curVendor === "canceled" ? "cancelled" : (curVendor || "vendor_pending");
-    const normalizedNextRaw = nextVendor === "accepted" ? "vendor_accepted" : nextVendor;
-    const normalizedNext = normalizedNextRaw === "canceled" ? "cancelled" : normalizedNextRaw;
-
-    if (normalizedCurrent === "completed" || normalizedCurrent === "cancelled") {
-      return json(409, {
-        ok: false,
-        error: "TERMINAL_STATE_LOCKED",
-        message: "Order already " + normalizedCurrent + ". No further updates allowed.",
-        current: normalizedCurrent,
-        attempted: normalizedNext
-      });
-    }
-
-    const allowed = allowedForward[normalizedCurrent] || [];
-    if (!allowed.includes(normalizedNext)) {
-      return json(409, {
-        ok: false,
-        error: "INVALID_VENDOR_STATUS_TRANSITION",
-        message: "Invalid transition: " + normalizedCurrent + " -> " + normalizedNext,
-        current: normalizedCurrent,
-        attempted: normalizedNext,
-        allowed
-      });
-    }
-
-    const patch: any = { vendor_status: normalizedNext };
-
-    // JRIDE_TAKEOUT_VENDOR_ACCEPTANCE_FLOW_V1
-    // Vendor state is separate from driver movement and passenger pricing.
-    // Do not call ride lifecycle or wallet logic here.
-    if (normalizedNext === "vendor_accepted") {
-      patch.customer_status = "vendor_accepted";
-    } else if (normalizedNext === "preparing") {
-      patch.customer_status = "preparing";
-    } else if (normalizedNext === "pickup_ready") {
-      patch.customer_status = "ready_for_pickup";
-    } else if (normalizedNext === "completed") {
-      patch.customer_status = "completed";
-    } else if (normalizedNext === "cancelled") {
-      if (!cancelReason) {
-        return json(400, { ok: false, error: "CANCEL_REASON_REQUIRED", message: "Cancellation reason is required." });
-      }
-      patch.customer_status = "cancelled";
-      patch.vendor_cancel_reason = cancelReason;
-      patch.cancel_reason = cancelReason;
-      patch.cancellation_reason = cancelReason;
-      patch.vendor_cancel_note = cancelNote || null;
-      patch.cancel_note = cancelNote || null;
-      patch.cancelled_by = "vendor";
-    }
-
-    const up = await admin
-      .from("bookings")
-      .update(patch)
-      .eq("id", order_id)
-      .eq("vendor_id", vendor_id)
-      .eq("service_type", "takeout")
-      .select("*")
-      .single();
-
-    if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
-
-    return json(200, {
-      ok: true,
-      action: "updated",
-      order_id: up.data?.id ?? order_id,
-      vendor_status: up.data?.vendor_status ?? nextVendor,
-      status: up.data?.status ?? curStatus,
-      bridgedToDispatch: !!patch.status,
-    });
-  }
-
-  // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
-
-  const customer_name = String(body?.customer_name ?? body?.customerName ?? body?.passenger_name ?? body?.passengerName ?? "").trim();
-  const customer_phone = String(
-    body?.customer_phone ??
-    body?.customerPhone ??
-    body?.passenger_phone ??
-    body?.passengerPhone ??
-    body?.phone ??
-    body?.contact_phone ??
-    body?.contactPhone ??
-    body?.mobile ??
-    body?.mobile_number ??
-    ""
-  ).trim();
-  const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
-  const note = String(body?.note ?? "").trim();
-  const premium_packaging_selected = Boolean(body?.premium_packaging_selected ?? body?.premiumPackagingSelected ?? body?.order_preferences?.premium_packaging_selected ?? false);
-  const premium_packaging_fee = toNum(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? body?.order_preferences?.premium_packaging_fee ?? 0);
-  const premium_packaging_label = String(body?.premium_packaging_label ?? body?.premiumPackagingLabel ?? body?.order_preferences?.premium_packaging_label ?? "").trim() || null;
-  const receipt_requested = Boolean(body?.receipt_requested ?? body?.request_vendor_receipt ?? body?.receiptRequested ?? body?.order_preferences?.receipt_requested ?? false);
-
-  const items_text = String(body?.items_text ?? "").trim();
-
-  const items = normalizeItems(body);
-  if (!items.length) {
-    return json(400, { ok: false, error: "items_required", message: "items[] required" });
-  }
-
-  // JRIDE_TAKEOUT_VENDOR_CLOSED_ENFORCEMENT_V43
-  // Server-authoritative check. Passenger UI is not trusted for open/closed state.
-  const vendorMetaForOrder =
-    (await tryFetchRowById(admin, "vendor_accounts", "id", vendor_id)) ||
-    (await tryFetchRowById(admin, "vendor_accounts", "email", vendor_id)) ||
-    (await tryFetchRowById(admin, "vendor_accounts", "display_name", vendor_id)) ||
-    (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
-    null;
-
-  if (vendorMetaForOrder && (vendorMetaForOrder as any).accepting_orders === false) {
-    return json(409, {
-      ok: false,
-      error: "TAKEOUT_VENDOR_CLOSED",
-      message: "This vendor is currently closed and cannot accept new takeout orders.",
-    });
-  }
-
-  const subtotal = computeSubtotal(items);
-  const takeoutCashFirstThreshold = 500;
-  const takeoutCashCollectionRequired = subtotal >= takeoutCashFirstThreshold;
-  const takeoutRoutePlan = takeoutCashCollectionRequired ? "customer_cash_first" : "vendor_first";
-
-  // JRIDE_VENDOR_CLOSED_HARD_BLOCK_V46
-  // Server-authoritative guard. UI state can be stale, but closed vendors must never create new takeout orders.
-  const vendorOpenCheck = await admin
-    .from("vendor_accounts")
-    .select("id,accepting_orders")
-    .eq("id", vendor_id)
-    .limit(1);
-
-  if (vendorOpenCheck.error) {
-    return json(500, { ok: false, error: "DB_ERROR", message: vendorOpenCheck.error.message });
-  }
-
-  const vendorOpenRow = Array.isArray(vendorOpenCheck.data) ? vendorOpenCheck.data[0] : null;
-  if (vendorOpenRow && vendorOpenRow.accepting_orders === false) {
-    return json(409, {
-      ok: false,
-      error: "VENDOR_CLOSED",
-      message: "This vendor is currently closed and cannot accept new orders.",
-    });
-  }
-
-  // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
-  // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
-  // Ride dispatch, fare proposal, and trip lifecycle routes are not called here.
-  const submittedMenuIds = items
-    .map((it) => String(it.menu_item_id || "").trim())
-    .filter(Boolean);
-
-  if (submittedMenuIds.length) {
-    const menuState = await admin
-      .from("vendor_menu_items")
-      .select("*")
-      .eq("vendor_id", vendor_id);
-
-    if (menuState.error) {
-      return json(500, { ok: false, error: "DB_ERROR", message: menuState.error.message });
-    }
-
-    const byId = new Map<string, any>();
-    for (const row of Array.isArray(menuState.data) ? (menuState.data as any[]) : []) {
-      const id = String(row?.menu_item_id ?? row?.id ?? "").trim();
-      if (id) byId.set(id, row);
-    }
-
-    const blocked: string[] = [];
-    for (const item of items) {
-      const id = String(item.menu_item_id || "").trim();
-      if (!id) continue;
-      const row = byId.get(id);
-      const availableRaw = row?.is_active ?? row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
-      const soldRaw = row?.sold_out_today ?? row?.is_sold_out_today;
-      const available = typeof availableRaw === "boolean" ? availableRaw : true;
-      const soldOut = typeof soldRaw === "boolean" ? soldRaw : false;
-      const remainingRaw = Number(row?.remaining_quantity);
-      const hasDailyLimit = Number.isFinite(remainingRaw) && remainingRaw > 0;
-      const requestedQty = Math.max(1, Number(item.quantity || 1) || 1);
-      const overStock = hasDailyLimit && requestedQty > remainingRaw;
-      if (!row || !available || soldOut || overStock) blocked.push(item.name || id);
-    }
-
-    if (blocked.length) {
-      return json(409, {
-        ok: false,
-        error: "TAKEOUT_VENDOR_CLOSED_OR_ITEM_UNAVAILABLE",
-        message: "This vendor is closed or one or more selected items are unavailable. Please refresh the menu.",
-        blocked_items: blocked,
-      });
-    }
-  }
-
-  // JRIDE TAKEOUT ORDER CREATE SCHEMA SAFE V1
-  // Create booking row (schema-safe: auto-drop unknown booking columns and retry).
-  // This must stay fail-safe because production schemas may not yet contain
-  // productization fields such as receipt_requested or premium_packaging_* .
-  async function insertBookingSchemaSafe(initial: Record<string, any>) {
-    let payload: Record<string, any> = { ...initial };
-    let lastError: any = null;
-
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const res = await admin!.from("bookings").insert(payload).select("*").single();
-
-      if (!res.error) return res;
-
-      lastError = res.error;
-      const msg = String((res.error as any)?.message || "");
-
-      const m =
-        msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i) ||
-        msg.match(/column\s+"([^"]+)"\s+of\s+relation\s+"bookings"\s+does\s+not\s+exist/i);
-
-      if (m && m[1]) {
-        const col = String(m[1]);
-        if (Object.prototype.hasOwnProperty.call(payload, col)) {
-          delete (payload as any)[col];
-          continue;
-        }
-      }
-
-      return res;
-    }
-
-    return {
-      data: null,
-      error: {
-        message:
-          "DB_ERROR: schema-safe insert retries exceeded. Last error: " +
-          String(lastError?.message || "unknown"),
-      },
-    } as any;
-  }
-
-  // TAKEOUT_CREATE_COORDS_RESTORE_V1
-  // Create path only: resolve pickup/dropoff/town before inserting booking.
+  // PHASE_3F_TAKEOUT_COORDS_TOWN
   const device_key = String(body?.device_key ?? body?.deviceKey ?? "").trim();
   const address_id = String(body?.address_id ?? body?.addressId ?? "").trim() || null;
+
   const to_label_hint = String(body?.to_label ?? body?.toLabel ?? body?.address_text ?? body?.addressText ?? "").trim() || null;
 
   const v = await fetchVendorCoordsAndTown(admin, vendor_id);
@@ -770,41 +467,189 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   const pickupLL = normalizeLL(vendorLL);
   const dropoffLL = normalizeLL(dropLL);
+  // PHASE_3F_TAKEOUT_COORDS_TOWN_END
+/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_START
+   Ensure CREATE path will never write missing coords (prevents LiveTrips PROBLEM noise).
+   Uses vars computed above in PHASE_3F:
+   - pickupLL, dropoffLL, derivedTown
+*/
+const town = derivedTown;
+const zone = deriveZoneFromTown(town) || town;
 
-  if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
-    return json(400, {
-      ok: false,
-      error: "TAKEOUT_COORDS_MISSING",
-      message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng.",
-      details: {
-        pickup_lat: (pickupLL as any)?.lat ?? null,
-        pickup_lng: (pickupLL as any)?.lng ?? null,
-        dropoff_lat: (dropoffLL as any)?.lat ?? null,
-        dropoff_lng: (dropoffLL as any)?.lng ?? null,
-        town: derivedTown,
-      },
+if (pickupLL?.lat == null || pickupLL?.lng == null || dropoffLL?.lat == null || dropoffLL?.lng == null) {
+  return json(400, {
+    ok: false,
+    error: "TAKEOUT_COORDS_MISSING",
+    message: "Missing pickup/dropoff coordinates. Check vendor_accounts lat/lng and passenger_addresses lat/lng (or Mapbox token fallback).",
+    details: {
+      pickup_lat: (pickupLL as any)?.lat ?? null,
+      pickup_lng: (pickupLL as any)?.lng ?? null,
+      dropoff_lat: (dropoffLL as any)?.lat ?? null,
+      dropoff_lng: (dropoffLL as any)?.lng ?? null,
+      town,
+      zone,
+    },
+  });
+}
+/* PHASE3I_TAKEOUT_COORDS_BASELINE_GUARD_END */
+const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? body?.bookingId ?? body?.id ?? "").trim();
+
+  const vendor_status = String(body?.vendor_status ?? body?.vendorStatus ?? "preparing").trim();
+
+  // If order_id exists, treat as "update vendor_status" (NO SNAPSHOT HERE)
+// Phase 3A bridge: when vendor marks ready (driver_arrived), also move booking.status -> "assigned"
+// so it becomes dispatch-visible. Idempotent: only if status is still requested/empty.
+  if (order_id) {
+    const cur = await admin
+      .from("bookings")
+      .select("id,status,vendor_status")
+      .eq("id", order_id)
+      .eq("vendor_id", vendor_id)
+      .single();
+
+    if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
+
+    const curStatus = String((cur.data as any)?.status || "").trim();
+    const nextVendor = vendor_status;
+
+    const patch: any = { vendor_status: nextVendor };
+
+    // Bridge rule: vendor ready -> dispatch sees it
+    // Only advance if booking hasn't progressed yet.
+    const stillRequested = !curStatus || curStatus === "requested";
+    const isReadySignal =
+      nextVendor === "driver_arrived" ||
+      nextVendor === "ready" ||
+      nextVendor === "prepared" ||
+      nextVendor === "pickup_ready";
+
+    if (stillRequested && isReadySignal) {
+      patch.status = "assigned";
+    }
+
+    const up = await admin
+      .from("bookings")
+      .update(patch)
+      .eq("id", order_id)
+      .eq("vendor_id", vendor_id)
+      .select("*")
+      .single();
+
+    if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
+
+    return json(200, {
+      ok: true,
+      action: "updated",
+      order_id: up.data?.id ?? order_id,
+      vendor_status: up.data?.vendor_status ?? nextVendor,
+      status: up.data?.status ?? curStatus,
+      bridgedToDispatch: !!patch.status,
     });
   }
-  // TAKEOUT_BOOKING_CODE_CREATE_V1
-  const takeoutBookingCode =
-    String(body?.booking_code ?? body?.bookingCode ?? "").trim() ||
-    ("TO-" +
-      new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14) +
-      "-" +
-      Math.floor(1000 + Math.random() * 9000));
-  const createPayload: Record<string, any> = {    // PHASE_3D_TAKEOUT_COORDS_FIX fields
+
+  // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
+
+
+  const customer_name = String(body?.customer_name ?? body?.customerName ?? "").trim();
+  const customer_phone = String(body?.customer_phone ?? body?.customerPhone ?? "").trim();
+  const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
+  const note = String(body?.note ?? "").trim();
+
+  const items_text = String(body?.items_text ?? "").trim();
+
+  const items = normalizeItems(body);
+  if (!items.length) {
+    return json(400, { ok: false, error: "items_required", message: "items[] required" });
+  }
+
+  const subtotal = computeSubtotal(items);
+
+  // Create booking row (schema-safe: auto-drop unknown columns and retry)
+  async function insertBookingSchemaSafe(initial: Record<string, any>) {
+    // Keep a mutable copy
+    let payload: Record<string, any> = { ...initial };
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const res = await admin!.from("bookings").insert(payload).select("*").single();
+
+      if (!res.error) return res;
+
+      const msg = String((res.error as any)?.message || "");
+
+      // Supabase schema cache error pattern
+      const m = msg.match(/Could not find the '([^']+)' column of 'bookings' in the schema cache/i);
+      if (m && m[1]) {
+      
+
+        const col = String(m[1]);
+
+
+        // Remove unknown column and retry
+
+
+        delete (payload as any)[col];
+
+
+        continue;
+
+
+      }
+
+
+
+
+
+      // Any other DB error: stop
+
+
+      return res;
+
+
+    }
+
+
+
+
+
+    return {
+
+
+      data: null,
+
+
+      error: { message: "DB_ERROR: schema-safe insert retries exceeded" },
+
+
+    } as any;
+
+
+  }
+
+
+
+
+
+  const createPayload: Record<string, any> = {
+    created_by_user_id: authedUserId || null,    // PHASE_3D_TAKEOUT_COORDS_FIX fields
+
+
+
+
+
 
     // PHASE_3E_VENDORORDERS_TOWNZONE_FIELDS
     // bookings has 'town' column (no 'zone' column) - keep town only
 
     // Likely required / core
 
+
     vendor_id,
+
 
     service_type: "takeout",
 
+
     vendor_status,
-    booking_code: takeoutBookingCode,
   // PHASE_3F create-time town + coords (no 0/0)
   town: (typeof derivedTown !== "undefined" ? derivedTown : null),
         pickup_lat: (pickupLL as any)?.lat ?? null,
@@ -813,55 +658,72 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         dropoff_lng: (dropoffLL as any)?.lng ?? null,
     status: "requested",
 
+
+
+
+
     // Optional fields (will be auto-dropped if columns don't exist)
 
-    passenger_name: customer_name || "Takeout Customer",
+
     rider_name: customer_name || null,
+
 
     rider_phone: customer_phone || null,
 
+
+
+
+
     customer_name: customer_name || null,
+
 
     customer_phone: customer_phone || null,
 
-      passenger_phone: customer_phone || null,
 
-    phone: customer_phone || null,
 
-    contact_phone: customer_phone || null,
+
 
     to_label: to_label || null,
 
+
     dropoff_label: to_label || null,
 
-    notes: note || null,
+
+
+
+
+    note: note || null,
+
 
     items_text: items_text || null,
-    premium_packaging_selected,
-    premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
-    premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
-    receipt_requested,
-    request_vendor_receipt: receipt_requested,
-    order_preferences: {
-      premium_packaging_selected,
-      premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
-      premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
-      receipt_requested,
-    },
+
+
+
+
 
     // Phase 2D requirement
 
+
     takeout_items_subtotal: subtotal,
-    takeout_service_fee: 15,
-    takeout_cash_collection_required: takeoutCashCollectionRequired,
-    takeout_route_plan: takeoutRoutePlan,
-    takeout_pricing_status: "pricing_pending",
+
 
   };
 
+
+
+
+
   const ins = await insertBookingSchemaSafe(createPayload);
 
+
+
+
+
   if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
+
+
+
+
 
   const bookingId = String(ins.data?.id ?? "");
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
@@ -875,9 +737,6 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       dropoff_lat: (dropoffLL as any)?.lat ?? null,
       dropoff_lng: (dropoffLL as any)?.lng ?? null,
     town: (typeof derivedTown !== "undefined" ? derivedTown : null),
-    takeout_cash_collection_required: takeoutCashCollectionRequired,
-    takeout_route_plan: takeoutRoutePlan,
-    takeout_service_fee: 15,
   };
 
   const forceRes = await admin
@@ -899,7 +758,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_START
 
+
   try {
+
 
     // 1) vendor pickup coords (preferred)
     const vendorMeta =
@@ -909,6 +770,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       (await tryFetchRowById(admin, "vendor_accounts", "location_label", vendor_id)) ||
       null;
     const vLL = pickLatLng(vendorMeta);
+
 
     const vTown = pickTown(vendorMeta);
     const vLabel =
@@ -937,48 +799,91 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       isFiniteNum(addr?.lng) ?? null;
     // 3) accept coords if caller provided them (future-proof)
 
+
     const bPickupLat = isFiniteNum(body?.pickup_lat ?? body?.pickupLat ?? null);
+
 
     const bPickupLng = isFiniteNum(body?.pickup_lng ?? body?.pickupLng ?? null);
 
+
     const bDropLat = isFiniteNum(body?.dropoff_lat ?? body?.dropoffLat ?? body?.to_lat ?? body?.toLat ?? null);
+
 
     const bDropLng = isFiniteNum(body?.dropoff_lng ?? body?.dropoffLng ?? body?.to_lng ?? body?.toLng ?? null);
 
+
+
+
+
     const pickup_lat = bPickupLat ?? vLL.lat;
+
 
     const pickup_lng = bPickupLng ?? vLL.lng;
 
+
+
+
+
     // If we can't find a dropoff coordinate, fallback to pickup coords (pilot-safe: removes PROBLEM trips)
+
 
     const dropoff_lat = bDropLat ?? aLat ?? pickup_lat ?? null;
 
+
     const dropoff_lng = bDropLng ?? aLng ?? pickup_lng ?? null;
+
+
+
+
 
     const updatePayload: Record<string, any> = {
 
+
       // labels (schema-safe; unknown cols auto-dropped)
+
 
       pickup_label: vLabel || null,
 
+
       from_label: vLabel || null,
+
+
+
+
 
       dropoff_label: to_label || null,
 
+
       to_label: to_label || null,
+
+
+
+
 
       // coords
       // town defaults help zoning
 
+
       town: vTown || null,
+
 
     };
 
+
+
+
+
     // only update if we have at least pickup coords (and ideally dropoff coords too)
+
 
     const hasAny =
 
+
       (pickup_lat != null && pickup_lng != null) || (dropoff_lat != null && dropoff_lng != null);
+
+
+
+
 
     if (hasAny) {
       // Inline schema-safe update (drop unknown booking columns and retry)
@@ -1018,81 +923,138 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       }
     }
 
+
   } catch {
+
 
     // fail-open: creation must succeed even if hydration fails
 
+
   }
+
 
   // PHASE3C_TAKEOUT_COORDS_HYDRATE_STEP_END
 
+
+
+
+
+
+
+
   // Snapshot lock (idempotent): if already exists, do not insert again
+
 
   let takeoutSnapshot: any = null;
 
+
   try {
+
 
     const already = await admin
 
+
       .from("takeout_order_items")
+
 
       .select("id", { count: "exact", head: true })
 
+
       .eq("booking_id", bookingId);
+
+
+
+
 
     const existingCount = (already as any)?.count ?? 0;
 
+
+
+
+
     if (existingCount > 0) {
+
 
       // Ensure booking subtotal is set (repair only; do not re-snapshot)
 
+
       const cur = toNum((ins.data as any)?.takeout_items_subtotal);
+
 
       if (!(cur > 0) && subtotal > 0) {
 
+
         await admin!.from("bookings").update({ takeout_items_subtotal: subtotal }).eq("id", bookingId);
 
+
       }
+
 
       takeoutSnapshot = { ok: true, inserted: 0, subtotal, note: "already_snapshotted" };
 
+
     } else {
+
 
       const rowsToInsert = items.map((it) => ({
 
+
         booking_id: bookingId,
+
 
         menu_item_id: it.menu_item_id,
 
+
         name: it.name,
+
 
         price: toNum(it.price),
 
+
         quantity: Math.max(1, it.quantity || 1),
+
 
         snapshot_at: new Date().toISOString(),
 
+
       }));
+
+
+
+
 
       const snapIns = await admin.from("takeout_order_items").insert(rowsToInsert);
 
+
       if (snapIns.error) {
+
 
         takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Insert failed: " + snapIns.error.message };
 
+
       } else {
+
 
         takeoutSnapshot = { ok: true, inserted: rowsToInsert.length, subtotal, note: "OK" };
 
+
       }
+
 
     }
 
+
   } catch (e: any) {
+
 
     takeoutSnapshot = { ok: false, inserted: 0, subtotal: 0, note: "Snapshot exception: " + String(e?.message || e) };
 
+
   }
+
+
+
+
 
   // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG
   let coords_debug: any = null;
@@ -1107,16 +1069,15 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   // PHASE3I_VENDOR_ORDERS_COORDS_DEBUG_END
   return json(200, {
 
+
     ok: true,
+
 
     action: "created",
 
+
     order_id: bookingId,
-    booking_code: takeoutBookingCode,
-    premium_packaging_selected,
-    premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
-    premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
-    receipt_requested,
+
 
     
     resolved_pickup: pickupLL ?? vendorLL ?? null,
@@ -1124,25 +1085,12 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     db_coords: coords_debug,
 
 takeout_items_subtotal: subtotal,
-    takeout_cash_collection_required: takeoutCashCollectionRequired,
-    takeout_route_plan: takeoutRoutePlan,
+
 
     takeoutSnapshot,
 
+
   });
 
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,193 +1,51 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-type AcceptBody = {
-  booking_code?: string;
-  booking_id?: string;
-};
-
-function text(v: unknown): string {
-  return String(v ?? "").trim();
-}
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
-}
-
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
-    const body = (await req.json().catch(() => ({}))) as AcceptBody;
 
-    const bookingCode = text(body.booking_code);
-    const bookingId = text(body.booking_id);
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth?.user;
+    if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-    if (!bookingCode && !bookingId) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_CODE" },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
+    const body = await req.json().catch(() => ({}));
+    const booking_id = body?.booking_id ? String(body.booking_id) : "";
+    if (!booking_id) return NextResponse.json({ ok: false, error: "Missing booking_id" }, { status: 400 });
 
-    const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !userRes?.user) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401, headers: noStoreHeaders() }
-      );
-    }
-
-    const userId = userRes.user.id;
-
-    let query = supabase
+    // Only allow the booking owner to accept.
+    // We check created_by_user_id and update safely.
+    // Lock fare by setting verified_fare = COALESCE(verified_fare, proposed_fare).
+    const { data: b, error: bErr } = await supabase
       .from("bookings")
-      .select("*")
-      .eq("created_by_user_id", userId)
-      .limit(1);
+      .select("id, created_by_user_id, proposed_fare, verified_fare, passenger_fare_response")
+      .eq("id", booking_id)
+      .single();
 
-    if (bookingCode) {
-      query = query.eq("booking_code", bookingCode);
-    } else {
-      query = query.eq("id", bookingId);
+    if (bErr) return NextResponse.json({ ok: false, error: bErr.message }, { status: 500 });
+    if (!b) return NextResponse.json({ ok: false, error: "Booking not found" }, { status: 404 });
+    if (String(b.created_by_user_id || "") !== String(user.id)) {
+      return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const { data: rows, error: bookingErr } = await query;
-
-    if (bookingErr) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_READ_FAILED",
-          message: bookingErr.message,
-        },
-        { status: 500, headers: noStoreHeaders() }
-      );
-    }
-
-    const booking = rows?.[0] ?? null;
-
-    if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404, headers: noStoreHeaders() }
-      );
-    }
-
-    const currentStatus = text((booking as any).status).toLowerCase();
-    if (currentStatus !== "fare_proposed") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "INVALID_STATUS",
-          message: "Fare can only be accepted while booking is in fare_proposed state.",
-          status: currentStatus,
-        },
-        { status: 409, headers: noStoreHeaders() }
-      );
-    }
-
-    const proposedFareRaw = Number((booking as any).proposed_fare ?? NaN);
-    if (!Number.isFinite(proposedFareRaw) || proposedFareRaw <= 0) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_PROPOSED_FARE" },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
-
-    const pickupFeeRaw = Number((booking as any).pickup_distance_fee ?? 0);
-    const pickupFee = Number.isFinite(pickupFeeRaw) ? pickupFeeRaw : 0;
-    const existingPromoAppliedAmountRaw = Number((booking as any).promo_applied_amount ?? 0);
-    let promoAppliedAmount = Number.isFinite(existingPromoAppliedAmountRaw) && existingPromoAppliedAmountRaw > 0 ? existingPromoAppliedAmountRaw : 0;
-    let promoStatus = text((booking as any).promo_status) || null;
-    let promoProgramCode = text((booking as any).promo_program_code) || null;
-    let promoCreditId = text((booking as any).promo_credit_id) || null;
-
-    if (!promoAppliedAmount || !promoStatus || !promoProgramCode || !promoCreditId) {
-      const { data: reservedCredit } = await supabase
-        .from("passenger_promo_credits")
-        .select("id, credit_amount, program_code, status")
-        .eq("reserved_booking_id", (booking as any).id)
-        .eq("status", "reserved")
-        .limit(1)
-        .maybeSingle();
-
-      if (reservedCredit) {
-        const reservedAmountRaw = Number((reservedCredit as any).credit_amount ?? 0);
-        const reservedAmount = Number.isFinite(reservedAmountRaw) && reservedAmountRaw > 0 ? reservedAmountRaw : 0;
-        promoAppliedAmount = Number(Math.max(0, Math.min(reservedAmount, proposedFareRaw + pickupFee + 15)).toFixed(2));
-        promoStatus = "reserved";
-        promoProgramCode = text((reservedCredit as any).program_code) || "ANDROID_FIRST_RIDE_40";
-        promoCreditId = text((reservedCredit as any).id) || null;
-      }
-    }
-
-    const promoApplied = promoAppliedAmount > 0;
-
-    const updatePayload: Record<string, unknown> = {
-      passenger_fare_response: "accepted",
-      verified_fare: proposedFareRaw,
-      verified_at: new Date().toISOString(),
-      verified_by: "passenger",
-      verified_reason: "accepted_by_passenger",
+    const { data: upd, error: uErr } = await supabase
+      .from("bookings")
+      .update({
+        passenger_fare_response: "accepted",
       status: "ready",
-      promo_applied_amount: promoAppliedAmount,
-      promo_status: promoStatus,
-      promo_program_code: promoProgramCode,
-      promo_credit_id: promoCreditId,
-    };
+      driver_status: "ready",
+      customer_status: "ready",
+        verified_fare: (b.verified_fare ?? b.proposed_fare) ?? null,
+      })
+      .eq("id", booking_id)
+      .select("id, proposed_fare, verified_fare, passenger_fare_response")
+      .single();
 
-    const { error: updateErr } = await supabase
-      .from("bookings")
-      .update(updatePayload)
-      .eq("id", (booking as any).id);
+    if (uErr) return NextResponse.json({ ok: false, error: uErr.message }, { status: 500 });
 
-    if (updateErr) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "ACCEPT_UPDATE_FAILED",
-          message: updateErr.message,
-        },
-        { status: 500, headers: noStoreHeaders() }
-      );
-    }
-
-    const platformFee = 15;
-    const subtotalBeforeDiscount = Number((proposedFareRaw + pickupFee + platformFee).toFixed(2));
-    const totalFare = Number(Math.max(subtotalBeforeDiscount - promoAppliedAmount, 0).toFixed(2));
-
-    return NextResponse.json(
-      {
-        ok: true,
-        booking_code: (booking as any).booking_code,
-        booking_id: (booking as any).id,
-        verified_fare: proposedFareRaw,
-        pickup_distance_fee: pickupFee,
-        platform_fee: platformFee,
-        subtotal_before_discount: subtotalBeforeDiscount,
-        promo_applied: promoApplied,
-        promo_discount: promoAppliedAmount,
-        promo_applied_amount: promoAppliedAmount,
-        promo_status: promoStatus,
-        promo_program_code: promoProgramCode,
-        promo_credit_id: promoCreditId,
-        total_fare: totalFare,
-        status: "ready",
-      },
-      { status: 200, headers: noStoreHeaders() }
-    );
+    return NextResponse.json({ ok: true, booking: upd }, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "SERVER_ERROR",
-        message: String(e?.message ?? e),
-      },
-      { status: 500, headers: noStoreHeaders() }
-    );
+    console.error("[fare/accept] exception", e);
+    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }

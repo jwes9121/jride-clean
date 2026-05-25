@@ -1,0 +1,172 @@
+// app/api/dispatch/status/route.ts
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+function jsonError(status: number, code: string, extra?: Record<string, any>) {
+  return NextResponse.json(
+    { ok: false, error: code, ...extra },
+    { status }
+  );
+}
+
+function normStr(v: any): string {
+  if (v == null) return "";
+  return String(v).trim();
+}
+
+const ALLOWED_STATUSES = new Set([
+  "pending",
+  "assigned",
+  "on_the_way",
+  "on_trip",
+  "completed",
+  "cancelled",
+]);
+
+function getSupabaseAdmin() {
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
+
+  if (!url || !key) return null;
+
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+export async function POST(req: Request) {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return jsonError(500, "SERVER_MISCONFIGURED", {
+      message:
+        "Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and/or SUPABASE_SERVICE_ROLE_KEY",
+    });
+  }
+
+  let body: any = null;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "INVALID_JSON");
+  }
+
+  // Canonical identity: accept bookingCode, fallback to bookingId
+  const bookingCode =
+    normStr(body?.bookingCode) ||
+    normStr(body?.booking_code) ||
+    normStr(body?.code);
+
+  const bookingId =
+    normStr(body?.bookingId) ||
+    normStr(body?.booking_id) ||
+    normStr(body?.id) ||
+    normStr(body?.uuid);
+
+  const statusRaw = normStr(body?.status);
+  const status = statusRaw.toLowerCase();
+
+  if (!statusRaw) {
+    return jsonError(400, "MISSING_STATUS", { message: "status is required" });
+  }
+
+  if (!ALLOWED_STATUSES.has(status)) {
+    return jsonError(400, "INVALID_STATUS", {
+      message: `status not allowed: ${statusRaw}`,
+      allowed: Array.from(ALLOWED_STATUSES),
+    });
+  }
+
+  if (!bookingCode && !bookingId) {
+    // Minimal logging to prevent future confusion
+    console.warn("[dispatch/status] missing booking identity", {
+      keys: body ? Object.keys(body) : null,
+      sample: body,
+    });
+    return jsonError(400, "MISSING_BOOKING_IDENTITY", {
+      message: "Provide bookingCode or bookingId",
+    });
+  }
+
+  // Try booking_code first (best canonical identity for dispatch),
+  // then fallback to id/uuid.
+  try {
+    if (bookingCode) {
+      const { data, error } = await supabase
+        .from("bookings")
+        .update({ status })
+        .eq("booking_code", bookingCode)
+        .select("id, booking_code, status");
+
+      if (error) {
+        console.warn("[dispatch/status] update by booking_code failed", {
+          bookingCode,
+          status,
+          error: { message: error.message, code: (error as any).code },
+        });
+        return jsonError(500, "DB_ERROR", { message: error.message });
+      }
+
+      if (data && data.length > 0) {
+        return NextResponse.json({
+          ok: true,
+          matchedBy: "booking_code",
+          booking: data[0],
+        });
+      }
+    }
+
+    if (bookingId) {
+      const { data, error } = await supabase
+        .from("bookings")
+        .update({ status })
+        .eq("id", bookingId)
+        .select("id, booking_code, status");
+
+      if (error) {
+        console.warn("[dispatch/status] update by id failed", {
+          bookingId,
+          status,
+          error: { message: error.message, code: (error as any).code },
+        });
+        return jsonError(500, "DB_ERROR", { message: error.message });
+      }
+
+      if (data && data.length > 0) {
+        return NextResponse.json({
+          ok: true,
+          matchedBy: "id",
+          booking: data[0],
+        });
+      }
+    }
+
+    // If we got here, nothing matched. Log payload shape once.
+    console.warn("[dispatch/status] BOOKING_NOT_FOUND", {
+      bookingCode,
+      bookingId,
+      status,
+      keys: body ? Object.keys(body) : null,
+    });
+
+    return jsonError(404, "BOOKING_NOT_FOUND", {
+      message: "No booking matched bookingCode/bookingId",
+      bookingCode: bookingCode || null,
+      bookingId: bookingId || null,
+    });
+  } catch (e: any) {
+    console.warn("[dispatch/status] unexpected error", {
+      bookingCode,
+      bookingId,
+      status,
+      err: e?.message || String(e),
+    });
+    return jsonError(500, "UNEXPECTED_ERROR", {
+      message: e?.message || "Unknown error",
+    });
+  }
+}

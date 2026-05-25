@@ -1,88 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function effectiveMinWalletRequired(raw: unknown): number {
-  const configured = Number(raw ?? 0);
-  if (Number.isFinite(configured) && configured >= 250) return configured;
-  return 250;
-}
-
-function withNoStore(res: NextResponse) {
-  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.headers.set("Pragma", "no-cache");
-  res.headers.set("Expires", "0");
-  return res;
-}
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const driverId = (searchParams.get("driver_id") || "").trim();
+    const driverId = searchParams.get("driver_id");
 
     if (!driverId) {
-      return withNoStore(
-        NextResponse.json({ ok: false, error: "driver_id is required" }, { status: 400 })
+      return NextResponse.json(
+        { ok: false, error: "driver_id is required" },
+        { status: 400 }
       );
     }
 
+    // 1) Fetch driver wallet state (SOURCE OF TRUTH)
     const { data: driver, error: dErr } = await supabase
       .from("drivers")
-      .select("id, driver_name, wallet_balance, min_wallet_required, wallet_locked, driver_status")
+      .select("id, wallet_balance, min_wallet_required, wallet_locked")
       .eq("id", driverId)
-      .maybeSingle();
+      .single();
 
     if (dErr || !driver) {
-      return withNoStore(
-        NextResponse.json({ ok: false, error: "Driver not found" }, { status: 404 })
-      );
-    }
-
-    const { data: txs, error: tErr } = await supabase
-      .from("driver_wallet_transactions")
-      .select("id, amount, balance_after, reason, booking_id, created_at")
-      .eq("driver_id", driverId)
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (tErr) {
-      return withNoStore(
-        NextResponse.json({ ok: false, error: "Failed to fetch transactions" }, { status: 500 })
+      return NextResponse.json(
+        { ok: false, error: "Driver not found" },
+        { status: 404 }
       );
     }
 
     const balance = Number(driver.wallet_balance ?? 0);
-    const minRequired = effectiveMinWalletRequired(driver.min_wallet_required);
+    const minRequired = Number(driver.min_wallet_required ?? 0);
     const walletLocked = !!driver.wallet_locked;
 
     let walletStatus = "OK";
     if (walletLocked) walletStatus = "LOCKED";
     else if (balance < minRequired) walletStatus = "LOW";
 
-    return withNoStore(
-      NextResponse.json({
-        ok: true,
-        driver_id: driverId,
-        driver_name: driver.driver_name ?? null,
-        balance,
-        wallet_balance: balance,
-        min_wallet_required: minRequired,
-        wallet_locked: walletLocked,
-        wallet_status: walletStatus,
-        wallet_source: "drivers.wallet_balance",
-        transactions: txs || []
-      })
-    );
+    // 2) Fetch last 20 ledger rows (HISTORY ONLY)
+    const { data: txs, error: tErr } = await supabase
+      .from("driver_wallet_transactions")
+      .select("id, amount, balance_after, reason, booking_id, created_at")
+      .eq("id", driverId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (tErr) {
+      return NextResponse.json(
+        { ok: false, error: "Failed to fetch transactions" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      driver_id: driverId,
+      balance,
+      min_wallet_required: minRequired,
+      wallet_locked: walletLocked,
+      wallet_status: walletStatus,
+      transactions: txs ?? []
+    });
   } catch (e: any) {
-    return withNoStore(
-      NextResponse.json({ ok: false, error: e?.message ?? "Unexpected error" }, { status: 500 })
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Unexpected error" },
+      { status: 500 }
     );
   }
 }
+

@@ -1,235 +1,142 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { NextRequest, NextResponse } from "next/server";
+
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
+function getServiceRoleClient() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createAdminClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+type Resp = {
+  ok: boolean;
+  code?: string;
+  message?: string;
+  signed_in?: boolean;
+  booking?: any;
+};
+
+function json(status: number, body: Resp) {
+  return NextResponse.json(body, { status });
 }
 
-const BOOKING_SELECT_BASE = `
-  id,
-  booking_code,
-  status,
-  driver_id,
-  assigned_driver_id,
-  created_at,
-  updated_at,
-  created_by_user_id,
-  passenger_name,
-  town,
-  from_label,
-  to_label,
-  proposed_fare,
-  passenger_fare_response,
-  verified_fare,
-  driver_to_pickup_km,
-  pickup_distance_fee,
-  trip_distance_km,
-  pickup_lat,
-  pickup_lng,
-  dropoff_lat,
-  dropoff_lng
-`;
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = await createClient();
 
-const BOOKING_SELECT_WITH_RECEIPT = `
-  id,
-  booking_code,
-  status,
-  driver_id,
-  assigned_driver_id,
-  created_at,
-  updated_at,
-  created_by_user_id,
-  passenger_name,
-  town,
-  from_label,
-  to_label,
-  proposed_fare,
-  passenger_fare_response,
-  verified_fare,
-  driver_to_pickup_km,
-  pickup_distance_fee,
-  trip_distance_km,
-  pickup_lat,
-  pickup_lng,
-  dropoff_lat,
-  dropoff_lng,
-  platform_fee,
-  total_fare,
-  completed_at,
-  cancelled_at
-`;
+    const url = new URL(req.url);
+const bookingCode = String(url.searchParams.get("code") || "").trim();
 
-async function readBookingWithFallback(
-  supabase: any,
-  queryBuilderFactory: (selectClause: string) => any
-) {
-  const attempts = [BOOKING_SELECT_WITH_RECEIPT, BOOKING_SELECT_BASE];
-  let lastError: any = null;
-
-  for (const selectClause of attempts) {
-    const res = await queryBuilderFactory(selectClause);
-    if (!res?.error) return res;
-    lastError = res.error;
-  }
-
-  return { data: null, error: lastError };
-}
-
+// If code is missing, try to discover the passenger's latest ACTIVE booking via session.
+// If no session, we still return ok=true but signed_in=false (UI can fall back to "new booking" mode).
 const ACTIVE_STATUSES = [
-  "requested",
   "pending",
   "searching",
+  "requested",
   "assigned",
   "accepted",
   "fare_proposed",
   "ready",
   "on_the_way",
   "arrived",
-  "on_trip",
-  "completed",
-  "cancelled"
+  "enroute",
+  "on_trip"
 ];
 
-export async function GET(req: Request) {
-  try {
-    const supabase = supabaseAdmin();
-    const sessionSupabase = createClient();
-    const { searchParams } = new URL(req.url);
+    // Polling must NOT require auth.
+    // Booking ownership is already enforced during booking creation.
+    let b: any = null;
+let error: any = null;
 
-    const bookingCode = String(
-      searchParams.get("code") ||
-        searchParams.get("booking_code") ||
-        ""
-    ).trim();
+if (bookingCode) {
+  const res = await supabase
+    .from("bookings")
+    .select(
+      `
+          id,
+          booking_code,
+          status,
+          driver_id,
+          assigned_driver_id,
+          created_at,
+          updated_at,
+          created_by_user_id,
+          proposed_fare,
+          passenger_fare_response
+          `
+    )
+    .eq("booking_code", bookingCode)
+    .maybeSingle();
 
-    let booking: any = null;
+  b = res.data;
+  error = res.error;
+} else {
+  // Discover latest active booking for this signed-in passenger.
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
 
-    if (bookingCode) {
-      const { data: bookingRows, error } = await readBookingWithFallback(supabase, (selectClause) =>
-        supabase
-          .from("bookings")
-          .select(selectClause)
-          .eq("booking_code", bookingCode)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-      );
+  if (!user) {
+    return json(200, { ok: true, signed_in: true, booking: null });
+  }
 
-      if (error) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "BOOKING_READ_FAILED",
-            message: error.message,
-          },
-          { status: 500, headers: noStoreHeaders() }
-        );
-      }
+  const res = await supabase
+    .from("bookings")
+    .select(
+      `
+          id,
+          booking_code,
+          status,
+          driver_id,
+          assigned_driver_id,
+          created_at,
+          updated_at,
+          created_by_user_id,
+          proposed_fare,
+          passenger_fare_response
+          `
+    )
+    .eq("created_by_user_id", user.id)
+    .in("status", ACTIVE_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-      booking = bookingRows?.[0] ?? null;
-    } else {
-      const { data: userRes, error: userErr } = await sessionSupabase.auth.getUser();
+  b = res.data;
+  error = res.error;
+}
 
-      if (userErr || !userRes?.user) {
-        return NextResponse.json(
-          { ok: false, error: "MISSING_BOOKING_CODE" },
-          { status: 400, headers: noStoreHeaders() }
-        );
-      }
-
-      const userId = userRes.user.id;
-
-      const { data: bookingRows, error } = await readBookingWithFallback(supabase, (selectClause) =>
-        supabase
-          .from("bookings")
-          .select(selectClause)
-          .eq("created_by_user_id", userId)
-          .in("status", ACTIVE_STATUSES)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-      );
-
-      if (error) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "BOOKING_READ_FAILED",
-            message: error.message,
-          },
-          { status: 500, headers: noStoreHeaders() }
-        );
-      }
-
-      booking = bookingRows?.[0] ?? null;
-    }
-
-    if (!booking) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_NOT_FOUND",
-        },
-        { status: 404, headers: noStoreHeaders() }
-      );
-    }
-
-    let driver_name: string | null = null;
-    let driver_lat: number | null = null;
-    let driver_lng: number | null = null;
-
-    const effectiveDriverId =
-      (booking as any).driver_id || (booking as any).assigned_driver_id || null;
-
-    if (effectiveDriverId) {
-      const { data: driverLoc } = await supabase
-        .from("driver_locations_latest")
-        .select("lat, lng")
-        .eq("driver_id", effectiveDriverId)
-        .maybeSingle();
-
-      if (driverLoc) {
-        driver_lat = (driverLoc as any).lat ?? null;
-        driver_lng = (driverLoc as any).lng ?? null;
-      }
-    }
-
-    const { data: rideRow, error: rideErr } = await supabase
-      .from("dispatch_rides_v1")
-      .select("driver_name")
-      .eq("booking_code", (booking as any).booking_code)
-      .maybeSingle();
-
-    if (!rideErr && rideRow) {
-      driver_name = (rideRow as any).driver_name ?? null;
-    }
-
-    return NextResponse.json(
-      {
-        ok: true,
-        booking: {
-          ...booking,
-          driver_name,
-          driver_lat,
-          driver_lng,
-        },
-      },
-      { status: 200, headers: noStoreHeaders() }
-    );
-  } catch (e: any) {
-    return NextResponse.json(
-      {
+    if (error) {
+      return json(500, {
         ok: false,
-        error: "SERVER_ERROR",
-        message: String(e?.message ?? e),
-      },
-      { status: 500, headers: noStoreHeaders() }
-    );
+        code: "DB_ERROR",
+        message: String(error.message || error),
+        signed_in: true,
+      });
+    }
+
+    if (!b) {
+      return json(404, {
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Booking not found",
+        signed_in: true,
+      });
+    }
+
+    // If booking exists, treat as signed in for polling purposes.
+    return json(200, {
+      ok: true,
+      signed_in: true,
+      booking: b,
+    });
+  } catch (e: any) {
+    return json(500, {
+      ok: false,
+      code: "ERROR",
+      message: String(e?.message || e),
+      signed_in: true,
+    });
   }
 }

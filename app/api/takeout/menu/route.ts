@@ -66,8 +66,6 @@ export async function GET(req: NextRequest) {
       vendor_id: r.vendor_id ?? vendor_id,
       name: r.name ?? r.item_name ?? null,
       description: r.description ?? null,
-      packaging_note: r.packaging_note ?? r.packagingNote ?? r.packaging ?? null,
-      photo_url: r.photo_url ?? r.image_url ?? r.menu_photo_url ?? r.item_photo_url ?? null,
       price: r.price ?? r.unit_price ?? null,
       sort_order: r.sort_order ?? 0,
 

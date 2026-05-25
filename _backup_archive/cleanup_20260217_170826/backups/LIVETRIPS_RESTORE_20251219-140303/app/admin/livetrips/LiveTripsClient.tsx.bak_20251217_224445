@@ -1,0 +1,550 @@
+﻿"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import AdminOpsPanel from "./components/AdminOpsPanel";
+import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions";
+import LiveTripsMap from "./components/LiveTripsMap";
+
+type Trip = any;
+
+type Driver = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  zone: string;
+  homeTown: string;
+  status: string;
+  updated_at?: string | null;
+};
+
+type ZoneStat = { util: number; status: string };
+
+type AssignLog = {
+  id: string;
+  created_at: string;
+  booking_id: string | null;
+  booking_code: string | null;
+  from_driver_id: string | null;
+  to_driver_id: string;
+  source: string | null;
+  actor: string | null;
+  note: string | null;
+};
+
+function normTown(z?: any) {
+  const s = String(z || "Unknown").trim();
+  return s || "Unknown";
+}
+
+function tripIdOf(t: any) {
+  return String(t?.id ?? t?.uuid ?? t?.bookingId ?? t?.booking_id ?? t?.bookingCode ?? t?.booking_code ?? "");
+}
+
+function tripCodeOf(t: any) {
+  return String(t?.bookingCode ?? t?.booking_code ?? t?.code ?? t?.id ?? "");
+}
+
+function assignedDriverIdOf(t: any) {
+  return String(t?.driver_id ?? t?.driverId ?? t?.driver_uuid ?? t?.driver?.id ?? "").trim();
+}
+
+function isLockedStatus(s: any) {
+  const x = String(s || "").toLowerCase().trim();
+  return x === "on_trip" || x === "completed" || x === "cancelled";
+}
+
+function labelDriverId(id: string) {
+  const s = String(id || "").trim();
+  if (!s) return "-";
+  return "Driver " + s.slice(0, 4);
+}
+
+export default function LiveTripsClient() {
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [driversDebug, setDriversDebug] = useState<string>("not loaded yet");
+
+  const [manualDriverId, setManualDriverId] = useState<string>("");
+  const [overrideDriverId, setOverrideDriverId] = useState<string>("");
+
+  const [assigningDriverId, setAssigningDriverId] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<string>("");
+
+  // A) Toasts
+  const [toasts, setToasts] = useState<Array<{ id: string; msg: string }>>([]);
+  const toastTimer = useRef<number | null>(null);
+
+  // A) Row highlight on assignment
+  const [flashTripId, setFlashTripId] = useState<string | null>(null);
+
+  // B) Assignment history
+  const [assignLogs, setAssignLogs] = useState<AssignLog[]>([]);
+
+  function pushToast(msg: string) {
+    const id = String(Date.now()) + Math.random().toString(16).slice(2);
+    setToasts((t) => [...t, { id, msg }].slice(-3));
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => {
+      setToasts((t) => t.slice(1));
+    }, 2500);
+  }
+
+  async function loadTrips() {
+    try {
+      const r = await fetch("/api/admin/livetrips", { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      const arr = (j?.trips ?? []) as any[];
+      setTrips(arr);
+
+      if (!selectedTripId && arr.length) {
+        setSelectedTripId(tripIdOf(arr[0]));
+      }
+    } catch (e: any) {
+      console.error("loadTrips failed", e);
+      setLastAction("Trips load failed: " + (e?.message ?? "unknown error"));
+    }
+  }
+
+  async function loadDrivers() {
+    try {
+      const r = await fetch("/api/admin/driver-locations", { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      const arr = (j?.drivers ?? []) as Driver[];
+      setDrivers(arr);
+
+      const ts = new Date().toLocaleTimeString();
+      setDriversDebug(
+        `last: table driver_locations @ ${ts}\nsource: driver_locations\ncount: ${arr.length}\n` +
+          "table driver_locations: OK — select: driver_id, lat, lng, town, status, updated_at\nrpc fallback: NO"
+      );
+    } catch (e: any) {
+      console.error("loadDrivers failed", e);
+      setDrivers([]);
+      const ts = new Date().toLocaleTimeString();
+      setDriversDebug(
+        `last: no driver source worked @ ${ts}\ncount: 0\n` +
+          `table driver_locations: ERROR — ${e?.message ?? "unknown error"}\n` +
+          "rpc fallback: NO"
+      );
+    }
+  }
+
+  async function loadAssignmentLog(bookingId: string, bookingCode: string) {
+    try {
+      if (!bookingId && !bookingCode) {
+        setAssignLogs([]);
+        return;
+      }
+      const qs = bookingId ? `bookingId=${encodeURIComponent(bookingId)}` : `bookingCode=${encodeURIComponent(bookingCode)}`;
+      const r = await fetch(`/api/admin/assignment-log?${qs}`, { cache: "no-store" });
+      const j = await r.json().catch(() => ({}));
+      setAssignLogs((j?.logs ?? []) as AssignLog[]);
+    } catch (e) {
+      console.error("loadAssignmentLog failed", e);
+      setAssignLogs([]);
+    }
+  }
+
+  useEffect(() => {
+    loadTrips();
+    loadDrivers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedTrip = useMemo(() => {
+    if (!selectedTripId) return null;
+    return trips.find((t: any) => tripIdOf(t) === selectedTripId) ?? null;
+  }, [trips, selectedTripId]);
+
+  const assignedDriverId = useMemo(() => {
+    const id = selectedTrip ? assignedDriverIdOf(selectedTrip) : "";
+    return id || null;
+  }, [selectedTrip]);
+
+  const selectedTripStatus = useMemo(() => String(selectedTrip?.status ?? "").trim(), [selectedTrip]);
+
+  const canAssign = useMemo(() => !isLockedStatus(selectedTripStatus), [selectedTripStatus]);
+  const lockReason = useMemo(() => (canAssign ? "" : `status='${selectedTripStatus}'`), [canAssign, selectedTripStatus]);
+
+  useEffect(() => {
+    if (!selectedTrip) {
+      setAssignLogs([]);
+      return;
+    }
+    loadAssignmentLog(tripIdOf(selectedTrip), tripCodeOf(selectedTrip));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTripId, trips.length]);
+
+  const zoneStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of trips) {
+      const z = normTown(t?.town ?? t?.zone ?? t?.municipality);
+      counts[z] = (counts[z] || 0) + 1;
+    }
+    const map: Record<string, ZoneStat> = {};
+    for (const [zone, count] of Object.entries(counts)) {
+      const limit = 20;
+      const util = Math.round((count / limit) * 100);
+      const status = util >= 100 ? "FULL" : util >= 90 ? "WARN" : "OK";
+      map[zone] = { util, status };
+    }
+    return map;
+  }, [trips]);
+
+  const tripForSuggestions = useMemo(() => {
+    if (!selectedTrip) return null;
+
+    const pickupLat = Number(
+      selectedTrip?.pickupLat ??
+        selectedTrip?.pickup_lat ??
+        selectedTrip?.from_lat ??
+        selectedTrip?.fromLat ??
+        0
+    );
+    const pickupLng = Number(
+      selectedTrip?.pickupLng ??
+        selectedTrip?.pickup_lng ??
+        selectedTrip?.from_lng ??
+        selectedTrip?.fromLng ??
+        0
+    );
+
+    const zone = normTown(selectedTrip?.town ?? selectedTrip?.zone ?? selectedTrip?.municipality);
+    const tripType = String(selectedTrip?.tripType ?? selectedTrip?.type ?? selectedTrip?.service_type ?? "").trim();
+
+    return { id: tripIdOf(selectedTrip), pickupLat, pickupLng, zone, tripType };
+  }, [selectedTrip]);
+
+  async function assignDriver(driverId: string, tag: string) {
+    if (!selectedTrip) {
+      setLastAction("Assign blocked: no selected trip");
+      pushToast("Assign blocked: no selected trip");
+      return;
+    }
+
+    const bookingId = tripIdOf(selectedTrip);
+    const bookingCode = tripCodeOf(selectedTrip);
+
+    if (!canAssign) {
+      const msg = `Assignment locked (${lockReason}).`;
+      setLastAction(msg);
+      pushToast(msg);
+      return;
+    }
+
+    setAssigningDriverId(driverId);
+    setLastAction(`Assigning (${tag})...`);
+
+    try {
+      const r = await fetch("/api/dispatch/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ bookingId, bookingCode, driverId, source: tag }),
+      });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
+      }
+
+      // A) Toast confirms EXACTLY what happened (assign vs reassign)
+      const fromId = String(j?.fromDriverId ?? "").trim();
+      const toId = String(j?.toDriverId ?? driverId).trim();
+      const msg = fromId && fromId !== toId
+        ? `Reassigned: ${labelDriverId(fromId)} → ${labelDriverId(toId)}`
+        : `Assigned: ${labelDriverId(toId)}`;
+      pushToast(msg);
+      setLastAction(msg);
+
+      // A) Row highlight
+      setFlashTripId(bookingId);
+      window.setTimeout(() => setFlashTripId((x) => (x === bookingId ? null : x)), 1200);
+
+      await loadTrips();
+      await loadDrivers();
+      await loadAssignmentLog(bookingId, bookingCode);
+    } catch (e: any) {
+      console.error("assignDriver failed", e);
+      const msg = "Assign FAILED: " + (e?.message ?? "unknown error");
+      setLastAction(msg);
+      pushToast(msg);
+    } finally {
+      setAssigningDriverId(null);
+    }
+  }
+
+  async function updateTripStatus(newStatus: string) {
+    if (!selectedTrip) return;
+    const bookingId = tripIdOf(selectedTrip);
+    const bookingCode = tripCodeOf(selectedTrip);
+
+    setLastAction(`Status → ${newStatus}...`);
+    try {
+      const r = await fetch("/api/dispatch/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ bookingId, bookingCode, status: newStatus }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
+
+      const msg = `Status updated ✓ (${newStatus})`;
+      setLastAction(msg);
+      pushToast(msg);
+      await loadTrips();
+    } catch (e: any) {
+      console.error("updateTripStatus failed", e);
+      const msg = "Status update failed: " + (e?.message ?? "unknown error");
+      setLastAction(msg);
+      pushToast(msg);
+    }
+  }
+
+  return (
+    <div className="h-[calc(100vh-80px)] w-full">
+      {/* A) Toast overlay */}
+      <div className="fixed right-3 top-20 z-[9999] space-y-2">
+        {toasts.map((t) => (
+          <div key={t.id} className="rounded border bg-white px-3 py-2 text-xs shadow">
+            <div className="font-semibold">Dispatch</div>
+            <div className="text-slate-700">{t.msg}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid h-full grid-cols-12 gap-2 p-2">
+        {/* LEFT */}
+        <div className="col-span-4 flex h-full flex-col gap-2 overflow-hidden">
+          {/* Driver Source Debug */}
+          <div className="rounded border bg-amber-50 p-2 text-[11px] text-slate-700 whitespace-pre-line">
+            <div className="font-semibold mb-1">Driver Source Debug</div>
+            {driversDebug}
+            <div className="mt-2 flex gap-2">
+              <button
+                className="rounded bg-amber-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-amber-700"
+                onClick={loadDrivers}
+                disabled={!!assigningDriverId}
+              >
+                Recheck drivers
+              </button>
+            </div>
+          </div>
+
+          {/* Admin ops list */}
+          <div className="flex-1 overflow-hidden rounded border bg-white">
+            <AdminOpsPanel trips={trips} selectedTripId={selectedTripId} onSelectTrip={setSelectedTripId} />
+          </div>
+
+          {/* Trip control + wallet + manual assign (kept) */}
+          <div className="rounded border bg-white p-2">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-xs">Trip control &amp; wallet</div>
+              <div className="text-[11px] text-slate-500">
+                Status: <span className="font-semibold">{String(selectedTrip?.status ?? "-")}</span>
+              </div>
+            </div>
+
+            {!canAssign ? (
+              <div className="mt-2 rounded border bg-slate-50 p-2 text-[11px] text-slate-700">
+                <div className="font-semibold">Assignment locked</div>
+                <div>{lockReason}</div>
+              </div>
+            ) : null}
+
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-slate-500">Fare</div>
+                <div className="font-semibold">{String(selectedTrip?.fare ?? selectedTrip?.total_fare ?? "--")}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-slate-500">Platform fee</div>
+                <div className="font-semibold">{String(selectedTrip?.platformFee ?? selectedTrip?.platform_fee ?? "--")}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-slate-500">Driver wallet</div>
+                <div className="font-semibold">{String(selectedTrip?.driverWallet ?? selectedTrip?.driver_wallet ?? "--")}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-slate-500">Vendor wallet</div>
+                <div className="font-semibold">{String(selectedTrip?.vendorWallet ?? selectedTrip?.vendor_wallet ?? "--")}</div>
+              </div>
+            </div>
+
+            <div className="mt-2 flex gap-2">
+              <select
+                className="w-full rounded border px-2 py-1 text-xs"
+                value={manualDriverId}
+                onChange={(e) => setManualDriverId(e.target.value)}
+                disabled={!selectedTrip || !!assigningDriverId || !canAssign}
+              >
+                <option value="">Select driver</option>
+                {drivers.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} — {d.homeTown} — {d.status}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                className={[
+                  "rounded px-3 py-1 text-xs font-semibold text-white",
+                  (!manualDriverId || !selectedTrip || !!assigningDriverId || !canAssign)
+                    ? "bg-slate-300 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-700",
+                ].join(" ")}
+                disabled={!manualDriverId || !selectedTrip || !!assigningDriverId || !canAssign}
+                onClick={() => assignDriver(manualDriverId, "manual")}
+                title="One driver per trip. Assigning again = reassign."
+              >
+                {assigningDriverId && manualDriverId === assigningDriverId ? "Assigning..." : (assignedDriverId ? "Reassign" : "Assign")}
+              </button>
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button
+                className="rounded border bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+                disabled={!selectedTrip || !!assigningDriverId}
+                onClick={() => updateTripStatus("on_the_way")}
+              >
+                On the way
+              </button>
+              <button
+                className="rounded border bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+                disabled={!selectedTrip || !!assigningDriverId}
+                onClick={() => updateTripStatus("on_trip")}
+              >
+                Start trip
+              </button>
+              <button
+                className="rounded border bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+                disabled={!selectedTrip || !!assigningDriverId}
+                onClick={() => updateTripStatus("completed")}
+              >
+                Drop off
+              </button>
+            </div>
+
+            {lastAction ? (
+              <div className="mt-2 text-[11px] text-slate-600">
+                Last action: <span className="font-semibold">{lastAction}</span>
+              </div>
+            ) : null}
+
+            <div className="mt-2 text-[11px] text-slate-500">
+              One driver per trip. Clicking Assign again will <span className="font-semibold">reassign</span> the same trip.
+            </div>
+          </div>
+
+          {/* B) Assignment History */}
+          <div className="rounded border bg-white p-2">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-xs">Assignment history</div>
+              <div className="text-[11px] text-slate-500">{assignLogs.length ? `${assignLogs.length} recent` : "—"}</div>
+            </div>
+
+            {!assignLogs.length ? (
+              <div className="mt-2 text-[11px] text-slate-400">No assignment events logged yet (run the SQL once).</div>
+            ) : (
+              <div className="mt-2 max-h-40 overflow-auto rounded border">
+                {assignLogs.map((l) => {
+                  const t = new Date(l.created_at).toLocaleString();
+                  const from = l.from_driver_id ? labelDriverId(l.from_driver_id) : "—";
+                  const to = labelDriverId(l.to_driver_id);
+                  return (
+                    <div key={l.id} className="border-b px-2 py-2 text-[11px] last:border-b-0">
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold">{l.source || "unknown"}</div>
+                        <div className="text-slate-500">{t}</div>
+                      </div>
+                      <div className="text-slate-700">
+                        {from} → <span className="font-semibold">{to}</span>
+                      </div>
+                      {l.note ? <div className="text-slate-500">{l.note}</div> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Smart suggestions */}
+          <div className="rounded border bg-white p-2">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold text-xs">Smart Auto-Assign Suggestions</div>
+              <div className="text-[11px] text-slate-500">
+                {selectedTrip ? `${normTown(selectedTrip?.town ?? selectedTrip?.zone)} load: ${zoneStats[normTown(selectedTrip?.town ?? selectedTrip?.zone)]?.util ?? 0}% (${zoneStats[normTown(selectedTrip?.town ?? selectedTrip?.zone)]?.status ?? "OK"})` : ""}
+              </div>
+            </div>
+
+            <div className="mt-2">
+              <SmartAutoAssignSuggestions
+                drivers={drivers}
+                trip={tripForSuggestions as any}
+                zoneStats={zoneStats as any}
+                onAssign={(driverId) => assignDriver(driverId, "smart")}
+                assignedDriverId={assignedDriverId}
+                assigningDriverId={assigningDriverId}
+                canAssign={canAssign}
+                lockReason={lockReason}
+              />
+            </div>
+          </div>
+
+          {/* Emergency override */}
+          <div className="rounded border bg-red-50 p-2">
+            <div className="font-semibold text-xs text-red-700">Admin Emergency Override (cross-town passenger only)</div>
+            <div className="mt-1 text-[11px] text-red-700">
+              Use only in real emergencies. This bypasses the pickup-town ordinance and logs the override.
+            </div>
+
+            <div className="mt-2 flex gap-2">
+              <select
+                className="w-full rounded border px-2 py-1 text-xs"
+                value={overrideDriverId}
+                onChange={(e) => setOverrideDriverId(e.target.value)}
+                disabled={!selectedTrip || !!assigningDriverId || !canAssign}
+              >
+                <option value="">Select driver (any town)</option>
+                {drivers.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} — {d.homeTown} — {d.status}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                className={[
+                  "rounded px-3 py-1 text-xs font-semibold text-white",
+                  (!overrideDriverId || !selectedTrip || !!assigningDriverId || !canAssign) ? "bg-red-200 cursor-not-allowed" : "bg-red-600 hover:bg-red-700",
+                ].join(" ")}
+                disabled={!overrideDriverId || !selectedTrip || !!assigningDriverId || !canAssign}
+                onClick={() => assignDriver(overrideDriverId, "override")}
+              >
+                {assigningDriverId && overrideDriverId === assigningDriverId ? "Assigning..." : "Override & assign"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT (Map) — NO CHANGES */}
+        <div className="col-span-8 h-full overflow-hidden rounded border bg-white">
+          <LiveTripsMap trips={trips} selectedTripId={selectedTripId} stuckTripIds={new Set()} />
+          {/* A) Selected row highlight is handled on the list via AdminOpsPanel styling (kept external),
+              but we flash the selectedTripId here by toggling state so the panel refreshes. */}
+        </div>
+      </div>
+
+      {/* A) Flash helper (forces a tiny visual cue without touching map): highlight the selected trip card area via an invisible marker */}
+      {flashTripId ? (
+        <div className="fixed left-3 top-20 z-[9998] rounded border bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800">
+          Updated trip: <span className="font-semibold">{flashTripId}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}

@@ -1,0 +1,1787 @@
+== JRIDE MOJIBAKE + BOM CLEAN V1_1 ==
+Root: C:\Users\jwes9\Desktop\jride-clean-fresh
+Time: 2026-02-13 07:12:31
+
+[CHANGED] node_modules\jiti\dist\babel.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\@ampproject\toolbox-optimizer\index.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\@next\font\dist\fontkit\index.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\babel\bundle.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\babel-packages\packages-bundle.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\comment-json\index.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\jsonwebtoken\index.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\node-fetch\index.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\node-html-parser\index.js
+  - replacements applied (count): 1
+[CHANGED] node_modules\next\dist\compiled\raw-body\index.js
+  - replacements applied (count): 1
+[CHANGED] public\manifest.json
+  - removed UTF-8 BOM
+[CHANGED] public\static-test.txt
+  - removed UTF-8 BOM
+[CHANGED] public\sw.js
+  - removed UTF-8 BOM
+[CHANGED] public\test.txt
+  - removed UTF-8 BOM
+[CHANGED] request\confirm-fare\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] request\passenger-count\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] sql\create_test_booking.sql
+  - removed UTF-8 BOM
+[CHANGED] sql\create_test_booking_with_driver.sql
+  - removed UTF-8 BOM
+[CHANGED] sql\driver_locations_latest_view.sql
+  - removed UTF-8 BOM
+[CHANGED] sql\update_trip_status.sql
+  - removed UTF-8 BOM
+[CHANGED] supabase\migrations\20251227002022_phase3_2_dispatch_driver_locations_view.sql
+  - removed UTF-8 BOM
+[CHANGED] supabase\sql\20251207_dispatch_actions.sql
+  - removed UTF-8 BOM
+[CHANGED] supabase\sql\20251207_dispatch_actions_realtime.sql
+  - removed UTF-8 BOM
+[CHANGED] supabase\sql\20251207_live_trips_driver_phone.sql
+  - removed UTF-8 BOM
+[CHANGED] supabase\sql\zone_capacity_view.sql
+  - removed UTF-8 BOM
+[CHANGED] types\booking.ts
+  - removed UTF-8 BOM
+[CHANGED] types\driver.ts
+  - removed UTF-8 BOM
+[CHANGED] types\index.ts
+  - removed UTF-8 BOM
+[CHANGED] types\mapbox-gl-csp-worker.d.ts
+  - removed UTF-8 BOM
+[CHANGED] types\mapbox-gl-csp.d.ts
+  - removed UTF-8 BOM
+[CHANGED] types\survey.ts
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\00_INDEX.txt
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\01_API_CHECKS.txt
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\app_api_admin_driver-locations_route.ts.txt
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\app_api_admin_livetrips_page-data_route.ts.txt
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\app_api_dispatch_assign_route.ts.txt
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\app_api_dispatch_status_route.ts.txt
+  - removed UTF-8 BOM
+[CHANGED] _debug_route_dumps\app_api_driver_locations_route.ts.txt
+  - removed UTF-8 BOM
+[CHANGED] _diag\WALLET_ROUTES_REPORT.md
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\.eslintrc.json
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\auth.config.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\create_admin_rpc.sql
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\CREATE_TEST_ACTIVE_TRIP.sql
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\DIAG-JRIDE_LIVETRIPSCLIENT_BRACE_PAREN_BALANCE_SCANNER.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-JRIDE_MOJIBAKE_AND_BOM_CLEAN_V1_1_PS5SAFE.ps1
+  - replacements applied (count): 6
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-JRIDE_P7C_P4PICKUPDISTANCE_REMOVE_P4NUM_DEP_V1.ps1
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-JRIDE_PHASE3D_VENDORORDERS_FIELDS_PLACEMENT_V4.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-JRIDE_PHASE3D_VENDORORDERS_HELPERS_SCOPE_V16.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-JRIDE_PHASE3D_VENDORORDERS_TONUM_CLEANUP_V17.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-LIVETRIPS-UI-SYNC.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\fix-mojibake.ps1
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\FIX-STATUS-ROUTE-MISSING-IF.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\global.d.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-DriverPayout-FullTest.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-DriverPayout-Scenario-Test.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Fix-DriverAdminApprovePayout-v2.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Fix-DriverAdminApprovePayout-v3.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Fix-DriverAdminApprovePayout-v4.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Fix-DriverAdminApprovePayout.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRIDE-Fix-LiveTrips-Actions.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Payout-AutoApprove-FixAndRun.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Payout-FriendlyErrors-Fix.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRide-Payout-UX-BestPractice.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\JRIDE_PROD_SMOKETEST_20260207_205755.md
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\middleware.disabled.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\middleware.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-FindAndFix-StuckThresholdText.ps1
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-FIX-LIVETRIPSCLIENT-FORMATDRIVERLABEL.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-HIDE-DASHCODE-TRIP-AND-SCAN-MOJIBAKE.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-HIDE-NOBOOKINGCODE-AND-FIX-MOJIBAKE.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_11C_CONTROL_CENTER_ADD_VERIFICATION_LINKS_V4.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_ADMIN_VENDORS_API_CREATE.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_ADMIN_VENDORS_PAGE_UI.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_FIX_MOJIBAKE_SAFE.ps1
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_GLOBAL_MOJIBAKE_FIX.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_GLOBAL_MOJIBAKE_RECODE.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_P2C_FIX_MOJIBAKE_HISTORY_UI.ps1
+  - replacements applied (count): 6
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_P2C_HISTORY_ASCII_ONLY_NO_MOJI.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_P4_UI_MOJIBAKE_SWEEP_SAFE.ps1
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_P7B_PASSENGER_FARE_BREAKDOWN_ASCII_SAFE_V2.ps1
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PASSENGER_P2D_RECEIPT_DETAILS_UI_ONLY.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PASSENGER_P2F_P2G_HISTORY_EXPORT_PRINT_POLISH.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PASSENGER_P3A_P3B_HISTORY_RIDE_AGAIN_FAVORITES.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PASSENGER_UI_BADGE_SEPARATOR_FORCE_SAFE_V3_ASCII.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PASSENGER_UI_PHASE_P1B_WHATS_HAPPENING_NOW_RIDE_V2_ASCII.ps1
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PHASE10A1_FIX_AT_RISK_MOJIBAKE_HEX.ps1
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PHASE5E_FIX_MOJIBAKE_PASSENGER_UI.ps1
+  - replacements applied (count): 6
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_PHASE7A_STABILIZE_TABS_STATUS_AND_MARKER_ASCII_SAFE.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_TAKEOUT_PHASE2B_MENU_SAFE_AND_ASCII.ps1
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_VENDOR_ORDERS_FIX_MOJIBAKE_UTF8NOBOM.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_VENDOR_ORDERS_PHASE1_POLISH.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_WALLET_ADJUST_REAL_DRIVER_AUTOSUGGEST_FIX_V1.ps1
+  - replacements applied (count): 6
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-JRIDE_WALLET_LEDGER_ROUTE_HARDEN_BALANCE_FIX2.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-KILL-MOJIBAKE-ONCE-AND-FOR-ALL.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-DROPDOWN-ASCII-NOBOM.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-REMOVE-MOJIBAKE-LITERALS-ASCII.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-REMOVE-MOJIBAKE-LITERALS.ps1
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-REMOVE-UNICODE-SEPARATORS-V2.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-REMOVE-UNICODE-SEPARATORS-V3.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-REMOVE-UNICODE-SEPARATORS.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LiveTrips-RenderSafe-FIX.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LiveTrips-RenderSafe.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LIVETRIPS-WRAP-CODE-SPAN-FIXMOJIBAKE.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LiveTripsClient-MojibakeClean.ps1
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-LiveTripsMap-StuckText.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\PATCH-REMOVE-GHOST-PROBLEMTRIP-AND-MOJIBAKE.ps1
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\powershell.txt
+  - replacements applied (count): 5
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\tailwind.config.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\TEST-DRIVER-LOCATION-PING.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\TEST-JRIDE_FORCECLEAR_TRIP_V3_PS5SAFE.ps1
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\tmp_page_data_debug.json
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\tsconfig.json
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\VEHICLE_TYPE_REFERENCES_REPORT.md
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\_scan_fare_hits.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\_scan_pickupfee_hits.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\.next\server\app\history\page.js
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\.next\static\chunks\app\history\page-5898f5c60617ab23.js
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\auth-impl.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\globals.css
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\head.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\layout.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\not-found.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\providers.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\pwa-register.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\(authed)\layout.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\(authed)\components\TopNav.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\(authed)\dashboard\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\(authed)\settings\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\actions\dispatchActions.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\audit\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\control-center\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\diag\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\dispatch\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\drivers\page.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\finance\summary\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\EarningsSummaryPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\LiveTripsMap.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\TripControlWalletPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\TripLifecycleActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\components\TripWalletPanel.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\livetrips\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\ops\auto-assign-monitor\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\ops\incidents\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\ops\stuck-drivers\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\ops\wallet-reconciliation\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\overrides\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\payouts\drivers\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\reassign-audit\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\reports\stuck-drivers\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\stuck-trips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\towns\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\users\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\users\users-manager.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\admin\verification\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\admin\livetrips\backfill-takeout\route.ts
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\admin\wallet\drivers\route.ts
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\dispatch\assign\route.ts
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\dispatch\status\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\driver\active-trip\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\driver\wallet\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\passenger\track\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\passenger-addresses\route.ts
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\public\auth\login\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\public\auth\signup\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\public\passenger\book\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\public\passenger\can-book\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\public\passenger\dev-login\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\public\passenger\fare\accept\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\rides\create\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\rides\fare-response\route.ts
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\takeout\orders-list\route.ts
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\api\vendor-orders\route.ts
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\auth\error\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\auth\login\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\auth\signin\actions.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\auth\signin\GoogleSignInButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\auth\signin\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\components\Header.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\components\LocationInput.jsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\components\MapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\components\NavBar.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\components\TopNav.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\components\UserMenu.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\dash\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\delivery\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\diagnostics\hydrate\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\dispatch\BookingDashboard.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\dispatch\DispatcherMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\dispatch\DispatchPageComponent.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\dispatch\page.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\driver\payouts\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\driver\wallet\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\errand\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\history\page.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\mapbox-token\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\mobile-app\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\orders\[bookingCode]\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\passenger-signup\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\profile\setup\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\request\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\request\success\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\ride\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\ride\SimpleBookRide.jsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\ride\SimpleBookRide.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\admin\payout-requests\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\admin\payouts\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\admin\payouts\[vendorId]\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\orders\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\orders\[bookingCode]\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\orders\[bookingCode]\receipt\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\orders\[bookingCode]\track\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\vendor\payout\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\vendor\payouts\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\takeout\vendor\ratings\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\tricycle-rideshare\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\types\booking.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\vendor\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\vendor\compare\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\vendor-orders\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\verification\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\website\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\app\whoami\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backup-livetrips-20251126\BookingMapClient.local.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backup-livetrips-20251126\page.local.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LiveTripsClient_MOJIBAKE_CLEAN_20251220_165041.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LiveTripsClient_RENDER_SAFE_20251220_163531.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LiveTripsClient_RENDER_SAFE_FIX_20251220_163705.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LiveTripsMap_STUCK_TEXT_FIX_20251220_170947.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_CLIENT_RENDER_SANITIZE_20251220_163006.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\DISPATCH_HARDENING_PREPATCH_20251220_174751\_git_branch.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\DISPATCH_HARDENING_PREPATCH_20251220_174751\_git_status_porcelain.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\DISPATCH_HARDENING_PREPATCH_20251220_174751\app\admin\livetrips\components\LiveTripsMap.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_DUP_STOPFOLLOW_20251214_190050\LiveTripsMap.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_GETSTYLE_VERSION_20251214_194430\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_LIVETRIPSMAP_RESET_20251214_202420\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_MAPREADY_FOLLOW_20251214_190841\LiveTripsMap.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_MAPREADY_NOT_DEFINED_20251214_191732\LiveTripsMap.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_SELECTEDTRIPID_20251214_190508\LiveTripsMap.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FIX_STOPFOLLOW_DUP_20251214_190211\LiveTripsMap.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FOLLOW_BTN_ONLY_20251214_185800\LiveTripsMap.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FOLLOW_DRIVER_ONLY_20251214_184735\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\FOLLOW_DRIVER_ONLY_ROBUST_20251214_185545\LiveTripsMap.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVECLIENT_EARNINGS_DISPATCH_ZONES_SCORE_20251214_085747\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\livetrips_20251209_033427\app_admin_livetrips_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\livetrips_20251209_033427\app_admin_livetrips_map_BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\livetrips_20251209_033427\app_admin_livetrips_page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_ABC_20251216_100804\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_ABC_20251216_100804\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_ABC_20251216_100804\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\LiveTripsClient.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251218_190920_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251218_191530_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251218_192947_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251218_211708_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251218_224520_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_041342_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_042348_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_052029_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_053015_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_053252_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_054057_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_055735_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_060314_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_bak_20251219_060537_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\EarningsSummaryPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\LiveTripsMap.tsx
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\TripControlWalletPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\TripLifecycleActions.tsx
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_190920_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_191530_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_204255_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_204539_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_205112_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_205413_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_214122_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_214323_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_214502_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_214814_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_221000_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_221325_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_222333_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251218_223213_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251219_041318_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251219_054107_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251219_054359_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251219_060547_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\components\_bak_20251219_061233_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_FRONTEND_ASCII_ONLY_20251220_153307\app\admin\livetrips\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251218_190920_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251218_191530_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251218_192947_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251218_211708_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251218_224520_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_041342_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_042348_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_052029_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_053015_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_053252_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_054057_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_055735_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_060314_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_bak_20251219_060537_LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\EarningsSummaryPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\TripControlWalletPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\TripLifecycleActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\TripWalletPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_190920_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_191530_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_204255_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_204539_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_205112_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_205413_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_214122_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_214323_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_214502_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_214814_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_221000_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_221325_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_222333_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251218_223213_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251219_041318_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251219_054107_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251219_054359_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251219_060547_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\components\_bak_20251219_061233_LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\admin\livetrips\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\api\dispatch\assign\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\LIVETRIPS_RESTORE_20251219-140303\app\api\dispatch\status\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\livetTrips\20251209_083811\app\admin\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\livetTrips\20251209_083811\app\admin\livetrips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\livetTrips\20251209_083811\app\admin\livetrips\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\MAPBOX_STYLE_FIX_20251214_182937\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\orders-api\route_20251210_030017.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\PATCH_AdminOpsPanel_20251215_125146\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\PAYOUTS_WALLET_LOCKS_20251214_091405\route.ts.app_api_admin_dispatch_assign_route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\PHASE2_DISPATCH_AUDITLOG_20251220_185518\PHASE2_dispatch_events.sql
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RECOVER_LIVETRIPS_20251219-125448\app\admin\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RECOVER_LIVETRIPS_20251219-125448\app\admin\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RECOVER_LIVETRIPS_20251219-125448\app\admin\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RECOVER_LIVETRIPS_20251219-125448\app\api\dispatch\status\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-125936\app\admin\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-125936\app\admin\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-125936\app\admin\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-125936\app\api\dispatch\status\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-130226\app\admin\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-130226\app\admin\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-130226\app\admin\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_ADV_LIVETRIPS_20251219-130226\app\api\dispatch\status\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013551\livetrips_current\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_013808\livetrips_current\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_JRIDE_LIVETRIPS_20251215_070739\livetrips\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_LIVETRIPS_20251216_074339\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_LIVETRIPS_20251216_074339\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_BASELINE_LIVETRIPS_20251216_074339\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\EarningsSummaryPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_DISPATCH_FLOW_UI_20251215_095748\livetrips\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPSCLIENT_20251215_105824\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251214_231937\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\ActiveTripIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\DispatchActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\DispatchRow.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\dispatchRules.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\LiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\page.local-debug-backup.disabled.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\useActiveRowAutoScroll.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\ZONE_HEADER_INSERT.txt
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\actions\getLiveTrips.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\assign\page.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\DriverDetailsModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\DriverLiveOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\DriverStatusPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\LivetripsKpiBanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\ProblemTripAlertSounds.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\SelectedBookingPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\StuckTripWatcher.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\TripEta.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\ZoneCapacity.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\components\ZoneLoadBalancing.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\map\BookingMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\map\LiveTripMapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\map\page.component.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\map\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\map\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\status-test\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\_components\AutoAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\_components\DriverAssignButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\_components\LiveTripEtaCell.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\_components\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\_components\TripStatusButtons.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_20251215_023821\livetrips_current\_components\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_e22abbe_20251219-130415\app\admin\livetrips\LiveTripsClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_e22abbe_20251219-130415\app\admin\livetrips\components\DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_e22abbe_20251219-130415\app\admin\livetrips\components\LiveTripsMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_LIVETRIPS_e22abbe_20251219-130415\app\api\dispatch\status\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_WORKING_LiveTripsMap_20251214_184000\LiveTripsMap.restored.from.backup.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_WORKING_LiveTripsMap_20251214_184241\LiveTripsMap.current.broken.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_WORKING_LiveTripsMap_20251214_184241\LiveTripsMap.restored.from.backup.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_WORKING_LiveTripsMap_20251214_184357\LiveTripsMap.current.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\RESTORE_WORKING_LiveTripsMap_20251214_184357\LiveTripsMap.restored.from.backup.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\UI_ZONES_SCORE_20251214_084007\app\admin\livetrips\components\AdminOpsPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\UI_ZONES_SCORE_20251214_084007\app\admin\livetrips\components\SmartAutoAssignSuggestions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\vendor-orders\page_20251209_162939.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\vendor-orders\page_20251209_170435.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\vendor-orders\route_20251209_170819.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\vendor-orders\route_20251209_171214.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\vendor-orders\route_20251209_171752.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\vendor-orders\route_20251209_172636.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\WALLET_LOCK_API_20251214_093020\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251218_190920_route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251218_191530_route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251218_213002_route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251218_213255_route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251218_222333_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251218_223213_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251219_041318_DispatchActionPanel.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\backups\_tsx_quarantine\_bak_20251219_043106_route.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\AddressTaggingModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\AuthGuard.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\AuthModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\AuthProvider.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\BookingForm.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\BottomNavigation.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DeliveryStatusModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DeliveryTracker.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DispatcherControlPanel.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DispatcherPerformanceOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DistanceSurchargeModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DriverFareModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DriverFilterModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DriverPerformanceCard.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\DriverWalletLedger.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ErrandStatusModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ErrorBoundary.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\FareApprovalModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\FareDispatcherReview.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\FreeRideNotification.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\Header.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\IncentiveTracker.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LandmarkApprovalModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LandmarkSelector.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LeafletMap.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LeafletMapInner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LocationInput.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LocationInputSelectAdapter.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LocationSection.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\LoginButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ManualTripModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\MapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\MapPicker.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 4
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\MembershipCard.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\OfflineIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\PanicButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\PassengerCountVerificationModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\PaymentMethodModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\PenaltyNotificationModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\PostTripSurveyModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\QRScanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\QuickActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ReferralSection.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\RideRatingModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\RideShareConfirmationModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\RideShareModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ServicesMenu.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ServicesSection.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\SoftLaunchModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\StarRating.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\TierHistory.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\VendorConfirmationModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\VerificationModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\VerificationStatusBadge.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\VerificationWarningModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\WalletSection.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\AddressTaggingModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\AuthGuard.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\AuthModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\AuthProvider.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\BookingForm.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\BottomNavigation.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DeliveryStatusModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DeliveryTracker.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DispatcherControlPanel.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DispatcherPerformanceOverview.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DistanceSurchargeModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DriverFareModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DriverFilterModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DriverPerformanceCard.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\DriverWalletLedger.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ErrandStatusModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ErrorBoundary.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\FareApprovalModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\FareDispatcherReview.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\FreeRideNotification.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\Header.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\IncentiveTracker.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LandmarkApprovalModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LandmarkSelector.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LeafletMap.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LeafletMapInner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LocationInput.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LocationInputSelectAdapter.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LocationSection.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\LoginButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ManualTripModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\MapboxMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\MapClient.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\MapPicker.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 4
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\MembershipCard.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\OfflineIndicator.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\PanicButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\PassengerCountVerificationModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\PaymentMethodModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 3
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\PenaltyNotificationModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\PostTripSurveyModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\QRScanner.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\QuickActions.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ReferralSection.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\RideRatingModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\RideShareConfirmationModal.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\RideShareModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ServicesMenu.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ServicesSection.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\SoftLaunchModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\StarRating.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\TierHistory.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\VendorConfirmationModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\VerificationModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\VerificationStatusBadge.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\VerificationWarningModal.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\WalletSection.tsx
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\components\ui\button.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\dispatch\ActiveTripsTable.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\dispatch\FareDetailsButton.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\livetrips\ProblemTripAlerts.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\livetrips\ZoneCapacityView.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\maps\LiveDriverMap.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\panels\LiveDriverSidebar.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\realtime\LiveTripsHeader.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\realtime\Panels.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\realtime\supabaseRealtime.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\realtime\townColors.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\trip\TripEtaPhase.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ui\alert.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\components\ui\Toast.tsx
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\configs\nextauth.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\computeTriplycFare.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\database.types.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\driverMarkerIcon.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\fare.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\offlineQueue.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\supabase-admin.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\supabase.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\supabaseAdmin.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\supabaseClient.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\tripEtaCalc.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\utils.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\hooks\useRealtimeBookingsAndLocations.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\lib\supabase\client.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\node_modules\@types\json5\index.d.ts
+  - removed UTF-8 BOM
+[CHANGED] _patch_bak\MOJIBAKE_CLEAN_V1_1\node_modules\es-abstract\helpers\caseFolding.json
+  - replacements applied (count): 1
+[CHANGED] _payments_proof_20260119_111127\app_api_admin_driver-payouts_route.ts.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_api_admin_vendor_settle-wallet_route.ts.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_api_driver_payout-request_route.ts.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_api_takeout_admin_vendor-payout_settle-request_route.ts.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_api_takeout_vendor-wallet_route.ts.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_api_takeout_vendor_request-payout_route.ts.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_driver_wallet_page.tsx.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\app_wallet_page.tsx.snips.txt
+  - removed UTF-8 BOM
+  - replacements applied (count): 1
+[CHANGED] _payments_proof_20260119_111127\components_components_DriverWalletLedger.tsx.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\components_components_PaymentMethodModal.tsx.snips.txt
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _payments_proof_20260119_111127\components_DriverWalletLedger.tsx.snips.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\components_PaymentMethodModal.tsx.snips.txt
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _payments_proof_20260119_111127\payments_proof_summary.json
+  - removed UTF-8 BOM
+[CHANGED] _payments_proof_20260119_111127\payments_proof_summary.txt
+  - removed UTF-8 BOM
+[CHANGED] _payments_scan_report_20260119_035252\payments_implementation_report.json
+  - removed UTF-8 BOM
+  - replacements applied (count): 5
+[CHANGED] _payments_scan_report_20260119_035252\payments_implementation_report.txt
+  - removed UTF-8 BOM
+  - replacements applied (count): 2
+[CHANGED] _restorepoints\POST_RESTOREPOINT_COMPLETED_FIX_20251220_192151\route.ts.bak_route.ts
+  - replacements applied (count): 5
+[CHANGED] _restorepoints\restore-dispatch-green-2025-12-26\page.tsx
+  - replacements applied (count): 1
+[CHANGED] _upload_nextauth_credentials_pack\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _upload_nextauth_credentials_pack\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _zip_takeout_express_stage\app\api\rides\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _zip_takeout_express_stage\app\api\rides\fare\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _zip_takeout_express_stage\app\api\rides\fare-response\route.ts
+  - removed UTF-8 BOM
+[CHANGED] _zip_takeout_express_stage\app\takeout\orders\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _zip_takeout_express_stage\app\takeout\orders\[bookingCode]\page.tsx
+  - removed UTF-8 BOM
+[CHANGED] _zip_takeout_express_stage\app\takeout\orders\[bookingCode]\receipt\page.tsx
+  - removed UTF-8 BOM
+
+Total files scanned : 24870
+Files changed       : 852
+BOM removed (files)  : 766
+Replacement hits     : 252

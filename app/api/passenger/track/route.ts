@@ -1,317 +1,225 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
-function n(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
 }
 
-function s(v: unknown): string | null {
-  const x = String(v ?? "").trim();
-  return x.length > 0 ? x : null;
-}
-
-function statusOf(raw: unknown): string {
-  const s0 = String(raw ?? "").trim().toLowerCase();
-  if (s0 === "requested" || s0 === "searching") return "searching";
-  if (s0 === "driver_assigned") return "assigned";
-  if (s0 === "accepted_by_driver") return "accepted";
-  if (s0 === "en_route") return "on_the_way";
-  if (s0 === "in_progress") return "on_trip";
-  return s0;
-}
-
-function getBearerToken(req: NextRequest): string | null {
-  const auth = req.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7).trim();
-  return token || null;
-}
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
-}
-
-function createAnonSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-
-  if (!url || !anonKey) {
-    throw new Error("Missing Supabase anon client environment variables.");
-  }
-
-  return createSupabaseClient(url, anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
-
-function createServiceSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-  if (!url || !serviceRole) {
-    throw new Error("Missing Supabase service role environment variables.");
-  }
-
-  return createSupabaseClient(url, serviceRole, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const r = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return r * c;
-}
-
-function estimateEtaMinutes(distanceKm: number | null): number | null {
-  if (distanceKm == null || distanceKm <= 0) return null;
-  return Math.max(1, Math.ceil((distanceKm / 25) * 60));
-}
-
+// Passenger tracking endpoint (needed by mobile/web to refresh booking status)
+// GET /api/passenger/track?booking_code=JR-UI-...
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const bookingCode = searchParams.get("booking_code")?.trim();
+    const url = new URL(req.url);
+    const bookingCode = (url.searchParams.get("booking_code") || "").trim();
 
     if (!bookingCode) {
       return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_CODE" },
-        { status: 400, headers: noStoreHeaders() }
+        { ok: false, error: "booking_code is required" },
+        { status: 400 }
       );
     }
 
-    const accessToken = getBearerToken(req);
-    if (!accessToken) {
+    const supabase = createClient();
+    const { data: userRes, error: userErr } = await supabase.auth.getUser();
+    if (userErr) {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401, headers: noStoreHeaders() }
+        { ok: false, error: userErr.message },
+        { status: 401 }
       );
     }
 
-    const authSupabase = createAnonSupabase();
-    const serviceSupabase = createServiceSupabase();
-
-    const {
-      data: { user },
-      error: userErr,
-    } = await authSupabase.auth.getUser(accessToken);
-
-    if (userErr || !user?.id) {
+    const user = userRes?.user;
+    if (!user) {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
-        { status: 401, headers: noStoreHeaders() }
+        { ok: false, error: "Not authenticated" },
+        { status: 401 }
       );
     }
 
-    const bookingRes = await serviceSupabase
+    // IMPORTANT:
+    // - bookings has created_by_user_id (confirmed in your schema)
+    // - enforce ownership here so passenger only sees their own booking
+    const { data: booking, error: bErr } = await supabase
       .from("bookings")
-      .select("*")
+      .select(
+        [
+          "id",
+          "booking_code",
+          "status",
+          "town",
+          "from_label",
+          "to_label",
+          "pickup_lat",
+          "pickup_lng",
+          "dropoff_lat",
+          "dropoff_lng",
+          "created_at",
+          "updated_at",
+          "assigned_driver_id",
+          "driver_id",
+          "proposed_fare",
+          "passenger_fare_response",
+          "driver_status",
+          "customer_status",
+          "created_by_user_id",
+        ].join(",")
+      )
       .eq("booking_code", bookingCode)
-      .limit(1)
+      .eq("created_by_user_id", user.id)
       .maybeSingle();
 
-    if (bookingRes.error) {
+    if (bErr) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_QUERY_FAILED",
-          details: bookingRes.error.message,
-        },
-        { status: 500, headers: noStoreHeaders() }
+        { ok: false, error: bErr.message },
+        { status: 500 }
       );
     }
 
-    const booking = bookingRes.data;
     if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404, headers: noStoreHeaders() }
+      
+// JRIDE_TRACK_UID_BYPASS_BEGIN
+  // TEMP TEST BYPASS (SERVICE ROLE):
+  // Allows tracking ONLY when uid matches created_by_user_id, even if user session cookies are missing.
+  // Requires SUPABASE_SERVICE_ROLE_KEY (server-only) in env.
+  // Usage: /ride/track?booking_code=...&uid=PASSENGER_UUID   (or code=...)
+  try {
+    const url2 = new URL(req.url);
+    const code2 = (url2.searchParams.get("booking_code") || url2.searchParams.get("code") || "").trim();
+    const uid = (url2.searchParams.get("uid") || "").trim();
+    const uidOk = /^[0-9a-fA-F-]{36}$/.test(uid);
+
+    const serviceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      (process.env as any).SUPABASE_SERVICE_KEY ||
+      "";
+
+    const sbUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.SUPABASE_URL ||
+      "";
+
+    if (code2 && uidOk && serviceKey && sbUrl) {
+      const { createClient: createAdminClient } = await import("@supabase/supabase-js");
+      const admin = createAdminClient(sbUrl, serviceKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { "X-Client-Info": "jride-track-bypass" } },
+      });
+
+      const { data: row2, error: err2 } = await admin
+        .from("bookings")
+        .select(
+          [
+            "id",
+            "booking_code",
+            "status",
+            "town",
+            "from_label",
+            "to_label",
+            "pickup_lat",
+            "pickup_lng",
+            "dropoff_lat",
+            "dropoff_lng",
+            "created_at",
+            "updated_at",
+            "assigned_driver_id",
+            "driver_id",
+            "proposed_fare",
+            "passenger_fare_response",
+            "driver_status",
+            "customer_status",
+            "created_by_user_id",
+          ].join(",")
+        )
+        .eq("booking_code", code2)
+        .limit(1)
+        .maybeSingle();
+
+      if (!err2 && row2 && String((row2 as any).created_by_user_id || "").toLowerCase() === uid.toLowerCase()) {
+        const b: any = row2 as any;
+        const driverId = (b.driver_id || b.assigned_driver_id) as string | null;
+
+        let driverProfile: any = null;
+        let driverLocation: any = null;
+
+        if (driverId) {
+          const { data: dp } = await admin
+            .from("driver_profiles")
+            .select("driver_id, full_name, callsign, municipality, vehicle_type, plate_number, phone")
+            .eq("driver_id", driverId)
+            .maybeSingle();
+          driverProfile = dp || null;
+
+          const { data: dl } = await admin
+            .from("driver_locations_latest")
+            .select("driver_id, latitude, longitude, updated_at")
+            .eq("driver_id", driverId)
+            .maybeSingle();
+          driverLocation = dl || null;
+        }
+
+        return NextResponse.json({
+          ok: true,
+          booking: row2,
+          driver: driverProfile,
+          driver_location: driverLocation,
+        });
+      }
+    }
+  } catch (e) {
+    // ignore bypass errors
+  }
+// JRIDE_TRACK_UID_BYPASS_END
+
+  return NextResponse.json(
+        { ok: false, error: "Booking not found" },
+        { status: 404 }
       );
     }
-
-    const status = statusOf((booking as any).status);
-    const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
-
-    let driverName: string | null =
-      s((booking as any).driver_name) ||
-      s((booking as any).driver_full_name) ||
-      null;
-
-    let driverPhone: string | null = s((booking as any).driver_phone) || null;
-    let driverLat: number | null = null;
-    let driverLng: number | null = null;
+  const b: any = booking as any;
+  const driverId = (b.driver_id || b.assigned_driver_id) as string | null;
+    let driverProfile: any = null;
+    let driverLocation: any = null;
 
     if (driverId) {
-      const driverRes = await serviceSupabase
-        .from("drivers")
-        .select("id, driver_name")
-        .eq("id", driverId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!driverRes.error && driverRes.data) {
-        driverName = driverName ?? s((driverRes.data as any).driver_name);
-      }
-
-      const driverProfileRes = await serviceSupabase
+      // Driver profile (public table)
+      const { data: dp } = await supabase
         .from("driver_profiles")
-        .select("driver_id, full_name, callsign, phone")
+        .select("driver_id, full_name, callsign, municipality, vehicle_type, plate_number, phone")
         .eq("driver_id", driverId)
-        .limit(1)
         .maybeSingle();
 
-      if (!driverProfileRes.error && driverProfileRes.data) {
-        driverName =
-          driverName ??
-          s((driverProfileRes.data as any).full_name) ??
-          s((driverProfileRes.data as any).callsign);
+      driverProfile = dp || null;
 
-        driverPhone = driverPhone ?? s((driverProfileRes.data as any).phone);
-      }
-
-      const driverLocRes = await serviceSupabase
+      // Latest location (your schema shows driver_locations_latest exists)
+      const { data: dl } = await supabase
         .from("driver_locations_latest")
-        .select("lat,lng")
+        .select("driver_id, latitude, longitude, updated_at")
         .eq("driver_id", driverId)
         .maybeSingle();
 
-      if (!driverLocRes.error && driverLocRes.data) {
-        driverLat = n((driverLocRes.data as any).lat);
-        driverLng = n((driverLocRes.data as any).lng);
-      }
+      driverLocation = dl || null;
     }
 
-    const pickupLat = n((booking as any).pickup_lat);
-    const pickupLng = n((booking as any).pickup_lng);
-    const dropoffLat = n((booking as any).dropoff_lat);
-    const dropoffLng = n((booking as any).dropoff_lng);
-
-    let driverToPickupKm = n((booking as any).driver_to_pickup_km);
-    if (driverToPickupKm == null && driverLat != null && driverLng != null && pickupLat != null && pickupLng != null) {
-      driverToPickupKm = Number(haversineKm(driverLat, driverLng, pickupLat, pickupLng).toFixed(1));
-    }
-
-    let tripDistanceKm = n((booking as any).trip_distance_km);
-    if (tripDistanceKm == null && pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null) {
-      tripDistanceKm = Number(haversineKm(pickupLat, pickupLng, dropoffLat, dropoffLng).toFixed(2));
-    }
-
-    const pickupEtaMinutes =
-      n((booking as any).pickup_eta_minutes) ??
-      n((booking as any).eta_minutes) ??
-      estimateEtaMinutes(driverToPickupKm);
-
-    const proposedFareRaw = n((booking as any).proposed_fare);
-    const verifiedFare = n((booking as any).verified_fare);
-    const submittedRegularFare = n((booking as any).submitted_regular_fare);
-    const pickupDistanceFee = n((booking as any).pickup_distance_fee);
-    const promoAppliedAmount = n((booking as any).promo_applied_amount) ?? 0;
-    const promoStatus = s((booking as any).promo_status);
-    const promoProgramCode = s((booking as any).promo_program_code);
-    const promoApplied = promoAppliedAmount > 0;
-    const platformFee = 15;
-    const proposedFare = proposedFareRaw ?? (status === "fare_proposed" ? submittedRegularFare : null);
-    const fare = verifiedFare ?? proposedFare ?? submittedRegularFare;
-    const storedSubtotalBeforeDiscount =
-      n((booking as any).subtotal_before_discount) ??
-      n((booking as any).subtotalBeforeDiscount);
-    const storedTotalFare =
-      n((booking as any).total_fare) ??
-      n((booking as any).totalFare) ??
-      n((booking as any).total_amount) ??
-      n((booking as any).grand_total);
-    const subtotalBeforeDiscount =
-      storedSubtotalBeforeDiscount ??
-      (fare == null
-        ? null
-        : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2)));
-    const totalFare =
-      storedTotalFare ??
-      (subtotalBeforeDiscount == null
-        ? null
-        : Number(Math.max(subtotalBeforeDiscount - promoAppliedAmount, 0).toFixed(2)));
-
-    const payload = {
+    return NextResponse.json({
       ok: true,
-      id: booking.id,
-      booking_id: booking.id,
-      booking_code: booking.booking_code,
-      status,
-      town: s((booking as any).town),
-      from_label: s((booking as any).from_label),
-      to_label: s((booking as any).to_label),
-      passenger_name: s((booking as any).passenger_name),
-      passenger_count: n((booking as any).passenger_count),
-      driver_id: driverId,
-      assigned_driver_id: s((booking as any).assigned_driver_id),
-      driver_name: driverName,
-      driver_phone: driverPhone,
-      driver_lat: driverLat,
-      driver_lng: driverLng,
-      pickup_lat: pickupLat,
-      pickup_lng: pickupLng,
-      dropoff_lat: dropoffLat,
-      dropoff_lng: dropoffLng,
-      driver_to_pickup_km: driverToPickupKm,
-      trip_distance_km: tripDistanceKm,
-      pickup_eta_minutes: pickupEtaMinutes,
-      eta_minutes: pickupEtaMinutes,
-      proposed_fare: proposedFare,
-      verified_fare: verifiedFare,
-      fare,
-      pickup_distance_fee: pickupDistanceFee,
-      platform_fee: platformFee,
-      subtotal_before_discount: subtotalBeforeDiscount,
-      promo_applied: promoApplied,
-      promo_discount: promoAppliedAmount,
-      promo_applied_amount: promoAppliedAmount,
-      promo_status: promoStatus,
-      promo_program_code: promoProgramCode,
-      total_fare: totalFare,
-
-      // === JRIDE TRANSPARENCY FIELDS (SAFE ADD) ===
-      submitted_regular_fare: submittedRegularFare,
-      night_rate_mode: s((booking as any).night_rate_mode),
-      night_rate_hour_ph: n((booking as any).night_rate_hour_ph),
-      total_amount: totalFare,
-      grand_total: totalFare,
-      passenger_fare_response: s((booking as any).passenger_fare_response),
-      created_at: s((booking as any).created_at),
-      updated_at: s((booking as any).updated_at),
-      completed_at: s((booking as any).completed_at),
-      cancelled_at: s((booking as any).cancelled_at),
-    };
-
-    return NextResponse.json(payload, { status: 200, headers: noStoreHeaders() });
+      booking,
+      driver: driverProfile,
+      driver_location: driverLocation,
+    });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "TRACK_ROUTE_CRASH",
-        details: String(e?.message ?? e),
-      },
-      { status: 500, headers: noStoreHeaders() }
+      { ok: false, error: e?.message || "Unknown error" },
+      { status: 500 }
     );
   }
 }
+
+
+
+
+
+

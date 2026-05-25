@@ -1,0 +1,229 @@
+﻿import { NextResponse } from "next/server";
+
+type Body = {
+  bookingId?: string;
+  bookingCode?: string;
+  status?: string;
+};
+
+const ALLOWED_STATUS = new Set([
+  "pending",
+  "assigned",
+  "on_the_way",
+  "on_trip",
+  "completed",
+  "cancelled",
+]);
+
+function bad(message: string, extra: any = {}, status = 400) {
+  return NextResponse.json({ ok: false, message, ...extra }, { status });
+}
+
+function safeHost(u?: string | null) {
+  if (!u) return null;
+  try {
+    return new URL(u).host;
+  } catch {
+    return null;
+  }
+}
+
+async function patchBookingsByWhere(opts: {
+  supabaseUrl: string;
+  serviceKey: string;
+  where: string;
+  patch: any;
+}) {
+  const url = `${opts.supabaseUrl}/rest/v1/bookings?${opts.where}`;
+
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      apikey: opts.serviceKey,
+      Authorization: `Bearer ${opts.serviceKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(opts.patch),
+  });
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    return {
+      ok: false as const,
+      httpStatus: res.status,
+      detail: text,
+      rows: [] as any[],
+    };
+  }
+
+  let rows: any[] = [];
+  try {
+    rows = JSON.parse(text);
+  } catch {
+    rows = [];
+  }
+
+  return {
+    ok: true as const,
+    httpStatus: res.status,
+    detail: text,
+    rows: Array.isArray(rows) ? rows : [],
+  };
+}
+
+export async function POST(req: Request) {
+  const supabaseUrlServer = process.env.SUPABASE_URL || null;
+  const supabaseUrlPublic = process.env.NEXT_PUBLIC_SUPABASE_URL || null;
+
+  // IMPORTANT: if these diverge, you will update one project and read page-data from another.
+  const hostServer = safeHost(supabaseUrlServer);
+  const hostPublic = safeHost(supabaseUrlPublic);
+  if (hostServer && hostPublic && hostServer !== hostPublic) {
+    console.error("[dispatch/status] SUPABASE_URL mismatch", {
+      SUPABASE_URL_HOST: hostServer,
+      NEXT_PUBLIC_SUPABASE_URL_HOST: hostPublic,
+    });
+    return bad(
+      "SUPABASE_URL_MISMATCH",
+      {
+        SUPABASE_URL_HOST: hostServer,
+        NEXT_PUBLIC_SUPABASE_URL_HOST: hostPublic,
+        hint: "Fix .env.local so both point to the same Supabase project. Restart dev server after changing env.",
+      },
+      500
+    );
+  }
+
+  const supabaseUrl = supabaseUrlServer || supabaseUrlPublic;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || null;
+
+  if (!supabaseUrl) {
+    return bad("Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL", {}, 500);
+  }
+  if (!serviceKey) {
+    return bad("Missing SUPABASE_SERVICE_ROLE_KEY (recommended) / SUPABASE_SERVICE_KEY", {}, 500);
+  }
+
+  let body: Body;
+  try {
+    body = (await req.json()) as Body;
+  } catch {
+    return bad("Invalid JSON body");
+  }
+
+  const bookingId = body.bookingId?.trim();
+  const bookingCode = body.bookingCode?.trim();
+  const status = body.status?.trim();
+
+  if (!status) return bad("Missing status");
+  if (!ALLOWED_STATUS.has(status)) {
+    return bad("INVALID_STATUS", { status, allowed: Array.from(ALLOWED_STATUS) }, 400);
+  }
+  if (!bookingId && !bookingCode) return bad("Missing bookingId or bookingCode");
+
+  const patch = { status };
+
+  // Canonical WHEREs
+  const whereById = bookingId ? `id=eq.${encodeURIComponent(String(bookingId))}` : null;
+  const whereByCode = bookingCode
+    ? `booking_code=eq.${encodeURIComponent(String(bookingCode))}`
+    : null;
+
+  // Try bookingCode first if provided (matches your current UI usage), then fallback to id.
+  // BUT: we will detect mismatch if both were provided.
+  let attempt = null as null | {
+    matchedBy: "booking_code" | "id";
+    res: Awaited<ReturnType<typeof patchBookingsByWhere>>;
+  };
+
+  if (whereByCode) {
+    const res1 = await patchBookingsByWhere({ supabaseUrl, serviceKey, where: whereByCode, patch });
+    attempt = { matchedBy: "booking_code", res: res1 };
+
+    // If it "succeeded" but returned 0 rows, treat as not found.
+    if (res1.ok && res1.rows.length === 0 && whereById) {
+      const res2 = await patchBookingsByWhere({ supabaseUrl, serviceKey, where: whereById, patch });
+      attempt = { matchedBy: "id", res: res2 };
+    }
+  } else if (whereById) {
+    const res1 = await patchBookingsByWhere({ supabaseUrl, serviceKey, where: whereById, patch });
+    attempt = { matchedBy: "id", res: res1 };
+
+    if (res1.ok && res1.rows.length === 0 && whereByCode) {
+      const res2 = await patchBookingsByWhere({ supabaseUrl, serviceKey, where: whereByCode, patch });
+      attempt = { matchedBy: "booking_code", res: res2 };
+    }
+  }
+
+  if (!attempt) {
+    return bad("NO_MATCH_INPUT", { bookingId, bookingCode }, 400);
+  }
+
+  const { matchedBy, res } = attempt;
+
+  if (!res.ok) {
+    return bad(
+      "PATCH_FAILED",
+      {
+        matchedBy,
+        bookingId,
+        bookingCode,
+        status,
+        httpStatus: res.httpStatus,
+        detail: res.detail,
+      },
+      res.httpStatus
+    );
+  }
+
+  if (!Array.isArray(res.rows) || res.rows.length === 0) {
+    console.warn("[dispatch/status] NO_ROWS_UPDATED", { matchedBy, bookingId, bookingCode, status });
+    return bad(
+      "NO_ROWS_UPDATED",
+      {
+        matchedBy,
+        bookingId,
+        bookingCode,
+        status,
+        hint:
+          "No rows returned. This can be caused by booking not found, mismatched bookingCode vs id, or RLS.",
+      },
+      409
+    );
+  }
+
+  const row = res.rows[0] || {};
+  const updatedId = row?.id ?? null;
+  const updatedCode = row?.booking_code ?? null;
+
+  // If both identifiers were provided, detect mismatch (this prevents “it said ok but not my trip”)
+  const identityMismatch =
+    (bookingId && updatedId && bookingId !== updatedId) ||
+    (bookingCode && updatedCode && bookingCode !== updatedCode);
+
+  if (identityMismatch) {
+    console.warn("[dispatch/status] IDENTITY_MISMATCH", {
+      request: { bookingId, bookingCode },
+      updated: { id: updatedId, booking_code: updatedCode },
+      matchedBy,
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    updated: res.rows.length,
+    status,
+    matchedBy,
+    bookingId: bookingId || null,
+    bookingCode: bookingCode || null,
+    updatedRow: {
+      id: updatedId,
+      booking_code: updatedCode,
+      status: row?.status ?? null,
+    },
+    identityMismatch,
+  });
+}

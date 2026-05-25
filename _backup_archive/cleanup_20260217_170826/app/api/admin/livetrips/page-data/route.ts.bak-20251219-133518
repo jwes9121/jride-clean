@@ -1,0 +1,39 @@
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
+
+export async function GET() {
+  const supabase = createClient();
+
+  // Call the existing RPC for live trips page data
+  const [
+    { data: rpcData, error: rpcError },
+    { data: zoneData, error: zoneError },
+  ] = await Promise.all([
+    supabase.rpc("admin_get_live_trips_page_data"),
+    supabase
+      .from("zone_capacity_view")
+      .select(
+        "zone_id, zone_name, color_hex, capacity_limit, active_drivers, available_slots, status"
+      )
+      .order("zone_name"),
+  ]);
+
+  if (rpcError) {
+    console.error("[page-data] live trips RPC error", rpcError);
+    return NextResponse.json({ error: rpcError.message }, { status: 500 });
+  }
+
+  if (zoneError) {
+    console.error("[zone-capacity] error", zoneError);
+    return NextResponse.json({ error: zoneError.message }, { status: 500 });
+  }
+
+  // IMPORTANT: normalize contract so frontend always reads page.trips
+  return NextResponse.json(
+    {
+      trips: Array.isArray(rpcData) ? rpcData : [],
+      zones: zoneData ?? [],
+    },
+    { status: 200 }
+  );
+}

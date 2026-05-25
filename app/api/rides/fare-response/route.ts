@@ -1,202 +1,121 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-function text(v: unknown): string {
-  return String(v ?? "").trim();
-}
+const sa = supabaseAdmin();
+async function triggerAutoReassign() {
+  try {
+    const baseUrl =
+      process.env.NEXTAUTH_URL ||
+      process.env.APP_BASE_URL ||
+      process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : null;
 
-function getBearerToken(req: NextRequest): string | null {
-  const auth = text(req.headers.get("authorization"));
-  if (!auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7).trim();
-  return token || null;
-}
+    if (!baseUrl) {
+      console.error("AUTO_REASSIGN_SKIP: no base URL env found");
+      return;
+    }
 
-function normalizeAction(v: unknown): "accepted" | "rejected" | null {
-  const raw = text(v).toLowerCase();
-  if (raw === "accept" || raw === "accepted") return "accepted";
-  if (raw === "reject" || raw === "rejected") return "rejected";
-  return null;
-}
+    const res = await fetch(`${baseUrl}/api/rides/assign-nearest/latest`, {
+      method: "GET",
+      // no body needed, this endpoint already works via GET in your tests
+    });
 
-function getAnonSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
-
-  if (!url || !anonKey) {
-    throw new Error("Missing SUPABASE URL or anon key");
+    if (!res.ok) {
+      console.error("AUTO_REASSIGN_HTTP_ERROR", res.status, await res.text());
+    }
+  } catch (err) {
+    console.error("AUTO_REASSIGN_ERROR", err);
   }
-
-  return createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-function getServiceSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-  if (!url || !serviceRole) {
-    throw new Error("Missing SUPABASE URL or service role key");
-  }
-
-  return createClient(url, serviceRole, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const accessToken = getBearerToken(req);
-    if (!accessToken) {
+    const body = await req.json();
+    const bookingCode: string | undefined = body?.bookingCode;
+
+    // ===== JRIDE_FARE_RESPONSE_RESOLVE_BOOKING_ID_V1 =====
+    // Prevent PostgREST .maybeSingle() coercion errors when bookingCode matches multiple rows.
+    // Resolve the most recent booking id for this code, then update by id.
+    let bookingId: string | null = null;
+    try {
+      const q = await sa.from("bookings")
+        .select("id, updated_at, created_at")
+        .eq("code", bookingCode)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+
+      if (q.error) {
+        return NextResponse.json({ ok: false, error: "DB_ERROR_LOOKUP", details: q.error.message }, { status: 500 });
+      }
+      const row = (q.data && q.data[0]) ? q.data[0] : null;
+      bookingId = row ? String(row.id) : null;
+    } catch (e: any) {
+      return NextResponse.json({ ok: false, error: "LOOKUP_EXCEPTION", details: String(e?.message || e) }, { status: 500 });
+    }
+
+    if (!bookingId) {
+      return NextResponse.json({ ok: false, error: "NOT_FOUND", details: "No booking found for bookingCode" }, { status: 404 });
+    }
+    // ===== END JRIDE_FARE_RESPONSE_RESOLVE_BOOKING_ID_V1 =====
+    const response: "accepted" | "rejected" | undefined = body?.response;
+
+    if (!bookingCode || !response) {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401, headers: noStoreHeaders() }
+        { ok: false, error: "MISSING_FIELDS" },
+        { status: 400 }
       );
     }
 
-    const body = await req.json().catch(() => ({}));
-
-    const bookingId = text(body?.booking_id || body?.bookingId || body?.id);
-    const bookingCode = text(body?.booking_code || body?.bookingCode);
-    const action = normalizeAction(body?.response || body?.action || body?.fare_response);
-
-    if (!bookingId && !bookingCode) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING" },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
-
-    if (!action) {
+    if (response !== "accepted" && response !== "rejected") {
       return NextResponse.json(
         { ok: false, error: "INVALID_RESPONSE" },
-        { status: 400, headers: noStoreHeaders() }
+        { status: 400 }
       );
     }
 
-    const anonSupabase = getAnonSupabase();
-    const serviceSupabase = getServiceSupabase();
+    const updates: Record<string, any> = {
+      passenger_fare_response: response,
+      updated_at: new Date().toISOString(),
+    };
 
-    const {
-      data: { user },
-      error: authError,
-    } = await anonSupabase.auth.getUser(accessToken);
+    if (response === "accepted") {
+      // keep current driver, proceed as normal
+      updates.status = "driver_accepted";
+    } else {
+      // passenger rejected the fare:
+      // reset booking and free driver, ready for auto re-assign
+      updates.status = "pending";
+      updates.assigned_driver_id = null;
+      updates.proposed_fare = null;
+    }
 
-    if (authError || !user?.id) {
+    const { data, error } = await sa.from("bookings")
+      .update(updates)
+      .eq("id", bookingId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      console.error("FARE_RESPONSE_UPDATE_ERROR", error);
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
-        { status: 401, headers: noStoreHeaders() }
+        { ok: false, error: "DB_ERROR_UPDATE", details: error.message },
+        { status: 500 }
       );
     }
 
-    let bookingQuery = serviceSupabase
-      .from("bookings")
-      .select("id, booking_code, status, created_by_user_id, driver_id, assigned_driver_id")
-      .limit(1);
-
-    bookingQuery = bookingCode
-      ? bookingQuery.eq("booking_code", bookingCode)
-      : bookingQuery.eq("id", bookingId);
-
-    const { data: booking, error: bookingError } = await bookingQuery.maybeSingle();
-
-    if (bookingError) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_READ_FAILED", message: bookingError.message },
-        { status: 500, headers: noStoreHeaders() }
-      );
+    if (response === "rejected") {
+      // fire-and-forget auto reassign ÃƒÆ’Ã†'Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚¢ÃƒÆ’Ã†'Ãƒâ€šÃ‚¢ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â‚¬Å¡Ã‚¬Ãƒâ€¦Ã‚¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚¬ÃƒÆ’Ã†'Ãƒâ€šÃ‚¢ÃƒÆ’Ã‚¢Ãƒ¢Ã¢â€š¬Ã…¡Ãƒâ€šÃ‚¬ÃƒÆ’Ã¢â‚¬¦Ãƒ¢Ã¢â€š¬Ã…" no need to await for response to user
+      triggerAutoReassign();
     }
 
-    if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404, headers: noStoreHeaders() }
-      );
-    }
-
-    const ownerId = text((booking as any).created_by_user_id);
-    if (!ownerId || ownerId !== user.id) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "FORBIDDEN",
-          message: "This booking does not belong to the signed-in passenger.",
-        },
-        { status: 403, headers: noStoreHeaders() }
-      );
-    }
-
-    const currentStatus = text((booking as any).status).toLowerCase();
-    if (currentStatus !== "fare_proposed") {
-      return NextResponse.json(
-        { ok: false, error: "INVALID_STATUS", current: currentStatus },
-        { status: 409, headers: noStoreHeaders() }
-      );
-    }
-
-    const nowIso = new Date().toISOString();
-    const updatePayload =
-      action === "accepted"
-        ? {
-            passenger_fare_response: "accepted",
-            status: "ready",
-            updated_at: nowIso,
-          }
-        : {
-            passenger_fare_response: "rejected",
-            status: "searching",
-            driver_id: null,
-            assigned_driver_id: null,
-            assigned_at: null,
-            proposed_fare: null,
-            verified_fare: null,
-            driver_to_pickup_km: null,
-            pickup_distance_fee: null,
-            updated_at: nowIso,
-          };
-
-    const { data: updatedRows, error: updateError } = await serviceSupabase
-      .from("bookings")
-      .update(updatePayload)
-      .eq("id", (booking as any).id)
-      .select("id, booking_code, status, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
-      .limit(1);
-
-    if (updateError) {
-      return NextResponse.json(
-        { ok: false, error: "UPDATE_FAILED", message: updateError.message },
-        { status: 500, headers: noStoreHeaders() }
-      );
-    }
-
-    const updated = updatedRows?.[0] ?? null;
-
+    return NextResponse.json({ ok: true, booking: data });
+  } catch (err: any) {
+    console.error("FARE_RESPONSE_ROUTE_ERROR", err);
     return NextResponse.json(
-      {
-        ok: true,
-        booking_id: text(updated?.id || (booking as any).id),
-        booking_code: text(updated?.booking_code || (booking as any).booking_code),
-        status: text(updated?.status || updatePayload.status),
-        passenger_fare_response: text(updated?.passenger_fare_response || action),
-        driver_id: updated?.driver_id ?? null,
-        assigned_driver_id: updated?.assigned_driver_id ?? null,
-        updated_at: updated?.updated_at ?? nowIso,
-      },
-      { status: 200, headers: noStoreHeaders() }
-    );
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "SERVER_ERROR", message: String(e?.message ?? e) },
-      { status: 500, headers: noStoreHeaders() }
+      { ok: false, error: "SERVER_ERROR" },
+      { status: 500 }
     );
   }
 }

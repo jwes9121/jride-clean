@@ -1,110 +1,27 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { createClient as createAdmin, createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
 type VerificationStatus = "submitted" | "pending_admin" | "approved" | "rejected";
 
-function env(name: string) {
-  return process.env[name] || "";
-}
-
 function nowIso() {
   return new Date().toISOString();
 }
 
-function adminClient() {
-  const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
-  const key = env("SUPABASE_SERVICE_ROLE_KEY") || env("SUPABASE_SERVICE_ROLE");
-  if (!url || !key) {
-    throw new Error("Missing Supabase service role env (SUPABASE_SERVICE_ROLE_KEY)");
-  }
-  return createAdmin(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+export async function GET() {
+  const supabase = createClient();
 
-function extractBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-  if (!auth) return "";
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  return m?.[1]?.trim() || "";
-}
-
-function createUserClient(accessToken: string) {
-  const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
-  const anon =
-    env("SUPABASE_ANON_KEY") ||
-    env("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
-    env("NEXT_PUBLIC_SUPABASE_KEY") ||
-    "";
-  if (!url || !anon) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_ANON_KEY");
-  }
-  return createSupabaseClient(url, anon, {
-    global: { headers: { Authorization: "Bearer " + accessToken } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
-
-async function resolvePassengerAuth(req: Request) {
-  const cookieSupabase = createClient();
-  const accessToken = extractBearerToken(req);
-
-  if (accessToken) {
-    const userSupabase = createUserClient(accessToken);
-    const { data: userRes, error: userErr } = await userSupabase.auth.getUser(accessToken);
-    const user = userRes?.user;
-    if (userErr || !user?.id) {
-      return {
-        ok: false,
-        authed: false,
-        user: null,
-        supabase: userSupabase,
-        error: userErr?.message || "Invalid bearer token",
-      };
-    }
-    return {
-      ok: true,
-      authed: true,
-      user,
-      supabase: userSupabase,
-      error: "",
-    };
-  }
-
-  const { data: userRes, error: userErr } = await cookieSupabase.auth.getUser();
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
   const user = userRes?.user;
+
   if (userErr || !user?.id) {
-    return {
-      ok: false,
-      authed: false,
-      user: null,
-      supabase: cookieSupabase,
-      error: userErr?.message || "Not signed in",
-    };
-  }
-
-  return {
-    ok: true,
-    authed: true,
-    user,
-    supabase: cookieSupabase,
-    error: "",
-  };
-}
-
-export async function GET(req: Request) {
-  const auth = await resolvePassengerAuth(req);
-
-  if (!auth.authed || !auth.user?.id) {
     return NextResponse.json({ ok: true, authed: false }, { status: 200 });
   }
 
-  const passenger_id = auth.user.id;
+  const passenger_id = user.id;
 
-  const r = await auth.supabase
+  const r = await supabase
     .from("passenger_verification_requests")
     .select("*")
     .eq("passenger_id", passenger_id)
@@ -120,197 +37,189 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const supabase = createClient();
+
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  const user = userRes?.user;
+
+  if (userErr || !user?.id) {
+    return NextResponse.json(
+      { ok: false, error: "Not signed in (Supabase session missing)" },
+      { status: 401 }
+    );
+  }
+
+  const passenger_id = user.id;
+
+  // Buckets that actually exist in your project
+  const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
+  const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";
+
+  // Parse content type once
+  const ct = req.headers.get("content-type") || "";
+
+  // Hoisted vars used after parse
+  let full_name = "";
+  let town = "";
+  let id_front_path = "";
+  let selfie_with_id_path = "";
+  let id_photo_url = "";
+  let selfie_photo_url = "";
+
+  async function uploadToBucket(file: File, bucketName: string, keyPrefix: string) {
+    const ext = file?.name && file.name.includes(".") ? file.name.split(".").pop() : "jpg";
+    const safeExt = String(ext || "jpg")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || "jpg";
+
+    const key = `${keyPrefix}/${passenger_id}/${Date.now()}_${Math.random()
+      .toString(16)
+      .slice(2)}.${safeExt}`;
+
+    const up = await supabase.storage.from(bucketName).upload(key, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    });
+
+    if (up.error) {
+      throw new Error(`Storage upload failed (bucket=${bucketName}): ${up.error.message}`);
+    }
+
+    return key;
+  }
+
   try {
-    const auth = await resolvePassengerAuth(req);
+    if (ct.includes("multipart/form-data")) {
+      const fd = await req.formData();
 
-    if (!auth.authed || !auth.user?.id) {
-      return NextResponse.json(
-        { ok: false, error: "Not signed in (Supabase session or bearer token missing)" },
-        { status: 401 }
-      );
-    }
+      // Accept common key variants (in case UI changes)
+      full_name = String(fd.get("full_name") || fd.get("fullName") || fd.get("fullname") || "").trim();
+      town = String(fd.get("town") || fd.get("Town") || "").trim();
 
-    const supabase = auth.supabase;
-    const passenger_id = auth.user.id;
-    const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
-    const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";
+      const idFrontAny = fd.get("id_front");
+      const selfieAny = fd.get("selfie_with_id");
 
-    const ct = req.headers.get("content-type") || "";
+      id_front_path = String(fd.get("id_front_path") || "").trim();
+      selfie_with_id_path = String(fd.get("selfie_with_id_path") || "").trim();
 
-    let full_name = "";
-    let town = "";
-    let id_front_path = "";
-    let selfie_with_id_path = "";
+      id_photo_url = String(fd.get("id_photo_url") || "").trim();
+      selfie_photo_url = String(fd.get("selfie_photo_url") || "").trim();
 
-    async function uploadToBucket(file: File, bucketName: string, keyPrefix: string) {
-      const ext = file?.name && file.name.includes(".") ? file.name.split(".").pop() : "jpg";
-      const safeExt = String(ext || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-
-      const key =
-        keyPrefix + "/" + passenger_id + "/" + Date.now() + "_" + Math.random().toString(16).slice(2) + "." + safeExt;
-
-      const admin = adminClient();
-      const ab = await file.arrayBuffer();
-
-      const up = await admin.storage.from(bucketName).upload(key, ab, {
-        contentType: file.type || "application/octet-stream",
-        upsert: true,
-      });
-
-      if (up.error) {
-        throw new Error("Storage upload failed (bucket=" + bucketName + "): " + up.error.message);
+      if (!id_front_path && idFrontAny && typeof idFrontAny === "object") {
+        id_front_path = await uploadToBucket(idFrontAny as File, idBucket, "id_front");
       }
-
-      return key;
-    }
-
-    try {
-      if (ct.includes("multipart/form-data")) {
-        const fd = await req.formData();
-
-        full_name = String(fd.get("full_name") || fd.get("fullName") || fd.get("fullname") || "").trim();
-        town = String(fd.get("town") || fd.get("Town") || "").trim();
-
-        const idFrontAny = fd.get("id_front");
-        const selfieAny = fd.get("selfie_with_id");
-
-        id_front_path = String(fd.get("id_front_path") || "").trim();
-        selfie_with_id_path = String(fd.get("selfie_with_id_path") || "").trim();
-
-        if (!id_front_path && idFrontAny && typeof idFrontAny === "object") {
-          id_front_path = await uploadToBucket(idFrontAny as File, idBucket, "id_front");
-        }
-        if (!selfie_with_id_path && selfieAny && typeof selfieAny === "object") {
-          selfie_with_id_path = await uploadToBucket(selfieAny as File, selfieBucket, "selfie_with_id");
-        }
-      } else {
-        const body: any = await req.json().catch(() => ({}));
-        full_name = String(body?.full_name || "").trim();
-        town = String(body?.town || "").trim();
-        id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
-        selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
+      if (!selfie_with_id_path && selfieAny && typeof selfieAny === "object") {
+        selfie_with_id_path = await uploadToBucket(selfieAny as File, selfieBucket, "selfie_with_id");
       }
-    } catch (e: any) {
-      return NextResponse.json(
-        { ok: false, error: "Upload/parse failed: " + String(e?.message || e) },
-        { status: 400 }
-      );
-    }
+    } else {
+      const body: any = await req.json().catch(() => ({}));
+      full_name = String(body?.full_name || "").trim();
+      town = String(body?.town || "").trim();
 
-    if (!full_name) {
-      return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
-    }
+      id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
+      selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
 
-    if (!town) {
-      return NextResponse.json({ ok: false, error: "Town required" }, { status: 400 });
+      id_photo_url = body?.id_photo_url ? String(body.id_photo_url).trim() : "";
+      selfie_photo_url = body?.selfie_photo_url ? String(body.selfie_photo_url).trim() : "";
     }
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Upload/parse failed: " + (e?.message || String(e)) },
+      { status: 400 }
+    );
+  }
 
-    if (!id_front_path) {
-      return NextResponse.json(
-        { ok: false, error: "ID front required (upload failed or missing)." },
-        { status: 400 }
-      );
-    }
+  // Validation (inside POST scope, always legal)
+  if (!full_name) return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
+  if (!town) return NextResponse.json({ ok: false, error: "Town required" }, { status: 400 });
+  if (!id_front_path)
+    return NextResponse.json(
+      { ok: false, error: "ID front required (upload failed or missing). Check Storage policies for passenger-ids." },
+      { status: 400 }
+    );
+  if (!selfie_with_id_path)
+    return NextResponse.json(
+      { ok: false, error: "Selfie-with-ID required (upload failed or missing). Check Storage policies for passenger-selfies." },
+      { status: 400 }
+    );
 
-    if (!selfie_with_id_path) {
-      return NextResponse.json(
-        { ok: false, error: "Selfie-with-ID required (upload failed or missing)." },
-        { status: 400 }
-      );
-    }
+  // Read existing request (if any)
+  const existing = await supabase
+    .from("passenger_verification_requests")
+    .select("passenger_id,status,submitted_at,reviewed_at,reviewed_by,admin_notes,full_name,town,id_front_path,selfie_with_id_path")
+    .eq("passenger_id", passenger_id)
+    .maybeSingle();
 
-    const existing = await supabase
+  if (existing.error) {
+    return NextResponse.json(
+      { ok: false, error: "DB read failed: " + existing.error.message },
+      { status: 400 }
+    );
+  }
+
+  const ex = existing.data as any | null;
+  const exStatus = (ex?.status ? String(ex.status) : "") as VerificationStatus | "";
+
+  // Prevent overwriting final/forwarded states (unless rejected)
+  if (ex && (exStatus === "approved" || exStatus === "pending_admin")) {
+    return NextResponse.json({
+      ok: true,
+      request: ex,
+      message: exStatus === "approved" ? "Already approved." : "Already forwarded to admin (pending_admin).",
+    });
+  }
+
+  const nextStatus: VerificationStatus = "submitted";
+  const ts = nowIso();
+
+  if (!ex) {
+    const ins = await supabase
       .from("passenger_verification_requests")
-      .select("passenger_id,status,submitted_at,reviewed_at,reviewed_by,admin_notes,full_name,town,id_front_path,selfie_with_id_path")
-      .eq("passenger_id", passenger_id)
-      .maybeSingle();
-
-    if (existing.error) {
-      return NextResponse.json(
-        { ok: false, error: "DB read failed: " + existing.error.message },
-        { status: 400 }
-      );
-    }
-
-    const ex = existing.data as any | null;
-    const exStatus = ex?.status ? String(ex.status) as VerificationStatus : "";
-
-    if (ex && (exStatus === "approved" || exStatus === "pending_admin")) {
-      return NextResponse.json({
-        ok: true,
-        request: ex,
-        message: exStatus === "approved" ? "Already approved." : "Already forwarded to admin (pending_admin).",
-      });
-    }
-
-    const nextStatus: VerificationStatus = "submitted";
-    const ts = nowIso();
-
-    if (!ex) {
-      const ins = await supabase
-        .from("passenger_verification_requests")
-        .insert({
-          passenger_id,
-          full_name,
-          town,
-          status: nextStatus,
-          submitted_at: ts,
-          id_front_path,
-          selfie_with_id_path,
-        })
-        .select("*")
-        .single();
-
-      if (ins.error) {
-        return NextResponse.json(
-          { ok: false, error: ins.error.message, hint: "Insert blocked or schema mismatch" },
-          { status: 400 }
-        );
-      }
-
-      return NextResponse.json({
-        ok: true,
-        request: ins.data,
-        message: "Submitted. Please wait for review.",
-      });
-    }
-
-    const upd = await supabase
-      .from("passenger_verification_requests")
-      .update({
+      .insert({
+        passenger_id,
         full_name,
         town,
         status: nextStatus,
         submitted_at: ts,
-        reviewed_at: null,
-        reviewed_by: null,
-        admin_notes: null,
         id_front_path,
         selfie_with_id_path,
       })
-      .eq("passenger_id", passenger_id)
       .select("*")
       .single();
 
-    if (upd.error) {
+    if (ins.error) {
       return NextResponse.json(
-        { ok: false, error: upd.error.message, hint: "Update blocked or schema mismatch" },
+        { ok: false, error: ins.error.message, hint: "Insert blocked (likely RLS) or column mismatch" },
         { status: 400 }
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      request: upd.data,
-      message: "Submitted. Please wait for review.",
-    });
-  } catch (e: any) {
+    return NextResponse.json({ ok: true, request: ins.data });
+  }
+
+  const upd = await supabase
+    .from("passenger_verification_requests")
+    .update({
+      full_name,
+      town,
+      status: nextStatus,
+      submitted_at: ts,
+      reviewed_at: null,
+      reviewed_by: null,
+      admin_notes: null,
+      id_front_path,
+      selfie_with_id_path,
+    })
+    .eq("passenger_id", passenger_id)
+    .select("*")
+    .single();
+
+  if (upd.error) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Unhandled verification submit error: " + String(e?.message || e),
-      },
-      { status: 500 }
+      { ok: false, error: upd.error.message, hint: "Update blocked (likely RLS) or column mismatch" },
+      { status: 400 }
     );
   }
+
+  return NextResponse.json({ ok: true, request: upd.data });
 }

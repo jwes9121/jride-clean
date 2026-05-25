@@ -1,0 +1,597 @@
+﻿﻿﻿"use client";
+
+import ZoneCapacity from "./components/ZoneCapacity";
+import LiveTripsTable from "./LiveTripsTable";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { Loader2, MapPin, MoveUpRight, Users, XCircle } from "lucide-react";
+import ActiveTripIndicator from "./ActiveTripIndicator";
+import BookingMapClient from "./map/BookingMapClient";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { Database } from "@/types/supabase";
+import { formatDistanceToNowStrict } from "date-fns";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { DispatchActions } from "./DispatchActions";
+import { cn } from "@/lib/utils";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
+
+type BookingWithExtras = {
+  id: string;
+  code: string;
+  passenger_name: string | null;
+  passenger_phone: string | null;
+  pickup: string | null;
+  dropoff: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  assigned_driver_id: string | null;
+  assigned_driver_name: string | null;
+  assigned_driver_phone: string | null;
+  town: string | null;
+  zone: string | null;
+  eta_minutes: number | null;
+  driver_status: string | null;
+  driver_online: boolean;
+  driver_location_updated_at: string | null;
+  issues: string | null;
+  age_minutes: number | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  dropoff_lat: number | null;
+  dropoff_lng: number | null;
+};
+
+type ZoneCapacityRow = {
+  town: string;
+  town_id: string;
+  town_short: string;
+  total_drivers: number;
+  active_drivers: number;
+  max_capacity: number;
+  utilization_percent: number;
+  status: string;
+};
+
+type LiveTripsData = {
+  active_bookings: BookingWithExtras[];
+  recent_completed_bookings: BookingWithExtras[];
+  zone_capacity: ZoneCapacityRow[];
+};
+
+type LiveTripsClientWrapperProps = {
+  initialData: LiveTripsData;
+};
+
+type TownMeta = {
+  id: string;
+  label: string;
+  shortLabel: string;
+  colorClass: string;
+  bgClass: string;
+  ringClass: string;
+  badgeClass: string;
+  description: string;
+};
+
+const TOWNS: TownMeta[] = [
+  {
+    id: "banaue",
+    label: "Banaue",
+    shortLabel: "Ban",
+    colorClass: "text-emerald-600",
+    bgClass: "bg-emerald-50",
+    ringClass: "ring-emerald-500",
+    badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    description: "Banaue town trips",
+  },
+  {
+    id: "hingyon",
+    label: "Hingyon",
+    shortLabel: "Hing",
+    colorClass: "text-sky-600",
+    bgClass: "bg-sky-50",
+    ringClass: "ring-sky-500",
+    badgeClass: "bg-sky-100 text-sky-700 border-sky-200",
+    description: "Hingyon town trips",
+  },
+  {
+    id: "kiangan",
+    label: "Kiangan",
+    shortLabel: "Kia",
+    colorClass: "text-indigo-600",
+    bgClass: "bg-indigo-50",
+    ringClass: "ring-indigo-500",
+    badgeClass: "bg-indigo-100 text-indigo-700 border-indigo-200",
+    description: "Kiangan town trips",
+  },
+  {
+    id: "lagawe",
+    label: "Lagawe",
+    shortLabel: "Lag",
+    colorClass: "text-rose-600",
+    bgClass: "bg-rose-50",
+    ringClass: "ring-rose-500",
+    badgeClass: "bg-rose-100 text-rose-700 border-rose-200",
+    description: "Lagawe town trips",
+  },
+  {
+    id: "lamut",
+    label: "Lamut",
+    shortLabel: "Lam",
+    colorClass: "text-amber-600",
+    bgClass: "bg-amber-50",
+    ringClass: "ring-amber-500",
+    badgeClass: "bg-amber-100 text-amber-700 border-amber-200",
+    description: "Lamut town trips",
+  },
+];
+
+function getTownMeta(town?: string | null): TownMeta | null {
+  if (!town) return null;
+  const key = town.toLowerCase();
+  return (
+    TOWNS.find(
+      (t) => t.label.toLowerCase() === key || t.id === key || t.shortLabel.toLowerCase() === key
+    ) ?? null
+  );
+}
+
+async function fetchLiveTripsData(): Promise<LiveTripsData> {
+  const supabase = createClientComponentClient<Database>();
+
+  const { data, error } = await supabase.rpc("admin_get_live_trips_page_data");
+
+  if (error) {
+    console.error("Error fetching live trips data:", error);
+    // Fallback: return empty data so the UI still loads
+    return {
+      active_bookings: [],
+      recent_completed_bookings: [],
+      zone_capacity: [],
+    };
+  }
+
+  const activeBookings: BookingWithExtras[] = (data?.active_bookings ?? []).map(
+    (row: any) => ({
+      id: row.id,
+      code: row.code,
+      passenger_name: row.passenger_name,
+      passenger_phone: row.passenger_phone,
+      pickup: row.pickup,
+      dropoff: row.dropoff,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      assigned_driver_id: row.assigned_driver_id,
+      assigned_driver_name: row.assigned_driver_name,
+      assigned_driver_phone: row.assigned_driver_phone,
+      town: row.town,
+      zone: row.zone,
+      eta_minutes: row.eta_minutes,
+      driver_status: row.driver_status,
+      driver_online: row.driver_online ?? false,
+      driver_location_updated_at: row.driver_location_updated_at,
+      issues: row.issues,
+      age_minutes: row.age_minutes,
+      pickup_lat: row.pickup_lat,
+      pickup_lng: row.pickup_lng,
+      dropoff_lat: row.dropoff_lat,
+      dropoff_lng: row.dropoff_lng,
+    })
+  );
+
+  const recentCompleted: BookingWithExtras[] = (
+    data?.recent_completed_bookings ?? []
+  ).map((row: any) => ({
+    id: row.id,
+    code: row.code,
+    passenger_name: row.passenger_name,
+    passenger_phone: row.passenger_phone,
+    pickup: row.pickup,
+    dropoff: row.dropoff,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    assigned_driver_id: row.assigned_driver_id,
+    assigned_driver_name: row.assigned_driver_name,
+    assigned_driver_phone: row.assigned_driver_phone,
+    town: row.town,
+    zone: row.zone,
+    eta_minutes: row.eta_minutes,
+    driver_status: row.driver_status,
+    driver_online: row.driver_online ?? false,
+    driver_location_updated_at: row.driver_location_updated_at,
+    issues: row.issues,
+    age_minutes: row.age_minutes,
+    pickup_lat: row.pickup_lat,
+    pickup_lng: row.pickup_lng,
+    dropoff_lat: row.dropoff_lat,
+    dropoff_lng: row.dropoff_lng,
+  }));
+
+  const zoneCapacity: ZoneCapacityRow[] = (data?.zone_capacity ?? []).map(
+    (row: any) => ({
+      town: row.town,
+      town_id: row.town_id,
+      town_short: row.town_short,
+      total_drivers: row.total_drivers,
+      active_drivers: row.active_drivers,
+      max_capacity: row.max_capacity,
+      utilization_percent: row.utilization_percent,
+      status: row.status,
+    })
+  );
+
+  return {
+    active_bookings: activeBookings,
+    recent_completed_bookings: recentCompleted,
+    zone_capacity: zoneCapacity,
+  };
+}
+
+function formatAgeMinutes(ageMinutes: number | null | undefined): string {
+  if (ageMinutes == null) return "—";
+  const minutes = Math.max(0, Math.round(ageMinutes));
+  if (minutes < 1) return "< 1 min";
+  if (minutes === 1) return "1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = minutes / 60;
+  if (hours < 24) {
+    const rounded = Math.round(hours * 10) / 10;
+    return `${rounded} hr`;
+  }
+  const days = minutes / (60 * 24);
+  const roundedDays = Math.round(days * 10) / 10;
+  return `${roundedDays} d`;
+}
+
+function formatEta(etaMinutes: number | null | undefined): string {
+  if (etaMinutes == null) return "—";
+  const minutes = Math.max(0, Math.round(etaMinutes));
+  if (minutes < 1) return "< 1 min";
+  if (minutes === 1) return "1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = minutes / 60;
+  const rounded = Math.round(hours * 10) / 10;
+  return `${rounded} hr`;
+}
+
+function formatRelativeTime(timestamp: string | null | undefined): string {
+  if (!timestamp) return "—";
+  try {
+    return formatDistanceToNowStrict(new Date(timestamp), {
+      addSuffix: true,
+    });
+  } catch {
+    return "—";
+  }
+}
+
+function useSelectedBooking(
+  initialData: LiveTripsData
+): [BookingWithExtras | null, (booking: BookingWithExtras | null) => void] {
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialData.active_bookings[0]?.id ?? null
+  );
+
+  const selectedBooking = useMemo(
+    () =>
+      initialData.active_bookings.find((b) => b.id === selectedId) ??
+      initialData.recent_completed_bookings.find((b) => b.id === selectedId) ??
+      null,
+    [selectedId, initialData.active_bookings, initialData.recent_completed_bookings]
+  );
+
+  return [selectedBooking, (booking: BookingWithExtras | null) => setSelectedId(booking?.id ?? null)];
+}
+
+function StatPill({
+  icon: Icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  helper?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100">
+        <Icon className="h-3 w-3 text-slate-500" />
+      </span>
+      <div className="flex flex-col">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+          {label}
+        </span>
+        <span className="text-[11px] font-semibold text-slate-900">{value}</span>
+      </div>
+      {helper && (
+        <span className="ml-2 text-[10px] text-slate-400">
+          {helper}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LiveTripsClientWrapper({ initialData }: LiveTripsClientWrapperProps) {
+  const [data, setData] = useState<LiveTripsData>(initialData);
+  const [selectedBooking, setSelectedBooking] = useSelectedBooking(initialData);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function refreshData() {
+      try {
+        setIsRefreshing(true);
+        const fresh = await fetchLiveTripsData();
+        if (mounted) {
+          setData(fresh);
+        }
+      } catch (err) {
+        console.error("Error refreshing live trips data:", err);
+      } finally {
+        if (mounted) {
+          setIsRefreshing(false);
+        }
+      }
+    }
+
+    const interval = setInterval(refreshData, 30_000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const totalActive = data.active_bookings.length;
+  const totalOnline = data.active_bookings.filter((b) => b.driver_online).length;
+  const totalOnTrip = data.active_bookings.filter(
+    (b) => b.status === "On trip" || b.status === "On the way"
+  ).length;
+
+  return (
+    <div className="flex h-[calc(100vh-4rem)] flex-col gap-2 bg-slate-50 px-4 pb-4 pt-2">
+      <header className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2">
+        <div className="flex flex-col">
+          <h1 className="text-sm font-semibold text-slate-900">
+            Live Trips (Dispatch)
+          </h1>
+          <p className="text-xs text-slate-500">
+            Driver names + button rules are centralized in{" "}
+            <span className="font-mono text-[11px] text-slate-600">
+              dispatchRules.ts
+            </span>
+            .
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <StatPill
+            icon={Users}
+            label="Active trips"
+            value={String(totalActive)}
+          />
+          <StatPill
+            icon={MapPin}
+            label="Drivers online"
+            value={String(totalOnline)}
+          />
+          <StatPill
+            icon={MoveUpRight}
+            label="On trip / On the way"
+            value={String(totalOnTrip)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex items-center gap-1 text-xs"
+            onClick={async () => {
+              try {
+                setIsRefreshing(true);
+                const fresh = await fetchLiveTripsData();
+                setData(fresh);
+              } catch (err) {
+                console.error("Error refreshing live trips data:", err);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+          >
+            {isRefreshing && (
+              <Loader2 className="h-3 w-3 animate-spin text-slate-500" />
+            )}
+            Refresh
+          </Button>
+        </div>
+      </header>
+
+      <div className="grid flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)]">
+        <section className="flex flex-col gap-2 overflow-hidden">
+          <ZoneCapacity rows={data.zone_capacity} />
+
+          <div className="flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <LiveTripsTable
+              activeBookings={data.active_bookings}
+              recentCompleted={data.recent_completed_bookings}
+              selectedBooking={selectedBooking}
+              onSelectBooking={setSelectedBooking}
+            />
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+            <div className="flex flex-col">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Selected Booking
+              </span>
+              <span className="text-xs text-slate-600">
+                {selectedBooking ? selectedBooking.code : "None selected"}
+              </span>
+            </div>
+            {selectedBooking && (
+              <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                <ActiveTripIndicator booking={selectedBooking} />
+                <span className="h-4 w-px bg-slate-200" />
+                <span>
+                  Age:{" "}
+                  <span className="font-medium">
+                    {formatAgeMinutes(selectedBooking.age_minutes)}
+                  </span>
+                </span>
+                <span className="h-4 w-px bg-slate-200" />
+                <span>
+                  ETA:{" "}
+                  <span className="font-medium">
+                    {formatEta(selectedBooking.eta_minutes)}
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+
+          {!selectedBooking ? (
+            <div className="flex flex-1 items-center justify-center bg-slate-50">
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
+                <MapPin className="h-5 w-5 text-slate-400" />
+                <p className="text-xs text-slate-500">
+                  Select a booking from the left table to see route and driver
+                  location here.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-[11px] text-slate-500">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-semibold text-slate-700">
+                    {selectedBooking.pickup}
+                  </span>
+                  <MoveUpRight className="h-3 w-3 text-slate-400" />
+                  <span className="font-semibold text-slate-700">
+                    {selectedBooking.dropoff}
+                  </span>
+                  <span className="h-4 w-px bg-slate-200" />
+                  {selectedBooking.town && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                        getTownMeta(selectedBooking.town)?.badgeClass ??
+                          "border-slate-200 bg-slate-50 text-slate-700"
+                      )}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {getTownMeta(selectedBooking.town)?.label ??
+                        selectedBooking.town}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <DispatchActions selectedBooking={selectedBooking} />
+                </div>
+              </div>
+
+              <div className="flex flex-1 flex-col">
+                <div className="flex-1">
+                  <BookingMapClient
+                    bookingId={selectedBooking.id}
+                    pickupLat={selectedBooking.pickup_lat}
+                    pickupLng={selectedBooking.pickup_lng}
+                    dropoffLat={selectedBooking.dropoff_lat}
+                    dropoffLng={selectedBooking.dropoff_lng}
+                  />
+                </div>
+                <div className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                  <span className="font-medium text-slate-700">
+                    Driver:{" "}
+                    {selectedBooking.assigned_driver_name ?? "Unassigned"}
+                  </span>
+                  {selectedBooking.assigned_driver_phone && (
+                    <>
+                      <span className="mx-1 text-slate-300">•</span>
+                      <span>
+                        <Link
+                          href={`tel:${selectedBooking.assigned_driver_phone}`}
+                          className="text-emerald-600 hover:underline"
+                        >
+                          {selectedBooking.assigned_driver_phone}
+                        </Link>
+                      </span>
+                    </>
+                  )}
+                  {selectedBooking.driver_location_updated_at && (
+                    <>
+                      <span className="mx-1 text-slate-300">•</span>
+                      <span>
+                        Last location update:{" "}
+                        {formatRelativeTime(
+                          selectedBooking.driver_location_updated_at
+                        )}
+                      </span>
+                    </>
+                  )}
+                  {selectedBooking.issues && (
+                    <>
+                      <span className="mx-1 text-slate-300">•</span>
+                      <span className="inline-flex items-center gap-1 text-amber-600">
+                        <XCircle className="h-3 w-3" />
+                        {selectedBooking.issues}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export default function LiveTripsPage() {
+  const [initialData, setInitialData] = useState<LiveTripsData | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const fresh = await fetchLiveTripsData();
+        if (mounted) {
+          setInitialData(fresh);
+        }
+      } catch (err) {
+        console.error("Error loading live trips data:", err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!initialData) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <div className="flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs text-slate-100 shadow-lg">
+          <Loader2 className="h-3 w-3 animate-spin text-emerald-400" />
+          <span>Loading live trips console…</span>
+        </div>
+      </div>
+    );
+  }
+
+  return <LiveTripsClientWrapper initialData={initialData} />;
+}

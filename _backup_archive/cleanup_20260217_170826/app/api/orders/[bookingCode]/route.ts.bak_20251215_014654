@@ -1,0 +1,132 @@
+﻿import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabase =
+  supabaseUrl && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey)
+    : null;
+
+// Compute total + customer-facing breakdown for takeout
+function buildFareBreakdown(row: any) {
+  const base_fee = Number(row.base_fee ?? 0);
+  const distance_fare = Number(row.distance_fare ?? 0);
+  const waiting_fee = Number(row.waiting_fee ?? 0);
+  const extra_stop_fee = Number(row.extra_stop_fee ?? 0);
+  const company_cut = Number(row.company_cut ?? 0);
+
+  const items_total = base_fee;
+  const delivery_fee = distance_fare + waiting_fee + extra_stop_fee;
+  const platform_fee = company_cut;
+  const other_fees = 0;
+  const grand_total = items_total + delivery_fee + platform_fee + other_fees;
+
+  return {
+    base_fee,
+    distance_fare,
+    waiting_fee,
+    extra_stop_fee,
+    company_cut,
+    items_total,
+    delivery_fee,
+    platform_fee,
+    other_fees,
+    grand_total,
+  };
+}
+
+export async function GET(
+  _request: Request,
+  context: { params: { bookingCode: string } }
+) {
+  try {
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "Supabase not configured" },
+        { status: 500 }
+      );
+    }
+
+    const bookingCode = context.params.bookingCode;
+
+    if (!bookingCode) {
+      return NextResponse.json(
+        { error: "Missing booking code" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(
+        [
+          "id",
+          "booking_code",
+          "passenger_name",
+          "service_type",
+          "status",            // generic status
+          "customer_status",   // customer-facing status
+          "vendor_status",     // vendor-side status
+          "base_fee",
+          "distance_fare",
+          "waiting_fee",
+          "extra_stop_fee",
+          "company_cut",
+          "driver_payout",
+          "created_at",
+          "updated_at",
+          "vendor_driver_arrived_at",
+          "vendor_order_picked_at",
+        ].join(", ")
+      )
+      .eq("booking_code", bookingCode)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("❌ Supabase error:", error);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        { error: "Booking not found" },
+        { status: 404 }
+      );
+    }
+
+    const fare_breakdown = buildFareBreakdown(data);
+
+    const booking = {
+      id: data.id,
+      booking_code: data.booking_code,
+      passenger_name: data.passenger_name,
+      service_type: data.service_type,
+      status: data.status,
+      customer_status: data.customer_status,
+      vendor_status: data.vendor_status,
+      base_fee: fare_breakdown.base_fee,
+      distance_fare: fare_breakdown.distance_fare,
+      waiting_fee: fare_breakdown.waiting_fee,
+      extra_stop_fee: fare_breakdown.extra_stop_fee,
+      company_cut: fare_breakdown.company_cut,
+      driver_payout: Number(data.driver_payout ?? 0),
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      vendor_driver_arrived_at: data.vendor_driver_arrived_at,
+      vendor_order_picked_at: data.vendor_order_picked_at,
+      fare_breakdown,
+    };
+
+    return NextResponse.json({ booking });
+  } catch (err: any) {
+    console.error("❌ API crash:", err);
+    return NextResponse.json(
+      { error: err?.message ?? "Unknown server error" },
+      { status: 500 }
+    );
+  }
+}

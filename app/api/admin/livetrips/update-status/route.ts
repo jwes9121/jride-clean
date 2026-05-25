@@ -1,81 +1,115 @@
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-const STATUS_MAP: Record<string, string> = {
-  pending: "requested",
-  searching: "requested",
-  assigned: "assigned",
-  driver_accepted: "accepted",
-  driver_arrived: "arrived",
-  passenger_onboard: "on_trip",
-  in_transit: "on_trip",
-  dropoff: "completed",
-  completed: "completed",
-  cancelled: "cancelled",
-  accepted: "accepted",
-  fare_proposed: "fare_proposed",
-  ready: "ready",
-  on_the_way: "on_the_way",
-  arrived: "arrived",
-  on_trip: "on_trip",
-};
+// All statuses we allow updates to
+const ALLOWED_STATUSES = [
+  "pending",
+  "searching",
+  "assigned",
+  "driver_accepted",
+  "driver_arrived",
+  "passenger_onboard",
+  "in_transit",
+  "dropoff",
+  "completed",
+];
 
 export async function POST(req: NextRequest) {
   try {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error(
+        "[admin/livetrips/update-status] Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars"
+      );
+      return NextResponse.json(
+        { error: "ENV_MISSING", message: "Supabase env vars missing" },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json().catch(() => null);
 
-    const bookingId = String(body?.bookingId ?? body?.booking_id ?? "").trim();
-    const bookingCode = String(body?.bookingCode ?? body?.booking_code ?? "").trim();
-    const rawNextStatus = String(body?.nextStatus ?? body?.status ?? "").trim().toLowerCase();
+    const bookingId: string | undefined = body?.bookingId;
+    const nextStatus: string | undefined = body?.nextStatus;
 
-    if ((!bookingId && !bookingCode) || !rawNextStatus) {
+    if (!bookingId || !nextStatus) {
       return NextResponse.json(
         {
-          ok: false,
           error: "BAD_REQUEST",
-          message: "bookingId or bookingCode and nextStatus are required",
+          message: "bookingId and nextStatus are required",
         },
         { status: 400 }
       );
     }
 
-    const mappedStatus = STATUS_MAP[rawNextStatus];
-    if (!mappedStatus) {
+    if (!ALLOWED_STATUSES.includes(nextStatus)) {
       return NextResponse.json(
         {
-          ok: false,
           error: "INVALID_STATUS",
-          message: `Unsupported legacy/admin status: ${rawNextStatus}`,
+          message: `nextStatus must be one of: ${ALLOWED_STATUSES.join(", ")}`,
         },
         { status: 400 }
       );
     }
 
-    const origin = req.nextUrl.origin;
-    const res = await fetch(`${origin}/api/dispatch/status`, {
-      method: "POST",
+    const url = `${SUPABASE_URL}/rest/v1/bookings?id=eq.${encodeURIComponent(
+      bookingId
+    )}`;
+
+    const res = await fetch(url, {
+      method: "PATCH",
       headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         "Content-Type": "application/json",
-        cookie: req.headers.get("cookie") ?? "",
+        Prefer: "return=representation",
       },
-      body: JSON.stringify({
-        bookingId: bookingId || undefined,
-        booking_id: bookingId || undefined,
-        bookingCode: bookingCode || undefined,
-        booking_code: bookingCode || undefined,
-        status: mappedStatus,
-      }),
-      cache: "no-store",
+      body: JSON.stringify({ status: nextStatus }),
     });
 
-    const json = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let json: any = null;
 
-    return NextResponse.json(json, { status: res.status });
+    try {
+      json = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      console.error(
+        "[admin/livetrips/update-status] Failed to parse Supabase response JSON:",
+        e,
+        "raw=",
+        raw
+      );
+    }
+
+    if (!res.ok) {
+      console.error(
+        "[admin/livetrips/update-status] Supabase error:",
+        res.status,
+        raw
+      );
+      return NextResponse.json(
+        {
+          error: "DB_ERROR_UPDATE",
+          status: res.status,
+          message: json?.message ?? raw ?? "Unknown Supabase error",
+        },
+        { status: 500 }
+      );
+    }
+
+    const updatedRow =
+      Array.isArray(json) && json.length > 0 ? json[0] : json ?? null;
+
+    return NextResponse.json(
+      { ok: true, booking: updatedRow },
+      { status: 200 }
+    );
   } catch (error: any) {
+    console.error("[admin/livetrips/update-status] SERVER ERROR:", error);
     return NextResponse.json(
       {
-        ok: false,
         error: "SERVER_ERROR",
         message: error?.message ?? "Unknown server error",
       },
@@ -83,3 +117,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

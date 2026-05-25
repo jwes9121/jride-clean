@@ -179,22 +179,9 @@ const driverPayout = useMemo(() => {
   }, [trip]);
 
   const passengerPlatformFee = useMemo(() => {
-    // Passenger platform fee is a flat PHP 15 for standard rides.
-    // Prefer explicit values if the API provides them, otherwise fall back safely.
-    const explicit = asNum(
-      trip?.platform_fee ??
-      trip?.platform_service_fee ??
-      trip?.platformServiceFee ??
-      trip?.platform_service ??
-      trip?.company_cut ??
-      trip?.commission ??
-      trip?.company_fee ??
-      null
-    );
-    if (explicit !== null) return explicit;
-    if (isTakeout) return null;
-    return 15;
-  }, [trip, isTakeout]);
+    // Keep separate from company_cut; passenger platform fee should be explicit (e.g., platform_service_fee)
+    return asNum(trip?.platform_service_fee ?? trip?.platformServiceFee ?? trip?.platform_service ?? null);
+  }, [trip]);
 
   const passengerBaseFare = useMemo(() => {
     const v = asNum(trip?.verified_fare);

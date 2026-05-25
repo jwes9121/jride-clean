@@ -1,0 +1,476 @@
+﻿"use client";
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import BookingMapClient from "./map/BookingMapClient";
+
+type AnyRecord = Record<string, any>;
+
+const DEFAULT_REFRESH_INTERVAL_SEC = 15;
+const ETA_PICKUP_THRESHOLD_MIN = 5;
+
+// Auto-refresh hook – calls the given callback every X seconds
+function useAutoRefresh(
+  callback: () => void,
+  defaultSeconds: number = DEFAULT_REFRESH_INTERVAL_SEC
+) {
+  const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
+  const [refreshIntervalSec, setRefreshIntervalSec] =
+    useState<number>(defaultSeconds);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const id = window.setInterval(() => {
+      callback();
+    }, refreshIntervalSec * 1000);
+
+    return () => window.clearInterval(id);
+  }, [autoRefresh, refreshIntervalSec, callback]);
+
+  return {
+    autoRefresh,
+    refreshIntervalSec,
+    setAutoRefresh,
+    setRefreshIntervalSec,
+  };
+}
+
+export default function LiveTripsClient() {
+  const [rawData, setRawData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<AnyRecord | null>(
+    null
+  );
+
+  const loadData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const res = await fetch("/api/admin/livetrips/page-data", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Request failed: ${res.status} ${text}`);
+      }
+
+      const json = await res.json();
+      console.log("[LiveTripsClient] page-data:", json);
+      setRawData(json);
+    } catch (err: any) {
+      console.error("[LiveTripsClient] loadData error:", err);
+      setError(err?.message ?? "Failed to load live trips data.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const {
+    autoRefresh,
+    refreshIntervalSec,
+    setAutoRefresh,
+    setRefreshIntervalSec,
+  } = useAutoRefresh(loadData, DEFAULT_REFRESH_INTERVAL_SEC);
+
+  // Initial load
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Normalize data: handle array OR object-with-bookings
+  const bookings: AnyRecord[] = useMemo(() => {
+    if (!rawData) return [];
+
+    if (Array.isArray(rawData)) {
+      // current case: RPC returns an array of bookings directly
+      return rawData as AnyRecord[];
+    }
+
+    if (Array.isArray((rawData as AnyRecord).bookings)) {
+      return (rawData as AnyRecord).bookings as AnyRecord[];
+    }
+
+    if (Array.isArray((rawData as AnyRecord).active_trips)) {
+      return (rawData as AnyRecord).active_trips as AnyRecord[];
+    }
+
+    return [];
+  }, [rawData]);
+
+  // Derive problem trips from bookings
+  const problemTrips: AnyRecord[] = useMemo(() => {
+    const activeStatuses = ["pending", "assigned", "on_the_way", "on_trip"];
+    return bookings.filter((b) =>
+      activeStatuses.includes((b.status ?? "").toLowerCase())
+    );
+  }, [bookings]);
+
+  // Derive zone capacity from bookings (group by zone/town)
+  const zoneCapacitySummary: AnyRecord[] = useMemo(() => {
+    const map = new Map<
+      string,
+      { town: string; trips: number; driverIds: Set<string> }
+    >();
+
+    for (const b of bookings) {
+      const town =
+        (b.zone as string) ??
+        (b.town as string) ??
+        (b.driver?.town as string) ??
+        "Unknown";
+      const driverId =
+        (b.driver_id as string) ??
+        (b.driver?.id as string) ??
+        "unknown-driver";
+
+      if (!map.has(town)) {
+        map.set(town, {
+          town,
+          trips: 0,
+          driverIds: new Set<string>(),
+        });
+      }
+
+      const entry = map.get(town)!;
+      entry.trips += 1;
+      if (driverId) {
+        entry.driverIds.add(driverId);
+      }
+    }
+
+    return Array.from(map.values()).map((entry) => ({
+      town_name: entry.town,
+      trips: entry.trips,
+      drivers_online: entry.driverIds.size,
+      drivers: entry.driverIds.size,
+    }));
+  }, [bookings]);
+
+  // When new data comes in, keep current selection if possible, else pick first booking
+  useEffect(() => {
+    if (!bookings.length) {
+      setSelectedBooking(null);
+      return;
+    }
+
+    setSelectedBooking((prev) => {
+      if (!prev) return bookings[0];
+
+      const found = bookings.find(
+        (b) => b.id === prev.id || b.booking_code === prev.booking_code
+      );
+      return found ?? bookings[0];
+    });
+  }, [bookings]);
+
+  const handleSelectBooking = useCallback((booking: AnyRecord) => {
+    setSelectedBooking(booking);
+  }, []);
+
+  // ETA + status for header
+  const etaPickupMinutes: number | null =
+    selectedBooking?.eta_pickup_minutes ??
+    selectedBooking?.eta_pickup_min ??
+    null;
+
+  const etaPickupKm: number | null =
+    selectedBooking?.eta_pickup_km ??
+    selectedBooking?.eta_pickup_distance_km ??
+    null;
+
+  const etaTripMinutes: number | null =
+    selectedBooking?.eta_trip_minutes ??
+    selectedBooking?.eta_trip_min ??
+    null;
+
+  const etaTripKm: number | null =
+    selectedBooking?.eta_trip_km ??
+    selectedBooking?.eta_trip_distance_km ??
+    null;
+
+  const statusLabel: string =
+    selectedBooking?.status_label ?? selectedBooking?.status ?? "Unknown";
+
+  const isPickupLate =
+    etaPickupMinutes !== null &&
+    etaPickupMinutes > ETA_PICKUP_THRESHOLD_MIN;
+
+  const currentBookingCode: string | null =
+    selectedBooking?.booking_code ?? selectedBooking?.code ?? null;
+
+  return (
+    <div className="flex flex-col gap-3 h-full">
+      {/* AUTO-REFRESH CONTROL BAR */}
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="px-3 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+          >
+            ⟳ Refresh now
+          </button>
+
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            <span>Auto-refresh</span>
+          </label>
+
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">every</span>
+            <input
+              type="number"
+              min={5}
+              max={120}
+              value={refreshIntervalSec}
+              onChange={(e) =>
+                setRefreshIntervalSec(
+                  Math.max(5, Math.min(120, Number(e.target.value) || 5))
+                )
+              }
+              className="w-14 px-1 py-0.5 border rounded text-xs"
+            />
+            <span className="text-gray-500">sec</span>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-gray-500">
+          {isLoading
+            ? "Loading live trips…"
+            : autoRefresh
+            ? `Auto-refresh: ${refreshIntervalSec}s`
+            : "Auto-refresh: off"}
+        </div>
+      </div>
+
+      {error && (
+        <div className="px-3 py-2 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded">
+          Error loading live trips: {error}
+        </div>
+      )}
+
+      {/* MAIN LAYOUT */}
+      <div className="flex flex-col md:flex-row gap-4 h-full">
+        {/* LEFT: ZONE CAPACITY + PROBLEM TRIPS + TABLE */}
+        <div className="md:w-1/2 flex flex-col gap-3">
+          {/* Zone capacity chips */}
+          <div className="border rounded-lg bg-white">
+            <div className="px-3 py-1.5 border-b text-[11px] font-semibold tracking-wide bg-gray-50">
+              ZONE CAPACITY
+            </div>
+            <div className="px-3 py-2 flex flex-wrap gap-2 text-[11px]">
+              {zoneCapacitySummary.length === 0 && (
+                <span className="text-gray-400">No zone capacity data.</span>
+              )}
+              {zoneCapacitySummary.map((z: AnyRecord, idx: number) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center rounded-full border border-emerald-500 bg-emerald-50 text-emerald-700 px-2 py-0.5"
+                >
+                  {z.town_name ?? z.zone_name ?? z.town ?? "Zone"}&nbsp;
+                  <span className="font-semibold">
+                    Trips: {z.trips ?? z.trip_count ?? 0}
+                  </span>
+                  &nbsp;• Drivers: {z.drivers_online ?? z.drivers ?? 0}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Problem trips chips */}
+          <div className="border rounded-lg bg-white">
+            <div className="px-3 py-1.5 border-b text-[11px] font-semibold tracking-wide bg-gray-50">
+              PROBLEM TRIPS
+            </div>
+            <div className="px-3 py-2 flex flex-wrap gap-2 text-[11px]">
+              {problemTrips.length === 0 && (
+                <span className="text-gray-400">No problem trips.</span>
+              )}
+              {problemTrips.map((t: AnyRecord, idx: number) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectBooking(t)}
+                  className="inline-flex items-center rounded-full border border-red-500 bg-red-50 text-red-700 px-2 py-0.5 hover:bg-red-100"
+                >
+                  {t.booking_code ?? t.code ?? "Trip"}&nbsp;
+                  <span className="text-[10px]">
+                    ({t.town ?? t.zone ?? "Unknown"}) status:{" "}
+                    {t.status ?? "unknown"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Active & recent trips table */}
+          <div className="border rounded-lg bg-white flex-1 flex flex-col overflow-hidden">
+            <div className="px-3 py-1.5 border-b text-[11px] font-semibold tracking-wide bg-gray-50">
+              ACTIVE &amp; RECENT TRIPS
+            </div>
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-[11px]">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr className="text-left">
+                    <th className="px-2 py-1 font-semibold">Code</th>
+                    <th className="px-2 py-1 font-semibold">Passenger</th>
+                    <th className="px-2 py-1 font-semibold">Pickup</th>
+                    <th className="px-2 py-1 font-semibold">Dropoff</th>
+                    <th className="px-2 py-1 font-semibold">Zone</th>
+                    <th className="px-2 py-1 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookings.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-2 py-2 text-center text-gray-400"
+                      >
+                        No trips to display.
+                      </td>
+                    </tr>
+                  )}
+                  {bookings.map((b: AnyRecord, idx: number) => {
+                    const isSelected =
+                      selectedBooking &&
+                      (selectedBooking.id === b.id ||
+                        selectedBooking.booking_code === b.booking_code);
+
+                    return (
+                      <tr
+                        key={b.id ?? b.booking_code ?? idx}
+                        onClick={() => handleSelectBooking(b)}
+                        className={[
+                          "cursor-pointer border-b last:border-b-0",
+                          isSelected
+                            ? "bg-sky-50 hover:bg-sky-100"
+                            : "hover:bg-gray-50",
+                        ].join(" ")}
+                      >
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {b.booking_code ?? b.code ?? "—"}
+                        </td>
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {b.passenger_name ?? "—"}
+                        </td>
+                        <td className="px-2 py-1">
+                          {b.pickup_label ??
+                            b.from_label ??
+                            b.pickup_address ??
+                            "—"}
+                        </td>
+                        <td className="px-2 py-1">
+                          {b.dropoff_label ??
+                            b.to_label ??
+                            b.dropoff_address ??
+                            "—"}
+                        </td>
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {b.town ?? b.zone ?? "—"}
+                        </td>
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {b.status ?? "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: LIVE TRIP MAP + ETA HEADER */}
+        <div className="md:flex-1 border rounded-lg bg-white flex flex-col overflow-hidden">
+          {/* Header with blinking ETA pickup when late */}
+          <div className="px-3 py-2 border-b">
+            <div className="flex items-center justify-between text-xs md:text-sm">
+              <div className="flex flex-col">
+                <span className="font-semibold uppercase tracking-wide">
+                  LIVE TRIP MAP
+                </span>
+                <span className="text-[11px] text-gray-500">
+                  {currentBookingCode
+                    ? `JRide ${currentBookingCode}`
+                    : "No trip selected"}
+                </span>
+              </div>
+
+              <div className="flex flex-col items-end gap-0.5">
+                {/* ETA PICKUP – blinks red when above threshold */}
+                <div
+                  className={[
+                    "px-2 py-0.5 rounded-full border text-[11px] md:text-xs",
+                    isPickupLate
+                      ? "border-red-500 text-red-600 bg-red-50 animate-pulse"
+                      : "border-emerald-500 text-emerald-700 bg-emerald-50",
+                  ].join(" ")}
+                >
+                  <span className="font-semibold">ETA pickup:</span>{" "}
+                  {etaPickupMinutes !== null ? (
+                    <>
+                      {etaPickupMinutes.toFixed(0)} min
+                      {etaPickupKm !== null &&
+                        ` (${etaPickupKm.toFixed(1)} km)`}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </div>
+
+                {/* ETA TRIP – normal badge */}
+                <div className="px-2 py-0.5 rounded-full border border-sky-500 text-sky-700 bg-sky-50 text-[11px] md:text-xs">
+                  <span className="font-semibold">ETA trip:</span>{" "}
+                  {etaTripMinutes !== null ? (
+                    <>
+                      {etaTripMinutes.toFixed(0)} min
+                      {etaTripKm !== null &&
+                        ` (${etaTripKm.toFixed(1)} km)`}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </div>
+
+                {/* STATUS */}
+                <div className="text-[11px] text-gray-600">
+                  STATUS:{" "}
+                  <span className="font-semibold text-gray-800">
+                    {statusLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* MAP AREA */}
+          <div className="flex-1 relative">
+            {selectedBooking ? (
+              <BookingMapClient booking={selectedBooking} />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">
+                Select a trip on the left to view the live map.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

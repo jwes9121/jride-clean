@@ -1,21 +1,5 @@
 "use client";
 
-type AnalyticsSegment = "all" | "production" | "test" | "legacy";
-
-function getSelectedAnalyticsSegment(): AnalyticsSegment {
-  if (typeof window === "undefined") return "all";
-  const url = new URL(window.location.href);
-  const raw = (url.searchParams.get("analytics_segment") || "all").toLowerCase();
-  if (raw === "production" || raw === "test" || raw === "legacy") return raw;
-  return "all";
-}
-
-function setSelectedAnalyticsSegment(seg: AnalyticsSegment) {
-  const url = new URL(window.location.href);
-  if (seg === "all") url.searchParams.delete("analytics_segment");
-  else url.searchParams.set("analytics_segment", seg);
-  window.location.href = url.toString();
-}
 import * as React from "react";
 
 type AnyObj = Record<string, any>;
@@ -91,11 +75,13 @@ export default function AdminControlCenter() {
   const [role, setRole] = React.useState<string>("admin");
   const isDispatcher = role === "dispatcher";
 
+  // counts
   const [loading, setLoading] = React.useState(true);
   const [msg, setMsg] = React.useState<string>("");
+
   const [pendingVerifications, setPendingVerifications] = React.useState<number>(0);
-  const [ratingsCount, setRatingsCount] = React.useState<number>(0);
-  const [ratingsAverage, setRatingsAverage] = React.useState<number>(0);
+
+  // optional status indicators (UI only; we do not assume endpoints exist)
   const [lastRefresh, setLastRefresh] = React.useState<string>("");
 
   React.useEffect(() => {
@@ -113,20 +99,13 @@ export default function AdminControlCenter() {
     setMsg("");
 
     try {
-      const verification = await safeJson("/api/admin/verification/pending");
-      if (verification?.ok && Array.isArray(verification.rows)) {
-        setPendingVerifications(verification.rows.length);
+      // --- Verification pending count (known working endpoint)
+      const j = await safeJson("/api/admin/verification/pending");
+      if (j?.ok && Array.isArray(j.rows)) {
+        setPendingVerifications(j.rows.length);
       } else {
+        // Keep UI stable even if endpoint fails
         setPendingVerifications(0);
-      }
-
-      const ratings = await safeJson("/api/admin/ratings?limit=1");
-      if (ratings?.ok && ratings.stats) {
-        setRatingsCount(Number(ratings.stats.total || 0));
-        setRatingsAverage(Number(ratings.stats.average_rating || 0));
-      } else {
-        setRatingsCount(0);
-        setRatingsAverage(0);
       }
 
       setLastRefresh(new Date().toLocaleString());
@@ -145,8 +124,10 @@ export default function AdminControlCenter() {
       load();
     };
 
+    // Initial load
     safeLoad();
 
+    // Reload when tab becomes visible / user refocuses window
     const onFocus = () => safeLoad();
     const onVis = () => {
       if (document.visibilityState === "visible") safeLoad();
@@ -155,6 +136,7 @@ export default function AdminControlCenter() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
+    // BroadcastChannel (verification updates)
     let bc: BroadcastChannel | null = null;
     try {
       if (typeof window !== "undefined" && "BroadcastChannel" in window) {
@@ -165,6 +147,7 @@ export default function AdminControlCenter() {
       }
     } catch {}
 
+    // localStorage fallback (cross-tab)
     const onStorage = (e: StorageEvent) => {
       if (e.key === "jride_verification_pending_changed") safeLoad();
     };
@@ -189,7 +172,7 @@ export default function AdminControlCenter() {
             <div className="text-2xl font-bold">Admin Control Center</div>
             <div className="text-sm opacity-70 mt-1">
               Operations dashboard (counts are live). Role: {role}
-              {lastRefresh ? <span className="ml-2">Last refresh: {lastRefresh}</span> : null}
+              {lastRefresh ? <span className="ml-2">â€¢ Last refresh: {lastRefresh}</span> : null}
             </div>
           </div>
           <button
@@ -203,6 +186,7 @@ export default function AdminControlCenter() {
 
         {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
 
+        {/* ===== OPS / DISPATCH ===== */}
         <div className="mt-6">
           <div className="text-sm font-semibold mb-2">Operations</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -224,6 +208,7 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
+        {/* ===== QUEUES ===== */}
         <div className="mt-8">
           <div className="text-sm font-semibold mb-2">Queues</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -255,6 +240,7 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
+        {/* ===== FINANCE ===== */}
         <div className="mt-8">
           <div className="text-sm font-semibold mb-2">Finance</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -279,34 +265,7 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
-        <div className="mt-8">
-{/* === DRIVER PERFORMANCE === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Driver Performance</h2>
-    <span className="text-xs text-slate-400">Completed trips, payout, platform revenue, ratings</span>
-  </div>
-
-  <DriverPerformanceAnalytics />
-</div>
-
-
-          <div className="text-sm font-semibold mb-2">Quality</div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Tile
-              title="Trip Ratings"
-              desc="Read-only completed-trip passenger feedback analytics."
-              href="/admin/ratings"
-              badge={loading ? "-" : ratingsCount}
-              right={
-                <div className="text-xs rounded-full bg-slate-100 border border-black/10 px-2 py-1">
-                  avg {loading ? "-" : ratingsAverage.toFixed(2)}
-                </div>
-              }
-            />
-          </div>
-        </div>
-
+        {/* ===== SYSTEM ===== */}
         <div className="mt-8">
           <div className="text-sm font-semibold mb-2">System</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -334,717 +293,6 @@ export default function AdminControlCenter() {
           </div>
         ) : null}
       </div>
-    
-{/* === RATINGS SNAPSHOT === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Ratings Snapshot</h2>
-    <a href="/admin/ratings" className="text-xs text-emerald-600 hover:underline">
-      View full
-    </a>
-  </div>
-
-  <RatingsSnapshot />
-</div>
-
-
-{/* === TRIP ANALYTICS === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Trip Analytics</h2>
-  </div>
-
-  <TripAnalytics />
-</div>
-
-
-
-{/* === LOW-RATED DRIVER WATCHLIST === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Low-rated Driver Watchlist</h2>
-    <span className="text-xs text-slate-400">Drivers needing coaching or quality review</span>
-  </div>
-
-  <LowRatedDriverWatchlist />
-</div>
-
-
-{/* === RATING COVERAGE GAPS === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Zero-rating Completed-trip Gap Checker</h2>
-    <span className="text-xs text-slate-400">Completed trips with missing passenger rating records</span>
-  </div>
-
-  <RatingCoverageGapChecker />
-</div>
-
-
-{/* === RATING CAPTURE AUDIT === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Rating Capture Audit</h2>
-    <span className="text-xs text-slate-400">Trace missing or delayed passenger ratings</span>
-  </div>
-
-  <RatingCaptureAuditPanel />
-</div>
-
-
-{/* === SEGMENTED RATING COMPLIANCE === */}
-<div className="mt-6 rounded-2xl border bg-white p-4 shadow-sm">
-  <div className="mb-3 flex items-center justify-between">
-    <h2 className="text-sm font-semibold text-slate-700">Post-implementation Rating Compliance</h2>
-    <span className="text-xs text-slate-400">Production vs test vs legacy segmentation</span>
-  </div>
-
-  <SegmentedRatingCompliancePanel />
-</div>
-
-</main>
-  );
-}
-
-
-type RatingsSnapshotResponse = {
-  ok?: boolean;
-  stats?: {
-    total_ratings?: number | null;
-    average_rating?: number | null;
-    with_feedback?: number | null;
-    five_star_share?: number | null;
-  };
-};
-
-function RatingsSnapshot() {
-  const [data, setData] = React.useState<RatingsSnapshotResponse | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/admin/ratings?limit=5", {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({} as RatingsSnapshotResponse));
-        if (!cancelled) {
-          setData(j);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setData({ ok: false });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const stats = data.stats || {};
-
-  return (
-    <div className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
-      <div className="rounded border p-2">
-        <div className="text-slate-400">Total</div>
-        <div className="font-semibold">{stats.total_ratings || 0}</div>
-      </div>
-
-      <div className="rounded border p-2">
-        <div className="text-slate-400">Avg</div>
-        <div className="font-semibold">{stats.average_rating || 0}</div>
-      </div>
-
-      <div className="rounded border p-2">
-        <div className="text-slate-400">With Feedback</div>
-        <div className="font-semibold">{stats.with_feedback || 0}</div>
-      </div>
-
-      <div className="rounded border p-2">
-        <div className="text-slate-400">5-star Share</div>
-        <div className="font-semibold">
-          {stats.five_star_share != null ? Math.round(stats.five_star_share * 100) + "%" : "-"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-type TripAnalyticsRow = {
-  town: string;
-  total_trips: number;
-  total_revenue: number;
-};
-
-type TripAnalyticsResponse = {
-  ok?: boolean;
-  rows?: TripAnalyticsRow[];
-};
-
-function TripAnalytics() {
-  const [data, setData] = React.useState<TripAnalyticsResponse | null>(null);
-
-  React.useEffect(() => {
-    fetch("/api/admin/analytics/trips", { cache: "no-store" })
-      .then(r => r.json())
-      .then(setData)
-      .catch(() => setData({ ok: false }));
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const rows = data.rows || [];
-
-  return (
-    <div className="text-xs">
-      <table className="w-full border text-left">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="p-2 border">Town</th>
-            <th className="p-2 border">Trips</th>
-            <th className="p-2 border">Revenue</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td className="p-2 border">{r.town}</td>
-              <td className="p-2 border">{r.total_trips}</td>
-              <td className="p-2 border">
-                PHP {Number(r.total_revenue || 0).toFixed(2)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-
-type DriverPerformanceRow = {
-  driver_id?: string;
-  driver_name?: string;
-  municipality?: string;
-  completed_trips?: number;
-  total_driver_payout?: number;
-  total_platform_revenue?: number;
-  ratings_count?: number;
-  average_rating?: number | null;
-};
-
-type DriverPerformanceResponse = {
-  ok?: boolean;
-  rows?: DriverPerformanceRow[];
-};
-
-function DriverPerformanceAnalytics() {
-  const [data, setData] = React.useState<DriverPerformanceResponse | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/admin/analytics/drivers?limit=8", {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({} as DriverPerformanceResponse));
-        if (!cancelled) {
-          setData(j);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setData({ ok: false });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const rows = Array.isArray(data.rows) ? data.rows : [];
-
-  if (rows.length === 0) {
-    return <div className="text-xs text-slate-400">No completed-trip driver analytics found.</div>;
-  }
-
-  return (
-    <div className="overflow-x-auto text-xs">
-      <table className="w-full border text-left">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="border p-2">Driver</th>
-            <th className="border p-2">Town</th>
-            <th className="border p-2">Completed</th>
-            <th className="border p-2">Driver payout</th>
-            <th className="border p-2">Platform revenue</th>
-            <th className="border p-2">Avg rating</th>
-            <th className="border p-2">Ratings</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={String(r.driver_id || r.driver_name || Math.random())}>
-              <td className="border p-2">{r.driver_name || "Unknown Driver"}</td>
-              <td className="border p-2">{r.municipality || "-"}</td>
-              <td className="border p-2">{Number(r.completed_trips || 0)}</td>
-              <td className="border p-2">PHP {Number(r.total_driver_payout || 0).toFixed(2)}</td>
-              <td className="border p-2">PHP {Number(r.total_platform_revenue || 0).toFixed(2)}</td>
-              <td className="border p-2">
-                {r.average_rating != null ? Number(r.average_rating).toFixed(2) : "-"}
-              </td>
-              <td className="border p-2">{Number(r.ratings_count || 0)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-type DriverWatchlistRow = {
-  driver_id?: string;
-  driver_name?: string;
-  municipality?: string;
-  completed_trips?: number;
-  ratings_count?: number;
-  average_rating?: number | null;
-  low_ratings_count?: number;
-  latest_feedback?: string | null;
-  latest_rating_at?: string | null;
-};
-
-type DriverWatchlistResponse = {
-  ok?: boolean;
-  rows?: DriverWatchlistRow[];
-};
-
-function LowRatedDriverWatchlist() {
-  const [data, setData] = React.useState<DriverWatchlistResponse | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/admin/analytics/driver-watchlist?limit=6&max_average=4", {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({} as DriverWatchlistResponse));
-        if (!cancelled) {
-          setData(j);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setData({ ok: false });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const rows = Array.isArray(data.rows) ? data.rows : [];
-
-  if (rows.length === 0) {
-    return <div className="text-xs text-slate-400">No drivers currently meet the watchlist threshold.</div>;
-  }
-
-  return (
-    <div className="overflow-x-auto text-xs">
-      <table className="w-full border text-left">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="border p-2">Driver</th>
-            <th className="border p-2">Town</th>
-            <th className="border p-2">Avg rating</th>
-            <th className="border p-2">Ratings</th>
-            <th className="border p-2">Low ratings</th>
-            <th className="border p-2">Completed</th>
-            <th className="border p-2">Latest feedback</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={String(r.driver_id || r.driver_name || Math.random())}>
-              <td className="border p-2">{r.driver_name || "Unknown Driver"}</td>
-              <td className="border p-2">{r.municipality || "-"}</td>
-              <td className="border p-2">
-                {r.average_rating != null ? Number(r.average_rating).toFixed(2) : "-"}
-              </td>
-              <td className="border p-2">{Number(r.ratings_count || 0)}</td>
-              <td className="border p-2">{Number(r.low_ratings_count || 0)}</td>
-              <td className="border p-2">{Number(r.completed_trips || 0)}</td>
-              <td className="border p-2">{r.latest_feedback || "-"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-type RatingCoverageGapRow = {
-  booking_id?: string | null;
-  booking_code?: string | null;
-  town?: string | null;
-  driver_id?: string | null;
-  driver_name?: string | null;
-  passenger_name?: string | null;
-  completed_at?: string | null;
-};
-
-type RatingCoverageGapTownRow = {
-  town?: string | null;
-  completed_trips?: number;
-  rated_trips?: number;
-  missing_ratings?: number;
-  coverage_pct?: number;
-};
-
-type RatingCoverageGapResponse = {
-  ok?: boolean;
-  summary?: {
-    completed_trips?: number;
-    rated_trips?: number;
-    missing_ratings?: number;
-  };
-  summary_by_town?: RatingCoverageGapTownRow[];
-  rows?: RatingCoverageGapRow[];
-};
-
-function RatingCoverageGapChecker() {
-  const [data, setData] = React.useState<RatingCoverageGapResponse | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/admin/analytics/rating-coverage-gaps?limit=8", {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({} as RatingCoverageGapResponse));
-        if (!cancelled) {
-          setData(j);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setData({ ok: false });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const summary = data.summary || {};
-  const rows = Array.isArray(data.rows) ? data.rows : [];
-  const townRows = Array.isArray(data.summary_by_town) ? data.summary_by_town.slice(0, 5) : [];
-
-  return (
-    <div className="space-y-3 text-xs">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="rounded border p-3">
-          <div className="text-slate-400">Completed trips checked</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{Number(summary.completed_trips || 0)}</div>
-        </div>
-        <div className="rounded border p-3">
-          <div className="text-slate-400">Trips with ratings</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{Number(summary.rated_trips || 0)}</div>
-        </div>
-        <div className="rounded border p-3">
-          <div className="text-slate-400">Missing rating records</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{Number(summary.missing_ratings || 0)}</div>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full border text-left">
-          <thead>
-            <tr className="bg-slate-50">
-              <th className="border p-2">Town</th>
-              <th className="border p-2">Completed</th>
-              <th className="border p-2">Rated</th>
-              <th className="border p-2">Missing</th>
-              <th className="border p-2">Coverage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {townRows.map((r, i) => (
-              <tr key={String(r.town || i)}>
-                <td className="border p-2">{r.town || "Unknown"}</td>
-                <td className="border p-2">{Number(r.completed_trips || 0)}</td>
-                <td className="border p-2">{Number(r.rated_trips || 0)}</td>
-                <td className="border p-2">{Number(r.missing_ratings || 0)}</td>
-                <td className="border p-2">
-                  {r.coverage_pct != null ? Math.round(Number(r.coverage_pct) * 100) + "%" : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full border text-left">
-          <thead>
-            <tr className="bg-slate-50">
-              <th className="border p-2">Booking code</th>
-              <th className="border p-2">Town</th>
-              <th className="border p-2">Driver</th>
-              <th className="border p-2">Passenger</th>
-              <th className="border p-2">Completed at</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td className="border p-2 text-slate-400" colSpan={5}>No completed-trip rating gaps found.</td>
-              </tr>
-            ) : (
-              rows.map((r) => (
-                <tr key={String(r.booking_id || r.booking_code || Math.random())}>
-                  <td className="border p-2">{r.booking_code || "-"}</td>
-                  <td className="border p-2">{r.town || "-"}</td>
-                  <td className="border p-2">{r.driver_name || "Unknown Driver"}</td>
-                  <td className="border p-2">{r.passenger_name || "Unknown Passenger"}</td>
-                  <td className="border p-2">{r.completed_at || "-"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-type RatingAuditRow = {
-  booking_code?: string;
-  town?: string;
-  driver_name?: string;
-  passenger_name?: string;
-  completed_at?: string;
-  rated_at?: string | null;
-  rating_delay_minutes?: number | null;
-};
-
-type RatingAuditResponse = {
-  ok?: boolean;
-  stats?: {
-    total_completed?: number;
-    total_rated?: number;
-    missing?: number;
-  };
-  rows?: RatingAuditRow[];
-};
-
-function RatingCaptureAuditPanel() {
-  const [data, setData] = React.useState<RatingAuditResponse | null>(null);
-
-  React.useEffect(() => {
-    fetch("/api/admin/analytics/rating-capture-audit?limit=10", {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => setData({ ok: false }));
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const stats = data.stats || {};
-  const rows = data.rows || [];
-
-  return (
-    <div className="text-xs space-y-3">
-      <div className="grid grid-cols-3 gap-3">
-        <div className="border p-2 rounded">Completed: {stats.total_completed || 0}</div>
-        <div className="border p-2 rounded">Rated: {stats.total_rated || 0}</div>
-        <div className="border p-2 rounded">Missing: {stats.missing || 0}</div>
-      </div>
-
-      <table className="w-full border">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="p-2 border">Code</th>
-            <th className="p-2 border">Town</th>
-            <th className="p-2 border">Driver</th>
-            <th className="p-2 border">Passenger</th>
-            <th className="p-2 border">Completed</th>
-            <th className="p-2 border">Rated</th>
-            <th className="p-2 border">Delay(min)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td className="p-2 border">{r.booking_code}</td>
-              <td className="p-2 border">{r.town}</td>
-              <td className="p-2 border">{r.driver_name}</td>
-              <td className="p-2 border">{r.passenger_name}</td>
-              <td className="p-2 border">{r.completed_at}</td>
-              <td className="p-2 border">{r.rated_at || "-"}</td>
-              <td className="p-2 border">{r.rating_delay_minutes ?? "-"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-type SegmentedComplianceBucket = {
-  completed?: number;
-  rated?: number;
-  missing?: number;
-};
-
-type SegmentedComplianceRow = {
-  segment?: "production" | "test" | "legacy";
-  booking_code?: string | null;
-  town?: string | null;
-  driver_name?: string;
-  passenger_name?: string;
-  completed_at?: string | null;
-  rated_at?: string | null;
-};
-
-type SegmentedComplianceResponse = {
-  ok?: boolean;
-  launch_date?: string;
-  summary?: {
-    production?: SegmentedComplianceBucket;
-    test?: SegmentedComplianceBucket;
-    legacy?: SegmentedComplianceBucket;
-  };
-  rows?: SegmentedComplianceRow[];
-};
-
-function SegmentedRatingCompliancePanel() {
-  const [data, setData] = React.useState<SegmentedComplianceResponse | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/admin/analytics/rating-compliance-segmented?limit=12", {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({} as SegmentedComplianceResponse));
-        if (!cancelled) {
-          setData(j);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setData({ ok: false });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!data || !data.ok) {
-    return <div className="text-xs text-slate-400">Loading...</div>;
-  }
-
-  const summary = data.summary || {};
-  const production = summary.production || {};
-  const test = summary.test || {};
-  const legacy = summary.legacy || {};
-  const rows = Array.isArray(data.rows) ? data.rows : [];
-
-  return (
-    <div className="space-y-3 text-xs">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="rounded border p-3">
-          <div className="mb-2 font-semibold text-slate-700">Production</div>
-          <div>Completed: {Number(production.completed || 0)}</div>
-          <div>Rated: {Number(production.rated || 0)}</div>
-          <div>Missing: {Number(production.missing || 0)}</div>
-        </div>
-
-        <div className="rounded border p-3">
-          <div className="mb-2 font-semibold text-slate-700">Test</div>
-          <div>Completed: {Number(test.completed || 0)}</div>
-          <div>Rated: {Number(test.rated || 0)}</div>
-          <div>Missing: {Number(test.missing || 0)}</div>
-        </div>
-
-        <div className="rounded border p-3">
-          <div className="mb-2 font-semibold text-slate-700">Legacy</div>
-          <div>Completed: {Number(legacy.completed || 0)}</div>
-          <div>Rated: {Number(legacy.rated || 0)}</div>
-          <div>Missing: {Number(legacy.missing || 0)}</div>
-        </div>
-      </div>
-
-      <div className="text-[11px] text-slate-500">
-        Launch cutoff used for production compliance: {data.launch_date || "-"}
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full border text-left">
-          <thead>
-            <tr className="bg-slate-50">
-              <th className="border p-2">Segment</th>
-              <th className="border p-2">Booking code</th>
-              <th className="border p-2">Town</th>
-              <th className="border p-2">Driver</th>
-              <th className="border p-2">Passenger</th>
-              <th className="border p-2">Completed</th>
-              <th className="border p-2">Rated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={String(r.booking_code || i)}>
-                <td className="border p-2">{r.segment || "-"}</td>
-                <td className="border p-2">{r.booking_code || "-"}</td>
-                <td className="border p-2">{r.town || "-"}</td>
-                <td className="border p-2">{r.driver_name || "-"}</td>
-                <td className="border p-2">{r.passenger_name || "-"}</td>
-                <td className="border p-2">{r.completed_at || "-"}</td>
-                <td className="border p-2">{r.rated_at || "-"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </main>
   );
 }

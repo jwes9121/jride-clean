@@ -1,741 +1,207 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+const __JRIDE_WANT_DRIVER_SECRET__ = String(
+  (process.env.JRIDE_DRIVER_SECRET ?? process.env.DRIVER_PING_SECRET ?? process.env.DRIVER_API_SECRET ?? "")
+).trim();
 
-function text(v: unknown): string {
-  return String(v ?? "").trim();
+function jOk(body: any, status = 200) {
+  return NextResponse.json(body, { status });
+}
+function jErr(code: string, message: string, status: number, extra?: any) {
+  return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
 }
 
-function cleanStatus(v: unknown): string {
-  return text(v).toLowerCase();
+function normTown(s: any) {
+  return String(s ?? "").trim().toLowerCase();
+}
+function isUuidLike(s: any) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s ?? "").trim());
 }
 
-function isUuid(v: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+function getAdminClient() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url) throw new Error("Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)");
+  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function getNearbyTowns(town: string): string[] {
-  const map: Record<string, string[]> = {
-    lagawe: ["lamut", "hingyon"],
-    lamut: ["lagawe", "kiangan"],
-    hingyon: ["lagawe"],
-    banaue: ["hingyon"],
-  };
-  return map[text(town).toLowerCase()] || [];
+function allowRequest(req: Request) {
+  // Optional debug bypass (set to "1" only while testing)
+  const allowUnauth = String(process.env.JRIDE_ALLOW_UNAUTH_DISPATCH_ASSIGN || "").trim() === "1";
+
+  // Optional shared-secret gate (recommended for admin tools/server-to-server)
+  const wantSecret = String(process.env.JRIDE_ADMIN_SECRET || "").trim();
+  const gotSecret = String(
+    req.headers.get("x-jride-admin-secret") ||
+    req.headers.get("x-admin-secret") ||
+    ""
+  ).trim();
+  const secretOk = Boolean(wantSecret) && Boolean(gotSecret) && gotSecret === wantSecret;
+
+  if (allowUnauth || secretOk) return true;
+
+  // If you later want NextAuth gate here, add it â€” but keep DB ops using service role.
+  return false;
 }
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-  if (!url || !serviceRole) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  }
-
-  return createClient(url, serviceRole, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-function num(v: unknown): number {
-  const n = Number(v ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const r = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-
-  return 2 * r * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function effectiveMinWalletRequired(raw: unknown): number {
-  const configured = num(raw);
-  return configured >= 250 ? configured : 250;
-}
-
-function ageSecondsFromIso(input: string | null | undefined): number | null {
-  if (!input) return null;
-  const parsed = Date.parse(input);
-  if (!Number.isFinite(parsed)) return null;
-  const now = Date.now();
-  const ms = now - parsed;
-  return Math.max(0, Math.floor(ms / 1000));
-}
-
-function ts(input: string | null | undefined): number {
-  if (!input) return 0;
-  const parsed = Date.parse(input);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function isUniqueViolation(error: any): boolean {
-  const code = text(error?.code);
-  const message = text(error?.message).toLowerCase();
-  const details = text(error?.details).toLowerCase();
-  const hint = text(error?.hint).toLowerCase();
-
-  return (
-    code === "23505" ||
-    message.includes("duplicate key") ||
-    details.includes("duplicate key") ||
-    hint.includes("duplicate key")
-  );
-}
-
-const DRIVER_STALE_AFTER_SECONDS = 120;
-const ASSIGN_CUTOFF_MINUTES = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
-const ASSIGN_CUTOFF_SECONDS = ASSIGN_CUTOFF_MINUTES * 60;
-const ONLINE_LIKE_STATUSES = new Set(["online", "available", "idle", "waiting"]);
-
-const ACTIVE_DRIVER_BOOKING_STATUSES = [
-  "assigned",
-  "accepted",
-  "fare_proposed",
-  "ready",
-  "on_the_way",
-  "arrived",
-  "on_trip",
-];
-
-const ASSIGNABLE_STATUSES = new Set([
-  "requested",
-  "pending",
-  "searching",
-  "assigned",
-]);
-
-function evaluateDriverLocationEligibility(row: any) {
-  const updatedAt = text(row?.updated_at) || text(row?.created_at) || "";
-  const ageSeconds = ageSecondsFromIso(updatedAt || null);
-  const rawStatus = cleanStatus(row?.status);
-  const isStale = ageSeconds == null ? true : ageSeconds > DRIVER_STALE_AFTER_SECONDS;
-  const effectiveStatus = isStale ? "offline" : rawStatus;
-  const assignFresh = ageSeconds == null ? false : ageSeconds <= ASSIGN_CUTOFF_SECONDS;
-  const assignOnlineEligible = ONLINE_LIKE_STATUSES.has(rawStatus);
-  const assignEligible = assignFresh && assignOnlineEligible;
-
-  return {
-    updatedAt: updatedAt || null,
-    ageSeconds,
-    rawStatus,
-    isStale,
-    effectiveStatus,
-    assignFresh,
-    assignOnlineEligible,
-    assignEligible,
-  };
-}
-
-function keepLatestDriverLocationRows(rows: any[]): any[] {
-  const latestByDriverId: Record<string, any> = {};
-
-  for (const row of rows || []) {
-    const driverId = text(row?.driver_id);
-    if (!driverId) continue;
-
-    const prev = latestByDriverId[driverId];
-    if (!prev) {
-      latestByDriverId[driverId] = row;
-      continue;
-    }
-
-    const prevTs = ts(prev?.updated_at || prev?.created_at || null);
-    const nextTs = ts(row?.updated_at || row?.created_at || null);
-
-    if (nextTs > prevTs) {
-      latestByDriverId[driverId] = row;
-    }
-  }
-
-  return Object.values(latestByDriverId);
-}
-
-async function isDriverWalletEligible(supabase: any, driverId: string) {
-  const { data, error } = await supabase
-    .from("drivers")
-    .select("*")
-    .eq("id", driverId)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false as const, error: "driver_wallet_read_failed", message: error.message };
-  }
-
-  if (!data) {
-    return { ok: false as const, error: "driver_not_found" };
-  }
-
-  const balance = num((data as any).wallet_balance);
-  const minRequired = effectiveMinWalletRequired((data as any).min_wallet_required);
-  const walletLocked = Boolean((data as any).wallet_locked);
-  const eligible = !walletLocked && balance >= minRequired;
-
-  return {
-    ok: true as const,
-    eligible,
-    balance,
-    minRequired,
-    walletLocked,
-    driver: data,
-  };
-}
-
-async function getLatestDriverLocationForDriver(supabase: any, driverId: string) {
-  const { data, error } = await supabase
-    .from("driver_locations")
-    .select("*")
-    .eq("driver_id", driverId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false as const, error: "driver_location_read_failed", message: error.message };
-  }
-
-  if (!data) {
-    return { ok: false as const, error: "driver_location_not_found" };
-  }
-
-  const eligibility = evaluateDriverLocationEligibility(data);
-  return {
-    ok: true as const,
-    row: data,
-    eligibility,
-  };
-}
-
-async function findActiveTripForDriver(supabase: any, driverId: string, excludeBookingId?: string) {
-  let query = supabase
-    .from("bookings")
-    .select("id, booking_code, status, driver_id, assigned_driver_id")
-    .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
-    .in("status", ACTIVE_DRIVER_BOOKING_STATUSES)
-    .limit(1);
-
-  if (excludeBookingId) {
-    query = query.neq("id", excludeBookingId);
-  }
-
-  const { data, error } = await query.maybeSingle();
-
-  if (error) {
-    return {
-      ok: false as const,
-      error: "active_trip_check_failed",
-      message: error.message,
-    };
-  }
-
-  return {
-    ok: true as const,
-    trip: data || null,
-  };
-}
-
-function normalizedVehicleType(row: any): string {
-  const raw = text(
-    row?.vehicle_type ||
-      row?.vehicleType ||
-      row?.vehicle ||
-      row?.vehicle_kind ||
-      row?.vehicleKind ||
-      row?.driver_vehicle_type ||
-      row?.driverVehicleType ||
-      row?.transport_type ||
-      row?.transportType ||
-      row?.type
-  ).toLowerCase();
-
-  if (raw.includes("motor") || raw.includes("bike") || raw.includes("mc")) return "motorcycle";
-  if (raw.includes("trike") || raw.includes("tricycle") || raw.includes("toda")) return "tricycle";
-  return raw;
-}
-
-function bookingPassengerCount(booking: any): number {
-  const candidates = [
-    booking?.passenger_count,
-    booking?.passengerCount,
-    booking?.pax_count,
-    booking?.paxCount,
-    booking?.passengers,
-    booking?.pax,
-  ];
-
-  for (const candidate of candidates) {
-    const n = Number(candidate);
-    if (Number.isFinite(n) && n > 0) return Math.floor(n);
-  }
-
-  return 1;
-}
-
-function driverVehicleType(locationRow: any, driverRow?: any): string {
-  return normalizedVehicleType(driverRow) || normalizedVehicleType(locationRow);
-}
-
-function cleanVehicle(value: unknown): string {
-  return text(value).trim().toLowerCase();
-}
-function evaluateVehicleCapacity(booking: any, locationRow: any, driverRow: any) {
-  // JRIDE_TAKEOUT_SHARED_POOL_ASSIGN_V4
-  // Soft-launch dispatch rule:
-  // - Takeout uses the same driver pool as rides.
-  // - Takeout can be assigned to tricycle or motorcycle drivers.
-  // - Ride bookings still enforce requested ride vehicle compatibility.
-  // - One active booking per driver is enforced by findActiveTripForDriver.
-
-  const serviceType = text((booking as any)?.service_type || (booking as any)?.booking_type || "ride").toLowerCase();
-  const isTakeout = serviceType === "takeout";
-
-  const requestedVehicle = cleanVehicle((booking as any)?.vehicle_type || (booking as any)?.requested_vehicle_type);
-  const driverVehicle = cleanVehicle((locationRow as any)?.vehicle_type || (driverRow as any)?.vehicle_type);
-  const passengerCount = Math.max(1, Math.floor(num((booking as any)?.passenger_count || (booking as any)?.seats || 1)));
-
-  const driverIsMotorcycle = driverVehicle === "motorcycle";
-  const driverIsRideCapable = driverVehicle === "tricycle" || driverVehicle === "motorcycle";
-  const sameRequestedVehicle = !!requestedVehicle && !!driverVehicle && requestedVehicle === driverVehicle;
-
-  if (isTakeout) {
-    if (!driverIsRideCapable) {
-      return {
-        ok: false as const,
-        error: "driver_not_takeout_capable",
-        message: "Takeout can only be assigned to tricycle or motorcycle drivers.",
-        requested_vehicle_type: requestedVehicle || "takeout",
-        driver_vehicle_type: driverVehicle || null,
-        passenger_count: passengerCount,
-      };
-    }
-
-    return {
-      ok: true as const,
-      requested_vehicle_type: requestedVehicle || "takeout",
-      driver_vehicle_type: driverVehicle || null,
-      passenger_count: passengerCount,
-      vehicle_priority: driverVehicle === "motorcycle" ? 0 : driverVehicle === "tricycle" ? 1 : 2,
-    };
-  }
-
-  if (passengerCount > 1 && driverIsMotorcycle) {
-    return {
-      ok: false as const,
-      error: "motorcycle_capacity_exceeded",
-      message: "Motorcycle can only take 1 passenger. Please book separate rides or choose tricycle when available.",
-      requested_vehicle_type: requestedVehicle || null,
-      driver_vehicle_type: driverVehicle || null,
-      passenger_count: passengerCount,
-    };
-  }
-
-  if (requestedVehicle && driverVehicle && requestedVehicle !== driverVehicle) {
-    return {
-      ok: false as const,
-      error: "vehicle_type_mismatch",
-      message: "Driver vehicle type does not match the requested ride vehicle type.",
-      requested_vehicle_type: requestedVehicle || null,
-      driver_vehicle_type: driverVehicle || null,
-      passenger_count: passengerCount,
-    };
-  }
-
-  return {
-    ok: true as const,
-    requested_vehicle_type: requestedVehicle || null,
-    driver_vehicle_type: driverVehicle || null,
-    passenger_count: passengerCount,
-    vehicle_priority: sameRequestedVehicle ? 0 : driverVehicle ? 1 : 2,
-  };
-}
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
+  const startedAt = Date.now();
   try {
-    const supabase = getSupabase();
-    const body = await req.json().catch(() => ({}));
-
-    const bookingCode = text(body?.bookingCode || body?.booking_code);
-    const bookingId = text(body?.bookingId || body?.booking_id || body?.id);
-    const explicitDriverId = text(body?.driverId || body?.driver_id);
-    const emergencyMode = body?.emergency_mode === true;
-
-    if (!bookingCode && !bookingId) {
-      return NextResponse.json({ ok: false, error: "missing_booking" }, { status: 400 });
+    if (!allowRequest(req)) {
+      return jErr("UNAUTHORIZED", "Missing admin secret (or set JRIDE_ALLOW_UNAUTH_DISPATCH_ASSIGN=1 for debugging).", 401);
     }
 
-    if (explicitDriverId && !isUuid(explicitDriverId)) {
-      return NextResponse.json({ ok: false, error: "invalid_driver_id" }, { status: 400 });
+    const body = await req.json().catch(() => ({} as any));
+    const booking_code = String(body?.booking_code ?? body?.bookingCode ?? "").trim();
+    const booking_id = String(body?.booking_id ?? body?.bookingId ?? "").trim();
+    const requested_driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
+
+    if (!booking_code && !booking_id) {
+      return jErr("BAD_REQUEST", "Provide booking_code or booking_id.", 400);
+    }
+    if (requested_driver_id && !isUuidLike(requested_driver_id)) {
+      return jErr("BAD_REQUEST", "driver_id must be a UUID.", 400);
     }
 
-    let bookingQuery = supabase
-      .from("bookings")
-      .select("*")
-      .limit(1);
+    const admin = getAdminClient();
 
-    bookingQuery = bookingCode
-      ? bookingQuery.eq("booking_code", bookingCode)
-      : bookingQuery.eq("id", bookingId);
+    // 1) Load booking
+    const bookingSel =
+      "id, booking_code, status, town, created_at, updated_at, assigned_driver_id, assigned_at, driver_id";
+    let booking: any = null;
 
-    const { data: booking, error: bookingError } = await bookingQuery.maybeSingle();
-
-    if (bookingError) {
-      return NextResponse.json(
-        { ok: false, error: "booking_read_failed", message: bookingError.message },
-        { status: 500 }
-      );
+    if (booking_id) {
+      const { data, error } = await admin
+        .from("bookings")
+        .select(bookingSel)
+        .eq("id", booking_id)
+        .limit(1);
+      if (error) return jErr("DB_SELECT_BOOKING", error.message, 500);
+      booking = Array.isArray(data) && data.length ? data[0] : null;
+    } else {
+      const { data, error } = await admin
+        .from("bookings")
+        .select(bookingSel)
+        .eq("booking_code", booking_code)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (error) return jErr("DB_SELECT_BOOKING", error.message, 500);
+      booking = Array.isArray(data) && data.length ? data[0] : null;
     }
 
     if (!booking) {
-      return NextResponse.json({ ok: false, error: "booking_not_found" }, { status: 404 });
+      return jErr("BOOKING_NOT_FOUND", "Booking not found.", 404, { booking_code, booking_id });
     }
 
-    const bookingDbId = text((booking as any).id);
-    const currentStatus = cleanStatus((booking as any).status);
-    const currentDriverId = text((booking as any).assigned_driver_id || (booking as any).driver_id);
+    const bTown = normTown(booking.town);
+    const bStatus = String(booking.status ?? "").trim();
 
-    if (!ASSIGNABLE_STATUSES.has(currentStatus)) {
-      return NextResponse.json(
-        { ok: false, error: "booking_not_assignable", status: currentStatus },
-        { status: 409 }
-      );
-    }
-
-    if (
-      currentDriverId &&
-      explicitDriverId &&
-      currentDriverId === explicitDriverId &&
-      currentStatus === "assigned"
-    ) {
-      return NextResponse.json({
-        ok: true,
-        booking_id: bookingDbId,
-        booking_code: text((booking as any).booking_code),
-        driver_id: currentDriverId,
-        assigned_driver_id: currentDriverId,
-        status: currentStatus,
-        assigned_at: null,
-        emergency_mode: emergencyMode,
-        assignment_mode: "manual",
-        note: "already_assigned_to_requested_driver",
-        assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
+    // Only assign from these statuses (adjust if needed)
+    const assignable = new Set(["requested", "booked_ok", "booked", "pending", "created", ""]);
+    if (!assignable.has(bStatus)) {
+      return jErr("NOT_ASSIGNABLE", "Booking status is not assignable.", 409, {
+        booking_id: booking.id,
+        booking_code: booking.booking_code,
+        status: bStatus,
       });
     }
 
-    if (explicitDriverId) {
-      const activeTripManual = await findActiveTripForDriver(supabase, explicitDriverId, bookingDbId);
-      if (!activeTripManual.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: activeTripManual.error,
-            message: (activeTripManual as any).message || null,
-            driver_id: explicitDriverId,
-          },
-          { status: 500 }
-        );
-      }
+    // 2) Determine candidate drivers from driver_locations
+    const cutoffMinutes = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
+    const cutoffIso = new Date(Date.now() - cutoffMinutes * 60 * 1000).toISOString();
 
-      if (activeTripManual.trip) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "driver_already_has_active_trip",
-            existing_booking_code: activeTripManual.trip.booking_code,
-            existing_status: activeTripManual.trip.status,
-          },
-          { status: 409 }
-        );
-      }
+    const { data: locs, error: locErr } = await admin
+      .from("driver_locations")
+      .select("driver_id, status, updated_at, town, home_town")
+      .eq("status", "online")
+      .gte("updated_at", cutoffIso)
+      .order("updated_at", { ascending: false })
+      .limit(200);
 
-      const driverLocation = await getLatestDriverLocationForDriver(supabase, explicitDriverId);
-      if (!driverLocation.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: driverLocation.error,
-            message: (driverLocation as any).message || null,
-            driver_id: explicitDriverId,
-          },
-          { status: driverLocation.error === "driver_location_not_found" ? 404 : 500 }
-        );
-      }
+    if (locErr) return jErr("DB_SELECT_LOCATIONS", locErr.message, 500);
 
-      if (!driverLocation.eligibility.assignEligible) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "driver_not_assign_eligible",
-            driver_id: explicitDriverId,
-            driver_status: driverLocation.eligibility.rawStatus,
-            effective_status: driverLocation.eligibility.effectiveStatus,
-            is_stale: driverLocation.eligibility.isStale,
-            assign_fresh: driverLocation.eligibility.assignFresh,
-            assign_online_eligible: driverLocation.eligibility.assignOnlineEligible,
-            assign_eligible: driverLocation.eligibility.assignEligible,
-            updated_at: driverLocation.eligibility.updatedAt,
-            age_seconds: driverLocation.eligibility.ageSeconds,
-            assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
-          },
-          { status: 409 }
-        );
-      }
-
-      const bookingTown = text((booking as any).town);
-      const driverTown = text((driverLocation.row as any)?.town);
-      const normalizedBookingTown = bookingTown.toLowerCase();
-      const normalizedDriverTown = driverTown.toLowerCase();
-      const allowedManualTowns = emergencyMode
-        ? [normalizedBookingTown, ...getNearbyTowns(bookingTown).map((x) => text(x).toLowerCase())]
-        : [normalizedBookingTown];
-
-      if (!normalizedBookingTown) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "booking_town_missing",
-            booking_id: bookingDbId,
-            booking_code: text((booking as any).booking_code),
-          },
-          { status: 409 }
-        );
-      }
-
-      if (!normalizedDriverTown || !allowedManualTowns.includes(normalizedDriverTown)) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: emergencyMode ? "driver_outside_allowed_emergency_towns" : "driver_outside_booking_town",
-            booking_town: bookingTown || null,
-            driver_town: driverTown || null,
-            emergency_mode: emergencyMode,
-            allowed_towns: allowedManualTowns,
-            driver_id: explicitDriverId,
-          },
-          { status: 409 }
-        );
-      }
-
-      const explicitEligibility = await isDriverWalletEligible(supabase, explicitDriverId);
-      if (!explicitEligibility.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: explicitEligibility.error,
-            message: (explicitEligibility as any).message || null,
-          },
-          { status: explicitEligibility.error === "driver_not_found" ? 404 : 500 }
-        );
-      }
-
-      if (!explicitEligibility.eligible) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: explicitEligibility.walletLocked ? "driver_wallet_locked" : "driver_wallet_below_minimum",
-            driver_id: explicitDriverId,
-            wallet_balance: explicitEligibility.balance,
-            min_wallet_required: explicitEligibility.minRequired,
-          },
-          { status: 409 }
-        );
-      }
-
-      const manualVehicleCapacity = evaluateVehicleCapacity(
-        booking,
-        driverLocation.row,
-        (explicitEligibility as any).driver
-      );
-      if (!manualVehicleCapacity.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: manualVehicleCapacity.error,
-            message: manualVehicleCapacity.message,
-            booking_id: bookingDbId,
-            booking_code: text((booking as any).booking_code),
-            driver_id: explicitDriverId,
-            requested_vehicle_type: manualVehicleCapacity.requested_vehicle_type,
-            driver_vehicle_type: manualVehicleCapacity.driver_vehicle_type,
-            passenger_count: manualVehicleCapacity.passenger_count,
-          },
-          { status: 409 }
-        );
-      }
-    }
-
-    let chosenDriverId = explicitDriverId;
-
-    if (!chosenDriverId) {
-      const baseTown = text((booking as any).town);
-      const townsToSearch = emergencyMode ? [baseTown, ...getNearbyTowns(baseTown)] : [baseTown];
-
-      const normalizedTowns = townsToSearch.map((x) => text(x)).filter((x) => !!x);
-
-      const { data: drivers, error: driverError } = await supabase
-        .from("driver_locations")
-        .select("*")
-        .in("town", normalizedTowns);
-
-      if (driverError) {
-        return NextResponse.json(
-          { ok: false, error: "driver_query_failed", message: driverError.message },
-          { status: 500 }
-        );
-      }
-
-      const pickupLat = num((booking as any).pickup_lat);
-      const pickupLng = num((booking as any).pickup_lng);
-
-      const ranked = keepLatestDriverLocationRows(drivers || [])
-        .map((row: any) => {
-          const eligibility = evaluateDriverLocationEligibility(row);
-          const driverTown = text(row?.town).toLowerCase();
-          const sameTown = driverTown === baseTown.toLowerCase();
-          const lat = num(row?.lat);
-          const lng = num(row?.lng);
-          const distKm = haversineKm(lat, lng, pickupLat, pickupLng);
-
-          const vehicleCapacity = evaluateVehicleCapacity(booking, row, row);
-
-          return {
-            ...row,
-            eligibility,
-            sameTown,
-            distKm,
-            townPriority: sameTown ? 0 : 1,
-            vehiclePriority: vehicleCapacity.ok ? vehicleCapacity.vehicle_priority : 99,
-          };
+    const allOnline = (Array.isArray(locs) ? locs : []).filter((r: any) => isUuidLike(r?.driver_id));
+    const townMatches = bTown
+      ? allOnline.filter((r: any) => {
+          const t1 = normTown(r?.town);
+          const t2 = normTown(r?.home_town);
+          return t1 === bTown || t2 === bTown;
         })
-        .sort((a: any, b: any) => {
-          if (a.townPriority !== b.townPriority) return a.townPriority - b.townPriority;
-          if (a.vehiclePriority !== b.vehiclePriority) return a.vehiclePriority - b.vehiclePriority;
-          if (a.distKm !== b.distKm) return a.distKm - b.distKm;
+      : allOnline;
 
-          const aUpdated = ts(a.updated_at || a.created_at || null);
-          const bUpdated = ts(b.updated_at || b.created_at || null);
-          return bUpdated - aUpdated;
-        });
-
-      let eligibleDriverId = "";
-
-      for (const row of ranked) {
-        const candidateDriverId = text(row?.driver_id);
-        if (!candidateDriverId) continue;
-        if (!row?.eligibility?.assignEligible) continue;
-
-        const activeTrip = await findActiveTripForDriver(supabase, candidateDriverId, bookingDbId);
-        if (!activeTrip.ok) continue;
-        if (activeTrip.trip) continue;
-
-        const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
-        if (!eligibility.ok) continue;
-        if (!eligibility.eligible) continue;
-
-        const vehicleCapacity = evaluateVehicleCapacity(booking, row, (eligibility as any).driver);
-        if (!vehicleCapacity.ok) continue;
-
-        eligibleDriverId = candidateDriverId;
-        break;
-      }
-
-      if (!eligibleDriverId) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: emergencyMode ? "no_drivers_even_in_emergency" : "no_local_drivers",
-            town: baseTown || null,
-            reason: "NO_ASSIGN_ELIGIBLE_DRIVER_WITH_MIN_WALLET",
-            assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
-          },
-          { status: 404 }
-        );
-      }
-
-      chosenDriverId = eligibleDriverId;
-    }
-
-    const nowIso = new Date().toISOString();
-    const updatePayload: Record<string, unknown> = {
-      driver_id: chosenDriverId,
-      assigned_driver_id: chosenDriverId,
-      status: "assigned",
-      assigned_at: nowIso,
-      updated_at: nowIso,
+    const counts = {
+      cutoff_minutes: cutoffMinutes,
+      online_recent: allOnline.length,
+      online_town_recent: townMatches.length,
+      booking_town: booking.town ?? null,
     };
 
-    if (typeof body?.emergency_mode === "boolean") {
-      updatePayload.is_emergency = body.emergency_mode;
+    let chosenDriverId = requested_driver_id || "";
+    if (!chosenDriverId) {
+      chosenDriverId = (townMatches.length ? townMatches : allOnline)[0]?.driver_id || "";
     }
 
-    const { data: updatedRows, error: assignError } = await supabase
-      .from("bookings")
-      .update(updatePayload)
-      .eq("id", bookingDbId)
-      .in("status", Array.from(ASSIGNABLE_STATUSES))
-      .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at")
+    if (!chosenDriverId) {
+      return jErr("NO_AVAILABLE_DRIVER", "No ONLINE drivers with recent location updates.", 409, counts);
+    }
+
+    // 3) Confirm chosen driver exists in driver_profiles
+    const { data: prof, error: profErr } = await admin
+      .from("driver_profiles")
+      .select("driver_id, full_name, municipality")
+      .eq("driver_id", chosenDriverId)
       .limit(1);
 
-    if (assignError) {
-      if (isUniqueViolation(assignError)) {
-        const activeTrip = await findActiveTripForDriver(supabase, chosenDriverId, bookingDbId);
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "driver_already_has_active_trip",
-            driver_id: chosenDriverId,
-            existing_booking_code: activeTrip.ok ? activeTrip.trip?.booking_code || null : null,
-            existing_status: activeTrip.ok ? activeTrip.trip?.status || null : null,
-            db_guard: "ux_bookings_one_active_driver_v1",
-          },
-          { status: 409 }
-        );
-      }
-
-      return NextResponse.json(
-        { ok: false, error: "assignment_failed", message: assignError.message },
-        { status: 500 }
-      );
+    if (profErr) return jErr("DB_SELECT_DRIVER_PROFILE", profErr.message, 500, { driver_id: chosenDriverId, counts });
+    if (!Array.isArray(prof) || !prof.length) {
+      return jErr("DRIVER_PROFILE_MISSING", "Chosen driver_id not found in driver_profiles.", 409, {
+        driver_id: chosenDriverId,
+        counts,
+      });
     }
 
-    const updated = updatedRows?.[0] ?? null;
+    // 4) Assign booking (atomic-ish: only if not already assigned)
+    const patch: any = {
+      status: "assigned",
+      assigned_driver_id: chosenDriverId,
+      assigned_at: new Date().toISOString(),
+    };
+
+    const { data: upd, error: updErr } = await admin
+      .from("bookings")
+      .update(patch)
+      .eq("id", booking.id)
+      .is("assigned_driver_id", null)
+      .is("assigned_at", null)
+      .select(bookingSel)
+      .limit(1);
+
+    if (updErr) {
+      console.error("DISPATCH_ASSIGN_UPDATE_ERROR", { message: updErr.message, booking_id: booking.id, booking_code: booking.booking_code });
+      return jErr("DB_UPDATE_ASSIGN", updErr.message, 500, { booking_id: booking.id, booking_code: booking.booking_code, driver_id: chosenDriverId });
+    }
+
+    const updated = Array.isArray(upd) && upd.length ? upd[0] : null;
     if (!updated) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "booking_assignment_lost_race",
-          booking_id: bookingDbId,
-          booking_code: text((booking as any).booking_code),
-        },
-        { status: 409 }
-      );
+      return jErr("ASSIGN_RACE_LOST", "Booking was already assigned or changed.", 409, {
+        booking_id: booking.id,
+        booking_code: booking.booking_code,
+        driver_id: chosenDriverId,
+      });
     }
 
-    return NextResponse.json({
+    return jOk({
       ok: true,
-      booking_id: text(updated?.id || bookingDbId),
-      booking_code: text(updated?.booking_code || (booking as any).booking_code),
-      driver_id: text(updated?.driver_id || chosenDriverId),
-      assigned_driver_id: text(updated?.assigned_driver_id || chosenDriverId),
-      status: text(updated?.status || "assigned"),
-      assigned_at: updated?.assigned_at ?? nowIso,
-      emergency_mode: emergencyMode,
-      assignment_mode: explicitDriverId ? "manual" : "auto",
-      assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
+      assign_ok: true,
+      booking_id: updated.id,
+      booking_code: updated.booking_code,
+      assigned_driver_id: chosenDriverId,
+      counts,
+      ms: Date.now() - startedAt,
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "server_error", message: String(e?.message ?? e) },
-      { status: 500 }
-    );
+    console.error("DISPATCH_ASSIGN_FATAL", e);
+    return jErr("SERVER_ERROR", String(e?.message || e), 500, { ms: Date.now() - startedAt });
   }
 }
-
-
-
-

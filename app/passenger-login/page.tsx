@@ -17,31 +17,19 @@ export default function PassengerLoginPage() {
     e.preventDefault();
     setMsg(null);
     setLoading(true);
-
     try {
       const res = await fetch("/api/public/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, password }),
       });
-
       const j = await res.json().catch(() => ({}));
-
       if (!res.ok || !j?.ok) {
         setMsg(j?.error || "Login failed.");
         return;
       }
-
-      if (j.access_token) {
-        try {
-          localStorage.setItem("jride_access_token", j.access_token);
-        } catch {}
-      }
-
       setMsg("Login OK. Redirecting...");
-      setTimeout(() => {
-        router.push("/passenger");
-      }, 250);
+      setTimeout(() => router.push("/passenger"), 250);
     } catch (err: any) {
       setMsg(err?.message || "Login failed.");
     } finally {
@@ -87,30 +75,19 @@ export default function PassengerLoginPage() {
 
           <button
             disabled={loading}
+            className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-4 py-2 font-semibold text-white"
             type="submit"
-            className={
-              "w-full rounded-xl px-4 py-2 font-semibold text-white " +
-              (loading
-                ? "bg-blue-600/60 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-500")
-            }
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Signing in..." : "Sign In"}
           </button>
+
+          <div className="text-sm opacity-80 text-center">
+            Don't have an account yet?{" "}
+            <a className="text-blue-600 underline" href="/passenger-signup">
+              Register here
+            </a>
+          </div>
         </form>
-
-        <div className="mt-3 text-center text-sm">
-          <a href="/forgot-password" className="font-medium text-blue-600 underline">
-            Forgot password?
-          </a>
-        </div>
-
-        <div className="mt-4 text-center text-sm opacity-70">
-          No account?{" "}
-          <a href="/passenger-signup" className="underline">
-            Sign up
-          </a>
-        </div>
       </div>
     </main>
   );

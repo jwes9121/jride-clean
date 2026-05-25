@@ -1,0 +1,53 @@
+﻿"use client";
+
+import React, { useMemo } from "react";
+
+type Props = {
+  trip: any | null;
+};
+
+function fmtMoney(v: any) {
+  if (v === null || v === undefined) return "--";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "--";
+  return n.toFixed(2);
+}
+
+export default function TripWalletPanel({ trip }: Props) {
+  const fare = useMemo(() => trip?.fare_amount ?? trip?.fare ?? trip?.total_fare ?? null, [trip]);
+  const platformFee = useMemo(() => trip?.platform_fee ?? trip?.service_fee ?? trip?.platformFee ?? null, [trip]);
+
+  // These fields vary per build; show whatever exists
+  const driverWallet = useMemo(
+    () => trip?.driver_wallet ?? trip?.driver_wallet_balance ?? trip?.driverWallet ?? null,
+    [trip]
+  );
+  const vendorWallet = useMemo(
+    () => trip?.vendor_wallet ?? trip?.vendor_wallet_balance ?? trip?.vendorWallet ?? null,
+    [trip]
+  );
+
+  return (
+    <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <div className="rounded border bg-white p-2">
+        <div className="text-slate-500">Fare</div>
+        <div className="font-semibold">{fmtMoney(fare)}</div>
+      </div>
+
+      <div className="rounded border bg-white p-2">
+        <div className="text-slate-500">Platform fee</div>
+        <div className="font-semibold">{fmtMoney(platformFee)}</div>
+      </div>
+
+      <div className="rounded border bg-white p-2">
+        <div className="text-slate-500">Driver wallet</div>
+        <div className="font-semibold">{fmtMoney(driverWallet)}</div>
+      </div>
+
+      <div className="rounded border bg-white p-2">
+        <div className="text-slate-500">Vendor wallet</div>
+        <div className="font-semibold">{fmtMoney(vendorWallet)}</div>
+      </div>
+    </div>
+  );
+}

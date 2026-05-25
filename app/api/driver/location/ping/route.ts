@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -20,147 +20,15 @@ function norm(s: any): string {
   return String(s ?? "").trim().toLowerCase();
 }
 
-function text(v: any): string {
-  return String(v ?? "").trim();
-}
-
 function normDeviceId(s: any): string {
   return String(s ?? "").trim().toLowerCase();
-}
-
-function getBearerToken(req: NextRequest): string | null {
-  const auth = req.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7).trim();
-  return token || null;
-}
-
-function isDriverSecretAuthorized(req: NextRequest): boolean {
-  const provided = text(req.headers.get("x-jride-driver-secret"));
-  const expected =
-    text(process.env.DRIVER_PING_SECRET) ||
-    text(process.env.NEXT_PUBLIC_DRIVER_PING_SECRET);
-  if (!provided || !expected) return false;
-  return provided === expected;
-}
-
-function normalizeVehicleType(v: unknown): string {
-  const s = norm(v);
-  if (!s) return "";
-  if (s.includes("motor")) return "motorcycle";
-  if (s.includes("trike")) return "tricycle";
-  if (s.includes("tricycle")) return "tricycle";
-  return s;
-}
-
-async function resolveDriverIdFromBearer(serviceSupabase: any, authUserId: string): Promise<string | null> {
-  const directProfile = await serviceSupabase
-    .from("driver_profiles")
-    .select("driver_id")
-    .eq("driver_id", authUserId)
-    .limit(1)
-    .maybeSingle();
-
-  if (!directProfile.error && directProfile.data?.driver_id) {
-    return text(directProfile.data.driver_id) || null;
-  }
-
-  const authUser = await serviceSupabase
-    .from("auth_users_view")
-    .select("email")
-    .eq("id", authUserId)
-    .limit(1)
-    .maybeSingle();
-
-  const email = text((authUser.data as any)?.email);
-  if (!email) return null;
-
-  const byEmail = await serviceSupabase
-    .from("driver_profiles")
-    .select("driver_id")
-    .eq("email", email)
-    .limit(1)
-    .maybeSingle();
-
-  if (!byEmail.error && byEmail.data?.driver_id) {
-    return text(byEmail.data.driver_id) || null;
-  }
-
-  return null;
-}
-
-async function resolveDriverVehicleType(serviceSupabase: any, driverId: string): Promise<string> {
-  const profile = await serviceSupabase
-    .from("driver_profiles")
-    .select("vehicle_type")
-    .eq("driver_id", driverId)
-    .limit(1)
-    .maybeSingle();
-
-  if (profile.error) {
-    throw new Error("driver_profiles vehicle_type lookup failed: " + profile.error.message);
-  }
-
-  return normalizeVehicleType((profile.data as any)?.vehicle_type);
-}
-
-async function resolveDriverAuth(req: NextRequest, serviceSupabase: any): Promise<
-  | { ok: true; driverId: string; authMode: "bearer" | "driver_secret" }
-  | { ok: false; code: string; message: string }
-> {
-  const accessToken = getBearerToken(req);
-  if (accessToken) {
-    const anonUrl = envAny(["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL"]);
-    const anonKey = envAny(["NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY"]);
-    if (!anonUrl || !anonKey) {
-      return {
-        ok: false,
-        code: "SUPABASE_ANON_ENV_MISSING",
-        message: "Missing Supabase anon client environment variables.",
-      };
-    }
-
-    const authSupabase = createClient(anonUrl, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const { data: userRes, error: userErr } = await authSupabase.auth.getUser(accessToken);
-    const user = userRes?.user ?? null;
-    if (userErr || !user?.id) {
-      return {
-        ok: false,
-        code: "NOT_AUTHED",
-        message: "Invalid bearer token.",
-      };
-    }
-
-    const driverId = await resolveDriverIdFromBearer(serviceSupabase, user.id);
-    if (!driverId) {
-      return {
-        ok: false,
-        code: "DRIVER_NOT_FOUND",
-        message: "No driver profile found for token user.",
-      };
-    }
-
-    return { ok: true, driverId, authMode: "bearer" };
-  }
-
-  if (isDriverSecretAuthorized(req)) {
-    return { ok: true, driverId: "", authMode: "driver_secret" };
-  }
-
-  return {
-    ok: false,
-    code: "NOT_AUTHED",
-    message: "Missing bearer token or valid driver secret.",
-  };
 }
 
 function pickDeviceId(req: Request, body: any): string {
   const fromBody = String(body?.device_id ?? body?.deviceId ?? "");
   if (fromBody && fromBody.trim()) return normDeviceId(fromBody);
 
+  // fallback (not ideal, but deterministic)
   const ua = String(req.headers.get("user-agent") ?? "").slice(0, 160);
   const xff = String(req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   const seed = (ua + "|" + xff).trim();
@@ -201,8 +69,10 @@ async function enforceDeviceLockPing(opts: {
   const lastSeen = lock.last_seen ? new Date(lock.last_seen as any).getTime() : 0;
   const nowMs = new Date(nowIso).getTime();
   const ageSec = lastSeen ? Math.floor((nowMs - lastSeen) / 1000) : 999999;
+
   const same = active === reqDevice;
 
+  // ✅ SAME device: always refresh heartbeat so it never deadlocks
   if (same) {
     const { error: hbErr } = await supabase
       .from("driver_device_locks")
@@ -214,6 +84,7 @@ async function enforceDeviceLockPing(opts: {
     return { ok: true, claimed: false, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
+  // If forcing takeover, require driver to be OFFLINE in driver_locations
   if (!same && forceTakeover) {
     const { data: loc, error: locErr } = await supabase
       .from("driver_locations")
@@ -235,10 +106,12 @@ async function enforceDeviceLockPing(opts: {
     }
   }
 
+  // Different device and NOT forcing takeover: block while lock is "fresh"
   if (!forceTakeover && ageSec < staleSeconds) {
     return { ok: false, conflict: true, active_device_id: active, last_seen_age_seconds: ageSec };
   }
 
+  // Lock is stale OR takeover allowed
   const { error: upErr } = await supabase
     .from("driver_device_locks")
     .update({ device_id: reqDevice, last_seen: nowIso })
@@ -249,133 +122,40 @@ async function enforceDeviceLockPing(opts: {
   return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
 }
 
-async function triggerRetryAutoAssign(baseUrl: string, triggerReason: string) {
-  if (!baseUrl || !String(baseUrl).trim()) {
-    return {
-      attempted: false,
-      ok: false,
-      skipped: true,
-      reason: "BASE_URL_MISSING",
-      trigger_reason: triggerReason,
-    };
-  }
-
-  const url = String(baseUrl).replace(/\/+$/, "") + "/api/dispatch/retry-auto-assign";
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-    });
-
-    let body: any = null;
-    try {
-      body = await res.json();
-    } catch (_) {
-      body = null;
-    }
-
-    return {
-      attempted: true,
-      ok: res.ok,
-      status: res.status,
-      body,
-      url,
-      trigger_reason: triggerReason,
-    };
-  } catch (e: any) {
-    return {
-      attempted: true,
-      ok: false,
-      status: 0,
-      error: String(e?.message ?? e),
-      url,
-      trigger_reason: triggerReason,
-    };
-  }
-}
-
-export async function POST(req: NextRequest) {
-  const traceStartedAt = new Date().toISOString();
-  console.log("[DISPATCH_TRACE] ping:start", { at: traceStartedAt });
-
+export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
 
-    const bodyDriverId = text(body?.driver_id ?? body?.driverId);
-    if (!bodyDriverId) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
+    const driver_id = String(body?.driver_id ?? body?.driverId ?? "").trim();
+    if (!driver_id) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
 
-    const incomingLat = Number(body?.lat);
-    const incomingLng = Number(body?.lng);
-    // JRIDE_PING_ZERO_COORDS_GPS_PENDING_V1
-    // Treat missing, invalid, or 0/0 coordinates as no usable GPS fix.
-    // 0/0 is only a placeholder for non-assignable gps_pending rows.
-    const hasIncomingCoords =
-      Number.isFinite(incomingLat) &&
-      Number.isFinite(incomingLng) &&
-      !(incomingLat === 0 && incomingLng === 0);
+    const lat = Number(body?.lat);
+    const lng = Number(body?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return json(400, { ok: false, code: "MISSING_LAT_LNG" });
+    }
 
     const status = norm(body?.status ?? "online") || "online";
-    const town = text(body?.town);
+    const town = String(body?.town ?? "").trim();
     const forceTakeover = !!(body?.force_takeover ?? body?.forceTakeover ?? false);
 
-    const supabaseUrl = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
-    const supabaseServiceRole = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
+    const SUPABASE_URL = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
+    const SUPABASE_SERVICE_ROLE = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
 
-    if (!supabaseUrl || !supabaseServiceRole) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
       return json(500, { ok: false, code: "SUPABASE_ENV_MISSING" });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceRole, {
-      auth: { persistSession: false, autoRefreshToken: false },
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE, {
+      auth: { persistSession: false },
     });
-
-    const authRes = await resolveDriverAuth(req, supabase);
-    if (!authRes.ok) {
-      return json(401, {
-        ok: false,
-        code: authRes.code,
-        message: authRes.message,
-      });
-    }
-
-    const driverId = authRes.authMode === "bearer" ? authRes.driverId : bodyDriverId;
-
-    if (!driverId) {
-      return json(400, {
-        ok: false,
-        code: "MISSING_DRIVER_ID",
-        message: "driver_id is required for driver_secret mode.",
-      });
-    }
-
-    if (authRes.authMode === "bearer" && driverId !== bodyDriverId) {
-      return json(403, {
-        ok: false,
-        code: "DRIVER_ID_MISMATCH",
-        message: "Authenticated driver does not match payload driver_id.",
-        auth_driver_id: driverId,
-        body_driver_id: bodyDriverId,
-      });
-    }
-
-    const vehicleType = await resolveDriverVehicleType(supabase, driverId);
-    if (!vehicleType) {
-      return json(409, {
-        ok: false,
-        code: "DRIVER_VEHICLE_TYPE_MISSING",
-        message: "Driver vehicle type is missing in driver_profiles.",
-        driver_id: driverId,
-      });
-    }
 
     const nowIso = new Date().toISOString();
     const deviceId = pickDeviceId(req, body);
 
     const lock = await enforceDeviceLockPing({
       supabase,
-      driverId,
+      driverId: driver_id,
       deviceId,
       nowIso,
       staleSeconds: 120,
@@ -401,119 +181,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const { data: prevLoc, error: prevLocErr } = await supabase
-      .from("driver_locations")
-      .select("id, status, lat, lng, updated_at, vehicle_type")
-      .eq("driver_id", driverId)
-      .maybeSingle();
-
-    if (prevLocErr) {
-      return json(500, {
-        ok: false,
-        code: "PREV_DRIVER_LOCATION_LOOKUP_FAILED",
-        message: prevLocErr.message,
-      });
-    }
-
-    const previousStatus = norm((prevLoc as any)?.status ?? "");
-    const previousUpdatedAt = text((prevLoc as any)?.updated_at);
-    const previousUpdatedMs = previousUpdatedAt ? Date.parse(previousUpdatedAt) : 0;
-    const nowMs = Date.parse(nowIso);
-    const previousAgeSeconds =
-      Number.isFinite(previousUpdatedMs) && previousUpdatedMs > 0
-        ? Math.max(0, Math.floor((nowMs - previousUpdatedMs) / 1000))
-        : null;
-
-    const recoveredFromStaleOnline =
-      previousStatus === "online" &&
-      previousAgeSeconds !== null &&
-      previousAgeSeconds > 120 &&
-      status === "online";
-
-    let finalLat: number | null = null;
-    let finalLng: number | null = null;
-    let coordsSource = "incoming";
-
-    if (hasIncomingCoords) {
-      finalLat = incomingLat;
-      finalLng = incomingLng;
-    } else {
-      const prevLat = Number((prevLoc as any)?.lat);
-      const prevLng = Number((prevLoc as any)?.lng);
-      const hasPrevCoords = Number.isFinite(prevLat) && Number.isFinite(prevLng);
-
-      if (hasPrevCoords) {
-        finalLat = prevLat;
-        finalLng = prevLng;
-        coordsSource = "previous_row";
-      }
-    }
-
-    if (!Number.isFinite(finalLat as any) || !Number.isFinite(finalLng as any)) {
-      // JRIDE_DRIVER_PING_GPS_PENDING_V1
-      // First-time driver pings may arrive before Android has a GPS fix.
-      // Create a non-assignable presence row so LiveTrips can see the driver,
-      // but do not mark the driver online until valid coordinates arrive.
-      const gpsPendingPayload: any = {
-        driver_id: driverId,
-        lat: 0,
-        lng: 0,
-        status: "gps_pending",
-        town: town || null,
-        updated_at: nowIso,
-        vehicle_type: vehicleType,
-      };
-
-      if ((prevLoc as any)?.id) {
-        gpsPendingPayload.id = (prevLoc as any).id;
-      }
-
-      const { error: gpsPendingErr } = await supabase
-        .from("driver_locations")
-        .upsert(gpsPendingPayload, { onConflict: "driver_id", ignoreDuplicates: false });
-
-      if (gpsPendingErr) {
-        return json(500, {
-          ok: false,
-          code: "GPS_PENDING_UPSERT_FAILED",
-          message: gpsPendingErr.message,
-          driver_id: driverId,
-          vehicle_type: vehicleType,
-        });
-      }
-
-      return json(200, {
-        ok: true,
-        code: "GPS_PENDING",
-        driver_id: driverId,
-        auth_mode: authRes.authMode,
-        status: "gps_pending",
-        previous_status: previousStatus || null,
-        location_pending: true,
-        message: "Driver ping accepted but GPS coordinates are still pending.",
-        town: town || null,
-        claimed: !!(lock as any).claimed,
-        active_device_id: (lock as any).active_device_id,
-        coords_source: "missing_first_fix",
-        lat: 0,
-        lng: 0,
-        vehicle_type: vehicleType,
-      });
-    }
-
+    // ✅ IMPORTANT: driver_locations schema does NOT include device_id.
+    // Only write columns that exist: driver_id, lat, lng, status, town, updated_at.
     const upsertPayload: any = {
-      driver_id: driverId,
-      lat: finalLat,
-      lng: finalLng,
+      driver_id,
+      lat,
+      lng,
       status,
       town: town || null,
       updated_at: nowIso,
-      vehicle_type: vehicleType,
     };
-
-    if ((prevLoc as any)?.id) {
-      upsertPayload.id = (prevLoc as any).id;
-    }
 
     const { error: upErr } = await supabase
       .from("driver_locations")
@@ -524,76 +201,17 @@ export async function POST(req: NextRequest) {
         ok: false,
         code: "INSERT_FAILED",
         message: upErr.message,
-        detail: {
-          driver_id: driverId,
-          has_incoming_coords: hasIncomingCoords,
-          used_previous_coords: !hasIncomingCoords,
-          sent_id: !!upsertPayload.id,
-          vehicle_type: vehicleType,
-        },
+        detail: { upsert_error: upErr.message },
       });
     }
 
-    console.log("[DISPATCH_TRACE] ping:upsert_result", {
-      driver_id: driverId,
-      auth_mode: authRes.authMode,
-      previous_status: previousStatus || null,
-      current_status: status,
-      coords_source: coordsSource,
-      previous_age_seconds: previousAgeSeconds,
-      recovered_from_stale_online: recoveredFromStaleOnline,
-      vehicle_type: vehicleType,
-    });
-
-    const becameOnline = previousStatus !== "online" && status === "online";
-    const shouldRetry = becameOnline || recoveredFromStaleOnline;
-
-    let retryResult: any = {
-      attempted: false,
-      ok: false,
-      skipped: true,
-      reason: "NOT_ONLINE_EDGE_OR_STALE_RECOVERY",
-    };
-
-    if (shouldRetry) {
-      const baseUrl = envAny([
-        "INTERNAL_BASE_URL",
-        "NEXT_PUBLIC_BASE_URL",
-        "NEXTAUTH_URL",
-      ]);
-      const triggerReason = becameOnline ? "became_online" : "recovered_from_stale_online";
-      retryResult = await triggerRetryAutoAssign(baseUrl, triggerReason);
-    }
-
-    console.log("[DISPATCH_TRACE] ping:retry_result", {
-      driver_id: driverId,
-      auth_mode: authRes.authMode,
-      became_online: becameOnline,
-      recovered_from_stale_online: recoveredFromStaleOnline,
-      retry_triggered: !!(retryResult?.attempted),
-      retry_ok: !!(retryResult?.ok),
-      retry_status: retryResult?.status ?? null,
-      retry_reason: retryResult?.trigger_reason ?? null,
-    });
-
     return json(200, {
       ok: true,
-      driver_id: driverId,
-      auth_mode: authRes.authMode,
+      driver_id,
       status,
-      previous_status: previousStatus || null,
-      became_online: becameOnline,
-      recovered_from_stale_online: recoveredFromStaleOnline,
-      retry_triggered: !!(retryResult?.attempted),
-      retry_ok: !!(retryResult?.ok),
-      retry_result: retryResult,
       town: town || null,
       claimed: !!(lock as any).claimed,
       active_device_id: (lock as any).active_device_id,
-      coords_source: coordsSource,
-      lat: finalLat,
-      lng: finalLng,
-      vehicle_type: vehicleType,
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });

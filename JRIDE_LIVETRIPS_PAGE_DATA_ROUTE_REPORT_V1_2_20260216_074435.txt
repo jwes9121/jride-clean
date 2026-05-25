@@ -1,0 +1,2185 @@
+== LiveTrips page-data route.ts report ==
+File: C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\page-data\route.ts
+Generated: 2026-02-16T07:44:35
+
+---- First 180 lines ----
+   1: import { NextResponse } from "next/server";
+   2: import { createClient } from "@supabase/supabase-js";
+   3: export const dynamic = "force-dynamic";
+   4: /* PHASE_3E_TOWNZONE_DERIVE_START */
+   5: function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+   6:   const la = (lat == null ? NaN : Number(lat));
+   7:   const lo = (lng == null ? NaN : Number(lng));
+   8:   if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   9: 
+  10:   // Rough Ifugao municipality boxes (fallback).
+  11:   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+  12:     { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+ 179: 
+ 180:           trips.push({
+
+---- Hit list ----
+    2 | createClient | import { createClient } from "@supabase/supabase-js";
+    8 | return | if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   20 | return | if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+   22 | return | return null;
+   27 | return | return t ? t : null; // zone==town for now
+   33 | \bcode\b | function bad(message: string, code: string, status = 400, extra: any = {}) {
+   34 | return | return NextResponse.json(
+   35 | \bcode\b | { ok: false, code, message, ...extra },
+   40 | ok\( | function ok(payload: any, status = 200) {
+   41 | return | return NextResponse.json(payload, {
+   51 | return | if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+   54 | return | return undefined;
+   58 | return | if (!payload) return [];
+   59 | return | if (Array.isArray(payload)) return payload;
+   63 | return | if (Array.isArray(t1)) return t1;
+   66 | return | if (Array.isArray(t2)) return t2;
+   69 | return | if (Array.isArray(t3)) return t3;
+   74 | return | if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+   77 | return | return [];
+   82 | return | // Force service-role client here to avoid RLS silently returning empty trips in production.
+   93 | createClient | const supabase = createClient(
+  100 | new URL | const url = new URL(req.url);
+  101 | searchParams | const debug = url.searchParams.get("debug") === "1";
+  104 | searchParams | const forceCode = (url.searchParams.get("code") || "").trim();
+  105 | \bcode\b | const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+  106 | forceCode | if (forceCode) {
+  108 | \.from\("bookings"\) | .from("bookings")
+  110 | forceCode | .eq("booking_code", forceCode)
+  115 | return | return ok({
+  117 | __debug | __debug: debug ? {
+  118 | ACTIVE_STATUSES | injected_active_statuses: ACTIVE_STATUSES,
+  122 | forceCode | code: forceCode,
+  127 | rpc\( | await supabase.rpc(
+  128 | admin_get_live_trips | "admin_get_live_trips_page_data_v2"
+  133 | return | return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+  142 | \bcode\b | .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+  154 | ACTIVE_STATUSES | const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+  158 | \.from\("bookings"\) | .from("bookings")
+  160 | ACTIVE_STATUSES | .in("status", ACTIVE_STATUSES)
+  166 | debug | // Debug visibility (safe)
+  167 | debug | if (debug) {
+  168 | debug | (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+  169 | debug | (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+  263 | __debug | ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+  264 | __debug | : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+  266 | return | return ok(payload);
+  269 | return | return bad(
+
+---- Context around line 2 (L1-L22) ----
+   1: import { NextResponse } from "next/server";
+   2: import { createClient } from "@supabase/supabase-js";
+   3: export const dynamic = "force-dynamic";
+   4: /* PHASE_3E_TOWNZONE_DERIVE_START */
+   5: function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+   6:   const la = (lat == null ? NaN : Number(lat));
+   7:   const lo = (lng == null ? NaN : Number(lng));
+   8:   if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   9: 
+  10:   // Rough Ifugao municipality boxes (fallback).
+  11:   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+  12:     { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+
+---- Context around line 8 (L1-L28) ----
+   1: import { NextResponse } from "next/server";
+   2: import { createClient } from "@supabase/supabase-js";
+   3: export const dynamic = "force-dynamic";
+   4: /* PHASE_3E_TOWNZONE_DERIVE_START */
+   5: function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+   6:   const la = (lat == null ? NaN : Number(lat));
+   7:   const lo = (lng == null ? NaN : Number(lng));
+   8:   if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   9: 
+  10:   // Rough Ifugao municipality boxes (fallback).
+  11:   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+  12:     { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+
+---- Context around line 20 (L1-L40) ----
+   1: import { NextResponse } from "next/server";
+   2: import { createClient } from "@supabase/supabase-js";
+   3: export const dynamic = "force-dynamic";
+   4: /* PHASE_3E_TOWNZONE_DERIVE_START */
+   5: function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+   6:   const la = (lat == null ? NaN : Number(lat));
+   7:   const lo = (lng == null ? NaN : Number(lng));
+   8:   if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   9: 
+  10:   // Rough Ifugao municipality boxes (fallback).
+  11:   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+  12:     { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+
+---- Context around line 22 (L2-L42) ----
+   2: import { createClient } from "@supabase/supabase-js";
+   3: export const dynamic = "force-dynamic";
+   4: /* PHASE_3E_TOWNZONE_DERIVE_START */
+   5: function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+   6:   const la = (lat == null ? NaN : Number(lat));
+   7:   const lo = (lng == null ? NaN : Number(lng));
+   8:   if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   9: 
+  10:   // Rough Ifugao municipality boxes (fallback).
+  11:   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+  12:     { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+
+---- Context around line 27 (L7-L47) ----
+   7:   const lo = (lng == null ? NaN : Number(lng));
+   8:   if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
+   9: 
+  10:   // Rough Ifugao municipality boxes (fallback).
+  11:   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+  12:     { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+
+---- Context around line 33 (L13-L53) ----
+  13:     { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+
+---- Context around line 34 (L14-L54) ----
+  14:     { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+
+---- Context around line 35 (L15-L55) ----
+  15:     { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+  16:     { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  17:   ];
+  18: 
+  19:   for (const b of BOXES) {
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+
+---- Context around line 40 (L20-L60) ----
+  20:     if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+
+---- Context around line 41 (L21-L61) ----
+  21:   }
+  22:   return null;
+  23: }
+  24: 
+  25: function deriveZoneFromTown(town: string | null): string | null {
+  26:   const t = String(town || "").trim();
+  27:   return t ? t : null; // zone==town for now
+  28: }
+  29: /* PHASE_3E_TOWNZONE_DERIVE_END */
+  30: 
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+
+---- Context around line 51 (L31-L71) ----
+  31: export const revalidate = 0;
+  32: 
+  33: function bad(message: string, code: string, status = 400, extra: any = {}) {
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+
+---- Context around line 54 (L34-L74) ----
+  34:   return NextResponse.json(
+  35:     { ok: false, code, message, ...extra },
+  36:     { status, headers: { "Cache-Control": "no-store" } }
+  37:   );
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+
+---- Context around line 58 (L38-L78) ----
+  38: }
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+
+---- Context around line 59 (L39-L79) ----
+  39: 
+  40: function ok(payload: any, status = 200) {
+  41:   return NextResponse.json(payload, {
+  42:     status,
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+
+---- Context around line 63 (L43-L83) ----
+  43:     headers: { "Cache-Control": "no-store" },
+  44:   });
+  45: }
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+
+---- Context around line 66 (L46-L86) ----
+  46: 
+  47: function pick(obj: any, keys: string[]) {
+  48:   for (const k of keys) {
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+
+---- Context around line 69 (L49-L89) ----
+  49:     if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+  50:       const v = (obj as any)[k];
+  51:       if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+  52:     }
+  53:   }
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+
+---- Context around line 74 (L54-L94) ----
+  54:   return undefined;
+  55: }
+  56: 
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+
+---- Context around line 77 (L57-L97) ----
+  57: function extractTripsAnyShape(payload: any): any[] {
+  58:   if (!payload) return [];
+  59:   if (Array.isArray(payload)) return payload;
+  60: 
+  61:   if (typeof payload === "object") {
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+
+---- Context around line 82 (L62-L102) ----
+  62:     const t1 = (payload as any).trips;
+  63:     if (Array.isArray(t1)) return t1;
+  64: 
+  65:     const t2 = (payload as any).bookings;
+  66:     if (Array.isArray(t2)) return t2;
+  67: 
+  68:     const t3 = (payload as any).data;
+  69:     if (Array.isArray(t3)) return t3;
+  70: 
+  71:     const keys = Object.keys(payload)
+  72:       .filter((k) => /^\d+$/.test(k))
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+
+---- Context around line 93 (L73-L113) ----
+  73:       .sort((a, b) => Number(a) - Number(b));
+  74:     if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  75:   }
+  76: 
+  77:   return [];
+  78: }
+  79: 
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+
+---- Context around line 100 (L80-L120) ----
+  80: export async function GET(req: Request) {
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+
+---- Context around line 101 (L81-L121) ----
+  81:   try {
+  82:   // Force service-role client here to avoid RLS silently returning empty trips in production.
+  83:   const sbUrl =
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+
+---- Context around line 104 (L84-L124) ----
+  84:     process.env.SUPABASE_URL ||
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+
+---- Context around line 105 (L85-L125) ----
+  85:     process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+
+---- Context around line 106 (L86-L126) ----
+  86:     "";
+  87:   const sbServiceKey =
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+
+---- Context around line 108 (L88-L128) ----
+  88:     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  89:     "";
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+
+---- Context around line 110 (L90-L130) ----
+  90: 
+  91:   const using_service_role = Boolean(sbUrl && sbServiceKey);
+  92: 
+  93:   const supabase = createClient(
+  94:     sbUrl,
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+
+---- Context around line 115 (L95-L135) ----
+  95:     (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+  96:     {
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+
+---- Context around line 117 (L97-L137) ----
+  97:       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+
+---- Context around line 118 (L98-L138) ----
+  98:     }
+  99:   );
+ 100:     const url = new URL(req.url);
+ 101:     const debug = url.searchParams.get("debug") === "1";
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+
+---- Context around line 122 (L102-L142) ----
+ 102: 
+ 103:     
+ 104:     const forceCode = (url.searchParams.get("code") || "").trim();
+ 105: const { data: rpcData, error: rpcErr } =     // AUTO: ?code= bypass to fetch a single booking for diagnosis
+ 106:     if (forceCode) {
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+
+---- Context around line 127 (L107-L147) ----
+ 107:       const probe = await supabase
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+
+---- Context around line 128 (L108-L148) ----
+ 108:         .from("bookings")
+ 109:         .select("*")
+ 110:         .eq("booking_code", forceCode)
+ 111:         .limit(1);
+ 112: 
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+
+---- Context around line 133 (L113-L153) ----
+ 113:       const row = (probe as any)?.data?.[0] ?? null;
+ 114: 
+ 115:       return ok({
+ 116:         trips: row ? [row] : [],
+ 117:         __debug: debug ? {
+ 118:           injected_active_statuses: ACTIVE_STATUSES,
+ 119:           using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null,
+ 120:           has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+ 121:           has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+
+---- Context around line 142 (L122-L162) ----
+ 122:           code: forceCode,
+ 123:           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null
+ 124:         } : undefined
+ 125:       });
+ 126:     }
+ 127: await supabase.rpc(
+ 128:       "admin_get_live_trips_page_data_v2"
+ 129:     );
+ 130: 
+ 131:     if (rpcErr) {
+ 132:       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+ 133:       return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+
+---- Context around line 154 (L134-L174) ----
+ 134:         details: rpcErr.message,
+ 135:       });
+ 136:     }
+ 137: 
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+
+---- Context around line 158 (L138-L178) ----
+ 138:     const trips = extractTripsAnyShape(rpcData);
+ 139: 
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+
+---- Context around line 160 (L140-L180) ----
+ 140:     const existingCodes = new Set(
+ 141:       trips
+ 142:         .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+ 143:         .map((v: any) => (v ? String(v).trim() : ""))
+ 144:         .filter(Boolean)
+ 145:     );
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+ 179: 
+ 180:           trips.push({
+
+---- Context around line 166 (L146-L186) ----
+ 146: 
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+ 179: 
+ 180:           trips.push({
+ 181:             id: bid || null,
+ 182:             uuid: bid || null,
+ 183:             booking_id: bid || null,
+ 184:             booking_code: bcode || null,
+ 185:             status: b?.status ?? null,
+ 186:             town: b?.town ?? null,
+
+---- Context around line 167 (L147-L187) ----
+ 147:     const existingIds = new Set(
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+ 179: 
+ 180:           trips.push({
+ 181:             id: bid || null,
+ 182:             uuid: bid || null,
+ 183:             booking_id: bid || null,
+ 184:             booking_code: bcode || null,
+ 185:             status: b?.status ?? null,
+ 186:             town: b?.town ?? null,
+ 187:             zone: b?.town ?? null,
+
+---- Context around line 168 (L148-L188) ----
+ 148:       trips
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+ 179: 
+ 180:           trips.push({
+ 181:             id: bid || null,
+ 182:             uuid: bid || null,
+ 183:             booking_id: bid || null,
+ 184:             booking_code: bcode || null,
+ 185:             status: b?.status ?? null,
+ 186:             town: b?.town ?? null,
+ 187:             zone: b?.town ?? null,
+ 188:             driver_id: b?.driver_id ?? (b as any)?.assigned_driver_id ?? null,
+
+---- Context around line 169 (L149-L189) ----
+ 149:         .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+ 150:         .map((v: any) => (v ? String(v).trim() : ""))
+ 151:         .filter(Boolean)
+ 152:     );
+ 153: 
+ 154:     const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+ 155: 
+ 156:     try {
+ 157:       const { data: activeRows, error: activeErr } = await supabase
+ 158:         .from("bookings")
+ 159:         .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+ 160:         .in("status", ACTIVE_STATUSES)
+ 161:         .order("created_at", { ascending: false })
+ 162:         .limit(250);
+ 163: 
+ 164:       
+ 165: 
+ 166:       // Debug visibility (safe)
+ 167:       if (debug) {
+ 168:         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+ 169:         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+ 170:       }
+ 171: if (activeErr) {
+ 172:         console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+ 173:       } else if (Array.isArray(activeRows) && activeRows.length) {
+ 174:         for (const b of activeRows as any[]) {
+ 175:           const bid = b?.id != null ? String(b.id) : "";
+ 176:           const bcode = b?.booking_code != null ? String(b.booking_code) : "";
+ 177: 
+ 178:           if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
+ 179: 
+ 180:           trips.push({
+ 181:             id: bid || null,
+ 182:             uuid: bid || null,
+ 183:             booking_id: bid || null,
+ 184:             booking_code: bcode || null,
+ 185:             status: b?.status ?? null,
+ 186:             town: b?.town ?? null,
+ 187:             zone: b?.town ?? null,
+ 188:             driver_id: b?.driver_id ?? (b as any)?.assigned_driver_id ?? null,
+ 189: 
+
+---- Context around line 263 (L243-L276) ----
+ 243:       (t as any)?.emergency_pickup_fee_php ??
+ 244:       (t as any)?.emergencyPickupFeePhp ??
+ 245:       (t as any)?.pickup_distance_fee ??
+ 246:       (t as any)?.pickup_distance_fee_php ??
+ 247:       null,
+ 248:     // ===== END STEP5D_TRIPSOUT_EMERGENCY =====
+ 249: 
+ 250:     ...t,
+ 251:     suggested_verified_fare:
+ 252:       (t as any)?.suggested_verified_fare ??
+ 253:       (t as any)?.suggestedVerifiedFare ??
+ 254:       (t as any)?.verified_suggested_fare ??
+ 255:       (t as any)?.fare_suggested_verified ??
+ 256:       (t as any)?.suggested_fare_verified ??
+ 257:       (t as any)?.suggested_fare ??
+ 258:       null,
+ 259:   }));
+ 260: 
+ 261:   const payload =
+ 262:       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
+ 263:         ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+ 264:         : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+ 265: 
+ 266:     return ok(payload);
+ 267:   } catch (err: any) {
+ 268:     console.error("LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR", err);
+ 269:     return bad(
+ 270:       "Unexpected error in LiveTrips page-data route",
+ 271:       "LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR",
+ 272:       500,
+ 273:       { details: err?.message ?? String(err) }
+ 274:     );
+ 275:   }
+ 276: }
+
+---- Context around line 264 (L244-L276) ----
+ 244:       (t as any)?.emergencyPickupFeePhp ??
+ 245:       (t as any)?.pickup_distance_fee ??
+ 246:       (t as any)?.pickup_distance_fee_php ??
+ 247:       null,
+ 248:     // ===== END STEP5D_TRIPSOUT_EMERGENCY =====
+ 249: 
+ 250:     ...t,
+ 251:     suggested_verified_fare:
+ 252:       (t as any)?.suggested_verified_fare ??
+ 253:       (t as any)?.suggestedVerifiedFare ??
+ 254:       (t as any)?.verified_suggested_fare ??
+ 255:       (t as any)?.fare_suggested_verified ??
+ 256:       (t as any)?.suggested_fare_verified ??
+ 257:       (t as any)?.suggested_fare ??
+ 258:       null,
+ 259:   }));
+ 260: 
+ 261:   const payload =
+ 262:       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
+ 263:         ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+ 264:         : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+ 265: 
+ 266:     return ok(payload);
+ 267:   } catch (err: any) {
+ 268:     console.error("LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR", err);
+ 269:     return bad(
+ 270:       "Unexpected error in LiveTrips page-data route",
+ 271:       "LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR",
+ 272:       500,
+ 273:       { details: err?.message ?? String(err) }
+ 274:     );
+ 275:   }
+ 276: }
+
+---- Context around line 266 (L246-L276) ----
+ 246:       (t as any)?.pickup_distance_fee_php ??
+ 247:       null,
+ 248:     // ===== END STEP5D_TRIPSOUT_EMERGENCY =====
+ 249: 
+ 250:     ...t,
+ 251:     suggested_verified_fare:
+ 252:       (t as any)?.suggested_verified_fare ??
+ 253:       (t as any)?.suggestedVerifiedFare ??
+ 254:       (t as any)?.verified_suggested_fare ??
+ 255:       (t as any)?.fare_suggested_verified ??
+ 256:       (t as any)?.suggested_fare_verified ??
+ 257:       (t as any)?.suggested_fare ??
+ 258:       null,
+ 259:   }));
+ 260: 
+ 261:   const payload =
+ 262:       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
+ 263:         ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+ 264:         : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+ 265: 
+ 266:     return ok(payload);
+ 267:   } catch (err: any) {
+ 268:     console.error("LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR", err);
+ 269:     return bad(
+ 270:       "Unexpected error in LiveTrips page-data route",
+ 271:       "LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR",
+ 272:       500,
+ 273:       { details: err?.message ?? String(err) }
+ 274:     );
+ 275:   }
+ 276: }
+
+---- Context around line 269 (L249-L276) ----
+ 249: 
+ 250:     ...t,
+ 251:     suggested_verified_fare:
+ 252:       (t as any)?.suggested_verified_fare ??
+ 253:       (t as any)?.suggestedVerifiedFare ??
+ 254:       (t as any)?.verified_suggested_fare ??
+ 255:       (t as any)?.fare_suggested_verified ??
+ 256:       (t as any)?.suggested_fare_verified ??
+ 257:       (t as any)?.suggested_fare ??
+ 258:       null,
+ 259:   }));
+ 260: 
+ 261:   const payload =
+ 262:       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
+ 263:         ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, using_service_role: (typeof using_service_role !== "undefined") ? using_service_role : null, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+ 264:         : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES } : undefined };
+ 265: 
+ 266:     return ok(payload);
+ 267:   } catch (err: any) {
+ 268:     console.error("LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR", err);
+ 269:     return bad(
+ 270:       "Unexpected error in LiveTrips page-data route",
+ 271:       "LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR",
+ 272:       500,
+ 273:       { details: err?.message ?? String(err) }
+ 274:     );
+ 275:   }
+ 276: }
+

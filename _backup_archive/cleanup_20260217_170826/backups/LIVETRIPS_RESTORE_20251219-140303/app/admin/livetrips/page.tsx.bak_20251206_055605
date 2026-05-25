@@ -1,0 +1,58 @@
+﻿import LiveTripsClient from "./LiveTripsClient";
+import { createClient } from "@supabase/supabase-js";
+import ZoneCapacityView from "./_components/ZoneCapacityView";
+import ProblemTripAlerts from "./_components/ProblemTripAlerts";
+
+type TripRow = any;
+
+type ZoneRow = {
+  town: string | null;
+  online_drivers: number;
+  active_trips: number;
+};
+
+type ProblemTrip = any;
+
+async function getDashboardData() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const supabase = createClient(url, anonKey);
+
+  const [tripsRes, zonesRes, problemsRes] = await Promise.all([
+    supabase
+      .from("admin_active_trips_v1")
+      .select("*")
+      .order("id", { ascending: false }),
+    supabase
+      .from("admin_zone_capacity_v1")
+      .select("*")
+      .order("town", { ascending: true }),
+    supabase
+      .from("admin_problem_trips_v1")
+      .select("*")
+      .order("booking_code", { ascending: true }),
+  ]);
+
+  return {
+    trips: (tripsRes.data as TripRow[]) ?? [],
+    zones: (zonesRes.data as ZoneRow[]) ?? [],
+    problems: (problemsRes.data as ProblemTrip[]) ?? [],
+  };
+}
+
+export default async function LiveTripsPage() {
+  const { trips, zones, problems } = await getDashboardData();
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-4 pt-4 space-y-2">
+        <ZoneCapacityView zones={zones} />
+        <ProblemTripAlerts trips={problems} />
+      </div>
+      <div className="flex-1">
+        <LiveTripsClient trips={trips} />
+      </div>
+    </div>
+  );
+}

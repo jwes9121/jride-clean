@@ -1,78 +1,60 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const STATUS_MAP: Record<string, string> = {
-  pending: "requested",
-  searching: "requested",
-  assigned: "assigned",
-  driver_accepted: "accepted",
-  driver_arrived: "arrived",
-  passenger_onboard: "on_trip",
-  in_transit: "on_trip",
-  dropoff: "completed",
-  completed: "completed",
-  cancelled: "cancelled",
-  accepted: "accepted",
-  fare_proposed: "fare_proposed",
-  ready: "ready",
-  on_the_way: "on_the_way",
-  arrived: "arrived",
-  on_trip: "on_trip",
-};
+const supabaseUrl = process.env.SUPABASE_URL!;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const body = await req.json();
+    const { booking_id, status } = body as {
+      booking_id: string;
+      status: string;
+    };
 
-    const bookingId = String(body?.booking_id ?? body?.bookingId ?? "").trim();
-    const bookingCode = String(body?.booking_code ?? body?.bookingCode ?? "").trim();
-    const rawStatus = String(body?.status ?? body?.nextStatus ?? "").trim().toLowerCase();
-
-    if ((!bookingId && !bookingCode) || !rawStatus) {
+    if (!booking_id || !status) {
       return NextResponse.json(
-        { success: false, error: "Missing booking_id or bookingCode or status" },
+        { success: false, error: "Missing booking_id or status" },
         { status: 400 }
       );
     }
 
-    const mappedStatus = STATUS_MAP[rawStatus];
-    if (!mappedStatus) {
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const updates: any = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (status === "completed") {
+      updates.assigned_driver_id = null;
+    }
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .update(updates)
+      .eq("id", booking_id)
+      .select("id, booking_code, status, assigned_driver_id")
+      .single();
+
+    if (error) {
+      console.error("UPDATE_TRIP_STATUS_DB_ERROR", error);
       return NextResponse.json(
-        { success: false, error: `Unsupported status: ${rawStatus}` },
-        { status: 400 }
+        { success: false, error: error.message },
+        { status: 500 }
       );
     }
 
-    const origin = req.nextUrl.origin;
-    const res = await fetch(`${origin}/api/dispatch/status`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        cookie: req.headers.get("cookie") ?? "",
-      },
-      body: JSON.stringify({
-        bookingId: bookingId || undefined,
-        booking_id: bookingId || undefined,
-        bookingCode: bookingCode || undefined,
-        booking_code: bookingCode || undefined,
-        status: mappedStatus,
-      }),
-      cache: "no-store",
-    });
-
-    const json = await res.json().catch(() => ({}));
+    console.log("UPDATE_TRIP_STATUS_OK", data);
 
     return NextResponse.json(
-      {
-        success: res.ok,
-        delegated: true,
-        booking: json?.booking ?? null,
-        result: json,
-      },
-      { status: res.status }
+      { success: true, booking: data },
+      { status: 200 }
     );
   } catch (err: any) {
+    console.error("UPDATE_TRIP_STATUS_UNEXPECTED_ERROR", err);
     return NextResponse.json(
-      { success: false, error: err?.message ?? "Unexpected server error" },
+      { success: false, error: "Unexpected server error" },
       { status: 500 }
     );
   }

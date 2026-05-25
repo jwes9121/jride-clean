@@ -1,31 +1,12 @@
-﻿import { NextResponse } from "next/server";
-import { auth } from "./auth";
+import { NextRequest, NextResponse } from "next/server";
 
-export default auth((req) => {
-  const pathname = req.nextUrl.pathname;
-  const session = req.auth;
-  const sessionUser = (session?.user ?? null) as any;
-  const role = String(sessionUser?.role || "").toLowerCase();
-
-  if (!pathname.startsWith("/admin")) {
-    return NextResponse.next();
-  }
-
-  if (!sessionUser) {
-    const loginUrl = new URL("/staff/login", req.nextUrl.origin);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  if (role !== "admin" && role !== "dispatcher") {
-    const deniedUrl = new URL("/staff/login", req.nextUrl.origin);
-    deniedUrl.searchParams.set("error", "forbidden");
-    return NextResponse.redirect(deniedUrl);
-  }
-
+export function middleware(req: NextRequest) {
   return NextResponse.next();
-});
+}
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)",
+  ],
 };
+

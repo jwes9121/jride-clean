@@ -1,327 +1,346 @@
-"use client";
+﻿"use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type VerifyRequest = {
-  passenger_id?: string;
-  full_name?: string | null;
-  town?: string | null;
-  status?: string | null;
-  submitted_at?: string | null;
-  reviewed_at?: string | null;
-  reviewed_by?: string | null;
-  admin_notes?: string | null;
-  id_front_path?: string | null;
-  selfie_with_id_path?: string | null;
+type VerificationStatus = "submitted" | "pending_admin" | "approved" | "rejected" | string;
+
+type VerificationRequest = {
+  passenger_id: string;
+  full_name: string | null;
+  town: string | null;
+  status: VerificationStatus | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  admin_notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  id_front_path: string | null;
+  selfie_with_id_path: string | null;
+  id_back_path?: string | null;
+  id_front_mime?: string | null;
+  selfie_mime?: string | null;
+  id_front_bytes?: number | null;
+  selfie_bytes?: number | null;
 };
 
-function s(v: any) {
-  return String(v ?? "");
+function niceStatus(s?: string | null) {
+  const v = String(s || "");
+  if (!v) return "Not submitted";
+  if (v === "submitted") return "Submitted (waiting for dispatcher review)";
+  if (v === "pending_admin") return "Pending Admin (dispatcher forwarded)";
+  if (v === "approved") return "VERIFIED";
+  if (v === "rejected") return "Rejected (you may re-submit)";
+  return v;
 }
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 120000) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(id);
-  }
+function isLocked(status?: string | null) {
+  return status === "submitted" || status === "pending_admin" || status === "approved";
 }
 
-async function shrinkImageFile(file: File, maxWidth = 1400, maxHeight = 1400, quality = 0.72): Promise<File> {
-  const type = (file.type || "").toLowerCase();
-  if (!type.startsWith("image/")) return file;
+export default function PassengerVerifyPage() {
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(String(fr.result || ""));
-    fr.onerror = () => reject(fr.error || new Error("FileReader failed"));
-    fr.readAsDataURL(file);
-  });
+  const [message, setMessage] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = () => reject(new Error("Image decode failed"));
-    el.src = dataUrl;
-  });
+  const [authed, setAuthed] = useState<boolean>(false);
+  const [userId, setUserId] = useState<string>("");
 
-  let width = img.naturalWidth || img.width;
-  let height = img.naturalHeight || img.height;
-  if (!width || !height) return file;
+  const [current, setCurrent] = useState<VerificationRequest | null>(null);
 
-  const scale = Math.min(1, maxWidth / width, maxHeight / height);
-  const targetW = Math.max(1, Math.round(width * scale));
-  const targetH = Math.max(1, Math.round(height * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = targetW;
-  canvas.height = targetH;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-
-  ctx.drawImage(img, 0, 0, targetW, targetH);
-
-  const outType = "image/jpeg";
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((b) => resolve(b), outType, quality);
-  });
-
-  if (!blob) return file;
-
-  const baseName = file.name.replace(/\.[^.]+$/, "");
-  return new File([blob], `${baseName}.jpg`, {
-    type: outType,
-    lastModified: Date.now(),
-  });
-}
-
-export default function VerifyPage() {
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [userId, setUserId] = useState("");
-  const [status, setStatus] = useState("unknown");
-  const [reqData, setReqData] = useState<VerifyRequest | null>(null);
-
+  // form fields (kept minimal; backend only needs full_name + town + 2 files)
   const [fullName, setFullName] = useState("");
   const [town, setTown] = useState("");
   const [idFrontFile, setIdFrontFile] = useState<File | null>(null);
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!userId) return;
-    setRefreshing(true);
-    setError("");
+  const locked = useMemo(() => isLocked(current?.status || null), [current?.status]);
+  // Network guard: never let UI hang forever
+  async function fetchWithTimeout(input: RequestInfo, init: RequestInit | undefined, ms: number) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
     try {
-      const res = await fetchWithTimeout(`/api/public/passenger/verification/request?passenger_id=${encodeURIComponent(userId)}`, {}, 30000);
-      const j: any = await res.json().catch(() => ({}));
-      if (!res.ok || j?.ok === false) {
-        throw new Error(s(j?.error || j?.message || `HTTP ${res.status}`));
-      }
-
-      const row = (j?.request || null) as VerifyRequest | null;
-      setReqData(row);
-      setStatus(s(row?.status || "not_submitted"));
-
-      if (row?.full_name) setFullName(s(row.full_name));
-      if (row?.town) setTown(s(row.town));
-    } catch (e: any) {
-      setError(s(e?.message || "Failed to load verification request."));
+      return await fetch(input, { ...(init || {}), signal: controller.signal });
     } finally {
-      setRefreshing(false);
+      clearTimeout(id);
     }
-  }, [userId]);
+  }
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetchWithTimeout("/api/verify/session-user", {}, 30000);
-        const j: any = await res.json().catch(() => ({}));
-        const uid = s(j?.userId || j?.user_id || "");
-        if (!mounted) return;
-        setUserId(uid);
-      } catch {
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  async function uploadOne(kind: "id_front" | "selfie", file: File) {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", file);
 
-  useEffect(() => {
-    if (userId) refresh();
-  }, [userId, refresh]);
+    const res = await fetchWithTimeout("/api/public/passenger/verification/upload", { method: "POST", body: fd }, 60000);
+    const j: any = await res.json().catch(() => ({}));
+    if (!res.ok || !j?.ok) {
+      throw new Error(String(j?.error || "Upload failed"));
+    }
+    if (!j?.path) throw new Error("Upload failed: missing path");
+    return String(j.path);
+  }
 
-  const canSubmit = useMemo(() => {
-    return !!userId && !!fullName.trim() && !!town.trim() && !!idFrontFile && !!selfieFile && !loading;
-  }, [userId, fullName, town, idFrontFile, selfieFile, loading]);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function refresh() {
     setLoading(true);
-    setMessage("");
     setError("");
+    setMessage("");
 
     try {
-      if (!userId) throw new Error("User session missing.");
-      if (!fullName.trim()) throw new Error("Full name required.");
-      if (!town.trim()) throw new Error("Town required.");
-      if (!idFrontFile) throw new Error("ID front photo required.");
-      if (!selfieFile) throw new Error("Selfie holding ID required.");
+      // session user
+      const sres = await fetch("/api/verify/session-user", { method: "GET", cache: "no-store" });
+      const sj: any = await sres.json().catch(() => ({}));
+      const uid = sj?.user_id ? String(sj.user_id) : "";
 
-      setMessage("Compressing images before upload...");
-
-      const shrunkIdFront = await shrinkImageFile(idFrontFile, 1400, 1400, 0.72);
-      const shrunkSelfie = await shrinkImageFile(selfieFile, 1400, 1400, 0.72);
-
-      setMessage(
-        `Uploading compressed files: ID ${Math.round(shrunkIdFront.size / 1024)} KB, Selfie ${Math.round(shrunkSelfie.size / 1024)} KB...`
-      );
-
-      const fd = new FormData();
-      fd.append("full_name", fullName.trim());
-      fd.append("town", town.trim());
-      fd.append("id_front", shrunkIdFront);
-      fd.append("selfie_with_id", shrunkSelfie);
-
-      const res = await fetchWithTimeout(
-        "/api/public/passenger/verification/request",
-        {
-          method: "POST",
-          body: fd,
-        },
-        120000
-      );
-
-      const rawText = await res.text().catch(() => "");
-      let j: any = null;
-
-      try {
-        j = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        j = null;
-      }
-
-      if (!res.ok || !j?.ok) {
-        const parts: string[] = [];
-
-        if (!res.ok) {
-          parts.push("HTTP " + String(res.status));
-        }
-
-        if (j?.error) {
-          parts.push(String(j.error));
-        } else if (j?.message) {
-          parts.push(String(j.message));
-        } else if (rawText) {
-          parts.push(rawText);
-        } else {
-          parts.push("Empty or non-JSON response from verification API");
-        }
-
-        if (j?.hint) {
-          parts.push("Hint: " + String(j.hint));
-        }
-
-        setError(parts.join(" | "));
-        setMessage("");
+      if (!uid) {
+        setAuthed(false);
+        setUserId("");
+        setCurrent(null);
+        setLoading(false);
         return;
       }
 
-      setMessage(String(j?.message || "Submitted. Please wait for review."));
-      await refresh();
-    } catch (e: any) {
-      const msg = s(e?.message || "");
-      if (msg.toLowerCase().includes("aborted")) {
-        setError("Submit timed out. Please try again.");
-      } else {
-        setError(msg || "Submit failed.");
+      setAuthed(true);
+      setUserId(uid);
+
+      // current request
+      const rres = await fetch("/api/public/passenger/verification/request", { method: "GET", cache: "no-store" });
+      const rj: any = await rres.json().catch(() => ({}));
+
+      const req = rj?.request ? (rj.request as VerificationRequest) : null;
+      setCurrent(req);
+
+      // Autofill inputs from existing request (if present)
+      if (req) {
+        setFullName(String(req.full_name || ""));
+        setTown(String(req.town || ""));
       }
-      setMessage("");
+    } catch (e: any) {
+      setError("Failed to load verification state: " + (e?.message || String(e)));
     } finally {
       setLoading(false);
     }
   }
 
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    setMessage("");
+
+    if (!authed || !userId) {
+      setError("You are not signed in. Please sign in first.");
+      return;
+    }
+
+    if (locked) {
+      setMessage("Already submitted. Please wait for review.");
+      return;
+    }
+
+    if (!fullName.trim()) {
+      setError("Full name is required.");
+      return;
+    }
+    if (!town.trim()) {
+      setError("Town is required.");
+      return;
+    }
+    if (!idFrontFile) {
+      setError("Please choose an ID front photo.");
+      return;
+    }
+    if (!selfieFile) {
+      setError("Please choose a selfie holding your ID.");
+      return;
+    }
+
+    setSubmitting(true);
+    setMessage("Submitting verificationâ€¦");
+
+    try {
+      // 1) Upload files via dedicated endpoint (service role)
+      const id_front_path = await uploadOne("id_front", idFrontFile);
+      const selfie_with_id_path = await uploadOne("selfie", selfieFile);
+
+      // 2) Write DB row via request endpoint (authenticated/RLS-safe)
+      const res = await fetchWithTimeout(
+        "/api/public/passenger/verification/request",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            full_name: fullName.trim(),
+            town: town.trim(),
+            id_front_path,
+            selfie_with_id_path,
+          }),
+        },
+        60000
+      );
+
+      const j: any = await res.json().catch(async () => {
+        const t = await res.text().catch(() => "");
+        return { ok: false, error: t || "Unknown error" };
+      });
+
+      if (!res.ok || !j?.ok) {
+        setError(String(j?.error || "Submit failed"));
+        setMessage("");
+        return;
+      }
+
+      // If backend responds with "Already approved"/etc, show it
+      if (j?.message) {
+        setMessage(String(j.message));
+      } else {
+        setMessage("Submitted. Please wait for review.");
+      }
+
+      await refresh();
+    } catch (e: any) {
+      const msg = String(e?.message || e || "");
+      if (msg.toLowerCase().includes("abort")) {
+        setError("Submit timed out. Please try again (network/upload delay).");
+      } else {
+        setError("Submit error: " + msg);
+      }
+      setMessage("");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-2xl p-4">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <div className="p-4 text-sm max-w-xl mx-auto">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Passenger Verification</h1>
-          <p className="mt-2 text-gray-700">Upload your ID details so JRide can verify you.</p>
+          <h1 className="text-lg font-bold">Passenger Verification</h1>
+          <p className="text-xs text-gray-600 mt-1">
+            Upload your ID details so JRide can verify you. Verified passengers can book rides and access restricted services.
+          </p>
         </div>
+
         <button
           type="button"
-          className="rounded border px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-          onClick={() => refresh()}
-          disabled={refreshing || !userId}
+          className="border rounded px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          onClick={refresh}
+          disabled={loading || submitting}
         >
-          {refreshing ? "Refreshing..." : "Refresh"}
+          Refresh
         </button>
       </div>
 
-      <div className="mb-4 rounded border bg-white p-4">
-        <div className="text-sm text-gray-700">User ID (UUID)</div>
-        <div className="mt-1 text-2xl font-semibold tracking-wide">{userId || "-"}</div>
-        <div className="mt-4 text-sm">
-          Current status: <span className="font-semibold">{status || "unknown"}</span>
+      <div className="mt-4 p-3 rounded border bg-white">
+        <div className="text-xs text-gray-600">User ID (UUID)</div>
+        <div className="font-mono text-xs break-all mt-1">{userId || "(not signed in)"}</div>
+
+        <div className="mt-3 text-xs">
+          Current status:{" "}
+          <span className="font-semibold">
+            {loading ? "Loading…" : niceStatus(current?.status || null)}
+          </span>
+          {current?.status === "rejected" && current?.admin_notes ? (
+            <div className="text-red-700 mt-1">
+              Reason/notes: {current.admin_notes}
+            </div>
+          ) : null}
         </div>
+
+        {locked ? (
+          <div className="mt-2 text-xs text-blue-700">
+            Already submitted. Please wait for review.
+          </div>
+        ) : null}
       </div>
 
       {error ? (
-        <div className="mb-4 rounded border border-red-200 bg-red-50 p-4 text-red-700">
+        <div className="mt-3 p-3 rounded border border-red-200 bg-red-50 text-xs text-red-800">
           {error}
         </div>
       ) : null}
 
       {message ? (
-        <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-4 text-blue-700">
+        <div className="mt-3 p-3 rounded border border-blue-200 bg-blue-50 text-xs text-blue-800">
           {message}
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} className="rounded border bg-white p-4">
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium">Full name</label>
+      <form onSubmit={handleSubmit} className="space-y-3 mt-4">
+        <div className="flex flex-col">
+          <label className="text-xs mb-1">Full name (same as ID)</label>
           <input
-            className="w-full rounded border px-3 py-2"
+            name="full_name"
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            placeholder="Full name"
+            disabled={loading || submitting || locked}
+            placeholder="e.g., Juan Dela Cruz"
           />
         </div>
 
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium">Town</label>
+        <div className="flex flex-col">
+          <label className="text-xs mb-1">Town</label>
           <input
-            className="w-full rounded border px-3 py-2"
+            name="town"
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
             value={town}
             onChange={(e) => setTown(e.target.value)}
-            placeholder="Town"
+            disabled={loading || submitting || locked}
+            placeholder="e.g., Lagawe"
           />
         </div>
 
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium">ID front photo</label>
+        <div className="flex flex-col">
+          <label className="text-xs mb-1">ID photo (front of your ID)</label>
           <input
+            name="id_front"
             type="file"
             accept="image/*"
-            onChange={(e) => setIdFrontFile(e.target.files?.[0] || null)}
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
+            onChange={(e) => setIdFrontFile(e.target.files?.[0] ?? null)}
+            disabled={loading || submitting || locked}
           />
           {idFrontFile ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Original size: {Math.round(idFrontFile.size / 1024)} KB
-            </div>
+            <div className="text-[11px] text-gray-600 mt-1">Selected: {idFrontFile.name}</div>
           ) : null}
         </div>
 
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium">Selfie holding ID</label>
+        <div className="flex flex-col">
+          <label className="text-xs mb-1">Selfie photo (you holding your ID)</label>
           <input
+            name="selfie_with_id"
             type="file"
             accept="image/*"
-            onChange={(e) => setSelfieFile(e.target.files?.[0] || null)}
+            className="border rounded px-2 py-2 text-sm disabled:bg-gray-50"
+            onChange={(e) => setSelfieFile(e.target.files?.[0] ?? null)}
+            disabled={loading || submitting || locked}
           />
           {selfieFile ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Original size: {Math.round(selfieFile.size / 1024)} KB
-            </div>
+            <div className="text-[11px] text-gray-600 mt-1">Selected: {selfieFile.name}</div>
           ) : null}
         </div>
 
         <button
           type="submit"
-          className="rounded bg-black px-5 py-3 text-white disabled:opacity-50"
-          disabled={!canSubmit}
+          className="w-full bg-green-600 text-white rounded px-3 py-2 text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading || submitting || locked}
         >
-          {loading ? "Submitting..." : "Submit for verification"}
+          {submitting ? "Submitting…" : locked ? "Submitted" : "Submit for verification"}
         </button>
+
+        {current?.status ? (
+          <div className="text-[11px] text-gray-600">
+            Tip: If you need to change details after submitting, ask admin to reject so you can re-submit.
+          </div>
+        ) : null}
       </form>
     </div>
   );
 }
+

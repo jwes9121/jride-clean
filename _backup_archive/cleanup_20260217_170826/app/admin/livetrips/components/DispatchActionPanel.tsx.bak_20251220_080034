@@ -1,0 +1,338 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+
+/**
+ * LiveTrips instant sync bridge:
+ * DispatchActionPanel emits events; LiveTripsClient can listen and refresh immediately.
+ */
+const JRIDE_LIVETRIPS_EVT = "JRIDE_LIVETRIPS_EVT";
+
+function emitLiveTripsEvent(detail: any) {
+  try {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent(JRIDE_LIVETRIPS_EVT, { detail }));
+  } catch {}
+}
+
+export type DispatchActionTrip = {
+  id: string;
+  booking_code: string | null;
+  status: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
+  driver_phone: string | null;
+  passenger_name: string | null;
+  town: string | null;
+  is_emergency: boolean | null;
+};
+
+type DispatchActionPanelProps = {
+  selectedTrip: DispatchActionTrip | null;
+  dispatcherName?: string | null;
+  onActionCompleted?: () => void;
+};
+
+type ApiResult = {
+  ok: boolean;
+  message: string;
+};
+
+async function postDispatchAction(body: any): Promise<ApiResult> {
+  try {
+    const res = await fetch("/api/admin/livetrips/dispatch-actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: (json && (json.error as string)) || "Dispatch action failed.",
+      };
+    }
+
+    return {
+      ok: true,
+      message:
+        (json && (json.message as string)) ||
+        "Dispatch action completed successfully.",
+    };
+  } catch (err) {
+    console.error("Dispatch action fetch error:", err);
+    return { ok: false, message: "Network error calling dispatch API." };
+  }
+}
+
+export function DispatchActionPanel(props: DispatchActionPanelProps) {
+  const { selectedTrip, dispatcherName, onActionCompleted } = props;
+
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [localEmergency, setLocalEmergency] = useState<boolean>(
+    !!selectedTrip?.is_emergency
+  );
+
+  // Keep localEmergency in sync when selecting another trip
+  useEffect(() => {
+    setLocalEmergency(!!selectedTrip?.is_emergency);
+    setStatusText(null);
+    setErrorText(null);
+    setLoadingAction(null);
+  }, [selectedTrip?.id, selectedTrip?.is_emergency]);
+
+  if (!selectedTrip || !selectedTrip.id) {
+    return (
+      <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px] text-slate-500">
+        No active trip selected.
+      </div>
+    );
+  }
+
+  const bookingCode = selectedTrip.booking_code ?? selectedTrip.id;
+  const passenger = selectedTrip.passenger_name ?? "Unknown passenger";
+  const town = selectedTrip.town ?? "Unknown zone";
+  const driverName = selectedTrip.driver_name ?? "Unknown driver";
+
+  // --- JRIDE: per-button disable logic (don’t lock whole panel just because driver is missing) ---
+  const busy = Boolean((globalThis as any).__JRIDE_DISPATCH_BUSY);
+  const status = String(selectedTrip.status || "").toLowerCase();
+  const driverPhone = String(selectedTrip.driver_phone || "").trim();
+
+  const canCall = driverPhone.length >= 7;
+  const canNudge = status !== "completed" && status !== "cancelled";
+  const canReassign = status !== "completed" && status !== "cancelled";
+  const canEmergency = true;
+
+  const isLoading = (k: string) => loadingAction === k;
+
+  const disabledCall = busy || !canCall || isLoading("call");
+  const disabledNudge = busy || !canNudge || isLoading("nudge");
+  const disabledReassign = busy || !canReassign || isLoading("reassign");
+  const disabledEmergency = busy || !canEmergency || isLoading("emergency");
+  // -------------------------------------------------------------------
+
+  function resetMessages() {
+    setStatusText(null);
+    setErrorText(null);
+  }
+
+  const handleCall = () => {
+    if (!canCall) return;
+    resetMessages();
+
+    const tel = `tel:${driverPhone}`;
+    try {
+      window.open(tel, "_self");
+    } catch {
+      window.location.href = tel;
+    }
+  };
+
+  const handleNudge = async () => {
+    if (!selectedTrip.driver_id || !selectedTrip.id) return;
+    resetMessages();
+
+    setLoadingAction("nudge");
+    (globalThis as any).__JRIDE_DISPATCH_BUSY = true;
+
+    const result = await postDispatchAction({
+      action: "nudge",
+      tripId: selectedTrip.id,
+      driverId: selectedTrip.driver_id,
+      note: `Nudge sent by ${dispatcherName || "dispatcher"} from LiveTrips map.`,
+    });
+
+    (globalThis as any).__JRIDE_DISPATCH_BUSY = false;
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setStatusText("Nudge sent to driver.");
+    emitLiveTripsEvent({ type: "dispatch_action", action: "nudge", tripId: selectedTrip.id });
+    onActionCompleted?.();
+  };
+
+  const handleReassign = async () => {
+    if (!selectedTrip.driver_id || !selectedTrip.id) return;
+    resetMessages();
+
+    const toDriverId = window.prompt(
+      "Enter the NEW driver ID (UUID) for this trip:",
+      ""
+    );
+    if (!toDriverId) return;
+
+    setLoadingAction("reassign");
+    (globalThis as any).__JRIDE_DISPATCH_BUSY = true;
+
+    const result = await postDispatchAction({
+      action: "reassign",
+      tripId: selectedTrip.id,
+      fromDriverId: selectedTrip.driver_id,
+      toDriverId,
+      note: `Reassign requested by ${dispatcherName || "dispatcher"} from LiveTrips map.`,
+    });
+
+    (globalThis as any).__JRIDE_DISPATCH_BUSY = false;
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setStatusText("Reassign request stored. Trip will refresh on next update.");
+    emitLiveTripsEvent({ type: "dispatch_action", action: "reassign", tripId: selectedTrip.id });
+    onActionCompleted?.();
+  };
+
+  const handleEmergency = async () => {
+    if (!selectedTrip.id) return;
+    resetMessages();
+
+    const target = !localEmergency;
+
+    setLoadingAction("emergency");
+    (globalThis as any).__JRIDE_DISPATCH_BUSY = true;
+
+    const result = await postDispatchAction({
+      action: "emergency",
+      tripId: selectedTrip.id,
+      isEmergency: target,
+    });
+
+    (globalThis as any).__JRIDE_DISPATCH_BUSY = false;
+    setLoadingAction(null);
+
+    if (!result.ok) {
+      setErrorText(result.message);
+      return;
+    }
+
+    setLocalEmergency(target);
+    setStatusText(target ? "Trip marked as EMERGENCY." : "Emergency flag cleared.");
+    emitLiveTripsEvent({ type: "dispatch_action", action: "emergency", tripId: selectedTrip.id, isEmergency: target });
+    onActionCompleted?.();
+  };
+
+  const baseBtn =
+    "flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[10px] font-medium border transition";
+  const disabledClasses =
+    "border-slate-700 bg-slate-900/60 text-slate-500 cursor-not-allowed";
+  const enabledClasses =
+    "border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400";
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-100 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase tracking-wide text-slate-400">
+            Dispatch actions
+          </span>
+          <span className="text-[11px] font-semibold text-slate-100">
+            Trip {bookingCode}
+          </span>
+          <span className="text-[10px] text-slate-400">
+            Passenger: {passenger} • {town}
+          </span>
+        </div>
+
+        <span
+          className={
+            "rounded-full px-2 py-1 text-[10px] font-semibold " +
+            (localEmergency
+              ? "bg-red-600 text-white"
+              : "bg-slate-800 text-slate-100")
+          }
+        >
+          {localEmergency ? "EMERGENCY" : selectedTrip.status ?? "status ?"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5 mt-1">
+        {/* Call */}
+        <button
+          type="button"
+          onClick={handleCall}
+          disabled={disabledCall}
+          title={!canCall ? "No driver phone" : busy ? "Busy" : ""}
+          className={[baseBtn, disabledCall ? disabledClasses : enabledClasses].join(" ")}
+        >
+          <span className="text-lg leading-none"></span>
+          <span>Call</span>
+          <span className="text-[9px] text-slate-400">
+            {canCall ? "mobile" : "no number"}
+          </span>
+        </button>
+
+        {/* Nudge */}
+        <button
+          type="button"
+          onClick={handleNudge}
+          disabled={disabledNudge}
+          title={!canNudge ? "Trip not nudgable" : busy ? "Busy" : ""}
+          className={[baseBtn, disabledNudge ? disabledClasses : enabledClasses].join(" ")}
+        >
+          <span className="text-lg leading-none"></span>
+          <span>{isLoading("nudge") ? "Nudging..." : "Nudge"}</span>
+          <span className="text-[9px] text-slate-400">slow / stuck</span>
+        </button>
+
+        {/* Reassign */}
+        <button
+          type="button"
+          onClick={handleReassign}
+          disabled={disabledReassign}
+          title={!canReassign ? "Trip not reassignable" : busy ? "Busy" : ""}
+          className={[baseBtn, disabledReassign ? disabledClasses : enabledClasses].join(" ")}
+        >
+          <span className="text-lg leading-none"></span>
+          <span>{isLoading("reassign") ? "Saving..." : "Reassign"}</span>
+          <span className="text-[9px] text-slate-400">change driver</span>
+        </button>
+
+        {/* Emergency */}
+        <button
+          type="button"
+          onClick={handleEmergency}
+          disabled={disabledEmergency}
+          title={busy ? "Busy" : ""}
+          className={[
+            baseBtn,
+            disabledEmergency
+              ? disabledClasses
+              : localEmergency
+              ? "border-red-500 bg-red-700/90 text-white hover:bg-red-600"
+              : enabledClasses,
+          ].join(" ")}
+        >
+          <span className="text-lg leading-none"></span>
+          <span>{localEmergency ? "Clear" : "Emergency"}</span>
+          <span className="text-[9px] text-slate-400">priority alerts</span>
+        </button>
+      </div>
+
+      {(statusText || errorText) && (
+        <div className="mt-1 text-[10px]">
+          {statusText && <div className="text-emerald-400">{statusText}</div>}
+          {errorText && <div className="text-red-400">{errorText}</div>}
+        </div>
+      )}
+
+      <div className="mt-1 flex justify-between text-[9px] text-slate-500">
+        <span>Driver: {driverName}</span>
+        {dispatcherName && <span>Dispatcher: {dispatcherName}</span>}
+      </div>
+    </div>
+  );
+}
+
+export default DispatchActionPanel;

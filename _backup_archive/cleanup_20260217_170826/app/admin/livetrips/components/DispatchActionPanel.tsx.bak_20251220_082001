@@ -1,0 +1,239 @@
+"use client";
+
+
+import React, { useMemo, useState } from "react";
+
+type DispatchActionTrip = {
+  id: string;
+  booking_code?: string | null;
+  status?: string | null;
+
+  passenger_name?: string | null;
+  passenger_phone?: string | null;
+
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+
+  pickup_label?: string | null;
+  dropoff_label?: string | null;
+
+  zone?: string | null;
+
+  // optional field some builds used; backend may not have this column
+  is_emergency?: boolean | null;
+};
+
+type DispatchActionPanelProps = {
+  selectedTrip: DispatchActionTrip | null;
+  dispatcherName?: string;
+  onActionCompleted?: () => void;
+};
+
+async function postJson(url: string, body: any) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const text = await res.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.error || data.message)) ||
+      (typeof data?.raw === "string" && data.raw) ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return data;
+}
+
+export default function DispatchActionPanel(props: DispatchActionPanelProps) {
+  const { selectedTrip, dispatcherName, onActionCompleted } = props;
+
+  const [busy, setBusy] = useState(false);
+  const [statusText, setStatusText] = useState<string>("");
+  const [errorText, setErrorText] = useState<string>("");
+
+  const trip = selectedTrip;
+
+  const computed = useMemo(() => {
+    const driverPhone =
+      (trip as any)?.driver_phone ||
+      (trip as any)?.driverPhone ||
+      (trip as any)?.rider_phone ||
+      (trip as any)?.driver_contact ||
+      "";
+
+    const driverId =
+      (trip as any)?.driver_id ||
+      (trip as any)?.driverId ||
+      "";
+
+    const status = String((trip as any)?.status || "").toLowerCase();
+
+    const canCall = String(driverPhone || "").trim().length >= 7;
+
+    // allow these regardless of missing driver fields (dispatcher may need to reassign / emergency)
+    const canNudge = status !== "completed" && status !== "cancelled";
+    const canReassign = status !== "completed" && status !== "cancelled";
+    const canEmergency = true;
+
+    return { driverPhone, driverId, status, canCall, canNudge, canReassign, canEmergency };
+  }, [trip]);
+
+  async function runAction(label: string, fn: () => Promise<any>) {
+    if (!trip?.id) return;
+    setErrorText("");
+    setStatusText(`${label}...`);
+    setBusy(true);
+    try {
+      await fn();
+      setStatusText(`${label}: OK`);
+      onActionCompleted?.();
+    } catch (e: any) {
+      setStatusText("");
+      setErrorText(`${label} FAILED: ${e?.message ?? "unknown error"}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!trip) {
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-200">
+        <div className="font-semibold">Dispatch Actions</div>
+        <div className="mt-2 text-slate-400">Select a trip to see actions.</div>
+      </div>
+    );
+  }
+
+  const disabledCall = busy || !computed.canCall;
+  const disabledNudge = busy || !computed.canNudge;
+  const disabledReassign = busy || !computed.canReassign;
+  const disabledEmergency = busy || !computed.canEmergency;
+
+  const btnBase =
+    "flex flex-col items-center justify-center rounded-xl px-2 py-2 text-[10px] font-medium border transition select-none";
+  const btnEnabled =
+    "border-slate-600 bg-slate-900/90 text-slate-100 hover:bg-slate-800 hover:border-slate-400";
+  const btnDisabled =
+    "border-slate-700 bg-slate-900/60 text-slate-500 cursor-not-allowed";
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/90 p-3 text-[11px] text-slate-200 space-y-2">
+      <div className="text-[10px] text-slate-400">Dispatch Actions</div>
+
+      <div className="text-[11px] font-semibold truncate">
+        Trip {trip.booking_code ? trip.booking_code : trip.id}
+      </div>
+      <div className="text-[10px] text-slate-400 truncate">
+        Passenger: {trip.passenger_name || "—"} • Zone: {trip.zone || "—"} • Status: {trip.status || "—"}
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 pt-2">
+        {/* CALL */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledCall ? btnDisabled : btnEnabled}`}
+          disabled={disabledCall}
+          onClick={() => {
+            const phone = String(computed.driverPhone || "").trim();
+            if (!phone) return;
+            // Use tel: link; browser will decide how to handle
+            window.location.href = `tel:${phone}`;
+          }}
+          title={disabledCall ? "No driver phone or busy" : "Call driver"}
+        >
+          <div className="text-[12px]">📞</div>
+          <div>Call</div>
+        </button>
+
+        {/* NUDGE */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledNudge ? btnDisabled : btnEnabled}`}
+          disabled={disabledNudge}
+          onClick={() =>
+            runAction("Nudge", async () => {
+              // EXPECTED ROUTE (we add real network activity):
+              // If this route doesn't exist yet, you'll see the error in the panel.
+              await postJson("/api/dispatch/nudge", {
+                bookingId: trip.id,
+                bookingCode: trip.booking_code ?? null,
+                dispatcherName: dispatcherName ?? null,
+              });
+            })
+          }
+          title={disabledNudge ? "Busy or trip is completed/cancelled" : "Send driver nudge"}
+        >
+          <div className="text-[12px]">👉</div>
+          <div>Nudge</div>
+        </button>
+
+        {/* REASSIGN */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledReassign ? btnDisabled : btnEnabled}`}
+          disabled={disabledReassign}
+          onClick={() =>
+            runAction("Reassign", async () => {
+              // This should unassign so dispatcher can select a new driver
+              // (Backend should handle: driver_id = null, status maybe back to pending/assigned)
+              await postJson("/api/dispatch/assign", {
+                bookingId: trip.id,
+                bookingCode: trip.booking_code ?? null,
+                driverId: null,
+                mode: "reassign",
+                dispatcherName: dispatcherName ?? null,
+              });
+            })
+          }
+          title={disabledReassign ? "Busy or trip is completed/cancelled" : "Unassign / reassign driver"}
+        >
+          <div className="text-[12px]">🔁</div>
+          <div>Reassign</div>
+        </button>
+
+        {/* EMERGENCY */}
+        <button
+          type="button"
+          className={`${btnBase} ${disabledEmergency ? btnDisabled : btnEnabled}`}
+          disabled={disabledEmergency}
+          onClick={() =>
+            runAction("Emergency", async () => {
+              // Try a dedicated route first; if you already have one, great.
+              // If not, you'll see the error and we’ll wire it to the existing one you already use.
+              await postJson("/api/dispatch/emergency", {
+                bookingId: trip.id,
+                bookingCode: trip.booking_code ?? null,
+                dispatcherName: dispatcherName ?? null,
+              });
+            })
+          }
+          title={disabledEmergency ? "Busy" : "Toggle/set emergency"}
+        >
+          <div className="text-[12px]">🚨</div>
+          <div>Emergency</div>
+        </button>
+      </div>
+
+      {!!statusText && (
+        <div className="text-[10px] text-emerald-300 pt-2">{statusText}</div>
+      )}
+      {!!errorText && (
+        <div className="text-[10px] text-red-300 pt-2 whitespace-pre-wrap">{errorText}</div>
+      )}
+
+      <div className="text-[10px] text-slate-500 pt-1">
+        Driver phone: {computed.driverPhone ? computed.driverPhone : "—"}
+      </div>
+    </div>
+  );
+}
+
+export default DispatchActionPanel;

@@ -1,0 +1,23 @@
+﻿import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import LiveTripsClient from "./LiveTripsClient";
+
+export const dynamic = "force-dynamic";
+
+export default async function LiveTripsPage() {
+  const supabase = createServerComponentClient({ cookies });
+
+  // Fetch view data
+  const { data, error } = await supabase
+    .from("admin_active_trips_v1")
+    .select("*")
+    .order("id", { ascending: false });
+
+  const trips = data ?? [];
+
+  return (
+    <div className="w-full h-full overflow-hidden flex flex-col">
+      <LiveTripsClient trips={trips} />
+    </div>
+  );
+}

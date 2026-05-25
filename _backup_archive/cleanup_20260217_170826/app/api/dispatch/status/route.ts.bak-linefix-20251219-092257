@@ -1,0 +1,235 @@
+﻿
+  // JRIDE_CLEAR_PROBLEM_ON_FINISH
+
+  // If a trip is marked as "problem/stuck", completing/cancelling should clear those flags.
+
+  // IMPORTANT: We do NOT assume columns exist. We attempt updates and ignore "column does not exist" errors.
+if (toStatus === "completed" || toStatus === "cancelled") {
+
+    const tryClear = async (payload: any) => {
+
+      try {
+
+        const r = await supabase.from("bookings").update(payload).eq("booking_code", bookingCode);
+
+        // If Supabase returns an error about unknown columns, ignore it safely.
+
+        const e: any = (r as any)?.error;
+
+        if (e) {
+
+          const msg = String(e?.message || "");
+
+          const code = String(e?.code || "");
+
+          const isMissingCol =
+
+            code === "42703" ||
+
+            msg.toLowerCase().includes("does not exist") ||
+
+            msg.toLowerCase().includes("column") && msg.toLowerCase().includes("exist");
+
+          if (!isMissingCol) throw e;
+
+        }
+
+      } catch (e: any) {
+
+        const msg = String(e?.message || "");
+
+        const code = String(e?.code || "");
+
+        const isMissingCol =
+
+          code === "42703" ||
+
+          msg.toLowerCase().includes("does not exist") ||
+
+          msg.toLowerCase().includes("column") && msg.toLowerCase().includes("exist");
+
+        if (!isMissingCol) throw e;
+
+      }
+
+    };
+
+  
+
+    // Common column patterns (snake_case)
+
+    await tryClear({ is_problem: false });
+
+    await tryClear({ problem_reason: null });
+
+    await tryClear({ problem_at: null });
+
+  
+
+    // Common alternate patterns (camelCase)
+
+    await tryClear({ isProblem: false });
+
+    await tryClear({ problemReason: null });
+
+    await tryClear({ problemAt: null });
+
+  }
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const dynamic = "force-dynamic";
+
+type Body = {
+  bookingId?: string | null;
+  bookingCode?: string | null;
+  status?: string | null;
+  override?: boolean | null;
+  source?: string | null;
+};
+
+const ALLOWED = new Set(["pending", "assigned", "on_the_way", "on_trip", "completed", "cancelled"]);
+
+function driverStatusForBookingStatus(s: string) {
+  const x = (s || "").toLowerCase();
+  if (x === "completed" || x === "cancelled") return "online";
+  if (x === "pending" || x === "assigned" || x === "on_the_way" || x === "on_trip") return "on_trip";
+  return null;
+}
+
+function jsonNoStore(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
+}
+
+export async function POST(req: Request) {
+  try {
+    const supabase = supabaseAdmin();
+    const body = (await req.json().catch(() => ({}))) as Body;
+
+    const bookingId = String(body.bookingId ?? "").trim();
+    const bookingCode = String(body.bookingCode ?? "").trim();
+    const toStatusRaw = String(body.status ?? "").trim();
+    const toStatus = toStatusRaw.toLowerCase();
+    const override = !!body.override;
+
+    if (!toStatus) return jsonNoStore({ ok: false, error: "MISSING_STATUS" }, 400);
+    if (!ALLOWED.has(toStatus)) return jsonNoStore({ ok: false, error: "INVALID_STATUS", message: `Status '${toStatus}' not allowed.` }, 400);
+    if (!bookingId && !bookingCode) return jsonNoStore({ ok: false, error: "MISSING_BOOKING_IDENTIFIER" }, 400);
+
+    // Select booking
+    let sel = supabase.from("bookings").select("id, booking_code, status, driver_id").limit(1);
+    sel = bookingId ? sel.eq("id", bookingId) : sel.eq("booking_code", bookingCode);
+
+    const { data: rows, error: selErr } = await sel;
+    if (selErr) {
+      console.error("DISPATCH_STATUS_SELECT_ERROR", selErr);
+      return jsonNoStore({ ok: false, error: "DISPATCH_STATUS_SELECT_ERROR", message: selErr.message }, 500);
+    }
+
+    const booking = rows?.[0];
+    if (!booking?.id) return jsonNoStore({ ok: false, error: "BOOKING_NOT_FOUND" }, 404);
+
+    const fromStatus = String(booking.status ?? "").toLowerCase();
+
+    // Basic transition guard (override can bypass)
+    if (!override) {
+      const allowedNext: Record<string, string[]> = {
+        pending: ["assigned", "cancelled"],
+        assigned: ["on_the_way", "cancelled"],
+        on_the_way: ["on_trip", "cancelled"],
+        on_trip: ["completed", "cancelled"],
+        completed: [],
+        cancelled: [],
+      };
+
+      const okNext = (allowedNext[fromStatus] || []).includes(toStatus);
+      if (!okNext && fromStatus !== toStatus) {
+        return jsonNoStore(
+          { ok: false, error: "INVALID_TRANSITION", message: `Cannot change '${fromStatus}' -> '${toStatus}' without override.` },
+          409
+        );
+      }
+    }
+
+    // Update booking status
+    const { error: upErr } = await supabase
+      .from("bookings")
+      .update({ status: toStatus, updated_at: new Date().toISOString() })
+      .eq("id", booking.id);
+
+    if (upErr) {
+      console.error("DISPATCH_STATUS_DB_ERROR", upErr);
+      return jsonNoStore({ ok: false, error: "DISPATCH_STATUS_DB_ERROR", message: upErr.message }, 500);
+    }
+
+    // Re-read to confirm DB actually changed (catches silent no-op / RLS)
+    const { data: reread, error: rrErr } = await supabase
+      .from("bookings")
+      .select("id, booking_code, status, updated_at, driver_id")
+      .eq("id", booking.id)
+      .limit(1);
+
+    if (rrErr) {
+      console.error("DISPATCH_STATUS_REREAD_ERROR", rrErr);
+      return jsonNoStore({ ok: true, status: toStatus, warning: "REREAD_FAILED", message: rrErr.message }, 200);
+    }
+
+    const actual = reread?.[0];
+    const actualStatus = String(actual?.status ?? "").toLowerCase();
+
+    if (actualStatus !== toStatus) {
+      // This is the smoking gun
+      return jsonNoStore(
+        {
+          ok: false,
+          error: "STATUS_NOT_APPLIED",
+          message: `Update did not persist. DB status is '${actualStatus}' (wanted '${toStatus}').`,
+          fromStatus,
+          toStatus,
+          dbStatus: actualStatus,
+        },
+        409
+      );
+    }
+
+    // Best-effort driver_locations sync
+    const driverId = actual?.driver_id ? String(actual.driver_id) : "";
+    const mapped = driverStatusForBookingStatus(actualStatus);
+
+    if (driverId && mapped) {
+      const { error: drvErr } = await supabase
+        .from("driver_locations")
+        .update({ status: mapped, updated_at: new Date().toISOString() })
+        .eq("driver_id", driverId);
+
+      if (drvErr) {
+        console.error("DRIVER_LOCATION_STATUS_UPDATE_ERROR", drvErr);
+        return jsonNoStore(
+          { ok: true, status: actualStatus, toStatus: actualStatus, warning: "DRIVER_LOCATION_STATUS_UPDATE_ERROR", message: drvErr.message },
+          200
+        );
+      }
+    }
+
+    return jsonNoStore(
+      {
+        ok: true,
+        status: actualStatus,
+        toStatus: actualStatus,
+        fromStatus,
+        bookingCode: actual?.booking_code ?? booking.booking_code ?? bookingCode,
+      },
+      200
+    );
+  } catch (err: any) {
+    console.error("DISPATCH_STATUS_UNEXPECTED", err);
+    return jsonNoStore({ ok: false, error: "DISPATCH_STATUS_UNEXPECTED", message: err?.message ?? "Unexpected error" }, 500);
+  }
+}
+
+

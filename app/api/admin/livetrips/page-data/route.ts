@@ -1,353 +1,326 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { auth } from "@/auth";
+export const dynamic = "force-dynamic";
+/* PHASE_3E_TOWNZONE_DERIVE_START */
+function deriveTownFromLatLng(lat: number | null, lng: number | null): string | null {
+  const la = (lat == null ? NaN : Number(lat));
+  const lo = (lng == null ? NaN : Number(lng));
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return null;
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  // Rough Ifugao municipality boxes (fallback).
+  const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
+    { name: "Lagawe",  minLat: 17.05, maxLat: 17.16, minLng: 121.10, maxLng: 121.30 },
+    { name: "Kiangan", minLat: 16.98, maxLat: 17.10, minLng: 121.05, maxLng: 121.25 },
+    { name: "Lamut",   minLat: 16.86, maxLat: 17.02, minLng: 121.10, maxLng: 121.28 },
+    { name: "Hingyon", minLat: 17.10, maxLat: 17.22, minLng: 121.00, maxLng: 121.18 },
+    { name: "Banaue",  minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
+  ];
 
-  if (!url || !serviceRole) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  for (const b of BOXES) {
+    if (la >= b.minLat && la <= b.maxLat && lo >= b.minLng && lo <= b.maxLng) return b.name;
   }
+  return null;
+}
 
-  return createClient(url, serviceRole, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+function deriveZoneFromTown(town: string | null): string | null {
+  const t = String(town || "").trim();
+  return t ? t : null; // zone==town for now
+}
+/* PHASE_3E_TOWNZONE_DERIVE_END */
+
+export const revalidate = 0;
+
+function bad(message: string, code: string, status = 400, extra: any = {}) {
+  return NextResponse.json(
+    { ok: false, code, message, ...extra },
+    { status, headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+function ok(payload: any, status = 200) {
+  return NextResponse.json(payload, {
+    status,
+    headers: { "Cache-Control": "no-store" },
   });
 }
 
-function asArray<T>(value: T[] | T | null | undefined): T[] {
-  if (Array.isArray(value)) return value;
-  if (value == null) return [];
-  return [value];
+function pick(obj: any, keys: string[]) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k)) {
+      const v = (obj as any)[k];
+      if (v !== null && v !== undefined && String(v).trim() !== "") return v;
+    }
+  }
+  return undefined;
 }
 
-function text(v: unknown): string {
-  return String(v ?? "").trim();
+function extractTripsAnyShape(payload: any): any[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+
+  if (typeof payload === "object") {
+    const t1 = (payload as any).trips;
+    if (Array.isArray(t1)) return t1;
+
+    const t2 = (payload as any).bookings;
+    if (Array.isArray(t2)) return t2;
+
+    const t3 = (payload as any).data;
+    if (Array.isArray(t3)) return t3;
+
+    const keys = Object.keys(payload)
+      .filter((k) => /^\d+$/.test(k))
+      .sort((a, b) => Number(a) - Number(b));
+    if (keys.length) return keys.map((k) => (payload as any)[k]).filter(Boolean);
+  }
+
+  return [];
 }
 
-function getSupabaseHost(): string {
-  const raw = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+export async function GET(req: Request) {
   try {
-    return new URL(raw).host;
-  } catch {
-    return raw;
-  }
-}
+  // Force service-role client here to avoid RLS silently returning empty trips in production.
+  const sbUrl =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const sbServiceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "";
 
-function buildDebug(debugMode: boolean, extra: Record<string, unknown> = {}) {
-  if (!debugMode) return {};
-  return {
-    debug: {
-      supabase_host: getSupabaseHost(),
-      generated_at: new Date().toISOString(),
-      ...extra,
-    },
-  };
-}
+  const using_service_role = Boolean(sbUrl && sbServiceKey);
 
-function ts(input: string | null | undefined) {
-  if (!input) return 0;
-  const t = new Date(input).getTime();
-  return Number.isFinite(t) ? t : 0;
-}
-
-function ageSecondsFromIso(input: string | null | undefined) {
-  if (!input) return null;
-  const parsed = Date.parse(input);
-  if (!Number.isFinite(parsed)) return null;
-  return Math.max(0, Math.floor((Date.now() - parsed) / 1000));
-}
-
-function dedupeLatestDriverRows(rows: any[]): any[] {
-  const latestByDriverId: Record<string, any> = {};
-
-  for (const row of rows) {
-    const driverId = text(row?.driver_id);
-    if (!driverId) continue;
-
-    const prev = latestByDriverId[driverId];
-    if (!prev) {
-      latestByDriverId[driverId] = row;
-      continue;
+  const supabase = createClient(
+    sbUrl,
+    (sbServiceKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || ""),
+    {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     }
+  );
+    const url = new URL(req.url);
+    const debug = url.searchParams.get("debug") === "1";
 
-    const prevTs = ts(prev?.updated_at || prev?.created_at || null);
-    const nextTs = ts(row?.updated_at || row?.created_at || null);
+    
+    const forceCode = (url.searchParams.get("code") || "").trim();
+    // AUTO: ?code= bypass to fetch a single booking for diagnosis (safe insertion)
+    if (forceCode) {
+      const probe = await supabase
+        .from("bookings")
+        .select("*")
+        .eq("booking_code", forceCode)
+        .limit(1);
 
-    if (nextTs > prevTs) {
-      latestByDriverId[driverId] = row;
+      const row = (probe as any)?.data?.[0] ?? null;
+
+      return ok({
+        trips: row ? [row] : [],
+        __debug: debug ? {
+          injected_active_statuses: ["requested","pending","ready","assigned","on_the_way","arrived","enroute","on_trip"],
+          code: forceCode,
+          probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null,
+          has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
+          has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+        } : undefined
+      });
     }
-  }
-
-  return Object.values(latestByDriverId).sort((a: any, b: any) => {
-    const at = ts(a?.updated_at || a?.created_at || null);
-    const bt = ts(b?.updated_at || b?.created_at || null);
-    return bt - at;
-  });
-}
-
-function normalizeTownKey(v: unknown): string {
-  return text(v).toLowerCase();
-}
-
-function isStaffRole(role: unknown): boolean {
-  const r = String(role || "").toLowerCase();
-  return r === "admin" || r === "dispatcher";
-}
-
-export async function GET(req: NextRequest) {
-  const debugMode = req.nextUrl.searchParams.get("debug") === "1";
-
-  const session = await auth();
-  const sessionUser = (session?.user ?? null) as any;
-  const role = String(sessionUser?.role || "").toLowerCase();
-
-  if (!sessionUser) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "UNAUTHORIZED",
-        message: "Sign in required.",
-      },
-      { status: 401 }
+    const { data: rpcData, error: rpcErr } = await supabase.rpc(
+      "admin_get_live_trips_page_data_v2"
     );
-  }
 
-  if (!isStaffRole(role)) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "FORBIDDEN",
-        message: "Admin or dispatcher role required.",
-      },
-      { status: 403 }
+    if (rpcErr) {
+      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+        details: rpcErr.message,
+      });
+    }
+
+    const trips = extractTripsAnyShape(rpcData);
+
+    const existingCodes = new Set(
+      trips
+        .map((t: any) => pick(t, ["booking_code", "bookingCode", "code"]))
+        .map((v: any) => (v ? String(v).trim() : ""))
+        .filter(Boolean)
     );
-  }
 
-  try {
-    const supabase = getSupabase();
+    const existingIds = new Set(
+      trips
+        .map((t: any) => pick(t, ["id", "uuid", "booking_id", "bookingId"]))
+        .map((v: any) => (v ? String(v).trim() : ""))
+        .filter(Boolean)
+    );
 
-    const driverLocationsRes = await supabase.from("driver_locations").select("*");
+    const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
 
-    if (driverLocationsRes.error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "DRIVER_LOCATIONS_FAILED",
-          message: driverLocationsRes.error.message,
-          ...buildDebug(debugMode, {
-            stage: "driver_locations",
-          }),
-        },
-        { status: 500 }
-      );
-    }
+    try {
+      const { data: activeRows, error: activeErr } = await supabase
+        .from("bookings")
+        .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+        .in("status", ACTIVE_STATUSES)
+        .order("created_at", { ascending: false })
+        .limit(250);
 
-    const driverProfilesRes = await supabase
-      .from("driver_profiles")
-      .select("driver_id, full_name, callsign, phone, municipality");
+      
 
-    if (driverProfilesRes.error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "DRIVER_PROFILES_FAILED",
-          message: driverProfilesRes.error.message,
-          ...buildDebug(debugMode, {
-            stage: "driver_profiles",
-          }),
-        },
-        { status: 500 }
-      );
-    }
+      // Debug visibility (safe)
+      if (debug) {
+        (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
+        (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
+      }
+if (activeErr) {
+        console.error("LIVETRIPS_FALLBACK_ACTIVE_ERROR", activeErr);
+      } else if (Array.isArray(activeRows) && activeRows.length) {
+        for (const b of activeRows as any[]) {
+          const bid = b?.id != null ? String(b.id) : "";
+          const bcode = b?.booking_code != null ? String(b.booking_code) : "";
 
-    const activeStatuses = [
-      "requested",
-      "searching",
-      "assigned",
-      "accepted",
-      "fare_proposed",
-      "ready",
-      "on_the_way",
-      "arrived",
-      "on_trip",
-    ];
+          if ((bid && existingIds.has(bid)) || (bcode && existingCodes.has(bcode))) continue;
 
-    const bookingsRes = await supabase
-      .from("bookings")
-      .select("*")
-      .in("status", activeStatuses)
-      .or("service_type.is.null,service_type.neq.takeout")
-      .order("updated_at", { ascending: false });
+          trips.push({
+            id: bid || null,
+            uuid: bid || null,
+            booking_id: bid || null,
+            booking_code: bcode || null,
+            status: b?.status ?? null,
+            town: b?.town ?? null,
+            zone: b?.town ?? null,
+            driver_id: b?.driver_id ?? (b as any)?.assigned_driver_id ?? null,
 
-    if (bookingsRes.error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKINGS_FAILED",
-          message: bookingsRes.error.message,
-          ...buildDebug(debugMode, {
-            stage: "bookings",
-            active_statuses: activeStatuses,
-          }),
-        },
-        { status: 500 }
-      );
-    }
+            pickup_lat: b?.pickup_lat ?? null,
+            pickup_lng: b?.pickup_lng ?? null,
+            dropoff_lat: b?.dropoff_lat ?? null,
+            dropoff_lng: b?.dropoff_lng ?? null,
+            pickup_label: b?.pickup_label ?? b?.from_label ?? null,
+            dropoff_label: b?.dropoff_label ?? b?.to_label ?? null,
 
-    let zones: any[] = [];
-    const zonesRes = await supabase.from("zones").select("*");
-    if (!zonesRes.error) {
-      zones = asArray<any>(zonesRes.data);
-    }
+            created_at: b?.created_at ?? null,
+            updated_at: b?.updated_at ?? null,
 
-    const rawDriverRows = asArray<any>(driverLocationsRes.data);
-    const driverRows = dedupeLatestDriverRows(rawDriverRows);
-    const bookingRows = asArray<any>(bookingsRes.data);
-    const profileRows = asArray<any>(driverProfilesRes.data);
+            trip_type: b?.trip_type ?? null,
+            vendor_id: b?.vendor_id ?? null,
 
-    const staleAfterSeconds = 120;
-    const onlineLike = new Set(["online", "available", "idle", "waiting"]);
+            // ===== STEP5D_FALLBACK_EMERGENCY =====
+            is_emergency: (b as any)?.is_emergency ?? (b as any)?.isEmergency ?? null,
+            pickup_distance_km:
+              (b as any)?.pickup_distance_km ??
+              (b as any)?.pickupDistanceKm ??
+              (b as any)?.pickup_distance ??
+              (b as any)?.pickupDistance ??
+              null,
+            emergency_pickup_fee_php:
+              (b as any)?.emergency_pickup_fee_php ??
+              (b as any)?.emergencyPickupFeePhp ??
+              (b as any)?.pickup_distance_fee ??
+              (b as any)?.pickup_distance_fee_php ??
+              null,
+            // ===== END STEP5D_FALLBACK_EMERGENCY =====
+            __fallback_injected: true,
+          });
 
-    const driverProfileMap: Record<string, any> = {};
-    for (const row of profileRows) {
-      const driverId = text(row?.driver_id);
-      if (!driverId) continue;
-      driverProfileMap[driverId] = row;
-    }
-
-    const tripsArray = bookingRows.map((trip: any) => {
-      const driverId = trip?.driver_id || trip?.assigned_driver_id || null;
-      const profile = driverId ? driverProfileMap[text(driverId)] : null;
-      const location = driverId
-        ? driverRows.find((d: any) => text(d?.driver_id) === text(driverId))
-        : null;
-
-      return {
-        ...trip,
-        pickup_label: trip?.pickup_label ?? trip?.from_label ?? null,
-        dropoff_label: trip?.dropoff_label ?? trip?.to_label ?? null,
-        zone: trip?.town ?? trip?.zone ?? null,
-        driver_name: profile?.full_name ?? profile?.callsign ?? null,
-        driver_phone: profile?.phone ?? null,
-        driver_status: location?.status ?? null,
-        zone_id: trip?.zone_id ?? null,
-      };
-    });
-
-    const activeTripByDriverId: Record<string, any> = {};
-    for (const trip of tripsArray) {
-      const driverId = text(trip?.driver_id || trip?.assigned_driver_id);
-      if (!driverId) continue;
-      activeTripByDriverId[driverId] = trip;
-    }
-
-    const drivers = driverRows.map((row: any) => {
-      const driverId = text(row?.driver_id);
-      const profile = driverProfileMap[driverId] || null;
-      const trip = activeTripByDriverId[driverId] || null;
-      const ageSeconds = ageSecondsFromIso(row?.updated_at ?? null);
-      const isStale = ageSeconds == null ? true : ageSeconds > staleAfterSeconds;
-      const rawStatus = text(row?.status).toLowerCase();
-      const effectiveStatus = isStale ? "offline" : rawStatus;
-      const assignEligible = !isStale && onlineLike.has(rawStatus);
-
-      return {
-        driver_id: row?.driver_id ?? null,
-        lat: row?.lat ?? null,
-        lng: row?.lng ?? null,
-        status: row?.status ?? null,
-        effective_status: row?.effective_status ?? effectiveStatus,
-        town: row?.town ?? profile?.municipality ?? null,
-        updated_at: row?.updated_at ?? null,
-        updated_at_ph: row?.updated_at_ph ?? null,
-        age_seconds: row?.age_seconds ?? ageSeconds,
-        assign_eligible: row?.assign_eligible ?? assignEligible,
-        is_stale: row?.is_stale ?? isStale,
-        vehicle_type: row?.vehicle_type ?? null,
-        capacity: row?.capacity ?? null,
-        name: profile?.full_name ?? profile?.callsign ?? null,
-        phone: profile?.phone ?? null,
-        current_trip: trip
-          ? {
-              booking_code: trip?.booking_code ?? null,
-              status: trip?.status ?? null,
-              passenger_name: trip?.passenger_name ?? null,
-              pickup: trip?.from_label ?? trip?.pickup_label ?? null,
-              dropoff: trip?.to_label ?? trip?.dropoff_label ?? null,
-              proposed_fare: trip?.proposed_fare ?? null,
-              verified_fare: trip?.verified_fare ?? null,
-            }
-          : null,
-      };
-    });
-
-    const activeDriversByTown: Record<string, number> = {};
-    for (const driver of drivers) {
-      const townKey = normalizeTownKey(driver?.town);
-      if (!townKey) continue;
-
-      const effectiveStatus = normalizeTownKey(driver?.effective_status);
-      if (!onlineLike.has(effectiveStatus)) continue;
-
-      activeDriversByTown[townKey] = (activeDriversByTown[townKey] || 0) + 1;
-    }
-
-    const normalizedZones = zones.map((zone: any) => {
-      const zoneName = text(zone?.zone_name);
-      const zoneKey = normalizeTownKey(zoneName || zone?.town || zone?.name);
-      const activeDrivers = activeDriversByTown[zoneKey] || 0;
-      const capacityLimit = Number(zone?.capacity_limit ?? 0);
-      const availableSlots = capacityLimit > 0 ? Math.max(0, capacityLimit - activeDrivers) : null;
-
-      let status = text(zone?.status).toUpperCase();
-      if (!status) {
-        if (capacityLimit > 0 && activeDrivers >= capacityLimit) {
-          status = "FULL";
-        } else if (capacityLimit > 0 && activeDrivers >= Math.ceil(capacityLimit * 0.8)) {
-          status = "WARN";
-        } else {
-          status = "OK";
+          if (bid) existingIds.add(bid);
+          if (bcode) existingCodes.add(bcode);
         }
       }
+    } catch (e: any) {
+      console.error("LIVETRIPS_FALLBACK_ACTIVE_EXCEPTION", e?.message || e);
+    }
+    // ===== JRIDE_DRIVERLOC_ENRICH_BEGIN =====
+  // Attach latest driver location to trips so UI/map can show driver marker and avoid false "no driver linked".
+  try {
+    const ids = Array.from(
+      new Set(
+        (Array.isArray(trips) ? trips : [])
+          .map((t: any) => (t?.assigned_driver_id ?? t?.driver_id ?? null))
+          .filter((v: any) => v != null && String(v).trim() !== "")
+          .map((v: any) => String(v))
+      )
+    );
 
-      return {
-        ...zone,
-        active_drivers: activeDrivers,
-        available_slots: availableSlots,
-        status,
-      };
-    });
+    if (ids.length) {
+      const { data: locRows, error: locErr } = await supabase
+        .from("driver_locations")
+        .select("driver_id, lat, lng, status, town, updated_at")
+        .in("driver_id", ids)
+        .order("updated_at", { ascending: false })
+        .limit(1000);
 
-    return NextResponse.json({
-      ok: true,
-      ...buildDebug(debugMode, {
-        active_statuses: activeStatuses,
-        booking_row_count: bookingRows.length,
-        trip_count: tripsArray.length,
-        booking_codes: tripsArray.map((t: any) => t?.booking_code).filter(Boolean),
-        raw_driver_row_count: rawDriverRows.length,
-        deduped_driver_row_count: driverRows.length,
-        active_drivers_by_town: activeDriversByTown,
-      }),
-      zones: normalizedZones,
-      drivers,
-      trips: tripsArray,
-    });
+      if (locErr) {
+        console.error("LIVETRIPS_DRIVERLOC_QUERY_ERROR", locErr);
+      } else if (Array.isArray(locRows) && locRows.length) {
+        const latestByDriver = new Map<string, any>();
+        for (const r of locRows as any[]) {
+          const did = r?.driver_id != null ? String(r.driver_id) : "";
+          if (!did) continue;
+          if (!latestByDriver.has(did)) latestByDriver.set(did, r); // first is latest due to order desc
+        }
+
+        for (const t of (Array.isArray(trips) ? trips : []) as any[]) {
+          const did = t?.assigned_driver_id ?? t?.driver_id ?? null;
+          if (!did) continue;
+          const loc = latestByDriver.get(String(did));
+          if (!loc) continue;
+
+          // These fields are what LiveTripsMap checks first (explicit driver coords)
+          t.driver_lat = loc.lat ?? null;
+          t.driver_lng = loc.lng ?? null;
+
+          // Extra context for UI if needed later
+          t.driver_loc_status = loc.status ?? null;
+          t.driver_loc_town = loc.town ?? null;
+          t.driver_loc_updated_at = loc.updated_at ?? null;
+        }
+      }
+    }
+  } catch (e: any) {
+    console.error("LIVETRIPS_DRIVERLOC_ENRICH_EXCEPTION", e?.message || e);
+  }
+  // ===== JRIDE_DRIVERLOC_ENRICH_END =====
+const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
+    // ===== STEP5D_TRIPSOUT_EMERGENCY =====
+    is_emergency: Boolean(
+      (t as any)?.is_emergency ??
+      (t as any)?.isEmergency ??
+      false
+    ),
+    pickup_distance_km:
+      (t as any)?.pickup_distance_km ??
+      (t as any)?.pickupDistanceKm ??
+      (t as any)?.pickup_distance ??
+      (t as any)?.pickupDistance ??
+      (t as any)?.driver_to_pickup_km ??
+      null,
+    emergency_pickup_fee_php:
+      (t as any)?.emergency_pickup_fee_php ??
+      (t as any)?.emergencyPickupFeePhp ??
+      (t as any)?.pickup_distance_fee ??
+      (t as any)?.pickup_distance_fee_php ??
+      null,
+    // ===== END STEP5D_TRIPSOUT_EMERGENCY =====
+
+    ...t,
+    suggested_verified_fare:
+      (t as any)?.suggested_verified_fare ??
+      (t as any)?.suggestedVerifiedFare ??
+      (t as any)?.verified_suggested_fare ??
+      (t as any)?.fare_suggested_verified ??
+      (t as any)?.suggested_fare_verified ??
+      (t as any)?.suggested_fare ??
+      null,
+  }));
+
+  const payload =
+      rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
+        ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+        : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined };
+
+    return ok(payload);
   } catch (err: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "LIVETRIPS_ROUTE_FAILED",
-        message: String(err?.message ?? err),
-        ...buildDebug(debugMode, {
-          stage: "catch",
-        }),
-      },
-      { status: 500 }
+    console.error("LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR", err);
+    return bad(
+      "Unexpected error in LiveTrips page-data route",
+      "LIVETRIPS_PAGE_DATA_UNEXPECTED_ERROR",
+      500,
+      { details: err?.message ?? String(err) }
     );
   }
 }

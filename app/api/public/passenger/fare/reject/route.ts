@@ -1,156 +1,61 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-type RejectBody = {
-  booking_code?: string;
-  booking_id?: string;
-};
-
-function text(v: unknown): string {
-  return String(v ?? "").trim();
-}
-
-function noStoreHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
-}
-
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
-    const body = (await req.json().catch(() => ({}))) as RejectBody;
 
-    const bookingCode = text(body.booking_code);
-    const bookingId = text(body.booking_id);
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth?.user;
+    if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-    if (!bookingCode && !bookingId) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_BOOKING_CODE" },
-        { status: 400, headers: noStoreHeaders() }
-      );
-    }
+    const body = await req.json().catch(() => ({}));
+    const booking_id = body?.booking_id ? String(body.booking_id) : "";
+    if (!booking_id) return NextResponse.json({ ok: false, error: "Missing booking_id" }, { status: 400 });
 
-    const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !userRes?.user) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Not signed in." },
-        { status: 401, headers: noStoreHeaders() }
-      );
-    }
-
-    const userId = userRes.user.id;
-
-    let query = supabase
+    const { data: b, error: bErr } = await supabase
       .from("bookings")
-      .select("*")
-      .eq("created_by_user_id", userId)
-      .limit(1);
+      .select("id, created_by_user_id, passenger_fare_response")
+      .eq("id", booking_id)
+      .single();
 
-    if (bookingCode) {
-      query = query.eq("booking_code", bookingCode);
-    } else {
-      query = query.eq("id", bookingId);
+    if (bErr) return NextResponse.json({ ok: false, error: bErr.message }, { status: 500 });
+    if (!b) return NextResponse.json({ ok: false, error: "Booking not found" }, { status: 404 });
+    if (String(b.created_by_user_id || "") !== String(user.id)) {
+      return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const { data: rows, error: bookingErr } = await query;
-
-    if (bookingErr) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "BOOKING_READ_FAILED",
-          message: bookingErr.message,
-        },
-        { status: 500, headers: noStoreHeaders() }
-      );
-    }
-
-    const booking = rows?.[0] ?? null;
-
-    if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "BOOKING_NOT_FOUND" },
-        { status: 404, headers: noStoreHeaders() }
-      );
-    }
-
-    const status = text((booking as any).status).toLowerCase();
-    if (status !== "fare_proposed") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "INVALID_STATUS",
-          message: "Fare can only be rejected while booking is in fare_proposed state.",
-          status,
-        },
-        { status: 409, headers: noStoreHeaders() }
-      );
-    }
-
-    const updatePayload: Record<string, unknown> = {
-      passenger_fare_response: "rejected",
-      proposed_fare: null,
-      verified_fare: null,
-      verified_at: null,
-      verified_by: null,
-      verified_reason: null,
-      driver_id: null,
-      assigned_driver_id: null,
-      assigned_at: null,
-      status: "searching",
-    };
-
-    const { error: updateErr } = await supabase
+    const { data: upd, error: uErr } = await supabase
       .from("bookings")
-      .update(updatePayload)
-      .eq("id", (booking as any).id);
+      .update({
+        passenger_fare_response: "rejected",
 
-    if (updateErr) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "REJECT_UPDATE_FAILED",
-          message: updateErr.message,
-        },
-        { status: 500, headers: noStoreHeaders() }
-      );
-    }
+        // Make booking re-dispatchable
+        status: "pending",
 
-    let reassignResult: any = null;
-    try {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc(
-        "assign_nearest_driver_for_booking",
-        { p_booking_code: (booking as any).booking_code }
-      );
+        // Clear current driver assignment so next driver can be assigned
+        driver_id: null,
+        assigned_driver_id: null,
+        assigned_at: null,
 
-      reassignResult = rpcErr
-        ? { ok: false, error: rpcErr.message }
-        : rpcData;
-    } catch (e: any) {
-      reassignResult = { ok: false, error: String(e?.message ?? e) };
-    }
+        // Clear fare so new driver can propose again
+        proposed_fare: null,
+        verified_fare: null,
+        verified_by: null,
+        verified_at: null,
+        verified_reason: null,
 
-    return NextResponse.json(
-      {
-        ok: true,
-        booking_code: (booking as any).booking_code,
-        booking_id: (booking as any).id,
-        status: "searching",
-        reassign: reassignResult,
-      },
-      { status: 200, headers: noStoreHeaders() }
-    );
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", booking_id)
+      .select("id, passenger_fare_response")
+      .single();
+
+    if (uErr) return NextResponse.json({ ok: false, error: uErr.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, booking: upd }, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "SERVER_ERROR",
-        message: String(e?.message ?? e),
-      },
-      { status: 500, headers: noStoreHeaders() }
-    );
+    console.error("[fare/reject] exception", e);
+    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
