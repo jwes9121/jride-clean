@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -25,6 +25,11 @@ type TakeoutOrder = {
   customer_phone?: string | null;
   to_label?: string | null;
   dropoff_label?: string | null;
+  customer_note?: string | null;
+  note?: string | null;
+  payment_instruction?: string | null;
+  receipt_instruction?: string | null;
+  packaging_instruction?: string | null;
   items?: TakeoutItem[] | null;
   items_subtotal?: number | string | null;
   total_bill?: number | string | null;
@@ -310,6 +315,37 @@ export default function VendorTakeoutOrdersPage() {
                       </div>
                       <div className="mt-1 text-sm text-slate-500">Deliver to: {text(order.to_label || order.dropoff_label) || "-"}</div>
                       <div className="mt-1 text-xs text-slate-400">Created: {text(order.created_at) || "-"}</div>
+
+                      <div className="mt-3 space-y-2">
+                        {text(order.customer_note || order.note) ? (
+                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer note</div>
+                            <div className="mt-1 whitespace-pre-wrap">{text(order.customer_note || order.note)}</div>
+                          </div>
+                        ) : null}
+
+                        {text(order.payment_instruction) ? (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Payment instruction</div>
+                            <div className="mt-1 whitespace-pre-wrap">{text(order.payment_instruction)}</div>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {text(order.receipt_instruction) ? (
+                            <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                              <span className="font-semibold">Receipt: </span>
+                              {text(order.receipt_instruction)}
+                            </div>
+                          ) : null}
+                          {text(order.packaging_instruction) ? (
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                              <span className="font-semibold">Packaging: </span>
+                              {text(order.packaging_instruction)}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                     <div className="text-left md:text-right">
                       <div className="text-xs text-slate-500">Subtotal</div>
@@ -388,3 +424,4 @@ export default function VendorTakeoutOrdersPage() {
     </main>
   );
 }
+
