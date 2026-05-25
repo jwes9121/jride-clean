@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +81,7 @@ async function updateBookingSchemaSafe(admin: any, orderId: string, patchInitial
       .update(patch)
       .eq("id", orderId)
       .eq("service_type", "takeout")
-      .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_delivery_fee,takeout_service_fee,updated_at")
+      .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_delivery_fee,takeout_service_fee,updated_at")
       .single();
 
     if (!res.error) return res;
@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
 
   const existing = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_delivery_fee,takeout_service_fee")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_delivery_fee,takeout_service_fee")
     .eq("id", orderId)
     .eq("service_type", "takeout")
     .single();
@@ -249,7 +249,7 @@ export async function POST(req: NextRequest) {
   }
 
   const row: any = existing.data;
-  const current = normStatus(row.vendor_status || row.customer_status || "requested");
+  const current = normStatus(row.status || row.vendor_status || row.customer_status || "requested");
   const pricingStatus = normText(row.takeout_pricing_status);
   const routePlan = normText(row.takeout_route_plan) || "vendor_first";
   const customerConfirmed = !!row.takeout_customer_confirmed_at || pricingStatus === "customer_confirmed";
@@ -313,6 +313,7 @@ export async function POST(req: NextRequest) {
   }
 
   const patch: any = {
+    status: nextStatus,
     vendor_status: nextStatus,
     customer_status: nextStatus === "requested" ? "requested" : nextStatus,
   };
@@ -353,6 +354,8 @@ export async function POST(req: NextRequest) {
     order: up.data,
     inventory,
     driver_wallet: driverWallet,
-    guard: "takeout_status_route_plan_vendor_acceptance_guard_v73_driver_wallet_deduction",
+    guard: "takeout_status_route_plan_vendor_acceptance_guard_v74_main_status_sync",
   });
 }
+
+
