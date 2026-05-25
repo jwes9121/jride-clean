@@ -165,9 +165,9 @@ export default function TakeoutTrackPage() {
       vendor_accepted: "Vendor accepted. Looking for driver",
       preparing: "Vendor preparing order",
       pickup_ready: "Order ready for pickup",
-      driver_assigned: passengerConfirmed ? "Customer confirmed total" : "Driver assigned",
+      driver_assigned: passengerConfirmed ? "Passenger confirmed total" : "Driver assigned",
       driver_fee_proposed: "Driver fee proposed",
-      customer_confirmed: "Customer confirmed total",
+      customer_confirmed: "Passenger confirmed total",
       rider_arrived_vendor: "Driver arrived at vendor",
       arrived_vendor: "Driver arrived at vendor",
       picked_up: "Order picked up",
@@ -180,6 +180,10 @@ export default function TakeoutTrackPage() {
     const isCancelled = progressStatus === "cancelled";
     const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill);
     const deliveryFee = toNum(order?.takeout_delivery_fee);
+    const pickupDistanceKm = toNum(order?.driver_to_pickup_km ?? order?.distance_to_pickup_km ?? order?.pickup_distance_km);
+    const pickupFreeKm = toNum(order?.takeout_pickup_free_km ?? 1.5);
+    const pickupExcessKm = toNum(order?.takeout_pickup_excess_km);
+    const pickupExcessFee = toNum(order?.takeout_pickup_excess_fee);
     const serviceFee = toNum(order?.takeout_service_fee || 15);
     const totalPayable = toNum(order?.takeout_total_payable);
     const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
@@ -199,6 +203,10 @@ export default function TakeoutTrackPage() {
       isCancelled,
       foodSubtotal,
       deliveryFee,
+      pickupDistanceKm,
+      pickupFreeKm,
+      pickupExcessKm,
+      pickupExcessFee,
       serviceFee,
       totalPayable,
       expiresIn,
@@ -271,6 +279,18 @@ export default function TakeoutTrackPage() {
                 <span>{state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for driver"}</span>
               </div>
               <div className="mt-1 flex justify-between gap-3">
+                <span className="text-slate-600">Pickup distance</span>
+                <span>{state.pickupDistanceKm > 0 ? state.pickupDistanceKm.toFixed(2) + " km" : "--"}</span>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
+                <span className="text-slate-600">Free allowance</span>
+                <span>{state.pickupFreeKm.toFixed(2)} km</span>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
+                <span className="text-slate-600">Billable excess</span>
+                <span>{state.pickupExcessKm > 0 ? state.pickupExcessKm.toFixed(2) + " km / " + money(state.pickupExcessFee) : "none"}</span>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
                 <span className="text-slate-600">JRide service fee</span>
                 <span>{state.serviceFee > 0 ? money(state.serviceFee) : "--"}</span>
               </div>
@@ -294,7 +314,7 @@ export default function TakeoutTrackPage() {
 
             {state.passengerConfirmed && !state.isCompleted && !state.isCancelled ? (
               <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                Customer confirmed the total. The driver and vendor workflow can proceed.
+                Passenger confirmed the total. The driver and vendor workflow can proceed.
               </div>
             ) : null}
 

@@ -73,10 +73,6 @@ type TakeoutOrder = {
   delivery_pin_lng?: number | string | null;
   delivery_pin_label?: string | null;
   delivery_pin_coordinates?: string | null;
-  customer_note?: string | null;
-  payment_instruction?: string | null;
-  receipt_instruction?: string | null;
-  packaging_instruction?: string | null;
   note?: string | null;
   items?: TakeoutOrderItem[] | null;
   item_count?: number | null;
@@ -243,22 +239,6 @@ function orderCustomerName(o: TakeoutOrder) {
 
 function orderCustomerPhone(o: TakeoutOrder) {
   return clean(o.customer_phone) || clean(o.passenger_phone) || clean(o.phone) || "No phone provided";
-}
-
-function orderCustomerNote(o: TakeoutOrder) {
-  return clean(o.customer_note) || clean(o.note);
-}
-
-function orderPaymentInstruction(o: TakeoutOrder) {
-  return clean(o.payment_instruction);
-}
-
-function orderReceiptInstruction(o: TakeoutOrder) {
-  return clean(o.receipt_instruction);
-}
-
-function orderPackagingInstruction(o: TakeoutOrder) {
-  return clean(o.packaging_instruction) || (orderPremiumPackagingSelected(o) ? orderOptionLabel(o) : "Standard item packaging");
 }
 
 function looksLikeRawPinnedAddress(v: string) {
@@ -1383,7 +1363,7 @@ export default function VendorPortalPage() {
                             <div>
                               <div className="font-semibold">{o.booking_code || o.id}</div>
                               <div className="mt-1 grid gap-0.5 text-xs text-slate-600">
-                                <div><span className="font-semibold text-slate-700">Customer:</span> {orderCustomerName(o)}</div>
+                                <div><span className="font-semibold text-slate-700">Passenger:</span> {orderCustomerName(o)}</div>
                                 <div><span className="font-semibold text-slate-700">Phone:</span> {orderCustomerPhone(o)}</div>
                                 <div><span className="font-semibold text-slate-700">Delivery address:</span> {orderDeliveryAddress(o)}</div>
                                 {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
@@ -1421,10 +1401,12 @@ export default function VendorPortalPage() {
                           </div>
                           <div className="mt-2 text-sm font-medium">Subtotal: {money(orderSubtotal(o))}</div>
                           <div className="mt-2 rounded-xl border bg-amber-50 p-2 text-xs text-amber-900">
-                            <div>Customer note: {orderCustomerNote(o) || "none"}</div>
-                            <div>Payment instruction: {orderPaymentInstruction(o) || "none"}</div>
-                            <div>Receipt: {orderReceiptInstruction(o) || (orderReceiptRequested(o) ? "Requested" : "Not requested")}</div>
-                            <div>Packaging: {orderPackagingInstruction(o)}</div>
+                            <div>Receipt requested: {orderReceiptRequested(o) ? "YES" : "NO"}</div>
+                            <div>Packaging: {orderPremiumPackagingSelected(o) ? orderOptionLabel(o) : "Standard item packaging"}</div>
+                            <div>Customer note: {orderCustomerNoteOnly(o) || "none"}</div>
+                            {orderPaymentInstruction(o) ? <div>Payment instruction: {orderPaymentInstruction(o)}</div> : null}
+                            {orderReceiptInstruction(o) ? <div>Receipt: {orderReceiptInstruction(o)}</div> : null}
+                            {orderPackagingInstruction(o) ? <div>Packaging instruction: {orderPackagingInstruction(o)}</div> : null}
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {s === "vendor_pending" ? (

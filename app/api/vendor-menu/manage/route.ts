@@ -200,6 +200,9 @@ export async function GET(req: NextRequest) {
             name: pickVendorName(vendor),
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
+            lat: vendor?.lat ?? null,
+            lng: vendor?.lng ?? null,
+            location_label: cleanString(vendor?.location_label || ""),
             accepting_orders: vendor?.accepting_orders !== false,
           }
         : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true },
@@ -229,10 +232,13 @@ export async function POST(req: NextRequest) {
         display_name: cleanString(body?.name || body?.display_name),
         town: cleanString(body?.town),
         accepting_orders: body?.accepting_orders !== false && body?.acceptingOrders !== false,
+        lat: Number.isFinite(Number(body?.lat)) ? Number(body.lat) : undefined,
+        lng: Number.isFinite(Number(body?.lng)) ? Number(body.lng) : undefined,
+        location_label: cleanString(body?.location_label || body?.locationLabel),
       };
       if (logoUpload.url) patch.logo_url = logoUpload.url;
       for (const k of Object.keys(patch)) {
-        if (patch[k] === "") delete patch[k];
+        if (patch[k] === "" || patch[k] === undefined) delete patch[k];
       }
       const up = await updateSchemaSafe(admin, "vendor_accounts", patch, "id", vendorId);
       if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message, warning: logoUpload.warning });

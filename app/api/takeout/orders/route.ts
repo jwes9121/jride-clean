@@ -18,6 +18,37 @@ function json(status: number, payload: any) {
   });
 }
 
+
+function num(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickupExcessFee(km: any): number {
+  const distance = Number(km);
+  if (!Number.isFinite(distance) || distance <= 1.5) return 0;
+  return Math.ceil((distance - 1.5) / 0.5) * 20;
+}
+
+function shapeOrder(row: any) {
+  if (!row) return row;
+  const km = num(row.driver_to_pickup_km ?? row.distance_to_pickup_km ?? row.pickup_distance_km);
+  const excessKm = km != null && km > 1.5 ? Number((km - 1.5).toFixed(2)) : 0;
+  const excessFee = pickupExcessFee(km);
+  const baseDelivery = num(row.takeout_delivery_fee);
+  const baseTotal = num(row.takeout_total_payable);
+  return {
+    ...row,
+    takeout_pickup_distance_basis: row.takeout_route_plan === "customer_cash_first" ? "driver_to_customer" : "driver_to_vendor",
+    takeout_pickup_free_km: 1.5,
+    takeout_pickup_excess_km: excessKm,
+    takeout_pickup_excess_fee: excessFee,
+    takeout_base_delivery_fee: baseDelivery,
+    takeout_delivery_fee: baseDelivery != null ? Number((baseDelivery + excessFee).toFixed(2)) : row.takeout_delivery_fee,
+    takeout_total_payable: baseTotal != null ? Number((baseTotal + excessFee).toFixed(2)) : row.takeout_total_payable,
+  };
+}
+
 function createServiceSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -39,6 +70,9 @@ const TAKEOUT_ORDER_SELECT = [
   "takeout_delivery_fee",
   "takeout_service_fee",
   "takeout_total_payable",
+  "driver_to_pickup_km",
+  "pickup_distance_km",
+  "distance_to_pickup_km",
   "takeout_cash_collection_required",
   "takeout_fee_proposed_by_driver_id",
   "takeout_fee_proposed_at",
@@ -79,7 +113,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const orders = Array.isArray(res.data) ? res.data : [];
+    const orders = (Array.isArray(res.data) ? res.data : []).map(shapeOrder);
     const order = orders[0] || null;
 
     return json(200, {

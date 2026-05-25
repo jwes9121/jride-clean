@@ -212,6 +212,35 @@ function deriveZoneFromTown(town: string | null): string | null {
 }
 /* PHASE_3E_TOWNZONE_DERIVE_END */
 
+
+function jrideTakeoutCustomerNoteOnly(row: any): string | null {
+  const raw = String(row?.customer_note ?? row?.customerNote ?? row?.notes ?? row?.note ?? "").trim();
+  if (!raw) return null;
+  const markers = [
+    "Cash collection required:",
+    "cash collection required:",
+    "Vendor receipt requested.",
+    "vendor receipt requested.",
+    "Receipt requested:",
+    "receipt requested:",
+    "Packaging:",
+    "packaging:"
+  ];
+  let cut = raw.length;
+  for (const marker of markers) {
+    const idx = raw.indexOf(marker);
+    if (idx >= 0 && idx < cut) cut = idx;
+  }
+  const cleaned = raw.slice(0, cut).replace(/\s+/g, " ").trim();
+  return cleaned || null;
+}
+
+function jrideTakeoutPickupExcessFee(km: any): number {
+  const distance = Number(km);
+  if (!Number.isFinite(distance) || distance <= 1.5) return 0;
+  return Math.ceil((distance - 1.5) / 0.5) * 20;
+}
+
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
 }
@@ -389,8 +418,8 @@ export async function GET(req: NextRequest) {
       items: snapItems,
       item_count: snapItems.length,
       items_text: r?.items_text ?? null,
-      customer_note: r?.customer_note ?? r?.customerNote ?? r?.notes ?? r?.note ?? null,
-      note: r?.customer_note ?? r?.customerNote ?? r?.notes ?? r?.note ?? null,
+      customer_note: jrideTakeoutCustomerNoteOnly(r),
+      note: jrideTakeoutCustomerNoteOnly(r),
       payment_instruction:
         r?.takeout_cash_collection_required === true || r?.takeout_route_plan === "customer_cash_first"
           ? "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase."
@@ -403,6 +432,8 @@ export async function GET(req: NextRequest) {
         preferences?.premium_packaging_selected === true || r?.premium_packaging_selected === true
           ? "Premium packaging requested."
           : "Standard item packaging",
+      pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km ?? r?.pickup_distance_km),
+      takeout_pickup_excess_fee: jrideTakeoutPickupExcessFee(r?.driver_to_pickup_km ?? r?.distance_to_pickup_km ?? r?.pickup_distance_km),
       order_preferences: preferences,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
@@ -468,10 +499,15 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       "": ["vendor_accepted", "cancelled"],
       "requested": ["vendor_accepted", "cancelled"],
       "vendor_pending": ["vendor_accepted", "cancelled"],
-      "vendor_accepted": ["preparing", "driver_assigned", "cancelled"],
-      "driver_assigned": ["pickup_ready", "cancelled"],
-      "preparing": ["pickup_ready", "driver_assigned", "cancelled"],
+      "vendor_accepted": ["preparing", "cancelled"],
+      "preparing": ["pickup_ready", "cancelled"],
       "pickup_ready": ["completed", "cancelled"],
+      "driver_assigned": ["cancelled", "preparing", "pickup_ready"],
+      "arrived_customer_cash": ["cancelled", "cash_collected"],
+      "cash_collected": ["cancelled", "driver_assigned", "preparing", "pickup_ready"],
+      "rider_arrived_vendor": ["cancelled", "pickup_ready"],
+      "picked_up": ["cancelled", "completed"],
+      "delivering": ["cancelled", "completed"],
       "completed": [],
       "cancelled": [],
       "canceled": []

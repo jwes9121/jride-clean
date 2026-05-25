@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -319,6 +319,13 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
   return { vendorName, vendorLocationLabel, vendorLat, vendorLng, itemsSummary, computedSubtotal };
 }
 
+
+function jrideTakeoutPickupExcessFee(km: any): number {
+  const distance = Number(km);
+  if (!Number.isFinite(distance) || distance <= 1.5) return 0;
+  return Math.ceil((distance - 1.5) / 0.5) * 20;
+}
+
 function deriveStageHints(status: string, fareReady: boolean) {
   const waitingForDriverProposal = !fareReady && (status === "assigned" || status === "accepted");
   return {
@@ -616,10 +623,17 @@ export async function GET(req: NextRequest) {
 
     const hints = deriveStageHints(normalizedStatus, fare != null);
 
+    const takeoutPickupExcessFee = isTakeoutBooking ? jrideTakeoutPickupExcessFee(driverToPickupKm) : 0;
     const takeoutPricingStatusForDriver = isTakeoutBooking ? jrideTakeoutPricingStatusForDriver(booking as any) : null;
-    const takeoutDeliveryFeeForDriver = isTakeoutBooking ? jrideTakeoutDeliveryFeeForDriver(booking as any) : null;
+    const takeoutBaseDeliveryFeeForDriver = isTakeoutBooking ? jrideTakeoutDeliveryFeeForDriver(booking as any) : null;
+    const takeoutDeliveryFeeForDriver = isTakeoutBooking && takeoutBaseDeliveryFeeForDriver != null
+      ? Number((takeoutBaseDeliveryFeeForDriver + takeoutPickupExcessFee).toFixed(2))
+      : takeoutBaseDeliveryFeeForDriver;
     const takeoutConfirmedAtForDriver = isTakeoutBooking ? jrideTakeoutConfirmedAt(booking as any) : null;
-    const takeoutTotalPayableForDriver = isTakeoutBooking ? jrideTakeoutTotalPayableForDriver(booking as any) : null;
+    const takeoutStoredTotalPayableForDriver = isTakeoutBooking ? jrideTakeoutTotalPayableForDriver(booking as any) : null;
+    const takeoutTotalPayableForDriver = isTakeoutBooking && takeoutStoredTotalPayableForDriver != null
+      ? Number((takeoutStoredTotalPayableForDriver + takeoutPickupExcessFee).toFixed(2))
+      : takeoutStoredTotalPayableForDriver;
     const takeoutPassengerConfirmedTotal = isTakeoutBooking && (
       takeoutPricingStatusForDriver === "customer_confirmed" ||
       takeoutPricingStatusForDriver === "confirmed" ||
@@ -649,6 +663,8 @@ export async function GET(req: NextRequest) {
       takeout_delivery_fee: takeoutDeliveryFeeForDriver,
       driver_delivery_fee: takeoutDeliveryFeeForDriver,
       delivery_fee: takeoutDeliveryFeeForDriver,
+      takeout_base_delivery_fee: takeoutBaseDeliveryFeeForDriver,
+      takeout_pickup_excess_fee: takeoutPickupExcessFee,
       takeout_total_payable: takeoutTotalPayableForDriver,
       cash_collection_required: cashCollectionRequired,
       takeout_cash_collection_required: cashCollectionRequired,
@@ -681,10 +697,12 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       town: s((booking as any).town),
       from_label: s((booking as any).from_label),
       to_label: s((booking as any).to_label),
-      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? takeoutReceipt.vendorName ?? s((booking as any).from_label)) : s((booking as any).from_label),
+      pickup_label: isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed ? (cashCollectionAddress ?? s((booking as any).from_label)) : isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? takeoutReceipt.vendorName ?? s((booking as any).from_label)) : s((booking as any).from_label),
       dropoff_label: s((booking as any).to_label),
-      pickup_lat: pickupLat,
-      pickup_lng: pickupLng,
+      pickup_lat: isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed ? cashCollectionLat : pickupLat,
+      pickup_lng: isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed ? cashCollectionLng : pickupLng,
+      vendor_pickup_lat: pickupLat,
+      vendor_pickup_lng: pickupLng,
       dropoff_lat: dropoffLat,
       dropoff_lng: dropoffLng,
       passenger_name: s((booking as any).passenger_name),
