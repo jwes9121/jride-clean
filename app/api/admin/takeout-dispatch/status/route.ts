@@ -56,6 +56,167 @@ function normText(value: any) {
   return String(value || "").trim().toLowerCase();
 }
 
+function money(value: any) {
+  const x = Number(value);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 100) / 100;
+}
+
+function firstPositiveMoney(...values: any[]) {
+  for (const value of values) {
+    const x = money(value);
+    if (x > 0) return x;
+  }
+  return 0;
+}
+
+
+async function updateBookingSchemaSafe(admin: any, orderId: string, patchInitial: Record<string, any>) {
+  let patch: Record<string, any> = { ...patchInitial };
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const res = await admin
+      .from("bookings")
+      .update(patch)
+      .eq("id", orderId)
+      .eq("service_type", "takeout")
+      .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_service_fee,updated_at")
+      .single();
+
+    if (!res.error) return res;
+
+    lastError = res.error;
+    const msg = String(res.error?.message || "");
+    const m =
+      msg.match(/Could not find the '([^']+)' column/i) ||
+      msg.match(/column\s+"([^"]+)"\s+of\s+relation\s+"bookings"\s+does\s+not\s+exist/i);
+
+    if (m?.[1] && Object.prototype.hasOwnProperty.call(patch, m[1])) {
+      delete patch[m[1]];
+      continue;
+    }
+
+    return res;
+  }
+
+  return { data: null, error: lastError || { message: "schema-safe update retries exceeded" } } as any;
+}
+
+async function deductTakeoutStockOnCompletion(admin: any, bookingId: string) {
+  const itemsRes = await admin
+    .from("takeout_order_items")
+    .select("menu_item_id,quantity")
+    .eq("booking_id", bookingId);
+
+  if (itemsRes.error || !Array.isArray(itemsRes.data)) {
+    return { ok: false, deducted: 0, error: itemsRes.error?.message || "order_items_unavailable" };
+  }
+
+  let deducted = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const item of itemsRes.data as any[]) {
+    const menuItemId = String(item?.menu_item_id || "").trim();
+    const qty = Math.max(1, parseInt(String(item?.quantity ?? 1), 10) || 1);
+    if (!menuItemId) continue;
+
+    const menuRow = await admin
+      .from("vendor_menu_items")
+      .select("id,remaining_quantity")
+      .eq("id", menuItemId)
+      .single();
+
+    if (menuRow.error || !menuRow.data) continue;
+
+    const currentRemaining = Math.max(0, parseInt(String((menuRow.data as any).remaining_quantity ?? 0), 10) || 0);
+    const nextRemaining = Math.max(0, currentRemaining - qty);
+
+    await admin
+      .from("vendor_menu_items")
+      .update({
+        remaining_quantity: nextRemaining,
+        sold_out_today: nextRemaining <= 0,
+        updated_at: nowIso,
+      })
+      .eq("id", menuItemId);
+
+    deducted += qty;
+  }
+
+  return { ok: true, deducted };
+}
+
+async function deductTakeoutDriverWalletOnCompletion(admin: any, order: any) {
+  const bookingId = String(order?.id || "").trim();
+  const bookingCode = String(order?.booking_code || "").trim();
+  const driverId = String(order?.assigned_driver_id || order?.driver_id || "").trim();
+  const amount = firstPositiveMoney(order?.takeout_service_fee, 15);
+
+  if (!bookingId) return { ok: false, skipped: true, reason: "missing_booking_id" };
+  if (!driverId) return { ok: false, skipped: true, reason: "missing_driver_id" };
+  if (!(amount > 0)) return { ok: false, skipped: true, reason: "missing_deduction_amount" };
+
+  const existing = await admin
+    .from("driver_wallet_transactions")
+    .select("id,amount,reason")
+    .eq("booking_id", bookingId);
+
+  if (existing.error) {
+    return { ok: false, error: existing.error.message, stage: "existing_wallet_tx_lookup" };
+  }
+
+  const alreadyDeducted = (existing.data || []).some((tx: any) => {
+    const amt = money(tx?.amount);
+    const reason = String(tx?.reason || "").toLowerCase();
+    return amt < 0 && reason.includes("takeout") && reason.includes("platform");
+  });
+
+  if (alreadyDeducted) {
+    return { ok: true, skipped: true, reason: "already_deducted" };
+  }
+
+  const balanceRes = await admin
+    .from("driver_wallet_balances_v1")
+    .select("balance")
+    .eq("driver_id", driverId)
+    .maybeSingle();
+
+  if (balanceRes.error) {
+    return { ok: false, error: balanceRes.error.message, stage: "driver_wallet_balance_lookup" };
+  }
+
+  const balanceBefore = money((balanceRes.data as any)?.balance);
+  const deduction = -Math.abs(amount);
+  const balanceAfter = money(balanceBefore + deduction);
+  const nowIso = new Date().toISOString();
+  const label = bookingCode || bookingId;
+
+  const insertRes = await admin.from("driver_wallet_transactions").insert({
+    driver_id: driverId,
+    booking_id: bookingId,
+    amount: deduction,
+    balance_after: balanceAfter,
+    reason: "takeout_platform_fee " + label,
+    created_at: nowIso,
+  });
+
+  if (insertRes.error) {
+    return { ok: false, error: insertRes.error.message, stage: "driver_wallet_tx_insert" };
+  }
+
+  return {
+    ok: true,
+    skipped: false,
+    driver_id: driverId,
+    booking_id: bookingId,
+    booking_code: bookingCode || null,
+    amount: deduction,
+    balance_before: balanceBefore,
+    balance_after: balanceAfter,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const admin = getAdmin();
   if (!admin) {
@@ -69,13 +230,15 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({} as any));
   const orderId = String(body?.order_id || body?.orderId || body?.booking_id || body?.bookingId || body?.id || "").trim();
   const nextStatus = normStatus(body?.status || body?.vendor_status || body?.vendorStatus);
+  const cashCollectedAmountRaw = String(body?.cash_collected_amount ?? body?.cashCollectedAmount ?? body?.collected_amount ?? "").trim();
+  const cashCollectedAmount = cashCollectedAmountRaw ? Number(cashCollectedAmountRaw.replace(/[^0-9.]/g, "")) : null;
 
   if (!orderId) return json(400, { ok: false, error: "order_id_required", message: "order_id required" });
   if (!ALLOWED.has(nextStatus)) return json(400, { ok: false, error: "bad_status", message: "Unsupported takeout dispatch status" });
 
   const existing = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan")
+    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,takeout_service_fee")
     .eq("id", orderId)
     .eq("service_type", "takeout")
     .single();
@@ -116,6 +279,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (nextStatus === "cash_collected" && (cashCollectedAmount == null || !Number.isFinite(cashCollectedAmount) || cashCollectedAmount <= 0)) {
+    return json(400, {
+      ok: false,
+      error: "CASH_COLLECTED_AMOUNT_REQUIRED",
+      message: "Collected cash amount is required before confirming cash collection.",
+    });
+  }
+
   if (routePlan === "customer_cash_first") {
     if (nextStatus === "rider_arrived_vendor" && current !== "cash_collected") {
       return json(409, {
@@ -151,6 +322,10 @@ export async function POST(req: NextRequest) {
 
   if (nextStatus === "cash_collected") {
     patch.customer_status = "cash_collected";
+    patch.cash_collected_amount = cashCollectedAmount;
+    patch.takeout_cash_collected_amount = cashCollectedAmount;
+    patch.cash_collected_at = new Date().toISOString();
+    patch.takeout_cash_collected_at = new Date().toISOString();
   }
 
   if (nextStatus === "requested" || nextStatus === "cancelled") {
@@ -159,17 +334,24 @@ export async function POST(req: NextRequest) {
     patch.assigned_at = null;
   }
 
-  const up = await admin
-    .from("bookings")
-    .update(patch)
-    .eq("id", orderId)
-    .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,updated_at")
-    .single();
+  const up = await updateBookingSchemaSafe(admin, orderId, patch);
 
   if (up.error) {
     return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
   }
 
-  return json(200, { ok: true, order: up.data, guard: "takeout_status_route_plan_vendor_acceptance_guard_v1" });
+  let inventory: any = null;
+  let driverWallet: any = null;
+  if (nextStatus === "completed" && current !== "completed") {
+    inventory = await deductTakeoutStockOnCompletion(admin, orderId);
+    driverWallet = await deductTakeoutDriverWalletOnCompletion(admin, up.data || row);
+  }
+
+  return json(200, {
+    ok: true,
+    order: up.data,
+    inventory,
+    driver_wallet: driverWallet,
+    guard: "takeout_status_route_plan_vendor_acceptance_guard_v73_driver_wallet_deduction",
+  });
 }
