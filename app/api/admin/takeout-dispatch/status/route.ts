@@ -249,8 +249,21 @@ export async function POST(req: NextRequest) {
   }
 
   const row: any = existing.data;
-  const current = normStatus(row.status || row.vendor_status || row.customer_status || "requested");
-  const pricingStatus = normText(row.takeout_pricing_status);
+  const current = normStatus(row.vendor_status || row.customer_status || row.status || "requested");
+    const precheckCurrent = normStatus(row.vendor_status || row.customer_status || row.status || "requested");
+  if (
+    nextStatus === "cash_collected" &&
+    (precheckCurrent === "rider_arrived_vendor" || precheckCurrent === "arrived_vendor" || precheckCurrent === "picked_up" || precheckCurrent === "delivering" || precheckCurrent === "completed")
+  ) {
+    return json(200, {
+      ok: true,
+      order: row,
+      skipped: true,
+      message: "Cash collection already satisfied or order already progressed.",
+      guard: "takeout_status_route_plan_vendor_acceptance_guard_v75_substatus_noop"
+    });
+  }
+const pricingStatus = normText(row.takeout_pricing_status);
   const routePlan = normText(row.takeout_route_plan) || "vendor_first";
   const customerConfirmed = !!row.takeout_customer_confirmed_at || pricingStatus === "customer_confirmed";
 
@@ -313,7 +326,6 @@ export async function POST(req: NextRequest) {
   }
 
   const patch: any = {
-    status: nextStatus,
     vendor_status: nextStatus,
     customer_status: nextStatus === "requested" ? "requested" : nextStatus,
   };
@@ -354,8 +366,9 @@ export async function POST(req: NextRequest) {
     order: up.data,
     inventory,
     driver_wallet: driverWallet,
-    guard: "takeout_status_route_plan_vendor_acceptance_guard_v74_main_status_sync",
+    guard: "takeout_status_route_plan_vendor_acceptance_guard_v75_substatus_only",
   });
 }
+
 
 
