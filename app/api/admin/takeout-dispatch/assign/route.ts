@@ -223,14 +223,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const nowIso = new Date().toISOString();
   const patch = {
-    assigned_driver_id: driverId,
-    driver_id: driverId,
-    assigned_at: nowIso,
-    vendor_status: "driver_assigned",
-    customer_status: "driver_assigned",
-  };
+  assigned_driver_id: driverId,
+  driver_id: driverId,
+  assigned_at: nowIso,
+  status: "driver_assigned",
+  vendor_status: "driver_assigned",
+  customer_status: "driver_assigned",
+};
 
   const up = await admin
     .from("bookings")
