@@ -279,6 +279,33 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (action === "profile") {
+    const upd = await admin
+      .from("vendor_accounts")
+      .update({
+        display_name: body.display_name,
+        town: body.town,
+        lat: body.lat,
+        lng: body.lng,
+        location_label: body.location_label,
+        logo_url: body.logo_url,
+      })
+      .eq("id", vendor_id);
+
+    if (upd.error) {
+      return json(500, {
+        ok: false,
+        error: "DB_ERROR",
+        message: upd.error.message,
+      });
+    }
+
+    return json(200, {
+      ok: true,
+      action: "profile",
+      vendor_id,
+    });
+  }
   if (!menu_item_id) return json(400, { ok: false, error: "menu_item_id_required", message: "menu_item_id required" });
 
   const upsertBase: any = {
@@ -300,19 +327,27 @@ export async function POST(req: NextRequest) {
   const curAvail = existing.data?.is_available_today ?? true;
   const curSold = existing.data?.is_sold_out_today ?? false;
 
-  if (action === "toggle_available") {
+  if (action === "toggle_available" || action === "toggle_item") {
     upsertBase.is_available_today = !curAvail;
     upsertBase.is_sold_out_today = curSold;
   } else if (action === "toggle_soldout") {
     upsertBase.is_sold_out_today = !curSold;
     upsertBase.is_available_today = curAvail;
-  } else if (action === "update_price") {
+  } else if (action === "update_price" || action === "save_item") {
     const p = toNum(body.price);
     if (p === null) return json(400, { ok: false, error: "bad_price", message: "price must be a number" });
 
     const priceUpdate = await admin
       .from("vendor_menu_items")
-      .update({ price: p })
+      .update({
+        price: p,
+        name: body.name,
+        description: body.description,
+        packaging_note: body.packaging_note,
+        photo_url: body.photo_url,
+        daily_available_quantity: body.daily_available_quantity,
+        remaining_quantity: body.remaining_quantity,
+      })
       .eq("id", menu_item_id)
       .eq("vendor_id", vendor_id);
 
