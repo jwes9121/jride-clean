@@ -21,7 +21,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("vendor_accounts")
-    .select("id,email,display_name,created_at")
+    .select("id,email,display_name,town,accepting_orders,lat,lng,location_label,created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
