@@ -156,7 +156,7 @@ export async function GET(req: Request) {
     try {
       const { data: activeRows, error: activeErr } = await supabase
         .from("bookings")
-        .select("*, proposed_fare, verified_fare, pickup_distance_fee, platform_service_fee, total_to_pay")
+        .select("*, proposed_fare, verified_fare, pickup_distance_fee, total_to_pay")
         .in("status", ACTIVE_STATUSES)
         .order("created_at", { ascending: false })
         .limit(250);
@@ -164,7 +164,7 @@ export async function GET(req: Request) {
       
 
       // Debug visibility (safe)
-      if (debug) {
+      if (debugEnabled) {
         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
       }
