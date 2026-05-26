@@ -98,7 +98,8 @@ export async function GET(req: Request) {
     }
   );
     const url = new URL(req.url);
-    const debug = url.searchParams.get("debug") === "1";
+    const debugEnabled = url.searchParams.get("debug") === "1";
+    const debug: Record<string, any> = {};
 
     
     const forceCode = (url.searchParams.get("code") || "").trim();
@@ -114,7 +115,7 @@ export async function GET(req: Request) {
 
       return ok({
         trips: row ? [row] : [],
-        __debug: debug ? {
+        __debug: debugEnabled ? {
           injected_active_statuses: ["requested","pending","ready","assigned","on_the_way","arrived","enroute","on_trip"],
           code: forceCode,
           probe_error: (probe as any)?.error ? (((probe as any).error as any)?.message || String((probe as any).error)) : null,
@@ -310,8 +311,8 @@ const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
 
   const payload =
       rpcData && typeof rpcData === "object" && !Array.isArray(rpcData)
-        ? { ...(rpcData as any), trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
-        : { trips: tripsOut, __debug: debug ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined };
+        ? { ...(rpcData as any), trips: tripsOut, __debug: debugEnabled ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined }
+        : { trips: tripsOut, __debug: debugEnabled ? { injected_active_statuses: ACTIVE_STATUSES, has_SUPABASE_URL: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), has_SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) } : undefined };
 
     return ok(payload);
   } catch (err: any) {
