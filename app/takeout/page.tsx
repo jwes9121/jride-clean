@@ -1065,11 +1065,6 @@ export default function TakeoutPage() {
         customerName: customerName.trim(),
         customer_phone: customerPhone.trim(),
         customerPhone: customerPhone.trim(),
-        passenger_phone: customerPhone.trim(),
-        passengerPhone: customerPhone.trim(),
-        phone: customerPhone.trim(),
-        contact_phone: customerPhone.trim(),
-        contactPhone: customerPhone.trim(),
 
         to_label: addressText,
         toLabel: addressText,
