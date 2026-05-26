@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({} as any));
   const vendor_id = String(body.vendor_id || body.vendorId || "").trim();
-  const menu_item_id = String(body.menu_item_id || body.menuItemId || "").trim();
+  const menu_item_id = String(body.menu_item_id || body.menuItemId || body.id || "").trim();
   const action = String(body.action || "").trim() as Action;
 
   if (!vendor_id) return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required" });
