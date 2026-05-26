@@ -238,6 +238,68 @@ async function isAuthedWithEither(supabase: any) {
   const { data } = await supabase.auth.getUser();
   return !!data?.user;
 }
+async function jrideResolveTakeoutAuthUserId(supabase: any): Promise<string | null> {
+  // JRIDE_TAKEOUT_AUTH_USER_ID_V2
+  // Server-side identity only. Do not trust client-submitted user ids.
+
+  async function lookupProfileUserId(user: any): Promise<string | null> {
+    const direct =
+      user?.id ||
+      user?.sub ||
+      user?.user_id ||
+      user?.userId ||
+      null;
+
+    if (direct) return String(direct);
+
+    const email = String(user?.email || "").trim();
+    const phone = String(user?.phone || user?.phone_number || "").trim();
+
+    try {
+      if (email) {
+        const q = await supabase
+          .from("passenger_profiles")
+          .select("user_id")
+          .eq("email", email)
+          .limit(1)
+          .maybeSingle();
+
+        const uid = (q as any)?.data?.user_id || null;
+        if (uid) return String(uid);
+      }
+    } catch {}
+
+    try {
+      if (phone) {
+        const q = await supabase
+          .from("passenger_profiles")
+          .select("user_id")
+          .eq("phone", phone)
+          .limit(1)
+          .maybeSingle();
+
+        const uid = (q as any)?.data?.user_id || null;
+        if (uid) return String(uid);
+      }
+    } catch {}
+
+    return null;
+  }
+
+  try {
+    const session = await auth().catch(() => null as any);
+    const uid = await lookupProfileUserId((session as any)?.user || null);
+    if (uid) return uid;
+  } catch {}
+
+  try {
+    const res = await supabase.auth.getUser();
+    const uid = await lookupProfileUserId((res as any)?.data?.user || null);
+    if (uid) return uid;
+  } catch {}
+
+  return null;
+}
 
 type SnapshotItem = {
   booking_id?: string;

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1120,7 +1120,7 @@ export default function TakeoutPage() {
       // This avoids stacking booking form, pricing, progress, completion, and debug JSON in one long page.
       const trackingKey = normText(maybeCode || maybeId);
       if (trackingKey && typeof window !== "undefined") {
-        window.location.href = "/takeout/track/" + encodeURIComponent(trackingKey);
+        window.location.href = "/takeout/orders/" + encodeURIComponent(trackingKey) + "/track";
         return;
       }
       setResult("Takeout order submitted. Waiting for a driver delivery fee proposal." + (maybeId ? " ID: " + String(maybeId) : ""));
