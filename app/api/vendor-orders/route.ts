@@ -308,10 +308,10 @@ export async function GET(req: NextRequest) {
       ok: false,
       error: "SERVER_MISCONFIG",
       message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-    }
-
-  const authedUserId = await jrideResolveTakeoutAuthUserId(supabase).catch(() => null););
+    });
   }
+
+  const authedUserId = await jrideResolveTakeoutAuthUserId(supabase).catch(() => null);
 
   const b = await admin
     .from("bookings")
@@ -434,10 +434,10 @@ export async function POST(req: NextRequest) {
       ok: false,
       error: "SERVER_MISCONFIG",
       message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-    }
-
-  const authedUserId = await jrideResolveTakeoutAuthUserId(supabase).catch(() => null););
+    });
   }
+
+  const authedUserId = await jrideResolveTakeoutAuthUserId(supabase).catch(() => null);
 
   const body = await req.json().catch(() => ({} as any));
 const vendor_id = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
@@ -1094,3 +1094,5 @@ takeout_items_subtotal: subtotal,
 
 
 }
+
+
