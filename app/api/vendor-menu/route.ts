@@ -3,7 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-type Action = "toggle_available" | "toggle_soldout" | "update_price" | "set_vendor_accepting";
+type Action = "toggle_available" | "toggle_soldout" | "update_price" | "set_vendor_accepting" | "profile" | "save_item" | "toggle_item";
 
 type DayState = {
   menu_item_id?: string | null;
