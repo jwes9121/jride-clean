@@ -154,8 +154,39 @@ async function loadMenuWithAuthoritativeDayState(admin: any, vendor_id: string, 
   if (menu.error) throw menu.error;
 
   const rows = Array.isArray(menu.data) ? menu.data : [];
+
+  const ids = rows
+    .map((r: any) => String(r?.menu_item_id || r?.id || "").trim())
+    .filter(Boolean);
+
+  const stockById = new Map<string, any>();
+
+  if (ids.length) {
+    const stock = await admin
+      .from("vendor_menu_items")
+      .select("id,daily_available_quantity,remaining_quantity")
+      .in("id", ids);
+
+    if (stock.error) throw stock.error;
+
+    for (const s of Array.isArray(stock.data) ? stock.data : []) {
+      const id = String((s as any)?.id || "").trim();
+      if (id) stockById.set(id, s);
+    }
+  }
+
+  const rowsWithStock = rows.map((r: any) => {
+    const id = String(r?.menu_item_id || r?.id || "").trim();
+    const stock = stockById.get(id);
+    return {
+      ...r,
+      daily_available_quantity: stock?.daily_available_quantity ?? r?.daily_available_quantity ?? null,
+      remaining_quantity: stock?.remaining_quantity ?? r?.remaining_quantity ?? null,
+    };
+  });
+
   const dayStateMap = await loadDayStateMap(admin, vendor_id, service_date);
-  const items = overlayDayState(rows, dayStateMap);
+  const items = overlayDayState(rowsWithStock, dayStateMap);
   const accepting_orders = computeAcceptingOrders(items);
 
   return { items, accepting_orders };
