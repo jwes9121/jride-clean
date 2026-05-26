@@ -171,7 +171,12 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED", message: "Closed takeout orders cannot be assigned" });
   }
 
-  const vendorAcceptedForAssignment = new Set(["preparing", "pickup_ready", "driver_assigned"]);
+  const vendorAcceptedForAssignment = new Set([
+  "vendor_accepted",
+  "preparing",
+  "pickup_ready",
+  "driver_assigned"
+]);
   if (!vendorAcceptedForAssignment.has(currentStatus)) {
     return json(409, {
       ok: false,
