@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
+import { createClient as createSupabaseServerClient } from "@/utils/supabase/server";
 
 function isTakeoutEnabled() {
   return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
