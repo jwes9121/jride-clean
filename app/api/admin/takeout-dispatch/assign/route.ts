@@ -223,7 +223,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const patch = {
+  const nowIso = new Date().toISOString();
+
+const patch = {
   assigned_driver_id: driverId,
   driver_id: driverId,
   assigned_at: nowIso,
