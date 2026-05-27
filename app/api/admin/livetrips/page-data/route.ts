@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 /* PHASE_3E_TOWNZONE_DERIVE_START */
@@ -99,7 +99,7 @@ export async function GET(req: Request) {
   );
     const url = new URL(req.url);
     const debugEnabled = url.searchParams.get("debug") === "1";
-    const debug: Record<string, any> = {};
+const debug: Record<string, any> = {};
 
     
     const forceCode = (url.searchParams.get("code") || "").trim();
@@ -124,21 +124,15 @@ export async function GET(req: Request) {
         } : undefined
       });
     }
-    const { data: rpcDataRaw, error: rpcErr } = await supabase.rpc(
+    const { data: rpcData, error: rpcErr } = await supabase.rpc(
       "admin_get_live_trips_page_data_v2"
     );
 
-    // Production safety: LiveTrips must not go dark just because the optional RPC
-    // is stale or references a missing analytics column. If the RPC fails, keep
-    // serving active bookings through the schema-safe fallback below.
-    const rpcData = rpcErr ? null : rpcDataRaw;
-
     if (rpcErr) {
-      console.error("LIVETRIPS_RPC_ERROR_NON_FATAL", rpcErr);
-      if (debugEnabled) {
-        (debug as any).rpc_error = (rpcErr as any)?.message || String(rpcErr);
-        (debug as any).rpc_fallback_used = true;
-      }
+      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+        details: rpcErr.message,
+      });
     }
 
     const trips = extractTripsAnyShape(rpcData);
@@ -331,3 +325,4 @@ const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
     );
   }
 }
+
