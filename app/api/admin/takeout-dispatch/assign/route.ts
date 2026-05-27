@@ -229,7 +229,7 @@ const patch = {
   assigned_driver_id: driverId,
   driver_id: driverId,
   assigned_at: nowIso,
-  status: "driver_assigned",
+  status: "assigned",
   vendor_status: "driver_assigned",
   customer_status: "driver_assigned",
 };
