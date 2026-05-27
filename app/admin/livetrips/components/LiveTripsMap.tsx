@@ -35,6 +35,16 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function isUsableLngLat(ll: LngLatTuple | null): ll is LngLatTuple {
+  if (!ll) return false;
+  const lng = Number(ll[0]);
+  const lat = Number(ll[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return false;
+  if (lat < 16.0 || lat > 18.5 || lng < 120.0 || lng > 122.5) return false;
+  return true;
+}
+
 // ---------- Coordinate helpers ----------
 
 function getPickup(trip: any): LngLatTuple | null {
@@ -46,7 +56,10 @@ function getPickup(trip: any): LngLatTuple | null {
     num(trip.pickup_lng) ??
     num(trip.from_lng) ??
     num(trip.origin_lng);
-  if (lat != null && lng != null) return [lng, lat];
+  if (lat != null && lng != null) {
+    const ll: LngLatTuple = [lng, lat];
+    if (isUsableLngLat(ll)) return ll;
+  }
   return null;
 }
 
@@ -61,7 +74,10 @@ function getDropoff(trip: any): LngLatTuple | null {
     num(trip.to_lng) ??
     num(trip.dest_lng) ??
     num(trip.destination_lng);
-  if (lat != null && lng != null) return [lng, lat];
+  if (lat != null && lng != null) {
+    const ll: LngLatTuple = [lng, lat];
+    if (isUsableLngLat(ll)) return ll;
+  }
   return null;
 }
 
@@ -74,7 +90,10 @@ function getExplicitDriver(trip: any): LngLatTuple | null {
     num(trip.driver_lng) ??
     num(trip.driverLng) ??
     num(trip.driver_longitude);
-  if (lat != null && lng != null) return [lng, lat];
+  if (lat != null && lng != null) {
+    const ll: LngLatTuple = [lng, lat];
+    if (isUsableLngLat(ll)) return ll;
+  }
   return null;
 }
 
@@ -431,6 +450,7 @@ if (process.env.NODE_ENV !== "production") console.log("[FLEET] BEFORE KEYS", Ob
       const isStale = ageMin > 10;
       // --- end stale styling ---
 const ll: LngLatTuple = [lng, lat];
+      if (!isUsableLngLat(ll)) continue;
 
       let m = fleetMarkersRef.current[id];
       if (!m) {
@@ -478,16 +498,19 @@ if (process.env.NODE_ENV !== "production") console.log("[FLEET] AFTER KEYS", Obj
     for (const d of drivers as any[]) {
       const lat = num(d?.lat);
       const lng = num(d?.lng);
-      if (lat != null && lng != null) coords.push([lng, lat]);
+      if (lat != null && lng != null) {
+        const ll: LngLatTuple = [lng, lat];
+        if (isUsableLngLat(ll)) coords.push(ll);
+      }
     }
 
     for (const t of visibleTrips as any[]) {
       const pickup = getPickup(t);
       const drop = getDropoff(t);
       const drv = getExplicitDriver(t);
-      if (pickup) coords.push(pickup);
-      if (drop) coords.push(drop);
-      if (drv) coords.push(drv);
+      if (isUsableLngLat(pickup)) coords.push(pickup);
+      if (isUsableLngLat(drop)) coords.push(drop);
+      if (isUsableLngLat(drv)) coords.push(drv);
     }
 
     if (!coords.length) return;

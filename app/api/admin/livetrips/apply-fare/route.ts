@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     // Fetch bits used to compute passenger totals/cut/payout (best-effort)
     const { data: b, error: bErr } = await supabase
       .from("bookings")
-      .select("booking_code, trip_type, pickup_distance_fee, platform_service_fee")
+      .select("booking_code, trip_type, pickup_distance_fee")
       .eq("booking_code", booking_code)
       .maybeSingle();
 
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     const isTakeout = tripType === "takeout";
 
     const pickupFee = asNum((b as any)?.pickup_distance_fee) ?? 0;
-    const platformFee = asNum((b as any)?.platform_service_fee) ?? 0;
+    const platformFee = 0;
 
     // Conservative compute rule (rides only):
     // total_to_pay = base_fare + pickup_distance_fee + platform_service_fee

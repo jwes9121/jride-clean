@@ -129,10 +129,13 @@ const debug: Record<string, any> = {};
     );
 
     if (rpcErr) {
-      console.error("LIVETRIPS_RPC_ERROR_CONTINUING_WITH_FALLBACK", rpcErr);
+      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
+      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
+        details: rpcErr.message,
+      });
     }
 
-    const trips = extractTripsAnyShape(rpcErr ? null : rpcData);
+    const trips = extractTripsAnyShape(rpcData);
 
     const existingCodes = new Set(
       trips
@@ -161,7 +164,7 @@ const debug: Record<string, any> = {};
       
 
       // Debug visibility (safe)
-      if (debugEnabled) {
+      if (debug) {
         (debug as any).active_rows_count = Array.isArray(activeRows) ? activeRows.length : 0;
         (debug as any).active_error = activeErr ? ((activeErr as any)?.message || String(activeErr)) : null;
       }
@@ -322,5 +325,3 @@ const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
     );
   }
 }
-
-
