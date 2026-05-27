@@ -605,50 +605,121 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     });
   }
 
-  // JRIDE_VENDOR_OPEN_CLOSE_ENFORCEMENT_V1
-  // Enforce vendor open/closed and item availability using vendor_menu_today before creating a takeout order.
-  // Ride dispatch, fare proposal, and trip lifecycle routes are not called here.
-  const submittedMenuIds = items
+  // JRIDE_TAKEOUT_STOCK_HARD_BLOCK_V1
+  // Server-authoritative stock guard. UI remaining counts are not trusted.
+  // This only validates takeout menu quantity before booking creation.
+  const submittedMenuIds = Array.from(new Set(items
     .map((it) => String(it.menu_item_id || "").trim())
-    .filter(Boolean);
+    .filter(Boolean)));
 
   if (submittedMenuIds.length) {
     const menuState = await admin
       .from("vendor_menu_items")
       .select("*")
-      .eq("vendor_id", vendor_id);
+      .eq("vendor_id", vendor_id)
+      .in("id", submittedMenuIds);
 
     if (menuState.error) {
       return json(500, { ok: false, error: "DB_ERROR", message: menuState.error.message });
     }
 
+    const menuRows = Array.isArray(menuState.data) ? (menuState.data as any[]) : [];
     const byId = new Map<string, any>();
-    for (const row of Array.isArray(menuState.data) ? (menuState.data as any[]) : []) {
-      const id = String(row?.menu_item_id ?? row?.id ?? "").trim();
+    for (const row of menuRows) {
+      const id = String(row?.id ?? row?.menu_item_id ?? "").trim();
       if (id) byId.set(id, row);
     }
 
-    const blocked: string[] = [];
+    const requestedById = new Map<string, { qty: number; name: string }>();
     for (const item of items) {
       const id = String(item.menu_item_id || "").trim();
       if (!id) continue;
+      const qty = Math.max(1, Number(item.quantity || 1) || 1);
+      const prev = requestedById.get(id);
+      requestedById.set(id, {
+        qty: (prev?.qty || 0) + qty,
+        name: String(item.name || prev?.name || id),
+      });
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayIso = todayStart.toISOString();
+
+    const soldById = new Map<string, number>();
+    try {
+      const soldRes = await admin
+        .from("takeout_order_items")
+        .select("menu_item_id,quantity,snapshot_at")
+        .in("menu_item_id", submittedMenuIds)
+        .gte("snapshot_at", todayIso);
+
+      if (!soldRes.error && Array.isArray(soldRes.data)) {
+        for (const row of soldRes.data as any[]) {
+          const id = String(row?.menu_item_id || "").trim();
+          if (!id) continue;
+          const qty = Math.max(0, Number(row?.quantity || 0) || 0);
+          soldById.set(id, (soldById.get(id) || 0) + qty);
+        }
+      }
+    } catch {
+      // If the sold-count lookup fails unexpectedly, keep the direct menu remaining guard below.
+    }
+
+    const blocked: Array<{ name: string; requested: number; remaining: number }> = [];
+    const unavailable: string[] = [];
+
+    for (const [id, req] of requestedById.entries()) {
       const row = byId.get(id);
+      if (!row) {
+        unavailable.push(req.name || id);
+        continue;
+      }
+
       const availableRaw = row?.is_active ?? row?.is_available ?? row?.is_available_today ?? row?.available_today ?? row?.available;
       const soldRaw = row?.sold_out_today ?? row?.is_sold_out_today;
       const available = typeof availableRaw === "boolean" ? availableRaw : true;
       const soldOut = typeof soldRaw === "boolean" ? soldRaw : false;
-      const remainingRaw = Number(row?.remaining_quantity);
-      const hasDailyLimit = Number.isFinite(remainingRaw) && remainingRaw > 0;
-      const requestedQty = Math.max(1, Number(item.quantity || 1) || 1);
-      const overStock = hasDailyLimit && requestedQty > remainingRaw;
-      if (!row || !available || soldOut || overStock) blocked.push(item.name || id);
+      if (!available || soldOut) {
+        unavailable.push(req.name || String(row?.name || id));
+        continue;
+      }
+
+      const directRemaining = Number(row?.remaining_quantity ?? row?.remaining_today ?? row?.available_quantity_today);
+      const dailyLimit = Number(row?.daily_limit ?? row?.daily_quantity_limit ?? row?.max_daily_quantity ?? row?.quantity_limit_per_day);
+
+      let remaining: number | null = null;
+      if (Number.isFinite(directRemaining)) {
+        remaining = Math.max(0, Math.floor(directRemaining));
+      } else if (Number.isFinite(dailyLimit)) {
+        const sold = soldById.get(id) || 0;
+        remaining = Math.max(0, Math.floor(dailyLimit - sold));
+      }
+
+      if (remaining != null && req.qty > remaining) {
+        blocked.push({
+          name: String(row?.name || req.name || id),
+          requested: req.qty,
+          remaining,
+        });
+      }
+    }
+
+    if (unavailable.length) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ITEM_UNAVAILABLE",
+        message: "One or more selected items are unavailable. Please refresh the menu.",
+        blocked_items: unavailable,
+      });
     }
 
     if (blocked.length) {
+      const first = blocked[0];
       return json(409, {
         ok: false,
-        error: "TAKEOUT_VENDOR_CLOSED_OR_ITEM_UNAVAILABLE",
-        message: "This vendor is closed or one or more selected items are unavailable. Please refresh the menu.",
+        error: "INSUFFICIENT_STOCK",
+        message: "Only " + first.remaining + " remaining for " + first.name + ".",
         blocked_items: blocked,
       });
     }
