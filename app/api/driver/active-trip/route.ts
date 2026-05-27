@@ -14,6 +14,39 @@ function jrideActiveTripLower(v: any): string {
   return jrideActiveTripText(v).toLowerCase();
 }
 
+
+// JRIDE_TAKEOUT_NOTE_CONTRACT_V1
+// Read-only shaping: remove operational text from passenger notes.
+function jrideCleanTakeoutCustomerNote(v: any): string {
+  let t = jrideActiveTripText(v);
+  if (!t || t.toLowerCase() === "null") return "";
+  const markers = [
+    "Cash collection required:",
+    "Cash collection required",
+    "Vendor receipt requested.",
+    "Vendor receipt requested",
+    "Receipt requested:",
+    "Packaging:",
+    "Standard item packaging",
+  ];
+  for (const marker of markers) {
+    const idx = t.toLowerCase().indexOf(marker.toLowerCase());
+    if (idx >= 0) t = t.slice(0, idx).trim();
+  }
+  return t.replace(/\s+/g, " ").trim();
+}
+
+function jrideTakeoutSystemInstructions(row: any, cashRequired: boolean): string[] {
+  const out: string[] = [];
+  const snap = row?.takeout_pricing_snapshot && typeof row.takeout_pricing_snapshot === "object" ? row.takeout_pricing_snapshot : {};
+  const receiptRequested = Boolean(row?.receipt_requested ?? row?.request_vendor_receipt ?? snap?.receipt_requested ?? false);
+  const packaging = jrideActiveTripText(row?.premium_packaging_label ?? snap?.premium_packaging_label ?? "");
+  if (packaging) out.push(`Packaging: ${packaging}`);
+  if (cashRequired) out.push("Collect cash before vendor purchase.");
+  if (receiptRequested) out.push("Vendor receipt requested.");
+  return out;
+}
+
 function jrideIsTakeoutActiveTrip(row: any): boolean {
   if (!row || typeof row !== "object") return false;
   const serviceType = jrideActiveTripLower(row.service_type ?? row.serviceType ?? row.trip_type ?? row.tripType);
@@ -683,9 +716,13 @@ export async function GET(req: NextRequest) {
 vendor_address: takeoutReceipt.vendorLocationLabel,
       items_summary: takeoutReceipt.itemsSummary ?? s((booking as any).items_summary),
       order_summary: takeoutReceipt.itemsSummary ?? s((booking as any).order_summary),
-      // JRIDE_TAKEOUT_DRIVER_NOTES_DISPLAY_V1
-      // Read-only: expose saved takeout customer notes to Android driver UI.
-      notes: s((booking as any).notes),
+      // JRIDE_TAKEOUT_NOTE_CONTRACT_V1
+      // Expose passenger note separately from system instructions.
+      notes: jrideCleanTakeoutCustomerNote((booking as any).customer_note ?? (booking as any).passenger_note ?? (booking as any).notes),
+      customer_note: jrideCleanTakeoutCustomerNote((booking as any).customer_note ?? (booking as any).passenger_note ?? (booking as any).notes),
+      passenger_note: jrideCleanTakeoutCustomerNote((booking as any).customer_note ?? (booking as any).passenger_note ?? (booking as any).notes),
+      system_instructions: jrideTakeoutSystemInstructions(booking as any, cashCollectionRequired),
+      takeout_receipt_requested: Boolean((booking as any).receipt_requested ?? (booking as any).request_vendor_receipt ?? false),
       order_total: takeoutAmount,
       food_total: takeoutAmount,
       takeout_items_subtotal: takeoutAmount,

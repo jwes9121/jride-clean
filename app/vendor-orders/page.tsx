@@ -23,6 +23,10 @@ type TakeoutOrder = {
   customer_name?: string | null;
   passenger_name?: string | null;
   customer_phone?: string | null;
+  note?: string | null;
+  customer_note?: string | null;
+  passenger_note?: string | null;
+  system_instructions?: string[] | null;
   to_label?: string | null;
   dropoff_label?: string | null;
   items?: TakeoutItem[] | null;
@@ -339,6 +343,24 @@ export default function VendorTakeoutOrdersPage() {
                       </div>
                     )}
                   </div>
+                  {text(order.customer_note || order.passenger_note || order.note) ? (
+                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <div className="font-semibold">Customer note</div>
+                      <div className="mt-1 whitespace-pre-wrap">{text(order.customer_note || order.passenger_note || order.note)}</div>
+                    </div>
+                  ) : null}
+
+                  {Array.isArray(order.system_instructions) && order.system_instructions.length > 0 ? (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                      <div className="font-semibold text-slate-800">System instructions</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {order.system_instructions.map((line, idx) => (
+                          <li key={idx}>{text(line)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {currentStatus === "vendor_pending" ? (

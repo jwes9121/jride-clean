@@ -18,6 +18,39 @@ function takeoutDisabledResponse() {
     { status: 503 }
   );
 }
+// JRIDE_TAKEOUT_NOTE_CONTRACT_V1
+// Keep passenger note separate from operational/system instructions.
+function cleanTakeoutCustomerNote(v: any): string {
+  let t = String(v ?? "").trim();
+  if (!t || t.toLowerCase() === "null") return "";
+  const markers = [
+    "Cash collection required:",
+    "Cash collection required",
+    "Vendor receipt requested.",
+    "Vendor receipt requested",
+    "Receipt requested:",
+    "Packaging:",
+    "Standard item packaging",
+  ];
+  for (const marker of markers) {
+    const idx = t.toLowerCase().indexOf(marker.toLowerCase());
+    if (idx >= 0) t = t.slice(0, idx).trim();
+  }
+  return t.replace(/\s+/g, " ").trim();
+}
+
+function takeoutSystemInstructions(row: any): string[] {
+  const out: string[] = [];
+  const prefs = row?.order_preferences && typeof row.order_preferences === "object" ? row.order_preferences : {};
+  const cashRequired = Boolean(row?.takeout_cash_collection_required ?? row?.cash_collection_required ?? false);
+  const receiptRequested = Boolean(row?.receipt_requested ?? row?.request_vendor_receipt ?? prefs?.receipt_requested ?? false);
+  const packaging = String(row?.premium_packaging_label ?? prefs?.premium_packaging_label ?? "").trim();
+  if (packaging) out.push(`Packaging: ${packaging}`);
+  if (cashRequired) out.push("Collect cash before vendor purchase.");
+  if (receiptRequested) out.push("Vendor receipt requested.");
+  return out;
+}
+
 // PHASE_3D_TAKEOUT_COORDS_HELPERS
 type LatLng = { lat: number | null; lng: number | null };
 
@@ -389,7 +422,10 @@ export async function GET(req: NextRequest) {
       items: snapItems,
       item_count: snapItems.length,
       items_text: r?.items_text ?? null,
-      note: r?.notes ?? r?.note ?? null,
+      note: cleanTakeoutCustomerNote(r?.notes ?? r?.note ?? null) || null,
+      customer_note: cleanTakeoutCustomerNote(r?.customer_note ?? r?.notes ?? r?.note ?? null) || null,
+      passenger_note: cleanTakeoutCustomerNote(r?.customer_note ?? r?.notes ?? r?.note ?? null) || null,
+      system_instructions: takeoutSystemInstructions({ ...r, order_preferences: preferences }),
       order_preferences: preferences,
       items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
       takeout_items_subtotal: (storedSubtotal != null ? Number(storedSubtotal) : (computed != null ? Number(computed) : null)),
@@ -552,7 +588,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     ""
   ).trim();
   const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
-  const note = String(body?.note ?? "").trim();
+  const note = cleanTakeoutCustomerNote(body?.customer_note ?? body?.passenger_note ?? body?.note ?? "");
   const premium_packaging_selected = Boolean(body?.premium_packaging_selected ?? body?.premiumPackagingSelected ?? body?.order_preferences?.premium_packaging_selected ?? false);
   const premium_packaging_fee = toNum(body?.premium_packaging_fee ?? body?.premiumPackagingFee ?? body?.order_preferences?.premium_packaging_fee ?? 0);
   const premium_packaging_label = String(body?.premium_packaging_label ?? body?.premiumPackagingLabel ?? body?.order_preferences?.premium_packaging_label ?? "").trim() || null;
@@ -853,6 +889,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     dropoff_label: to_label || null,
 
     notes: note || null,
+    customer_note: note || null,
+    passenger_note: note || null,
 
     items_text: items_text || null,
     premium_packaging_selected,
