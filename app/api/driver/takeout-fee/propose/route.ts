@@ -60,6 +60,65 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return r * c;
 }
 
+
+function getMapboxToken(): string {
+  return text(process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "");
+}
+
+async function roadDistanceKm(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number
+): Promise<{ ok: true; km: number } | { ok: false; error: string; message: string }> {
+  const token = getMapboxToken();
+  if (!token) {
+    return {
+      ok: false,
+      error: "MAPBOX_TOKEN_MISSING",
+      message: "Mapbox token is required to compute routed pickup distance.",
+    };
+  }
+
+  const url =
+    "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+    `${fromLng},${fromLat};${toLng},${toLat}` +
+    `?overview=false&alternatives=false&steps=false&access_token=${encodeURIComponent(token)}`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: "ROAD_DISTANCE_FAILED",
+        message: `Mapbox road distance request failed with HTTP ${res.status}.`,
+      };
+    }
+
+    const data: any = await res.json();
+    const meters = data?.routes?.[0]?.distance;
+    if (typeof meters !== "number" || !Number.isFinite(meters) || meters < 0) {
+      return {
+        ok: false,
+        error: "ROAD_DISTANCE_MISSING",
+        message: "Mapbox did not return a usable road distance.",
+      };
+    }
+
+    return { ok: true, km: meters / 1000 };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: "ROAD_DISTANCE_ERROR",
+      message: err?.message || "Failed to compute routed pickup distance.",
+    };
+  }
+}
+
 type DriverLocationSnapshot = {
   lat: number | null;
   lng: number | null;
@@ -95,6 +154,7 @@ type CustomerCashPickupBreakdown = {
   pickup_excess_units_500m: number;
   pickup_excess_fee_per_500m: number;
   pickup_excess_fee: number;
+  pickup_distance_source: "not_required" | "mapbox_road";
   computation_status: "not_required" | "computed";
 };
 
@@ -106,6 +166,7 @@ function noCustomerCashPickupBreakdown(): CustomerCashPickupBreakdown {
     pickup_excess_units_500m: 0,
     pickup_excess_fee_per_500m: 0,
     pickup_excess_fee: 0,
+    pickup_distance_source: "not_required",
     computation_status: "not_required",
   };
 }
@@ -356,15 +417,8 @@ export async function POST(req: NextRequest) {
     let pickupBreakdown = noCustomerCashPickupBreakdown();
     if (routePlan === "customer_cash_first") {
       const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
-      const passengerLat =
-  routePlan === "customer_cash_first"
-    ? num(order.pickup_lat)
-    : num(order.dropoff_lat);
-
-const passengerLng =
-  routePlan === "customer_cash_first"
-    ? num(order.pickup_lng)
-    : num(order.dropoff_lng);
+      const passengerLat = num(order.pickup_lat);
+      const passengerLng = num(order.pickup_lng);
 
       if (!driverLoc || !isOnlineLike(driverLoc.status) || minutesSince(driverLoc.updated_at) > 15 || !validLatLng(driverLoc.lat, driverLoc.lng)) {
         return json(409, {
@@ -378,17 +432,28 @@ const passengerLng =
         return json(409, {
           ok: false,
           error: "PASSENGER_LOCATION_REQUIRED",
-          message: "Passenger delivery coordinates are required to compute customer cash pickup excess.",
+          message: "Passenger pickup coordinates are required to compute customer cash pickup excess.",
         });
       }
 
       const feePer500m = envMoney(CUSTOMER_CASH_PICKUP_EXCESS_ENV);
-      const pickupDistanceKm = roundKm(haversineKm(
+      const roadDistance = await roadDistanceKm(
         driverLoc.lat as number,
         driverLoc.lng as number,
         passengerLat as number,
         passengerLng as number
-      ));
+      );
+
+      if (roadDistance.ok !== true) {
+        const roadError = roadDistance as { ok: false; error: string; message: string };
+        return json(409, {
+          ok: false,
+          error: roadError.error,
+          message: roadError.message,
+        });
+      }
+
+      const pickupDistanceKm = roundKm(roadDistance.km);
       const billableExcessKm = roundKm(Math.max(0, pickupDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM));
       const units500m = billableExcessKm > 0 ? Math.ceil(billableExcessKm / 0.5) : 0;
 
@@ -412,6 +477,7 @@ const passengerLng =
         pickup_excess_units_500m: units500m,
         pickup_excess_fee_per_500m: safeFeePer500m,
         pickup_excess_fee: money(units500m * safeFeePer500m) as number,
+        pickup_distance_source: "mapbox_road",
         computation_status: "computed",
       };
     }
@@ -432,6 +498,7 @@ const passengerLng =
       takeout_pickup_excess_units_500m: pickupBreakdown.pickup_excess_units_500m,
       takeout_pickup_excess_fee_per_500m: pickupBreakdown.pickup_excess_fee_per_500m,
       takeout_pickup_excess_fee: pickupBreakdown.pickup_excess_fee,
+      takeout_pickup_distance_source: pickupBreakdown.pickup_distance_source,
       takeout_pickup_computation_status: pickupBreakdown.computation_status,
       takeout_total_payable: totalPayable,
       takeout_cash_collection_required: cashRequired,
@@ -468,7 +535,7 @@ const passengerLng =
       proposal: updateRes.data,
       pricing: snapshot,
       auth_mode: driverAuth.authMode,
-      guard: "takeout_driver_fee_proposal_v6_customer_cash_pickup_excess",
+      guard: "takeout_driver_fee_proposal_v7_customer_cash_road_distance",
     });
   } catch (err: any) {
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
