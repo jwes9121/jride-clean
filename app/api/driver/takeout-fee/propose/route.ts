@@ -7,6 +7,8 @@ export const revalidate = 0;
 const SERVICE_FEE = 15;
 const PROPOSAL_TTL_SECONDS = 300;
 const MAX_DELIVERY_FEE = 2000;
+const CUSTOMER_CASH_PICKUP_FREE_KM = 1.5;
+const CUSTOMER_CASH_PICKUP_EXCESS_ENV = "JRIDE_TAKEOUT_PICKUP_EXCESS_FEE_PER_500M";
 
 function text(v: any): string {
   return String(v ?? "").trim();
@@ -26,6 +28,86 @@ function money(v: any): number | null {
   const n = num(v);
   if (n === null) return null;
   return Math.round(n * 100) / 100;
+}
+
+function roundKm(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+function envMoney(name: string): number | null {
+  const raw = text(process.env[name]);
+  if (!raw) return null;
+  return money(raw);
+}
+
+function validLatLng(lat: any, lng: any): boolean {
+  const a = num(lat);
+  const b = num(lng);
+  if (a === null || b === null) return false;
+  return a >= 4 && a <= 22 && b >= 116 && b <= 127;
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const r = 6371;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
+}
+
+type DriverLocationSnapshot = {
+  lat: number | null;
+  lng: number | null;
+  status: string | null;
+  updated_at: string | null;
+};
+
+async function loadFreshDriverLocation(serviceSupabase: any, driverId: string): Promise<DriverLocationSnapshot | null> {
+  const loc = await serviceSupabase
+    .from("driver_locations")
+    .select("driver_id,lat,lng,status,updated_at")
+    .eq("driver_id", driverId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (loc.error || !loc.data) return null;
+  const row = loc.data as any;
+  const lat = num(row.lat);
+  const lng = num(row.lng);
+  return {
+    lat,
+    lng,
+    status: text(row.status) || null,
+    updated_at: text(row.updated_at) || null,
+  };
+}
+
+type CustomerCashPickupBreakdown = {
+  pickup_distance_km: number | null;
+  pickup_free_km: number;
+  pickup_billable_excess_km: number;
+  pickup_excess_units_500m: number;
+  pickup_excess_fee_per_500m: number;
+  pickup_excess_fee: number;
+  computation_status: "not_required" | "computed";
+};
+
+function noCustomerCashPickupBreakdown(): CustomerCashPickupBreakdown {
+  return {
+    pickup_distance_km: null,
+    pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
+    pickup_billable_excess_km: 0,
+    pickup_excess_units_500m: 0,
+    pickup_excess_fee_per_500m: 0,
+    pickup_excess_fee: 0,
+    computation_status: "not_required",
+  };
 }
 
 function json(status: number, payload: any) {
@@ -192,7 +274,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,vendor_id,passenger_name,to_label,town,created_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,vendor_id,passenger_name,to_label,town,dropoff_lat,dropoff_lng,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -271,8 +353,64 @@ export async function POST(req: NextRequest) {
       return json(409, { ok: false, error: "TAKEOUT_SUBTOTAL_MISSING", message: "Cannot propose delivery fee without a takeout item subtotal." });
     }
 
-    const totalPayable = money(computedSubtotal + SERVICE_FEE + deliveryFee) as number;
-    const cashRequired = computedSubtotal >= 500;
+    let pickupBreakdown = noCustomerCashPickupBreakdown();
+    if (routePlan === "customer_cash_first") {
+      const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
+      const passengerLat = num(order.dropoff_lat);
+      const passengerLng = num(order.dropoff_lng);
+
+      if (!driverLoc || !isOnlineLike(driverLoc.status) || minutesSince(driverLoc.updated_at) > 15 || !validLatLng(driverLoc.lat, driverLoc.lng)) {
+        return json(409, {
+          ok: false,
+          error: "DRIVER_LOCATION_REQUIRED",
+          message: "Fresh driver coordinates are required to compute customer cash pickup excess.",
+        });
+      }
+
+      if (!validLatLng(passengerLat, passengerLng)) {
+        return json(409, {
+          ok: false,
+          error: "PASSENGER_LOCATION_REQUIRED",
+          message: "Passenger delivery coordinates are required to compute customer cash pickup excess.",
+        });
+      }
+
+      const feePer500m = envMoney(CUSTOMER_CASH_PICKUP_EXCESS_ENV);
+      const pickupDistanceKm = roundKm(haversineKm(
+        driverLoc.lat as number,
+        driverLoc.lng as number,
+        passengerLat as number,
+        passengerLng as number
+      ));
+      const billableExcessKm = roundKm(Math.max(0, pickupDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM));
+      const units500m = billableExcessKm > 0 ? Math.ceil(billableExcessKm / 0.5) : 0;
+
+      if (units500m > 0 && (feePer500m === null || feePer500m < 0)) {
+        return json(409, {
+          ok: false,
+          error: "PICKUP_EXCESS_RATE_MISSING",
+          message: `Set ${CUSTOMER_CASH_PICKUP_EXCESS_ENV} before allowing customer_cash_first proposals beyond the free pickup allowance.`,
+          pickup_distance_km: pickupDistanceKm,
+          pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
+          pickup_billable_excess_km: billableExcessKm,
+          pickup_excess_units_500m: units500m,
+        });
+      }
+
+      const safeFeePer500m = feePer500m ?? 0;
+      pickupBreakdown = {
+        pickup_distance_km: pickupDistanceKm,
+        pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
+        pickup_billable_excess_km: billableExcessKm,
+        pickup_excess_units_500m: units500m,
+        pickup_excess_fee_per_500m: safeFeePer500m,
+        pickup_excess_fee: money(units500m * safeFeePer500m) as number,
+        computation_status: "computed",
+      };
+    }
+
+    const totalPayable = money(computedSubtotal + SERVICE_FEE + deliveryFee + pickupBreakdown.pickup_excess_fee) as number;
+    const cashRequired = routePlan === "customer_cash_first" || computedSubtotal >= 500;
     const nowIso = new Date().toISOString();
     const expiresIso = new Date(Date.now() + PROPOSAL_TTL_SECONDS * 1000).toISOString();
 
@@ -281,6 +419,13 @@ export async function POST(req: NextRequest) {
       food_subtotal: computedSubtotal,
       takeout_service_fee: SERVICE_FEE,
       takeout_delivery_fee: deliveryFee,
+      takeout_pickup_distance_km: pickupBreakdown.pickup_distance_km,
+      takeout_pickup_free_km: pickupBreakdown.pickup_free_km,
+      takeout_pickup_billable_excess_km: pickupBreakdown.pickup_billable_excess_km,
+      takeout_pickup_excess_units_500m: pickupBreakdown.pickup_excess_units_500m,
+      takeout_pickup_excess_fee_per_500m: pickupBreakdown.pickup_excess_fee_per_500m,
+      takeout_pickup_excess_fee: pickupBreakdown.pickup_excess_fee,
+      takeout_pickup_computation_status: pickupBreakdown.computation_status,
       takeout_total_payable: totalPayable,
       takeout_cash_collection_required: cashRequired,
       proposed_at: nowIso,
@@ -313,7 +458,7 @@ export async function POST(req: NextRequest) {
       proposal: updateRes.data,
       pricing: snapshot,
       auth_mode: driverAuth.authMode,
-      guard: "takeout_driver_fee_proposal_v5_5min_expiry_known_columns_only",
+      guard: "takeout_driver_fee_proposal_v6_customer_cash_pickup_excess",
     });
   } catch (err: any) {
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
