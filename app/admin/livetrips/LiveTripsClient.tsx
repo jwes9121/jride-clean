@@ -52,6 +52,19 @@ function statusEff(row: any): string {
   return st;
 }
 
+function statusGroup(row: any): FilterKey | "other" {
+  const st = statusEff(row);
+  if (["requested", "requesting", "pending", "searching", "dispatch", "assigned", "accepted", "ready"].includes(st)) return "dispatch";
+  if (["pending_fare", "fare_proposed"].includes(st)) return "pending_fare";
+  if (["driver_accepted"].includes(st)) return "driver_accepted";
+  if (["on_the_way", "enroute"].includes(st)) return "on_the_way";
+  if (["arrived"].includes(st)) return "arrived";
+  if (["in_progress", "on_trip"].includes(st)) return "in_progress";
+  if (["completed"].includes(st)) return "completed";
+  if (["cancelled", "canceled", "rejected"].includes(st)) return "cancelled";
+  return "other";
+}
+
 function bookingCode(row: any): string {
   return s(row?.booking_code ?? row?.bookingCode ?? row?.id);
 }
@@ -169,8 +182,8 @@ if (pageDrivers && pageDrivers.length > 0) {
       });
     }
 
-    // normal status filter
-    return rows.filter((r) => statusEff(r) === activeFilter);
+    // normal status filter, compatible with current production statuses.
+    return rows.filter((r) => statusGroup(r) === activeFilter);
   }, [trips, activeFilter, stuckTripIds]);
 
   const summary = useMemo(() => {
@@ -189,7 +202,7 @@ if (pageDrivers && pageDrivers.length > 0) {
     };
 
     for (const r of rows) {
-      const st = statusEff(r);
+      const st = statusGroup(r);
       if (counts[st] != null) counts[st] += 1;
 
       const code = bookingCode(r);

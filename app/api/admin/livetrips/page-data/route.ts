@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 /* PHASE_3E_TOWNZONE_DERIVE_START */
@@ -129,13 +129,10 @@ const debug: Record<string, any> = {};
     );
 
     if (rpcErr) {
-      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
-      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
-        details: rpcErr.message,
-      });
+      console.error("LIVETRIPS_RPC_ERROR_CONTINUING_WITH_FALLBACK", rpcErr);
     }
 
-    const trips = extractTripsAnyShape(rpcData);
+    const trips = extractTripsAnyShape(rpcErr ? null : rpcData);
 
     const existingCodes = new Set(
       trips
@@ -325,4 +322,5 @@ const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
     );
   }
 }
+
 
