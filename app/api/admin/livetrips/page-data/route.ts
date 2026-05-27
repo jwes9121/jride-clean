@@ -130,12 +130,12 @@ const debug: Record<string, any> = {};
 
     if (rpcErr) {
       console.error("LIVETRIPS_RPC_ERROR", rpcErr);
-      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
-        details: rpcErr.message,
-      });
+      if (debugEnabled) {
+        (debug as any).rpc_error = (rpcErr as any)?.message || String(rpcErr);
+      }
     }
 
-    const trips = extractTripsAnyShape(rpcData);
+    const trips = rpcErr ? [] : extractTripsAnyShape(rpcData);
 
     const existingCodes = new Set(
       trips
@@ -151,12 +151,12 @@ const debug: Record<string, any> = {};
         .filter(Boolean)
     );
 
-    const ACTIVE_STATUSES = ["requested", "pending", "ready", "assigned", "on_the_way", "arrived", "enroute", "on_trip"]; /* PHASE3C2_INCLUDE_REQUESTED_ACTIVE_STATUSES */
+    const ACTIVE_STATUSES = ["requested", "pending", "searching", "assigned", "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "enroute", "on_trip"]; /* JRIDE_LIVETRIPS_V6_ACTIVE_STATUSES */
 
     try {
       const { data: activeRows, error: activeErr } = await supabase
         .from("bookings")
-        .select("*, proposed_fare, verified_fare, pickup_distance_fee")
+        .select("*")
         .in("status", ACTIVE_STATUSES)
         .order("created_at", { ascending: false })
         .limit(250);
@@ -187,12 +187,16 @@ if (activeErr) {
             zone: b?.town ?? null,
             driver_id: b?.driver_id ?? (b as any)?.assigned_driver_id ?? null,
 
-            pickup_lat: b?.pickup_lat ?? null,
-            pickup_lng: b?.pickup_lng ?? null,
-            dropoff_lat: b?.dropoff_lat ?? null,
-            dropoff_lng: b?.dropoff_lng ?? null,
-            pickup_label: b?.pickup_label ?? b?.from_label ?? null,
-            dropoff_label: b?.dropoff_label ?? b?.to_label ?? null,
+            pickup_lat: b?.pickup_lat ?? b?.from_lat ?? b?.origin_lat ?? b?.vendor_lat ?? b?.store_lat ?? null,
+            pickup_lng: b?.pickup_lng ?? b?.from_lng ?? b?.origin_lng ?? b?.vendor_lng ?? b?.store_lng ?? null,
+            dropoff_lat: b?.dropoff_lat ?? b?.to_lat ?? b?.dest_lat ?? b?.destination_lat ?? b?.delivery_lat ?? null,
+            dropoff_lng: b?.dropoff_lng ?? b?.to_lng ?? b?.dest_lng ?? b?.destination_lng ?? b?.delivery_lng ?? null,
+            from_lat: b?.from_lat ?? b?.pickup_lat ?? b?.vendor_lat ?? b?.store_lat ?? null,
+            from_lng: b?.from_lng ?? b?.pickup_lng ?? b?.vendor_lng ?? b?.store_lng ?? null,
+            to_lat: b?.to_lat ?? b?.dropoff_lat ?? b?.delivery_lat ?? null,
+            to_lng: b?.to_lng ?? b?.dropoff_lng ?? b?.delivery_lng ?? null,
+            pickup_label: b?.pickup_label ?? b?.from_label ?? b?.vendor_name ?? b?.vendor_label ?? null,
+            dropoff_label: b?.dropoff_label ?? b?.to_label ?? b?.delivery_label ?? b?.address_text ?? null,
 
             created_at: b?.created_at ?? null,
             updated_at: b?.updated_at ?? null,
@@ -277,6 +281,16 @@ if (activeErr) {
   }
   // ===== JRIDE_DRIVERLOC_ENRICH_END =====
 const tripsOut = (Array.isArray(trips) ? trips : []).map((t: any) => ({
+    // ===== JRIDE_LIVETRIPS_V6_COORD_OUTPUT_BEGIN =====
+    pickup_lat: (t as any)?.pickup_lat ?? (t as any)?.from_lat ?? (t as any)?.origin_lat ?? (t as any)?.vendor_lat ?? (t as any)?.store_lat ?? null,
+    pickup_lng: (t as any)?.pickup_lng ?? (t as any)?.from_lng ?? (t as any)?.origin_lng ?? (t as any)?.vendor_lng ?? (t as any)?.store_lng ?? null,
+    dropoff_lat: (t as any)?.dropoff_lat ?? (t as any)?.to_lat ?? (t as any)?.dest_lat ?? (t as any)?.destination_lat ?? (t as any)?.delivery_lat ?? null,
+    dropoff_lng: (t as any)?.dropoff_lng ?? (t as any)?.to_lng ?? (t as any)?.dest_lng ?? (t as any)?.destination_lng ?? (t as any)?.delivery_lng ?? null,
+    from_lat: (t as any)?.from_lat ?? (t as any)?.pickup_lat ?? (t as any)?.vendor_lat ?? (t as any)?.store_lat ?? null,
+    from_lng: (t as any)?.from_lng ?? (t as any)?.pickup_lng ?? (t as any)?.vendor_lng ?? (t as any)?.store_lng ?? null,
+    to_lat: (t as any)?.to_lat ?? (t as any)?.dropoff_lat ?? (t as any)?.delivery_lat ?? null,
+    to_lng: (t as any)?.to_lng ?? (t as any)?.dropoff_lng ?? (t as any)?.delivery_lng ?? null,
+    // ===== JRIDE_LIVETRIPS_V6_COORD_OUTPUT_END =====
     // ===== STEP5D_TRIPSOUT_EMERGENCY =====
     is_emergency: Boolean(
       (t as any)?.is_emergency ??
