@@ -124,15 +124,21 @@ export async function GET(req: Request) {
         } : undefined
       });
     }
-    const { data: rpcData, error: rpcErr } = await supabase.rpc(
+    const { data: rpcDataRaw, error: rpcErr } = await supabase.rpc(
       "admin_get_live_trips_page_data_v2"
     );
 
+    // Production safety: LiveTrips must not go dark just because the optional RPC
+    // is stale or references a missing analytics column. If the RPC fails, keep
+    // serving active bookings through the schema-safe fallback below.
+    const rpcData = rpcErr ? null : rpcDataRaw;
+
     if (rpcErr) {
-      console.error("LIVETRIPS_RPC_ERROR", rpcErr);
-      return bad("LiveTrips RPC failed", "LIVETRIPS_RPC_ERROR", 500, {
-        details: rpcErr.message,
-      });
+      console.error("LIVETRIPS_RPC_ERROR_NON_FATAL", rpcErr);
+      if (debugEnabled) {
+        (debug as any).rpc_error = (rpcErr as any)?.message || String(rpcErr);
+        (debug as any).rpc_fallback_used = true;
+      }
     }
 
     const trips = extractTripsAnyShape(rpcData);
