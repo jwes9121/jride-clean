@@ -15,6 +15,10 @@ type TakeoutOrder = {
   takeout_service_fee?: number | string | null;
   takeout_total_payable?: number | string | null;
   takeout_cash_collection_required?: boolean | null;
+  takeout_pickup_distance_km?: number | string | null;
+  takeout_pickup_free_km?: number | string | null;
+  takeout_pickup_billable_excess_km?: number | string | null;
+  takeout_pickup_excess_fee?: number | string | null;
   takeout_fee_expires_at?: string | null;
   total_bill?: number | string | null;
   takeout_items_subtotal?: number | string | null;
@@ -181,6 +185,14 @@ export default function TakeoutTrackPage() {
     const deliveryFee = toNum(order?.takeout_delivery_fee);
     const serviceFee = toNum(order?.takeout_service_fee || 15);
     const totalPayable = toNum(order?.takeout_total_payable);
+    // JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
+    // Prefer explicit backend fields. If the current read API has not exposed them yet, infer the hidden line item from total - food - delivery - service.
+    const explicitPickupExcessFee = toNum(order?.takeout_pickup_excess_fee);
+    const inferredPickupExcessFee = Math.max(0, Number((totalPayable - foodSubtotal - deliveryFee - serviceFee).toFixed(2)));
+    const pickupExcessFee = explicitPickupExcessFee > 0 ? explicitPickupExcessFee : inferredPickupExcessFee;
+    const pickupDistanceKm = toNum(order?.takeout_pickup_distance_km);
+    const pickupFreeKm = toNum(order?.takeout_pickup_free_km || 1.5);
+    const pickupBillableExcessKm = toNum(order?.takeout_pickup_billable_excess_km);
     const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
     const readyToConfirm = !isCompleted && !isCancelled && pricingStatus === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
 
@@ -198,6 +210,10 @@ export default function TakeoutTrackPage() {
       deliveryFee,
       serviceFee,
       totalPayable,
+      pickupExcessFee,
+      pickupDistanceKm,
+      pickupFreeKm,
+      pickupBillableExcessKm,
       expiresIn,
       readyToConfirm,
     };
@@ -262,6 +278,19 @@ export default function TakeoutTrackPage() {
                 <span className="text-slate-600">JRide service fee</span>
                 <span>{state.serviceFee > 0 ? money(state.serviceFee) : "--"}</span>
               </div>
+              {state.pickupExcessFee > 0 ? (
+                <div className="mt-1 flex justify-between gap-3">
+                  <span className="text-slate-600">Pickup excess fee</span>
+                  <span>{money(state.pickupExcessFee)}</span>
+                </div>
+              ) : null}
+              {state.pickupExcessFee > 0 ? (
+                <div className="mt-1 text-xs text-slate-500">
+                  Pickup allowance: {state.pickupFreeKm > 0 ? state.pickupFreeKm.toFixed(1) : "1.5"} km free
+                  {state.pickupDistanceKm > 0 ? " | Pickup distance: " + state.pickupDistanceKm.toFixed(2) + " km" : ""}
+                  {state.pickupBillableExcessKm > 0 ? " | Billable excess: " + state.pickupBillableExcessKm.toFixed(2) + " km" : ""}
+                </div>
+              ) : null}
               <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-base">
                 <span className="font-semibold">Total payable</span>
                 <span className="font-bold">{state.totalPayable > 0 ? money(state.totalPayable) : "Pending"}</span>

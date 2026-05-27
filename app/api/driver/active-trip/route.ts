@@ -99,6 +99,28 @@ function s(v: unknown): string | null {
   return x.length > 0 ? x : null;
 }
 
+// JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
+// Read-only helper for pickup excess values persisted in takeout_pricing_snapshot.
+function jrideTakeoutPricingSnapshot(row: any): any {
+  const raw = row?.takeout_pricing_snapshot ?? row?.pricing_snapshot ?? null;
+  if (!raw) return {};
+  if (typeof raw === "object") return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function jrideTakeoutSnapshotNumber(row: any, key: string): number | null {
+  const snap = jrideTakeoutPricingSnapshot(row);
+  return n(row?.[key]) ?? n(snap?.[key]);
+}
+
 function statusOf(raw: unknown): string {
   const s0 = String(raw ?? "").trim().toLowerCase();
   if (s0 === "requested" || s0 === "searching") return "searching";
@@ -597,6 +619,12 @@ export async function GET(req: NextRequest) {
     const takeoutDeliveryFeeForDriver = isTakeoutBooking ? jrideTakeoutDeliveryFeeForDriver(booking as any) : null;
     const takeoutConfirmedAtForDriver = isTakeoutBooking ? jrideTakeoutConfirmedAt(booking as any) : null;
     const takeoutTotalPayableForDriver = isTakeoutBooking ? jrideTakeoutTotalPayableForDriver(booking as any) : null;
+    const takeoutPickupDistanceKmForDriver = isTakeoutBooking ? jrideTakeoutSnapshotNumber(booking as any, "takeout_pickup_distance_km") : null;
+    const takeoutPickupFreeKmForDriver = isTakeoutBooking ? jrideTakeoutSnapshotNumber(booking as any, "takeout_pickup_free_km") : null;
+    const takeoutPickupBillableExcessKmForDriver = isTakeoutBooking ? jrideTakeoutSnapshotNumber(booking as any, "takeout_pickup_billable_excess_km") : null;
+    const takeoutPickupExcessUnits500mForDriver = isTakeoutBooking ? jrideTakeoutSnapshotNumber(booking as any, "takeout_pickup_excess_units_500m") : null;
+    const takeoutPickupExcessFeePer500mForDriver = isTakeoutBooking ? jrideTakeoutSnapshotNumber(booking as any, "takeout_pickup_excess_fee_per_500m") : null;
+    const takeoutPickupExcessFeeForDriver = isTakeoutBooking ? jrideTakeoutSnapshotNumber(booking as any, "takeout_pickup_excess_fee") : null;
     const takeoutPassengerConfirmedTotal = isTakeoutBooking && (
       takeoutPricingStatusForDriver === "customer_confirmed" ||
       takeoutPricingStatusForDriver === "confirmed" ||
@@ -627,6 +655,14 @@ export async function GET(req: NextRequest) {
       driver_delivery_fee: takeoutDeliveryFeeForDriver,
       delivery_fee: takeoutDeliveryFeeForDriver,
       takeout_total_payable: takeoutTotalPayableForDriver,
+      // JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
+      takeout_pickup_distance_km: takeoutPickupDistanceKmForDriver,
+      takeout_pickup_free_km: takeoutPickupFreeKmForDriver,
+      takeout_pickup_billable_excess_km: takeoutPickupBillableExcessKmForDriver,
+      takeout_pickup_excess_units_500m: takeoutPickupExcessUnits500mForDriver,
+      takeout_pickup_excess_fee_per_500m: takeoutPickupExcessFeePer500mForDriver,
+      takeout_pickup_excess_fee: takeoutPickupExcessFeeForDriver,
+      pickup_excess_fee: takeoutPickupExcessFeeForDriver,
       cash_collection_required: cashCollectionRequired,
       takeout_cash_collection_required: cashCollectionRequired,
       cash_collection_confirmed: cashCollectionConfirmed,

@@ -274,7 +274,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,vendor_id,passenger_name,from_label,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,vendor_id,passenger_name,to_label,town,dropoff_lat,dropoff_lng,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -356,26 +356,8 @@ export async function POST(req: NextRequest) {
     let pickupBreakdown = noCustomerCashPickupBreakdown();
     if (routePlan === "customer_cash_first") {
       const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
-      // CUSTOMER_CASH_PICKUP_EXCESS_V2
-      // For customer_cash_first, pickup excess is driver -> passenger.
-      // In bookings, the passenger cash collection point is stored as pickup_lat/pickup_lng.
-      // Do not use vendor -> passenger or passenger -> vendor here.
-      const passengerLat =
-        num(order.pickup_lat) ??
-        num(body?.passenger_lat) ??
-        num(body?.passengerLat) ??
-        num(body?.customer_lat) ??
-        num(body?.customerLat) ??
-        num(body?.pickup_lat) ??
-        num(body?.pickupLat);
-      const passengerLng =
-        num(order.pickup_lng) ??
-        num(body?.passenger_lng) ??
-        num(body?.passengerLng) ??
-        num(body?.customer_lng) ??
-        num(body?.customerLng) ??
-        num(body?.pickup_lng) ??
-        num(body?.pickupLng);
+      const passengerLat = num(order.dropoff_lat);
+      const passengerLng = num(order.dropoff_lng);
 
       if (!driverLoc || !isOnlineLike(driverLoc.status) || minutesSince(driverLoc.updated_at) > 15 || !validLatLng(driverLoc.lat, driverLoc.lng)) {
         return json(409, {
@@ -389,7 +371,7 @@ export async function POST(req: NextRequest) {
         return json(409, {
           ok: false,
           error: "PASSENGER_LOCATION_REQUIRED",
-          message: "Passenger pickup coordinates are required to compute customer cash pickup excess.",
+          message: "Passenger delivery coordinates are required to compute customer cash pickup excess.",
         });
       }
 
@@ -450,6 +432,8 @@ export async function POST(req: NextRequest) {
       expires_at: expiresIso,
       takeout_route_plan: routePlan,
       route_plan: routePlan,
+      // JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
+      // Persist pickup excess breakdown so read routes and UIs can display the hidden total line item.
     };
 
     const updateRes = await serviceSupabase
@@ -463,10 +447,11 @@ export async function POST(req: NextRequest) {
         takeout_fee_proposed_at: nowIso,
         takeout_fee_expires_at: expiresIso,
         takeout_route_plan: routePlan,
+        takeout_pricing_snapshot: snapshot,
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at")
+      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_pricing_snapshot")
       .single();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });
