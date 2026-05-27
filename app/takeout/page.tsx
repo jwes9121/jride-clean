@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -998,7 +998,14 @@ export default function TakeoutPage() {
 
   function setItemQty(id: string, nextQty: number) {
     setSubmitted(false);
-    setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(99, Math.floor(toNum(nextQty)))) }));
+
+    const item = (menu || []).find((m: any) => String(m?.id || "") === String(id || ""));
+    const rawRemaining = (item as any)?.remaining_quantity;
+    const hasRemainingLimit = rawRemaining !== null && rawRemaining !== undefined && String(rawRemaining).trim() !== "";
+    const remainingLimit = hasRemainingLimit ? Math.max(0, Math.floor(toNum(rawRemaining))) : 99;
+    const cappedQty = Math.max(0, Math.min(remainingLimit, Math.floor(toNum(nextQty))));
+
+    setQty((q) => ({ ...q, [id]: cappedQty }));
   }
 
   async function submit() {
@@ -1536,7 +1543,11 @@ export default function TakeoutPage() {
               <div className="mt-2 space-y-2">
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
-                  const disabled = vendorClosed || !m._available;
+                  const rawRemaining = (m as any)?.remaining_quantity;
+                  const hasRemainingLimit = rawRemaining !== null && rawRemaining !== undefined && String(rawRemaining).trim() !== "";
+                  const remainingLimit = hasRemainingLimit ? Math.max(0, Math.floor(toNum(rawRemaining))) : 99;
+                  const plusDisabled = q >= remainingLimit;
+                  const disabled = vendorClosed || !m._available || (hasRemainingLimit && remainingLimit <= 0);
                   return (
                     <div
                       key={m.id}
@@ -1599,7 +1610,8 @@ export default function TakeoutPage() {
                         <button
                           type="button"
                           className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
-                          disabled={disabled}
+                          disabled={disabled || plusDisabled}
+                          title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
                         >
                           +
