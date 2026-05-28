@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -201,8 +201,11 @@ export async function GET(req: NextRequest) {
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
             accepting_orders: vendor?.accepting_orders !== false,
+            vendor_lat: vendor?.vendor_lat ?? null,
+            vendor_lng: vendor?.vendor_lng ?? null,
+            vendor_location_label: cleanString(vendor?.vendor_location_label || ""),
           }
-        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true },
+        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true, vendor_lat: null, vendor_lng: null, vendor_location_label: "" },
       items: menu,
       used: menu.length,
     });
@@ -225,10 +228,23 @@ export async function POST(req: NextRequest) {
   try {
     if (action === "profile") {
       const logoUpload = await uploadImage(admin, vendorId, "logo", body?.logo_data_url || body?.logoDataUrl);
+      const vendorLatRaw = body?.vendor_lat ?? body?.vendorLat;
+      const vendorLngRaw = body?.vendor_lng ?? body?.vendorLng;
+      const vendorLat = vendorLatRaw === null || vendorLatRaw === undefined || vendorLatRaw === "" ? null : Number(vendorLatRaw);
+      const vendorLng = vendorLngRaw === null || vendorLngRaw === undefined || vendorLngRaw === "" ? null : Number(vendorLngRaw);
+      if (vendorLat !== null && (!Number.isFinite(vendorLat) || vendorLat < -90 || vendorLat > 90)) {
+        return json(400, { ok: false, error: "INVALID_VENDOR_LAT", message: "Vendor latitude is invalid" });
+      }
+      if (vendorLng !== null && (!Number.isFinite(vendorLng) || vendorLng < -180 || vendorLng > 180)) {
+        return json(400, { ok: false, error: "INVALID_VENDOR_LNG", message: "Vendor longitude is invalid" });
+      }
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name),
         town: cleanString(body?.town),
         accepting_orders: body?.accepting_orders !== false && body?.acceptingOrders !== false,
+        vendor_lat: vendorLat,
+        vendor_lng: vendorLng,
+        vendor_location_label: cleanString(body?.vendor_location_label || body?.vendorLocationLabel),
       };
       if (logoUpload.url) patch.logo_url = logoUpload.url;
       for (const k of Object.keys(patch)) {
@@ -306,5 +322,6 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
   }
 }
+
 
 

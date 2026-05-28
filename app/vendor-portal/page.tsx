@@ -355,6 +355,9 @@ export default function VendorPortalPage() {
 
   const [profileName, setProfileName] = useState("");
   const [profileTown, setProfileTown] = useState("");
+  const [vendorLat, setVendorLat] = useState("");
+  const [vendorLng, setVendorLng] = useState("");
+  const [vendorLocationLabel, setVendorLocationLabel] = useState("");
   const [acceptingOrders, setAcceptingOrders] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
@@ -575,12 +578,18 @@ export default function VendorPortalPage() {
       setProfile(v);
       setProfileName(clean(v?.name || (vendorRowForTown ? vendorLabel(vendorRowForTown as any) : vid)));
       setProfileTown(normalizeTakeoutTown(v?.town || vendorRowForTown?.town));
+      setVendorLat(v?.vendor_lat == null ? "" : String(v.vendor_lat));
+      setVendorLng(v?.vendor_lng == null ? "" : String(v.vendor_lng));
+      setVendorLocationLabel(clean(v?.vendor_location_label || ""));
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
       setMenu(items);
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor menu"));
       setProfile(null);
+      setVendorLat("");
+      setVendorLng("");
+      setVendorLocationLabel("");
       setMenu([]);
     } finally {
       if (!silent) setBusy(false);
@@ -683,6 +692,9 @@ export default function VendorPortalPage() {
         name: profileName,
         town: profileTown,
         accepting_orders: acceptingOrders,
+        vendor_lat: vendorLat,
+        vendor_lng: vendorLng,
+        vendor_location_label: vendorLocationLabel,
         logo_data_url: logoDataUrl,
       });
       setMessage(j?.warning ? "Profile saved, but image warning: " + j.warning : "Vendor profile saved.");
@@ -710,6 +722,9 @@ export default function VendorPortalPage() {
         name: profileName,
         town: profileTown,
         accepting_orders: nextOpen,
+        vendor_lat: vendorLat,
+        vendor_lng: vendorLng,
+        vendor_location_label: vendorLocationLabel,
       });
       setAcceptingOrders(nextOpen);
       setMessage(j?.warning ? "Vendor status saved, but image warning: " + j.warning : nextOpen ? "Vendor is now open for orders." : "Vendor is now closed for new orders.");
@@ -1143,6 +1158,24 @@ export default function VendorPortalPage() {
                 </select>
                 <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct passenger store location.</div>
 
+                <div className="mt-4 rounded-2xl border bg-white p-3">
+                  <div className="text-sm font-semibold text-slate-900">Exact vendor pickup pin</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Set the real store pickup coordinates. This is the source for future passenger map preview and driver pickup routing.</div>
+                  <label className="mt-3 block text-xs font-medium text-slate-700">Location label</label>
+                  <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLocationLabel} onChange={(e) => setVendorLocationLabel(e.target.value)} placeholder="Example: Beside municipal hall, front of main entrance" />
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700">Latitude</label>
+                      <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLat} onChange={(e) => setVendorLat(e.target.value)} placeholder="16.833000" inputMode="decimal" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700">Longitude</label>
+                      <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLng} onChange={(e) => setVendorLng(e.target.value)} placeholder="121.100000" inputMode="decimal" />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-500">V1 stores coordinates only. Map picker UI comes next after this save path is verified green.</div>
+                </div>
+
                 <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
                 <input
                   className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm"
@@ -1567,6 +1600,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
