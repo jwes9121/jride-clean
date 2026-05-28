@@ -280,16 +280,36 @@ export default function TakeoutTrackPage() {
               </div>
               {state.pickupExcessFee > 0 ? (
                 <div className="mt-1 flex justify-between gap-3">
-                  <span className="text-slate-600">Pickup excess fee</span>
+                  <span className="text-slate-600">Pickup distance fee</span>
                   <span>{money(state.pickupExcessFee)}</span>
                 </div>
               ) : null}
               {state.pickupExcessFee > 0 ? (
-                <div className="mt-1 text-xs text-slate-500">
-                  Pickup allowance: {state.pickupFreeKm > 0 ? state.pickupFreeKm.toFixed(1) : "1.5"} km free
-                  {state.pickupDistanceKm > 0 ? " | Pickup distance: " + state.pickupDistanceKm.toFixed(2) + " km" : ""}
-                  {state.pickupBillableExcessKm > 0 ? " | Billable excess: " + state.pickupBillableExcessKm.toFixed(2) + " km" : ""}
-                </div>
+                <details className="mt-2 rounded border border-slate-200 bg-white p-2 text-xs text-slate-700">
+                  <summary className="cursor-pointer font-semibold text-slate-800">
+                    Show pickup distance fee breakdown
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-600">Nearest available driver road distance</span>
+                      <span>{state.pickupDistanceKm > 0 ? state.pickupDistanceKm.toFixed(2) + " km" : "--"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-600">Free pickup allowance</span>
+                      <span>{state.pickupFreeKm > 0 ? state.pickupFreeKm.toFixed(1) : "1.5"} km</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-600">Billable pickup distance</span>
+                      <span>{state.pickupBillableExcessKm > 0 ? state.pickupBillableExcessKm.toFixed(2) + " km" : "--"}</span>
+                    </div>
+                    <div className="border-t pt-1 text-slate-500">
+                      First 10 km beyond the free allowance: PHP 20 per 500 m.
+                    </div>
+                    <div className="text-slate-500">
+                      Distance beyond that: PHP 10 per additional km.
+                    </div>
+                  </div>
+                </details>
               ) : null}
               <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-base">
                 <span className="font-semibold">Total payable</span>
@@ -305,7 +325,7 @@ export default function TakeoutTrackPage() {
 
             {state.pricingStatus === "pricing_pending" ? (
               <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
-                {state.vendorHasAccepted ? "Vendor accepted. Looking for a nearby driver to propose the delivery fee." : "Waiting for vendor acceptance before driver fee proposal."}
+                {state.vendorHasAccepted ? "Vendor accepted. Waiting for a nearby driver to propose the delivery fee." : "Your order has been sent. Please wait while a nearby driver and the vendor confirm availability."}
               </div>
             ) : null}
 
