@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -587,7 +587,20 @@ export default function TakeoutPage() {
     return vendors.find((v) => vendorKey(v) === id) || null;
   }, [vendors, vendorId]);
 
+function selectedAddressTown(
+  vendorTownFilter: string,
+  selectedVendor: any
+): string {
+  const vendorTownValue =
+    String(
+      selectedVendor?.town ||
+      selectedVendor?.municipality ||
+      vendorTownFilter ||
+      ""
+    ).trim();
 
+  return normalizeTakeoutTown(vendorTownValue);
+}
   const selectedTownForAddress = useMemo(() => {
     return selectedAddressTown(vendorTownFilter, selectedVendor);
   }, [vendorTownFilter, selectedVendor]);
