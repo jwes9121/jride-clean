@@ -289,24 +289,61 @@ export default function TakeoutTrackPage() {
                   <summary className="cursor-pointer font-semibold text-slate-800">
                     Show pickup distance fee breakdown
                   </summary>
+
                   <div className="mt-2 space-y-1">
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">Nearest available driver road distance</span>
-                      <span>{state.pickupDistanceKm > 0 ? state.pickupDistanceKm.toFixed(2) + " km" : "--"}</span>
+                      <span className="text-slate-600">
+                        Nearest available driver road distance
+                      </span>
+                      <span>
+                        {state.pickupDistanceKm > 0
+                          ? state.pickupDistanceKm.toFixed(2) + " km"
+                          : "--"}
+                      </span>
                     </div>
+
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">Free pickup allowance</span>
-                      <span>{state.pickupFreeKm > 0 ? state.pickupFreeKm.toFixed(1) : "1.5"} km</span>
+                      <span className="text-slate-600">
+                        Free pickup allowance
+                      </span>
+                      <span>
+                        {state.pickupFreeKm > 0
+                          ? state.pickupFreeKm.toFixed(1)
+                          : "1.5"} km
+                      </span>
                     </div>
+
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">Billable pickup distance</span>
-                      <span>{state.pickupBillableExcessKm > 0 ? state.pickupBillableExcessKm.toFixed(2) + " km" : "--"}</span>
+                      <span className="text-slate-600">
+                        Billable pickup distance
+                      </span>
+                      <span>
+                        {state.pickupBillableExcessKm > 0
+                          ? state.pickupBillableExcessKm.toFixed(2) + " km"
+                          : "--"}
+                      </span>
                     </div>
-                    <div className="border-t pt-1 text-slate-500">
-                      First 10 km beyond the free allowance: PHP 20 per 500 m.
+
+                    <div className="border-t pt-2 text-slate-700">
+                      <div className="font-medium">
+                        Pickup distance fee rules
+                      </div>
+
+                      <div className="mt-1">
+                        First 10 km after the free allowance:
+                        PHP 20 per 500 meters
+                      </div>
+
+                      <div>
+                        Beyond 10 km:
+                        PHP 10 per additional km
+                      </div>
                     </div>
-                    <div className="text-slate-500">
-                      Distance beyond that: PHP 10 per additional km.
+
+                    <div className="rounded bg-amber-50 p-2 text-amber-800">
+                      Long-distance pickup may increase delivery cost
+                      when the nearest available driver is far from
+                      the pickup location.
                     </div>
                   </div>
                 </details>
