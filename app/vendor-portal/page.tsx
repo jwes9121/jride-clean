@@ -1,5 +1,7 @@
 ﻿"use client";
 
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V4
@@ -93,6 +95,29 @@ type TakeoutOrder = {
 };
 
 type VendorAnalyticsRange = "today" | "week" | "month" | "all";
+
+const VENDOR_PORTAL_MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+if (VENDOR_PORTAL_MAPBOX_TOKEN) {
+  mapboxgl.accessToken = VENDOR_PORTAL_MAPBOX_TOKEN;
+}
+
+type VendorLngLat = [number, number];
+
+function parseCoordValue(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(String(v).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function townFallbackCenter(town: string): VendorLngLat {
+  const key = String(town || "").trim().toLowerCase();
+  if (key === "lagawe") return [121.0998, 16.7996];
+  if (key === "hingyon") return [121.1025, 16.8330];
+  if (key === "banaue") return [121.0609, 16.9186];
+  if (key === "lamut") return [121.2236, 16.6494];
+  if (key === "kiangan") return [121.0834, 16.7750];
+  return [121.1000, 16.8330];
+}
 
 const MAX_ITEMS = 15;
 const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
@@ -358,6 +383,11 @@ export default function VendorPortalPage() {
   const [vendorLat, setVendorLat] = useState("");
   const [vendorLng, setVendorLng] = useState("");
   const [vendorLocationLabel, setVendorLocationLabel] = useState("");
+  const vendorMapContainerRef = useRef<HTMLDivElement | null>(null);
+  const vendorMapRef = useRef<mapboxgl.Map | null>(null);
+  const vendorMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const [vendorMapReady, setVendorMapReady] = useState(false);
+  const [vendorMapMessage, setVendorMapMessage] = useState("");
   const [acceptingOrders, setAcceptingOrders] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState("");
@@ -640,6 +670,101 @@ export default function VendorPortalPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.town, selectedVendor?.town]);
+
+  useEffect(() => {
+    if (!vendorMapContainerRef.current) return;
+    if (vendorMapRef.current) return;
+
+    if (!VENDOR_PORTAL_MAPBOX_TOKEN) {
+      setVendorMapMessage("Mapbox token is missing. Use manual latitude and longitude fields for now.");
+      return;
+    }
+
+    const lat = parseCoordValue(vendorLat);
+    const lng = parseCoordValue(vendorLng);
+    const center = lat !== null && lng !== null ? [lng, lat] as VendorLngLat : townFallbackCenter(profileTown);
+
+    const map = new mapboxgl.Map({
+      container: vendorMapContainerRef.current,
+      style: "mapbox://styles/mapbox/streets-v11",
+      center,
+      zoom: lat !== null && lng !== null ? 16 : 13,
+    });
+
+    vendorMapRef.current = map;
+
+    const placeMarker = (coord: VendorLngLat) => {
+      if (!vendorMarkerRef.current) {
+        vendorMarkerRef.current = new mapboxgl.Marker({ draggable: true })
+          .setLngLat(coord)
+          .addTo(map);
+        const marker = vendorMarkerRef.current;
+if (!marker) return;
+
+marker.on("dragend", () => {
+          const pos = marker.getLngLat();
+          if (!pos) return;
+          setVendorLat(pos.lat.toFixed(6));
+          setVendorLng(pos.lng.toFixed(6));
+          if (!vendorLocationLabel.trim()) {
+            setVendorLocationLabel("Pinned vendor pickup location");
+          }
+          setVendorMapMessage("Pickup pin updated. Click Save profile details to store it.");
+        });
+      } else {
+        vendorMarkerRef.current.setLngLat(coord);
+      }
+    };
+
+    map.on("load", () => {
+      setVendorMapReady(true);
+      placeMarker(center);
+      setVendorMapMessage("Click the map or drag the pin to set the exact pickup point.");
+    });
+
+    map.on("click", (ev: mapboxgl.MapMouseEvent) => {
+      const coord: VendorLngLat = [ev.lngLat.lng, ev.lngLat.lat];
+      placeMarker(coord);
+      setVendorLat(ev.lngLat.lat.toFixed(6));
+      setVendorLng(ev.lngLat.lng.toFixed(6));
+      if (!vendorLocationLabel.trim()) {
+        setVendorLocationLabel("Pinned vendor pickup location");
+      }
+      setVendorMapMessage("Pickup pin updated. Click Save profile details to store it.");
+    });
+
+    return () => {
+      vendorMarkerRef.current = null;
+      vendorMapRef.current = null;
+      setVendorMapReady(false);
+      map.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const map = vendorMapRef.current;
+    if (!map) return;
+    const lat = parseCoordValue(vendorLat);
+    const lng = parseCoordValue(vendorLng);
+    if (lat === null || lng === null) return;
+    const coord: VendorLngLat = [lng, lat];
+    if (!vendorMarkerRef.current) {
+      vendorMarkerRef.current = new mapboxgl.Marker({ draggable: true }).setLngLat(coord).addTo(map);
+    } else {
+      vendorMarkerRef.current.setLngLat(coord);
+    }
+    map.easeTo({ center: coord, zoom: Math.max(map.getZoom(), 15) });
+  }, [vendorLat, vendorLng]);
+
+  useEffect(() => {
+    const map = vendorMapRef.current;
+    if (!map) return;
+    const lat = parseCoordValue(vendorLat);
+    const lng = parseCoordValue(vendorLng);
+    if (lat !== null && lng !== null) return;
+    map.easeTo({ center: townFallbackCenter(profileTown), zoom: 13 });
+  }, [profileTown, vendorLat, vendorLng]);
 
   function resetItemForm() {
     setEditingId("");
@@ -1173,7 +1298,13 @@ export default function VendorPortalPage() {
                       <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLng} onChange={(e) => setVendorLng(e.target.value)} placeholder="121.100000" inputMode="decimal" />
                     </div>
                   </div>
-                  <div className="mt-2 text-[11px] text-slate-500">V1 stores coordinates only. Map picker UI comes next after this save path is verified green.</div>
+                  <div className="mt-3 overflow-hidden rounded-2xl border bg-white">
+                    <div ref={vendorMapContainerRef} className="h-64 w-full" />
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    {vendorMapMessage || (vendorMapReady ? "Click the map or drag the pin to set the exact vendor pickup point." : "Loading vendor map picker...")}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">Manual latitude and longitude fields remain available as fallback.</div>
                 </div>
 
                 <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
@@ -1600,6 +1731,8 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
+
 
 
 
