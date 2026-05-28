@@ -292,8 +292,16 @@ export default function VendorTakeoutOrdersPage() {
   }, [orders, showCompleted]);
 
   const pendingVendorOrders = useMemo(() => {
-    return orders.filter((order) => displayStatus(order) === "vendor_pending");
-  }, [orders]);
+  return orders.filter((order) => {
+    const vendorStatus = text(order.vendor_status).toLowerCase();
+    const rideStatus = text(order.status).toLowerCase();
+
+    return (
+      vendorStatus === "vendor_pending" ||
+      rideStatus === "requested"
+    );
+  });
+}, [orders]);
 
   const pendingVendorKey = useMemo(() => {
     return pendingVendorOrders
