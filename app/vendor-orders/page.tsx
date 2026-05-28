@@ -136,7 +136,7 @@ export default function VendorTakeoutOrdersPage() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [soundUnlocked, setSoundUnlocked] = useState(false);
   const [soundError, setSoundError] = useState("");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
   const alertTimerRef = useRef<number | null>(null);
   const alertStartedAtRef = useRef(0);
@@ -157,17 +157,54 @@ export default function VendorTakeoutOrdersPage() {
     }
   }, []);
 
-  const playVendorAlert = useCallback(async () => {
-  if (!audioUnlockedRef.current) return;
+  const markVendorAudioUnlocked = useCallback(() => {
+    setSoundUnlocked(true);
+    audioUnlockedRef.current = true;
+  }, []);
 
-  try {
-    const audio = new Audio(VENDOR_ALERT_SOUND_URL);
-    audio.volume = 1;
-    await audio.play();
-  } catch {
-    // Never break vendor page because of browser audio issues.
-  }
-}, []);
+  const playVendorAlert = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (!audioUnlockedRef.current) return;
+
+    try {
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (AudioContextCtor) {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContextCtor();
+        }
+
+        const ctx = audioContextRef.current;
+
+if (ctx.state === "suspended") {
+  await ctx.resume();
+}
+
+const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.65);
+
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.7);
+        return;
+      }
+
+      const audio = new Audio(VENDOR_ALERT_SOUND_URL);
+      audio.volume = 1;
+      await audio.play();
+    } catch (err) {
+      setSoundError("Vendor sound could not play. Click Test sound once, then keep this page open.");
+    }
+  }, []);
 
   const stopVendorAlertLoop = useCallback(() => {
     if (alertTimerRef.current != null) {
@@ -299,8 +336,7 @@ export default function VendorTakeoutOrdersPage() {
 
   useEffect(() => {
     function unlockAudio() {
-      setSoundUnlocked(true);
-      audioUnlockedRef.current = true;
+      markVendorAudioUnlocked();
     }
 
     window.addEventListener("pointerdown", unlockAudio);
@@ -310,7 +346,7 @@ export default function VendorTakeoutOrdersPage() {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
-  }, []);
+  }, [markVendorAudioUnlocked]);
 
   useEffect(() => {
     stopVendorAlertLoop();
