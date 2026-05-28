@@ -157,17 +157,6 @@ export default function VendorTakeoutOrdersPage() {
     }
   }, []);
 
-  const ensureAudio = useCallback(() => {
-    if (typeof window === "undefined") return null;
-    if (!audioRef.current) {
-      const audio = new Audio(VENDOR_ALERT_SOUND_URL);
-      audio.preload = "auto";
-      audio.volume = 1;
-      audioRef.current = audio;
-    }
-    return audioRef.current;
-  }, []);
-
   const playVendorAlert = useCallback(async () => {
   if (!audioUnlockedRef.current) return;
 
@@ -312,7 +301,6 @@ export default function VendorTakeoutOrdersPage() {
     function unlockAudio() {
       setSoundUnlocked(true);
       audioUnlockedRef.current = true;
-      ensureAudio();
     }
 
     window.addEventListener("pointerdown", unlockAudio);
@@ -322,7 +310,7 @@ export default function VendorTakeoutOrdersPage() {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
-  }, [ensureAudio]);
+  }, []);
 
   useEffect(() => {
     stopVendorAlertLoop();
