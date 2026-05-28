@@ -1450,10 +1450,9 @@ export default function VendorPortalPage() {
                   </button>
                   <span>Vendor alert sound: {vendorAlertSoundEnabled ? "on" : "off"}</span>
                   {pendingVendorOrdersForAlert.length > 0 ? <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">Pending accept: {pendingVendorOrdersForAlert.length}</span> : null}
-                  <span>Audio unlocked: {vendorAlertDebug.audioUnlocked ? "yes" : "no"}</span>
-                  <span>Pending count: {vendorAlertDebug.pendingCount}</span>
-                  <span>Loop: {vendorAlertDebug.loopState}</span>
-                  <span>Last: {vendorAlertDebug.lastAttempt} - {vendorAlertDebug.lastResult}</span>
+                  <span className={vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "text-emerald-700" : "text-slate-500"}>
+                    {vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "Sound ready" : "Sound off"}
+                  </span>
                 </div>
                 <audio ref={vendorAlertAudioRef} src={VENDOR_PORTAL_ALERT_SOUND_URL} preload="auto" className="hidden" />
               </div>
@@ -1568,6 +1567,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
