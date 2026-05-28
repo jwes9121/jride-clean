@@ -96,7 +96,10 @@ type TakeoutOrder = {
 
 type VendorAnalyticsRange = "today" | "week" | "month" | "all";
 
-const VENDOR_PORTAL_MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+const VENDOR_PORTAL_MAPBOX_TOKEN =
+  process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+  process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+  "";
 if (VENDOR_PORTAL_MAPBOX_TOKEN) {
   mapboxgl.accessToken = VENDOR_PORTAL_MAPBOX_TOKEN;
 }
