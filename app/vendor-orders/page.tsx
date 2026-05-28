@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type TakeoutItem = {
   name?: string | null;
@@ -129,6 +129,9 @@ export default function VendorTakeoutOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const notifiedOrdersRef = useRef<Record<string, boolean>>({});
+  const audioUnlockedRef = useRef(false);
+
   const [error, setError] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -169,9 +172,37 @@ export default function VendorTakeoutOrdersPage() {
   }, [vendorId]);
 
   useEffect(() => {
+    function unlockAudio() {
+      audioUnlockedRef.current = true;
+    }
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!text(vendorId)) return;
     void loadOrders();
   }, [vendorId, loadOrders]);
+
+  useEffect(() => {
+    function unlockAudio() {
+      audioUnlockedRef.current = true;
+    }
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
 
   useEffect(() => {
     if (!text(vendorId)) return;
