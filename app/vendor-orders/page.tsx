@@ -136,7 +136,13 @@ export default function VendorTakeoutOrdersPage() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [soundUnlocked, setSoundUnlocked] = useState(false);
   const [soundError, setSoundError] = useState("");
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const [soundDebug, setSoundDebug] = useState({
+    pendingCount: 0,
+    audioUnlocked: false,
+    loopState: "stopped",
+    lastAttempt: "never",
+    lastResult: "none",
+  });
   const audioUnlockedRef = useRef(false);
   const alertTimerRef = useRef<number | null>(null);
   const alertStartedAtRef = useRef(0);
@@ -160,49 +166,39 @@ export default function VendorTakeoutOrdersPage() {
   const markVendorAudioUnlocked = useCallback(() => {
     setSoundUnlocked(true);
     audioUnlockedRef.current = true;
+    setSoundDebug((prev) => ({ ...prev, audioUnlocked: true }));
   }, []);
 
-  const playVendorAlert = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    if (!audioUnlockedRef.current) return;
+  const playVendorAlert = useCallback(async (reason: string = "auto") => {
+    if (typeof window === "undefined") return false;
+
+    const attempt = new Date().toLocaleTimeString();
+    setSoundDebug((prev) => ({
+      ...prev,
+      lastAttempt: attempt + " (" + reason + ")",
+      lastResult: "starting",
+    }));
+
+    if (!audioUnlockedRef.current) {
+      setSoundDebug((prev) => ({ ...prev, lastResult: "blocked: audio not unlocked" }));
+      return false;
+    }
 
     try {
-      const AudioContextCtor =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-      if (AudioContextCtor) {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContextCtor();
-        }
-
-        const ctx = audioContextRef.current;
-
-if (ctx.state === "suspended") {
-  await ctx.resume();
-}
-
-const oscillator = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-        gain.gain.setValueAtTime(0.001, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.65);
-
-        oscillator.connect(gain);
-        gain.connect(ctx.destination);
-        oscillator.start(ctx.currentTime);
-        oscillator.stop(ctx.currentTime + 0.7);
-        return;
-      }
-
       const audio = new Audio(VENDOR_ALERT_SOUND_URL);
+      audio.preload = "auto";
       audio.volume = 1;
+
       await audio.play();
-    } catch (err) {
-      setSoundError("Vendor sound could not play. Click Test sound once, then keep this page open.");
+
+      setSoundError("");
+      setSoundDebug((prev) => ({ ...prev, lastResult: "played" }));
+      return true;
+    } catch (err: any) {
+      const msg = text(err?.name || err?.message || err) || "PLAY_FAILED";
+      setSoundError("Vendor sound could not play: " + msg + ". Click Test sound once, then keep this page open.");
+      setSoundDebug((prev) => ({ ...prev, lastResult: "failed: " + msg }));
+      return false;
     }
   }, []);
 
@@ -212,6 +208,7 @@ const oscillator = ctx.createOscillator();
       alertTimerRef.current = null;
     }
     alertStartedAtRef.current = 0;
+    setSoundDebug((prev) => ({ ...prev, loopState: "stopped" }));
   }, []);
 
   const enableVendorSound = useCallback(async () => {
@@ -224,7 +221,7 @@ const oscillator = ctx.createOscillator();
     } catch {
       // localStorage may be blocked; ignore.
     }
-    await playVendorAlert();
+    await playVendorAlert("enable");
   }, [playVendorAlert]);
 
   const disableVendorSound = useCallback(() => {
@@ -242,7 +239,7 @@ const oscillator = ctx.createOscillator();
   const testVendorSound = useCallback(async () => {
     setSoundUnlocked(true);
     audioUnlockedRef.current = true;
-    await playVendorAlert();
+    await playVendorAlert("test");
   }, [playVendorAlert]);
 
   const loadOrders = useCallback(async () => {
@@ -315,16 +312,19 @@ const oscillator = ctx.createOscillator();
   }, [orders, showCompleted]);
 
   const pendingVendorOrders = useMemo(() => {
-  return orders.filter((order) => {
-    const vendorStatus = text(order.vendor_status).toLowerCase();
-    const rideStatus = text(order.status).toLowerCase();
+    return orders.filter((order) => {
+      const vendorStatus = text(order.vendor_status).toLowerCase();
+      const rideStatus = text(order.status).toLowerCase();
+      const shownStatus = displayStatus(order);
 
-    return (
-      vendorStatus === "vendor_pending" ||
-      rideStatus === "requested"
-    );
-  });
-}, [orders]);
+      return (
+        shownStatus === "vendor_pending" ||
+        vendorStatus === "vendor_pending" ||
+        vendorStatus === "requested" ||
+        rideStatus === "requested"
+      );
+    });
+  }, [orders]);
 
   const pendingVendorKey = useMemo(() => {
     return pendingVendorOrders
@@ -351,7 +351,15 @@ const oscillator = ctx.createOscillator();
   useEffect(() => {
     stopVendorAlertLoop();
 
-    if (!soundEnabled || pendingVendorOrders.length === 0) {
+    const pendingCount = pendingVendorOrders.length;
+    setSoundDebug((prev) => ({
+      ...prev,
+      pendingCount,
+      audioUnlocked: audioUnlockedRef.current,
+      loopState: soundEnabled && audioUnlockedRef.current && pendingCount > 0 ? "starting" : "stopped",
+    }));
+
+    if (!soundEnabled || !audioUnlockedRef.current || pendingCount === 0) {
       lastPendingKeyRef.current = pendingVendorKey;
       return;
     }
@@ -360,17 +368,19 @@ const oscillator = ctx.createOscillator();
     alertStartedAtRef.current = startedAt;
     lastPendingKeyRef.current = pendingVendorKey;
 
-    void playVendorAlert();
+    void playVendorAlert("pending");
+    setSoundDebug((prev) => ({ ...prev, loopState: "running" }));
 
     alertTimerRef.current = window.setInterval(() => {
       const elapsed = Date.now() - startedAt;
 
       if (elapsed >= VENDOR_ALERT_MAX_MS) {
         stopVendorAlertLoop();
+        setSoundDebug((prev) => ({ ...prev, loopState: "max time reached" }));
         return;
       }
 
-      void playVendorAlert();
+      void playVendorAlert("repeat");
     }, VENDOR_ALERT_REPEAT_MS);
 
     return () => {
@@ -378,6 +388,7 @@ const oscillator = ctx.createOscillator();
     };
   }, [
     soundEnabled,
+    soundUnlocked,
     pendingVendorOrders.length,
     pendingVendorKey,
     playVendorAlert,
@@ -480,6 +491,14 @@ const oscillator = ctx.createOscillator();
               Pending accept: {pendingVendorOrders.length}
             </span>
             {soundUnlocked ? <span className="text-emerald-700">Audio unlocked</span> : <span>Click Enable or Test once to unlock audio.</span>}
+          </div>
+
+          <div className="mt-2 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 md:grid-cols-5">
+            <div>Sound enabled: <span className="font-semibold">{soundEnabled ? "yes" : "no"}</span></div>
+            <div>Audio unlocked: <span className="font-semibold">{soundDebug.audioUnlocked ? "yes" : "no"}</span></div>
+            <div>Pending count: <span className="font-semibold">{soundDebug.pendingCount}</span></div>
+            <div>Loop: <span className="font-semibold">{soundDebug.loopState}</span></div>
+            <div>Last: <span className="font-semibold">{soundDebug.lastAttempt} - {soundDebug.lastResult}</span></div>
           </div>
           {soundError ? (
             <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
