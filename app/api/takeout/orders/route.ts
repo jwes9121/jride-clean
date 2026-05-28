@@ -46,9 +46,94 @@ const TAKEOUT_ORDER_SELECT = [
   "takeout_customer_confirmed_at",
   "takeout_items_subtotal",
   "takeout_route_plan",
+  "takeout_pricing_snapshot",
   "created_at",
   "updated_at",
 ].join(",");
+
+
+function obj(v: any): Record<string, any> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return v as Record<string, any>;
+}
+
+function firstValue(...values: any[]): any {
+  for (const v of values) {
+    if (v !== undefined && v !== null && v !== "") return v;
+  }
+  return null;
+}
+
+function exposePickupBreakdown(row: any): any {
+  const snap = obj(row?.takeout_pricing_snapshot);
+  const pickupDistanceKm = firstValue(
+    row?.takeout_pickup_distance_km,
+    row?.pickup_distance_km,
+    snap.takeout_pickup_distance_km,
+    snap.takeout_pickup_distance_km_road,
+    snap.pickup_distance_km,
+    snap.pickup_distance_km_road
+  );
+  const pickupFreeKm = firstValue(
+    row?.takeout_pickup_free_km,
+    row?.pickup_free_km,
+    snap.takeout_pickup_free_km,
+    snap.pickup_free_km
+  );
+  const pickupBillableKm = firstValue(
+    row?.takeout_pickup_billable_excess_km,
+    row?.pickup_billable_excess_km,
+    snap.takeout_pickup_billable_excess_km,
+    snap.pickup_billable_excess_km,
+    snap.pickup_billable_km
+  );
+  const pickupFirstTierKm = firstValue(
+    row?.takeout_pickup_first_tier_km,
+    row?.pickup_first_tier_km,
+    snap.takeout_pickup_first_tier_km,
+    snap.pickup_first_tier_km
+  );
+  const pickupSecondTierKm = firstValue(
+    row?.takeout_pickup_second_tier_km,
+    row?.pickup_second_tier_km,
+    snap.takeout_pickup_second_tier_km,
+    snap.pickup_second_tier_km,
+    snap.takeout_pickup_beyond_first_tier_km,
+    snap.pickup_beyond_first_tier_km
+  );
+  const pickupFee = firstValue(
+    row?.takeout_pickup_distance_fee,
+    row?.pickup_distance_fee,
+    row?.takeout_pickup_excess_fee,
+    row?.pickup_excess_fee,
+    snap.takeout_pickup_distance_fee,
+    snap.pickup_distance_fee,
+    snap.takeout_pickup_excess_fee,
+    snap.pickup_excess_fee
+  );
+  const pickupSource = firstValue(
+    row?.takeout_pickup_distance_source,
+    row?.pickup_distance_source,
+    snap.takeout_pickup_distance_source,
+    snap.pickup_distance_source
+  );
+
+  return {
+    ...row,
+    takeout_pickup_distance_km: pickupDistanceKm,
+    takeout_pickup_distance_km_road: firstValue(row?.takeout_pickup_distance_km_road, snap.takeout_pickup_distance_km_road, pickupDistanceKm),
+    takeout_pickup_free_km: pickupFreeKm,
+    takeout_pickup_billable_excess_km: pickupBillableKm,
+    takeout_pickup_first_tier_km: pickupFirstTierKm,
+    takeout_pickup_second_tier_km: pickupSecondTierKm,
+    takeout_pickup_distance_fee: pickupFee,
+    takeout_pickup_excess_fee: pickupFee,
+    takeout_pickup_distance_source: pickupSource,
+    pickup_distance_source: pickupSource,
+    pickup_first_tier_km: pickupFirstTierKm,
+    pickup_second_tier_km: pickupSecondTierKm,
+  };
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -79,7 +164,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const orders = Array.isArray(res.data) ? res.data : [];
+    const orders = (Array.isArray(res.data) ? res.data : []).map(exposePickupBreakdown);
     const order = orders[0] || null;
 
     return json(200, {
