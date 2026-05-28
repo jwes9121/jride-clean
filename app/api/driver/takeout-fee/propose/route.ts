@@ -8,10 +8,9 @@ const SERVICE_FEE = 15;
 const PROPOSAL_TTL_SECONDS = 300;
 const MAX_DELIVERY_FEE = 2000;
 const CUSTOMER_CASH_PICKUP_FREE_KM = 1.5;
-const CUSTOMER_CASH_PICKUP_EXCESS_ENV = "JRIDE_TAKEOUT_PICKUP_EXCESS_FEE_PER_500M";
-const CUSTOMER_CASH_PICKUP_STANDARD_FEE_PER_500M = 20;
-const CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM = 10;
-const CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM = 10;
+const CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M = 20;
+const CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_KM = 10;
+const CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM = 10;
 
 function text(v: any): string {
   return String(v ?? "").trim();
@@ -63,63 +62,63 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return r * c;
 }
 
-
-function getMapboxToken(): string {
-  return text(process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "");
+function mapboxToken(): string {
+  return text(process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN);
 }
 
-async function roadDistanceKm(
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number
-): Promise<{ ok: true; km: number } | { ok: false; error: string; message: string }> {
-  const token = getMapboxToken();
-  if (!token) {
-    return {
-      ok: false,
-      error: "MAPBOX_TOKEN_MISSING",
-      message: "Mapbox token is required to compute routed pickup distance.",
-    };
+async function roadDistanceKm(fromLat: number, fromLng: number, toLat: number, toLng: number): Promise<{ distanceKm: number; source: "mapbox_road" | "haversine_fallback" }> {
+  const token = mapboxToken();
+  if (token) {
+    try {
+      const url =
+        "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+        `${fromLng},${fromLat};${toLng},${toLat}` +
+        `?overview=false&geometries=geojson&access_token=${encodeURIComponent(token)}`;
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
+      if (res.ok) {
+        const payload: any = await res.json();
+        const meters = payload?.routes?.[0]?.distance;
+        if (typeof meters === "number" && Number.isFinite(meters) && meters >= 0) {
+          return { distanceKm: meters / 1000, source: "mapbox_road" };
+        }
+      }
+    } catch {
+      // Fall back to straight-line distance only if road routing is unavailable.
+    }
   }
 
-  const url =
-    "https://api.mapbox.com/directions/v5/mapbox/driving/" +
-    `${fromLng},${fromLat};${toLng},${toLat}` +
-    `?overview=false&alternatives=false&steps=false&access_token=${encodeURIComponent(token)}`;
+  return {
+    distanceKm: haversineKm(fromLat, fromLng, toLat, toLng),
+    source: "haversine_fallback",
+  };
+}
 
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-    });
+function customerCashPickupFeeBreakdown(distanceKmRaw: number) {
+  const pickupDistanceKm = roundKm(Math.max(0, distanceKmRaw));
+  const billableKm = roundKm(Math.max(0, pickupDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM));
+  const firstTierKm = roundKm(Math.min(billableKm, CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_KM));
+  const beyondFirstTierKm = roundKm(Math.max(0, billableKm - CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_KM));
+  const firstTierUnits500m = firstTierKm > 0 ? Math.ceil(firstTierKm / 0.5) : 0;
+  const firstTierFee = firstTierUnits500m * CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M;
+  const beyondFirstTierUnitsKm = beyondFirstTierKm > 0 ? Math.ceil(beyondFirstTierKm) : 0;
+  const beyondFirstTierFee = beyondFirstTierUnitsKm * CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM;
+  const totalFee = money(firstTierFee + beyondFirstTierFee) as number;
 
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: "ROAD_DISTANCE_FAILED",
-        message: `Mapbox road distance request failed with HTTP ${res.status}.`,
-      };
-    }
-
-    const data: any = await res.json();
-    const meters = data?.routes?.[0]?.distance;
-    if (typeof meters !== "number" || !Number.isFinite(meters) || meters < 0) {
-      return {
-        ok: false,
-        error: "ROAD_DISTANCE_MISSING",
-        message: "Mapbox did not return a usable road distance.",
-      };
-    }
-
-    return { ok: true, km: meters / 1000 };
-  } catch (err: any) {
-    return {
-      ok: false,
-      error: "ROAD_DISTANCE_ERROR",
-      message: err?.message || "Failed to compute routed pickup distance.",
-    };
-  }
+  return {
+    pickup_distance_km: pickupDistanceKm,
+    pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
+    pickup_billable_excess_km: billableKm,
+    pickup_first_tier_km: firstTierKm,
+    pickup_first_tier_units_500m: firstTierUnits500m,
+    pickup_first_tier_fee: money(firstTierFee) as number,
+    pickup_beyond_first_tier_km: beyondFirstTierKm,
+    pickup_beyond_first_tier_units_km: beyondFirstTierUnitsKm,
+    pickup_beyond_first_tier_fee: money(beyondFirstTierFee) as number,
+    pickup_excess_fee_per_500m: CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M,
+    pickup_beyond_first_tier_fee_per_km: CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM,
+    pickup_excess_units_500m: firstTierUnits500m,
+    pickup_excess_fee: totalFee,
+  };
 }
 
 type DriverLocationSnapshot = {
@@ -154,10 +153,17 @@ type CustomerCashPickupBreakdown = {
   pickup_distance_km: number | null;
   pickup_free_km: number;
   pickup_billable_excess_km: number;
+  pickup_first_tier_km: number;
+  pickup_first_tier_units_500m: number;
+  pickup_first_tier_fee: number;
+  pickup_beyond_first_tier_km: number;
+  pickup_beyond_first_tier_units_km: number;
+  pickup_beyond_first_tier_fee: number;
   pickup_excess_units_500m: number;
   pickup_excess_fee_per_500m: number;
+  pickup_beyond_first_tier_fee_per_km: number;
   pickup_excess_fee: number;
-  pickup_distance_source: "not_required" | "mapbox_road";
+  pickup_distance_source: "not_required" | "mapbox_road" | "haversine_fallback";
   computation_status: "not_required" | "computed";
 };
 
@@ -166,14 +172,20 @@ function noCustomerCashPickupBreakdown(): CustomerCashPickupBreakdown {
     pickup_distance_km: null,
     pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
     pickup_billable_excess_km: 0,
+    pickup_first_tier_km: 0,
+    pickup_first_tier_units_500m: 0,
+    pickup_first_tier_fee: 0,
+    pickup_beyond_first_tier_km: 0,
+    pickup_beyond_first_tier_units_km: 0,
+    pickup_beyond_first_tier_fee: 0,
     pickup_excess_units_500m: 0,
-    pickup_excess_fee_per_500m: 0,
+    pickup_excess_fee_per_500m: CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M,
+    pickup_beyond_first_tier_fee_per_km: CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM,
     pickup_excess_fee: 0,
     pickup_distance_source: "not_required",
     computation_status: "not_required",
   };
 }
-
 function json(status: number, payload: any) {
   return NextResponse.json(payload, {
     status,
@@ -420,8 +432,15 @@ export async function POST(req: NextRequest) {
     let pickupBreakdown = noCustomerCashPickupBreakdown();
     if (routePlan === "customer_cash_first") {
       const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
-      const passengerLat = num(order.pickup_lat);
-      const passengerLng = num(order.pickup_lng);
+      const passengerLat =
+  routePlan === "customer_cash_first"
+    ? num(order.pickup_lat)
+    : num(order.dropoff_lat);
+
+const passengerLng =
+  routePlan === "customer_cash_first"
+    ? num(order.pickup_lng)
+    : num(order.dropoff_lng);
 
       if (!driverLoc || !isOnlineLike(driverLoc.status) || minutesSince(driverLoc.updated_at) > 15 || !validLatLng(driverLoc.lat, driverLoc.lng)) {
         return json(409, {
@@ -435,54 +454,23 @@ export async function POST(req: NextRequest) {
         return json(409, {
           ok: false,
           error: "PASSENGER_LOCATION_REQUIRED",
-          message: "Passenger pickup coordinates are required to compute customer cash pickup excess.",
+          message: "Passenger pickup coordinates are required to compute customer cash pickup distance fee.",
         });
       }
 
-      const roadDistance = await roadDistanceKm(
+      const routed = await roadDistanceKm(
         driverLoc.lat as number,
         driverLoc.lng as number,
         passengerLat as number,
         passengerLng as number
       );
-
-      if (roadDistance.ok !== true) {
-        const roadError = roadDistance as { ok: false; error: string; message: string };
-        return json(409, {
-          ok: false,
-          error: roadError.error,
-          message: roadError.message,
-        });
-      }
-
-      const pickupDistanceKm = roundKm(roadDistance.km);
-      const billableExcessKm = roundKm(Math.max(0, pickupDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM));
-      const standardExcessKm = roundKm(Math.min(billableExcessKm, CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM));
-      const longDistanceExcessKm = roundKm(Math.max(0, billableExcessKm - CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM));
-      const units500m = standardExcessKm > 0 ? Math.ceil(standardExcessKm / 0.5) : 0;
-      const longDistanceUnitsKm = longDistanceExcessKm > 0 ? Math.ceil(longDistanceExcessKm) : 0;
-      const pickupDistanceFee = money(
-        units500m * CUSTOMER_CASH_PICKUP_STANDARD_FEE_PER_500M +
-        longDistanceUnitsKm * CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM
-      ) as number;
+      const feeBreakdown = customerCashPickupFeeBreakdown(routed.distanceKm);
 
       pickupBreakdown = {
-        pickup_distance_km: pickupDistanceKm,
-        pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
-        pickup_billable_excess_km: billableExcessKm,
-        pickup_excess_units_500m: units500m,
-        pickup_excess_fee_per_500m: CUSTOMER_CASH_PICKUP_STANDARD_FEE_PER_500M,
-        pickup_excess_fee: pickupDistanceFee,
-        pickup_distance_source: "mapbox_road",
+        ...feeBreakdown,
+        pickup_distance_source: routed.source,
         computation_status: "computed",
-      } as any;
-
-      (pickupBreakdown as any).pickup_distance_fee = pickupDistanceFee;
-      (pickupBreakdown as any).pickup_standard_excess_km = standardExcessKm;
-      (pickupBreakdown as any).pickup_standard_max_excess_km = CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM;
-      (pickupBreakdown as any).pickup_long_distance_excess_km = longDistanceExcessKm;
-      (pickupBreakdown as any).pickup_long_distance_units_km = longDistanceUnitsKm;
-      (pickupBreakdown as any).pickup_long_distance_fee_per_km = CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM;
+      };
     }
 
     const totalPayable = money(computedSubtotal + SERVICE_FEE + deliveryFee + pickupBreakdown.pickup_excess_fee) as number;
@@ -496,18 +484,26 @@ export async function POST(req: NextRequest) {
       takeout_service_fee: SERVICE_FEE,
       takeout_delivery_fee: deliveryFee,
       takeout_pickup_distance_km: pickupBreakdown.pickup_distance_km,
+      takeout_pickup_distance_km_road: pickupBreakdown.pickup_distance_km,
+      pickup_distance_km_road: pickupBreakdown.pickup_distance_km,
       takeout_pickup_free_km: pickupBreakdown.pickup_free_km,
       takeout_pickup_billable_excess_km: pickupBreakdown.pickup_billable_excess_km,
+      pickup_billable_km: pickupBreakdown.pickup_billable_excess_km,
+      takeout_pickup_first_tier_km: pickupBreakdown.pickup_first_tier_km,
+      pickup_first_tier_km: pickupBreakdown.pickup_first_tier_km,
+      takeout_pickup_first_tier_units_500m: pickupBreakdown.pickup_first_tier_units_500m,
+      takeout_pickup_first_tier_fee: pickupBreakdown.pickup_first_tier_fee,
+      takeout_pickup_beyond_first_tier_km: pickupBreakdown.pickup_beyond_first_tier_km,
+      pickup_second_tier_km: pickupBreakdown.pickup_beyond_first_tier_km,
+      takeout_pickup_beyond_first_tier_units_km: pickupBreakdown.pickup_beyond_first_tier_units_km,
+      takeout_pickup_beyond_first_tier_fee: pickupBreakdown.pickup_beyond_first_tier_fee,
       takeout_pickup_excess_units_500m: pickupBreakdown.pickup_excess_units_500m,
       takeout_pickup_excess_fee_per_500m: pickupBreakdown.pickup_excess_fee_per_500m,
+      takeout_pickup_beyond_first_tier_fee_per_km: pickupBreakdown.pickup_beyond_first_tier_fee_per_km,
       takeout_pickup_excess_fee: pickupBreakdown.pickup_excess_fee,
-      takeout_pickup_distance_fee: (pickupBreakdown as any).pickup_distance_fee ?? pickupBreakdown.pickup_excess_fee,
-      takeout_pickup_standard_excess_km: (pickupBreakdown as any).pickup_standard_excess_km ?? 0,
-      takeout_pickup_standard_max_excess_km: (pickupBreakdown as any).pickup_standard_max_excess_km ?? CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM,
-      takeout_pickup_long_distance_excess_km: (pickupBreakdown as any).pickup_long_distance_excess_km ?? 0,
-      takeout_pickup_long_distance_units_km: (pickupBreakdown as any).pickup_long_distance_units_km ?? 0,
-      takeout_pickup_long_distance_fee_per_km: (pickupBreakdown as any).pickup_long_distance_fee_per_km ?? CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM,
+      pickup_distance_fee: pickupBreakdown.pickup_excess_fee,
       takeout_pickup_distance_source: pickupBreakdown.pickup_distance_source,
+      pickup_distance_source: pickupBreakdown.pickup_distance_source,
       takeout_pickup_computation_status: pickupBreakdown.computation_status,
       takeout_total_payable: totalPayable,
       takeout_cash_collection_required: cashRequired,
@@ -544,7 +540,7 @@ export async function POST(req: NextRequest) {
       proposal: updateRes.data,
       pricing: snapshot,
       auth_mode: driverAuth.authMode,
-      guard: "takeout_driver_fee_proposal_v7_customer_cash_road_distance",
+      guard: "takeout_driver_fee_proposal_v7_road_pickup_distance_fee",
     });
   } catch (err: any) {
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
