@@ -143,6 +143,7 @@ export default function VendorTakeoutOrdersPage() {
     lastAttempt: "never",
     lastResult: "none",
   });
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const audioUnlockedRef = useRef(false);
   const alertTimerRef = useRef<number | null>(null);
   const alertStartedAtRef = useRef(0);
@@ -184,10 +185,20 @@ export default function VendorTakeoutOrdersPage() {
       return false;
     }
 
+    const audio = audioElementRef.current;
+    if (!audio) {
+      setSoundError("Vendor sound audio element is not ready. Refresh the page, then click Enable vendor sound.");
+      setSoundDebug((prev) => ({ ...prev, lastResult: "failed: audio element missing" }));
+      return false;
+    }
+
     try {
-      const audio = new Audio(VENDOR_ALERT_SOUND_URL);
-      audio.preload = "auto";
+      audio.pause();
+      audio.currentTime = 0;
       audio.volume = 1;
+      audio.muted = false;
+      audio.src = VENDOR_ALERT_SOUND_URL;
+      audio.load();
 
       await audio.play();
 
@@ -196,7 +207,7 @@ export default function VendorTakeoutOrdersPage() {
       return true;
     } catch (err: any) {
       const msg = text(err?.name || err?.message || err) || "PLAY_FAILED";
-      setSoundError("Vendor sound could not play: " + msg + ". Click Test sound once, then keep this page open.");
+      setSoundError("Vendor sound could not play: " + msg + ". Click Enable vendor sound or Test sound again, then keep this page open.");
       setSoundDebug((prev) => ({ ...prev, lastResult: "failed: " + msg }));
       return false;
     }
@@ -465,6 +476,8 @@ export default function VendorTakeoutOrdersPage() {
               Show completed/cancelled
             </label>
           </div>
+
+          <audio ref={audioElementRef} src={VENDOR_ALERT_SOUND_URL} preload="auto" className="hidden" />
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <button
