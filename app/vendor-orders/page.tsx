@@ -43,7 +43,11 @@ type ApiResult = {
 };
 
 const LS_VENDOR_ID = "JRIDE_TAKEOUT_VENDOR_ID";
+const LS_VENDOR_SOUND_ENABLED = "JRIDE_VENDOR_ORDER_SOUND_ENABLED";
 const REFRESH_MS = 10000;
+const VENDOR_ALERT_SOUND_SRC = "/sounds/vendor-order-alert.mp3";
+const VENDOR_ALERT_REPEAT_MS = 30000;
+const VENDOR_ALERT_MAX_MS = 5 * 60 * 1000;
 
 function text(v: unknown): string {
   return String(v ?? "").trim();
@@ -129,8 +133,13 @@ export default function VendorTakeoutOrdersPage() {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const notifiedOrdersRef = useRef<Record<string, boolean>>({});
   const audioUnlockedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeAlertKeyRef = useRef("");
+  const activeAlertStartedAtRef = useRef(0);
+  const activeAlertLastPlayedAtRef = useRef(0);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundStatus, setSoundStatus] = useState("Vendor alert sound: off");
 
   const [error, setError] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -143,6 +152,57 @@ export default function VendorTakeoutOrdersPage() {
       // localStorage may be blocked; ignore.
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(LS_VENDOR_SOUND_ENABLED);
+      const enabled = saved === "1" || saved === "true";
+      setSoundEnabled(enabled);
+      setSoundStatus(enabled ? "Vendor alert sound: on" : "Vendor alert sound: off");
+    } catch {
+      setSoundEnabled(false);
+      setSoundStatus("Vendor alert sound: off");
+    }
+  }, []);
+
+  const playVendorAlertSound = useCallback(async (reason: string) => {
+    try {
+      let audio = audioRef.current;
+      if (!audio) {
+        audio = new Audio(VENDOR_ALERT_SOUND_SRC);
+        audio.preload = "auto";
+        audioRef.current = audio;
+      }
+
+      audio.currentTime = 0;
+      audio.volume = 1;
+      await audio.play();
+      audioUnlockedRef.current = true;
+      setSoundStatus("Vendor alert sound: on (last played: " + reason + ")");
+    } catch (err: any) {
+      setSoundStatus("Vendor alert sound failed. Click Test sound or Enable vendor sound again.");
+    }
+  }, []);
+
+  const setVendorSound = useCallback((enabled: boolean) => {
+    setSoundEnabled(enabled);
+    try {
+      window.localStorage.setItem(LS_VENDOR_SOUND_ENABLED, enabled ? "1" : "0");
+    } catch {
+      // localStorage may be blocked; ignore.
+    }
+
+    if (enabled) {
+      audioUnlockedRef.current = true;
+      setSoundStatus("Vendor alert sound: on");
+      void playVendorAlertSound("enabled");
+    } else {
+      setSoundStatus("Vendor alert sound: off");
+      activeAlertKeyRef.current = "";
+      activeAlertStartedAtRef.current = 0;
+      activeAlertLastPlayedAtRef.current = 0;
+    }
+  }, [playVendorAlertSound]);
 
   const loadOrders = useCallback(async () => {
     const vid = text(vendorId);
@@ -172,37 +232,9 @@ export default function VendorTakeoutOrdersPage() {
   }, [vendorId]);
 
   useEffect(() => {
-    function unlockAudio() {
-      audioUnlockedRef.current = true;
-    }
-
-    window.addEventListener("pointerdown", unlockAudio, { once: true });
-    window.addEventListener("keydown", unlockAudio, { once: true });
-
-    return () => {
-      window.removeEventListener("pointerdown", unlockAudio);
-      window.removeEventListener("keydown", unlockAudio);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!text(vendorId)) return;
     void loadOrders();
   }, [vendorId, loadOrders]);
-
-  useEffect(() => {
-    function unlockAudio() {
-      audioUnlockedRef.current = true;
-    }
-
-    window.addEventListener("pointerdown", unlockAudio, { once: true });
-    window.addEventListener("keydown", unlockAudio, { once: true });
-
-    return () => {
-      window.removeEventListener("pointerdown", unlockAudio);
-      window.removeEventListener("keydown", unlockAudio);
-    };
-  }, []);
 
   useEffect(() => {
     if (!text(vendorId)) return;
@@ -239,6 +271,20 @@ export default function VendorTakeoutOrdersPage() {
     return orders.filter((order) => showCompleted || isActive(order));
   }, [orders, showCompleted]);
 
+  const pendingVendorOrders = useMemo(() => {
+    return orders.filter((order) => displayStatus(order) === "vendor_pending");
+  }, [orders]);
+
+  const pendingVendorAlertKey = useMemo(() => {
+    return pendingVendorOrders
+      .map((order) => code(order) || orderId(order))
+      .filter(Boolean)
+      .sort()
+      .join("|");
+  }, [pendingVendorOrders]);
+
+  const pendingVendorCount = pendingVendorOrders.length;
+
   const totals = useMemo(() => {
     let active = 0;
     let completed = 0;
@@ -251,6 +297,55 @@ export default function VendorTakeoutOrdersPage() {
     }
     return { active, completed, gross };
   }, [orders]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (pendingVendorCount > 0) {
+      document.title = "(" + pendingVendorCount + ") Vendor Orders - JRide";
+    } else {
+      document.title = "Vendor Orders - JRide";
+    }
+
+    return () => {
+      document.title = "Vendor Orders - JRide";
+    };
+  }, [pendingVendorCount]);
+
+  useEffect(() => {
+    if (!soundEnabled || pendingVendorCount <= 0 || !pendingVendorAlertKey) {
+      activeAlertKeyRef.current = "";
+      activeAlertStartedAtRef.current = 0;
+      activeAlertLastPlayedAtRef.current = 0;
+      return;
+    }
+
+    if (activeAlertKeyRef.current !== pendingVendorAlertKey) {
+      activeAlertKeyRef.current = pendingVendorAlertKey;
+      activeAlertStartedAtRef.current = Date.now();
+      activeAlertLastPlayedAtRef.current = 0;
+    }
+
+    function tick() {
+      const now = Date.now();
+      const startedAt = activeAlertStartedAtRef.current || now;
+      const elapsed = now - startedAt;
+
+      if (elapsed > VENDOR_ALERT_MAX_MS) {
+        setSoundStatus("Vendor alert sound: on (5 minute alert window ended)");
+        return;
+      }
+
+      const lastPlayedAt = activeAlertLastPlayedAtRef.current;
+      if (!lastPlayedAt || now - lastPlayedAt >= VENDOR_ALERT_REPEAT_MS) {
+        activeAlertLastPlayedAtRef.current = now;
+        void playVendorAlertSound("pending accept: " + pendingVendorCount);
+      }
+    }
+
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [soundEnabled, pendingVendorCount, pendingVendorAlertKey, playVendorAlertSound]);
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900">
@@ -292,6 +387,36 @@ export default function VendorTakeoutOrdersPage() {
               />
               Show completed/cancelled
             </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setVendorSound(!soundEnabled)}
+                className={
+                  "rounded-xl border px-3 py-2 text-sm font-semibold " +
+                  (soundEnabled
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                    : "border-slate-300 bg-white text-slate-700")
+                }
+              >
+                {soundEnabled ? "Disable vendor sound" : "Enable vendor sound"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  audioUnlockedRef.current = true;
+                  void playVendorAlertSound("test");
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                Test sound
+              </button>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                Pending accept: {pendingVendorCount}
+              </span>
+            </div>
+            <div className="md:col-span-2 text-xs text-slate-500">
+              {soundStatus}. Pending order alerts repeat every 30 seconds for up to 5 minutes until the order is accepted or rejected.
+            </div>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
