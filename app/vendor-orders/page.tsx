@@ -169,19 +169,16 @@ export default function VendorTakeoutOrdersPage() {
   }, []);
 
   const playVendorAlert = useCallback(async () => {
-    const audio = ensureAudio();
-    if (!audio) return false;
+  if (!audioUnlockedRef.current) return;
 
-    try {
-      audio.currentTime = 0;
-      await audio.play();
-      setSoundError("");
-      return true;
-    } catch (err: any) {
-      setSoundError(text(err?.message) || "Vendor alert sound was blocked by the browser.");
-      return false;
-    }
-  }, [ensureAudio]);
+  try {
+    const audio = new Audio(VENDOR_ALERT_SOUND_URL);
+    audio.volume = 1;
+    await audio.play();
+  } catch {
+    // Never break vendor page because of browser audio issues.
+  }
+}, []);
 
   const stopVendorAlertLoop = useCallback(() => {
     if (alertTimerRef.current != null) {
