@@ -9,6 +9,9 @@ const PROPOSAL_TTL_SECONDS = 300;
 const MAX_DELIVERY_FEE = 2000;
 const CUSTOMER_CASH_PICKUP_FREE_KM = 1.5;
 const CUSTOMER_CASH_PICKUP_EXCESS_ENV = "JRIDE_TAKEOUT_PICKUP_EXCESS_FEE_PER_500M";
+const CUSTOMER_CASH_PICKUP_STANDARD_FEE_PER_500M = 20;
+const CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM = 10;
+const CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM = 10;
 
 function text(v: any): string {
   return String(v ?? "").trim();
@@ -436,7 +439,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const feePer500m = envMoney(CUSTOMER_CASH_PICKUP_EXCESS_ENV);
       const roadDistance = await roadDistanceKm(
         driverLoc.lat as number,
         driverLoc.lng as number,
@@ -455,31 +457,32 @@ export async function POST(req: NextRequest) {
 
       const pickupDistanceKm = roundKm(roadDistance.km);
       const billableExcessKm = roundKm(Math.max(0, pickupDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM));
-      const units500m = billableExcessKm > 0 ? Math.ceil(billableExcessKm / 0.5) : 0;
+      const standardExcessKm = roundKm(Math.min(billableExcessKm, CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM));
+      const longDistanceExcessKm = roundKm(Math.max(0, billableExcessKm - CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM));
+      const units500m = standardExcessKm > 0 ? Math.ceil(standardExcessKm / 0.5) : 0;
+      const longDistanceUnitsKm = longDistanceExcessKm > 0 ? Math.ceil(longDistanceExcessKm) : 0;
+      const pickupDistanceFee = money(
+        units500m * CUSTOMER_CASH_PICKUP_STANDARD_FEE_PER_500M +
+        longDistanceUnitsKm * CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM
+      ) as number;
 
-      if (units500m > 0 && (feePer500m === null || feePer500m < 0)) {
-        return json(409, {
-          ok: false,
-          error: "PICKUP_EXCESS_RATE_MISSING",
-          message: `Set ${CUSTOMER_CASH_PICKUP_EXCESS_ENV} before allowing customer_cash_first proposals beyond the free pickup allowance.`,
-          pickup_distance_km: pickupDistanceKm,
-          pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
-          pickup_billable_excess_km: billableExcessKm,
-          pickup_excess_units_500m: units500m,
-        });
-      }
-
-      const safeFeePer500m = feePer500m ?? 0;
       pickupBreakdown = {
         pickup_distance_km: pickupDistanceKm,
         pickup_free_km: CUSTOMER_CASH_PICKUP_FREE_KM,
         pickup_billable_excess_km: billableExcessKm,
         pickup_excess_units_500m: units500m,
-        pickup_excess_fee_per_500m: safeFeePer500m,
-        pickup_excess_fee: money(units500m * safeFeePer500m) as number,
+        pickup_excess_fee_per_500m: CUSTOMER_CASH_PICKUP_STANDARD_FEE_PER_500M,
+        pickup_excess_fee: pickupDistanceFee,
         pickup_distance_source: "mapbox_road",
         computation_status: "computed",
-      };
+      } as any;
+
+      (pickupBreakdown as any).pickup_distance_fee = pickupDistanceFee;
+      (pickupBreakdown as any).pickup_standard_excess_km = standardExcessKm;
+      (pickupBreakdown as any).pickup_standard_max_excess_km = CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM;
+      (pickupBreakdown as any).pickup_long_distance_excess_km = longDistanceExcessKm;
+      (pickupBreakdown as any).pickup_long_distance_units_km = longDistanceUnitsKm;
+      (pickupBreakdown as any).pickup_long_distance_fee_per_km = CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM;
     }
 
     const totalPayable = money(computedSubtotal + SERVICE_FEE + deliveryFee + pickupBreakdown.pickup_excess_fee) as number;
@@ -498,6 +501,12 @@ export async function POST(req: NextRequest) {
       takeout_pickup_excess_units_500m: pickupBreakdown.pickup_excess_units_500m,
       takeout_pickup_excess_fee_per_500m: pickupBreakdown.pickup_excess_fee_per_500m,
       takeout_pickup_excess_fee: pickupBreakdown.pickup_excess_fee,
+      takeout_pickup_distance_fee: (pickupBreakdown as any).pickup_distance_fee ?? pickupBreakdown.pickup_excess_fee,
+      takeout_pickup_standard_excess_km: (pickupBreakdown as any).pickup_standard_excess_km ?? 0,
+      takeout_pickup_standard_max_excess_km: (pickupBreakdown as any).pickup_standard_max_excess_km ?? CUSTOMER_CASH_PICKUP_STANDARD_MAX_EXCESS_KM,
+      takeout_pickup_long_distance_excess_km: (pickupBreakdown as any).pickup_long_distance_excess_km ?? 0,
+      takeout_pickup_long_distance_units_km: (pickupBreakdown as any).pickup_long_distance_units_km ?? 0,
+      takeout_pickup_long_distance_fee_per_km: (pickupBreakdown as any).pickup_long_distance_fee_per_km ?? CUSTOMER_CASH_PICKUP_LONG_DISTANCE_FEE_PER_KM,
       takeout_pickup_distance_source: pickupBreakdown.pickup_distance_source,
       takeout_pickup_computation_status: pickupBreakdown.computation_status,
       takeout_total_payable: totalPayable,
