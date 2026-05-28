@@ -328,34 +328,40 @@ export default function VendorTakeoutOrdersPage() {
   }, [ensureAudio]);
 
   useEffect(() => {
+    stopVendorAlertLoop();
+
     if (!soundEnabled || pendingVendorOrders.length === 0) {
-      stopVendorAlertLoop();
       lastPendingKeyRef.current = pendingVendorKey;
       return;
     }
 
-    if (lastPendingKeyRef.current !== pendingVendorKey) {
-      lastPendingKeyRef.current = pendingVendorKey;
-      alertStartedAtRef.current = Date.now();
-      void playVendorAlert();
-    }
+    const startedAt = Date.now();
+    alertStartedAtRef.current = startedAt;
+    lastPendingKeyRef.current = pendingVendorKey;
 
-    if (alertTimerRef.current == null) {
-      if (!alertStartedAtRef.current) alertStartedAtRef.current = Date.now();
-      alertTimerRef.current = window.setInterval(() => {
-        const elapsed = Date.now() - alertStartedAtRef.current;
-        if (elapsed > VENDOR_ALERT_MAX_MS || pendingVendorOrders.length === 0) {
-          stopVendorAlertLoop();
-          return;
-        }
-        void playVendorAlert();
-      }, VENDOR_ALERT_REPEAT_MS);
-    }
+    void playVendorAlert();
+
+    alertTimerRef.current = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+
+      if (elapsed >= VENDOR_ALERT_MAX_MS) {
+        stopVendorAlertLoop();
+        return;
+      }
+
+      void playVendorAlert();
+    }, VENDOR_ALERT_REPEAT_MS);
 
     return () => {
-      // The loop is intentionally controlled by the next effect run.
+      stopVendorAlertLoop();
     };
-  }, [soundEnabled, pendingVendorOrders.length, pendingVendorKey, playVendorAlert, stopVendorAlertLoop]);
+  }, [
+    soundEnabled,
+    pendingVendorOrders.length,
+    pendingVendorKey,
+    playVendorAlert,
+    stopVendorAlertLoop,
+  ]);
 
   useEffect(() => {
     const originalTitle = document.title || "JRide Vendor Orders";
