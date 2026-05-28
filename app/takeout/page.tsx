@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -110,6 +110,66 @@ const LS_TAKEOUT_CUSTOMER_NAME = "JRIDE_TAKEOUT_CUSTOMER_NAME";
 const LS_TAKEOUT_CUSTOMER_PHONE = "JRIDE_TAKEOUT_CUSTOMER_PHONE";
 
 const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
+
+
+type LocalTakeoutLandmark = {
+  town: string;
+  label: string;
+  aliases?: string[];
+  lat?: number;
+  lng?: number;
+};
+
+// JRIDE_TAKEOUT_LOCAL_LANDMARKS_V1
+// Rural address helper: local landmarks are prioritized before generic free-text addresses.
+// Coordinates are optional. Only entries with coordinates will move the map pin automatically.
+const LOCAL_TAKEOUT_LANDMARKS: LocalTakeoutLandmark[] = [
+  { town: "Lagawe", label: "Ifugao Provincial Capitol", aliases: ["capitol", "provincial capitol", "ifugao capitol"] },
+  { town: "Lagawe", label: "Lagawe Municipal Hall", aliases: ["municipal hall", "lagawe munisipyo", "munisipyo"] },
+  { town: "Lagawe", label: "Ifugao State University Lagawe Campus", aliases: ["ifsu", "ifugao state university", "lagawe campus"] },
+  { town: "Lagawe", label: "Lagawe Public Market", aliases: ["public market", "market", "palengke"] },
+  { town: "Lagawe", label: "Lagawe Trading", aliases: ["trading", "lagawe trading"] },
+  { town: "Lagawe", label: "Pedro's Pasta and Sides", aliases: ["pedros", "pedro", "pasta"] },
+  { town: "Lagawe", label: "The Gazebo", aliases: ["gazebo"] },
+  { town: "Lagawe", label: "Bahawit Hanging Bridge", aliases: ["bahawit", "hanging bridge"] },
+  { town: "Lagawe", label: "Brussels Garden Inn", aliases: ["brussels", "garden inn"] },
+  { town: "Lagawe", label: "Vines Cafe and Restaurant", aliases: ["vines", "vines cafe"] },
+
+  { town: "Hingyon", label: "Hingyon Fire Station", aliases: ["fire station", "bfp", "hingyon fire"] },
+  { town: "Hingyon", label: "TIMMAC Cafe and Restaurant", aliases: ["timmac", "timmac cafe"] },
+  { town: "Hingyon", label: "Piwong Elementary School", aliases: ["piwong", "piwong elementary"] },
+  { town: "Hingyon", label: "Elinora's General Merchandise", aliases: ["elinora", "general merchandise"] },
+  { town: "Hingyon", label: "MCGI Piwong Hingyon Ifugao", aliases: ["mcgi", "piwong church"] },
+  { town: "Hingyon", label: "Buyuccan Marcial Residence", aliases: ["buyuccan", "marcial residence"] },
+  { town: "Hingyon", label: "SHAMAE Gasoline Station", aliases: ["shamae", "gas station", "gasoline"] },
+
+  { town: "Banaue", label: "Banaue Public Market", aliases: ["public market", "market", "palengke"] },
+  { town: "Banaue", label: "Banaue Museum", aliases: ["museum"] },
+  { town: "Banaue", label: "Bocos Elementary School", aliases: ["bocos", "bocos elementary"] },
+  { town: "Banaue", label: "Banaue Homestay", aliases: ["homestay"] },
+  { town: "Banaue", label: "Banaue Sunrise Guest House", aliases: ["sunrise", "guest house"] },
+  { town: "Banaue", label: "7th Heaven's Cafe and Lodge", aliases: ["7th heaven", "seventh heaven", "cafe and lodge"] },
+  { town: "Banaue", label: "Uyami's Green View Lodge and Restaurant", aliases: ["uyami", "green view"] },
+  { town: "Banaue", label: "MiddleGround Cafe and Restobar", aliases: ["middleground", "restobar"] },
+  { town: "Banaue", label: "Bogah Lodge and Tours", aliases: ["bogah"] },
+  { town: "Banaue", label: "The Friends Cafe", aliases: ["friends cafe"] },
+  { town: "Banaue", label: "Bro Zone", aliases: ["bro zone"] },
+  { town: "Banaue", label: "Savta Homestay", aliases: ["savta"] },
+  { town: "Banaue", label: "TNJ Fuels", aliases: ["tnj", "fuels", "gas station"] },
+
+  { town: "Lamut", label: "Lamut Municipal Hall", aliases: ["municipal hall", "lamut munisipyo", "munisipyo"] },
+  { town: "Lamut", label: "Lamut Public Market", aliases: ["public market", "market", "palengke"] },
+  { town: "Lamut", label: "Lamut Terminal", aliases: ["terminal"] },
+  { town: "Lamut", label: "Lamut RHU", aliases: ["rhu", "health unit", "clinic"] },
+];
+
+function localLandmarkSearchText(row: LocalTakeoutLandmark): string {
+  return [row.label, row.town, ...(row.aliases || [])].join(" ").toLowerCase();
+}
+
+function localLandmarkAddress(row: LocalTakeoutLandmark): string {
+  return `${row.label}, ${row.town}, Ifugao`;
+}
 
 function getOrCreateDeviceKey(): string {
   if (typeof window === "undefined") return "";
@@ -283,12 +343,6 @@ type DeliveryPin = {
   lng: number;
 };
 
-type AddressSuggestion = {
-  label: string;
-  lat: number | null;
-  lng: number | null;
-};
-
 function deliveryPinLabel(pin: DeliveryPin | null): string {
   if (!pin) return "";
   return "Delivery spot marked on map";
@@ -297,79 +351,6 @@ function deliveryPinLabel(pin: DeliveryPin | null): string {
 function deliveryPinCoordinateText(pin: DeliveryPin | null): string {
   if (!pin) return "";
   return `${pin.lat.toFixed(6)}, ${pin.lng.toFixed(6)}`;
-}
-
-function isCoordinateOnlyAddress(value: string): boolean {
-  const s = String(value || "").trim();
-  if (!s) return true;
-  if (s.toLowerCase().startsWith("pinned delivery spot")) return true;
-  if (s.toLowerCase().startsWith("delivery spot marked on map")) return true;
-  return /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(s);
-}
-
-function selectedAddressTown(vendorTownFilter: string, selectedVendor: VendorRow | null): string {
-  return normalizeTakeoutTown(selectedVendor?.town || vendorTownFilter || "");
-}
-
-async function reverseGeocodeDeliveryPin(pin: DeliveryPin, town: string): Promise<string> {
-  try {
-    if (!mapboxgl.accessToken) return "";
-    const url =
-      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
-      encodeURIComponent(`${pin.lng},${pin.lat}`) +
-      ".json?limit=1&language=en&country=PH&access_token=" +
-      encodeURIComponent(mapboxgl.accessToken);
-
-    const res = await fetch(url, { method: "GET", cache: "no-store" });
-    if (!res.ok) return "";
-    const json: any = await res.json().catch(() => null);
-    const feature = Array.isArray(json?.features) ? json.features[0] : null;
-    const place = String(feature?.place_name || feature?.text || "").trim();
-    if (!place) return "";
-
-    const clean = place.replace(/,\s*Philippines$/i, "").trim();
-    if (town && !clean.toLowerCase().includes(town.toLowerCase())) {
-      return `${clean} (${town})`;
-    }
-    return clean;
-  } catch {
-    return "";
-  }
-}
-
-async function fetchTownAddressSuggestions(query: string, town: string): Promise<AddressSuggestion[]> {
-  try {
-    const q = String(query || "").trim();
-    const t = String(town || "").trim();
-    if (!mapboxgl.accessToken || q.length < 3 || !t) return [];
-
-    const searchText = `${q}, ${t}, Ifugao, Philippines`;
-    const url =
-      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
-      encodeURIComponent(searchText) +
-      ".json?autocomplete=true&limit=5&language=en&country=PH&access_token=" +
-      encodeURIComponent(mapboxgl.accessToken);
-
-    const res = await fetch(url, { method: "GET", cache: "no-store" });
-    if (!res.ok) return [];
-    const json: any = await res.json().catch(() => null);
-
-    const features = Array.isArray(json?.features) ? json.features : [];
-    return features
-      .map((feature: any) => {
-        const label = String(feature?.place_name || feature?.text || "").replace(/,\s*Philippines$/i, "").trim();
-        const center = Array.isArray(feature?.center) ? feature.center : [];
-        const lng = safeCoord(center[0]);
-        const lat = safeCoord(center[1]);
-        if (!label) return null;
-        return { label, lat, lng };
-      })
-      .filter(Boolean)
-      .filter((item: AddressSuggestion) => item.label.toLowerCase().includes(t.toLowerCase()))
-      .slice(0, 5) as AddressSuggestion[];
-  } catch {
-    return [];
-  }
 }
 
 function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onChange: (next: DeliveryPin) => void }) {
@@ -540,9 +521,7 @@ export default function TakeoutPage() {
   const [addrErr, setAddrErr] = useState<string | null>(null);
 
   const [newAddr, setNewAddr] = useState("");
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [addressSuggestBusy, setAddressSuggestBusy] = useState(false);
-  const [pinAddressStatus, setPinAddressStatus] = useState("");
+  const [localLandmarkOpen, setLocalLandmarkOpen] = useState(false);
   const [saveAddr, setSaveAddr] = useState(true);
   const [setPrimary, setSetPrimary] = useState(true);
   const [showDeliveryPin, setShowDeliveryPin] = useState(false);
@@ -576,68 +555,63 @@ export default function TakeoutPage() {
     const selected = selectedAddressId ? saved.find((a) => String(a.id) === selectedAddressId) : null;
     return selected || saved.find((a) => a.is_primary === true) || saved.find((a) => a.is_active !== false) || saved[0] || null;
   }, [saved, selectedAddressId]);
-        
-const vendorTowns = useMemo(() => {
-  return [...CANONICAL_TAKEOUT_TOWNS];
+
+  useEffect(() => {
+    if (addrMode !== "saved" || !primary) return;
+
+    const addressText = cleanDeliveryAddressLabel(String(primary.address_text || primary.label || ""));
+    if (addressText) {
+      setNewAddr((prev) => prev.trim() ? prev : addressText);
+    }
+
+    const lat = safeCoord(primary.dropoff_lat ?? primary.lat);
+    const lng = safeCoord(primary.dropoff_lng ?? primary.lng);
+    if (!deliveryPin && lat != null && lng != null) {
+      setDeliveryPin({ lat, lng });
+    }
+  }, [addrMode, primary, deliveryPin]);
+
+  const vendorTowns = useMemo(() => {
+    return [...CANONICAL_TAKEOUT_TOWNS];
 }, []);
 
-const visibleVendors = useMemo(() => {
-  const town = normalizeTakeoutTown(vendorTownFilter);
-  if (!town) return [];
-  return vendors.filter((v) => vendorTown(v) === town);
-}, [vendors, vendorTownFilter]);
+  const visibleVendors = useMemo(() => {
+    const town = normalizeTakeoutTown(vendorTownFilter);
+    if (!town) return [];
+    return vendors.filter((v) => vendorTown(v) === town);
+  }, [vendors, vendorTownFilter]);
 
-const selectedVendor = useMemo(() => {
-  const id = String(vendorId || "").trim();
-  if (!id) return null;
-  return vendors.find((v) => vendorKey(v) === id) || null;
-}, [vendors, vendorId]);
+  const selectedVendor = useMemo(() => {
+    const id = String(vendorId || "").trim();
+    if (!id) return null;
+    return vendors.find((v) => vendorKey(v) === id) || null;
+  }, [vendors, vendorId]);
 
-const selectedTownForAddress = useMemo(() => {
-  return selectedAddressTown(vendorTownFilter, selectedVendor);
-}, [vendorTownFilter, selectedVendor]);
-  // JRIDE_TAKEOUT_TOWN_ADDRESS_SUGGESTIONS_V1
-  // Manual address suggestions are restricted by the selected town.
-  useEffect(() => {
-    if (addrMode !== "new") {
-      setAddressSuggestions([]);
-      setAddressSuggestBusy(false);
-      return;
+
+  const selectedTownForAddress = useMemo(() => {
+    return selectedAddressTown(vendorTownFilter, selectedVendor);
+  }, [vendorTownFilter, selectedVendor]);
+
+  const localLandmarkSuggestions = useMemo(() => {
+    if (addrMode !== "new") return [];
+    const town = normalizeTakeoutTown(selectedTownForAddress);
+    const q = String(newAddr || "").trim().toLowerCase();
+    if (!town || q.length < 2) return [];
+    return LOCAL_TAKEOUT_LANDMARKS
+      .filter((row) => normalizeTakeoutTown(row.town) === town)
+      .filter((row) => localLandmarkSearchText(row).includes(q))
+      .slice(0, 8);
+  }, [addrMode, selectedTownForAddress, newAddr]);
+
+  function chooseLocalLandmark(row: LocalTakeoutLandmark) {
+    const label = localLandmarkAddress(row);
+    setNewAddr(label);
+    setLocalLandmarkOpen(false);
+    setSubmitted(false);
+    if (typeof row.lat === "number" && typeof row.lng === "number") {
+      setDeliveryPin({ lat: row.lat, lng: row.lng });
     }
-
-    const q = String(newAddr || "").trim();
-    const town = selectedTownForAddress;
-
-    if (!town || q.length < 3 || isCoordinateOnlyAddress(q)) {
-      setAddressSuggestions([]);
-      setAddressSuggestBusy(false);
-      return;
-    }
-
-    let cancelled = false;
-    setAddressSuggestBusy(true);
-
-    const timer = window.setTimeout(() => {
-      fetchTownAddressSuggestions(q, town)
-        .then((rows) => {
-          if (cancelled) return;
-          setAddressSuggestions(rows);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setAddressSuggestions([]);
-        })
-        .finally(() => {
-          if (cancelled) return;
-          setAddressSuggestBusy(false);
-        });
-    }, 350);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [addrMode, newAddr, selectedTownForAddress]);
+  }
 
   const resolvedDeliveryAddress = useMemo(() => {
     if (addrMode === "saved") return cleanDeliveryAddressLabel(primary?.address_text || "");
@@ -1544,50 +1518,33 @@ const selectedTownForAddress = useMemo(() => {
                   className="w-full rounded border px-3 py-2 text-sm"
                   rows={2}
                   value={newAddr}
+                  onFocus={() => setLocalLandmarkOpen(true)}
                   onChange={(e) => {
                     setNewAddr(e.target.value);
-                    setPinAddressStatus("");
+                    setLocalLandmarkOpen(true);
                     setSubmitted(false);
                   }}
-                  placeholder={selectedTownForAddress ? "House / landmark / purok / barangay in " + selectedTownForAddress : "Select a town first, then type house / landmark / purok / barangay"}
+                  placeholder="Search landmark, school, office, establishment, barangay, or address"
                 />
 
-                {selectedTownForAddress ? (
-                  <div className="mt-1 text-[11px] text-slate-500">
-                    Address suggestions are limited to {selectedTownForAddress}.
-                  </div>
-                ) : (
-                  <div className="mt-1 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
-                    Select a town first so address suggestions stay within the correct municipality.
-                  </div>
-                )}
+                <div className="mt-1 text-[11px] text-slate-500">
+                  Examples: Capitol, Municipal Hall, Public Market, TIMMAC, 7th Heaven, school, hospital, office.
+                </div>
 
-                {addressSuggestBusy ? (
-                  <div className="mt-2 rounded border bg-slate-50 p-2 text-[11px] text-slate-500">
-                    Looking for nearby address suggestions...
-                  </div>
-                ) : null}
-
-                {addressSuggestions.length > 0 ? (
-                  <div className="mt-2 space-y-1 rounded border bg-white p-2">
-                    <div className="text-[11px] font-semibold text-slate-600">Suggested addresses</div>
-                    {addressSuggestions.map((item, idx) => (
+                {addrMode === "new" && localLandmarkOpen && localLandmarkSuggestions.length > 0 ? (
+                  <div className="mt-2 overflow-hidden rounded border border-emerald-200 bg-white shadow-sm">
+                    <div className="border-b bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+                      Local landmark suggestions in {selectedTownForAddress}
+                    </div>
+                    {localLandmarkSuggestions.map((row) => (
                       <button
-                        key={`${item.label}-${idx}`}
+                        key={`${row.town}:${row.label}`}
                         type="button"
-                        onClick={() => {
-                          setNewAddr(item.label);
-                          setAddressSuggestions([]);
-                          setPinAddressStatus("Address selected from town suggestions.");
-                          if (item.lat != null && item.lng != null) {
-                            setDeliveryPin({ lat: item.lat, lng: item.lng });
-                            setShowDeliveryPin(true);
-                          }
-                          setSubmitted(false);
-                        }}
-                        className="block w-full rounded px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50"
+                        className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-slate-50 last:border-b-0"
+                        onClick={() => chooseLocalLandmark(row)}
                       >
-                        {item.label}
+                        <div className="font-semibold text-slate-900">{row.label}</div>
+                        <div className="text-[11px] text-slate-500">{row.town}, Ifugao</div>
                       </button>
                     ))}
                   </div>
@@ -1645,25 +1602,13 @@ const selectedTownForAddress = useMemo(() => {
                 </button>
               </div>
               {deliveryPin ? (
-                <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Address text will auto-fill from the pin when available.</div>
+                <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Add a landmark in the address box if needed.</div>
               ) : (
                 <div className="mt-2 text-[11px] text-slate-500">No delivery spot marked yet. The order can still use the written address.</div>
               )}
-              {pinAddressStatus ? (
-                <div className="mt-2 rounded border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-800">
-                  {pinAddressStatus}
-                </div>
-              ) : null}
               {showDeliveryPin ? (
                 <div className="mt-3">
-                  <DeliveryPinPicker
-                    value={deliveryPin}
-                    onChange={(next) => {
-                      setAddrMode("new");
-                      setDeliveryPin(next);
-                      setSubmitted(false);
-                    }}
-                  />
+                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); setSubmitted(false); }} />
                 </div>
               ) : null}
             </div>
