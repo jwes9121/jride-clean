@@ -269,7 +269,7 @@ export default function VendorTakeoutOrdersPage() {
         // localStorage may be blocked; ignore.
       }
 
-      const data = await readJson("/api/takeout/vendor/orders?vendor_id=" + encodeURIComponent(vid));
+      const data = await readJson("/api/vendor-orders?vendor_id=" + encodeURIComponent(vid));
       const list = Array.isArray(data.orders) ? data.orders : [];
       setOrders(list);
       setMessage("Loaded " + list.length + " order(s).");
@@ -304,7 +304,7 @@ export default function VendorTakeoutOrdersPage() {
     setError("");
     setMessage("");
     try {
-      await postJson("/api/takeout/vendor/orders", {
+      await postJson("/api/vendor-orders", {
         vendor_id: vid,
         order_id: id,
         vendor_status: vendorStatus,
