@@ -12,6 +12,16 @@ export default function PassengerLoginPage() {
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
+  const [callbackUrl, setCallbackUrl] = React.useState("/passenger");
+
+  React.useEffect(() => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get("callbackUrl") || "/passenger";
+      if (raw.startsWith("/") && !raw.startsWith("//")) {
+        setCallbackUrl(raw);
+      }
+    } catch {}
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,15 +42,17 @@ export default function PassengerLoginPage() {
         return;
       }
 
-      if (j.access_token) {
+      const token = String(j.access_token || j.token || j.session?.access_token || "").trim();
+      if (token) {
         try {
-          localStorage.setItem("jride_access_token", j.access_token);
+          localStorage.setItem("jride_access_token", token);
+          localStorage.setItem("jride_passenger_token", token);
         } catch {}
       }
 
       setMsg("Login OK. Redirecting...");
       setTimeout(() => {
-        router.push("/passenger");
+        router.push(callbackUrl);
       }, 250);
     } catch (err: any) {
       setMsg(err?.message || "Login failed.");
@@ -53,7 +65,7 @@ export default function PassengerLoginPage() {
     <main className="min-h-screen flex items-center justify-center p-6 bg-white">
       <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-semibold mb-1">Passenger Login</h1>
-        <p className="text-sm opacity-70 mb-6">Sign in with your phone number.</p>
+        <p className="text-sm opacity-70 mb-6">Sign in with your phone number and password.</p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>

@@ -5,7 +5,7 @@ import mapboxgl from "mapbox-gl";
 
 const passengerToken =
   typeof window !== "undefined"
-    ? localStorage.getItem("jride_passenger_token")
+    ? localStorage.getItem("jride_passenger_token") || localStorage.getItem("jride_access_token")
     : null;
 
 const authHeaders: HeadersInit = {
@@ -278,11 +278,27 @@ function writeLocal(key: string, value: string) {
   if (cleanValue) window.localStorage.setItem(key, cleanValue);
 }
 
+function currentPassengerAuthHeaders(): HeadersInit {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (typeof window !== "undefined") {
+    const token =
+      window.localStorage.getItem("jride_passenger_token") ||
+      window.localStorage.getItem("jride_access_token") ||
+      "";
+    if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  }
+  return headers;
+}
+
 function logoutPassengerProfile() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(LS_TAKEOUT_CUSTOMER_NAME);
   window.localStorage.removeItem(LS_TAKEOUT_CUSTOMER_PHONE);
-  window.location.href = "/api/auth/signout?callbackUrl=/takeout";
+  window.localStorage.removeItem("jride_passenger_token");
+  window.localStorage.removeItem("jride_access_token");
+  window.sessionStorage.removeItem(LS_TAKEOUT_CUSTOMER_NAME);
+  window.sessionStorage.removeItem(LS_TAKEOUT_CUSTOMER_PHONE);
+  window.location.href = "/passenger-login?callbackUrl=/takeout";
 }
 
 async function fetchOptionalJson(url: string): Promise<any> {
@@ -722,9 +738,10 @@ function selectedAddressTown(
     const contact = await fetchOptionalJson("/api/takeout/passenger-contact");
     const signedIn =
       hasSignedInUser(passengerSession) ||
-      passengerSession?.ok === true ||
       hasSignedInUser(session) ||
-      contact?.signed_in === true;
+      contact?.signed_in === true ||
+      contact?.authenticated === true ||
+      !!firstString(contact?.user_id, contact?.passenger_id, contact?.profile?.id, contact?.data?.id);
 
     const profileSources: any[] = [];
 
@@ -773,15 +790,17 @@ function selectedAddressTown(
 
     const loaded = [profileName ? "profile name" : "", profilePhone ? "profile phone" : "", profileAddress ? "profile address" : ""].filter(Boolean);
 
-    if (signedIn && loaded.length) {
+    if (signedIn && profileName && profilePhone) {
       setAuthState("signed_in_profile");
-      setAutofillNote("Signed in. Loaded from verified passenger contact: " + loaded.join(", ") + ". You can still edit before submitting.");
+      setAutofillNote("Signed in. Loaded from verified passenger contact: " + loaded.join(", ") + ". These details are required for booking.");
     } else if (signedIn) {
       setAuthState("signed_in_missing_profile");
-      setAutofillNote("Signed in. Passenger contact was not found on this page yet. Please confirm the delivery name and phone for this order.");
+      setAutofillNote("Signed in, but a complete verified passenger name and phone were not found. Booking is blocked until the profile is fixed.");
     } else {
+      setCustomerName("");
+      setCustomerPhone("");
       setAuthState("guest");
-      setAutofillNote("Not signed in. Sign in to book, saved contact details, and synced order history.");
+      setAutofillNote("Not signed in. Sign in with your passenger phone number and password to book.");
     }
   }
 
