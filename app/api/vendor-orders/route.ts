@@ -812,7 +812,33 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   const vendorLL = v.ll;
   const vendorTown = v.town;
 
-  const dropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
+  // JRIDE_VENDOR_ORDERS_DELIVERY_PIN_PRIORITY_V1
+  // The passenger live map pin is authoritative for takeout dropoff.
+  // Fallback to saved address/geocoder only when no live pin was sent.
+  const explicitDropLat = isFiniteNum(
+    body?.delivery_pin_lat ??
+      body?.deliveryPinLat ??
+      body?.dropoff_lat ??
+      body?.dropoffLat ??
+      body?.to_lat ??
+      body?.toLat ??
+      null,
+  );
+  const explicitDropLng = isFiniteNum(
+    body?.delivery_pin_lng ??
+      body?.deliveryPinLng ??
+      body?.dropoff_lng ??
+      body?.dropoffLng ??
+      body?.to_lng ??
+      body?.toLng ??
+      null,
+  );
+
+  const fallbackDropLL = await fetchAddressCoords(admin, device_key, address_id, to_label_hint);
+  const dropLL =
+    explicitDropLat != null && explicitDropLng != null
+      ? { lat: explicitDropLat, lng: explicitDropLng }
+      : fallbackDropLL;
 
   const explicitTown = String((body as any)?.town ?? (body as any)?.municipality ?? "").trim() || null;
   const derivedTown =
@@ -1186,6 +1212,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
