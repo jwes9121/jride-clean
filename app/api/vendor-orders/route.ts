@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -75,8 +75,8 @@ function pickLatLng(obj: any): LatLng {
   const lowerMap: Record<string, any> = {};
   for (const k of keys) lowerMap[k.toLowerCase()] = (obj as any)[k];
 
-  const latKeys = ["lat","latitude","location_lat","pickup_lat","from_lat","start_lat","vendor_lat","store_lat","merchant_lat"];
-  const lngKeys = ["lng","lon","longitude","location_lng","pickup_lng","from_lng","start_lng","vendor_lng","store_lng","merchant_lng"];
+  const latKeys = ["vendor_lat","store_lat","merchant_lat","pickup_lat","from_lat","start_lat","location_lat","lat","latitude"];
+  const lngKeys = ["vendor_lng","store_lng","merchant_lng","pickup_lng","from_lng","start_lng","location_lng","lng","lon","longitude"];
 
   function firstNum(cands: string[]) {
     for (const k of cands) {
@@ -961,7 +961,14 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
     const vTown = pickTown(vendorMeta);
     const vLabel =
-      String((body as any)?.pickup_label ?? (body as any)?.from_label ?? (body as any)?.vendor_label ?? "").trim() ||
+      String(
+        (vendorMeta as any)?.vendor_location_label ??
+        (body as any)?.pickup_label ??
+        (body as any)?.from_label ??
+        (body as any)?.vendor_label ??
+        (vendorMeta as any)?.location_label ??
+        ""
+      ).trim() ||
       null;
     // 2) dropoff coords from passenger primary address if available (device_key comes from takeout page)
     const _dk = String(body?.device_key ?? body?.deviceKey ?? "").trim();
@@ -1179,6 +1186,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
