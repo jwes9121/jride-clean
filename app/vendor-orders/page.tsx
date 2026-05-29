@@ -295,6 +295,72 @@ export default function VendorTakeoutOrdersPage() {
     return () => window.clearInterval(timer);
   }, [vendorId, loadOrders]);
 
+  function getCancelReason(order: TakeoutOrder, vendorStatus: string): string | null {
+    if (vendorStatus !== "cancelled") return null;
+
+    const currentStatus = displayStatus(order);
+    const isReject = currentStatus === "vendor_pending";
+
+    const reasons = isReject
+      ? [
+          "Out of stock",
+          "Store closed",
+          "Item unavailable",
+          "Too many active orders",
+          "Outside vendor service coverage",
+          "Vendor unavailable",
+          "Other",
+        ]
+      : [
+          "Kitchen issue",
+          "Ingredient unavailable",
+          "Vendor emergency",
+          "Cannot fulfill order",
+          "Other",
+        ];
+
+    const menu =
+      (isReject ? "Select reject reason for " : "Select cancel reason for ") +
+      code(order) +
+      ":\n\n" +
+      reasons.map((reason, index) => String(index + 1) + ". " + reason).join("\n");
+
+    const choiceRaw = window.prompt(menu, "1");
+    if (choiceRaw === null) return null;
+
+    const choice = Number(text(choiceRaw));
+    if (!Number.isInteger(choice) || choice < 1 || choice > reasons.length) {
+      setMessage("Cancel/reject skipped. Choose a valid reason number.");
+      return null;
+    }
+
+    let reason = reasons[choice - 1] || "";
+    if (reason === "Other") {
+      const custom = window.prompt("Enter the specific reason for " + code(order) + ":", "");
+      reason = text(custom);
+      if (!reason) {
+        setMessage("Cancel/reject skipped. A specific reason is required for Other.");
+        return null;
+      }
+    }
+
+    const ok = window.confirm(
+      "Confirm " +
+        (isReject ? "reject" : "cancel") +
+        " order " +
+        code(order) +
+        "?\n\nReason: " +
+        reason
+    );
+
+    if (!ok) {
+      setMessage("Cancel/reject skipped.");
+      return null;
+    }
+
+    return reason;
+  }
+
   async function updateStatus(order: TakeoutOrder, vendorStatus: string) {
     const vid = text(vendorId);
     const id = orderId(order);
@@ -307,24 +373,11 @@ export default function VendorTakeoutOrdersPage() {
     };
 
     if (vendorStatus === "cancelled") {
-      const reason = window.prompt(
-        "Reason for rejecting/cancelling this order? This will stop the takeout order.",
-        "Vendor rejected the order"
-      );
-      const cleanedReason = text(reason);
-      if (!cleanedReason) {
-        setMessage("Cancel/reject skipped. A reason is required.");
-        return;
-      }
+      const reason = getCancelReason(order, vendorStatus);
+      if (!reason) return;
 
-      const ok = window.confirm("Confirm reject/cancel order " + code(order) + "?");
-      if (!ok) {
-        setMessage("Cancel/reject skipped.");
-        return;
-      }
-
-      payload.cancel_reason = cleanedReason;
-      payload.vendor_cancel_reason = cleanedReason;
+      payload.cancel_reason = reason;
+      payload.vendor_cancel_reason = reason;
     }
 
     setSavingId(id);
