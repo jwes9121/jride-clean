@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -386,6 +386,7 @@ export default function VendorPortalPage() {
   const [vendorLat, setVendorLat] = useState("");
   const [vendorLng, setVendorLng] = useState("");
   const [vendorLocationLabel, setVendorLocationLabel] = useState("");
+  const [vendorLocationOpen, setVendorLocationOpen] = useState(false);
   const vendorMapContainerRef = useRef<HTMLDivElement | null>(null);
   const vendorMapRef = useRef<mapboxgl.Map | null>(null);
   const vendorMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -677,6 +678,10 @@ export default function VendorPortalPage() {
   useEffect(() => {
     let retryTimer: number | null = null;
 
+    if (!vendorLocationOpen) {
+      return;
+    }
+
     if (!vendorMapContainerRef.current) {
       retryTimer = window.setTimeout(() => {
         setVendorMapMessage("Preparing vendor map picker...");
@@ -685,7 +690,15 @@ export default function VendorPortalPage() {
         if (retryTimer !== null) window.clearTimeout(retryTimer);
       };
     }
-    if (vendorMapRef.current) return;
+
+    if (vendorMapRef.current) {
+      window.setTimeout(() => {
+        try {
+          vendorMapRef.current?.resize();
+        } catch (_) {}
+      }, 200);
+      return;
+    }
 
     if (!VENDOR_PORTAL_MAPBOX_TOKEN) {
       setVendorMapMessage("Mapbox token is missing. Use manual latitude and longitude fields for now.");
@@ -694,7 +707,7 @@ export default function VendorPortalPage() {
 
     const lat = parseCoordValue(vendorLat);
     const lng = parseCoordValue(vendorLng);
-    const center = lat !== null && lng !== null ? [lng, lat] as VendorLngLat : townFallbackCenter(profileTown);
+    const center = lat !== null && lng !== null ? ([lng, lat] as VendorLngLat) : townFallbackCenter(profileTown);
 
     const map = new mapboxgl.Map({
       container: vendorMapContainerRef.current,
@@ -713,13 +726,13 @@ export default function VendorPortalPage() {
 
     const placeMarker = (coord: VendorLngLat) => {
       if (!vendorMarkerRef.current) {
-        vendorMarkerRef.current = new mapboxgl.Marker({ draggable: true })
+        const marker = new mapboxgl.Marker({ draggable: true })
           .setLngLat(coord)
           .addTo(map);
-        const marker = vendorMarkerRef.current;
-if (!marker) return;
 
-marker.on("dragend", () => {
+        vendorMarkerRef.current = marker;
+
+        marker.on("dragend", () => {
           const pos = marker.getLngLat();
           if (!pos) return;
           setVendorLat(pos.lat.toFixed(6));
@@ -738,6 +751,11 @@ marker.on("dragend", () => {
       setVendorMapReady(true);
       placeMarker(center);
       setVendorMapMessage("Click the map or drag the pin to set the exact pickup point.");
+      window.setTimeout(() => {
+        try {
+          map.resize();
+        } catch (_) {}
+      }, 200);
     });
 
     map.on("error", (ev: mapboxgl.ErrorEvent) => {
@@ -763,7 +781,7 @@ marker.on("dragend", () => {
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendorLat, vendorLng, profileTown]);
+  }, [vendorLocationOpen, profileTown]);
 
   useEffect(() => {
     const map = vendorMapRef.current;
@@ -1307,27 +1325,74 @@ marker.on("dragend", () => {
                 <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct passenger store location.</div>
 
                 <div className="mt-4 rounded-2xl border bg-white p-3">
-                  <div className="text-sm font-semibold text-slate-900">Exact vendor pickup pin</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Set the real store pickup coordinates. This is the source for future passenger map preview and driver pickup routing.</div>
-                  <label className="mt-3 block text-xs font-medium text-slate-700">Location label</label>
-                  <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLocationLabel} onChange={(e) => setVendorLocationLabel(e.target.value)} placeholder="Example: Beside municipal hall, front of main entrance" />
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-700">Latitude</label>
-                      <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLat} onChange={(e) => setVendorLat(e.target.value)} placeholder="16.833000" inputMode="decimal" />
+                      <div className="text-sm font-semibold text-slate-900">Exact vendor pickup pin</div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {vendorLat && vendorLng
+                          ? `Saved pin: ${vendorLat}, ${vendorLng}`
+                          : "No exact pickup pin saved yet."}
+                      </div>
+                      {vendorLocationLabel ? (
+                        <div className="mt-1 text-[11px] text-slate-500">{vendorLocationLabel}</div>
+                      ) : null}
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700">Longitude</label>
-                      <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={vendorLng} onChange={(e) => setVendorLng(e.target.value)} placeholder="121.100000" inputMode="decimal" />
+                    <button
+                      type="button"
+                      className="rounded-xl border px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+                      onClick={() => setVendorLocationOpen((prev) => !prev)}
+                    >
+                      {vendorLocationOpen ? "Hide map" : vendorLat && vendorLng ? "Edit pickup pin" : "Set pickup pin"}
+                    </button>
+                  </div>
+
+                  {vendorLocationOpen ? (
+                    <div className="mt-3 rounded-2xl border bg-slate-50 p-3">
+                      <div className="text-[11px] text-slate-500">
+                        Set the real store pickup coordinates. Click the map or drag the pin, then click Save profile details.
+                      </div>
+
+                      <label className="mt-3 block text-xs font-medium text-slate-700">Location label</label>
+                      <input
+                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                        value={vendorLocationLabel}
+                        onChange={(e) => setVendorLocationLabel(e.target.value)}
+                        placeholder="Example: Beside municipal hall, front of main entrance"
+                      />
+
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700">Latitude</label>
+                          <input
+                            className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                            value={vendorLat}
+                            onChange={(e) => setVendorLat(e.target.value)}
+                            placeholder="16.833000"
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700">Longitude</label>
+                          <input
+                            className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                            value={vendorLng}
+                            onChange={(e) => setVendorLng(e.target.value)}
+                            placeholder="121.100000"
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 overflow-hidden rounded-2xl border bg-white">
+                        <div ref={vendorMapContainerRef} className="h-64 w-full" />
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        {vendorMapMessage || (vendorMapReady ? "Click the map or drag the pin to set the exact vendor pickup point." : "Loading vendor map picker...")}
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">Manual latitude and longitude fields remain available as fallback.</div>
                     </div>
-                  </div>
-                  <div className="mt-3 overflow-hidden rounded-2xl border bg-white">
-                    <div ref={vendorMapContainerRef} className="h-64 w-full" />
-                  </div>
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    {vendorMapMessage || (vendorMapReady ? "Click the map or drag the pin to set the exact vendor pickup point." : "Loading vendor map picker...")}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500">Manual latitude and longitude fields remain available as fallback.</div>
+                  ) : null}
                 </div>
 
                 <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
