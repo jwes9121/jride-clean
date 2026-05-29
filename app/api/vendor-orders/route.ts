@@ -737,13 +737,11 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       if (!cancelReason) {
         return json(400, { ok: false, error: "CANCEL_REASON_REQUIRED", message: "Cancellation reason is required." });
       }
+
+      // Vendor cancellation is takeout-only and must not call ride lifecycle, wallet, fare, or dispatch routes.
+      // Keep this schema-safe: update only columns confirmed in the bookings table.
       patch.customer_status = "cancelled";
-      patch.vendor_cancel_reason = cancelReason;
-      patch.cancel_reason = cancelReason;
-      patch.cancellation_reason = cancelReason;
-      patch.vendor_cancel_note = cancelNote || null;
-      patch.cancel_note = cancelNote || null;
-      patch.cancelled_by = "vendor";
+      patch.status = "cancelled";
     }
 
     const up = await admin

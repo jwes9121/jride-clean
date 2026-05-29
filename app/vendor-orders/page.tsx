@@ -300,15 +300,38 @@ export default function VendorTakeoutOrdersPage() {
     const id = orderId(order);
     if (!vid || !id) return;
 
+    const payload: Record<string, any> = {
+      vendor_id: vid,
+      order_id: id,
+      vendor_status: vendorStatus,
+    };
+
+    if (vendorStatus === "cancelled") {
+      const reason = window.prompt(
+        "Reason for rejecting/cancelling this order? This will stop the takeout order.",
+        "Vendor rejected the order"
+      );
+      const cleanedReason = text(reason);
+      if (!cleanedReason) {
+        setMessage("Cancel/reject skipped. A reason is required.");
+        return;
+      }
+
+      const ok = window.confirm("Confirm reject/cancel order " + code(order) + "?");
+      if (!ok) {
+        setMessage("Cancel/reject skipped.");
+        return;
+      }
+
+      payload.cancel_reason = cleanedReason;
+      payload.vendor_cancel_reason = cleanedReason;
+    }
+
     setSavingId(id);
     setError("");
     setMessage("");
     try {
-      await postJson("/api/vendor-orders", {
-        vendor_id: vid,
-        order_id: id,
-        vendor_status: vendorStatus,
-      });
+      await postJson("/api/vendor-orders", payload);
       setMessage("Order " + code(order) + " updated to " + vendorStatus + ".");
       await loadOrders();
     } catch (err: any) {
@@ -652,7 +675,7 @@ export default function VendorTakeoutOrdersPage() {
                         onClick={() => updateStatus(order, "cancelled")}
                         className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Cancel
+                        {currentStatus === "vendor_pending" ? "Reject order" : "Cancel order"}
                       </button>
                     ) : null}
                     {isSaving ? <span className="self-center text-sm text-slate-500">Saving...</span> : null}
