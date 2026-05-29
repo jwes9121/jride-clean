@@ -675,7 +675,16 @@ export default function VendorPortalPage() {
   }, [profile?.town, selectedVendor?.town]);
 
   useEffect(() => {
-    if (!vendorMapContainerRef.current) return;
+    let retryTimer: number | null = null;
+
+    if (!vendorMapContainerRef.current) {
+      retryTimer = window.setTimeout(() => {
+        setVendorMapMessage("Preparing vendor map picker...");
+      }, 200);
+      return () => {
+        if (retryTimer !== null) window.clearTimeout(retryTimer);
+      };
+    }
     if (vendorMapRef.current) return;
 
     if (!VENDOR_PORTAL_MAPBOX_TOKEN) {
@@ -695,6 +704,12 @@ export default function VendorPortalPage() {
     });
 
     vendorMapRef.current = map;
+
+    window.setTimeout(() => {
+      try {
+        map.resize();
+      } catch (_) {}
+    }, 200);
 
     const placeMarker = (coord: VendorLngLat) => {
       if (!vendorMarkerRef.current) {
@@ -725,6 +740,11 @@ marker.on("dragend", () => {
       setVendorMapMessage("Click the map or drag the pin to set the exact pickup point.");
     });
 
+    map.on("error", (ev: mapboxgl.ErrorEvent) => {
+      const msg = String((ev as any)?.error?.message || "Mapbox failed to load vendor map.");
+      setVendorMapMessage(msg + " Manual latitude and longitude fields remain available.");
+    });
+
     map.on("click", (ev: mapboxgl.MapMouseEvent) => {
       const coord: VendorLngLat = [ev.lngLat.lng, ev.lngLat.lat];
       placeMarker(coord);
@@ -743,7 +763,7 @@ marker.on("dragend", () => {
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [vendorLat, vendorLng, profileTown]);
 
   useEffect(() => {
     const map = vendorMapRef.current;
@@ -1734,6 +1754,7 @@ marker.on("dragend", () => {
     </main>
   );
 }
+
 
 
 
