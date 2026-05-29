@@ -80,6 +80,25 @@ function displayStatus(order: TakeoutOrder): string {
   return s || "vendor_pending";
 }
 
+const VENDOR_REJECT_REASONS = [
+  "Out of stock",
+  "Store closed",
+  "Item unavailable",
+  "Too many active orders",
+  "Outside delivery service coverage",
+  "Vendor unavailable",
+  "Other",
+];
+
+const VENDOR_CANCEL_REASONS = [
+  "Kitchen issue",
+  "Ingredient unavailable",
+  "Vendor emergency",
+  "Cannot fulfill order",
+  "Too many active orders",
+  "Other",
+];
+
 function statusClass(status: string): string {
   if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "cancelled" || status === "canceled") return "border-rose-200 bg-rose-50 text-rose-800";
@@ -132,6 +151,9 @@ export default function VendorTakeoutOrdersPage() {
   const [orders, setOrders] = useState<TakeoutOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [cancelDraft, setCancelDraft] = useState<{ order: TakeoutOrder; mode: "reject" | "cancel" } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelOtherReason, setCancelOtherReason] = useState("");
   const [message, setMessage] = useState("");
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [soundUnlocked, setSoundUnlocked] = useState(false);
@@ -295,73 +317,7 @@ export default function VendorTakeoutOrdersPage() {
     return () => window.clearInterval(timer);
   }, [vendorId, loadOrders]);
 
-  function getCancelReason(order: TakeoutOrder, vendorStatus: string): string | null {
-    if (vendorStatus !== "cancelled") return null;
-
-    const currentStatus = displayStatus(order);
-    const isReject = currentStatus === "vendor_pending";
-
-    const reasons = isReject
-      ? [
-          "Out of stock",
-          "Store closed",
-          "Item unavailable",
-          "Too many active orders",
-          "Outside vendor service coverage",
-          "Vendor unavailable",
-          "Other",
-        ]
-      : [
-          "Kitchen issue",
-          "Ingredient unavailable",
-          "Vendor emergency",
-          "Cannot fulfill order",
-          "Other",
-        ];
-
-    const menu =
-      (isReject ? "Select reject reason for " : "Select cancel reason for ") +
-      code(order) +
-      ":\n\n" +
-      reasons.map((reason, index) => String(index + 1) + ". " + reason).join("\n");
-
-    const choiceRaw = window.prompt(menu, "1");
-    if (choiceRaw === null) return null;
-
-    const choice = Number(text(choiceRaw));
-    if (!Number.isInteger(choice) || choice < 1 || choice > reasons.length) {
-      setMessage("Cancel/reject skipped. Choose a valid reason number.");
-      return null;
-    }
-
-    let reason = reasons[choice - 1] || "";
-    if (reason === "Other") {
-      const custom = window.prompt("Enter the specific reason for " + code(order) + ":", "");
-      reason = text(custom);
-      if (!reason) {
-        setMessage("Cancel/reject skipped. A specific reason is required for Other.");
-        return null;
-      }
-    }
-
-    const ok = window.confirm(
-      "Confirm " +
-        (isReject ? "reject" : "cancel") +
-        " order " +
-        code(order) +
-        "?\n\nReason: " +
-        reason
-    );
-
-    if (!ok) {
-      setMessage("Cancel/reject skipped.");
-      return null;
-    }
-
-    return reason;
-  }
-
-  async function updateStatus(order: TakeoutOrder, vendorStatus: string) {
+  async function updateStatus(order: TakeoutOrder, vendorStatus: string, explicitReason?: string) {
     const vid = text(vendorId);
     const id = orderId(order);
     if (!vid || !id) return;
@@ -373,11 +329,13 @@ export default function VendorTakeoutOrdersPage() {
     };
 
     if (vendorStatus === "cancelled") {
-      const reason = getCancelReason(order, vendorStatus);
-      if (!reason) return;
-
-      payload.cancel_reason = reason;
-      payload.vendor_cancel_reason = reason;
+      const cleanedReason = text(explicitReason);
+      if (!cleanedReason) {
+        setError("Reject/cancel reason is required.");
+        return;
+      }
+      payload.cancel_reason = cleanedReason;
+      payload.vendor_cancel_reason = cleanedReason;
     }
 
     setSavingId(id);
@@ -386,12 +344,41 @@ export default function VendorTakeoutOrdersPage() {
     try {
       await postJson("/api/vendor-orders", payload);
       setMessage("Order " + code(order) + " updated to " + vendorStatus + ".");
+      setCancelDraft(null);
+      setCancelReason("");
+      setCancelOtherReason("");
       await loadOrders();
     } catch (err: any) {
       setError(text(err?.message) || "Failed to update order.");
     } finally {
       setSavingId(null);
     }
+  }
+
+  function openCancelDraft(order: TakeoutOrder) {
+    const currentStatus = displayStatus(order);
+    const mode = currentStatus === "vendor_pending" ? "reject" : "cancel";
+    const reasons = mode === "reject" ? VENDOR_REJECT_REASONS : VENDOR_CANCEL_REASONS;
+
+    setError("");
+    setMessage("");
+    setCancelDraft({ order, mode });
+    setCancelReason(reasons[0] || "");
+    setCancelOtherReason("");
+  }
+
+  async function submitCancelDraft() {
+    if (!cancelDraft) return;
+
+    const selected = text(cancelReason);
+    const finalReason = selected === "Other" ? text(cancelOtherReason) : selected;
+
+    if (!finalReason) {
+      setError("Please choose a reason. If you choose Other, type the reason.");
+      return;
+    }
+
+    await updateStatus(cancelDraft.order, "cancelled", finalReason);
   }
 
   const visibleOrders = useMemo(() => {
@@ -725,7 +712,7 @@ export default function VendorTakeoutOrdersPage() {
                       <button
                         type="button"
                         disabled={isSaving}
-                        onClick={() => updateStatus(order, "cancelled")}
+                        onClick={() => openCancelDraft(order)}
                         className="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {currentStatus === "vendor_pending" ? "Reject order" : "Cancel order"}
@@ -739,6 +726,72 @@ export default function VendorTakeoutOrdersPage() {
           )}
         </section>
       </div>
+          {cancelDraft ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="mb-3">
+              <div className="text-lg font-semibold text-slate-900">
+                {cancelDraft.mode === "reject" ? "Reject order" : "Cancel order"}
+              </div>
+              <div className="mt-1 text-sm text-slate-600">
+                Order {code(cancelDraft.order)}
+              </div>
+            </div>
+
+            <label className="text-sm font-medium text-slate-700">Reason</label>
+            <select
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              value={cancelReason}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                if (e.target.value !== "Other") setCancelOtherReason("");
+              }}
+            >
+              {(cancelDraft.mode === "reject" ? VENDOR_REJECT_REASONS : VENDOR_CANCEL_REASONS).map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </select>
+
+            {cancelReason === "Other" ? (
+              <div className="mt-3">
+                <label className="text-sm font-medium text-slate-700">Type reason</label>
+                <input
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                  value={cancelOtherReason}
+                  onChange={(e) => setCancelOtherReason(e.target.value)}
+                  placeholder="Enter vendor reason"
+                />
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setCancelDraft(null);
+                  setCancelReason("");
+                  setCancelOtherReason("");
+                }}
+                disabled={!!savingId}
+              >
+                Keep order
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => submitCancelDraft()}
+                disabled={!!savingId || (cancelReason === "Other" && !text(cancelOtherReason))}
+              >
+                {savingId ? "Saving..." : cancelDraft.mode === "reject" ? "Reject order" : "Cancel order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </main>
   );
 }
