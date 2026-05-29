@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -270,6 +270,201 @@ async function isAuthedWithEither(supabase: any) {
   if (session?.user) return true;
   const { data } = await supabase.auth.getUser();
   return !!data?.user;
+}
+
+
+type TakeoutPassengerIdentity = {
+  userId: string | null;
+  email: string | null;
+  name: string;
+  phone: string;
+  verified: boolean;
+};
+
+function cleanString(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t ? t : null;
+}
+
+function phoneFromAuthEmail(email: string | null): string | null {
+  const e = cleanString(email);
+  if (!e) return null;
+  const m = /^p_(\d+)@phone\.jride\.local$/i.exec(e);
+  if (!m) return null;
+  const raw = m[1];
+  if (raw.startsWith("63")) return "+" + raw;
+  return raw;
+}
+
+function getBearerToken(req: NextRequest): string | null {
+  const h = req.headers.get("authorization") || "";
+  if (!h.startsWith("Bearer ")) return null;
+  const token = h.slice(7).trim();
+  return token || null;
+}
+
+function isTruthyVerification(v: unknown): boolean {
+  if (v === true) return true;
+  if (typeof v === "number") return v > 0;
+  if (typeof v !== "string") return false;
+  const t = v.trim().toLowerCase();
+  if (!t || t === "false" || t === "0" || t === "no" || t === "none") return false;
+  return true;
+}
+
+function isApprovedStatus(v: unknown): boolean {
+  const t = String(v ?? "").trim().toLowerCase();
+  return t === "approved_admin" || t === "approved" || t === "verified";
+}
+
+async function getTakeoutRequestUser(req: NextRequest, admin: any): Promise<any | null> {
+  const token = getBearerToken(req);
+  if (token) {
+    const bearer = await admin.auth.getUser(token).catch(() => null as any);
+    if (bearer?.data?.user) return bearer.data.user;
+  }
+
+  try {
+    const cookieClient = createRouteHandlerClient({ cookies });
+    const cookieUser = await cookieClient.auth.getUser();
+    if (cookieUser?.data?.user) return cookieUser.data.user;
+  } catch {}
+
+  const nextSession = await auth().catch(() => null as any);
+  const nextUser = (nextSession as any)?.user || null;
+  if (nextUser) return nextUser;
+
+  return null;
+}
+
+async function findPassengerProfile(admin: any, userId: string | null, email: string | null, phone: string | null): Promise<any | null> {
+  const attempts: Array<{ col: string; val: string | null }> = [
+    { col: "user_id", val: userId },
+    { col: "email", val: email },
+    { col: "phone", val: phone },
+  ];
+
+  for (const a of attempts) {
+    if (!a.val) continue;
+    const r = await admin
+      .from("passenger_profiles")
+      .select("user_id,full_name,phone,email")
+      .eq(a.col, a.val)
+      .limit(1)
+      .maybeSingle();
+    if (!r.error && r.data) return r.data;
+  }
+
+  return null;
+}
+
+async function isVerifiedTakeoutPassenger(admin: any, userId: string | null, email: string | null): Promise<boolean> {
+  if (userId) {
+    const pv = await admin
+      .from("passenger_verifications")
+      .select("status")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (!pv.error && pv.data && isApprovedStatus((pv.data as any).status)) return true;
+
+    const pr = await admin
+      .from("passenger_verification_requests")
+      .select("status")
+      .eq("passenger_id", userId)
+      .limit(1)
+      .maybeSingle();
+    if (!pr.error && pr.data && isApprovedStatus((pr.data as any).status)) return true;
+  }
+
+  const checks: Array<{ col: string; val: string | null }> = [
+    { col: "auth_user_id", val: userId },
+    { col: "user_id", val: userId },
+    { col: "email", val: email },
+  ];
+
+  for (const c of checks) {
+    if (!c.val) continue;
+    const p = await admin
+      .from("passengers")
+      .select("is_verified,verified,verification_tier,night_allowed")
+      .eq(c.col, c.val)
+      .limit(1)
+      .maybeSingle();
+    if (!p.error && p.data) {
+      const row: any = p.data;
+      if (
+        isTruthyVerification(row.is_verified) ||
+        isTruthyVerification(row.verified) ||
+        isTruthyVerification(row.verification_tier) ||
+        isTruthyVerification(row.night_allowed)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+async function requireVerifiedTakeoutPassenger(req: NextRequest, admin: any): Promise<{ ok: true; passenger: TakeoutPassengerIdentity } | { ok: false; response: NextResponse }> {
+  const user = await getTakeoutRequestUser(req, admin);
+  const meta = ((user as any)?.user_metadata || {}) as any;
+  const userId = cleanString((user as any)?.id) || null;
+  const email = cleanString((user as any)?.email) || null;
+  const authPhone = cleanString((user as any)?.phone) || cleanString(meta.phone) || cleanString(meta.mobile) || phoneFromAuthEmail(email);
+
+  if (!userId && !email && !authPhone) {
+    return {
+      ok: false,
+      response: json(401, {
+        ok: false,
+        error: "PASSENGER_AUTH_REQUIRED",
+        message: "Please sign in with a verified passenger account before placing a takeout order.",
+      }),
+    };
+  }
+
+  const profile = await findPassengerProfile(admin, userId, email, authPhone);
+  const resolvedUserId = cleanString(profile?.user_id) || userId;
+  const resolvedEmail = cleanString(profile?.email) || email;
+  const resolvedName = cleanString(profile?.full_name) || cleanString(meta.full_name) || cleanString(meta.name) || null;
+  const resolvedPhone = cleanString(profile?.phone) || authPhone || null;
+
+  const verified = await isVerifiedTakeoutPassenger(admin, resolvedUserId, resolvedEmail);
+  if (!verified) {
+    return {
+      ok: false,
+      response: json(403, {
+        ok: false,
+        error: "PASSENGER_VERIFICATION_REQUIRED",
+        message: "Only verified JRide passengers can place takeout orders.",
+      }),
+    };
+  }
+
+  if (!resolvedName || !resolvedPhone) {
+    return {
+      ok: false,
+      response: json(409, {
+        ok: false,
+        error: "PASSENGER_PROFILE_INCOMPLETE",
+        message: "Your verified passenger profile must have both name and phone number before booking takeout.",
+      }),
+    };
+  }
+
+  return {
+    ok: true,
+    passenger: {
+      userId: resolvedUserId,
+      email: resolvedEmail,
+      name: resolvedName,
+      phone: resolvedPhone,
+      verified: true,
+    },
+  };
 }
 
 type SnapshotItem = {
@@ -573,20 +768,13 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   }
 
   // CREATE PATH (Phase 2D snapshot lock runs ONLY here)
+  // JRIDE_TAKEOUT_VERIFIED_PASSENGER_CREATE_GUARD_V1
+  // Takeout booking identity is server-derived. Do not trust passenger name/phone from request body.
+  const passengerAuth = await requireVerifiedTakeoutPassenger(req, admin);
+  if (!passengerAuth.ok) return passengerAuth.response;
 
-  const customer_name = String(body?.customer_name ?? body?.customerName ?? body?.passenger_name ?? body?.passengerName ?? "").trim();
-  const customer_phone = String(
-    body?.customer_phone ??
-    body?.customerPhone ??
-    body?.passenger_phone ??
-    body?.passengerPhone ??
-    body?.phone ??
-    body?.contact_phone ??
-    body?.contactPhone ??
-    body?.mobile ??
-    body?.mobile_number ??
-    ""
-  ).trim();
+  const customer_name = passengerAuth.passenger.name;
+  const customer_phone = passengerAuth.passenger.phone;
   const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
   const note = cleanTakeoutCustomerNote(body?.customer_note ?? body?.passenger_note ?? body?.note ?? "");
   const premium_packaging_selected = Boolean(body?.premium_packaging_selected ?? body?.premiumPackagingSelected ?? body?.order_preferences?.premium_packaging_selected ?? false);
@@ -893,26 +1081,16 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         dropoff_lng: (dropoffLL as any)?.lng ?? null,
     status: "requested",
 
-    // Optional fields (will be auto-dropped if columns don't exist)
-
-    passenger_name: customer_name || "Takeout Customer",
-    rider_name: customer_name || null,
-
-    rider_phone: customer_phone || null,
-
-    customer_name: customer_name || null,
-
-    customer_phone: customer_phone || null,
-
-      passenger_phone: customer_phone || null,
-
-    phone: customer_phone || null,
-
-    contact_phone: customer_phone || null,
+    // Optional fields (schema-safe; unknown columns are auto-dropped).
+    // Authoritative passenger identity comes from verified server-side auth/profile only.
+    created_by_user_id: passengerAuth.passenger.userId || null,
+    passenger_name: customer_name,
+    passenger_phone: customer_phone,
+    customer_phone: customer_phone,
+    phone: customer_phone,
+    contact_phone: customer_phone,
 
     to_label: to_label || null,
-
-    dropoff_label: to_label || null,
 
     notes: note || null,
     customer_note: note || null,

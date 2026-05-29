@@ -707,11 +707,11 @@ function selectedAddressTown(
 
   const canSubmit = useMemo(() => {
     const hasVendor = vendorId.trim().length > 0;
-    const hasName = customerName.trim().length > 0;
+    const hasVerifiedProfile = authState === "signed_in_profile" && customerName.trim().length > 0 && customerPhone.trim().length > 0;
     const hasDeliveryPin = !!deliveryPin;
     const hasItems = selectedLines.length > 0;
-    return hasVendor && hasName && hasDeliveryPin && hasItems && !vendorClosed && !busy;
-  }, [vendorId, customerName, deliveryPin, selectedLines.length, vendorClosed, busy]);
+    return hasVendor && hasVerifiedProfile && hasDeliveryPin && hasItems && !vendorClosed && !busy;
+  }, [vendorId, authState, customerName, customerPhone, deliveryPin, selectedLines.length, vendorClosed, busy]);
 
 
   async function loadPassengerAutofill() {
@@ -781,7 +781,7 @@ function selectedAddressTown(
       setAutofillNote("Signed in. Passenger contact was not found on this page yet. Please confirm the delivery name and phone for this order.");
     } else {
       setAuthState("guest");
-      setAutofillNote("Not signed in. Sign in for faster checkout, saved contact details, and synced order history.");
+      setAutofillNote("Not signed in. Sign in to book, saved contact details, and synced order history.");
     }
   }
 
@@ -1173,6 +1173,11 @@ function selectedAddressTown(
         return;
       }
 
+      if (authState !== "signed_in_profile" || !customerName.trim() || !customerPhone.trim()) {
+        setResult("Only signed-in verified passengers with profile name and phone can place takeout orders.");
+        return;
+      }
+
       if (!deliveryPin) {
         setResult("Please set the exact delivery location on the map before placing the order.");
         setShowDeliveryPin(true);
@@ -1341,25 +1346,25 @@ function selectedAddressTown(
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="font-semibold">You are not signed in</div>
-                <div className="text-xs">Sign in to autofill your verified passenger contact, phone number, saved address, and keep order history synced.</div>
+                <div className="font-semibold">Sign in required</div>
+                <div className="text-xs">Only verified JRide passengers with profile name and phone can place takeout orders.</div>
               </div>
               <a href="/passenger-login?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
-                Sign in for faster checkout
+                Sign in to book
               </a>
             </div>
           </div>
         ) : authState === "signed_in_missing_profile" ? (
           <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-            <div className="font-semibold">Signed in. Confirm delivery contact</div>
-            <div className="text-xs">We could not load your passenger contact here yet. Please enter the name and phone the vendor or driver should use for this order.</div>
+            <div className="font-semibold">Verified passenger profile required</div>
+            <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
           </div>
         ) : authState === "signed_in_profile" ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="font-semibold">Signed in passenger profile loaded</div>
-                <div className="text-xs">Name and phone were loaded from your passenger profile. You can still edit before submitting.</div>
+                <div className="text-xs">Name and phone were loaded from your verified passenger profile. These details are required for booking.</div>
               </div>
               <button
                 type="button"
@@ -1478,17 +1483,18 @@ function selectedAddressTown(
           ) : null}
 
           <div>
-            <label className="text-xs font-medium text-slate-700">Passenger name (required)</label>
+            <label className="text-xs font-medium text-slate-700">Verified passenger name (required)</label>
             <input
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
+              readOnly={authState === "signed_in_profile"}
               placeholder=""
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-700">Passenger phone (recommended)</label>
+            <label className="text-xs font-medium text-slate-700">Verified passenger phone (required)</label>
             <input
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerPhone}
@@ -1496,6 +1502,7 @@ function selectedAddressTown(
                 const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
                 setCustomerPhone(digitsOnly);
               }}
+              readOnly={authState === "signed_in_profile"}
               placeholder="09xx..."
             />
           </div>
@@ -1929,7 +1936,7 @@ function selectedAddressTown(
               canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
-            {submitted ? "Order submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : "Review order and request delivery fee"}
+            {submitted ? "Order submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Verified passenger required" : "Review order and request delivery fee"}
           </button>
 
           {vendorClosed ? (
