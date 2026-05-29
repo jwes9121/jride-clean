@@ -510,6 +510,43 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    if (!passengerPhone) {
+      const passengerNameForPhone = s((booking as any).passenger_name);
+      if (passengerNameForPhone) {
+        try {
+          const passengerProfileByNameRes = await serviceSupabase
+            .from("passenger_profiles")
+            .select("phone")
+            .ilike("full_name", passengerNameForPhone)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!passengerProfileByNameRes.error && passengerProfileByNameRes.data) {
+            passengerPhone = s((passengerProfileByNameRes.data as any).phone);
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (!passengerPhone) {
+      const passengerNameForPhone = s((booking as any).passenger_name);
+      if (passengerNameForPhone) {
+        try {
+          const passengerVerificationByNameRes = await serviceSupabase
+            .from("passenger_verifications")
+            .select("phone")
+            .ilike("full_name", passengerNameForPhone)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!passengerVerificationByNameRes.error && passengerVerificationByNameRes.data) {
+            passengerPhone = s((passengerVerificationByNameRes.data as any).phone);
+          }
+        } catch (_) {}
+      }
+    }
     passengerPhone =
       passengerPhone ??
       s((booking as any).passenger_phone) ??
@@ -729,7 +766,9 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       town: s((booking as any).town),
       from_label: s((booking as any).from_label),
       to_label: s((booking as any).to_label),
-      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? takeoutReceipt.vendorName ?? s((booking as any).from_label)) : s((booking as any).from_label),
+      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorName ?? takeoutReceipt.vendorLocationLabel ?? s((booking as any).from_label)) : s((booking as any).from_label),
+      pickup_address_label: isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? s((booking as any).from_label)) : s((booking as any).from_label),
+      pickup_store_name: isTakeoutBooking ? (takeoutReceipt.vendorName ?? null) : null,
       dropoff_label: s((booking as any).to_label),
       pickup_lat: pickupLat,
       pickup_lng: pickupLng,
@@ -797,6 +836,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
