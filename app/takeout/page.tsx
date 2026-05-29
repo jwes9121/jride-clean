@@ -673,10 +673,10 @@ function selectedAddressTown(
   const canSubmit = useMemo(() => {
     const hasVendor = vendorId.trim().length > 0;
     const hasName = customerName.trim().length > 0;
-    const hasAddr = resolvedDeliveryAddress.length > 0 || !!deliveryPin;
+    const hasDeliveryPin = !!deliveryPin;
     const hasItems = selectedLines.length > 0;
-    return hasVendor && hasName && hasAddr && hasItems && !vendorClosed && !busy;
-  }, [vendorId, customerName, resolvedDeliveryAddress, deliveryPin, selectedLines.length, vendorClosed, busy]);
+    return hasVendor && hasName && hasDeliveryPin && hasItems && !vendorClosed && !busy;
+  }, [vendorId, customerName, deliveryPin, selectedLines.length, vendorClosed, busy]);
 
 
   async function loadPassengerAutofill() {
@@ -1114,6 +1114,13 @@ function selectedAddressTown(
         setResult("Cannot place order: vendor is currently closed. Please try again later.");
         return;
       }
+
+      if (!deliveryPin) {
+        setResult("Please set the exact delivery location on the map before placing the order.");
+        setShowDeliveryPin(true);
+        return;
+      }
+
       setBusy(true);
       setResult("");
       setLastJson(null);
@@ -1604,20 +1611,20 @@ function selectedAddressTown(
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Delivery location options</div>
-                  <div className="text-[11px] text-slate-500">Optional: add an exact pin only when the written address is not enough.</div>
+                  <div className="text-[11px] text-slate-500">Required: set the exact delivery pin so the driver route uses the correct passenger location.</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowDeliveryPin((v) => !v)}
                   className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
                 >
-                  {showDeliveryPin ? "Hide location options" : deliveryPin ? "Change exact location" : "Add exact location"}
+                  {showDeliveryPin ? "Hide location options" : deliveryPin ? "Change exact location" : "Set exact location"}
                 </button>
               </div>
               {deliveryPin ? (
                 <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Add a landmark in the address box if needed.</div>
               ) : (
-                <div className="mt-2 text-[11px] text-slate-500">No delivery spot marked yet. The order can still use the written address.</div>
+                <div className="mt-2 text-[11px] text-red-600">No delivery spot marked yet. Set the exact delivery pin before placing the order.</div>
               )}
               {showDeliveryPin ? (
                 <div className="mt-3">
@@ -2054,6 +2061,7 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
 
 
