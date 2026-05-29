@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -338,6 +338,18 @@ function safeCoord(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function addressToDeliveryPin(row: AddressRow | null | undefined): DeliveryPin | null {
+  if (!row) return null;
+  const lat = safeCoord(row.dropoff_lat ?? row.lat);
+  const lng = safeCoord(row.dropoff_lng ?? row.lng);
+  if (lat == null || lng == null) return null;
+  return { lat, lng };
+}
+
+function addressHasDeliveryPin(row: AddressRow | null | undefined): boolean {
+  return !!addressToDeliveryPin(row);
+}
+
 type DeliveryPin = {
   lat: number;
   lng: number;
@@ -363,7 +375,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
     if (!containerRef.current || mapRef.current) return;
 
     if (!mapboxgl.accessToken) {
-      setMapErr("Map token is missing. You can still submit using the text address.");
+      setMapErr("Map token is missing. Exact map pin is still required before order submission.");
       return;
     }
 
@@ -496,7 +508,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
           You are here: <span className="font-semibold">{value.lat.toFixed(6)}, {value.lng.toFixed(6)}</span>
         </div>
       ) : (
-        <div className="mt-2 text-[11px] text-slate-500">No pin selected yet. Text address will still be used.</div>
+        <div className="mt-2 text-[11px] text-red-600">No pin selected yet. Driver navigation requires the exact map location.</div>
       )}
     </div>
   );
@@ -564,10 +576,14 @@ export default function TakeoutPage() {
       setNewAddr((prev) => prev.trim() ? prev : addressText);
     }
 
-    const lat = safeCoord(primary.dropoff_lat ?? primary.lat);
-    const lng = safeCoord(primary.dropoff_lng ?? primary.lng);
-    if (!deliveryPin && lat != null && lng != null) {
-      setDeliveryPin({ lat, lng });
+    const savedPin = addressToDeliveryPin(primary);
+    if (savedPin) {
+      setDeliveryPin(savedPin);
+      return;
+    }
+
+    if (!deliveryPin) {
+      setShowDeliveryPin(true);
     }
   }, [addrMode, primary, deliveryPin]);
 
@@ -786,11 +802,12 @@ function selectedAddressTown(
       setAddrMode("saved");
       setNewAddr((prev) => prev.trim() ? prev : nextAddress);
 
-      const latValue = safeCoord(nextPrimary.dropoff_lat ?? nextPrimary.lat);
-      const lngValue = safeCoord(nextPrimary.dropoff_lng ?? nextPrimary.lng);
-
-      if (latValue != null && lngValue != null) {
-        setDeliveryPin({ lat: latValue, lng: lngValue });
+      const savedPin = addressToDeliveryPin(nextPrimary);
+      if (savedPin) {
+        setDeliveryPin(savedPin);
+      } else {
+        setDeliveryPin(null);
+        setShowDeliveryPin(true);
       }
     } catch (e: any) {
       setAddrErr(String(e?.message || e || "Failed to load addresses"));
@@ -992,14 +1009,25 @@ function selectedAddressTown(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, pricingOrder?.vendor_status, pricingOrder?.customer_status, lastJson?.order_id, lastJson?.booking_code]);
 
-  async function saveAddressToDb(addressText: string, makePrimary: boolean) {
+  async function saveAddressToDb(addressText: string, makePrimary: boolean, pinOverride?: DeliveryPin | null) {
     const addr = cleanDeliveryAddressLabel(addressText);
     if (!addr) throw new Error("Address required");
+
+    const pin = pinOverride ?? deliveryPin;
+    if (!pin) throw new Error("Exact delivery pin required before saving address");
 
     await postJson("/api/passenger-addresses", {
       device_key: deviceKey,
       address_text: addr,
       is_primary: makePrimary,
+      lat: pin.lat,
+      lng: pin.lng,
+      dropoff_lat: pin.lat,
+      dropoff_lng: pin.lng,
+      delivery_pin_lat: pin.lat,
+      delivery_pin_lng: pin.lng,
+      delivery_pin_label: deliveryPinLabel(pin),
+      delivery_pin_coordinates: deliveryPinCoordinateText(pin),
     });
 
     await refreshAddresses(deviceKey);
@@ -1008,7 +1036,18 @@ function selectedAddressTown(
   async function makePrimaryExisting(id: string) {
     const row = saved.find((a) => a.id === id);
     if (!row) return;
-    await saveAddressToDb(row.address_text, true);
+
+    const savedPin = addressToDeliveryPin(row);
+    if (!savedPin) {
+      setSelectedAddressId(String(row.id || ""));
+      setAddrMode("saved");
+      setDeliveryPin(null);
+      setShowDeliveryPin(true);
+      setAddrErr("This saved address has no map pin yet. Please set the exact delivery pin before making it primary.");
+      return;
+    }
+
+    await saveAddressToDb(row.address_text, true, savedPin);
   }
 
   function normalizeTakeoutOrders(j: any): TakeoutPricingOrder[] {
@@ -1492,8 +1531,20 @@ function selectedAddressTown(
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm">
                 {primary ? (
                   <>
-                    <div className="text-xs font-semibold text-slate-700">Primary address</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-xs font-semibold text-slate-700">Primary address</div>
+                      {addressHasDeliveryPin(primary) ? (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Has map pin</span>
+                      ) : (
+                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">Needs map pin</span>
+                      )}
+                    </div>
                     <div className="mt-1 text-sm text-slate-900">{cleanDeliveryAddressLabel(primary.address_text)}</div>
+                    {!addressHasDeliveryPin(primary) ? (
+                      <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+                        This saved address is text-only. Driver navigation uses the exact map location below. Set the pin before placing the order.
+                      </div>
+                    ) : null}
 
                     {saved.length > 1 ? (
                       <div className="mt-3">
@@ -1501,7 +1552,14 @@ function selectedAddressTown(
                         <div className={cls("mt-2 space-y-2", vendorClosed && "opacity-60")}>
                           {saved.filter((a) => a.id !== primary.id).slice(0, 5).map((a) => (
                             <div key={a.id} className="flex items-start justify-between gap-2 rounded border bg-white p-2">
-                              <div className="text-xs text-slate-800">{cleanDeliveryAddressLabel(a.address_text)}</div>
+                              <div className="min-w-0">
+                                <div className="text-xs text-slate-800">{cleanDeliveryAddressLabel(a.address_text)}</div>
+                                {addressHasDeliveryPin(a) ? (
+                                  <div className="mt-1 text-[10px] font-semibold text-emerald-700">Has map pin</div>
+                                ) : (
+                                  <div className="mt-1 text-[10px] font-semibold text-red-700">Needs map pin</div>
+                                )}
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1509,9 +1567,13 @@ function selectedAddressTown(
                                   setAddrMode("saved");
                                   const nextAddress = cleanDeliveryAddressLabel(String(a.address_text || a.label || ""));
                                   if (nextAddress) setNewAddr((prev) => prev.trim() ? prev : nextAddress);
-                                  const latValue = safeCoord(a.dropoff_lat ?? a.lat);
-                                  const lngValue = safeCoord(a.dropoff_lng ?? a.lng);
-                                  if (latValue != null && lngValue != null) setDeliveryPin({ lat: latValue, lng: lngValue });
+                                  const savedPin = addressToDeliveryPin(a);
+                                  if (savedPin) {
+                                    setDeliveryPin(savedPin);
+                                  } else {
+                                    setDeliveryPin(null);
+                                    setShowDeliveryPin(true);
+                                  }
                                   makePrimaryExisting(a.id).catch(() => undefined);
                                 }}
                                 className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
