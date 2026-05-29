@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -10,6 +10,8 @@ type TakeoutOrder = {
   customer_name?: string | null;
   customer_status?: string | null;
   vendor_status?: string | null;
+  vendor_cancel_reason?: string | null;
+  cancel_reason?: string | null;
   takeout_pricing_status?: string | null;
   takeout_delivery_fee?: number | string | null;
   takeout_service_fee?: number | string | null;
@@ -81,6 +83,11 @@ function normalizeTakeoutOrders(j: any): TakeoutOrder[] {
 
 function looksLikeUuid(v: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+
+function cancelReason(order: TakeoutOrder): string {
+  return normText(order.vendor_cancel_reason || order.cancel_reason);
 }
 
 export default function TakeoutTrackPage() {
