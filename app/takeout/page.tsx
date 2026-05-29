@@ -64,6 +64,12 @@ type VendorRow = {
   vendor_name?: string | null;
   email?: string | null;
   town?: string | null;
+  municipality?: string | null;
+  vendor_town?: string | null;
+  service_town?: string | null;
+  location_town?: string | null;
+  home_town?: string | null;
+  city?: string | null;
   premium_packaging_enabled?: boolean | null;
   premium_packaging_fee?: number | string | null;
   premium_packaging_label?: string | null;
@@ -232,8 +238,21 @@ function normalizeTakeoutTown(value: any): string {
   return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
+// JRIDE_TAKEOUT_TOWN_SELECT_VENDOR_FILTER_FIX_V1
 function vendorTown(v: VendorRow): string {
-  return normalizeTakeoutTown(v.town);
+  return normalizeTakeoutTown(
+    firstString(
+      v.town,
+      v.municipality,
+      v.vendor_town,
+      v.service_town,
+      v.location_town,
+      v.home_town,
+      v.city,
+      (v as any).town_name,
+      (v as any).store_town
+    )
+  );
 }
 
 function firstString(...values: any[]): string {
@@ -1363,7 +1382,20 @@ function selectedAddressTown(
                 className="mt-1 w-full rounded border px-3 py-2 text-sm"
                 value={vendorTownFilter}
                 onChange={(e) => {
-                  setVendorTownFilter(e.target.value);
+                  const nextTown = normalizeTakeoutTown(e.target.value);
+                  setVendorTownFilter(nextTown);
+                  setVendorId("");
+                  setQty({});
+                  setMenu([]);
+                  setVendorClosed(false);
+                  setMenuVendorProfile(null);
+                  setMenuErr(null);
+                  setPremiumPackagingSelected(false);
+                  setReceiptRequested(false);
+                  setSubmitted(false);
+                  setResult("");
+                  setLastJson(null);
+                  setPricingOrder(null);
                 }}
               >
                 <option value="">Select town</option>
