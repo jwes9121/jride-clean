@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -337,15 +337,15 @@ async function jrideLoadTakeoutReceiptV3(serviceSupabase: any, booking: any): Pr
     try {
       const vendorRes = await serviceSupabase
         .from("vendor_accounts")
-        .select("id,display_name,email,town,lat,lng,location_label")
+        .select("id,display_name,email,town,lat,lng,location_label,vendor_lat,vendor_lng,vendor_location_label")
         .eq("id", vendorId)
         .limit(1)
         .maybeSingle();
       if (!vendorRes.error && vendorRes.data) {
         vendorName = jrideTakeoutDisplayName(vendorRes.data);
-        vendorLocationLabel = s((vendorRes.data as any).location_label);
-        vendorLat = n((vendorRes.data as any).lat);
-        vendorLng = n((vendorRes.data as any).lng);
+        vendorLocationLabel = s((vendorRes.data as any).vendor_location_label) ?? s((vendorRes.data as any).location_label);
+        vendorLat = n((vendorRes.data as any).vendor_lat) ?? n((vendorRes.data as any).lat);
+        vendorLng = n((vendorRes.data as any).vendor_lng) ?? n((vendorRes.data as any).lng);
       }
     } catch (_) {}
   }
@@ -797,6 +797,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
