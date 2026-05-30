@@ -386,10 +386,12 @@ export default function VendorTakeoutOrdersPage() {
   }, [orders, showCompleted]);
 
   const pendingVendorOrders = useMemo(() => {
-    return orders.filter((order) => {
+    return visibleOrders.filter((order) => {
+      const shownStatus = displayStatus(order);
       const vendorStatus = text(order.vendor_status).toLowerCase();
       const rideStatus = text(order.status).toLowerCase();
-      const shownStatus = displayStatus(order);
+
+      if (!isActive(order)) return false;
 
       return (
         shownStatus === "vendor_pending" ||
@@ -398,7 +400,7 @@ export default function VendorTakeoutOrdersPage() {
         rideStatus === "requested"
       );
     });
-  }, [orders]);
+  }, [visibleOrders]);
 
   const pendingVendorKey = useMemo(() => {
     return pendingVendorOrders
