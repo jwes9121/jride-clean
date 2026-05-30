@@ -669,9 +669,9 @@ export async function GET(req: NextRequest) {
       vendor_cancel_reason: r?.vendor_cancel_reason ?? null,
 
       customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
-      customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
-      passenger_phone: r?.passenger_phone ?? r?.customer_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
-      phone: r?.phone ?? r?.passenger_phone ?? r?.customer_phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
+      customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? pricingSnapshot?.customer_phone ?? pricingSnapshot?.passenger_phone ?? pricingSnapshot?.phone ?? null,
+      passenger_phone: r?.passenger_phone ?? r?.customer_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? pricingSnapshot?.passenger_phone ?? pricingSnapshot?.customer_phone ?? pricingSnapshot?.phone ?? null,
+      phone: r?.phone ?? r?.passenger_phone ?? r?.customer_phone ?? r?.contact_phone ?? r?.rider_phone ?? pricingSnapshot?.phone ?? pricingSnapshot?.passenger_phone ?? pricingSnapshot?.customer_phone ?? null,
       to_label: r?.to_label ?? r?.dropoff_label ?? null,
 
       items: snapItems,
@@ -1205,6 +1205,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
       packaging_subtotal: premium_packaging_selected ? premium_packaging_fee : 0,
       takeout_packaging_subtotal: premium_packaging_selected ? premium_packaging_fee : 0,
+      passenger_phone: customer_phone,
+      customer_phone: customer_phone,
+      phone: customer_phone,
       receipt_requested,
       request_vendor_receipt: receipt_requested,
     },
@@ -1490,6 +1493,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
