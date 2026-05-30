@@ -583,7 +583,7 @@ export default function TakeoutPage() {
   const [qty, setQty] = useState<Record<string, number>>({});
 
   const [note, setNote] = useState("");
-  const [premiumPackagingSelected, setPremiumPackagingSelected] = useState(false);
+  const [premiumPackagingSelections, setPremiumPackagingSelections] = useState<Record<string, boolean>>({});
   const [receiptRequested, setReceiptRequested] = useState(false);
 
   const [busy, setBusy] = useState(false);
@@ -689,36 +689,102 @@ function selectedAddressTown(
     });
   }, [menu]);
 
+  function itemPremiumPackagingEnabled(m: MenuItem): boolean {
+    return m.premium_packaging_enabled === true;
+  }
+
+  function itemPremiumPackagingFee(m: MenuItem): number {
+    return itemPremiumPackagingEnabled(m) ? toNum(m.premium_packaging_fee) : 0;
+  }
+
+  function itemPremiumPackagingLabel(m: MenuItem): string {
+    return String(m.premium_packaging_label || "Premium packaging").trim() || "Premium packaging";
+  }
+
+  function setItemPremiumPackaging(itemId: string, checked: boolean) {
+    setPremiumPackagingSelections((prev) => {
+      const next = { ...prev };
+      if (checked) next[itemId] = true;
+      else delete next[itemId];
+      return next;
+    });
+  }
+
   const selectedLines = useMemo(() => {
-    const lines: Array<{ id: string; name: string; price: number; qty: number; line_total: number; packaging_note?: string | null }> = [];
+    const lines: Array<{
+      id: string;
+      name: string;
+      price: number;
+      qty: number;
+      line_total: number;
+      packaging_note?: string | null;
+      premium_packaging_selected?: boolean;
+      premium_packaging_fee?: number;
+      premium_packaging_label?: string | null;
+      premium_packaging_total?: number;
+    }> = [];
+
     for (const m of menuSelectable) {
       const q = Math.max(0, Math.floor(toNum(qty[m.id])));
       if (q > 0) {
-        lines.push({ id: m.id, name: m.name, price: toNum(m.price), qty: q, line_total: q * toNum(m.price), packaging_note: m.packaging_note || null });
+        const premiumSelected = premiumPackagingSelections[m.id] === true && itemPremiumPackagingEnabled(m);
+        const premiumFee = premiumSelected ? itemPremiumPackagingFee(m) : 0;
+        const premiumLabel = premiumSelected ? itemPremiumPackagingLabel(m) : null;
+
+        lines.push({
+          id: m.id,
+          name: m.name,
+          price: toNum(m.price),
+          qty: q,
+          line_total: q * toNum(m.price),
+          packaging_note: m.packaging_note || null,
+          premium_packaging_selected: premiumSelected,
+          premium_packaging_fee: premiumFee,
+          premium_packaging_label: premiumLabel,
+          premium_packaging_total: premiumFee * q,
+        });
       }
     }
+
     return lines;
-  }, [menuSelectable, qty]);
+  }, [menuSelectable, qty, premiumPackagingSelections]);
 
   const itemsSubtotal = useMemo(() => selectedLines.reduce((a, r) => a + toNum(r.line_total), 0), [selectedLines]);
-
-  const premiumPackagingEnabled = selectedVendor?.premium_packaging_enabled === true || menuVendorProfile?.premium_packaging_enabled === true;
-  const premiumPackagingFee = premiumPackagingEnabled ? toNum(menuVendorProfile?.premium_packaging_fee ?? selectedVendor?.premium_packaging_fee) : 0;
-  const premiumPackagingLabel = String(menuVendorProfile?.premium_packaging_label || selectedVendor?.premium_packaging_label || "Premium packaging").trim() || "Premium packaging";
-  const packagingEstimate = premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingFee : 0;
-  const cashCollectionRequired = itemsSubtotal + packagingEstimate >= 500;
+  const packagingEstimate = useMemo(() => selectedLines.reduce((a, r) => a + toNum(r.premium_packaging_total), 0), [selectedLines]);
+  const estimatedSubtotalWithPackaging = itemsSubtotal + packagingEstimate;
+  const premiumPackagingSelected = packagingEstimate > 0;
+  const premiumPackagingLabel = "Premium packaging";
+  const cashCollectionRequired = estimatedSubtotalWithPackaging >= 500;
 
   // Human readable for vendor UI, and JSON snapshot for future lock
   const itemsText = useMemo(() => {
     if (!selectedLines.length) return "";
     return selectedLines.map((r) => {
       const base = `${r.qty}x ${r.name} @ ${money(r.price)} = ${money(r.line_total)}`;
-      return r.packaging_note ? base + `\n   Packaging: ${r.packaging_note}` : base;
+      const lines = [base];
+
+      if (r.packaging_note) lines.push(`   Packaging: ${r.packaging_note}`);
+      if (r.premium_packaging_selected) {
+        lines.push(`   Add-on: ${r.premium_packaging_label || "Premium packaging"} (${money(toNum(r.premium_packaging_total))})`);
+      }
+
+      return lines.join("\n");
     }).join("\n");
   }, [selectedLines]);
 
   const itemsJson = useMemo(() => {
-    return selectedLines.map((r) => ({ menu_item_id: r.id, name: r.name, unit_price: r.price, qty: r.qty, line_total: r.line_total, packaging_note: r.packaging_note || null }));
+    return selectedLines.map((r) => ({
+      menu_item_id: r.id,
+      name: r.name,
+      unit_price: r.price,
+      qty: r.qty,
+      line_total: r.line_total,
+      packaging_note: r.packaging_note || null,
+      premium_packaging_selected: r.premium_packaging_selected === true,
+      premium_packaging_fee: toNum(r.premium_packaging_fee),
+      premium_packaging_label: r.premium_packaging_label || null,
+      premium_packaging_total: toNum(r.premium_packaging_total),
+    }));
   }, [selectedLines]);
 
   const canSubmit = useMemo(() => {
@@ -974,7 +1040,7 @@ function selectedAddressTown(
         setVendorClosed(false);
         setMenuVendorProfile(null);
         setMenuErr(null);
-        setPremiumPackagingSelected(false);
+        setPremiumPackagingSelections({});
         setReceiptRequested(false);
         setSubmitted(false);
       }
@@ -991,7 +1057,7 @@ function selectedAddressTown(
       setVendorClosed(false);
       setMenuVendorProfile(null);
       setMenuErr(null);
-      setPremiumPackagingSelected(false);
+      setPremiumPackagingSelections({});
       setReceiptRequested(false);
       setSubmitted(false);
     }
@@ -1280,17 +1346,17 @@ function selectedAddressTown(
 
         // Client-only item subtotal estimate
         estimated_items_subtotal: itemsSubtotal,
-        premium_packaging_selected: premiumPackagingSelected && premiumPackagingEnabled,
+        premium_packaging_selected: premiumPackagingSelected,
         premium_packaging_fee: packagingEstimate,
-        premium_packaging_label: premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingLabel : null,
+        premium_packaging_label: premiumPackagingSelected ? premiumPackagingLabel : null,
         cash_collection_required: cashCollectionRequired,
         takeout_cash_collection_required: cashCollectionRequired,
         receipt_requested: receiptRequested,
         request_vendor_receipt: receiptRequested,
         order_preferences: {
-          premium_packaging_selected: premiumPackagingSelected && premiumPackagingEnabled,
+          premium_packaging_selected: premiumPackagingSelected,
           premium_packaging_fee: packagingEstimate,
-          premium_packaging_label: premiumPackagingSelected && premiumPackagingEnabled ? premiumPackagingLabel : null,
+          premium_packaging_label: premiumPackagingSelected ? premiumPackagingLabel : null,
           cash_collection_required: cashCollectionRequired,
           receipt_requested: receiptRequested,
         },
@@ -1298,7 +1364,7 @@ function selectedAddressTown(
         note: [
           note.trim(),
           cashCollectionRequired ? "Cash collection required: driver will collect the cash payment from the passenger before vendor purchase." : "",
-          premiumPackagingSelected && premiumPackagingEnabled ? "Premium packaging requested: " + premiumPackagingLabel + " (" + money(packagingEstimate) + ")" : "",
+          premiumPackagingSelected ? "Premium packaging requested: " + premiumPackagingLabel + " (" + money(packagingEstimate) + ")" : "",
           receiptRequested ? "Vendor receipt requested." : "",
         ].filter(Boolean).join("\n"),
       };
@@ -1324,7 +1390,7 @@ function selectedAddressTown(
         id: normText(maybeId) || null,
         booking_code: maybeCode || null,
         takeout_pricing_status: "pricing_pending",
-        total_bill: itemsSubtotal,
+        total_bill: estimatedSubtotalWithPackaging,
         takeout_items_subtotal: itemsSubtotal,
       });
       setPricingErr(null);
@@ -1333,7 +1399,7 @@ function selectedAddressTown(
       setMenu([]);
       setVendorId("");
       setNote("");
-      setPremiumPackagingSelected(false);
+      setPremiumPackagingSelections({});
       setReceiptRequested(false);
     } catch (e: any) {
       const msg = String(e?.message || "Unknown error");
@@ -1414,7 +1480,7 @@ function selectedAddressTown(
                   setVendorClosed(false);
                   setMenuVendorProfile(null);
                   setMenuErr(null);
-                  setPremiumPackagingSelected(false);
+                  setPremiumPackagingSelections({});
                   setReceiptRequested(false);
                   setSubmitted(false);
                   setResult("");
@@ -1444,7 +1510,7 @@ function selectedAddressTown(
                     const nextVendorId = e.target.value;
                     setVendorId(nextVendorId);
                     setQty({});
-                    setPremiumPackagingSelected(false);
+                    setPremiumPackagingSelections({});
                     setReceiptRequested(false);
                     setSubmitted(false);
                     refreshMenu(nextVendorId);
@@ -1833,10 +1899,24 @@ function selectedAddressTown(
                             Packaging: {m.packaging_note}
                           </div>
                         ) : null}
-                        {m.premium_packaging_enabled ? (
-                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
-                            Premium packaging available (+{money(toNum(m.premium_packaging_fee))})
-                          </div>
+                        {itemPremiumPackagingEnabled(m) ? (
+                          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={premiumPackagingSelections[m.id] === true}
+                              disabled={disabled || q <= 0}
+                              onChange={(e) => setItemPremiumPackaging(m.id, e.target.checked)}
+                            />
+                            <span>
+                              <span className="block font-semibold">
+                                Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
+                              </span>
+                              <span className="block text-emerald-700">
+                                Optional add-on. This is added to your subtotal when checked.
+                              </span>
+                            </span>
+                          </label>
                         ) : null}
                         <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
                           </div>
@@ -1878,7 +1958,7 @@ function selectedAddressTown(
             <div className="sticky bottom-3 z-20 mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
               <div className="flex items-center justify-between">
                 <div className="font-medium">Estimated subtotal</div>
-                <div className="font-semibold">{money(itemsSubtotal)}</div>
+                <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
               </div>
               {packagingEstimate > 0 ? (
                 <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
@@ -1900,19 +1980,15 @@ function selectedAddressTown(
               </div>
             ) : null}
 
-            {premiumPackagingEnabled || selectedLines.length > 0 ? (
+            {selectedLines.length > 0 ? (
               <div className="mt-3 rounded border bg-white p-3 text-sm">
                 <div className="font-medium">Packaging and receipt options</div>
                 <div className="mt-2 space-y-2 text-xs text-slate-700">
                   <div className="rounded-lg border bg-slate-50 p-2">Default item packaging is shown per menu item when the vendor provided a note.</div>
-                  {premiumPackagingEnabled ? (
-                    <label className="flex items-start gap-2 rounded-lg border p-2">
-                      <input type="checkbox" checked={premiumPackagingSelected} onChange={(e) => setPremiumPackagingSelected(e.target.checked)} />
-                      <span>
-                        <span className="block font-semibold">Add {premiumPackagingLabel}{premiumPackagingFee > 0 ? " - " + money(premiumPackagingFee) : ""}</span>
-                        <span className="block text-slate-500">Optional upgraded packaging selected by the passenger.</span>
-                      </span>
-                    </label>
+                  {packagingEstimate > 0 ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-800">
+                      Premium packaging selected: {money(packagingEstimate)}
+                    </div>
                   ) : null}
                   <label className="flex items-start gap-2 rounded-lg border p-2">
                     <input type="checkbox" checked={receiptRequested} onChange={(e) => setReceiptRequested(e.target.checked)} />
