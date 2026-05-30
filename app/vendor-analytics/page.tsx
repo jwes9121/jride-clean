@@ -115,8 +115,11 @@ export default function VendorAnalyticsPage() {
 
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = text(params.get("vendor_id"));
       const stored = window.localStorage.getItem(LS_VENDOR_ID) || "";
-      if (stored) setVendorId(stored);
+      const nextVendorId = fromUrl || stored;
+      if (nextVendorId) setVendorId(nextVendorId);
     } catch {
       // ignore local storage errors
     }
@@ -175,6 +178,30 @@ export default function VendorAnalyticsPage() {
     return "All Time";
   }, [period]);
 
+  const vendorQuery = text(vendorId) ? "?vendor_id=" + encodeURIComponent(text(vendorId)) : "";
+
+  function handleLogout() {
+    try {
+      const keysToClear = [
+        "JRIDE_TAKEOUT_VENDOR_ID",
+        "jride_vendor_session",
+        "jride_vendor_token",
+        "jride_vendor_id",
+        "JRIDE_VENDOR_ID",
+        "vendor_id",
+      ];
+
+      for (const key of keysToClear) {
+        window.localStorage.removeItem(key);
+        window.sessionStorage.removeItem(key);
+      }
+    } catch {
+      // ignore storage cleanup failures
+    }
+
+    window.location.href = "/vendor-login";
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 print:bg-white">
       <div className="mx-auto max-w-6xl">
@@ -193,10 +220,16 @@ export default function VendorAnalyticsPage() {
 
             <div className="flex flex-wrap gap-2 print:hidden">
               <a
-                href="/vendor-orders"
+                href={"/vendor-portal" + vendorQuery}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
-                Back to orders
+                Portal
+              </a>
+              <a
+                href={"/vendor-orders" + vendorQuery}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Orders
               </a>
               <button
                 type="button"
@@ -204,6 +237,13 @@ export default function VendorAnalyticsPage() {
                 className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
                 Print report
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+              >
+                Logout
               </button>
             </div>
           </div>
