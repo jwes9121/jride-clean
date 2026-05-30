@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -145,6 +145,49 @@ function toNum(v: any) {
 
 function money(v: any) {
   return "PHP " + toNum(v).toFixed(2);
+}
+
+const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
+
+function vendorAcceptCreatedMs(order: TakeoutOrder): number | null {
+  const raw = String(order?.created_at || "").trim();
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function vendorAcceptTimer(order: TakeoutOrder, nowMs: number) {
+  const createdMs = vendorAcceptCreatedMs(order);
+  if (createdMs === null) {
+    return {
+      remainingMs: VENDOR_ACCEPT_WINDOW_MS,
+      expired: false,
+      label: "5:00",
+      tone: "slate",
+    };
+  }
+
+  const elapsedMs = Math.max(0, nowMs - createdMs);
+  const remainingMs = Math.max(0, VENDOR_ACCEPT_WINDOW_MS - elapsedMs);
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const label = String(minutes) + ":" + String(seconds).padStart(2, "0");
+  const expired = remainingMs <= 0;
+
+  let tone = "emerald";
+  if (expired) tone = "rose";
+  else if (remainingMs <= 60 * 1000) tone = "rose";
+  else if (remainingMs <= 2 * 60 * 1000) tone = "amber";
+
+  return { remainingMs, expired, label, tone };
+}
+
+function vendorAcceptTimerClass(tone: string): string {
+  if (tone === "rose") return "border-rose-300 bg-rose-50 text-rose-800";
+  if (tone === "amber") return "border-amber-300 bg-amber-50 text-amber-800";
+  if (tone === "emerald") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
 function positiveInt(v: any) {
@@ -375,6 +418,7 @@ export default function VendorPortalPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const vendorOrdersHref = vendorId ? "/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-orders";
   const vendorAnalyticsHref = vendorId ? "/vendor-analytics?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-analytics";
@@ -399,6 +443,14 @@ export default function VendorPortalPage() {
 
     window.location.href = "/vendor-login";
   }
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   const [cancelTargetOrder, setCancelTargetOrder] = useState<TakeoutOrder | null>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -1766,6 +1818,7 @@ export default function VendorPortalPage() {
                     {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
                     {activeOrders.map((o) => {
                       const s = normalizeVendorStatus(o.vendor_status);
+                      const acceptDeadline = vendorAcceptTimer(o, nowMs);
                       return (
                         <div key={o.id || o.booking_code || Math.random()} className="rounded-2xl border p-3">
                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1780,6 +1833,12 @@ export default function VendorPortalPage() {
                             </div>
                             <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
                           </div>
+                          {s === "vendor_pending" ? (
+                            <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + vendorAcceptTimerClass(acceptDeadline.tone)}>
+                              Accept within: {acceptDeadline.label}
+                              {acceptDeadline.expired ? " - overdue" : ""}
+                            </div>
+                          ) : null}
                           <div className="mt-3 rounded-xl border bg-slate-50 p-3">
                             <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
                               <span>Order details</span>
@@ -1817,7 +1876,7 @@ export default function VendorPortalPage() {
                           <div className="mt-3 flex flex-wrap gap-2">
                             {s === "vendor_pending" ? (
                               <>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Accept order</button>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} title={acceptDeadline.expired ? "This order is past the 5-minute vendor accept target." : "Accept this order within the 5-minute target."} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Accept order</button>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
                               </>
                             ) : null}
@@ -1868,6 +1927,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
