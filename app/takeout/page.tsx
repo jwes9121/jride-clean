@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -92,6 +92,17 @@ type TakeoutPricingOrder = {
   takeout_customer_confirmed_at?: string | null;
   total_bill?: number | string | null;
   takeout_items_subtotal?: number | string | null;
+  premium_packaging_fee?: number | string | null;
+  order_preferences?: {
+    premium_packaging_fee?: number | string | null;
+    [key: string]: any;
+  } | null;
+  takeout_pricing_snapshot?: {
+    packaging_subtotal?: number | string | null;
+    takeout_packaging_subtotal?: number | string | null;
+    premium_packaging_fee?: number | string | null;
+    [key: string]: any;
+  } | null;
 };
 
 function normText(v: any): string {
@@ -2109,6 +2120,14 @@ function selectedAddressTown(
               const deliveryFee = toNum(order?.takeout_delivery_fee);
               const serviceFee = toNum(order?.takeout_service_fee || 15);
               const totalPayable = toNum(order?.takeout_total_payable);
+              const confirmationPackagingSubtotal = Math.max(
+                0,
+                toNum(order?.premium_packaging_fee),
+                toNum(order?.order_preferences?.premium_packaging_fee),
+                toNum(order?.takeout_pricing_snapshot?.packaging_subtotal),
+                toNum(order?.takeout_pricing_snapshot?.takeout_packaging_subtotal),
+                packagingEstimate
+              );
               const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
               const readyToConfirm = !isOrderCompleted && !isOrderCancelled && status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
 
@@ -2157,6 +2176,12 @@ function selectedAddressTown(
                       <span className="text-slate-600">Food subtotal</span>
                       <span>{money(foodSubtotal)}</span>
                     </div>
+                    {confirmationPackagingSubtotal > 0 ? (
+                      <div className="mt-1 flex justify-between gap-3">
+                        <span className="text-slate-600">Premium packaging</span>
+                        <span>{money(confirmationPackagingSubtotal)}</span>
+                      </div>
+                    ) : null}
                     <div className="mt-1 flex justify-between gap-3">
                       <span className="text-slate-600">Driver delivery fee</span>
                       <span>{deliveryFee > 0 ? money(deliveryFee) : "Waiting for driver"}</span>
@@ -2257,6 +2282,9 @@ function selectedAddressTown(
     </div>
   );
 }
+
+
+
 
 
 
