@@ -33,6 +33,25 @@ function normText(v: any): string {
   return String(v ?? "").trim();
 }
 
+function formatPhilippineDateTime(v: unknown): string {
+  const raw = normText(v);
+  if (!raw) return "-";
+
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
+
 function toNum(v: any): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -287,7 +306,7 @@ export default function TakeoutTrackPage() {
               </div>
               <div className="mt-1 flex justify-between gap-3">
                 <span className="text-slate-600">Driver delivery fee</span>
-                <span>{state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for driver"}</span>
+                <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for driver"}</span>
               </div>
               <div className="mt-1 flex justify-between gap-3">
                 <span className="text-slate-600">JRide service fee</span>
@@ -365,7 +384,7 @@ export default function TakeoutTrackPage() {
               ) : null}
               <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-base">
                 <span className="font-semibold">Total payable</span>
-                <span className="font-bold">{state.totalPayable > 0 ? money(state.totalPayable) : "Pending"}</span>
+                <span className="font-bold">{order && isVendorAcceptTimeout(order) ? "Order expired" : state.totalPayable > 0 ? money(state.totalPayable) : "Pending"}</span>
               </div>
               {order?.takeout_cash_collection_required === true ? (
                 <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Cash collection required before vendor pickup.</div>

@@ -60,6 +60,24 @@ function money(v: unknown): string {
   return "PHP " + n.toFixed(2);
 }
 
+function formatPhilippineDateTime(v: unknown): string {
+  const raw = text(v);
+  if (!raw) return "-";
+
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
 function orderCreatedMs(order: TakeoutOrder): number | null {
   const raw = text(order.created_at);
   if (!raw) return null;
@@ -169,6 +187,24 @@ function vendorStatusLabel(status: string): string {
 function isActive(order: TakeoutOrder): boolean {
   const s = displayStatus(order);
   return s !== "completed" && s !== "cancelled" && s !== "canceled" && s !== "vendor_timeout";
+}
+
+function isActivePendingVendorOrder(order: TakeoutOrder, nowMs: number): boolean {
+  if (!isActive(order)) return false;
+
+  const shownStatus = displayStatus(order);
+  const vendorStatus = text(order.vendor_status).toLowerCase();
+  const rideStatus = text(order.status).toLowerCase();
+
+  const isPending =
+    shownStatus === "vendor_pending" ||
+    vendorStatus === "vendor_pending" ||
+    vendorStatus === "requested" ||
+    rideStatus === "requested";
+
+  if (!isPending) return false;
+
+  return !acceptTimer(order, nowMs).expired;
 }
 
 async function readJson(url: string): Promise<ApiResult> {
@@ -442,19 +478,9 @@ export default function VendorTakeoutOrdersPage() {
   }, [orders, showCompleted]);
 
   const pendingVendorOrders = useMemo(() => {
-    return orders.filter((order) => {
-      const vendorStatus = text(order.vendor_status).toLowerCase();
-      const rideStatus = text(order.status).toLowerCase();
-      const shownStatus = displayStatus(order);
+    return visibleOrders.filter((order) => isActivePendingVendorOrder(order, nowMs));
+  }, [visibleOrders, nowMs]);
 
-      return (
-        shownStatus === "vendor_pending" ||
-        vendorStatus === "vendor_pending" ||
-        vendorStatus === "requested" ||
-        rideStatus === "requested"
-      );
-    });
-  }, [orders]);
 
   const pendingVendorKey = useMemo(() => {
     return pendingVendorOrders
@@ -689,7 +715,7 @@ export default function VendorTakeoutOrdersPage() {
                         {text(order.customer_phone) ? " - " + text(order.customer_phone) : ""}
                       </div>
                       <div className="mt-1 text-sm text-slate-500">Deliver to: {text(order.to_label || order.dropoff_label) || "-"}</div>
-                      <div className="mt-1 text-xs text-slate-400">Created: {text(order.created_at) || "-"}</div>
+                      <div className="mt-1 text-xs text-slate-400">Created: {formatPhilippineDateTime(order.created_at)}</div>
                       {currentStatus === "vendor_pending" ? (
                         <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + acceptTimerClass(acceptDeadline.tone)}>
                           Accept within: {acceptDeadline.label}

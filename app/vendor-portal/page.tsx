@@ -147,6 +147,24 @@ function money(v: any) {
   return "PHP " + toNum(v).toFixed(2);
 }
 
+function formatPhilippineDateTime(v: any): string {
+  const raw = clean(v);
+  if (!raw) return "-";
+
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) return raw;
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
 const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
 
 function vendorAcceptCreatedMs(order: TakeoutOrder): number | null {
@@ -188,6 +206,12 @@ function vendorAcceptTimerClass(tone: string): string {
   if (tone === "amber") return "border-amber-300 bg-amber-50 text-amber-800";
   if (tone === "emerald") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
+function isActivePendingVendorOrder(order: TakeoutOrder, nowMs: number): boolean {
+  const status = normalizeVendorStatus(order.vendor_status);
+  if (status !== "vendor_pending") return false;
+  return !vendorAcceptTimer(order, nowMs).expired;
 }
 
 function positiveInt(v: any) {
@@ -510,17 +534,17 @@ export default function VendorPortalPage() {
   }, [vendors, vendorId]);
 
   const activeOrders = useMemo(() => {
-    return orders.filter((o) => ["vendor_pending", "vendor_accepted", "driver_assigned", "pickup_ready"].includes(normalizeVendorStatus(o.vendor_status)));
-  }, [orders]);
-  const pendingVendorOrdersForAlert = useMemo(() => {
-    const now = Date.now();
-    return activeOrders.filter((o) => {
-      const s = normalizeVendorStatus(o.vendor_status);
-      const created = new Date(String(o.created_at || o.updated_at || "")).getTime();
-      const age = Number.isFinite(created) ? now - created : 0;
-      return s === "vendor_pending" && age <= VENDOR_ACCEPT_RING_WINDOW_MS;
+    return orders.filter((o) => {
+      const status = normalizeVendorStatus(o.vendor_status);
+      if (status === "vendor_pending") return !vendorAcceptTimer(o, nowMs).expired;
+      return ["vendor_accepted", "driver_assigned", "pickup_ready"].includes(status);
     });
-  }, [activeOrders]);
+  }, [orders, nowMs]);
+
+  const pendingVendorOrdersForAlert = useMemo(() => {
+    return orders.filter((o) => isActivePendingVendorOrder(o, nowMs));
+  }, [orders, nowMs]);
+
 
   const markVendorPortalAudioUnlocked = React.useCallback(() => {
     vendorAlertAudioUnlockedRef.current = true;
