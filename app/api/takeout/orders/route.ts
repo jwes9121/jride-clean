@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,8 @@ const TAKEOUT_ORDER_SELECT = [
   "takeout_fee_expires_at",
   "takeout_customer_confirmed_at",
   "takeout_items_subtotal",
+  "cancel_reason",
+  "vendor_cancel_reason",
   "takeout_route_plan",
   "takeout_pricing_snapshot",
   "created_at",
@@ -181,3 +183,4 @@ export async function GET(req: NextRequest) {
     });
   }
 }
+
