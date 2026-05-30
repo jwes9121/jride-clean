@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -17,6 +17,9 @@ type TakeoutOrder = {
   takeout_service_fee?: number | string | null;
   takeout_total_payable?: number | string | null;
   takeout_cash_collection_required?: boolean | null;
+  premium_packaging_fee?: number | string | null;
+  order_preferences?: any;
+  takeout_pricing_snapshot?: any;
   takeout_pickup_distance_km?: number | string | null;
   takeout_pickup_free_km?: number | string | null;
   takeout_pickup_billable_excess_km?: number | string | null;
@@ -219,10 +222,17 @@ export default function TakeoutTrackPage() {
     const deliveryFee = toNum(order?.takeout_delivery_fee);
     const serviceFee = toNum(order?.takeout_service_fee || 15);
     const totalPayable = toNum(order?.takeout_total_payable);
+    const packagingSubtotal = Math.max(
+      0,
+      toNum(order?.premium_packaging_fee),
+      toNum(order?.order_preferences?.premium_packaging_fee),
+      toNum(order?.takeout_pricing_snapshot?.packaging_subtotal),
+      toNum(order?.takeout_pricing_snapshot?.takeout_packaging_subtotal)
+    );
     // JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
     // Prefer explicit backend fields. If the current read API has not exposed them yet, infer the hidden line item from total - food - delivery - service.
     const explicitPickupExcessFee = toNum(order?.takeout_pickup_excess_fee);
-    const inferredPickupExcessFee = Math.max(0, Number((totalPayable - foodSubtotal - deliveryFee - serviceFee).toFixed(2)));
+    const inferredPickupExcessFee = Math.max(0, Number((totalPayable - foodSubtotal - packagingSubtotal - deliveryFee - serviceFee).toFixed(2)));
     const pickupExcessFee = explicitPickupExcessFee > 0 ? explicitPickupExcessFee : inferredPickupExcessFee;
     const pickupDistanceKm = toNum(order?.takeout_pickup_distance_km);
     const pickupFreeKm = toNum(order?.takeout_pickup_free_km || 1.5);
@@ -243,6 +253,7 @@ export default function TakeoutTrackPage() {
       foodSubtotal,
       deliveryFee,
       serviceFee,
+      packagingSubtotal,
       totalPayable,
       pickupExcessFee,
       pickupDistanceKm,
@@ -304,6 +315,12 @@ export default function TakeoutTrackPage() {
                 <span className="text-slate-600">Food subtotal</span>
                 <span>{money(state.foodSubtotal)}</span>
               </div>
+              {state.packagingSubtotal > 0 ? (
+                <div className="mt-1 flex justify-between gap-3">
+                  <span className="text-slate-600">Premium packaging</span>
+                  <span>{money(state.packagingSubtotal)}</span>
+                </div>
+              ) : null}
               <div className="mt-1 flex justify-between gap-3">
                 <span className="text-slate-600">Driver delivery fee</span>
                 <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for driver"}</span>
@@ -469,6 +486,11 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
+
+
+
+
+
 
 
 

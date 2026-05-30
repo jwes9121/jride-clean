@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -350,7 +350,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
+        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,total_bill,takeout_pricing_status,takeout_pricing_snapshot,premium_packaging_selected,premium_packaging_fee,premium_packaging_label,order_preferences,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -429,6 +429,22 @@ export async function POST(req: NextRequest) {
       return json(409, { ok: false, error: "TAKEOUT_SUBTOTAL_MISSING", message: "Cannot propose delivery fee without a takeout item subtotal." });
     }
 
+    const pricingSnapshot = order.takeout_pricing_snapshot || {};
+    const orderPrefs = order.order_preferences || {};
+    const preferencePackaging = money(
+      order.premium_packaging_fee ??
+      orderPrefs.premium_packaging_fee ??
+      orderPrefs.premiumPackagingFee ??
+      pricingSnapshot.packaging_subtotal ??
+      pricingSnapshot.takeout_packaging_subtotal ??
+      0
+    ) ?? 0;
+    const totalBillWithPackaging = money(order.total_bill) ?? 0;
+    const packagingFromTotalBill = totalBillWithPackaging > computedSubtotal
+      ? money(totalBillWithPackaging - computedSubtotal) ?? 0
+      : 0;
+    const packagingSubtotal = Math.max(0, preferencePackaging, packagingFromTotalBill);
+
     let pickupBreakdown = noCustomerCashPickupBreakdown();
     if (routePlan === "customer_cash_first") {
       const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
@@ -473,7 +489,7 @@ const passengerLng =
       };
     }
 
-    const totalPayable = money(computedSubtotal + SERVICE_FEE + deliveryFee + pickupBreakdown.pickup_excess_fee) as number;
+    const totalPayable = money(computedSubtotal + packagingSubtotal + SERVICE_FEE + deliveryFee + pickupBreakdown.pickup_excess_fee) as number;
     const cashRequired = routePlan === "customer_cash_first" || computedSubtotal >= 500;
     const nowIso = new Date().toISOString();
     const expiresIso = new Date(Date.now() + PROPOSAL_TTL_SECONDS * 1000).toISOString();
@@ -481,6 +497,8 @@ const passengerLng =
     const snapshot = {
       version: "takeout_driver_fee_proposal_v1",
       food_subtotal: computedSubtotal,
+      packaging_subtotal: packagingSubtotal,
+      takeout_packaging_subtotal: packagingSubtotal,
       takeout_service_fee: SERVICE_FEE,
       takeout_delivery_fee: deliveryFee,
       takeout_pickup_distance_km: pickupBreakdown.pickup_distance_km,
@@ -546,3 +564,7 @@ const passengerLng =
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
   }
 }
+
+
+
+
