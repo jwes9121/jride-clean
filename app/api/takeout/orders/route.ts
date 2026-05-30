@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,7 @@ const TAKEOUT_ORDER_SELECT = [
   "vendor_status",
   "customer_status",
   "assigned_driver_id",
+  "driver_id",
   "takeout_pricing_status",
   "takeout_delivery_fee",
   "takeout_service_fee",
@@ -228,12 +229,69 @@ export async function GET(req: NextRequest) {
         vendor_accept_expired: vendorAcceptExpired(row),
       })
     );
-    const order = orders[0] || null;
+    const assignedDriverIds = Array.from(new Set(
+      orders
+        .map((row: any) => text(row?.assigned_driver_id || row?.driver_id))
+        .filter(Boolean)
+    ));
+
+    const driverProfileById: Record<string, any> = {};
+    const driverLocationById: Record<string, any> = {};
+
+    if (assignedDriverIds.length > 0) {
+      const profileRes = await serviceSupabase
+        .from("driver_profiles")
+        .select("driver_id,full_name,callsign,phone")
+        .in("driver_id", assignedDriverIds);
+
+      if (!profileRes.error && Array.isArray(profileRes.data)) {
+        for (const row of profileRes.data as any[]) {
+          const id = text(row?.driver_id);
+          if (id) driverProfileById[id] = row;
+        }
+      }
+
+      const locationRes = await serviceSupabase
+        .from("driver_locations")
+        .select("driver_id,vehicle_type,updated_at")
+        .in("driver_id", assignedDriverIds)
+        .order("updated_at", { ascending: false });
+
+      if (!locationRes.error && Array.isArray(locationRes.data)) {
+        for (const row of locationRes.data as any[]) {
+          const id = text(row?.driver_id);
+          if (id && !driverLocationById[id]) driverLocationById[id] = row;
+        }
+      }
+    }
+
+    const enrichedOrders = orders.map((row: any) => {
+      const driverId = text(row?.assigned_driver_id || row?.driver_id);
+      const profile = driverId ? driverProfileById[driverId] : null;
+      const location = driverId ? driverLocationById[driverId] : null;
+      const driverName = text(row?.driver_name || profile?.full_name || profile?.callsign);
+      const driverPhone = text(row?.driver_phone || profile?.phone);
+      const driverCallsign = text(row?.driver_callsign || profile?.callsign);
+      const driverVehicleType = text(row?.driver_vehicle_type || row?.vehicle_type || location?.vehicle_type);
+
+      return {
+        ...row,
+        assigned_driver_id: driverId || row?.assigned_driver_id || null,
+        driver_id: driverId || row?.driver_id || null,
+        driver_name: driverName || null,
+        driver_phone: driverPhone || null,
+        driver_callsign: driverCallsign || null,
+        driver_vehicle_type: driverVehicleType || null,
+        vehicle_type: driverVehicleType || row?.vehicle_type || null,
+      };
+    });
+
+    const order = enrichedOrders[0] || null;
 
     return json(200, {
       ok: true,
       order,
-      orders,
+      orders: enrichedOrders,
       guard: "takeout_orders_read_v2_no_bookings_device_key_no_total_bill_no_ride_fare_no_wallet",
     });
   } catch (err: any) {
@@ -244,4 +302,5 @@ export async function GET(req: NextRequest) {
     });
   }
 }
+
 

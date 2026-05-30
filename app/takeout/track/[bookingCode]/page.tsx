@@ -30,6 +30,13 @@ type TakeoutOrder = {
   created_at?: string | null;
   vendor_accept_expires_at?: string | null;
   vendor_accept_expired?: boolean | null;
+  assigned_driver_id?: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  driver_callsign?: string | null;
+  driver_vehicle_type?: string | null;
+  vehicle_type?: string | null;
 };
 
 function normText(v: any): string {
@@ -239,6 +246,11 @@ export default function TakeoutTrackPage() {
     const pickupBillableExcessKm = toNum(order?.takeout_pickup_billable_excess_km);
     const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
     const readyToConfirm = !isCompleted && !isCancelled && pricingStatus === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+    const assignedDriverId = normText(order?.assigned_driver_id || order?.driver_id);
+    const driverName = normText(order?.driver_name || order?.driver_callsign);
+    const driverPhone = normText(order?.driver_phone);
+    const driverVehicleType = normText(order?.driver_vehicle_type || order?.vehicle_type);
+    const hasDriverIdentity = Boolean(assignedDriverId || driverName || driverPhone || driverVehicleType);
 
     return {
       pricingStatus,
@@ -261,6 +273,11 @@ export default function TakeoutTrackPage() {
       pickupBillableExcessKm,
       expiresIn,
       readyToConfirm,
+      assignedDriverId,
+      driverName,
+      driverPhone,
+      driverVehicleType,
+      hasDriverIdentity,
     };
     // nowTick keeps expiry text fresh without changing backend state.
   }, [order, nowTick]);
@@ -302,6 +319,30 @@ export default function TakeoutTrackPage() {
           <div className="mt-3 rounded border bg-slate-50 p-3 text-xs text-slate-700">Loading takeout order...</div>
         ) : (
           <div className="mt-3 space-y-2">
+            {state.hasDriverIdentity ? (
+              <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                <div className="font-semibold">Assigned driver</div>
+                <div className="mt-2 space-y-1 text-xs">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-emerald-700">Name</span>
+                    <span className="font-semibold text-emerald-950">{state.driverName || state.assignedDriverId || "Assigned"}</span>
+                  </div>
+                  {state.driverPhone ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-emerald-700">Phone</span>
+                      <a className="font-semibold text-emerald-950 underline" href={"tel:" + state.driverPhone}>{state.driverPhone}</a>
+                    </div>
+                  ) : null}
+                  {state.driverVehicleType ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-emerald-700">Vehicle</span>
+                      <span className="font-semibold text-emerald-950">{state.driverVehicleType}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             <div className="rounded border bg-slate-50 p-3">
               <div className="flex justify-between gap-3">
                 <span className="text-slate-600">Pricing status</span>
@@ -486,6 +527,7 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
+
 
 
 
