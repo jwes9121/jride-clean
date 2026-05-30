@@ -333,6 +333,25 @@ function orderOptionLabel(o: TakeoutOrder) {
   return fee > 0 ? `${label} (${money(fee)})` : label;
 }
 
+function orderPackagingInstruction(o: TakeoutOrder): string {
+  if (!orderPremiumPackagingSelected(o)) return "Standard item packaging";
+  return "Premium packaging requested: " + orderOptionLabel(o);
+}
+
+function orderCustomerNoteOnly(o: TakeoutOrder): string {
+  let note = clean(o.note);
+  if (!note) return "";
+
+  note = note
+    .replace(/\s*Premium packaging requested:\s*Premium packaging\s*\([^)]*\)\s*/gi, " ")
+    .replace(/\s*Premium packaging requested:\s*Premium packaging\s*/gi, " ")
+    .replace(/\s*Premium packaging requested:\s*[^.\n]+\s*/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return note;
+}
+
 function orderCustomerName(o: TakeoutOrder) {
   return clean(o.customer_name) || "Customer";
 }
@@ -1896,9 +1915,10 @@ export default function VendorPortalPage() {
                           </div>
                           <div className="mt-2 text-sm font-medium">Subtotal: {money(orderSubtotal(o))}</div>
                           <div className="mt-2 rounded-xl border bg-amber-50 p-2 text-xs text-amber-900">
-                            <div>Receipt requested: {orderReceiptRequested(o) ? "YES" : "NO"}</div>
-                            <div>Packaging: {orderPremiumPackagingSelected(o) ? orderOptionLabel(o) : "Standard item packaging"}</div>
-                            {clean(o.note) ? <div>Customer note: {clean(o.note)}</div> : <div>Customer note: none</div>}
+                            <div className="font-semibold">Order instructions</div>
+                            <div className="mt-1">Receipt requested: {orderReceiptRequested(o) ? "YES" : "NO"}</div>
+                            <div className="mt-1">Packaging: {orderPackagingInstruction(o)}</div>
+                            <div className="mt-1">Customer note: {orderCustomerNoteOnly(o) || "none"}</div>
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {s === "vendor_pending" ? (
