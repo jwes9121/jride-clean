@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -231,6 +231,7 @@ function normalizeVendorStatus(s: any) {
   if (!x || x === "requested") return "vendor_pending";
   if (x === "accepted") return "vendor_accepted";
   if (x === "canceled") return "cancelled";
+  if (x === "vendor_timeout") return "vendor_timeout";
   return x;
 }
 
@@ -242,6 +243,7 @@ function statusLabel(s: any) {
   if (x === "pickup_ready") return "Pickup ready";
   if (x === "preparing") return "Preparing";
   if (x === "completed") return "Completed";
+  if (x === "vendor_timeout") return "Vendor timeout";
   if (x === "cancelled") return "Cancelled";
   return x || "Waiting for vendor confirmation";
 }
@@ -253,6 +255,7 @@ function orderClass(s: any) {
   if (x === "driver_assigned") return "border-blue-300 bg-blue-50 text-blue-800";
   if (x === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
+  if (x === "vendor_timeout") return "border-rose-300 bg-rose-50 text-rose-700";
   if (x === "cancelled") return "border-rose-300 bg-rose-50 text-rose-700";
   return "border-amber-300 bg-amber-50 text-amber-800";
 }
@@ -616,7 +619,7 @@ export default function VendorPortalPage() {
   }, [pendingVendorOrdersForAlert.length, playVendorPortalAlert, vendorAlertSoundEnabled]);
 
   const historyOrders = useMemo(() => {
-    return orders.filter((o) => ["completed", "cancelled"].includes(normalizeVendorStatus(o.vendor_status)));
+    return orders.filter((o) => ["completed", "cancelled", "vendor_timeout"].includes(normalizeVendorStatus(o.vendor_status)));
   }, [orders]);
 
   const analyticsOrders = useMemo(() => {
@@ -625,8 +628,8 @@ export default function VendorPortalPage() {
 
   const vendorAnalytics = useMemo(() => {
     const completed = analyticsOrders.filter((o) => normalizeVendorStatus(o.vendor_status) === "completed");
-    const cancelled = analyticsOrders.filter((o) => normalizeVendorStatus(o.vendor_status) === "cancelled");
-    const active = analyticsOrders.filter((o) => !["completed", "cancelled"].includes(normalizeVendorStatus(o.vendor_status)));
+    const cancelled = analyticsOrders.filter((o) => ["cancelled", "vendor_timeout"].includes(normalizeVendorStatus(o.vendor_status)));
+    const active = analyticsOrders.filter((o) => !["completed", "cancelled", "vendor_timeout"].includes(normalizeVendorStatus(o.vendor_status)));
 
     const grossFoodSales = completed.reduce((sum, o) => sum + toNum(orderSubtotal(o)), 0);
     const packagingSales = completed.reduce((sum, o) => sum + premiumPackagingAmount(o), 0);
@@ -1927,7 +1930,6 @@ export default function VendorPortalPage() {
     </main>
   );
 }
-
 
 
 

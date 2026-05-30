@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +64,30 @@ function firstValue(...values: any[]): any {
     if (v !== undefined && v !== null && v !== "") return v;
   }
   return null;
+}
+
+const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
+const VENDOR_ACCEPT_TIMEOUT_REASON = "Vendor did not respond within 5 minutes";
+
+function vendorAcceptDeadlineMs(row: any): number | null {
+  const raw = text(row?.created_at);
+  if (!raw) return null;
+  const createdMs = new Date(raw).getTime();
+  if (!Number.isFinite(createdMs)) return null;
+  return createdMs + VENDOR_ACCEPT_WINDOW_MS;
+}
+
+function vendorAcceptExpiresAt(row: any): string | null {
+  const deadlineMs = vendorAcceptDeadlineMs(row);
+  return deadlineMs === null ? null : new Date(deadlineMs).toISOString();
+}
+
+function vendorAcceptExpired(row: any, nowMs = Date.now()): boolean {
+  const vendorStatus = text(row?.vendor_status || row?.status || "vendor_pending").toLowerCase();
+  const normalized = vendorStatus === "requested" || vendorStatus === "" ? "vendor_pending" : vendorStatus;
+  if (normalized !== "vendor_pending") return false;
+  const deadlineMs = vendorAcceptDeadlineMs(row);
+  return deadlineMs !== null && nowMs >= deadlineMs;
 }
 
 function exposePickupBreakdown(row: any): any {
@@ -166,7 +190,44 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const orders = (Array.isArray(res.data) ? res.data : []).map(exposePickupBreakdown);
+    let rawRows = Array.isArray(res.data) ? res.data : [];
+    const expiredIds = rawRows
+      .filter((row: any) => vendorAcceptExpired(row))
+      .map((row: any) => text(row?.id))
+      .filter(Boolean);
+
+    if (expiredIds.length) {
+      const expiredPatch: any = {
+        vendor_status: "vendor_timeout",
+        customer_status: "vendor_timeout",
+        status: "cancelled",
+        cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+        vendor_cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+      };
+
+      const expiredUpdate = await serviceSupabase
+        .from("bookings")
+        .update(expiredPatch)
+        .in("id", expiredIds)
+        .eq("service_type", "takeout");
+
+      if (!expiredUpdate.error) {
+        const expiredSet = new Set(expiredIds);
+        rawRows = rawRows.map((row: any) =>
+          expiredSet.has(text(row?.id))
+            ? { ...row, ...expiredPatch, updated_at: new Date().toISOString() }
+            : row
+        );
+      }
+    }
+
+    const orders = rawRows.map((row: any) =>
+      exposePickupBreakdown({
+        ...row,
+        vendor_accept_expires_at: vendorAcceptExpiresAt(row),
+        vendor_accept_expired: vendorAcceptExpired(row),
+      })
+    );
     const order = orders[0] || null;
 
     return json(200, {

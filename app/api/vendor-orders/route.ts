@@ -508,6 +508,30 @@ function computeSubtotal(items: SnapshotItem[]): number {
   return s;
 }
 
+const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
+const VENDOR_ACCEPT_TIMEOUT_REASON = "Vendor did not respond within 5 minutes";
+
+function vendorAcceptDeadlineMs(row: any): number | null {
+  const raw = String(row?.created_at || "").trim();
+  if (!raw) return null;
+  const createdMs = new Date(raw).getTime();
+  if (!Number.isFinite(createdMs)) return null;
+  return createdMs + VENDOR_ACCEPT_WINDOW_MS;
+}
+
+function vendorAcceptExpired(row: any, nowMs = Date.now()): boolean {
+  const vendorStatus = String(row?.vendor_status || row?.vendorStatus || row?.status || "vendor_pending").trim().toLowerCase();
+  const normalized = vendorStatus === "requested" || vendorStatus === "" ? "vendor_pending" : vendorStatus;
+  if (normalized !== "vendor_pending") return false;
+  const deadlineMs = vendorAcceptDeadlineMs(row);
+  return deadlineMs !== null && nowMs >= deadlineMs;
+}
+
+function vendorAcceptExpiresAt(row: any): string | null {
+  const deadlineMs = vendorAcceptDeadlineMs(row);
+  return deadlineMs === null ? null : new Date(deadlineMs).toISOString();
+}
+
 export async function GET(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies });
 
@@ -542,7 +566,38 @@ export async function GET(req: NextRequest) {
 
   if (b.error) return json(500, { ok: false, error: "DB_ERROR", message: b.error.message });
 
-  const rows = (Array.isArray(b.data) ? b.data : []) as any[];
+  let rows = (Array.isArray(b.data) ? b.data : []) as any[];
+  const expiredPendingIds = rows
+    .filter((r) => vendorAcceptExpired(r))
+    .map((r) => String(r?.id || ""))
+    .filter(Boolean);
+
+  if (expiredPendingIds.length) {
+    const expiredPatch: any = {
+      vendor_status: "vendor_timeout",
+      customer_status: "vendor_timeout",
+      status: "cancelled",
+      cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+      vendor_cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+    };
+
+    const expiredUpdate = await admin
+      .from("bookings")
+      .update(expiredPatch)
+      .in("id", expiredPendingIds)
+      .eq("vendor_id", vendor_id)
+      .eq("service_type", "takeout");
+
+    if (!expiredUpdate.error) {
+      const expiredSet = new Set(expiredPendingIds);
+      rows = rows.map((r) =>
+        expiredSet.has(String(r?.id || ""))
+          ? { ...r, ...expiredPatch, updated_at: new Date().toISOString() }
+          : r
+      );
+    }
+  }
+
   const ids = rows.map((r) => r?.id).filter(Boolean);
 
   const itemsByBooking: Record<string, SnapshotItem[]> = {};
@@ -607,6 +662,10 @@ export async function GET(req: NextRequest) {
       service_type: r?.service_type ?? null,
       created_at: r?.created_at ?? null,
       updated_at: r?.updated_at ?? null,
+      vendor_accept_expires_at: vendorAcceptExpiresAt(r),
+      vendor_accept_expired: vendorAcceptExpired(r),
+      cancel_reason: r?.cancel_reason ?? null,
+      vendor_cancel_reason: r?.vendor_cancel_reason ?? null,
 
       customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
       customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? null,
@@ -670,7 +729,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   if (order_id) {
     const cur = await admin
       .from("bookings")
-      .select("id,status,vendor_status")
+      .select("id,status,vendor_status,created_at,cancel_reason,vendor_cancel_reason")
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
       .eq("service_type", "takeout")
@@ -691,14 +750,41 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       "pickup_ready": ["completed", "cancelled"],
       "completed": [],
       "cancelled": [],
-      "canceled": []
+      "canceled": [],
+      "vendor_timeout": []
     };
 
     const normalizedCurrent = curVendor === "canceled" ? "cancelled" : (curVendor || "vendor_pending");
     const normalizedNextRaw = nextVendor === "accepted" ? "vendor_accepted" : nextVendor;
     const normalizedNext = normalizedNextRaw === "canceled" ? "cancelled" : normalizedNextRaw;
 
-    if (normalizedCurrent === "completed" || normalizedCurrent === "cancelled") {
+    if (normalizedCurrent === "vendor_pending" && normalizedNext === "vendor_accepted" && vendorAcceptExpired(cur.data)) {
+      const expiredPatch: any = {
+        vendor_status: "cancelled",
+        customer_status: "cancelled",
+        status: "cancelled",
+        cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+        vendor_cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+      };
+
+      await admin
+        .from("bookings")
+        .update(expiredPatch)
+        .eq("id", order_id)
+        .eq("vendor_id", vendor_id)
+        .eq("service_type", "takeout");
+
+      return json(409, {
+        ok: false,
+        error: "VENDOR_ACCEPT_EXPIRED",
+        message: "Vendor did not respond within 5 minutes. This order was automatically closed.",
+        current: "vendor_timeout",
+        attempted: normalizedNext,
+        cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+      });
+    }
+
+    if (normalizedCurrent === "completed" || normalizedCurrent === "cancelled" || normalizedCurrent === "vendor_timeout") {
       return json(409, {
         ok: false,
         error: "TERMINAL_STATE_LOCKED",

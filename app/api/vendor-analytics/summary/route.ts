@@ -49,7 +49,16 @@ function isCancelled(row: BookingRow): boolean {
     normalizeStatus(row.customer_status),
     normalizeStatus(row.status),
   ];
-  return statuses.includes("cancelled") || statuses.includes("canceled");
+  return statuses.includes("cancelled") || statuses.includes("canceled") || statuses.includes("vendor_timeout");
+}
+
+function isVendorTimeout(row: BookingRow): boolean {
+  const reason = cancelReason(row).toLowerCase();
+  const statuses = [
+    normalizeStatus(row.vendor_status),
+    normalizeStatus(row.customer_status),
+  ];
+  return statuses.includes("vendor_timeout") || reason.includes("did not respond within 5 minutes");
 }
 
 function isActive(row: BookingRow): boolean {
@@ -196,6 +205,8 @@ export async function GET(req: NextRequest) {
 
   const completed = rows.filter(isCompleted);
   const cancelled = rows.filter(isCancelled);
+  const vendorTimeout = rows.filter(isVendorTimeout);
+  const manualVendorRejections = cancelled.filter((row) => !isVendorTimeout(row));
   const active = rows.filter(isActive);
 
   let grossFoodSales = 0;
@@ -265,6 +276,8 @@ export async function GET(req: NextRequest) {
       active_orders: active.length,
       completed_orders: completedOrders,
       cancelled_orders: cancelledOrders,
+      vendor_timeout_count: vendorTimeout.length,
+      manual_vendor_rejections: manualVendorRejections.length,
       gross_food_sales: grossFoodSales,
       gross_payable: grossPayable,
       delivery_fees: deliveryFees,
@@ -273,6 +286,8 @@ export async function GET(req: NextRequest) {
       receipt_requests: receiptRequests,
       average_order_value: completedOrders ? grossFoodSales / completedOrders : 0,
       cancellation_rate: totalOrders ? (cancelledOrders / totalOrders) * 100 : 0,
+      vendor_timeout_rate: totalOrders ? (vendorTimeout.length / totalOrders) * 100 : 0,
+      acceptance_rate: totalOrders ? ((completedOrders + active.length) / totalOrders) * 100 : 0,
       completion_rate: totalOrders ? (completedOrders / totalOrders) * 100 : 0,
     },
     top_items: Object.values(itemMap).sort((a, b) => b.quantity - a.quantity).slice(0, 10),

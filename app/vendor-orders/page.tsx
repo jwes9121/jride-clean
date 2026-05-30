@@ -148,7 +148,7 @@ const VENDOR_CANCEL_REASONS = [
 
 function statusClass(status: string): string {
   if (status === "completed") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "cancelled" || status === "canceled") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (status === "cancelled" || status === "canceled" || status === "vendor_timeout") return "border-rose-200 bg-rose-50 text-rose-800";
   if (status === "ready_for_pickup" || status === "pickup_ready" || status === "ready") return "border-blue-200 bg-blue-50 text-blue-800";
   if (status === "preparing") return "border-amber-200 bg-amber-50 text-amber-800";
   if (status === "vendor_accepted") return "border-emerald-200 bg-emerald-50 text-emerald-800";
@@ -168,7 +168,7 @@ function vendorStatusLabel(status: string): string {
 
 function isActive(order: TakeoutOrder): boolean {
   const s = displayStatus(order);
-  return s !== "completed" && s !== "cancelled" && s !== "canceled";
+  return s !== "completed" && s !== "cancelled" && s !== "canceled" && s !== "vendor_timeout";
 }
 
 async function readJson(url: string): Promise<ApiResult> {

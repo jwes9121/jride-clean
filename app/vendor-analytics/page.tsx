@@ -9,6 +9,8 @@ type Summary = {
   active_orders?: number;
   completed_orders?: number;
   cancelled_orders?: number;
+  vendor_timeout_count?: number;
+  manual_vendor_rejections?: number;
   gross_food_sales?: number;
   gross_payable?: number;
   delivery_fees?: number;
@@ -17,6 +19,8 @@ type Summary = {
   receipt_requests?: number;
   average_order_value?: number;
   cancellation_rate?: number;
+  vendor_timeout_rate?: number;
+  acceptance_rate?: number;
   completion_rate?: number;
 };
 
@@ -288,12 +292,15 @@ export default function VendorAnalyticsPage() {
           <Card label="Gross food sales" value={money(summary.gross_food_sales)} note="Completed orders only" />
           <Card label="Completed orders" value={summary.completed_orders || 0} note="Delivered/completed" />
           <Card label="Cancelled orders" value={summary.cancelled_orders || 0} note={"Rate " + pct(summary.cancellation_rate)} />
+          <Card label="Vendor timeouts" value={summary.vendor_timeout_count || 0} note={"Rate " + pct(summary.vendor_timeout_rate)} />
+          <Card label="Manual rejections" value={summary.manual_vendor_rejections || 0} note="Vendor declined/cancelled" />
           <Card label="Average order" value={money(summary.average_order_value)} note="Food sales / completed orders" />
         </section>
 
         <section className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4">
           <Card label="Total orders" value={summary.total_orders || 0} />
           <Card label="Active orders" value={summary.active_orders || 0} />
+          <Card label="Acceptance rate" value={pct(summary.acceptance_rate)} />
           <Card label="Delivery fees" value={money(summary.delivery_fees)} />
           <Card label="Receipt requests" value={summary.receipt_requests || 0} />
         </section>
