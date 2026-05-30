@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -180,6 +180,7 @@ function vendorStatusLabel(status: string): string {
   if (status === "preparing") return "Vendor preparing order";
   if (status === "ready_for_pickup") return "Ready for pickup";
   if (status === "completed") return "Completed";
+  if (status === "vendor_timeout") return "Vendor timeout";
   if (status === "cancelled" || status === "canceled") return "Cancelled";
   return status || "Waiting for vendor confirmation";
 }
@@ -191,20 +192,16 @@ function isActive(order: TakeoutOrder): boolean {
 
 function isActivePendingVendorOrder(order: TakeoutOrder, nowMs: number): boolean {
   if (!isActive(order)) return false;
+  if (acceptTimer(order, nowMs).expired) return false;
 
   const shownStatus = displayStatus(order);
   const vendorStatus = text(order.vendor_status).toLowerCase();
-  const rideStatus = text(order.status).toLowerCase();
 
-  const isPending =
+  return (
     shownStatus === "vendor_pending" ||
     vendorStatus === "vendor_pending" ||
-    vendorStatus === "requested" ||
-    rideStatus === "requested";
-
-  if (!isPending) return false;
-
-  return !acceptTimer(order, nowMs).expired;
+    vendorStatus === "requested"
+  );
 }
 
 async function readJson(url: string): Promise<ApiResult> {
@@ -885,3 +882,5 @@ export default function VendorTakeoutOrdersPage() {
     </main>
   );
 }
+
+
