@@ -48,6 +48,7 @@ const VENDOR_ALERT_SOUND_URL = "/sounds/vendor-order-alert.mp3";
 const REFRESH_MS = 10000;
 const VENDOR_ALERT_REPEAT_MS = 30000;
 const VENDOR_ALERT_MAX_MS = 5 * 60 * 1000;
+const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
 
 function text(v: unknown): string {
   return String(v ?? "").trim();
@@ -57,6 +58,52 @@ function money(v: unknown): string {
   const n = Number(v ?? 0);
   if (!Number.isFinite(n)) return "PHP 0.00";
   return "PHP " + n.toFixed(2);
+}
+
+function orderCreatedMs(order: TakeoutOrder): number | null {
+  const raw = text(order.created_at);
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function acceptTimer(order: TakeoutOrder, nowMs: number) {
+  const createdMs = orderCreatedMs(order);
+  if (createdMs === null) {
+    return {
+      remainingMs: VENDOR_ACCEPT_WINDOW_MS,
+      expired: false,
+      label: "5:00",
+      tone: "slate",
+    };
+  }
+
+  const elapsedMs = Math.max(0, nowMs - createdMs);
+  const remainingMs = Math.max(0, VENDOR_ACCEPT_WINDOW_MS - elapsedMs);
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const label = String(minutes) + ":" + String(seconds).padStart(2, "0");
+  const expired = remainingMs <= 0;
+
+  let tone = "emerald";
+  if (expired) tone = "rose";
+  else if (remainingMs <= 60 * 1000) tone = "rose";
+  else if (remainingMs <= 2 * 60 * 1000) tone = "amber";
+
+  return {
+    remainingMs,
+    expired,
+    label,
+    tone,
+  };
+}
+
+function acceptTimerClass(tone: string): string {
+  if (tone === "rose") return "border-rose-300 bg-rose-50 text-rose-800";
+  if (tone === "amber") return "border-amber-300 bg-amber-50 text-amber-800";
+  if (tone === "emerald") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
 function orderId(order: TakeoutOrder): string {
@@ -173,6 +220,7 @@ export default function VendorTakeoutOrdersPage() {
 
   const [error, setError] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     try {
@@ -317,6 +365,14 @@ export default function VendorTakeoutOrdersPage() {
     return () => window.clearInterval(timer);
   }, [vendorId, loadOrders]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
   async function updateStatus(order: TakeoutOrder, vendorStatus: string, explicitReason?: string) {
     const vid = text(vendorId);
     const id = orderId(order);
@@ -386,12 +442,10 @@ export default function VendorTakeoutOrdersPage() {
   }, [orders, showCompleted]);
 
   const pendingVendorOrders = useMemo(() => {
-    return visibleOrders.filter((order) => {
-      const shownStatus = displayStatus(order);
+    return orders.filter((order) => {
       const vendorStatus = text(order.vendor_status).toLowerCase();
       const rideStatus = text(order.status).toLowerCase();
-
-      if (!isActive(order)) return false;
+      const shownStatus = displayStatus(order);
 
       return (
         shownStatus === "vendor_pending" ||
@@ -400,7 +454,7 @@ export default function VendorTakeoutOrdersPage() {
         rideStatus === "requested"
       );
     });
-  }, [visibleOrders]);
+  }, [orders]);
 
   const pendingVendorKey = useMemo(() => {
     return pendingVendorOrders
@@ -616,6 +670,7 @@ export default function VendorTakeoutOrdersPage() {
             visibleOrders.map((order) => {
               const id = orderId(order);
               const currentStatus = displayStatus(order);
+              const acceptDeadline = acceptTimer(order, nowMs);
               const isSaving = savingId === id;
               const items = Array.isArray(order.items) ? order.items : [];
 
@@ -635,6 +690,12 @@ export default function VendorTakeoutOrdersPage() {
                       </div>
                       <div className="mt-1 text-sm text-slate-500">Deliver to: {text(order.to_label || order.dropoff_label) || "-"}</div>
                       <div className="mt-1 text-xs text-slate-400">Created: {text(order.created_at) || "-"}</div>
+                      {currentStatus === "vendor_pending" ? (
+                        <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + acceptTimerClass(acceptDeadline.tone)}>
+                          Accept within: {acceptDeadline.label}
+                          {acceptDeadline.expired ? " - overdue" : ""}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="text-left md:text-right">
                       <div className="text-xs text-slate-500">Subtotal</div>
@@ -689,6 +750,7 @@ export default function VendorTakeoutOrdersPage() {
                         type="button"
                         disabled={isSaving}
                         onClick={() => updateStatus(order, "vendor_accepted")}
+                        title={acceptDeadline.expired ? "This order is past the 5-minute vendor accept target." : "Accept this order within the 5-minute target."}
                         className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Accept order
