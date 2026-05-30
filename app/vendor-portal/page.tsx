@@ -376,6 +376,30 @@ export default function VendorPortalPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const vendorOrdersHref = vendorId ? "/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-orders";
+  const vendorAnalyticsHref = vendorId ? "/vendor-analytics?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-analytics";
+
+  function handleVendorLogout() {
+    try {
+      const keysToClear = [
+        "jride_vendor_session",
+        "jride_vendor_token",
+        "jride_vendor_id",
+        "JRIDE_VENDOR_ID",
+        "vendor_id",
+      ];
+
+      for (const key of keysToClear) {
+        window.localStorage.removeItem(key);
+        window.sessionStorage.removeItem(key);
+      }
+    } catch {
+      // ignore storage cleanup failures
+    }
+
+    window.location.href = "/vendor-login";
+  }
+
   const [cancelTargetOrder, setCancelTargetOrder] = useState<TakeoutOrder | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelOtherReason, setCancelOtherReason] = useState("");
@@ -1110,6 +1134,23 @@ export default function VendorPortalPage() {
                 );
               })}
             </select>
+
+            <a
+              href={vendorOrdersHref}
+              className={["rounded-xl border px-4 py-2 text-sm hover:bg-slate-50", !vendorId ? "pointer-events-none opacity-50" : ""].join(" ")}
+              aria-disabled={!vendorId}
+            >
+              Orders
+            </a>
+
+            <a
+              href={vendorAnalyticsHref}
+              className={["rounded-xl border px-4 py-2 text-sm hover:bg-slate-50", !vendorId ? "pointer-events-none opacity-50" : ""].join(" ")}
+              aria-disabled={!vendorId}
+            >
+              Analytics
+            </a>
+
             <button
               type="button"
               onClick={() => refreshAll().catch((e) => setError(String(e?.message || e)))}
@@ -1117,6 +1158,14 @@ export default function VendorPortalPage() {
               disabled={!vendorId || busy}
             >
               Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={handleVendorLogout}
+              className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
+            >
+              Logout
             </button>
           </div>
         </div>
