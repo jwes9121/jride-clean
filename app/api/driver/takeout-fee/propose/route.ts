@@ -369,7 +369,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,customer_note,notes,created_at")
+        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -576,6 +576,7 @@ const passengerLng =
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
   }
 }
+
 
 
 
