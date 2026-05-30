@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_status,assigned_driver_id")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,completed_at")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
     customer_status: nextStatus,
   };
 
+  if (nextStatus === "completed") {
+    const nowIso = new Date().toISOString();
+    patch.status = "completed";
+    patch.driver_status = "completed";
+    patch.completed_at = nowIso;
+  }
+
   if (nextStatus === "requested") {
     patch.assigned_driver_id = null;
   }
@@ -89,12 +96,77 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", (existing.data as any).id)
     .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,completed_at,updated_at")
     .single();
 
   if (up.error) {
     return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
   }
 
-  return json(200, { ok: true, order: up.data });
+  let wallet_deduction: any = null;
+
+  if (nextStatus === "completed") {
+    const order = up.data as any;
+    const bookingId = String(order?.id || "").trim();
+    const walletDriverId = String(order?.assigned_driver_id || order?.driver_id || driverId || "").trim();
+    const payable = Number(order?.takeout_total_payable || 0);
+    const deduction = payable >= 50 ? 20 : 15;
+    const reason = "takeout_completion_service_fee";
+
+    if (bookingId && walletDriverId) {
+      const existingWalletTx = await admin
+        .from("driver_wallet_transactions")
+        .select("id")
+        .eq("booking_id", bookingId)
+        .eq("driver_id", walletDriverId)
+        .eq("reason", reason)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingWalletTx.error) {
+        return json(500, { ok: false, error: "TAKEOUT_WALLET_IDEMPOTENCY_QUERY_FAILED", message: existingWalletTx.error.message });
+      }
+
+      if (existingWalletTx.data?.id) {
+        wallet_deduction = { ok: true, skipped: true, reason: "already_deducted" };
+      } else {
+        const lastTx = await admin
+          .from("driver_wallet_transactions")
+          .select("balance_after")
+          .eq("driver_id", walletDriverId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastTx.error) {
+          return json(500, { ok: false, error: "TAKEOUT_WALLET_BALANCE_QUERY_FAILED", message: lastTx.error.message });
+        }
+
+        const previousBalance = Number((lastTx.data as any)?.balance_after || 0);
+        const amount = -deduction;
+        const balanceAfter = previousBalance + amount;
+
+        const walletIns = await admin
+          .from("driver_wallet_transactions")
+          .insert({
+            driver_id: walletDriverId,
+            amount,
+            balance_after: balanceAfter,
+            reason,
+            booking_id: bookingId,
+          })
+          .select("id,driver_id,amount,balance_after,reason,booking_id,created_at")
+          .single();
+
+        if (walletIns.error) {
+          return json(500, { ok: false, error: "TAKEOUT_WALLET_DEDUCTION_FAILED", message: walletIns.error.message });
+        }
+
+        wallet_deduction = { ok: true, transaction: walletIns.data };
+      }
+    }
+  }
+
+  return json(200, { ok: true, order: up.data, wallet_deduction });
 }
+
