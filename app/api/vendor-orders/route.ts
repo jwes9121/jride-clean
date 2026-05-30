@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -638,7 +638,8 @@ export async function GET(req: NextRequest) {
   const orders = rows.map((r) => {
     const bid = String(r?.id ?? "");
     const snapItems = itemsByBooking[bid] || [];
-    const preferences = (r?.order_preferences && typeof r.order_preferences === "object") ? r.order_preferences : {};
+    const pricingSnapshot = (r?.takeout_pricing_snapshot && typeof r.takeout_pricing_snapshot === "object") ? r.takeout_pricing_snapshot : {};
+    const preferences = (r?.order_preferences && typeof r.order_preferences === "object") ? r.order_preferences : pricingSnapshot;
 
     // Prefer stored subtotal column per Phase 2D
     const storedSubtotal = r?.takeout_items_subtotal ?? null;
@@ -1195,6 +1196,19 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       receipt_requested,
     },
 
+    // Canonical fallback for production schemas where optional booking columns
+    // such as receipt_requested, order_preferences, or premium_packaging_*
+    // do not exist. This column is already used by takeout pricing routes.
+    takeout_pricing_snapshot: {
+      premium_packaging_selected,
+      premium_packaging_fee: premium_packaging_selected ? premium_packaging_fee : 0,
+      premium_packaging_label: premium_packaging_selected ? premium_packaging_label : null,
+      packaging_subtotal: premium_packaging_selected ? premium_packaging_fee : 0,
+      takeout_packaging_subtotal: premium_packaging_selected ? premium_packaging_fee : 0,
+      receipt_requested,
+      request_vendor_receipt: receipt_requested,
+    },
+
     // Phase 2D requirement
 
     takeout_items_subtotal: subtotal,
@@ -1476,6 +1490,7 @@ takeout_items_subtotal: subtotal,
   });
 
 }
+
 
 
 
