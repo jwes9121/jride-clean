@@ -64,6 +64,24 @@ async function ensureTakeoutCanonicalPathForCompletion(admin: any, order: any, d
       patch.driver_status = canonicalStatus;
     }
 
+    // JRIDE_TAKEOUT_COMPLETION_FARE_PROPOSED_GUARD_V1
+    // Takeout completion must pass the active DB lifecycle guard, but the ride fare
+    // timeout trigger can rewrite bare fare_proposed updates to searching.
+    // Keep this takeout-only canonical step alive by attaching fresh takeout pricing
+    // confirmation data. Do not weaken ride lifecycle guards and do not touch ride rows.
+    if (canonicalStatus === "fare_proposed") {
+      const nowIso = new Date().toISOString();
+      const feeExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const deliveryFee = Number(order?.takeout_delivery_fee || 0);
+      patch.takeout_pricing_status = "customer_confirmed";
+      patch.takeout_fee_proposed_at = nowIso;
+      patch.takeout_fee_expires_at = feeExpiresIso;
+      patch.passenger_fare_response = "accepted";
+      if (Number.isFinite(deliveryFee) && deliveryFee > 0) {
+        patch.proposed_fare = deliveryFee;
+      }
+    }
+
     const step = await admin
       .from("bookings")
       .update(patch)
@@ -169,6 +187,7 @@ export async function POST(req: NextRequest) {
   };
   return json(200, { ok: true, order: up.data, wallet_deduction });
 }
+
 
 
 
