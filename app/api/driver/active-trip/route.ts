@@ -759,7 +759,9 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       customer_note: jrideCleanTakeoutCustomerNote((booking as any).customer_note ?? (booking as any).passenger_note ?? (booking as any).notes),
       passenger_note: jrideCleanTakeoutCustomerNote((booking as any).customer_note ?? (booking as any).passenger_note ?? (booking as any).notes),
       system_instructions: jrideTakeoutSystemInstructions(booking as any, cashCollectionRequired),
-      takeout_receipt_requested: Boolean((booking as any).receipt_requested ?? (booking as any).request_vendor_receipt ?? false),
+      takeout_receipt_requested: Boolean((booking as any).receipt_requested ?? (booking as any).request_vendor_receipt ?? (booking as any).takeout_pricing_snapshot?.receipt_requested ?? false),
+      receipt_requested: Boolean((booking as any).receipt_requested ?? (booking as any).request_vendor_receipt ?? (booking as any).takeout_pricing_snapshot?.receipt_requested ?? false),
+      request_vendor_receipt: Boolean((booking as any).request_vendor_receipt ?? (booking as any).receipt_requested ?? (booking as any).takeout_pricing_snapshot?.receipt_requested ?? false),
       order_total: takeoutAmount,
       food_total: takeoutAmount,
       takeout_items_subtotal: takeoutAmount,
@@ -836,6 +838,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 
 
 
