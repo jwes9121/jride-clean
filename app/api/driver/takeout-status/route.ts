@@ -33,6 +33,58 @@ function normStatus(value: any) {
   return s;
 }
 
+// JRIDE_TAKEOUT_CANONICAL_COMPLETION_PATH_V2
+// Takeout vendor/customer statuses can progress on their own, but DB wallet triggers
+// still require bookings.status to follow the canonical ride-safe chain before completed.
+// This helper advances only takeout rows, only inside the takeout-status route, and never
+// weakens database lifecycle guards.
+async function ensureTakeoutCanonicalPathForCompletion(admin: any, order: any, driverId: string) {
+  const bookingId = String(order?.id || "").trim();
+  const assignedDriverId = String(order?.assigned_driver_id || order?.driver_id || driverId || "").trim();
+  if (!bookingId || !assignedDriverId) {
+    return { ok: false, error: "TAKEOUT_CANONICAL_DRIVER_MISSING", message: "Takeout completion requires assigned driver." };
+  }
+
+  const chain = ["requested", "assigned", "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip"];
+  const current = String(order?.status || "requested").trim().toLowerCase() || "requested";
+  if (current === "completed") return { ok: true, skipped: true };
+
+  let startIndex = chain.indexOf(current);
+  if (startIndex < 0) startIndex = 0;
+
+  for (let i = startIndex + 1; i < chain.length; i++) {
+    const canonicalStatus = chain[i];
+    const patch: any = {
+      status: canonicalStatus,
+      driver_id: assignedDriverId,
+      assigned_driver_id: assignedDriverId,
+    };
+
+    if (["on_the_way", "arrived", "on_trip"].includes(canonicalStatus)) {
+      patch.driver_status = canonicalStatus;
+    }
+
+    const step = await admin
+      .from("bookings")
+      .update(patch)
+      .eq("id", bookingId)
+      .eq("service_type", "takeout")
+      .select("id,status,driver_status,assigned_driver_id,driver_id")
+      .single();
+
+    if (step.error) {
+      return {
+        ok: false,
+        error: "TAKEOUT_CANONICAL_STEP_FAILED",
+        message: step.error.message,
+        attempted_status: canonicalStatus,
+      };
+    }
+  }
+
+  return { ok: true, advanced_to: "on_trip" };
+}
+
 export async function POST(req: NextRequest) {
   if (!isDriverSecretAuthorized(req)) {
     return json(401, { ok: false, error: "UNAUTHORIZED" });
@@ -73,6 +125,13 @@ export async function POST(req: NextRequest) {
   const current = normStatus((existing.data as any).vendor_status || "requested");
   if (current === "completed" || current === "cancelled") {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED" });
+  }
+
+  if (nextStatus === "completed") {
+    const canonical = await ensureTakeoutCanonicalPathForCompletion(admin, existing.data, driverId);
+    if (!canonical.ok) {
+      return json(500, canonical);
+    }
   }
 
   const patch: any = {
@@ -169,4 +228,5 @@ export async function POST(req: NextRequest) {
 
   return json(200, { ok: true, order: up.data, wallet_deduction });
 }
+
 
