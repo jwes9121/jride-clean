@@ -42,6 +42,25 @@ function envMoney(name: string): number | null {
   return money(raw);
 }
 
+function parsePackagingSubtotalFromText(...values: any[]): number {
+  const joined = values.map((v) => text(v)).filter(Boolean).join("\n");
+  if (!joined) return 0;
+
+  const patterns = [
+    /premium packaging[^0-9]*(?:php|p)?\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /packaging[^0-9]*(?:php|p)?\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /add-on[^0-9]*(?:php|p)?\s*([0-9]+(?:\.[0-9]+)?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = joined.match(pattern);
+    const parsed = match ? money(match[1]) : null;
+    if (parsed !== null && parsed > 0) return parsed;
+  }
+
+  return 0;
+}
+
 function validLatLng(lat: any, lng: any): boolean {
   const a = num(lat);
   const b = num(lng);
@@ -350,7 +369,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,order_preferences,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
+        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,customer_note,notes,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -430,15 +449,13 @@ export async function POST(req: NextRequest) {
     }
 
     const pricingSnapshot = order.takeout_pricing_snapshot || {};
-    const orderPrefs = order.order_preferences || {};
-    const preferencePackaging = money(
-      orderPrefs.premium_packaging_fee ??
-      orderPrefs.premiumPackagingFee ??
+    const snapshotPackaging = money(
       pricingSnapshot.packaging_subtotal ??
       pricingSnapshot.takeout_packaging_subtotal ??
       0
     ) ?? 0;
-    const packagingSubtotal = Math.max(0, preferencePackaging);
+    const notePackaging = parsePackagingSubtotalFromText(order.customer_note, order.notes);
+    const packagingSubtotal = Math.max(0, snapshotPackaging, notePackaging);
 
     let pickupBreakdown = noCustomerCashPickupBreakdown();
     if (routePlan === "customer_cash_first") {
@@ -559,6 +576,7 @@ const passengerLng =
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
   }
 }
+
 
 
 
