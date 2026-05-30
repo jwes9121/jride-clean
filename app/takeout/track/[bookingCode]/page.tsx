@@ -25,6 +25,8 @@ type TakeoutOrder = {
   total_bill?: number | string | null;
   takeout_items_subtotal?: number | string | null;
   created_at?: string | null;
+  vendor_accept_expires_at?: string | null;
+  vendor_accept_expired?: boolean | null;
 };
 
 function normText(v: any): string {
@@ -88,6 +90,11 @@ function looksLikeUuid(v: string): boolean {
 
 function cancelReason(order: TakeoutOrder): string {
   return normText(order.vendor_cancel_reason || order.cancel_reason);
+}
+
+function isVendorAcceptTimeout(order: TakeoutOrder): boolean {
+  const reason = cancelReason(order).toLowerCase();
+  return Boolean(order.vendor_accept_expired) || reason.includes("did not respond within 5 minutes");
 }
 
 export default function TakeoutTrackPage() {
@@ -243,7 +250,7 @@ export default function TakeoutTrackPage() {
           <div>
             <div className="font-semibold text-slate-900">Takeout pricing and progress</div>
             <div className="mt-1 text-xs text-slate-600">
-              {state.isCompleted ? "This order is completed." : state.isCancelled ? "This order was cancelled." : "This page refreshes automatically."}
+              {state.isCompleted ? "This order is completed." : state.isCancelled ? (order && isVendorAcceptTimeout(order) ? "The vendor did not respond in time." : "This order was cancelled.") : "This page refreshes automatically."}
             </div>
           </div>
           <button
@@ -367,7 +374,7 @@ export default function TakeoutTrackPage() {
               ) : null}
             </div>
 
-            {state.pricingStatus === "pricing_pending" ? (
+            {state.pricingStatus === "pricing_pending" && !state.isCancelled ? (
               <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
                 {state.vendorHasAccepted ? "Vendor accepted. Waiting for a nearby driver to propose the delivery fee." : "Your order has been sent. Please wait while a nearby driver and the vendor confirm availability."}
               </div>
@@ -417,7 +424,7 @@ export default function TakeoutTrackPage() {
 
             {state.isCancelled ? (
               <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                <div className="font-semibold">Order cancelled by vendor.</div>{cancelReason(order) ? (<div className="mt-2">Reason: {cancelReason(order)}</div>) : null}
+                <div className="font-semibold">{isVendorAcceptTimeout(order) ? "Vendor did not respond in time." : "Order cancelled by vendor."}</div>{cancelReason(order) ? (<div className="mt-2">Reason: {isVendorAcceptTimeout(order) ? "The vendor did not accept this order within 5 minutes." : cancelReason(order)}</div>) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a href="/takeout" className="rounded bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Start new order</a>
                   <a href="/takeout" className="rounded border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">Home</a>
@@ -431,5 +438,6 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
+
 
 
