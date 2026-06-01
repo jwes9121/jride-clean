@@ -2112,12 +2112,12 @@ function selectedAddressTown(
               const progressStatus = terminalStatus || vendorWorkflowStatus || customerStatus || vendorStatus;
               const progressLabels: Record<string, string> = {
                 requested: "Order submitted",
-                vendor_pending: "Waiting for vendor confirmation",
-                vendor_accepted: "Vendor accepted order",
+                vendor_pending: "Waiting for store confirmation",
+                vendor_accepted: "Store confirmed",
                 preparing: "Vendor preparing order",
                 pickup_ready: "Order ready for pickup",
-                driver_assigned: "Driver assigned",
-                driver_fee_proposed: "Driver delivery fee proposed",
+                driver_assigned: "Driver found",
+                driver_fee_proposed: "Delivery quote ready",
                 customer_confirmed: "Order confirmed",
                 rider_arrived_vendor: "Driver arrived at vendor",
                 arrived_vendor: "Driver arrived at vendor",
@@ -2197,13 +2197,10 @@ function selectedAddressTown(
                       </div>
                     ) : null}
                     <div className="mt-1 flex justify-between gap-3">
-                      <span className="text-slate-600">Driver delivery fee</span>
+                      <span className="text-slate-600">Delivery fee</span>
                       <span>{deliveryFee > 0 ? money(deliveryFee) : "Waiting for driver"}</span>
                     </div>
-                    <div className="mt-1 flex justify-between gap-3">
-                      <span className="text-slate-600">JRide service fee</span>
-                      <span>{serviceFee > 0 ? money(serviceFee) : "--"}</span>
-                    </div>
+                    
                     <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-base">
                       <span className="font-semibold">Total payable</span>
                       <span className="font-bold">{totalPayable > 0 ? money(totalPayable) : "Pending"}</span>
