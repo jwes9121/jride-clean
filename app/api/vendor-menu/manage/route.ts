@@ -3,7 +3,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-const MAX_FREE_MENU_ITEMS = 15;
+const MENU_ITEMS_ARE_UNLIMITED = true;
 const ASSET_BUCKET = "vendor-assets";
 
 type Json = Record<string, any>;
@@ -192,7 +192,8 @@ export async function GET(req: NextRequest) {
     const menu = await getMenu(admin, vendorId);
     return json(200, {
       ok: true,
-      max_items: MAX_FREE_MENU_ITEMS,
+      max_items: null,
+      unlimited_items: MENU_ITEMS_ARE_UNLIMITED,
       vendor: vendor
         ? {
             id: cleanString(vendor?.id || vendorId),
@@ -258,14 +259,6 @@ export async function POST(req: NextRequest) {
     if (action === "save_item") {
       const existing = await getMenu(admin, vendorId);
       const itemId = cleanString(body?.id || body?.menu_item_id || body?.menuItemId);
-      if (!itemId && existing.length >= MAX_FREE_MENU_ITEMS) {
-        return json(409, {
-          ok: false,
-          error: "MENU_LIMIT_REACHED",
-          message: `Free tier limit reached: ${MAX_FREE_MENU_ITEMS} menu items maximum.`,
-          max_items: MAX_FREE_MENU_ITEMS,
-        });
-      }
 
       const photoUpload = await uploadImage(admin, vendorId, "menu", body?.photo_data_url || body?.photoDataUrl);
       const active = toBool(body?.is_available, true) && !toBool(body?.sold_out_today, false);
@@ -322,6 +315,8 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
   }
 }
+
+
 
 
 
