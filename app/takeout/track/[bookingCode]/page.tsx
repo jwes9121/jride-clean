@@ -363,14 +363,10 @@ export default function TakeoutTrackPage() {
                 </div>
               ) : null}
               <div className="mt-1 flex justify-between gap-3">
-                <span className="text-slate-600">Driver delivery fee</span>
-                <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for driver"}</span>
+                <span className="text-slate-600">Delivery fee</span>
+                <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for delivery quote"}</span>
               </div>
-              <div className="mt-1 flex justify-between gap-3">
-                <span className="text-slate-600">JRide service fee</span>
-                <span>{state.serviceFee > 0 ? money(state.serviceFee) : "--"}</span>
-              </div>
-              {state.pickupExcessFee > 0 ? (
+                            {state.pickupExcessFee > 0 ? (
                 <div className="mt-1 flex justify-between gap-3">
                   <span className="text-slate-600">Pickup distance fee</span>
                   <span>{money(state.pickupExcessFee)}</span>
@@ -454,7 +450,7 @@ export default function TakeoutTrackPage() {
 
             {state.pricingStatus === "pricing_pending" && !state.isCancelled ? (
               <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
-                {state.vendorHasAccepted ? "Vendor accepted. Waiting for a nearby driver to propose the delivery fee." : "Your order has been sent. Please wait while a nearby driver and the vendor confirm availability."}
+                {state.vendorHasAccepted ? "Store confirmed. Waiting for a nearby driver to provide the delivery quote." : "Your order has been sent. Please wait while the store confirms and a nearby driver becomes available."}
               </div>
             ) : null}
 
@@ -470,6 +466,24 @@ export default function TakeoutTrackPage() {
 
             {!state.isCompleted && !state.isCancelled ? (
               <div className="rounded border border-slate-200 bg-white p-3 text-xs text-slate-700">
+<div className="mb-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+  <div
+    className={
+      "h-2 transition-all duration-300 " +
+      (
+        state.isCompleted
+          ? "w-full bg-emerald-500"
+          : state.pricingStatus === "customer_confirmed"
+          ? "w-4/5 bg-emerald-500"
+          : state.pricingStatus === "driver_fee_proposed"
+          ? "w-3/5 bg-amber-500"
+          : state.vendorStatus === "vendor_accepted"
+          ? "w-2/5 bg-blue-500"
+          : "w-1/5 bg-slate-400"
+      )
+    }
+  />
+</div>
                 <div className="font-semibold text-slate-900">Live takeout progress</div>
                 <div className="mt-1">{state.progressLabel}</div>
                 {state.vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {state.vendorStatus.replace(/_/g, " ")}</div> : null}
@@ -527,6 +541,7 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
+
 
 
 
