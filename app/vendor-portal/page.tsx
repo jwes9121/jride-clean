@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -122,7 +122,7 @@ function townFallbackCenter(town: string): VendorLngLat {
   return [121.1000, 16.8330];
 }
 
-const MAX_ITEMS = 15;
+const MENU_ITEMS_UNLIMITED = true;
 const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
 
 function cls(...v: Array<string | false | null | undefined>) {
@@ -712,7 +712,7 @@ export default function VendorPortalPage() {
   }, [analyticsOrders]);
 
   const usedCount = menu.length;
-  const limitReached = usedCount >= MAX_ITEMS && !editingId;
+  const limitReached = false;
 
   async function loadVendors() {
     const j = await getJson("/api/admin/vendors");
@@ -1028,11 +1028,7 @@ export default function VendorPortalPage() {
   async function saveItem() {
     const vid = clean(vendorId);
     if (!vid) return;
-    if (limitReached) {
-      setError("Free-tier menu limit reached: 15 menu items maximum.");
-      return;
-    }
-    setBusy(true);
+        setBusy(true);
     setError("");
     setMessage("");
     try {
@@ -1564,9 +1560,11 @@ export default function VendorPortalPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
-                  <p className="text-xs text-slate-500">Menu catalog. Free-tier limit: {usedCount}/{MAX_ITEMS} items used.</p>
+                  <p className="text-xs text-slate-500">Menu catalog with unlimited menu items.</p>
                 </div>
-                <span className={cls("rounded-full border px-3 py-1 text-xs font-semibold", limitReached ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-300 bg-slate-50 text-slate-700")}>{limitReached ? "Limit reached" : `${MAX_ITEMS - usedCount} slots left`}</span>
+                <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+  Unlimited menu items
+</span>
               </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 shadow-inner md:grid-cols-6">
