@@ -214,9 +214,23 @@ async function postJson(url: string, body: any) {
     body: JSON.stringify(body),
   });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok || (j && j.ok === false)) {
-    throw new Error(j?.message || j?.error || ("HTTP " + res.status));
+  if (res.status === 401) {
+  if (typeof window !== "undefined") {
+    window.location.href = "/passenger-login?callbackUrl=/takeout";
   }
+  throw new Error("Passenger session expired.");
+}
+
+if (res.status === 401) {
+  if (typeof window !== "undefined") {
+    window.location.href = "/passenger-login?callbackUrl=/takeout";
+  }
+  throw new Error("Passenger session expired.");
+}
+
+if (!res.ok || (j && j.ok === false)) {
+  throw new Error(j?.message || j?.error || ("HTTP " + res.status));
+}
   return j;
 }
 
