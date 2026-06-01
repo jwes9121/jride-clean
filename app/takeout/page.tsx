@@ -616,7 +616,7 @@ export default function TakeoutPage() {
   const [lastJson, setLastJson] = useState<ApiResp | null>(null);
 
   // JRIDE_TAKEOUT_PASSENGER_PRICING_UI_V1
-  // Passenger-side visibility only for driver delivery fee proposals.
+  // Passenger-side visibility only for delivery fee quotes.
   // This page does not assign drivers, mutate ride lifecycle, touch ride fare, or touch payout logic.
   const [pricingOrder, setPricingOrder] = useState<TakeoutPricingOrder | null>(null);
   const [pricingBusy, setPricingBusy] = useState(false);
@@ -1410,7 +1410,7 @@ function selectedAddressTown(
         window.location.href = "/takeout/track/" + encodeURIComponent(trackingKey);
         return;
       }
-      setResult("Takeout order submitted. Waiting for a driver delivery fee proposal." + (maybeId ? " ID: " + String(maybeId) : ""));
+      setResult("Takeout order submitted. Waiting for a delivery fee quote." + (maybeId ? " ID: " + String(maybeId) : ""));
       setPricingOrder({
         id: normText(maybeId) || null,
         booking_code: maybeCode || null,
@@ -2078,7 +2078,7 @@ function selectedAddressTown(
               <div>
                 <div className="font-semibold text-slate-900">Takeout pricing confirmation</div>
                 <div className="mt-1 text-xs text-slate-600">
-                  Waiting for a driver delivery fee proposal before the order is finally confirmed.
+                  Waiting for a delivery fee quote before the order is finally confirmed.
                 </div>
               </div>
               <button
@@ -2293,30 +2293,4 @@ function selectedAddressTown(
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

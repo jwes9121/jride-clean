@@ -264,7 +264,7 @@ function statusLabel(s: any) {
   if (x === "vendor_pending") return "Waiting for vendor confirmation";
   if (x === "vendor_accepted") return "Vendor accepted";
   if (x === "driver_assigned") return "Driver assigned";
-  if (x === "pickup_ready") return "Pickup ready";
+  if (x === "pickup_ready") return "Order ready";
   if (x === "preparing") return "Preparing";
   if (x === "completed") return "Completed";
   if (x === "vendor_timeout") return "Vendor timeout";
@@ -1926,18 +1926,15 @@ export default function VendorPortalPage() {
                               </>
                             ) : null}
                             {s === "vendor_accepted" ? (
-                              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. No second vendor action is required. Wait for driver assignment and mark Pickup ready only when the order is ready.</div>
+                              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. No second vendor action is required. Wait for driver assignment and mark Mark order ready only when the order is ready.</div>
                             ) : null}
                             {s === "driver_assigned" ? (
                               <>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Pickup ready</button>
+                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "Mark order ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Mark order ready</button>
                                 <button type="button" disabled={busy} onClick={() => openCancelOrderDialog(o)} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
                               </>
                             ) : null}
-                            {s === "pickup_ready" ? (
-                              <button type="button" disabled={busy} onClick={() => moveOrder(o, "completed")} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Completed</button>
-                            ) : null}
-                          </div>
+                                                      </div>
                         </div>
                       );
                     })}
@@ -1972,6 +1969,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
