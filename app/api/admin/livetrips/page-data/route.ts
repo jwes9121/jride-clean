@@ -150,6 +150,10 @@ export async function GET(req: NextRequest) {
       .from("driver_profiles")
       .select("driver_id, full_name, callsign, phone, municipality");
 
+    const driverWalletsRes = await supabase
+      .from("drivers")
+      .select("id, wallet_balance, min_wallet_required, wallet_locked");
+
     if (driverProfilesRes.error) {
       return NextResponse.json(
         {
@@ -163,6 +167,21 @@ export async function GET(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    if (driverWalletsRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_WALLETS_FAILED",
+          message: driverWalletsRes.error.message,
+          ...buildDebug(debugMode, {
+            stage: "driver_wallets",
+          }),
+        },
+        { status: 500 }
+      );
+    }
+
 
     const activeStatuses = [
       "requested",
@@ -213,6 +232,16 @@ export async function GET(req: NextRequest) {
 
     const rawDriverRows = asArray<any>(driverLocationsRes.data);
     const driverRows = dedupeLatestDriverRows(rawDriverRows);
+
+    const walletRows = asArray<any>(driverWalletsRes.data);
+    const driverWalletMap: Record<string, any> = {};
+    for (const row of walletRows) {
+      const driverId = text(row?.id);
+      if (!driverId) continue;
+      driverWalletMap[driverId] = row;
+    }
+
+
     const bookingRows = asArray<any>(bookingsRes.data).filter((row: any) => {
       const serviceType = text(row?.service_type).toLowerCase();
       if (serviceType !== "takeout") return true;
@@ -276,7 +305,12 @@ export async function GET(req: NextRequest) {
       const isStale = ageSeconds == null ? true : ageSeconds > staleAfterSeconds;
       const rawStatus = text(row?.status).toLowerCase();
       const effectiveStatus = isStale ? "offline" : rawStatus;
-      const assignEligible = !isStale && onlineLike.has(rawStatus);
+      const wallet = driverWalletMap[driverId] || {};
+      const walletBalance = Number(wallet?.wallet_balance ?? 0);
+      const minWalletRequired = Number(wallet?.min_wallet_required ?? 250);
+      const walletLocked = Boolean(wallet?.wallet_locked);
+      const walletEligible = !walletLocked && Number.isFinite(walletBalance) && walletBalance >= minWalletRequired;
+      const assignEligible = !isStale && onlineLike.has(rawStatus) && walletEligible;
 
       return {
         driver_id: row?.driver_id ?? null,
@@ -289,6 +323,10 @@ export async function GET(req: NextRequest) {
         updated_at_ph: row?.updated_at_ph ?? null,
         age_seconds: row?.age_seconds ?? ageSeconds,
         assign_eligible: row?.assign_eligible ?? assignEligible,
+        wallet_balance: walletBalance,
+        min_wallet_required: minWalletRequired,
+        wallet_locked: walletLocked,
+        wallet_eligible: walletEligible,
         is_stale: row?.is_stale ?? isStale,
         vehicle_type: row?.vehicle_type ?? null,
         capacity: row?.capacity ?? null,
