@@ -445,6 +445,23 @@ export default function TakeoutTrackPage() {
               {order?.takeout_cash_collection_required === true ? (
                 <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Cash collection required before vendor pickup.</div>
               ) : null}
+                            {state.pickupExcessFee >= 200 ? (
+  <div className="mt-2 rounded border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
+    <div className="font-semibold">
+      Long-distance driver warning
+    </div>
+
+    <div className="mt-1">
+      The nearest available driver is far from the pickup area.
+      Because this order requires cash collection before going to the store,
+      the pickup distance fee may be significantly higher than normal.
+    </div>
+
+    <div className="mt-2">
+      Please review the delivery fee and pickup distance fee carefully before confirming the order total.
+    </div>
+  </div>
+) : null}
               {state.pricingStatus === "driver_fee_proposed" && !state.isCompleted && !state.isCancelled ? (
                 <div className="mt-2 text-xs text-slate-600">Proposal expires in: <span className="font-semibold">{state.expiresIn === null ? "--" : String(state.expiresIn) + " sec"}</span></div>
               ) : null}
