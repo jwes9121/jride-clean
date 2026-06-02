@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
@@ -174,13 +174,20 @@ export async function GET(req: NextRequest) {
       "on_the_way",
       "arrived",
       "on_trip",
+      "vendor_pending",
+      "vendor_accepted",
+      "driver_assigned",
+      "driver_fee_proposed",
+      "customer_confirmed",
+      "rider_arrived_vendor",
+      "picked_up",
+      "delivering",
     ];
 
     const bookingsRes = await supabase
       .from("bookings")
       .select("*")
       .in("status", activeStatuses)
-      .or("service_type.is.null,service_type.neq.takeout")
       .order("updated_at", { ascending: false });
 
     if (bookingsRes.error) {
@@ -206,7 +213,16 @@ export async function GET(req: NextRequest) {
 
     const rawDriverRows = asArray<any>(driverLocationsRes.data);
     const driverRows = dedupeLatestDriverRows(rawDriverRows);
-    const bookingRows = asArray<any>(bookingsRes.data);
+    const bookingRows = asArray<any>(bookingsRes.data).filter((row: any) => {
+      const serviceType = text(row?.service_type).toLowerCase();
+      if (serviceType !== "takeout") return true;
+
+      const takeoutStatus = text(row?.customer_status || row?.vendor_status || row?.status).toLowerCase();
+      if (!takeoutStatus) return false;
+      if (takeoutStatus === "cancelled" || takeoutStatus === "completed" || takeoutStatus === "vendor_timeout") return false;
+
+      return activeStatuses.includes(takeoutStatus);
+    });
     const profileRows = asArray<any>(driverProfilesRes.data);
 
     const staleAfterSeconds = 120;
@@ -226,8 +242,15 @@ export async function GET(req: NextRequest) {
         ? driverRows.find((d: any) => text(d?.driver_id) === text(driverId))
         : null;
 
+      const serviceType = text(trip?.service_type).toLowerCase();
+      const displayStatus =
+        serviceType === "takeout"
+          ? text(trip?.customer_status || trip?.vendor_status || trip?.status).toLowerCase()
+          : text(trip?.status).toLowerCase();
+
       return {
         ...trip,
+        status: displayStatus || trip?.status,
         pickup_label: trip?.pickup_label ?? trip?.from_label ?? null,
         dropoff_label: trip?.dropoff_label ?? trip?.to_label ?? null,
         zone: trip?.town ?? trip?.zone ?? null,
@@ -351,3 +374,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+

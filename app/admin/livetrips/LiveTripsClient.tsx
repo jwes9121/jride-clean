@@ -111,12 +111,20 @@ const LIVETRIPS_PENDING_STATUSES = [
   "accepted",
   "fare_proposed",
   "ready",
+  "vendor_pending",
+  "vendor_accepted",
+  "driver_assigned",
+  "driver_fee_proposed",
+  "customer_confirmed",
 ];
 
 const LIVETRIPS_ACTIVE_STATUSES = [
   "on_the_way",
   "arrived",
   "on_trip",
+  "rider_arrived_vendor",
+  "picked_up",
+  "delivering",
 ];
 
 const LIVETRIPS_DISPATCH_STATUSES = [
@@ -1341,7 +1349,7 @@ export default function LiveTripsClient() {
                   onChange={(e) => setManualDriverId(e.target.value)}
                 >
                   <option value="">Select eligible driver</option>
-                  {drivers.map((d, idx) => {
+                  {drivers.filter((d) => Boolean((d as any).assign_eligible)).map((d, idx) => {
                     const id = String(d.driver_id || "");
                     const isEligible = Boolean(d.assign_eligible);
                     const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + ((d as any).effective_status ? " - " + (d as any).effective_status : "") + (isEligible ? "" : " - NOT ELIGIBLE")).trim();
@@ -1428,3 +1436,4 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+
