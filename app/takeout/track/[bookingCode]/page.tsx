@@ -228,6 +228,7 @@ export default function TakeoutTrackPage() {
     const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill);
     const deliveryFee = toNum(order?.takeout_delivery_fee);
     const serviceFee = toNum(order?.takeout_service_fee || 15);
+    const displayDeliveryFee = deliveryFee > 0 ? deliveryFee + serviceFee : 0;
     const totalPayable = toNum(order?.takeout_total_payable);
     const packagingSubtotal = Math.max(
       0,
@@ -264,6 +265,7 @@ export default function TakeoutTrackPage() {
       isCancelled,
       foodSubtotal,
       deliveryFee,
+      displayDeliveryFee,
       serviceFee,
       packagingSubtotal,
       totalPayable,
@@ -364,7 +366,7 @@ export default function TakeoutTrackPage() {
               ) : null}
               <div className="mt-1 flex justify-between gap-3">
                 <span className="text-slate-600">Delivery fee</span>
-                <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.deliveryFee > 0 ? money(state.deliveryFee) : "Waiting for delivery quote"}</span>
+                <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.displayDeliveryFee > 0 ? money(state.displayDeliveryFee) : "Waiting for delivery quote"}</span>
               </div>
                             {state.pickupExcessFee > 0 ? (
                 <div className="mt-1 flex justify-between gap-3">
@@ -466,23 +468,31 @@ export default function TakeoutTrackPage() {
 
             {!state.isCompleted && !state.isCancelled ? (
               <div className="rounded border border-slate-200 bg-white p-3 text-xs text-slate-700">
-<div className="mb-3 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
-  <div
-    className={
-      "h-2 transition-all duration-300 " +
-      (
-        state.isCompleted
-          ? "w-full bg-emerald-500"
-          : state.pricingStatus === "customer_confirmed"
-          ? "w-4/5 bg-emerald-500"
-          : state.pricingStatus === "driver_fee_proposed"
-          ? "w-3/5 bg-amber-500"
-          : state.vendorStatus === "vendor_accepted"
-          ? "w-2/5 bg-blue-500"
-          : "w-1/5 bg-slate-400"
-      )
-    }
-  />
+<div className="mb-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+  {[
+    ["Store confirmed", state.vendorHasAccepted],
+    ["Driver found", Boolean(state.assignedDriverId || state.driverName || state.driverPhone)],
+    ["Quote ready", state.pricingStatus === "driver_fee_proposed" || state.passengerConfirmed],
+    ["Order confirmed", state.passengerConfirmed],
+    ["At store", ["rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(state.progressStatus)],
+    ["Picked up", ["picked_up", "delivering", "completed"].includes(state.progressStatus)],
+    ["Delivering", ["delivering", "completed"].includes(state.progressStatus)],
+    ["Completed", state.isCompleted],
+  ].map(([label, done], idx) => (
+    <div
+      key={String(label)}
+      className={
+        "rounded-full border px-2 py-1 text-center font-semibold " +
+        (done
+          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+          : idx === 0 || idx === 1 || idx === 2
+            ? "border-amber-300 bg-amber-50 text-amber-700"
+            : "border-slate-200 bg-slate-50 text-slate-500")
+      }
+    >
+      {label}
+    </div>
+  ))}
 </div>
                 <div className="font-semibold text-slate-900">Live takeout progress</div>
                 <div className="mt-1">{state.progressLabel}</div>
@@ -541,6 +551,8 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
+
+
 
 
 
