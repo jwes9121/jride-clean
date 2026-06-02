@@ -1,12 +1,27 @@
 "use client";
 import React from "react";
+type PeriodKey = "today" | "week" | "month";
+type TripPeriodMetrics = {
+  total_trips?: number | null;
+  ride_trips?: number | null;
+  takeout_trips?: number | null;
+  company_share_total?: number | null;
+  toda_share_total?: number | null;
+  takeout_service_fee_total?: number | null;
+  takeout_total_payable?: number | null;
+};
 type TripsTownRow = {
   town?: string | null;
   total_trips?: number | null;
+  ride_trips?: number | null;
+  takeout_trips?: number | null;
   total_revenue?: number | null;
   company_share_total?: number | null;
   toda_share_total?: number | null;
   toda_completed_trips?: number | null;
+  takeout_service_fee_total?: number | null;
+  takeout_total_payable?: number | null;
+  periods?: Partial<Record<PeriodKey, TripPeriodMetrics>> | null;
   toda_breakdown?: Array<{
     toda_name?: string | null;
     trips?: number | null;
@@ -18,10 +33,15 @@ type TripsResponse = {
   rows?: TripsTownRow[];
   totals?: {
     total_trips?: number | null;
+    ride_trips?: number | null;
+    takeout_trips?: number | null;
     company_share_total?: number | null;
     toda_share_total?: number | null;
     toda_completed_trips?: number | null;
+    takeout_service_fee_total?: number | null;
+    takeout_total_payable?: number | null;
   };
+  periods?: Partial<Record<PeriodKey, TripPeriodMetrics>> | null;
   error?: string;
 };
 type DriverRow = {
@@ -772,6 +792,14 @@ export default function AdminAnalyticsPage() {
       (sum, row) => sum + Number(row.total_trips || 0),
       0,
     );
+    const rideTrips = scopedTrips.reduce(
+      (sum, row) => sum + Number(row.ride_trips || 0),
+      0,
+    );
+    const takeoutTrips = scopedTrips.reduce(
+      (sum, row) => sum + Number(row.takeout_trips || 0),
+      0,
+    );
     const companyShareTotal = scopedTrips.reduce(
       (sum, row) =>
         sum + Number((row.company_share_total ?? row.total_revenue) || 0),
@@ -785,6 +813,14 @@ export default function AdminAnalyticsPage() {
       (sum, row) => sum + Number(row.toda_completed_trips || 0),
       0,
     );
+    const takeoutServiceFeeTotal = scopedTrips.reduce(
+      (sum, row) => sum + Number(row.takeout_service_fee_total || 0),
+      0,
+    );
+    const takeoutTotalPayable = scopedTrips.reduce(
+      (sum, row) => sum + Number(row.takeout_total_payable || 0),
+      0,
+    );
     const grossProposedFareEarnings = scopedDrivers.reduce(
       (sum, row) => sum + Number(row.gross_proposed_fare_earnings || 0),
       0,
@@ -794,25 +830,83 @@ export default function AdminAnalyticsPage() {
     );
     return {
       totalTrips,
+      rideTrips,
+      takeoutTrips,
       companyShareTotal,
       todaShareTotal,
       todaTrips,
+      takeoutServiceFeeTotal,
+      takeoutTotalPayable,
       grossProposedFareEarnings,
       towns: towns.size,
       watchCount: scopedWatch.length,
       noDriverCount: scopedFailures.length,
     };
   }, [scopedTrips, scopedDrivers, scopedWatch, scopedFailures]);
+  const periodTotals = React.useMemo(() => {
+    const blank = () => ({
+      totalTrips: 0,
+      rideTrips: 0,
+      takeoutTrips: 0,
+      companyShareTotal: 0,
+      todaShareTotal: 0,
+      takeoutServiceFeeTotal: 0,
+      takeoutTotalPayable: 0,
+    });
+    const result: Record<PeriodKey, ReturnType<typeof blank>> = {
+      today: blank(),
+      week: blank(),
+      month: blank(),
+    };
+    for (const row of scopedTrips) {
+      for (const key of ["today", "week", "month"] as PeriodKey[]) {
+        const p = row.periods?.[key];
+        if (!p) continue;
+        result[key].totalTrips += Number(p.total_trips || 0);
+        result[key].rideTrips += Number(p.ride_trips || 0);
+        result[key].takeoutTrips += Number(p.takeout_trips || 0);
+        result[key].companyShareTotal += Number(p.company_share_total || 0);
+        result[key].todaShareTotal += Number(p.toda_share_total || 0);
+        result[key].takeoutServiceFeeTotal += Number(
+          p.takeout_service_fee_total || 0,
+        );
+        result[key].takeoutTotalPayable += Number(
+          p.takeout_total_payable || 0,
+        );
+      }
+    }
+    return result;
+  }, [scopedTrips]);
   const exportTrips = React.useCallback(() => {
     downloadCsv(
       `jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Town", "Completed Trips", "Company Share", "TODA Share", "TODA Trips"],
+      [
+        "Town",
+        "Completed Total",
+        "Ride Trips",
+        "Takeout Orders",
+        "Company Share",
+        "TODA Share",
+        "TODA Trips",
+        "Takeout Service Fee",
+        "Takeout Total Payable",
+        "Today Total",
+        "Week Total",
+        "Month Total",
+      ],
       scopedTrips.map((r) => [
         r.town || "Unknown (legacy data)",
         Number(r.total_trips || 0),
+        Number(r.ride_trips || 0),
+        Number(r.takeout_trips || 0),
         Number((r.company_share_total ?? r.total_revenue) || 0),
         Number(r.toda_share_total || 0),
         Number(r.toda_completed_trips || 0),
+        Number(r.takeout_service_fee_total || 0),
+        Number(r.takeout_total_payable || 0),
+        Number(r.periods?.today?.total_trips || 0),
+        Number(r.periods?.week?.total_trips || 0),
+        Number(r.periods?.month?.total_trips || 0),
       ]),
     );
   }, [scopedTrips, scope]);
@@ -1037,15 +1131,81 @@ export default function AdminAnalyticsPage() {
         </section>
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
           <Card
-            title="Completed trips"
+            title="Completed total"
             value={formatCount(totals.totalTrips)}
-            sub="All filtered towns"
+            sub="Ride plus takeout completed rows"
+          />
+          <Card
+            title="Ride trips"
+            value={formatCount(totals.rideTrips)}
+            sub="Completed ride bookings only"
+          />
+          <Card
+            title="Takeout orders"
+            value={formatCount(totals.takeoutTrips)}
+            sub="Completed takeout bookings only"
           />
           <Card
             title="Company share"
             value={formatPeso(totals.companyShareTotal)}
-            sub="PHP 14 when TODA ride, PHP 15 otherwise"
+            sub="Ride share plus takeout service fee"
           />
+          <Card
+            title="Takeout payable"
+            value={formatPeso(totals.takeoutTotalPayable)}
+            sub="Completed takeout total payable"
+          />
+          <Card
+            title="No-driver searches"
+            value={formatCount(totals.noDriverCount)}
+            sub="Passengers who searched but got no driver"
+          />
+        </section>
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Today
+            </div>
+            <div className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
+              {formatCount(periodTotals.today.totalTrips)}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
+              <div>Rides: {formatCount(periodTotals.today.rideTrips)}</div>
+              <div>Takeout: {formatCount(periodTotals.today.takeoutTrips)}</div>
+              <div>Share: {formatPeso(periodTotals.today.companyShareTotal)}</div>
+              <div>Takeout payable: {formatPeso(periodTotals.today.takeoutTotalPayable)}</div>
+            </div>
+          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+              This week
+            </div>
+            <div className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
+              {formatCount(periodTotals.week.totalTrips)}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
+              <div>Rides: {formatCount(periodTotals.week.rideTrips)}</div>
+              <div>Takeout: {formatCount(periodTotals.week.takeoutTrips)}</div>
+              <div>Share: {formatPeso(periodTotals.week.companyShareTotal)}</div>
+              <div>Takeout payable: {formatPeso(periodTotals.week.takeoutTotalPayable)}</div>
+            </div>
+          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+              This month
+            </div>
+            <div className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
+              {formatCount(periodTotals.month.totalTrips)}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">
+              <div>Rides: {formatCount(periodTotals.month.rideTrips)}</div>
+              <div>Takeout: {formatCount(periodTotals.month.takeoutTrips)}</div>
+              <div>Share: {formatPeso(periodTotals.month.companyShareTotal)}</div>
+              <div>Takeout payable: {formatPeso(periodTotals.month.takeoutTotalPayable)}</div>
+            </div>
+          </div>
+        </section>
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card
             title="TODA share"
             value={formatPeso(totals.todaShareTotal)}
@@ -1059,12 +1219,7 @@ export default function AdminAnalyticsPage() {
           <Card
             title="Driver gross fares"
             value={formatPeso(totals.grossProposedFareEarnings)}
-            sub="Sum of completed-trip proposed fares"
-          />
-          <Card
-            title="No-driver searches"
-            value={formatCount(totals.noDriverCount)}
-            sub="Passengers who searched but got no driver"
+            sub="Completed ride fares plus takeout delivery fees"
           />
         </section>
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -1704,26 +1859,29 @@ export default function AdminAnalyticsPage() {
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold tracking-tight text-slate-900">
-              Trips, company share, and TODA share by town
+              Ride, takeout, company share, and TODA share by town
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Town totals from completed bookings. TODA share applies only when
-              the driver has a TODA identity.
+              Town totals from completed bookings. Ride and takeout counts are
+              separated using the additive analytics API fields.
             </p>
             <div className="mt-4 overflow-auto">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
                     <th className="py-3 pr-4 font-semibold">Town</th>
-                    <th className="py-3 pr-4 font-semibold">Trips</th>
+                    <th className="py-3 pr-4 font-semibold">Total</th>
+                    <th className="py-3 pr-4 font-semibold">Rides</th>
+                    <th className="py-3 pr-4 font-semibold">Takeout</th>
                     <th className="py-3 pr-4 font-semibold">Company</th>
+                    <th className="py-3 pr-4 font-semibold">Takeout payable</th>
                     <th className="py-3 pr-4 font-semibold">TODA</th>
                   </tr>
                 </thead>
                 <tbody>
                   {scopedTrips.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-6 text-slate-400">
+                      <td colSpan={7} className="py-6 text-slate-400">
                         No rows for the selected scope.
                       </td>
                     </tr>
@@ -1740,12 +1898,21 @@ export default function AdminAnalyticsPage() {
                           {formatCount(Number(row.total_trips || 0))}
                         </td>
                         <td className="py-3 pr-4 text-slate-700">
+                          {formatCount(Number(row.ride_trips || 0))}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-700">
+                          {formatCount(Number(row.takeout_trips || 0))}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-700">
                           {formatPeso(
                             Number(
                               (row.company_share_total ?? row.total_revenue) ||
                                 0,
                             ),
                           )}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-700">
+                          {formatPeso(Number(row.takeout_total_payable || 0))}
                         </td>
                         <td className="py-3 pr-4 text-slate-700">
                           {formatPeso(Number(row.toda_share_total || 0))}
