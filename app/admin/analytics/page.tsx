@@ -162,10 +162,23 @@ type DriverCoverageGapRow = {
   minutes?: number | null;
   label?: string | null;
 };
+type DriverSessionDetailRow = {
+  driver_id?: string | null;
+  driver_name?: string | null;
+  town?: string | null;
+  municipality?: string | null;
+  login_at?: string | null;
+  logout_at?: string | null;
+  today_minutes?: number | null;
+  week_minutes?: number | null;
+  month_minutes?: number | null;
+  is_open?: boolean | null;
+};
 type DriverWorkforceResponse = {
   ok?: boolean;
   rows?: DriverWorkforceRow[];
   gaps?: DriverCoverageGapRow[];
+  driver_sessions?: DriverSessionDetailRow[];
   source?: {
     mode?: string | null;
     roster_source?: string | null;
@@ -353,6 +366,11 @@ export default function AdminAnalyticsPage() {
   const [driverCoverageGaps, setDriverCoverageGaps] = React.useState<
     DriverCoverageGapRow[]
   >([]);
+  const [driverSessionRows, setDriverSessionRows] = React.useState<
+    DriverSessionDetailRow[]
+  >([]);
+  const [selectedDriverWorkforceId, setSelectedDriverWorkforceId] =
+    React.useState<string>("");
   const [driverWorkforceSummary, setDriverWorkforceSummary] = React.useState<
     NonNullable<DriverWorkforceResponse["summary"]>
   >({
@@ -461,6 +479,11 @@ export default function AdminAnalyticsPage() {
           setDriverCoverageGaps(
             Array.isArray(workforceJson.gaps) ? workforceJson.gaps : [],
           );
+          setDriverSessionRows(
+            Array.isArray(workforceJson.driver_sessions)
+              ? workforceJson.driver_sessions
+              : [],
+          );
           setDriverWorkforceSummary({
             active_drivers_now: Number(
               workforceJson.summary?.active_drivers_now || 0,
@@ -562,6 +585,38 @@ export default function AdminAnalyticsPage() {
     () => driverCoverageGaps.filter((r) => townMatch(scope, r.town)),
     [driverCoverageGaps, scope],
   );
+  const scopedDriverSessionRows = React.useMemo(
+    () =>
+      driverSessionRows.filter((r) =>
+        townMatch(scope, r.town ?? r.municipality),
+      ),
+    [driverSessionRows, scope],
+  );
+  const selectedDriverWorkforceRow = React.useMemo(() => {
+    if (!selectedDriverWorkforceId) return null;
+    return (
+      scopedDriverWorkforceRows.find(
+        (r) => String(r.driver_id || "") === selectedDriverWorkforceId,
+      ) || null
+    );
+  }, [scopedDriverWorkforceRows, selectedDriverWorkforceId]);
+  const selectedDriverSessions = React.useMemo(() => {
+    if (!selectedDriverWorkforceId) return [];
+    return scopedDriverSessionRows
+      .filter((r) => String(r.driver_id || "") === selectedDriverWorkforceId)
+      .slice()
+      .sort((a, b) =>
+        String(b.login_at || "").localeCompare(String(a.login_at || "")),
+      )
+      .slice(0, 20);
+  }, [scopedDriverSessionRows, selectedDriverWorkforceId]);
+  React.useEffect(() => {
+    if (!selectedDriverWorkforceId) return;
+    const stillVisible = scopedDriverWorkforceRows.some(
+      (r) => String(r.driver_id || "") === selectedDriverWorkforceId,
+    );
+    if (!stillVisible) setSelectedDriverWorkforceId("");
+  }, [scopedDriverWorkforceRows, selectedDriverWorkforceId]);
   const driverWorkforceTotals = React.useMemo(() => {
     const rows = scopedDriverWorkforceRows;
     const activeNow = rows.filter(
@@ -1291,6 +1346,150 @@ export default function AdminAnalyticsPage() {
               sub="Needs session history"
             />
           </div>
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Per-driver login and activity summary
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Click a driver in the ranking table to inspect today, week,
+                  and month activity. Exact login and logout times appear here
+                  when driver_presence_sessions has rows; otherwise this safely
+                  shows snapshot-based activity from driver_locations.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                Selected: {selectedDriverWorkforceRow?.driver_name || "None"}
+              </div>
+            </div>
+            {!selectedDriverWorkforceRow ? (
+              <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                Select a driver below to view their login summary.
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 xl:col-span-1">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Driver
+                  </div>
+                  <div className="mt-2 text-lg font-bold text-slate-900">
+                    {selectedDriverWorkforceRow.driver_name || "Unknown Driver"}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    {selectedDriverWorkforceRow.town ??
+                      selectedDriverWorkforceRow.municipality ??
+                      "Unknown town"}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div>
+                      <div className="font-semibold text-slate-500">Status</div>
+                      <div>{selectedDriverWorkforceRow.current_status || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-500">Last seen</div>
+                      <div>{formatPHDateTime(selectedDriverWorkforceRow.last_seen_at)}</div>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-500">Wallet</div>
+                      <div>{formatWalletBalance(selectedDriverWorkforceRow.wallet_balance)}</div>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-500">Phone</div>
+                      <div>{selectedDriverWorkforceRow.phone || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 xl:col-span-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                    <Card
+                      title="Today online"
+                      value={formatMinutesLabel(
+                        selectedDriverWorkforceRow.today_online_minutes,
+                      )}
+                      sub={`${formatCount(Number(selectedDriverWorkforceRow.today_login_count || 0))} login(s)`}
+                    />
+                    <Card
+                      title="Week online"
+                      value={formatMinutesLabel(
+                        selectedDriverWorkforceRow.week_online_minutes,
+                      )}
+                      sub={`${formatCount(Number(selectedDriverWorkforceRow.week_qualified_days || 0))} qualified day(s)`}
+                    />
+                    <Card
+                      title="Month online"
+                      value={formatMinutesLabel(
+                        selectedDriverWorkforceRow.month_online_minutes,
+                      )}
+                      sub={`${formatCount(Number(selectedDriverWorkforceRow.month_qualified_days || 0))} qualified day(s)`}
+                    />
+                    <Card
+                      title="Accept rate"
+                      value={formatAcceptanceRate(
+                        selectedDriverWorkforceRow.accepted_bookings,
+                        selectedDriverWorkforceRow.assigned_bookings,
+                      )}
+                      sub={`${formatCount(Number(selectedDriverWorkforceRow.completed_trips || 0))} completed`}
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Recent login sessions
+                    </div>
+                    {selectedDriverSessions.length === 0 ? (
+                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                        No session rows available for this driver. To show exact
+                        login time, logout time, and shift duration, Android must
+                        write driver_presence_sessions on login/online and
+                        logout/offline. Current summary remains read-only and
+                        snapshot-based.
+                      </div>
+                    ) : (
+                      <div className="mt-2 max-h-[220px] overflow-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-white text-slate-500">
+                            <tr className="border-b border-slate-200 text-left">
+                              <th className="py-2 pl-3 pr-3 font-semibold">Login</th>
+                              <th className="py-2 pr-3 font-semibold">Logout</th>
+                              <th className="py-2 pr-3 font-semibold">Today</th>
+                              <th className="py-2 pr-3 font-semibold">Week</th>
+                              <th className="py-2 pr-3 font-semibold">Month</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedDriverSessions.map((session, idx) => (
+                              <tr
+                                key={`${session.driver_id || "driver"}-${session.login_at || idx}`}
+                                className="border-b border-slate-100 last:border-0"
+                              >
+                                <td className="py-2 pl-3 pr-3 text-slate-700">
+                                  {formatPHDateTime(session.login_at)}
+                                </td>
+                                <td className="py-2 pr-3 text-slate-700">
+                                  {session.is_open
+                                    ? "Still online"
+                                    : formatPHDateTime(session.logout_at)}
+                                </td>
+                                <td className="py-2 pr-3 text-slate-700">
+                                  {formatMinutesLabel(session.today_minutes)}
+                                </td>
+                                <td className="py-2 pr-3 text-slate-700">
+                                  {formatMinutesLabel(session.week_minutes)}
+                                </td>
+                                <td className="py-2 pr-3 text-slate-700">
+                                  {formatMinutesLabel(session.month_minutes)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-sm font-semibold text-slate-900">
@@ -1311,13 +1510,14 @@ export default function AdminAnalyticsPage() {
                       <th className="py-2 pr-4 font-semibold">Logins</th>
                       <th className="py-2 pr-4 font-semibold">Week days</th>
                       <th className="py-2 pr-4 font-semibold">Accept</th>
-                      <th className="py-2 font-semibold">Last seen</th>
+                      <th className="py-2 pr-4 font-semibold">Last seen</th>
+                      <th className="py-2 font-semibold">Details</th>
                     </tr>
                   </thead>
                   <tbody>
                     {scopedDriverWorkforceRows.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-4 text-slate-400">
+                        <td colSpan={8} className="py-4 text-slate-400">
                           No driver workforce rows yet for this scope. Add
                           /api/admin/analytics/driver-workforce when backend
                           attendance data is ready.
@@ -1330,7 +1530,14 @@ export default function AdminAnalyticsPage() {
                             row.driver_id ||
                               `${row.driver_name || "driver"}-${idx}`,
                           )}
-                          className="border-b border-slate-100 last:border-0"
+                          className={[
+                            "border-b border-slate-100 last:border-0",
+                            selectedDriverWorkforceId &&
+                            String(row.driver_id || "") ===
+                              selectedDriverWorkforceId
+                              ? "bg-emerald-50"
+                              : "",
+                          ].join(" ")}
                         >
                           <td className="py-2 pl-3 pr-4 font-medium text-slate-900">
                             {row.driver_name || "Unknown Driver"}
@@ -1354,8 +1561,22 @@ export default function AdminAnalyticsPage() {
                               row.assigned_bookings,
                             )}
                           </td>
-                          <td className="py-2 text-slate-700">
+                          <td className="py-2 pr-4 text-slate-700">
                             {formatPHDateTime(row.last_seen_at)}
+                          </td>
+                          <td className="py-2 text-slate-700">
+                            <button
+                              type="button"
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              onClick={() =>
+                                setSelectedDriverWorkforceId(
+                                  String(row.driver_id || ""),
+                                )
+                              }
+                              disabled={!row.driver_id}
+                            >
+                              View
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -1724,7 +1945,8 @@ export default function AdminAnalyticsPage() {
                       <th className="py-2 pr-4 font-semibold">Passenger</th>
                       <th className="py-2 pr-4 font-semibold">Town</th>
                       <th className="py-2 pr-4 font-semibold">Screen</th>
-                      <th className="py-2 font-semibold">Last seen</th>
+                      <th className="py-2 pr-4 font-semibold">Last seen</th>
+                      <th className="py-2 font-semibold">Details</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1814,7 +2036,7 @@ export default function AdminAnalyticsPage() {
                 <tbody>
                   {scopedPresenceRows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-4 text-slate-400">
+                      <td colSpan={8} className="py-4 text-slate-400">
                         No active passenger presence rows for this scope.
                       </td>
                     </tr>

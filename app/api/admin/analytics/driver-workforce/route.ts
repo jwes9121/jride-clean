@@ -45,6 +45,19 @@ type SessionRow = {
   logout_at: string | null;
 };
 
+type DriverSessionDetailRow = {
+  driver_id: string;
+  driver_name: string | null;
+  town: string | null;
+  municipality: string | null;
+  login_at: string;
+  logout_at: string | null;
+  today_minutes: number;
+  week_minutes: number;
+  month_minutes: number;
+  is_open: boolean;
+};
+
 const QUALIFIED_DAY_MINUTES = 8 * 60;
 const QUALIFIED_WEEK_DAYS = 5;
 const PH_TZ = "Asia/Manila";
@@ -876,6 +889,38 @@ export async function GET(req: Request) {
     const allTownsGap = gaps.find((g) => g.town === "All towns") || null;
     const worstGap = gaps[0] || null;
 
+    const driverSessionDetails: DriverSessionDetailRow[] = sessions
+      .filter((s) => rosterDriverIds.has(s.driver_id))
+      .map((s) => {
+        const rosterRow = rowsByDriver.get(s.driver_id) || null;
+
+        return {
+          driver_id: s.driver_id,
+          driver_name: s.driver_name || rosterRow?.driver_name || null,
+          town: s.town || rosterRow?.town || null,
+          municipality: s.municipality || rosterRow?.municipality || null,
+          login_at: s.login_at,
+          logout_at: s.logout_at,
+          today_minutes: minutesBetween(s.login_at, s.logout_at, dayStart, now),
+          week_minutes: minutesBetween(s.login_at, s.logout_at, weekStart, now),
+          month_minutes: minutesBetween(
+            s.login_at,
+            s.logout_at,
+            monthStart,
+            now,
+          ),
+          is_open: !s.logout_at,
+        };
+      })
+      .filter(
+        (s) =>
+          s.today_minutes > 0 || s.week_minutes > 0 || s.month_minutes > 0,
+      )
+      .sort((a, b) =>
+        String(b.login_at || "").localeCompare(String(a.login_at || "")),
+      )
+      .slice(0, 500);
+
     return json({
       ok: true,
       source: {
@@ -913,6 +958,7 @@ export async function GET(req: Request) {
       },
       rows,
       gaps,
+      driver_sessions: driverSessionDetails,
     });
   } catch (err: any) {
     console.error("DRIVER_WORKFORCE_ANALYTICS_UNEXPECTED", err);
