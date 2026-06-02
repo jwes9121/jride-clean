@@ -456,9 +456,9 @@ export async function POST(req: NextRequest) {
     ) ?? 0;
     const notePackaging = parsePackagingSubtotalFromText(order.customer_note, order.notes);
     const packagingSubtotal = Math.max(0, snapshotPackaging, notePackaging);
-
+    const cashRequired = routePlan === "customer_cash_first" || computedSubtotal >= 500;
     let pickupBreakdown = noCustomerCashPickupBreakdown();
-    if (routePlan === "customer_cash_first") {
+    if (cashRequired || routePlan === "customer_cash_first") {
       const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
       const passengerLat =
   routePlan === "customer_cash_first"
@@ -502,8 +502,7 @@ const passengerLng =
     }
 
     const totalPayable = money(computedSubtotal + packagingSubtotal + SERVICE_FEE + deliveryFee + pickupBreakdown.pickup_excess_fee) as number;
-    const cashRequired = routePlan === "customer_cash_first" || computedSubtotal >= 500;
-    const nowIso = new Date().toISOString();
+        const nowIso = new Date().toISOString();
     const expiresIso = new Date(Date.now() + PROPOSAL_TTL_SECONDS * 1000).toISOString();
 
     const snapshot = {
