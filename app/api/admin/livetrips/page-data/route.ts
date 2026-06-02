@@ -254,7 +254,7 @@ export async function GET(req: NextRequest) {
     });
     const profileRows = asArray<any>(driverProfilesRes.data);
 
-    const staleAfterSeconds = 120;
+    const staleAfterSeconds = 45;
     const onlineLike = new Set(["online", "available", "idle", "waiting"]);
 
     const driverProfileMap: Record<string, any> = {};
