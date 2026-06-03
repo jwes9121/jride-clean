@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
@@ -231,7 +231,7 @@ export async function GET(req: NextRequest) {
     }
 
     const rawDriverRows = asArray<any>(driverLocationsRes.data);
-    const driverRows = dedupeLatestDriverRows(rawDriverRows);
+const driverRows = dedupeLatestDriverRows(rawDriverRows);
 
     const walletRows = asArray<any>(driverWalletsRes.data);
     const deactivatedDriverIds = new Set<string>();
@@ -404,7 +404,7 @@ export async function GET(req: NextRequest) {
         trip_count: tripsArray.length,
         booking_codes: tripsArray.map((t: any) => t?.booking_code).filter(Boolean),
         raw_driver_row_count: rawDriverRows.length,
-        deduped_driver_row_count: driverRows.length,
+        deduped_driver_row_count: activeDriverRows.length,
         active_drivers_by_town: activeDriversByTown,
       }),
       zones: normalizedZones,
