@@ -400,9 +400,12 @@ export default function LiveTripsClient() {
 
     const z = safeArray<ZoneRow>(j.zones);
     const trips = filterLiveTrips(parseTripsFromPageData(j).map(normalizeTripRow));
+    const pageDrivers = parseDriversFromPayload(j);
 
     setZones(z);
     setAllTrips(trips);
+    setDrivers(pageDrivers);
+    setDriversDebug("loaded from page-data (" + pageDrivers.length + ")");
 
     const ids = new Set(trips.map(normTripId).filter(Boolean));
     if (selectedTripId && !ids.has(selectedTripId)) {
@@ -410,51 +413,14 @@ export default function LiveTripsClient() {
     }
   }, [selectedTripId]);
 
-  const loadDrivers = useCallback(async () => {
-    const ts = Date.now();
-    const endpoints = [
-      "/api/admin/driver_locations?t=" + ts,
-      "/api/admin/driver-locations?t=" + ts,
-      "/api/admin/drivers?t=" + ts,
-      "/api/driver_locations?t=" + ts,
-      "/api/driver-locations?t=" + ts,
-    ];
-
-    for (const url of endpoints) {
-      try {
-        const r = await fetch(url, {
-          cache: "no-store",
-          headers: {
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache",
-          },
-        });
-        if (!r.ok) continue;
-        const j = await r.json().catch(() => ({} as any));
-
-        const arr = parseDriversFromPayload(j);
-
-        if (Array.isArray(arr) && arr.length) {
-          setDrivers(arr);
-          setDriversDebug("loaded from " + url.split("?")[0] + " (" + arr.length + ")");
-          return;
-        }
-      } catch {
-      }
-    }
-
-    setDrivers([]);
-    setDriversDebug("No drivers loaded from known endpoints (check RLS / endpoint path).");
-  }, []);
-
   const refreshAll = useCallback(async (source?: string) => {
     try {
-      await Promise.all([loadPage(), loadDrivers()]);
+      await loadPage();
       if (source) setLastAction("Refreshed via " + source);
     } catch (e: any) {
       if (source) setLastAction("Refresh failed via " + source + ": " + (e?.message ?? "unknown"));
     }
-  }, [loadPage, loadDrivers]);
+  }, [loadPage]);
 
   useEffect(() => {
     refreshAllRef.current = refreshAll;
@@ -514,53 +480,29 @@ export default function LiveTripsClient() {
     supabaseRef.current = supabase;
 
     const channelDrivers = supabase
-      .channel("livetrips-driver_locations-localstate")
+      .channel("livetrips-driver_locations-refresh")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "driver_locations" },
-        (payload) => {
-          const row = (payload as any)?.new;
-          if (!row || !row.driver_id) return;
-
-          setDrivers((prev) =>
-            mergeDriverRows(prev, {
-              driver_id: String(row.driver_id || ""),
-              lat: row.lat,
-              lng: row.lng,
-              status: row.status,
-              updated_at: row.updated_at,
-            })
-          );
-
-          setDriversDebug("realtime driver_locations");
-          setLastAction("Realtime driver_locations");
+        () => {
+          refreshAllRef.current?.("realtime driver_locations").catch(() => {});
         }
       )
       .subscribe();
 
     const channelBookings = supabase
-      .channel("livetrips-bookings-localstate")
+      .channel("livetrips-bookings-refresh")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bookings" },
-        (payload) => {
-          const eventType = String((payload as any)?.eventType || "");
-          const row = (payload as any)?.new || (payload as any)?.old;
-          if (!row) return;
-
-          const patch: any = { ...row };
-          if (eventType === "DELETE") {
-            patch._deleted = true;
-          }
-
-          setAllTrips((prev) => mergeTripRows(prev, patch));
-          setLastAction("Realtime bookings");
+        () => {
+          refreshAllRef.current?.("realtime bookings").catch(() => {});
         }
       )
       .subscribe();
 
     channelsRef.current = [channelDrivers, channelBookings];
-    setLastAction("Realtime local-state subscribed");
+    setLastAction("Realtime page-data refresh subscribed");
 
     return () => {
       for (const ch of channelsRef.current) {
