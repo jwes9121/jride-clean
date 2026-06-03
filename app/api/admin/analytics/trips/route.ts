@@ -150,7 +150,7 @@ function getManilaParts(d: Date) {
     month: Number(map.month),
     day: Number(map.day),
     weekday: map.weekday || "",
-    dateKey: `${map.year}-${map.month}-${map.day}`,
+    dateKey: `${String(map.year).padStart(4, "0")}-${String(map.month).padStart(2, "0")}-${String(map.day).padStart(2, "0")}`,
   };
 }
 
