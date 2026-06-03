@@ -214,17 +214,57 @@ function addPeriodMetric(metrics: PeriodMetrics, service: ServiceKey, companySha
   metrics.takeout_total_payable += takeoutPayable;
 }
 
-function addWindowMetrics(periods: Record<PeriodKey, PeriodMetrics>, at: Date | null, service: ServiceKey, companyShare: number, todaShare: number, takeoutServiceFee: number, takeoutPayable: number) {
+function addWindowMetrics(
+  periods: Record<PeriodKey, PeriodMetrics>,
+  at: Date | null,
+  service: ServiceKey,
+  companyShare: number,
+  todaShare: number,
+  takeoutServiceFee: number,
+  takeoutPayable: number,
+) {
   if (!at) return;
+
   const now = new Date();
+
   const todayKey = getManilaParts(now).dateKey;
   const weekKey = weekStartDateKey(now);
   const monthKey = monthStartDateKey(now);
+
   const rowKey = getManilaParts(at).dateKey;
 
-  if (rowKey === todayKey) addPeriodMetric(periods.today, service, companyShare, todaShare, takeoutServiceFee, takeoutPayable);
-  if (isSameOrAfterDateKey(rowKey, weekKey)) addPeriodMetric(periods.week, service, companyShare, todaShare, takeoutServiceFee, takeoutPayable);
-  if (isSameOrAfterDateKey(rowKey, monthKey)) addPeriodMetric(periods.month, service, companyShare, todaShare, takeoutServiceFee, takeoutPayable);
+  if (rowKey === todayKey) {
+    addPeriodMetric(
+      periods.today,
+      service,
+      companyShare,
+      todaShare,
+      takeoutServiceFee,
+      takeoutPayable,
+    );
+  }
+
+  if (rowKey >= weekKey) {
+    addPeriodMetric(
+      periods.week,
+      service,
+      companyShare,
+      todaShare,
+      takeoutServiceFee,
+      takeoutPayable,
+    );
+  }
+
+  if (rowKey >= monthKey) {
+    addPeriodMetric(
+      periods.month,
+      service,
+      companyShare,
+      todaShare,
+      takeoutServiceFee,
+      takeoutPayable,
+    );
+  }
 }
 
 export async function GET() {
