@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React from "react";
 type PeriodKey = "today" | "week" | "month";
 type TripPeriodMetrics = {
@@ -341,6 +341,7 @@ export default function AdminAnalyticsPage() {
   const [loading, setLoading] = React.useState<boolean>(true);
   const [msg, setMsg] = React.useState<string>("");
   const [tripRows, setTripRows] = React.useState<TripsTownRow[]>([]);
+  const [tripApiPeriods, setTripApiPeriods] = React.useState<Partial<Record<PeriodKey, TripPeriodMetrics>> | null>(null);
   const [driverRows, setDriverRows] = React.useState<DriverRow[]>([]);
   const [watchRows, setWatchRows] = React.useState<WatchlistRow[]>([]);
   const [failureRows, setFailureRows] = React.useState<FailureRow[]>([]);
@@ -444,6 +445,7 @@ export default function AdminAnalyticsPage() {
           presenceJson.error || "Failed to load passenger presence analytics.",
         );
       setTripRows(Array.isArray(tripsJson.rows) ? tripsJson.rows : []);
+      setTripApiPeriods(tripsJson.periods || null);
       setDriverRows(Array.isArray(driversJson.rows) ? driversJson.rows : []);
       setWatchRows(Array.isArray(watchJson.rows) ? watchJson.rows : []);
       setFailureRows(Array.isArray(failJson.rows) ? failJson.rows : []);
@@ -913,25 +915,32 @@ export default function AdminAnalyticsPage() {
       week: blank(),
       month: blank(),
     };
+
+    const applyPeriod = (key: PeriodKey, p?: TripPeriodMetrics | null) => {
+      if (!p) return;
+      result[key].totalTrips += Number(p.total_trips || 0);
+      result[key].rideTrips += Number(p.ride_trips || 0);
+      result[key].takeoutTrips += Number(p.takeout_trips || 0);
+      result[key].companyShareTotal += Number(p.company_share_total || 0);
+      result[key].todaShareTotal += Number(p.toda_share_total || 0);
+      result[key].takeoutServiceFeeTotal += Number(p.takeout_service_fee_total || 0);
+      result[key].takeoutTotalPayable += Number(p.takeout_total_payable || 0);
+    };
+
+    if (scope === "all" && tripApiPeriods) {
+      for (const key of ["today", "week", "month"] as PeriodKey[]) {
+        applyPeriod(key, tripApiPeriods[key] || null);
+      }
+      return result;
+    }
+
     for (const row of scopedTrips) {
       for (const key of ["today", "week", "month"] as PeriodKey[]) {
-        const p = row.periods?.[key];
-        if (!p) continue;
-        result[key].totalTrips += Number(p.total_trips || 0);
-        result[key].rideTrips += Number(p.ride_trips || 0);
-        result[key].takeoutTrips += Number(p.takeout_trips || 0);
-        result[key].companyShareTotal += Number(p.company_share_total || 0);
-        result[key].todaShareTotal += Number(p.toda_share_total || 0);
-        result[key].takeoutServiceFeeTotal += Number(
-          p.takeout_service_fee_total || 0,
-        );
-        result[key].takeoutTotalPayable += Number(
-          p.takeout_total_payable || 0,
-        );
+        applyPeriod(key, row.periods?.[key] || null);
       }
     }
     return result;
-  }, [scopedTrips]);
+  }, [scopedTrips, scope, tripApiPeriods]);
   const exportTrips = React.useCallback(() => {
     downloadCsv(
       `jride-analytics-trips-${scope}-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -2430,3 +2439,4 @@ export default function AdminAnalyticsPage() {
     </main>
   );
 }
+
