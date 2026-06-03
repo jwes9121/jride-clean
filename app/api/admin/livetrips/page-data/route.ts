@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
 
     const driverWalletsRes = await supabase
       .from("drivers")
-      .select("id, wallet_balance, min_wallet_required, wallet_locked");
+      .select("id, driver_name, driver_status, wallet_balance, min_wallet_required, wallet_locked");
 
     if (driverProfilesRes.error) {
       return NextResponse.json(
@@ -234,10 +234,16 @@ export async function GET(req: NextRequest) {
     const driverRows = dedupeLatestDriverRows(rawDriverRows);
 
     const walletRows = asArray<any>(driverWalletsRes.data);
+    const deactivatedDriverIds = new Set<string>();
     const driverWalletMap: Record<string, any> = {};
     for (const row of walletRows) {
       const driverId = text(row?.id);
       if (!driverId) continue;
+      const driverStatus = text(row?.driver_status).toLowerCase();
+      if (driverStatus === "deactivated") {
+        deactivatedDriverIds.add(driverId);
+        continue;
+      }
       driverWalletMap[driverId] = row;
     }
 
@@ -266,9 +272,11 @@ export async function GET(req: NextRequest) {
 
     const tripsArray = bookingRows.map((trip: any) => {
       const driverId = trip?.driver_id || trip?.assigned_driver_id || null;
-      const profile = driverId ? driverProfileMap[text(driverId)] : null;
-      const location = driverId
-        ? driverRows.find((d: any) => text(d?.driver_id) === text(driverId))
+      const driverIdText = text(driverId);
+      const driverIsDeactivated = driverIdText ? deactivatedDriverIds.has(driverIdText) : false;
+      const profile = driverIdText && !driverIsDeactivated ? driverProfileMap[driverIdText] : null;
+      const location = driverIdText && !driverIsDeactivated
+        ? driverRows.find((d: any) => text(d?.driver_id) === driverIdText)
         : null;
 
       const serviceType = text(trip?.service_type).toLowerCase();
@@ -297,7 +305,12 @@ export async function GET(req: NextRequest) {
       activeTripByDriverId[driverId] = trip;
     }
 
-    const drivers = driverRows.map((row: any) => {
+    const activeDriverRows = driverRows.filter((row: any) => {
+      const driverId = text(row?.driver_id);
+      return !!driverId && !deactivatedDriverIds.has(driverId);
+    });
+
+    const drivers = activeDriverRows.map((row: any) => {
       const driverId = text(row?.driver_id);
       const profile = driverProfileMap[driverId] || null;
       const trip = activeTripByDriverId[driverId] || null;
