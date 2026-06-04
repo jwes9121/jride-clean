@@ -1373,8 +1373,8 @@ export default function VendorPortalPage() {
         {!vendorId ? (
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
         ) : (
-          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">`r`n            {/* JRIDE_VENDOR_OPERATIONS_LAYOUT_V2D: operations-first visual order. Order queue first, then menu, analytics, profile. */}
-            <section className={cls("order-4 self-start rounded-2xl border bg-white p-4 shadow-sm lg:order-4 lg:col-span-1", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">            {/* JRIDE_VENDOR_OPERATIONS_LAYOUT_V2D: operations-first visual order. Order queue first, then menu, analytics, profile. JRIDE_VENDOR_OPERATIONS_LAYOUT_V2E: profile moved beside live queue and escaped newline artifact removed. */}
+            <section className={cls("order-1 self-start rounded-2xl border bg-white p-4 shadow-sm lg:order-1 lg:col-span-1", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor profile</h2>
@@ -1819,7 +1819,7 @@ export default function VendorPortalPage() {
               </div>
             </section>
 
-            <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-3">
+            <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Order queue</h2>
@@ -1854,7 +1854,7 @@ export default function VendorPortalPage() {
                 <audio ref={vendorAlertAudioRef} src={VENDOR_PORTAL_ALERT_SOUND_URL} preload="auto" className="hidden" />
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-3">
                 <div>
                   <h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
                   <div className="mb-2 text-[11px] text-slate-500">Shows passenger, address, items, receipt request, packaging, and notes.</div>
@@ -2121,6 +2121,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
