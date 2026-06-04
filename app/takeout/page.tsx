@@ -280,7 +280,7 @@ function vendorTown(v: VendorRow): string {
   );
 }
 
-// JRIDE_VENDOR_LOGO_BINDING_V4
+// JRIDE_VENDOR_LOGO_BINDING_V5
 function vendorUploadedLogoUrl(v: VendorRow): string | null {
   const raw =
     (v as any).vendor_logo_url ??
@@ -1471,7 +1471,7 @@ function selectedAddressTown(
         <div>
 <div className="jride-premium-brand-row">
             <a href="/passenger" className="jride-premium-nav-pill" aria-label="Go to JRide passenger home">Home</a>
-            <div className="jride-premium-title"><span className="jride-premium-logo-text">JR</span> JRide <span>Takeout</span></div>
+            <div className="jride-premium-title">Ride <span>Takeout</span></div>
           </div>
           <div className="hidden text-sm text-slate-600 sm:block">
             Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
@@ -1562,7 +1562,7 @@ function selectedAddressTown(
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Vendor marketplace</div>
                   <div className="mt-0.5 text-sm font-bold text-slate-950">Choose a store</div>
                   <div className="mt-1 text-[11px] text-slate-500">
-                    {vendorTownFilter ? "Tap a vendor card to load its menu." : "Choose a town first to show available stores."}
+                    {vendorTownFilter ? "Browse restaurants and stores in your selected town." : "Choose a town first to show available stores."}
                   </div>
                 </div>
                 {vendorTownFilter ? (
@@ -1583,13 +1583,18 @@ function selectedAddressTown(
                 </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {visibleVendors.map((v) => {
+                  {filteredVisibleVendors.map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
                     const isSelected = vendorId === id;
                     const label = vendorLabel(v);
                     const town = vendorTown(v) || vendorTownFilter;
-                    const rawAccepting = (v as any).accepting_orders ?? (v as any).acceptingOrders ?? (v as any).is_open ?? (v as any).isOpen ?? null;
+                    const rawAccepting =
+                      (v as any).accepting_orders ??
+                      (v as any).acceptingOrders ??
+                      (v as any).is_open ??
+                      (v as any).isOpen ??
+                      null;
                     const isClosed = isSelected ? vendorClosed : rawAccepting === false;
                     const logoUrl = vendorUploadedLogoUrl(v);
                     const prep = prepMinutes((v as any).prep_time_minutes ?? (v as any).default_prep_time_minutes ?? 15);
@@ -1609,14 +1614,13 @@ function selectedAddressTown(
                           refreshMenu(nextVendorId);
                         }}
                         className={cls(
-                          "group flex min-h-[132px] w-full items-stretch gap-3 rounded-2xl border p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
-                          isSelected ? "border-emerald-500 bg-emerald-950 text-white shadow-emerald-950/20" : "border-slate-200 bg-white text-slate-950 hover:border-emerald-300"
+                          "group flex min-h-[150px] w-full items-center gap-4 rounded-3xl border p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
+                          isSelected
+                            ? "border-emerald-400 bg-emerald-950 text-white ring-2 ring-emerald-300/30"
+                            : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
                         )}
                       >
-                        <div className={cls(
-                          "flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border text-lg font-black",
-                          isSelected ? "border-emerald-400 bg-emerald-800 text-emerald-50" : "border-emerald-100 bg-emerald-50 text-emerald-800"
-                        )}>
+                        <div className="h-24 w-24 shrink-0 overflow-hidden rounded-3xl border border-emerald-500/40 bg-slate-950">
                           {logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
@@ -1626,39 +1630,46 @@ function selectedAddressTown(
                             </div>
                           )}
                         </div>
+
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className={cls("line-clamp-2 text-sm font-extrabold", isSelected ? "text-white" : "text-slate-950")}>{label}</div>
-                            <span className={cls(
-                              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold",
-                              isClosed
-                                ? "border-rose-300 bg-rose-50 text-rose-700"
-                                : isSelected
-                                  ? "border-emerald-300 bg-emerald-400/20 text-emerald-50"
-                                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            )}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-xl font-black leading-tight text-white">
+                                {label}
+                              </div>
+                              <div className="mt-1 text-sm font-semibold text-emerald-100">
+                                {town}
+                              </div>
+                            </div>
+
+                            <span
+                              className={cls(
+                                "shrink-0 rounded-full border px-3 py-1 text-xs font-black",
+                                isClosed
+                                  ? "border-rose-300/70 bg-rose-500/10 text-rose-100"
+                                  : "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
+                              )}
+                            >
                               {isClosed ? "Closed" : "Open"}
                             </span>
                           </div>
-                          <div className={cls("mt-1 text-[11px]", isSelected ? "text-emerald-100" : "text-slate-500")}>{town}</div>
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            <span className={cls(
-                              "rounded-full border px-2 py-1 text-[10px] font-semibold",
-                              isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-slate-200 bg-slate-50 text-slate-700"
-                            )}>
-                              Prep {prep} min
+
+                          <p className="mt-3 line-clamp-2 max-w-2xl text-sm leading-relaxed text-slate-300">
+                            Fresh local meals and takeout favorites delivered to your location.
+                          </p>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-3 py-1.5 text-xs font-bold text-emerald-100">
+                              Prep time: {prep} min
                             </span>
                             {hasPremiumPackaging ? (
-                              <span className={cls(
-                                "rounded-full border px-2 py-1 text-[10px] font-semibold",
-                                isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              )}>
+                              <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-100">
                                 Premium packaging
                               </span>
                             ) : null}
-                          </div>
-                          <div className={cls("mt-3 text-[11px] font-semibold", isSelected ? "text-emerald-100" : "text-emerald-700")}>
-                            {isSelected ? "Selected - menu loaded below" : "Tap to view menu"}
+                            <span className="ml-auto hidden rounded-full border border-emerald-500/40 px-4 py-2 text-xs font-black text-emerald-100 sm:inline-flex">
+                              {isSelected ? "Menu loaded" : "View menu"}
+                            </span>
                           </div>
                         </div>
                       </button>
