@@ -1438,7 +1438,7 @@ function selectedAddressTown(
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-3 py-3 pb-32 sm:px-4 md:p-6">
+    <div className="mx-auto w-full max-w-5xl px-3 py-3 pb-40 sm:px-4 md:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-2xl font-bold">JRide Takeout</div>
@@ -1895,13 +1895,13 @@ function selectedAddressTown(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex-row sm:items-start sm:justify-between sm:p-4",
+                        "flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex-row sm:items-start sm:justify-between sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
@@ -1948,7 +1948,7 @@ function selectedAddressTown(
                         </div>
                       </div>
 
-                      <div className="mt-1 flex w-full shrink-0 items-center justify-between gap-2 sm:mt-0 sm:w-auto sm:justify-end">
+                      <div className="mt-1 grid w-full shrink-0 grid-cols-[44px_1fr_44px] items-center gap-2 sm:mt-0 sm:flex sm:w-auto sm:justify-end">
                         <button
                           type="button"
                           className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
@@ -2046,13 +2046,13 @@ function selectedAddressTown(
           </div>
         </div>
 
-        <div className="sticky bottom-0 z-30 mt-4 grid grid-cols-1 gap-2 border-t bg-white/95 p-3 shadow-[0_-6px_18px_rgba(15,23,42,0.10)] backdrop-blur sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:p-4">
+        <div className="sticky bottom-0 z-30 mt-4 grid grid-cols-1 gap-2 border-t bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-6px_18px_rgba(15,23,42,0.10)] backdrop-blur sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:p-4">
           <button
             type="button"
             onClick={submit}
             disabled={!canSubmit || busy || submitted}
             className={cls(
-              "w-full rounded-xl px-5 py-4 text-sm font-bold text-white shadow-md sm:w-auto",
+              "w-full rounded-xl px-4 py-3 text-sm font-bold text-white shadow-md sm:w-auto sm:px-5 sm:py-4",
               canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
@@ -2063,7 +2063,7 @@ function selectedAddressTown(
             <span className="text-xs font-medium text-rose-700">Cannot place order: vendor is closed.</span>
           ) : null}
 
-          <a href="/takeout/orders" className="w-full rounded-lg border px-3 py-3 text-center text-sm font-medium hover:bg-slate-50 sm:w-auto">
+          <a href="/takeout/orders" className="w-full rounded-lg border px-3 py-2.5 text-center text-sm font-medium hover:bg-slate-50 sm:w-auto sm:py-3">
             View my orders
           </a>
         </div>
@@ -2293,5 +2293,6 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
 
