@@ -1438,15 +1438,15 @@ function selectedAddressTown(
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-3 py-3 pb-40 sm:px-4 md:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mx-auto w-full max-w-md px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
+      <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
-          <div className="text-2xl font-bold">JRide Takeout</div>
-          <div className="text-sm text-slate-600">
+          <div className="text-lg font-black tracking-tight sm:text-2xl">JRide Takeout</div>
+          <div className="hidden text-sm text-slate-600 sm:block">
             Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
           </div>
         </div>
-        <a href="/takeout/orders" className="w-full rounded-lg border px-3 py-3 text-center text-sm font-medium hover:bg-slate-50 sm:w-auto">
+        <a href="/takeout/orders" className="shrink-0 rounded-full border px-3 py-1.5 text-center text-xs font-bold hover:bg-slate-50 sm:w-auto sm:rounded-lg sm:py-3 sm:text-sm">
           My takeout orders
         </a>
       </div>
@@ -1470,11 +1470,11 @@ function selectedAddressTown(
             <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
           </div>
         ) : authState === "signed_in_profile" ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-900 sm:p-3 sm:text-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="font-semibold">Signed in passenger profile loaded</div>
-                <div className="text-xs">Name and phone were loaded from your verified passenger profile. These details are required for booking.</div>
+                <div className="font-semibold">Passenger verified</div>
+                <div className="hidden text-xs sm:block">Name and phone were loaded from your verified passenger profile. These details are required for booking.</div>
               </div>
               <button
                 type="button"
@@ -1488,8 +1488,8 @@ function selectedAddressTown(
         ) : null}
       </div>
 
-      <div className="mt-4 rounded-2xl border bg-white p-3 shadow-md sm:p-5">
-        <div className="grid gap-3 md:grid-cols-2">
+      <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
+        <div className="grid gap-2.5 md:grid-cols-2 md:gap-3">
           <div className="space-y-2">
             <div>
               <label className="text-xs font-medium text-slate-700">Choose store location</label>
@@ -1640,7 +1640,7 @@ function selectedAddressTown(
               <button
                 type="button"
                 onClick={() => refreshAddresses().catch(() => undefined)}
-                className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
+                className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
                 disabled={addrBusy}
               >
                 {addrBusy ? "Refreshing..." : "Refresh saved"}
@@ -1725,7 +1725,7 @@ function selectedAddressTown(
                                   }
                                   makePrimaryExisting(a.id).catch(() => undefined);
                                 }}
-                                className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
+                                className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
                               >
                                 Make primary
                               </button>
@@ -1818,16 +1818,16 @@ function selectedAddressTown(
               </div>
             ) : null}
 
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+            <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 sm:p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">Delivery location options</div>
-                  <div className="text-[11px] text-slate-500">Required: set the exact delivery pin so the driver route uses the correct passenger location.</div>
+                  <div className="text-sm font-bold text-slate-900">Exact delivery pin</div>
+                  <div className="hidden text-[11px] text-slate-500 sm:block">Required: set the exact delivery pin so the driver route uses the correct passenger location.</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowDeliveryPin((v) => !v)}
-                  className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
+                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
                 >
                   {showDeliveryPin ? "Hide location options" : deliveryPin ? "Change exact location" : "Set exact location"}
                 </button>
@@ -1853,13 +1853,13 @@ function selectedAddressTown(
           <div className="md:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-medium text-slate-700">Menu (today)</div>
-                <div className="text-[11px] text-slate-500">Only available items can be selected.</div>
+                <div className="text-sm font-black text-slate-900">Menu</div>
+                <div className="hidden text-[11px] text-slate-500 sm:block">Only available items can be selected.</div>
               </div>
               <button
                 type="button"
                 onClick={() => refreshMenu().catch(() => undefined)}
-                className="rounded border px-4 py-2 text-base font-semibold bg-white hover:bg-slate-50"
+                className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
                 disabled={menuBusy || !vendorId.trim()}
               >
                 {menuBusy ? "Loading..." : "Refresh menu"}
@@ -1883,7 +1883,7 @@ function selectedAddressTown(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-2 space-y-3">
+              <div className="mt-2 space-y-2">
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1895,13 +1895,13 @@ function selectedAddressTown(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex-row sm:items-start sm:justify-between sm:p-4",
+                        "rounded-2xl border border-slate-200 bg-white p-2 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex sm:items-start sm:justify-between sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-14 w-14 shrink-0 rounded-xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
@@ -1925,7 +1925,7 @@ function selectedAddressTown(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
+                          <label className="mt-1.5 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] font-medium text-emerald-800 sm:p-2 sm:text-[11px]">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1937,28 +1937,28 @@ function selectedAddressTown(
                               <span className="block font-semibold">
                                 Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
                               </span>
-                              <span className="block text-emerald-700">
+                              <span className="hidden text-emerald-700 sm:block">
                                 Optional add-on. This is added to your subtotal when checked.
                               </span>
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
+                        <div className="mt-1.5 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-1 grid w-full shrink-0 grid-cols-[44px_1fr_44px] items-center gap-2 sm:mt-0 sm:flex sm:w-auto sm:justify-end">
+                      <div className="mt-2 grid w-full shrink-0 grid-cols-[38px_1fr_38px] items-center gap-1.5 sm:mt-0 sm:flex sm:w-auto sm:justify-end sm:gap-2">
                         <button
                           type="button"
-                          className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-11 w-16 rounded-xl border px-2 text-center text-base font-black"
+                          className="h-9 w-full rounded-xl border px-2 text-center text-sm font-black sm:h-11 sm:w-16 sm:text-base"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -1966,7 +1966,7 @@ function selectedAddressTown(
                         />
                         <button
                           type="button"
-                          className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
@@ -1980,7 +1980,7 @@ function selectedAddressTown(
               </div>
             )}
 
-            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm">
+            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5 text-sm shadow-sm sm:mt-3 sm:p-3">
               <div className="flex items-center justify-between">
                 <div className="font-medium">Estimated subtotal</div>
                 <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
@@ -2006,8 +2006,8 @@ function selectedAddressTown(
             ) : null}
 
             {selectedLines.length > 0 ? (
-              <div className="mt-3 rounded border bg-white p-3 text-sm">
-                <div className="font-medium">Packaging and receipt options</div>
+              <details className="mt-2 rounded-xl border bg-white p-2.5 text-sm sm:mt-3 sm:p-3">
+                <summary className="cursor-pointer font-medium">Packaging and receipt options</summary>
                 <div className="mt-2 space-y-2 text-xs text-slate-700">
                   <div className="rounded-lg border bg-slate-50 p-2">Default item packaging is shown per menu item when the vendor provided a note.</div>
                   {packagingEstimate > 0 ? (
@@ -2023,7 +2023,7 @@ function selectedAddressTown(
                     </span>
                   </label>
                 </div>
-              </div>
+              </details>
             ) : null}
 
             {itemsText ? (
@@ -2034,8 +2034,9 @@ function selectedAddressTown(
             ) : null}
           </div>
 
-          <div className="md:col-span-2">
-            <label className="text-xs font-medium text-slate-700">Note (optional)</label>
+          <details className="md:col-span-2 rounded-xl border bg-white p-2.5">
+            <summary className="cursor-pointer text-sm font-medium text-slate-700">Add note (optional)</summary>
+            <label className="sr-only">Note (optional)</label>
             <textarea
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               rows={3}
@@ -2043,29 +2044,43 @@ function selectedAddressTown(
               onChange={(e) => setNote(e.target.value)}
               placeholder="Any special instructions..."
             />
-          </div>
+          </details>
         </div>
 
-        <div className="sticky bottom-0 z-30 mt-4 grid grid-cols-1 gap-2 border-t bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-6px_18px_rgba(15,23,42,0.10)] backdrop-blur sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:p-4">
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit || busy || submitted}
-            className={cls(
-              "w-full rounded-xl px-4 py-3 text-sm font-bold text-white shadow-md sm:w-auto sm:px-5 sm:py-4",
-              canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
-            )}
-          >
-            {submitted ? "Order submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Verified passenger required" : "Review order and request delivery fee"}
-          </button>
+        {/* JRIDE_TAKEOUT_APP_LIKE_UI_V6 */}
+        <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:sticky sm:max-w-none sm:rounded-xl sm:border sm:p-3">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+            <div className="min-w-0">
+              <div className="truncate font-bold text-slate-900">{selectedLines.length || 0} item{selectedLines.length === 1 ? "" : "s"}</div>
+              <div className="text-[11px] text-slate-500">Delivery fee follows after driver quote</div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-[11px] text-slate-500">Subtotal</div>
+              <div className="text-base font-black text-slate-900">{money(estimatedSubtotalWithPackaging)}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!canSubmit || busy || submitted}
+              className={cls(
+                "rounded-xl px-3 py-2.5 text-sm font-black text-white shadow-md",
+                canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
+              )}
+            >
+              {submitted ? "Submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Sign in required" : "Review order"}
+            </button>
+
+            <a href="/takeout/orders" className="rounded-xl border px-3 py-2.5 text-center text-xs font-bold hover:bg-slate-50">
+              Orders
+            </a>
+          </div>
 
           {vendorClosed ? (
-            <span className="text-xs font-medium text-rose-700">Cannot place order: vendor is closed.</span>
+            <div className="mt-1 text-[11px] font-medium text-rose-700">Cannot place order: vendor is closed.</div>
           ) : null}
-
-          <a href="/takeout/orders" className="w-full rounded-lg border px-3 py-2.5 text-center text-sm font-medium hover:bg-slate-50 sm:w-auto sm:py-3">
-            View my orders
-          </a>
         </div>
 
         {result && !["completed", "cancelled"].includes(normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase()) ? (
@@ -2293,6 +2308,7 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
 
 
