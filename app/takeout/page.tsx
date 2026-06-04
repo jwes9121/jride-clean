@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -622,6 +622,8 @@ export default function TakeoutPage() {
   const [pricingBusy, setPricingBusy] = useState(false);
   const [pricingErr, setPricingErr] = useState<string | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorQuickFilter, setVendorQuickFilter] = useState<"all" | "open" | "packaging">("all");
 
   const primary = useMemo(() => {
     const selected = selectedAddressId ? saved.find((a) => String(a.id) === selectedAddressId) : null;
@@ -657,20 +659,29 @@ export default function TakeoutPage() {
     return vendors.filter((v) => vendorTown(v) === town);
   }, [vendors, vendorTownFilter]);
 
-  
-const [vendorSearch, setVendorSearch] = useState("");
+  const filteredVisibleVendors = useMemo(() => {
+    const q = vendorSearch.trim().toLowerCase();
+    return visibleVendors.filter((v) => {
+      const name = vendorLabel(v).toLowerCase();
+      const town = vendorTown(v).toLowerCase();
+      const rawAccepting =
+        (v as any).accepting_orders ??
+        (v as any).acceptingOrders ??
+        (v as any).is_open ??
+        (v as any).isOpen ??
+        null;
+      const isOpen = rawAccepting !== false;
+      const hasPackaging = v.premium_packaging_enabled === true;
 
-const filteredVisibleVendors = useMemo(() => {
-  const q = vendorSearch.trim().toLowerCase();
-  if (!q) return visibleVendors;
-  return visibleVendors.filter((v: any) => {
-    const name = String(v?.business_name || v?.name || "").toLowerCase();
-    const category = String(v?.category || "").toLowerCase();
-    return name.includes(q) || category.includes(q);
-  });
-}, [vendorSearch, visibleVendors]);
+      if (vendorQuickFilter === "open" && !isOpen) return false;
+      if (vendorQuickFilter === "packaging" && !hasPackaging) return false;
+      if (!q) return true;
 
-const selectedVendor = useMemo(() => {
+      return name.includes(q) || town.includes(q);
+    });
+  }, [visibleVendors, vendorSearch, vendorQuickFilter]);
+
+  const selectedVendor = useMemo(() => {
     const id = String(vendorId || "").trim();
     if (!id) return null;
     return vendors.find((v) => vendorKey(v) === id) || null;
@@ -1527,6 +1538,8 @@ function selectedAddressTown(
                   setResult("");
                   setLastJson(null);
                   setPricingOrder(null);
+                  setVendorSearch("");
+                  setVendorQuickFilter("all");
                 }}
               >
                 <option value="">Select town</option>
@@ -1552,23 +1565,63 @@ function selectedAddressTown(
                 </div>
                 {vendorTownFilter ? (
                   <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-800">
-                    {visibleVendors.length} {visibleVendors.length === 1 ? "store" : "stores"}
+                    {filteredVisibleVendors.length} of {visibleVendors.length} {visibleVendors.length === 1 ? "store" : "stores"}
                   </div>
                 ) : null}
               </div>
+
+              {vendorTownFilter ? (
+                <div className="space-y-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-2">
+                  <div className="relative">
+                    <input
+                      className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 pr-10 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                      value={vendorSearch}
+                      onChange={(e) => setVendorSearch(e.target.value)}
+                      placeholder="Search vendors or town..."
+                    />
+                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-emerald-700">
+                      Search
+                    </div>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {[
+                      { key: "all", label: "All stores" },
+                      { key: "open", label: "Open now" },
+                      { key: "packaging", label: "Premium packaging" },
+                    ].map((chip) => {
+                      const active = vendorQuickFilter === chip.key;
+                      return (
+                        <button
+                          key={chip.key}
+                          type="button"
+                          onClick={() => setVendorQuickFilter(chip.key as "all" | "open" | "packaging")}
+                          className={cls(
+                            "shrink-0 rounded-full border px-3 py-2 text-xs font-extrabold transition",
+                            active
+                              ? "border-emerald-700 bg-emerald-900 text-white shadow-sm"
+                              : "border-emerald-200 bg-white text-emerald-800 hover:border-emerald-400"
+                          )}
+                        >
+                          {chip.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               {!vendorTownFilter ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   Select a town above to browse JRide Takeout vendors.
                 </div>
-              ) : visibleVendors.length === 0 ? (
+              ) : filteredVisibleVendors.length === 0 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <div className="font-semibold">No vendors are listed for this town yet.</div>
-                  <div className="mt-1 text-xs">Try another town or refresh again later.</div>
+                  <div className="font-semibold">No vendors match this view.</div>
+                  <div className="mt-1 text-xs">Clear the search or switch the filter to All stores.</div>
                 </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {visibleVendors.map((v) => {
+                  {filteredVisibleVendors.map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
                     const isSelected = vendorId === id;
