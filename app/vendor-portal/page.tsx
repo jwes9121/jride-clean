@@ -1373,8 +1373,8 @@ export default function VendorPortalPage() {
         {!vendorId ? (
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
         ) : (
-          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-            <section className={cls("self-start rounded-2xl border bg-white p-4 shadow-sm", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">`r`n            {/* JRIDE_VENDOR_OPERATIONS_LAYOUT_V2D: operations-first visual order. Order queue first, then menu, analytics, profile. */}
+            <section className={cls("order-4 self-start rounded-2xl border bg-white p-4 shadow-sm lg:order-4 lg:col-span-1", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor profile</h2>
@@ -1556,7 +1556,7 @@ export default function VendorPortalPage() {
               </button>
             </section>
 
-            <section className="rounded-2xl border bg-white p-4 shadow-sm lg:col-span-2">
+            <section className="order-2 rounded-2xl border bg-white p-4 shadow-sm lg:order-2 lg:col-span-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
@@ -1722,7 +1722,7 @@ export default function VendorPortalPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border bg-white p-4 shadow-sm lg:col-span-3">
+            <section className="order-3 rounded-2xl border bg-white p-4 shadow-sm lg:order-3 lg:col-span-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor summary</h2>
@@ -1819,7 +1819,7 @@ export default function VendorPortalPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border bg-white p-4 shadow-sm lg:col-span-3">
+            <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Order queue</h2>
@@ -2121,6 +2121,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
