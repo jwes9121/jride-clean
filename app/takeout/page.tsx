@@ -1583,7 +1583,7 @@ function selectedAddressTown(
                 </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {filteredVisibleVendors.map((v) => {
+                  {visibleVendors.map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
                     const isSelected = vendorId === id;
@@ -2716,6 +2716,7 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
 
 
