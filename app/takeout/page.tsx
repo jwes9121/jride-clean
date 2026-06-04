@@ -1582,7 +1582,7 @@ function selectedAddressTown(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid gap-4">
                   {visibleVendors.map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
@@ -1614,7 +1614,7 @@ function selectedAddressTown(
                           refreshMenu(nextVendorId);
                         }}
                         className={cls(
-                          "group flex min-h-[170px] w-full items-start gap-4 rounded-3xl border p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
+                          "group flex min-h-[170px] w-full items-start gap-4 rounded-3xl border p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-none",
                           isSelected
                             ? "border-emerald-400 bg-emerald-950 text-white ring-2 ring-emerald-300/30"
                             : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
@@ -1634,7 +1634,7 @@ function selectedAddressTown(
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
                             <div className="min-w-0">
-                              <div className="text-lg font-black leading-tight text-white sm:text-xl">
+                              <div className="break-words text-lg font-black leading-tight text-white sm:text-xl">
                                 {label}
                               </div>
                               <div className="mt-1 text-sm font-semibold text-emerald-100">
@@ -2716,12 +2716,4 @@ function selectedAddressTown(
     </div>
   );
 }
-
-
-
-
-
-
-
-
 
