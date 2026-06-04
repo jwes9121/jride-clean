@@ -1441,13 +1441,16 @@ function selectedAddressTown(
     <div className="mx-auto w-full max-w-md px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
-          <div className="text-lg font-black tracking-tight sm:text-2xl">JRide Takeout</div>
+<div className="jride-premium-brand-row">
+            <a href="/passenger" className="jride-premium-nav-pill" aria-label="Go to JRide passenger home">Home</a>
+            <div className="jride-premium-title"><span className="jride-premium-logo-text">JR</span> JRide <span>Takeout</span></div>
+          </div>
           <div className="hidden text-sm text-slate-600 sm:block">
             Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
           </div>
         </div>
         <a href="/takeout/orders" className="shrink-0 rounded-full border px-3 py-1.5 text-center text-xs font-bold hover:bg-slate-50 sm:w-auto sm:rounded-lg sm:py-3 sm:text-sm">
-          My takeout orders
+          My orders
         </a>
       </div>
 
@@ -2304,10 +2307,301 @@ function selectedAddressTown(
 {JSON.stringify(lastJson, null, 2)}
           </pre>
         ) : null}
+
+        <style jsx global>{`
+          /* JRIDE_TAKEOUT_PREMIUM_BRAND_UI_V7
+             UI-only premium visual layer for Android WebView takeout.
+             No API, lifecycle, dispatch, wallet, or auth logic is changed. */
+          :root {
+            --jr-bg: #061014;
+            --jr-bg-2: #07171f;
+            --jr-card: #0b1720;
+            --jr-card-2: #0e202b;
+            --jr-border: rgba(34, 197, 94, 0.24);
+            --jr-border-soft: rgba(148, 163, 184, 0.20);
+            --jr-green: #22c55e;
+            --jr-green-2: #16a34a;
+            --jr-green-3: #86efac;
+            --jr-text: #f8fafc;
+            --jr-muted: #a7b3c4;
+            --jr-danger: #ff5b5b;
+            --jr-warning: #f59e0b;
+          }
+
+          body {
+            background:
+              radial-gradient(circle at 18% 0%, rgba(34, 197, 94, 0.22), transparent 28%),
+              radial-gradient(circle at 100% 18%, rgba(20, 184, 166, 0.13), transparent 32%),
+              linear-gradient(180deg, #041015 0%, #071014 52%, #020617 100%) !important;
+            color: var(--jr-text) !important;
+          }
+
+          .jride-premium-brand-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+          }
+
+          .jride-premium-title {
+            color: var(--jr-text);
+            font-weight: 900;
+            letter-spacing: -0.035em;
+            font-size: 1.35rem;
+            line-height: 1.1;
+            white-space: nowrap;
+          }
+
+          .jride-premium-title span:last-child {
+            color: var(--jr-green);
+          }
+
+          .jride-premium-logo-text {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.15rem;
+            height: 2.15rem;
+            border-radius: 0.9rem;
+            margin-right: 0.15rem;
+            color: #061014 !important;
+            background: linear-gradient(135deg, #86efac 0%, #22c55e 50%, #14b8a6 100%);
+            box-shadow: 0 10px 25px rgba(34, 197, 94, 0.25);
+            font-size: 0.86rem;
+            letter-spacing: -0.06em;
+          }
+
+          .jride-premium-nav-pill,
+          a[href="/takeout/orders"] {
+            border: 1px solid rgba(34, 197, 94, 0.32) !important;
+            background: rgba(6, 16, 20, 0.74) !important;
+            color: var(--jr-text) !important;
+            border-radius: 999px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 24px rgba(0,0,0,0.24) !important;
+            backdrop-filter: blur(10px);
+          }
+
+          a[href="/takeout/orders"]:hover,
+          .jride-premium-nav-pill:hover {
+            background: rgba(34, 197, 94, 0.13) !important;
+            color: #bbf7d0 !important;
+          }
+
+          body .mx-auto.w-full.max-w-5xl {
+            max-width: 30rem !important;
+            min-height: 100vh;
+            padding-top: 0.75rem !important;
+            background: transparent !important;
+          }
+
+          body .text-slate-900,
+          body .text-slate-800,
+          body .text-slate-700 {
+            color: var(--jr-text) !important;
+          }
+
+          body .text-slate-600,
+          body .text-slate-500,
+          body .text-slate-400 {
+            color: var(--jr-muted) !important;
+          }
+
+          body .border,
+          body .border-slate-200,
+          body .border-slate-300 {
+            border-color: var(--jr-border-soft) !important;
+          }
+
+          body .bg-white,
+          body .bg-white\/95,
+          body .bg-slate-50 {
+            background: linear-gradient(180deg, rgba(15, 30, 41, 0.94), rgba(7, 18, 25, 0.94)) !important;
+            color: var(--jr-text) !important;
+          }
+
+          body .rounded-2xl,
+          body .rounded-xl,
+          body .rounded-lg {
+            border-radius: 1.25rem !important;
+          }
+
+          body .shadow-md,
+          body .shadow-sm,
+          body .shadow-lg {
+            box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+          }
+
+          body input,
+          body select,
+          body textarea {
+            background: rgba(2, 6, 23, 0.35) !important;
+            color: var(--jr-text) !important;
+            border-color: rgba(148, 163, 184, 0.28) !important;
+            border-radius: 1rem !important;
+            min-height: 2.85rem;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03) !important;
+          }
+
+          body input::placeholder,
+          body textarea::placeholder {
+            color: rgba(203, 213, 225, 0.62) !important;
+          }
+
+          body select:disabled,
+          body input:read-only {
+            background: rgba(15, 23, 42, 0.55) !important;
+            color: #cbd5e1 !important;
+          }
+
+          body .bg-emerald-50,
+          body .border-emerald-200 {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.16), rgba(20, 184, 166, 0.08)) !important;
+            border-color: rgba(34, 197, 94, 0.42) !important;
+            color: #bbf7d0 !important;
+          }
+
+          body .text-emerald-800,
+          body .text-emerald-700,
+          body .text-emerald-900 {
+            color: #bbf7d0 !important;
+          }
+
+          body .bg-amber-50 {
+            background: rgba(245, 158, 11, 0.12) !important;
+            border-color: rgba(245, 158, 11, 0.36) !important;
+            color: #fde68a !important;
+          }
+
+          body .bg-red-50,
+          body .bg-rose-50 {
+            background: rgba(239, 68, 68, 0.12) !important;
+            border-color: rgba(239, 68, 68, 0.36) !important;
+            color: #fecaca !important;
+          }
+
+          body .text-red-600,
+          body .text-red-700,
+          body .text-rose-700,
+          body .text-rose-800 {
+            color: var(--jr-danger) !important;
+          }
+
+          body button,
+          body a {
+            transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease;
+          }
+
+          body button:active,
+          body a:active {
+            transform: scale(0.985);
+          }
+
+          body button.bg-slate-900,
+          body button.hover\:bg-slate-800,
+          body button[type="button"]:not(:disabled) {
+            border-color: rgba(34, 197, 94, 0.42) !important;
+          }
+
+          body button.bg-slate-900,
+          body .sticky.bottom-0 button:not(:disabled) {
+            background: linear-gradient(135deg, #86efac 0%, #22c55e 48%, #14b8a6 100%) !important;
+            color: #061014 !important;
+            box-shadow: 0 14px 32px rgba(34, 197, 94, 0.24) !important;
+          }
+
+          body button.bg-slate-400,
+          body button:disabled {
+            background: rgba(148, 163, 184, 0.45) !important;
+            color: rgba(248, 250, 252, 0.72) !important;
+            box-shadow: none !important;
+          }
+
+          body .sticky.bottom-0 {
+            left: 0;
+            right: 0;
+            margin-left: -0.75rem;
+            margin-right: -0.75rem;
+            border-top: 1px solid rgba(34, 197, 94, 0.28) !important;
+            background: linear-gradient(180deg, rgba(6, 16, 20, 0.82), rgba(2, 6, 23, 0.97)) !important;
+            box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.46), 0 -1px 0 rgba(34, 197, 94, 0.22) !important;
+            backdrop-filter: blur(18px);
+          }
+
+          body .sticky.bottom-0::before {
+            content: "";
+            position: absolute;
+            inset: 0.55rem auto auto 1rem;
+            width: 3.15rem;
+            height: 3.15rem;
+            border-radius: 999px;
+            border: 1px solid rgba(34, 197, 94, 0.36);
+            background: radial-gradient(circle at 50% 35%, rgba(134, 239, 172, 0.38), rgba(34, 197, 94, 0.16) 55%, rgba(2,6,23,0.30));
+            pointer-events: none;
+          }
+
+          body .sticky.bottom-0::after {
+            content: "JR";
+            position: absolute;
+            left: 1.95rem;
+            top: 1.35rem;
+            color: #bbf7d0;
+            font-weight: 900;
+            font-size: 0.75rem;
+            pointer-events: none;
+          }
+
+          body .sticky.bottom-0 button {
+            border-radius: 1rem !important;
+            min-height: 3.1rem;
+            font-weight: 900 !important;
+          }
+
+          body .sticky.bottom-0 a[href="/takeout/orders"] {
+            min-height: 3.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+          }
+
+          body .mapboxgl-map {
+            border-radius: 1.15rem !important;
+            filter: saturate(0.92) contrast(0.95);
+          }
+
+          @media (max-width: 640px) {
+            body .mx-auto.w-full.max-w-5xl {
+              padding-left: 0.65rem !important;
+              padding-right: 0.65rem !important;
+            }
+
+            .jride-premium-title {
+              font-size: 1.1rem;
+            }
+
+            .jride-premium-logo-text {
+              min-width: 1.85rem;
+              height: 1.85rem;
+              font-size: 0.72rem;
+              border-radius: 0.75rem;
+            }
+
+            .jride-premium-nav-pill,
+            a[href="/takeout/orders"] {
+              padding: 0.55rem 0.85rem !important;
+              font-size: 0.78rem !important;
+            }
+
+            body label {
+              font-size: 0.72rem !important;
+              letter-spacing: 0.01em;
+            }
+          }
+        `}</style>
       </div>
     </div>
   );
 }
+
 
 
 
