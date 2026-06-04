@@ -1438,15 +1438,15 @@ function selectedAddressTown(
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 pb-28 md:p-6">
-      <div className="flex items-center justify-between gap-3">
+    <div className="mx-auto w-full max-w-5xl px-3 py-3 pb-32 sm:px-4 md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-2xl font-bold">JRide Takeout</div>
           <div className="text-sm text-slate-600">
             Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
           </div>
         </div>
-        <a href="/takeout/orders" className="rounded-lg border px-3 py-3 text-sm font-medium hover:bg-slate-50">
+        <a href="/takeout/orders" className="w-full rounded-lg border px-3 py-3 text-center text-sm font-medium hover:bg-slate-50 sm:w-auto">
           My takeout orders
         </a>
       </div>
@@ -1488,7 +1488,7 @@ function selectedAddressTown(
         ) : null}
       </div>
 
-      <div className="mt-4 rounded-2xl border bg-white p-5 shadow-md">
+      <div className="mt-4 rounded-2xl border bg-white p-3 shadow-md sm:p-5">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <div>
@@ -1883,7 +1883,7 @@ function selectedAddressTown(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-3">
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1895,15 +1895,15 @@ function selectedAddressTown(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md",
+                        "flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex-row sm:items-start sm:justify-between sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 rounded-2xl border object-cover shadow-sm" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
                           <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
@@ -1948,7 +1948,7 @@ function selectedAddressTown(
                         </div>
                       </div>
 
-                      <div className="shrink-0 flex items-center gap-2">
+                      <div className="mt-1 flex w-full shrink-0 items-center justify-between gap-2 sm:mt-0 sm:w-auto sm:justify-end">
                         <button
                           type="button"
                           className="h-11 w-11 rounded-xl border bg-white text-base font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
@@ -1980,7 +1980,7 @@ function selectedAddressTown(
               </div>
             )}
 
-            <div className="sticky bottom-3 z-20 mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="font-medium">Estimated subtotal</div>
                 <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
@@ -2046,13 +2046,13 @@ function selectedAddressTown(
           </div>
         </div>
 
-        <div className="sticky bottom-0 z-30 mt-4 flex flex-wrap items-center gap-3 border-t bg-white/95 p-4 shadow-[0_-6px_18px_rgba(15,23,42,0.10)] backdrop-blur">
+        <div className="sticky bottom-0 z-30 mt-4 grid grid-cols-1 gap-2 border-t bg-white/95 p-3 shadow-[0_-6px_18px_rgba(15,23,42,0.10)] backdrop-blur sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:p-4">
           <button
             type="button"
             onClick={submit}
             disabled={!canSubmit || busy || submitted}
             className={cls(
-              "rounded-xl px-5 py-4 text-sm font-bold text-white shadow-md",
+              "w-full rounded-xl px-5 py-4 text-sm font-bold text-white shadow-md sm:w-auto",
               canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
             )}
           >
@@ -2063,7 +2063,7 @@ function selectedAddressTown(
             <span className="text-xs font-medium text-rose-700">Cannot place order: vendor is closed.</span>
           ) : null}
 
-          <a href="/takeout/orders" className="rounded-lg border px-3 py-3 text-sm font-medium hover:bg-slate-50">
+          <a href="/takeout/orders" className="w-full rounded-lg border px-3 py-3 text-center text-sm font-medium hover:bg-slate-50 sm:w-auto">
             View my orders
           </a>
         </div>
@@ -2293,4 +2293,5 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
