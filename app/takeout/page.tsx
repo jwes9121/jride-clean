@@ -657,7 +657,20 @@ export default function TakeoutPage() {
     return vendors.filter((v) => vendorTown(v) === town);
   }, [vendors, vendorTownFilter]);
 
-  const selectedVendor = useMemo(() => {
+  
+const [vendorSearch, setVendorSearch] = useState("");
+
+const filteredVisibleVendors = useMemo(() => {
+  const q = vendorSearch.trim().toLowerCase();
+  if (!q) return visibleVendors;
+  return visibleVendors.filter((v: any) => {
+    const name = String(v?.business_name || v?.name || "").toLowerCase();
+    const category = String(v?.category || "").toLowerCase();
+    return name.includes(q) || category.includes(q);
+  });
+}, [vendorSearch, visibleVendors]);
+
+const selectedVendor = useMemo(() => {
     const id = String(vendorId || "").trim();
     if (!id) return null;
     return vendors.find((v) => vendorKey(v) === id) || null;
