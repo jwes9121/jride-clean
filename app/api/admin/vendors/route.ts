@@ -21,6 +21,7 @@ function normalizeTakeoutTown(value: any): string {
   return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
+// JRIDE_ADMIN_VENDORS_LOGO_URL_CONTRACT_V1
 export async function GET() {
   const supabase = adminClient();
   if (!supabase) {
@@ -32,19 +33,26 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("vendor_accounts")
-    .select("id,email,display_name,created_at,town,lat,lng,location_label")
+    .select("id,email,display_name,created_at,town,lat,lng,location_label,logo_url")
     .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ ok: false, error: "DB_ERROR", message: error.message }, { status: 500 });
   }
 
-  const vendors = (Array.isArray(data) ? data : []).map((v: any) => ({
-    ...v,
-    name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
-    display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
-    town: normalizeTakeoutTown(v?.town),
-  }));
+  const vendors = (Array.isArray(data) ? data : []).map((v: any) => {
+    const logoUrl = cleanString(v?.logo_url);
+    return {
+      ...v,
+      name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
+      display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
+      town: normalizeTakeoutTown(v?.town),
+      logo_url: logoUrl || null,
+      vendor_logo_url: logoUrl || null,
+      profile_logo_url: logoUrl || null,
+      business_logo_url: logoUrl || null,
+    };
+  });
 
   return NextResponse.json({ ok: true, vendors }, { status: 200 });
 }
