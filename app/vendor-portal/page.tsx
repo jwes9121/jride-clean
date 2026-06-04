@@ -1198,7 +1198,7 @@ export default function VendorPortalPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 text-slate-900">
+    <main className="jride-vendor-premium-shell min-h-screen p-3 text-slate-100 sm:p-4">
       <div className="mx-auto max-w-7xl space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm">
           <div>
@@ -1966,9 +1966,162 @@ export default function VendorPortalPage() {
           </div>
         )}
       </div>
+      <style jsx global>{`
+        /* JRIDE_VENDOR_PORTAL_PREMIUM_MOBILE_UI_V1 */
+        .jride-vendor-premium-shell {
+          min-height: 100vh;
+          background:
+            radial-gradient(circle at 20% 0%, rgba(34, 197, 94, 0.18), transparent 28%),
+            radial-gradient(circle at 90% 8%, rgba(16, 185, 129, 0.13), transparent 25%),
+            linear-gradient(180deg, #061014 0%, #08131b 48%, #050b10 100%);
+          color: #e8fff2;
+        }
+        .jride-vendor-premium-shell .mx-auto.max-w-7xl {
+          max-width: 1120px;
+        }
+        .jride-vendor-premium-shell .bg-white,
+        .jride-vendor-premium-shell .bg-slate-50 {
+          background: rgba(8, 20, 29, 0.88) !important;
+          border-color: rgba(34, 197, 94, 0.24) !important;
+          color: #e8fff2 !important;
+          box-shadow: 0 18px 45px rgba(0, 0, 0, 0.26);
+          backdrop-filter: blur(10px);
+        }
+        .jride-vendor-premium-shell .border {
+          border-color: rgba(34, 197, 94, 0.20) !important;
+        }
+        .jride-vendor-premium-shell h1,
+        .jride-vendor-premium-shell h2,
+        .jride-vendor-premium-shell h3,
+        .jride-vendor-premium-shell .text-slate-900,
+        .jride-vendor-premium-shell .font-semibold,
+        .jride-vendor-premium-shell .font-bold {
+          color: #f3fff7 !important;
+        }
+        .jride-vendor-premium-shell .text-slate-600,
+        .jride-vendor-premium-shell .text-slate-500,
+        .jride-vendor-premium-shell .text-slate-400,
+        .jride-vendor-premium-shell .text-xs {
+          color: #9fb3c8 !important;
+        }
+        .jride-vendor-premium-shell input,
+        .jride-vendor-premium-shell select,
+        .jride-vendor-premium-shell textarea {
+          background: rgba(4, 12, 20, 0.82) !important;
+          color: #f3fff7 !important;
+          border-color: rgba(148, 163, 184, 0.26) !important;
+          outline: none;
+        }
+        .jride-vendor-premium-shell input:focus,
+        .jride-vendor-premium-shell select:focus,
+        .jride-vendor-premium-shell textarea:focus {
+          border-color: #22c55e !important;
+          box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+        }
+        .jride-vendor-premium-shell button {
+          transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+        }
+        .jride-vendor-premium-shell button:not(:disabled):active {
+          transform: scale(0.98);
+        }
+        .jride-vendor-premium-shell .bg-black,
+        .jride-vendor-premium-shell .bg-emerald-600,
+        .jride-vendor-premium-shell .bg-emerald-700 {
+          background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+          color: #04110a !important;
+          box-shadow: 0 12px 24px rgba(34, 197, 94, 0.22);
+        }
+        .jride-vendor-premium-shell .bg-emerald-50 {
+          background: rgba(16, 185, 129, 0.14) !important;
+          border-color: rgba(52, 211, 153, 0.36) !important;
+          color: #bbf7d0 !important;
+        }
+        .jride-vendor-premium-shell .bg-blue-50 {
+          background: rgba(59, 130, 246, 0.12) !important;
+          border-color: rgba(96, 165, 250, 0.30) !important;
+          color: #bfdbfe !important;
+        }
+        .jride-vendor-premium-shell .bg-amber-50 {
+          background: rgba(245, 158, 11, 0.14) !important;
+          border-color: rgba(251, 191, 36, 0.34) !important;
+          color: #fde68a !important;
+        }
+        .jride-vendor-premium-shell .bg-rose-50 {
+          background: rgba(244, 63, 94, 0.12) !important;
+          border-color: rgba(251, 113, 133, 0.32) !important;
+          color: #fecdd3 !important;
+        }
+        .jride-vendor-premium-shell .rounded-2xl,
+        .jride-vendor-premium-shell .rounded-xl {
+          border-radius: 18px;
+        }
+        .jride-vendor-premium-shell img {
+          border-color: rgba(34, 197, 94, 0.22);
+        }
+        .jride-vendor-premium-shell table,
+        .jride-vendor-premium-shell thead,
+        .jride-vendor-premium-shell tbody,
+        .jride-vendor-premium-shell tr,
+        .jride-vendor-premium-shell td,
+        .jride-vendor-premium-shell th {
+          border-color: rgba(34, 197, 94, 0.16) !important;
+        }
+        .jride-vendor-premium-shell ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .jride-vendor-premium-shell ::-webkit-scrollbar-thumb {
+          background: rgba(34, 197, 94, 0.45);
+          border-radius: 999px;
+        }
+        @media (max-width: 760px) {
+          .jride-vendor-premium-shell {
+            padding: 10px !important;
+          }
+          .jride-vendor-premium-shell .flex.flex-wrap.items-start.justify-between.gap-3.rounded-2xl {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            margin: -10px -10px 10px;
+            border-radius: 0 0 22px 22px;
+            padding: 14px 12px !important;
+          }
+          .jride-vendor-premium-shell h1 {
+            font-size: 1.25rem !important;
+          }
+          .jride-vendor-premium-shell .lg\\:grid-cols-3 {
+            grid-template-columns: 1fr !important;
+          }
+          .jride-vendor-premium-shell .lg\\:col-span-2 {
+            grid-column: auto !important;
+          }
+          .jride-vendor-premium-shell .min-w-72 {
+            min-width: 0 !important;
+            width: 100% !important;
+          }
+          .jride-vendor-premium-shell .grid {
+            gap: 12px !important;
+          }
+          .jride-vendor-premium-shell .p-6 {
+            padding: 14px !important;
+          }
+          .jride-vendor-premium-shell .p-4,
+          .jride-vendor-premium-shell .p-5 {
+            padding: 12px !important;
+          }
+          .jride-vendor-premium-shell .px-4.py-2,
+          .jride-vendor-premium-shell .px-4.py-3 {
+            padding: 10px 12px !important;
+          }
+          .jride-vendor-premium-shell .max-h-\[520px\] {
+            max-height: 360px !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
+
 
 
 
