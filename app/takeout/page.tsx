@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -200,18 +200,16 @@ function getOrCreateDeviceKey(): string {
 
 async function getJson(url: string) {
   const res = await fetch(url, {
-  ...(init || {}),
-  method: "GET",
-  cache: "no-store",
-  headers: {
-    Accept: "application/json",
-    ...((init?.headers as Record<string, string>) || {}),
-  },
-});
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
   const j = await res.json().catch(() => ({}));
+
   if (!res.ok || (j && j.ok === false)) {
     throw new Error(j?.message || j?.error || ("HTTP " + res.status));
   }
+
   return j;
 }
 
@@ -2741,5 +2739,6 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
