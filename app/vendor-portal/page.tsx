@@ -5,6 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V4
+// JRIDE_VENDOR_REALTIME_OPERATIONS_UI_V3
 
 type VendorRow = {
   id?: string | null;
@@ -1822,8 +1823,8 @@ export default function VendorPortalPage() {
             <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold">Order queue</h2>
-                  <p className="text-xs text-slate-500">Large simple controls for vendor processing.</p>
+                  <h2 className="text-lg font-semibold">Live order queue</h2>
+                  <p className="text-xs text-slate-500">Live orders first. Keep sound on and watch this panel during service hours.</p>
                 </div>
                 <div className="text-xs text-slate-500">Active: {activeOrders.length} | History: {historyOrders.length}</div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
@@ -1856,7 +1857,25 @@ export default function VendorPortalPage() {
 
               <div className="mt-4 grid grid-cols-1 gap-3">
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
+                  <div className="mb-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-3 shadow-[0_0_18px_rgba(16,185,129,0.10)]">
+  <div className="flex flex-wrap items-center justify-between gap-2">
+    <div>
+      <div className="text-xs font-bold uppercase tracking-wide text-emerald-300">Live operations</div>
+      <div className="mt-1 text-sm font-semibold text-slate-100">{activeOrders.length} active order{activeOrders.length === 1 ? "" : "s"}</div>
+    </div>
+    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      {pendingVendorOrdersForAlert.length > 0 ? (
+        <span className="animate-pulse rounded-full border border-amber-300 bg-amber-400/20 px-3 py-1 font-bold text-amber-100">New order: {pendingVendorOrdersForAlert.length}</span>
+      ) : (
+        <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-200">Queue clear</span>
+      )}
+      <span className={vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-200" : "rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 font-semibold text-amber-100"}>
+        {vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "Sound ready" : "Sound off"}
+      </span>
+    </div>
+  </div>
+</div>
+<h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
                   <div className="mb-2 text-[11px] text-slate-500">Shows passenger, address, items, receipt request, packaging, and notes.</div>
                   <div className="space-y-2">
                     {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
@@ -1864,7 +1883,7 @@ export default function VendorPortalPage() {
                       const s = normalizeVendorStatus(o.vendor_status);
                       const acceptDeadline = vendorAcceptTimer(o, nowMs);
                       return (
-                        <div key={o.id || o.booking_code || Math.random()} className="rounded-2xl border p-3">
+                        <div key={o.id || o.booking_code || Math.random()} className={cls("rounded-2xl border p-3 shadow-[0_0_18px_rgba(16,185,129,0.08)]", s === "vendor_pending" ? "border-amber-300/70 bg-amber-950/20" : "border-emerald-500/30 bg-slate-950/20")}>
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <div className="font-semibold">{o.booking_code || o.id}</div>
@@ -1942,8 +1961,8 @@ export default function VendorPortalPage() {
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold">Completed and cancelled history</h3>
-                  <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
+                  <h3 className="mb-2 text-sm font-semibold text-slate-300">Completed and cancelled history <span className="ml-2 text-[11px] font-normal text-slate-500">Reference only</span></h3>
+                  <div className="max-h-[340px] space-y-2 overflow-auto pr-1 opacity-90">
                     {historyOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No completed or cancelled orders.</div> : null}
                     {historyOrders.map((o) => (
                       <div key={o.id || o.booking_code || Math.random()} className="rounded-xl border bg-slate-50 p-3 text-sm">
@@ -2121,6 +2140,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
