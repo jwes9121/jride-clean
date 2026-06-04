@@ -280,18 +280,27 @@ function vendorTown(v: VendorRow): string {
   );
 }
 
-function vendorLogoUrl(v: VendorRow): string | null {
+// JRIDE_VENDOR_LOGO_BINDING_V4
+function vendorUploadedLogoUrl(v: VendorRow): string | null {
   const raw =
+    (v as any).vendor_logo_url ??
+    (v as any).vendorLogoUrl ??
     (v as any).logo_url ??
     (v as any).logoUrl ??
     (v as any).profile_logo_url ??
     (v as any).profileLogoUrl ??
     (v as any).business_logo_url ??
     (v as any).businessLogoUrl ??
-    (v as any).avatar_url ??
-    (v as any).avatarUrl ??
-    (v as any).photo_url ??
+    (v as any).store_logo_url ??
+    (v as any).storeLogoUrl ??
+    (v as any).logo_public_url ??
+    (v as any).logoPublicUrl ??
+    (v as any).public_logo_url ??
+    (v as any).publicLogoUrl ??
     (v as any).image_url ??
+    (v as any).imageUrl ??
+    (v as any).photo_url ??
+    (v as any).photoUrl ??
     null;
 
   const value = String(raw || "").trim();
@@ -1582,7 +1591,7 @@ function selectedAddressTown(
                     const town = vendorTown(v) || vendorTownFilter;
                     const rawAccepting = (v as any).accepting_orders ?? (v as any).acceptingOrders ?? (v as any).is_open ?? (v as any).isOpen ?? null;
                     const isClosed = isSelected ? vendorClosed : rawAccepting === false;
-                    const logoUrl = vendorLogoUrl(v);
+                    const logoUrl = vendorUploadedLogoUrl(v);
                     const prep = prepMinutes((v as any).prep_time_minutes ?? (v as any).default_prep_time_minutes ?? 15);
                     const hasPremiumPackaging = v.premium_packaging_enabled === true;
                     return (
@@ -1600,60 +1609,55 @@ function selectedAddressTown(
                           refreshMenu(nextVendorId);
                         }}
                         className={cls(
-                          "group flex min-h-[132px] w-full items-stretch gap-4 rounded-3xl border p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
-                          isSelected ? "border-emerald-400 bg-emerald-950 text-white shadow-emerald-950/30 ring-2 ring-emerald-300/30" : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
+                          "group flex min-h-[132px] w-full items-stretch gap-3 rounded-2xl border p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
+                          isSelected ? "border-emerald-500 bg-emerald-950 text-white shadow-emerald-950/20" : "border-slate-200 bg-white text-slate-950 hover:border-emerald-300"
                         )}
                       >
                         <div className={cls(
-                          "flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border text-lg font-black",
-                          isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-emerald-500/50 bg-emerald-950/80 text-emerald-300"
+                          "flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border text-lg font-black",
+                          isSelected ? "border-emerald-400 bg-emerald-800 text-emerald-50" : "border-emerald-100 bg-emerald-50 text-emerald-800"
                         )}>
                           {logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
                           ) : (
-                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-emerald-300">
-                              <div className="rounded-lg border border-emerald-500/40 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]">
-                                JRide
-                              </div>
-                              <div className="text-[9px] font-extrabold uppercase tracking-[0.14em]">
-                                Takeout
-                              </div>
+                            <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-200">
+                              No logo uploaded
                             </div>
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
-                            <div className={cls("line-clamp-2 text-sm font-extrabold", isSelected ? "text-white" : "text-white")}>{label}</div>
+                            <div className={cls("line-clamp-2 text-sm font-extrabold", isSelected ? "text-white" : "text-slate-950")}>{label}</div>
                             <span className={cls(
                               "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold",
                               isClosed
-                                ? "border-rose-300/70 bg-rose-500/10 text-rose-100"
+                                ? "border-rose-300 bg-rose-50 text-rose-700"
                                 : isSelected
                                   ? "border-emerald-300 bg-emerald-400/20 text-emerald-50"
-                                  : "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
+                                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
                             )}>
                               {isClosed ? "Closed" : "Open"}
                             </span>
                           </div>
-                          <div className={cls("mt-1 text-[11px]", isSelected ? "text-emerald-100" : "text-emerald-200")}>{town}</div>
+                          <div className={cls("mt-1 text-[11px]", isSelected ? "text-emerald-100" : "text-slate-500")}>{town}</div>
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             <span className={cls(
                               "rounded-full border px-2 py-1 text-[10px] font-semibold",
-                              isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-emerald-500/40 bg-slate-950/70 text-emerald-100"
+                              isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-slate-200 bg-slate-50 text-slate-700"
                             )}>
                               Prep {prep} min
                             </span>
                             {hasPremiumPackaging ? (
                               <span className={cls(
                                 "rounded-full border px-2 py-1 text-[10px] font-semibold",
-                                isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-amber-300/50 bg-amber-300/10 text-amber-100"
+                                isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-emerald-200 bg-emerald-50 text-emerald-700"
                               )}>
                                 Premium packaging
                               </span>
                             ) : null}
                           </div>
-                          <div className={cls("mt-3 text-[11px] font-semibold", isSelected ? "text-emerald-100" : "text-emerald-200")}>
+                          <div className={cls("mt-3 text-[11px] font-semibold", isSelected ? "text-emerald-100" : "text-emerald-700")}>
                             {isSelected ? "Selected - menu loaded below" : "Tap to view menu"}
                           </div>
                         </div>
