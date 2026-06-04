@@ -1632,7 +1632,7 @@ function selectedAddressTown(
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
                             <div className="min-w-0">
                               <div className="text-lg font-black leading-tight text-white sm:text-xl">
                                 {label}
@@ -1644,7 +1644,7 @@ function selectedAddressTown(
 
                             <span
                               className={cls(
-                                "shrink-0 rounded-full border px-3 py-1 text-xs font-black",
+                                "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black",
                                 isClosed
                                   ? "border-rose-300/70 bg-rose-500/10 text-rose-100"
                                   : "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
@@ -1658,7 +1658,7 @@ function selectedAddressTown(
                             Fresh local meals and takeout favorites delivered to your location.
                           </p>
 
-                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                          <div className="mt-4 flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                             <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-3 py-1.5 text-xs font-bold text-emerald-100">
                               Prep time: {prep} min
                             </span>
@@ -1667,7 +1667,7 @@ function selectedAddressTown(
                                 Premium packaging
                               </span>
                             ) : null}
-                            <span className="ml-auto hidden rounded-full border border-emerald-500/40 px-4 py-2 text-xs font-black text-emerald-100 sm:inline-flex">
+                            <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
                               {isSelected ? "Menu loaded" : "View menu"}
                             </span>
                           </div>
@@ -1683,7 +1683,7 @@ function selectedAddressTown(
                   "rounded-xl border p-3 text-xs",
                   vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 )}>
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
                     <div>
                       <div className="text-[11px] uppercase tracking-wide text-slate-500">Selected vendor</div>
                       <div className="mt-0.5 font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
@@ -2207,7 +2207,7 @@ function selectedAddressTown(
 
         {submitted ? (
           <div className="mt-3 rounded border bg-white p-4 text-sm">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
               <div>
                 <div className="font-semibold text-slate-900">Takeout pricing confirmation</div>
                 <div className="mt-1 text-xs text-slate-600">
@@ -2716,6 +2716,7 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
 
 
