@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -199,7 +199,15 @@ function getOrCreateDeviceKey(): string {
 }
 
 async function getJson(url: string) {
-  const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+  const res = await fetch(url, {
+  ...(init || {}),
+  method: "GET",
+  cache: "no-store",
+  headers: {
+    Accept: "application/json",
+    ...((init?.headers as Record<string, string>) || {}),
+  },
+});
   const j = await res.json().catch(() => ({}));
   if (!res.ok || (j && j.ok === false)) {
     throw new Error(j?.message || j?.error || ("HTTP " + res.status));
@@ -354,13 +362,17 @@ function logoutPassengerProfile() {
   window.location.href = "/passenger-login?callbackUrl=/takeout";
 }
 
-async function fetchOptionalJson(url: string): Promise<any> {
+async function fetchOptionalJson(url: string, init?: RequestInit): Promise<any> {
   try {
     const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
+  ...(init || {}),
+  method: "GET",
+  cache: "no-store",
+  headers: {
+    Accept: "application/json",
+    ...((init?.headers as Record<string, string>) || {}),
+  },
+});
     if (!res.ok) return null;
     return await res.json().catch(() => null);
   } catch {
@@ -852,9 +864,22 @@ function selectedAddressTown(
   async function loadPassengerAutofill() {
     // Authentication status is shown to the passenger, but customer name/phone must come from a real passenger profile.
     // Do not use email display names as passenger names.
-    const session = await fetchOptionalJson("/api/auth/session");
-    const passengerSession = await fetchOptionalJson("/api/public/auth/session");
-    const contact = await fetchOptionalJson("/api/takeout/passenger-contact");
+    const authHeaders = currentPassengerAuthHeaders();
+
+const session = await fetchOptionalJson(
+  "/api/auth/session",
+  { headers: authHeaders }
+);
+
+const passengerSession = await fetchOptionalJson(
+  "/api/public/auth/session",
+  { headers: authHeaders }
+);
+
+const contact = await fetchOptionalJson(
+  "/api/takeout/passenger-contact",
+  { headers: authHeaders }
+);
     const signedIn =
       hasSignedInUser(passengerSession) ||
       hasSignedInUser(session) ||
