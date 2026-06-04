@@ -1528,64 +1528,138 @@ function selectedAddressTown(
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-slate-700">Select vendor</label>
-              <select
-                className="mt-1 w-full rounded border px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
-                value={vendorId}
-                disabled={!vendorTownFilter}
-                onChange={(e) => {
-                    const nextVendorId = e.target.value;
-                    setVendorId(nextVendorId);
-                    setQty({});
-                    setPremiumPackagingSelections({});
-                    setReceiptRequested(false);
-                    setSubmitted(false);
-                    refreshMenu(nextVendorId);
-                  }}
-              >
-                <option value="">{vendorTownFilter ? "Select vendor" : "Choose store location"}</option>
-                {visibleVendors.map((v) => {
-                  const id = vendorKey(v);
-                  if (!id) return null;
-                  return (
-                    <option key={id} value={id}>
-                      {vendorLabel(v)}
-                    </option>
-                  );
-                })}
-              </select>
-              <div className="mt-1 text-[11px] text-slate-500">
-                Menu loads automatically after you select a vendor.
+            <div className="space-y-2 md:col-span-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Vendor marketplace</div>
+                  <div className="mt-0.5 text-sm font-bold text-slate-950">Choose a store</div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    {vendorTownFilter ? "Tap a vendor card to load its menu." : "Choose a town first to show available stores."}
+                  </div>
+                </div>
+                {vendorTownFilter ? (
+                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-800">
+                    {visibleVendors.length} {visibleVendors.length === 1 ? "store" : "stores"}
+                  </div>
+                ) : null}
               </div>
-              {vendorTownFilter && visibleVendors.length === 0 ? (
-                <div className="mt-1 text-[11px] text-amber-700">
-                  No vendors are listed for this town yet.
+
+              {!vendorTownFilter ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  Select a town above to browse JRide Takeout vendors.
+                </div>
+              ) : visibleVendors.length === 0 ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  <div className="font-semibold">No vendors are listed for this town yet.</div>
+                  <div className="mt-1 text-xs">Try another town or refresh again later.</div>
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {visibleVendors.map((v) => {
+                    const id = vendorKey(v);
+                    if (!id) return null;
+                    const isSelected = vendorId === id;
+                    const label = vendorLabel(v);
+                    const town = vendorTown(v) || vendorTownFilter;
+                    const rawAccepting = (v as any).accepting_orders ?? (v as any).acceptingOrders ?? (v as any).is_open ?? (v as any).isOpen ?? null;
+                    const isClosed = isSelected ? vendorClosed : rawAccepting === false;
+                    const logoUrl = String((v as any).logo_url || (v as any).logoUrl || (v as any).photo_url || (v as any).image_url || "").trim();
+                    const prep = prepMinutes((v as any).prep_time_minutes ?? (v as any).default_prep_time_minutes ?? 15);
+                    const hasPremiumPackaging = v.premium_packaging_enabled === true;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        disabled={!vendorTownFilter}
+                        onClick={() => {
+                          const nextVendorId = id;
+                          setVendorId(nextVendorId);
+                          setQty({});
+                          setPremiumPackagingSelections({});
+                          setReceiptRequested(false);
+                          setSubmitted(false);
+                          refreshMenu(nextVendorId);
+                        }}
+                        className={cls(
+                          "group flex min-h-[132px] w-full items-stretch gap-3 rounded-2xl border p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
+                          isSelected ? "border-emerald-500 bg-emerald-950 text-white shadow-emerald-950/20" : "border-slate-200 bg-white text-slate-950 hover:border-emerald-300"
+                        )}
+                      >
+                        <div className={cls(
+                          "flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border text-lg font-black",
+                          isSelected ? "border-emerald-400 bg-emerald-800 text-emerald-50" : "border-emerald-100 bg-emerald-50 text-emerald-800"
+                        )}>
+                          {logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={logoUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <span>{label.slice(0, 1).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className={cls("line-clamp-2 text-sm font-extrabold", isSelected ? "text-white" : "text-slate-950")}>{label}</div>
+                            <span className={cls(
+                              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold",
+                              isClosed
+                                ? "border-rose-300 bg-rose-50 text-rose-700"
+                                : isSelected
+                                  ? "border-emerald-300 bg-emerald-400/20 text-emerald-50"
+                                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            )}>
+                              {isClosed ? "Closed" : "Open"}
+                            </span>
+                          </div>
+                          <div className={cls("mt-1 text-[11px]", isSelected ? "text-emerald-100" : "text-slate-500")}>{town}</div>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            <span className={cls(
+                              "rounded-full border px-2 py-1 text-[10px] font-semibold",
+                              isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-slate-200 bg-slate-50 text-slate-700"
+                            )}>
+                              Prep {prep} min
+                            </span>
+                            {hasPremiumPackaging ? (
+                              <span className={cls(
+                                "rounded-full border px-2 py-1 text-[10px] font-semibold",
+                                isSelected ? "border-emerald-400 bg-emerald-900 text-emerald-50" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              )}>
+                                Premium packaging
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className={cls("mt-3 text-[11px] font-semibold", isSelected ? "text-emerald-100" : "text-emerald-700")}>
+                            {isSelected ? "Selected - menu loaded below" : "Tap to view menu"}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {vendorId ? (
+                <div className={cls(
+                  "rounded-xl border p-3 text-xs",
+                  vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                )}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Selected vendor</div>
+                      <div className="mt-0.5 font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
+                    </div>
+                    <div className={cls(
+                      "rounded-full border px-2 py-1 text-[11px] font-semibold",
+                      vendorClosed ? "border-rose-300 bg-white text-rose-700" : "border-emerald-300 bg-white text-emerald-700"
+                    )}>
+                      {vendorClosed ? "Closed" : "Open"}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[11px]">
+                    {vendorClosed ? "This vendor is not accepting new orders right now." : "This vendor is accepting takeout orders."}
+                  </div>
                 </div>
               ) : null}
             </div>
-            {vendorId ? (
-              <div className={cls(
-                "mt-3 rounded-xl border p-3 text-xs",
-                vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
-              )}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500">Selected vendor</div>
-                    <div className="mt-0.5 font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
-                  </div>
-                  <div className={cls(
-                    "rounded-full border px-2 py-1 text-[11px] font-semibold",
-                    vendorClosed ? "border-rose-300 bg-white text-rose-700" : "border-emerald-300 bg-white text-emerald-700"
-                  )}>
-                    {vendorClosed ? "Closed" : "Open"}
-                  </div>
-                </div>
-                <div className="mt-2 text-[11px]">
-                  {vendorClosed ? "This vendor is not accepting new orders right now." : "This vendor is accepting takeout orders."}
-                </div>
-              </div>
-            ) : null}
           </div>
 
           {vendorClosed ? (
@@ -2601,6 +2675,7 @@ function selectedAddressTown(
     </div>
   );
 }
+
 
 
 
