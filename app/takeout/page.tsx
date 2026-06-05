@@ -1761,7 +1761,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+              <div className="mt-3 flex max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-2 overscroll-x-contain touch-pan-x sm:grid sm:grid-cols-2 sm:gap-4 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -2744,6 +2744,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
