@@ -1492,9 +1492,9 @@ const contact = await fetchOptionalJson(
     <div className="mx-auto w-full max-w-md px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
-<div className="jride-premium-brand-row">
+          <div className="jride-premium-brand-row">
             <a href="/passenger" className="jride-premium-nav-pill" aria-label="Go to JRide passenger home">Home</a>
-            <div className="jride-premium-title">Ride <span>Takeout</span></div>
+            <div className="jride-premium-title">JRide <span>Takeout</span></div>
           </div>
           <div className="hidden text-sm text-slate-600 sm:block">
             Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
@@ -1723,6 +1723,194 @@ const contact = await fetchOptionalJson(
                   </div>
                 </div>
               ) : null}
+		{/* PHASE2B_MENU_CONSUMPTION */}
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-black tracking-tight text-slate-900">
+  Browse menu
+</div>
+                <div className="hidden text-xs text-slate-500 sm:block">
+  Swipe through available meals, drinks, and add-ons.
+</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => refreshMenu().catch(() => undefined)}
+                className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
+                disabled={menuBusy || !vendorId.trim()}
+              >
+                {menuBusy ? "Loading..." : "Refresh menu"}
+              </button>
+            </div>
+
+            {menuErr ? (
+              <div className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{menuErr}</div>
+            ) : null}
+
+
+            {!vendorId.trim() ? (
+              <div className="mt-2 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="font-semibold text-slate-900">Select a vendor to view today's menu.</div>
+                <div className="mt-1 text-xs text-slate-500">Available items, prep time, packaging notes, and subtotal will appear here.</div>
+              </div>
+            ) : menuBusy ? (
+              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menu...</div>
+            ) : menuSelectable.length === 0 ? (
+              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
+                No menu items available today.
+              </div>
+            ) : (
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+                {menuSelectable.map((m) => {
+                  const q = Math.max(0, Math.floor(toNum(qty[m.id])));
+                  const rawRemaining = (m as any)?.remaining_quantity;
+                  const hasRemainingLimit = rawRemaining !== null && rawRemaining !== undefined && String(rawRemaining).trim() !== "";
+                  const remainingLimit = hasRemainingLimit ? Math.max(0, Math.floor(toNum(rawRemaining))) : 99;
+                  const plusDisabled = q >= remainingLimit;
+                  const disabled = vendorClosed || !m._available || (hasRemainingLimit && remainingLimit <= 0);
+                  return (
+                    <div
+                      key={m.id}
+                      className={cls(
+                        "min-w-[280px] rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex sm:items-start sm:justify-between sm:p-4",
+                        disabled ? "bg-slate-50 opacity-70" : "bg-white"
+                      )}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-3">
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-28 sm:w-28" /> : null}
+                          <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
+                          {m.sold_out_today ? (
+                            <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
+                          ) : null}
+                          {m.is_available === false ? (
+                            <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">Unavailable</span>
+                          ) : null}
+                        </div>
+                        {m.description ? (
+                          <div className="mt-1 text-sm leading-relaxed text-slate-600">{m.description}</div>
+                        ) : null}
+                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        {Number(m.remaining_quantity) > 0 ? (
+                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity)}</div>
+                        ) : null}
+                        {m.packaging_note ? (
+                          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
+                            Packaging: {m.packaging_note}
+                          </div>
+                        ) : null}
+                        {itemPremiumPackagingEnabled(m) ? (
+                          <label className="mt-1.5 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] font-medium text-emerald-800 sm:p-2 sm:text-[11px]">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={premiumPackagingSelections[m.id] === true}
+                              disabled={disabled || q <= 0}
+                              onChange={(e) => setItemPremiumPackaging(m.id, e.target.checked)}
+                            />
+                            <span>
+                              <span className="block font-semibold">
+                                Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
+                              </span>
+                              <span className="hidden text-emerald-700 sm:block">
+                                Optional add-on. This is added to your subtotal when checked.
+                              </span>
+                            </span>
+                          </label>
+                        ) : null}
+                        <div className="mt-1.5 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 grid w-full shrink-0 grid-cols-[38px_1fr_38px] items-center gap-1.5 sm:mt-0 sm:flex sm:w-auto sm:justify-end sm:gap-2">
+                        <button
+                          type="button"
+                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
+                          disabled={disabled || q <= 0}
+                          onClick={() => setItemQty(m.id, q - 1)}
+                        >
+                          -
+                        </button>
+                        <input
+                          className="h-9 w-full rounded-xl border px-2 text-center text-sm font-black sm:h-11 sm:w-16 sm:text-base"
+                          value={String(q)}
+                          onChange={(e) => setItemQty(m.id, Number(e.target.value))}
+                          disabled={disabled}
+                          inputMode="numeric"
+                        />
+                        <button
+                          type="button"
+                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
+                          disabled={disabled || plusDisabled}
+                          title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
+                          onClick={() => setItemQty(m.id, q + 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5 text-sm shadow-sm sm:mt-3 sm:p-3">
+              <div className="flex items-center justify-between">
+                <div className="font-medium">Estimated subtotal</div>
+                <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
+              </div>
+              {packagingEstimate > 0 ? (
+                <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
+                  <span>{premiumPackagingLabel}</span>
+                  <span>{money(packagingEstimate)}</span>
+                </div>
+              ) : null}
+              <div className="mt-1 text-[11px] text-slate-600">
+                {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. The final delivery fee appears after a driver proposal."}
+              </div>
+            </div>
+
+            {cashCollectionRequired ? (
+              <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm">
+                <div className="font-bold">Cash collection required.</div>
+                <div className="mt-1">
+                  Because this order exceeds PHP 500, your driver will collect the cash payment from you before proceeding to the vendor purchase.
+                </div>
+              </div>
+            ) : null}
+
+            {selectedLines.length > 0 ? (
+              <details className="mt-2 rounded-xl border bg-white p-2.5 text-sm sm:mt-3 sm:p-3">
+                <summary className="cursor-pointer font-medium">Packaging and receipt options</summary>
+                <div className="mt-2 space-y-2 text-xs text-slate-700">
+                  <div className="rounded-lg border bg-slate-50 p-2">Default item packaging is shown per menu item when the vendor provided a note.</div>
+                  {packagingEstimate > 0 ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-800">
+                      Premium packaging selected: {money(packagingEstimate)}
+                    </div>
+                  ) : null}
+                  <label className="flex items-start gap-2 rounded-lg border p-2">
+                    <input type="checkbox" checked={receiptRequested} onChange={(e) => setReceiptRequested(e.target.checked)} />
+                    <span>
+                      <span className="block font-semibold">Request vendor receipt</span>
+                      <span className="block text-slate-500">The vendor will see this request on the order queue.</span>
+                    </span>
+                  </label>
+                </div>
+              </details>
+            ) : null}
+
+            {itemsText ? (
+              <details className="mt-3 rounded border bg-white p-3">
+                <summary className="cursor-pointer text-sm font-medium">Menu snapshot (what will be sent)</summary>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-800">{itemsText}</pre>
+              </details>
+            ) : null}
+          </div>
             </div>
           </div>
 
@@ -1758,18 +1946,18 @@ const contact = await fetchOptionalJson(
             />
           </div>
 
-          {autofillNote ? (
-            <div
-              className={cls(
-                "md:col-span-2 rounded border p-2 text-xs",
-                authState === "guest" ? "border-amber-300 bg-amber-50 text-amber-900" :
-                authState === "signed_in_missing_profile" ? "border-sky-200 bg-sky-50 text-sky-900" :
-                "border-emerald-200 bg-emerald-50 text-emerald-800"
-              )}
-            >
-              {autofillNote}
-            </div>
-          ) : null}
+          {autofillNote && authState !== "signed_in_profile" ? (
+  <div
+    className={cls(
+      "md:col-span-2 rounded border p-2 text-xs",
+      authState === "guest"
+        ? "border-amber-300 bg-amber-50 text-amber-900"
+        : "border-sky-200 bg-sky-50 text-sky-900"
+    )}
+  >
+    {autofillNote}
+  </div>
+) : null}
 
           {/* JRIDE_TAKEOUT_AUTH_STATE_V4 */}
           {/* JRIDE_TAKEOUT_PASSENGER_AUTOFILL_V1 */}
@@ -1990,190 +2178,7 @@ const contact = await fetchOptionalJson(
             </div>
           </div>
 
-          {/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="md:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-black text-slate-900">Menu</div>
-                <div className="hidden text-[11px] text-slate-500 sm:block">Only available items can be selected.</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => refreshMenu().catch(() => undefined)}
-                className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
-                disabled={menuBusy || !vendorId.trim()}
-              >
-                {menuBusy ? "Loading..." : "Refresh menu"}
-              </button>
-            </div>
-
-            {menuErr ? (
-              <div className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700">{menuErr}</div>
-            ) : null}
-
-
-            {!vendorId.trim() ? (
-              <div className="mt-2 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-700">
-                <div className="font-semibold text-slate-900">Select a vendor to view today's menu.</div>
-                <div className="mt-1 text-xs text-slate-500">Available items, prep time, packaging notes, and subtotal will appear here.</div>
-              </div>
-            ) : menuBusy ? (
-              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menu...</div>
-            ) : menuSelectable.length === 0 ? (
-              <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">
-                No menu items available today.
-              </div>
-            ) : (
-              <div className="mt-2 space-y-2">
-                {menuSelectable.map((m) => {
-                  const q = Math.max(0, Math.floor(toNum(qty[m.id])));
-                  const rawRemaining = (m as any)?.remaining_quantity;
-                  const hasRemainingLimit = rawRemaining !== null && rawRemaining !== undefined && String(rawRemaining).trim() !== "";
-                  const remainingLimit = hasRemainingLimit ? Math.max(0, Math.floor(toNum(rawRemaining))) : 99;
-                  const plusDisabled = q >= remainingLimit;
-                  const disabled = vendorClosed || !m._available || (hasRemainingLimit && remainingLimit <= 0);
-                  return (
-                    <div
-                      key={m.id}
-                      className={cls(
-                        "rounded-2xl border border-slate-200 bg-white p-2 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex sm:items-start sm:justify-between sm:p-4",
-                        disabled ? "bg-slate-50 opacity-70" : "bg-white"
-                      )}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-14 w-14 shrink-0 rounded-xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
-                          <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
-                          {m.sold_out_today ? (
-                            <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
-                          ) : null}
-                          {m.is_available === false ? (
-                            <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">Unavailable</span>
-                          ) : null}
-                        </div>
-                        {m.description ? (
-                          <div className="mt-1 text-sm leading-relaxed text-slate-600">{m.description}</div>
-                        ) : null}
-                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
-                        {Number(m.remaining_quantity) > 0 ? (
-                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity)}</div>
-                        ) : null}
-                        {m.packaging_note ? (
-                          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
-                            Packaging: {m.packaging_note}
-                          </div>
-                        ) : null}
-                        {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-1.5 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] font-medium text-emerald-800 sm:p-2 sm:text-[11px]">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={premiumPackagingSelections[m.id] === true}
-                              disabled={disabled || q <= 0}
-                              onChange={(e) => setItemPremiumPackaging(m.id, e.target.checked)}
-                            />
-                            <span>
-                              <span className="block font-semibold">
-                                Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
-                              </span>
-                              <span className="hidden text-emerald-700 sm:block">
-                                Optional add-on. This is added to your subtotal when checked.
-                              </span>
-                            </span>
-                          </label>
-                        ) : null}
-                        <div className="mt-1.5 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 grid w-full shrink-0 grid-cols-[38px_1fr_38px] items-center gap-1.5 sm:mt-0 sm:flex sm:w-auto sm:justify-end sm:gap-2">
-                        <button
-                          type="button"
-                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
-                          disabled={disabled || q <= 0}
-                          onClick={() => setItemQty(m.id, q - 1)}
-                        >
-                          -
-                        </button>
-                        <input
-                          className="h-9 w-full rounded-xl border px-2 text-center text-sm font-black sm:h-11 sm:w-16 sm:text-base"
-                          value={String(q)}
-                          onChange={(e) => setItemQty(m.id, Number(e.target.value))}
-                          disabled={disabled}
-                          inputMode="numeric"
-                        />
-                        <button
-                          type="button"
-                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
-                          disabled={disabled || plusDisabled}
-                          title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
-                          onClick={() => setItemQty(m.id, q + 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5 text-sm shadow-sm sm:mt-3 sm:p-3">
-              <div className="flex items-center justify-between">
-                <div className="font-medium">Estimated subtotal</div>
-                <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
-              </div>
-              {packagingEstimate > 0 ? (
-                <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
-                  <span>{premiumPackagingLabel}</span>
-                  <span>{money(packagingEstimate)}</span>
-                </div>
-              ) : null}
-              <div className="mt-1 text-[11px] text-slate-600">
-                {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. The final delivery fee appears after a driver proposal."}
-              </div>
-            </div>
-
-            {cashCollectionRequired ? (
-              <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm">
-                <div className="font-bold">Cash collection required.</div>
-                <div className="mt-1">
-                  Because this order exceeds PHP 500, your driver will collect the cash payment from you before proceeding to the vendor purchase.
-                </div>
-              </div>
-            ) : null}
-
-            {selectedLines.length > 0 ? (
-              <details className="mt-2 rounded-xl border bg-white p-2.5 text-sm sm:mt-3 sm:p-3">
-                <summary className="cursor-pointer font-medium">Packaging and receipt options</summary>
-                <div className="mt-2 space-y-2 text-xs text-slate-700">
-                  <div className="rounded-lg border bg-slate-50 p-2">Default item packaging is shown per menu item when the vendor provided a note.</div>
-                  {packagingEstimate > 0 ? (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-800">
-                      Premium packaging selected: {money(packagingEstimate)}
-                    </div>
-                  ) : null}
-                  <label className="flex items-start gap-2 rounded-lg border p-2">
-                    <input type="checkbox" checked={receiptRequested} onChange={(e) => setReceiptRequested(e.target.checked)} />
-                    <span>
-                      <span className="block font-semibold">Request vendor receipt</span>
-                      <span className="block text-slate-500">The vendor will see this request on the order queue.</span>
-                    </span>
-                  </label>
-                </div>
-              </details>
-            ) : null}
-
-            {itemsText ? (
-              <details className="mt-3 rounded border bg-white p-3">
-                <summary className="cursor-pointer text-sm font-medium">Menu snapshot (what will be sent)</summary>
-                <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-800">{itemsText}</pre>
-              </details>
-            ) : null}
-          </div>
+          
 
           <details className="md:col-span-2 rounded-xl border bg-white p-2.5">
             <summary className="cursor-pointer text-sm font-medium text-slate-700">Add note (optional)</summary>
@@ -2739,6 +2744,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
