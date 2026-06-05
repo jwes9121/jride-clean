@@ -1808,8 +1808,12 @@ const contact = await fetchOptionalJson(
                               type="checkbox"
                               className="mt-0.5"
                               checked={premiumPackagingSelections[m.id] === true}
-                              disabled={disabled || q <= 0}
-                              onChange={(e) => setItemPremiumPackaging(m.id, e.target.checked)}
+                              disabled={disabled}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                if (checked && q <= 0) setItemQty(m.id, 1);
+                                setItemPremiumPackaging(m.id, checked);
+                              }}
                             />
                             <span>
                               <span className="block font-semibold">
@@ -2744,6 +2748,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
