@@ -1807,7 +1807,7 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              <div className="mx-auto mt-3 grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="mt-3 grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] gap-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1825,7 +1825,7 @@ const contact = await fetchOptionalJson(
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-4">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 shrink-0 rounded-2xl border object-cover shadow-sm" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-28 sm:w-28" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start gap-2">
                           <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
@@ -1849,7 +1849,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
+                          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1876,7 +1876,7 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-4 grid w-full grid-cols-[44px_1fr_44px] items-center gap-2">
+                      <div className="mt-4 grid w-full grid-cols-[44px_minmax(72px,120px)_44px] items-center gap-2">
                         <button
                           type="button"
                           className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
