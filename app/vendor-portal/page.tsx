@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -34,6 +34,7 @@ type MenuItem = {
   menu_item_id?: string | null;
   name: string;
   description?: string | null;
+  category?: string | null;
   packaging_note?: string | null;
   premium_packaging_enabled?: boolean | null;
   premium_packaging_fee?: number | string | null;
@@ -234,6 +235,8 @@ const VENDOR_CANCEL_REASONS = [
   "Other reason",
 ] as const;
 
+const MENU_CATEGORIES = ["Meals", "Drinks", "Snacks", "Desserts", "Add-ons", "Others"] as const;
+
 const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
 const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
 function prepMinutes(value: any) {
@@ -250,6 +253,33 @@ function vendorLabel(v: VendorRow) {
 }
 
 const VENDOR_PORTAL_ALERT_SOUND_URL = "/sounds/vendor-order-alert.mp3";
+
+const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
+const LEGACY_LS_VENDOR_ID = "jride_vendor_id";
+
+function readInitialVendorId() {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  return clean(
+    params.get("vendor_id") ||
+      window.sessionStorage.getItem(LS_VENDOR_ID) ||
+      window.localStorage.getItem(LS_VENDOR_ID) ||
+      window.sessionStorage.getItem(LEGACY_LS_VENDOR_ID) ||
+      window.localStorage.getItem(LEGACY_LS_VENDOR_ID) ||
+      ""
+  );
+}
+
+function persistPortalVendorId(vendorId: string) {
+  if (typeof window === "undefined") return;
+  const id = clean(vendorId);
+  if (!id) return;
+  window.localStorage.setItem(LS_VENDOR_ID, id);
+  window.sessionStorage.setItem(LS_VENDOR_ID, id);
+  window.localStorage.setItem(LEGACY_LS_VENDOR_ID, id);
+  window.sessionStorage.setItem(LEGACY_LS_VENDOR_ID, id);
+}
+
 
 function normalizeVendorStatus(s: any) {
   const x = clean(s).toLowerCase();
@@ -458,7 +488,7 @@ async function fileToDataUrl(file: File | null): Promise<string | null> {
 
 export default function VendorPortalPage() {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
-  const [vendorId, setVendorId] = useState("");
+  const [vendorId, setVendorId] = useState(() => readInitialVendorId());
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<TakeoutOrder[]>([]);
@@ -524,6 +554,7 @@ export default function VendorPortalPage() {
   const [editingId, setEditingId] = useState("");
   const [itemName, setItemName] = useState("");
   const [itemDescription, setItemDescription] = useState("");
+  const [itemCategory, setItemCategory] = useState("Meals");
   const [itemPackagingNote, setItemPackagingNote] = useState("");
   const [itemPremiumPackagingEnabled, setItemPremiumPackagingEnabled] = useState(false);
   const [itemPremiumPackagingFee, setItemPremiumPackagingFee] = useState("");
@@ -719,7 +750,24 @@ export default function VendorPortalPage() {
     const j = await getJson("/api/admin/vendors");
     const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
     setVendors(rows);
-    if (!vendorId && rows.length) setVendorId(vendorKey(rows[0]));
+
+    const initialVendorId = readInitialVendorId();
+    if (initialVendorId && initialVendorId !== vendorId) {
+      setVendorId(initialVendorId);
+      persistPortalVendorId(initialVendorId);
+      return;
+    }
+
+    if (vendorId) {
+      persistPortalVendorId(vendorId);
+      return;
+    }
+
+    if (rows.length) {
+      const firstId = vendorKey(rows[0]);
+      setVendorId(firstId);
+      persistPortalVendorId(firstId);
+    }
   }
 
   async function loadVendorData(id?: string, silent = false) {
@@ -934,6 +982,7 @@ export default function VendorPortalPage() {
     setEditingId("");
     setItemName("");
     setItemDescription("");
+    setItemCategory("Meals");
     setItemPackagingNote("");
     setItemPrepTimeMinutes(15);
     setItemPremiumPackagingEnabled(false);
@@ -953,6 +1002,7 @@ export default function VendorPortalPage() {
     setEditingId(clean(m.id || m.menu_item_id));
     setItemName(m.name || "");
     setItemDescription(m.description || "");
+    setItemCategory(String(m.category || "Others"));
     setItemPackagingNote(m.packaging_note || "");
     setItemPrepTimeMinutes(prepMinutes(m.prep_time_minutes));
     setItemPremiumPackagingEnabled(m.premium_packaging_enabled === true);
@@ -1044,6 +1094,7 @@ export default function VendorPortalPage() {
         id: editingId || null,
         name: itemName,
         description: itemDescription,
+        category: itemCategory,
         packaging_note: itemPackagingNote,
         prep_time_minutes: itemPrepTimeMinutes,
         premium_packaging_enabled: itemPremiumPackagingEnabled,
@@ -1213,7 +1264,9 @@ export default function VendorPortalPage() {
               className="min-w-72 rounded-xl border px-3 py-2 text-sm"
               value={vendorId}
               onChange={(e) => {
-                setVendorId(e.target.value);
+                const nextVendorId = e.target.value;
+                setVendorId(nextVendorId);
+                persistPortalVendorId(nextVendorId);
                 resetItemForm();
                 setMessage("");
                 setError("");
@@ -1574,6 +1627,12 @@ export default function VendorPortalPage() {
                   <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemName} onChange={(e) => setItemName(e.target.value)} disabled={limitReached} placeholder="Example: Chicken adobo" />
                 </div>
                 <div>
+                  <label className="text-xs font-medium text-slate-700">Category</label>
+                  <select className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} disabled={limitReached}>
+                    {MENU_CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className="text-xs font-medium text-slate-700">Price</label>
                   <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemPrice} onChange={(e) => setItemPrice(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached} inputMode="decimal" placeholder="0.00" />
                 </div>
@@ -1658,6 +1717,7 @@ export default function VendorPortalPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
+                            <div className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">{m.category || "Others"}</div>
                             <div className="mt-2 text-xl font-black tracking-tight text-slate-900">{money(m.price)}</div>
                           </div>
                           <button type="button" className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
@@ -2140,6 +2200,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
