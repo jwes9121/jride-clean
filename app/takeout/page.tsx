@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1776,7 +1776,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 grid w-full grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-3 grid w-full grid-cols-1 gap-4">
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1788,7 +1788,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md lg:p-5",
+                        "w-full rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2763,6 +2763,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
