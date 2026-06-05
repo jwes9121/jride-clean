@@ -41,6 +41,7 @@ type MenuItem = {
   id: string;
   name: string;
   description?: string | null;
+  category?: string | null;
   packaging_note?: string | null;
   premium_packaging_enabled?: boolean | null;
   premium_packaging_fee?: number | string | null;
@@ -642,6 +643,7 @@ export default function TakeoutPage() {
   const [menuErr, setMenuErr] = useState<string | null>(null);
   const [vendorClosed, setVendorClosed] = useState(false);
   const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState("All");
   const [menuVendorProfile, setMenuVendorProfile] = useState<any>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
 
@@ -748,9 +750,20 @@ function selectedAddressTown(
   const menuSelectable = useMemo(() => {
     return (menu || []).map((m) => {
       const available = (m.is_available !== false) && (m.sold_out_today !== true);
-      return { ...m, _available: available };
+      return { ...m, category: String(m.category || "Others"), _available: available };
     });
   }, [menu]);
+
+  const visibleMenuCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of menuSelectable) set.add(String(item.category || "Others"));
+    return ["All", "Meals", "Drinks", "Snacks", "Desserts", "Add-ons", "Others"].filter((cat) => cat === "All" || set.has(cat));
+  }, [menuSelectable]);
+
+  const filteredMenuSelectable = useMemo(() => {
+    if (menuCategoryFilter === "All") return menuSelectable;
+    return menuSelectable.filter((m) => String(m.category || "Others") === menuCategoryFilter);
+  }, [menuSelectable, menuCategoryFilter]);
 
   function itemPremiumPackagingEnabled(m: MenuItem): boolean {
     return m.premium_packaging_enabled === true;
@@ -1776,8 +1789,26 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
+              <>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {visibleMenuCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setMenuCategoryFilter(cat)}
+                    className={cls(
+                      "rounded-full border px-3 py-1.5 text-xs font-black",
+                      menuCategoryFilter === cat
+                        ? "border-emerald-300 bg-emerald-600 text-white"
+                        : "border-emerald-900/60 bg-slate-950/70 text-emerald-100"
+                    )}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
               <div className="mt-3 grid w-full grid-cols-1 gap-4">
-                {menuSelectable.map((m) => {
+                {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
                   const hasRemainingLimit = rawRemaining !== null && rawRemaining !== undefined && String(rawRemaining).trim() !== "";
@@ -1875,6 +1906,7 @@ const contact = await fetchOptionalJson(
                   );
                 })}
               </div>
+              </>
             )}
 
             <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5 text-sm shadow-sm sm:mt-3 sm:p-3">
@@ -2763,6 +2795,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
