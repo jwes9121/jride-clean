@@ -1807,7 +1807,7 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              <div className="mt-3 grid w-full grid-cols-1 gap-4">
+              <div className="mx-auto mt-3 grid w-full max-w-6xl grid-cols-1 gap-4 lg:grid-cols-2">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
