@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1543,7 +1543,7 @@ const contact = await fetchOptionalJson(
       </div>
 
       <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
-        <div className="grid gap-2.5 md:grid-cols-2 md:gap-3">
+        <div className="grid gap-2.5 md:grid-cols-1 md:gap-3">
           <div className="space-y-2">
             <div>
               <div className="flex items-center justify-between gap-2">
