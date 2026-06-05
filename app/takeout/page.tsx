@@ -1546,36 +1546,50 @@ const contact = await fetchOptionalJson(
         <div className="grid gap-2.5 md:grid-cols-2 md:gap-3">
           <div className="space-y-2">
             <div>
-              <label className="text-xs font-medium text-slate-700">Choose store location</label>
-              <select
-                className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                value={vendorTownFilter}
-                onChange={(e) => {
-                  const nextTown = normalizeTakeoutTown(e.target.value);
-                  setVendorTownFilter(nextTown);
-                  setVendorId("");
-                  setQty({});
-                  setMenu([]);
-                  setVendorClosed(false);
-                  setMenuVendorProfile(null);
-                  setMenuErr(null);
-                  setPremiumPackagingSelections({});
-                  setReceiptRequested(false);
-                  setSubmitted(false);
-                  setResult("");
-                  setLastJson(null);
-                  setPricingOrder(null);
-                }}
-              >
-                <option value="">Select town</option>
-                {vendorTowns.map((town) => (
-                  <option key={town} value={town}>
-                    {town}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose town</label>
+                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100">
+                  {vendorTownFilter || "Select"}
+                </span>
+              </div>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1 overscroll-x-contain touch-pan-x" style={{ WebkitOverflowScrolling: "touch" }}>
+                {vendorTowns.map((town) => {
+                  const active = vendorTownFilter === town;
+                  return (
+                    <button
+                      key={town}
+                      type="button"
+                      onClick={() => {
+                        const nextTown = normalizeTakeoutTown(town);
+                        setVendorTownFilter(nextTown);
+                        setVendorId("");
+                        setQty({});
+                        setMenu([]);
+                        setVendorClosed(false);
+                        setMenuVendorProfile(null);
+                        setMenuErr(null);
+                        setPremiumPackagingSelections({});
+                        setReceiptRequested(false);
+                        setSubmitted(false);
+                        setResult("");
+                        setLastJson(null);
+                        setPricingOrder(null);
+                      }}
+                      className={cls(
+                        "shrink-0 rounded-2xl border px-4 py-3 text-left text-sm font-black shadow-sm transition",
+                        active
+                          ? "border-emerald-300 bg-emerald-600 text-white shadow-emerald-950/30"
+                          : "border-emerald-900/60 bg-slate-950/70 text-emerald-100 hover:border-emerald-400"
+                      )}
+                    >
+                      <span className="block">{town}</span>
+                      <span className="mt-0.5 block text-[10px] font-semibold opacity-75">Browse stores</span>
+                    </button>
+                  );
+                })}
+              </div>
               <div className="mt-1 text-[11px] text-slate-500">
-                Vendors are grouped by town for faster delivery.
+                Pick the delivery town first so nearby stores load faster.
               </div>
             </div>
 
@@ -1761,7 +1775,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 -mx-1 flex max-w-[100vw] gap-3 overflow-x-auto overflow-y-hidden px-1 pb-2 overscroll-x-contain touch-pan-x sm:mx-0 sm:grid sm:max-w-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="mt-3 -mx-1 flex max-w-[100vw] gap-4 overflow-x-auto overflow-y-hidden px-1 pb-2 overscroll-x-contain touch-pan-x lg:mx-0 lg:grid lg:max-w-none lg:grid-cols-2 lg:gap-5 lg:overflow-visible lg:px-0 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1773,7 +1787,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "min-w-[300px] max-w-[340px] shrink-0 rounded-3xl md:min-w-0 md:max-w-none border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-w-0 sm:max-w-none sm:flex sm:items-start sm:justify-between sm:p-4",
+                        "min-w-[320px] max-w-[360px] shrink-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md lg:min-w-0 lg:max-w-none lg:flex lg:items-start lg:justify-between lg:p-5",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2748,6 +2762,9 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
+
+
 
 
 
