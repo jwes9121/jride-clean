@@ -1776,7 +1776,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 grid w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="mt-3 grid w-full grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1792,12 +1792,12 @@ const contact = await fetchOptionalJson(
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-3">
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="flex items-start gap-4">
                           {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 shrink-0 rounded-2xl border object-cover shadow-sm" /> : null}
                           <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
+                        <div className="flex flex-wrap items-start gap-2">
+                          <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1818,7 +1818,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-1.5 flex cursor-pointer items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-[10px] font-medium text-emerald-800 sm:p-2 sm:text-[11px]">
+                          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1840,7 +1840,7 @@ const contact = await fetchOptionalJson(
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-1.5 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
+                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
@@ -2763,6 +2763,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
