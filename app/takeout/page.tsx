@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1776,7 +1776,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 -mx-1 flex max-w-[100vw] gap-4 overflow-x-auto overflow-y-hidden px-1 pb-2 overscroll-x-contain touch-pan-x lg:mx-0 lg:grid lg:max-w-none lg:grid-cols-2 lg:gap-5 lg:overflow-visible lg:px-0 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="mt-3 grid w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1788,13 +1788,13 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "min-w-[320px] max-w-[360px] shrink-0 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md lg:min-w-0 lg:max-w-none lg:flex lg:items-start lg:justify-between lg:p-5",
+                        "w-full rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md lg:p-5",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-36 w-full shrink-0 rounded-2xl border object-cover shadow-sm lg:h-28 lg:w-28" /> : null}
+                        <div className="flex items-start gap-3">
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 shrink-0 rounded-2xl border object-cover shadow-sm" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
@@ -1845,7 +1845,7 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-2 grid w-full shrink-0 grid-cols-[38px_1fr_38px] items-center gap-1.5 sm:mt-0 sm:flex sm:w-auto sm:justify-end sm:gap-2">
+                      <div className="mt-4 grid w-full grid-cols-[44px_1fr_44px] items-center gap-2">
                         <button
                           type="button"
                           className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
@@ -2763,6 +2763,8 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
+
 
 
 
