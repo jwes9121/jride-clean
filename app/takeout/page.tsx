@@ -1489,7 +1489,7 @@ const contact = await fetchOptionalJson(
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
+    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
           <div className="jride-premium-brand-row">
@@ -1761,7 +1761,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 flex max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-2 overscroll-x-contain touch-pan-x sm:grid sm:grid-cols-2 sm:gap-4 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="mt-3 flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-2 overscroll-x-contain touch-pan-x sm:grid sm:grid-cols-2 sm:gap-4 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1773,7 +1773,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "min-w-[280px] rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:flex sm:items-start sm:justify-between sm:p-4",
+                        "w-[280px] shrink-0 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:w-auto sm:flex sm:items-start sm:justify-between sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2744,6 +2744,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
