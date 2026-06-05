@@ -1761,7 +1761,7 @@ const contact = await fetchOptionalJson(
                 No menu items available today.
               </div>
             ) : (
-              <div className="mt-3 flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-2 overscroll-x-contain touch-pan-x sm:grid sm:grid-cols-2 sm:gap-4 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="mt-3 -mx-1 flex max-w-[100vw] gap-3 overflow-x-auto overflow-y-hidden px-1 pb-2 overscroll-x-contain touch-pan-x sm:mx-0 sm:grid sm:max-w-none sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 xl:grid-cols-3" style={{ WebkitOverflowScrolling: "touch" }}>
                 {menuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1773,7 +1773,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-[280px] shrink-0 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:w-auto sm:flex sm:items-start sm:justify-between sm:p-4",
+                        "min-w-[280px] max-w-[320px] shrink-0 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-w-0 sm:max-w-none sm:flex sm:items-start sm:justify-between sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2744,6 +2744,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
