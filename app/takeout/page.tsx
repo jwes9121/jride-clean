@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1552,8 +1552,10 @@ const contact = await fetchOptionalJson(
                   {vendorTownFilter || "Select"}
                 </span>
               </div>
-              <div className="mt-2 flex gap-2 overflow-x-auto pb-1 overscroll-x-contain touch-pan-x" style={{ WebkitOverflowScrolling: "touch" }}>
-                {vendorTowns.map((town) => {
+              <div className="mt-2 grid grid-cols-5 gap-1.5">
+                {(["Lagawe", "Hingyon", "Banaue", "Lamut", "Kiangan"] as string[])
+  .filter((town) => vendorTowns.includes(town as any))
+  .map((town) => {
                   const active = vendorTownFilter === town;
                   return (
                     <button
@@ -1576,14 +1578,13 @@ const contact = await fetchOptionalJson(
                         setPricingOrder(null);
                       }}
                       className={cls(
-                        "shrink-0 rounded-2xl border px-4 py-3 text-left text-sm font-black shadow-sm transition",
+                        "rounded-2xl border px-2 py-2 text-center text-xs font-black shadow-sm transition",
                         active
                           ? "border-emerald-300 bg-emerald-600 text-white shadow-emerald-950/30"
                           : "border-emerald-900/60 bg-slate-950/70 text-emerald-100 hover:border-emerald-400"
                       )}
                     >
-                      <span className="block">{town}</span>
-                      <span className="mt-0.5 block text-[10px] font-semibold opacity-75">Browse stores</span>
+                      <span className="block leading-tight">{town}</span>
                     </button>
                   );
                 })}
@@ -1792,8 +1793,8 @@ const contact = await fetchOptionalJson(
                       )}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-28 sm:w-28" /> : null}
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-36 w-full shrink-0 rounded-2xl border object-cover shadow-sm lg:h-28 lg:w-28" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
@@ -2762,6 +2763,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
