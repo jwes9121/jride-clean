@@ -1773,7 +1773,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "min-w-[280px] max-w-[320px] shrink-0 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-w-0 sm:max-w-none sm:flex sm:items-start sm:justify-between sm:p-4",
+                        "min-w-[300px] max-w-[340px] shrink-0 rounded-3xl md:min-w-0 md:max-w-none border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-w-0 sm:max-w-none sm:flex sm:items-start sm:justify-between sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2748,6 +2748,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
