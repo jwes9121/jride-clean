@@ -37,22 +37,25 @@ function vendorLabel(v: Vendor): string {
 
 export default function VendorLoginPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [vendorId, setVendorId] = useState("");
+  const [selectedVendorKey, setSelectedVendorKey] = useState("");
+  const [typedVendorId, setTypedVendorId] = useState("");
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  function setSelectedVendor(nextVendorId: string) {
-    setVendorId(text(nextVendorId));
+  function setSelectedVendor(nextVendorKey: string) {
+    setSelectedVendorKey(text(nextVendorKey));
+    setTypedVendorId("");
+    setPin("");
     setError("");
-    setMessage("");
+    setMessage("Enter the vendor UUID and access code issued by JRide admin.");
   }
 
   const selectedVendor = useMemo(() => {
-    return vendors.find((v) => vendorKey(v) === text(vendorId)) || null;
-  }, [vendors, vendorId]);
+    return vendors.find((v) => vendorKey(v) === text(selectedVendorKey)) || null;
+  }, [vendors, selectedVendorKey]);
 
   const loadVendors = useCallback(async () => {
     setLoading(true);
@@ -66,19 +69,9 @@ export default function VendorLoginPage() {
 
       const list = Array.isArray(body?.vendors) ? body.vendors : [];
       setVendors(list);
-
-      const saved =
-        typeof window !== "undefined"
-          ? text(localStorage.getItem(LS_VENDOR_ID) || sessionStorage.getItem(LS_VENDOR_ID))
-          : "";
-
-      const savedExists = saved && list.some((v: Vendor) => vendorKey(v) === saved);
-      if (savedExists) {
-        setVendorId(saved);
-      } else {
-        setVendorId("");
-      }
-
+      setSelectedVendorKey("");
+      setTypedVendorId("");
+      setPin("");
       setMessage("Vendor access list loaded.");
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor access list."));
@@ -92,11 +85,16 @@ export default function VendorLoginPage() {
   }, [loadVendors]);
 
   async function continueToPortal() {
-    const id = text(vendorId);
+    const selectedKey = text(selectedVendorKey);
+    const id = text(typedVendorId);
     const accessPin = text(pin);
 
+    if (!selectedKey) {
+      setError("Select your vendor name first.");
+      return;
+    }
     if (!id) {
-      setError("Select your vendor first.");
+      setError("Enter your vendor UUID.");
       return;
     }
     if (!accessPin) {
@@ -112,7 +110,7 @@ export default function VendorLoginPage() {
       const res = await fetch("/api/vendor-login/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendor_id: id, access_pin: accessPin }),
+        body: JSON.stringify({ selected_vendor_id: selectedKey, vendor_id: id, access_pin: accessPin }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || body?.ok === false) {
@@ -147,7 +145,7 @@ export default function VendorLoginPage() {
               <div className="text-xs font-bold uppercase tracking-wide text-emerald-700">JRide Takeout</div>
               <h1 className="text-2xl font-bold">Vendor Login</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                Enter the JRide vendor access code given during onboarding. This verifies the vendor before opening the portal.
+                Select your vendor name, then enter the vendor UUID and access code issued by JRide admin.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -163,18 +161,21 @@ export default function VendorLoginPage() {
           <div className="mt-5 space-y-4">
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Known vendor</span>
-              <select value={vendorId} onChange={(e) => setSelectedVendor(e.target.value)} className="w-full rounded-lg border px-3 py-2">
+              <select value={selectedVendorKey} onChange={(e) => setSelectedVendor(e.target.value)} className="w-full rounded-lg border px-3 py-2">
                 <option value="">Select vendor</option>
                 {vendors.map((vendor) => {
                   const id = vendorKey(vendor);
                   return <option key={id} value={id}>{vendorLabel(vendor)}</option>;
                 })}
               </select>
+              <span className="mt-1 block text-xs text-slate-500">
+                Selecting a vendor does not reveal the UUID. Enter the UUID provided by JRide admin.
+              </span>
             </label>
 
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Vendor UUID</span>
-              <input value={vendorId} onChange={(e) => setSelectedVendor(e.target.value)} placeholder="Paste vendor UUID" className="w-full rounded-lg border px-3 py-2" />
+              <input value={typedVendorId} onChange={(e) => setTypedVendorId(e.target.value)} placeholder="Enter vendor UUID" className="w-full rounded-lg border px-3 py-2" />
             </label>
 
             <label className="block text-sm">
@@ -188,7 +189,7 @@ export default function VendorLoginPage() {
                 <div className="font-semibold">Selected vendor</div>
                 <div className="mt-1 text-slate-700">{text(selectedVendor.vendor_name || selectedVendor.display_name) || "Vendor"}</div>
                 <div className="text-xs text-slate-500">{text(selectedVendor.town) || "Town not set"}</div>
-                <div className="mt-1 break-all text-xs text-slate-500">{vendorKey(selectedVendor) || maskVendorId(vendorId)}</div>
+                <div className="mt-1 text-xs text-slate-500">UUID required: ask JRide admin if missing.</div>
               </div>
             ) : null}
 
@@ -199,13 +200,12 @@ export default function VendorLoginPage() {
         </section>
 
         <section className="rounded-2xl border bg-white p-5 text-sm text-slate-600 shadow-sm">
-          <div className="font-semibold text-slate-900">Safety scope</div>
+          <div className="font-semibold text-slate-900">Device access</div>
           <ul className="mt-2 list-disc space-y-1 pl-5">
-            <li>Touches only vendor login context and vendor portal loading.</li>
-            <li>Validates vendor UUID and access code against the vendor onboarding registry.</li>
-            <li>Stores only the verified vendor ID in browser localStorage and sessionStorage.</li>
-            <li>Redirects to vendor portal with a verified vendor_id query value.</li>
-            <li>Does not call dispatch, assign, status, fare proposal, ride lifecycle, wallet, or payout routes.</li>
+            <li>Each device must enter the vendor UUID and access code on first login.</li>
+            <li>After successful login, that device remembers the verified vendor.</li>
+            <li>The same vendor can log in on multiple devices if the owner shares the UUID and access code.</li>
+            <li>Access can be recovered by JRide admin from the vendor onboarding registry.</li>
           </ul>
         </section>
       </div>

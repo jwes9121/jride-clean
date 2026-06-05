@@ -73,11 +73,20 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({} as any));
+  const selectedVendorId = clean(body?.selected_vendor_id || body?.selectedVendorId);
   const vendorId = clean(body?.vendor_id || body?.vendorId);
   const accessPin = clean(body?.access_pin || body?.pin || body?.vendor_access_pin);
 
+  if (!selectedVendorId) {
+    return json(400, { ok: false, error: "MISSING_SELECTED_VENDOR", message: "Select your vendor name first." });
+  }
+
   if (!vendorId) {
-    return json(400, { ok: false, error: "MISSING_VENDOR_ID", message: "Select your vendor first." });
+    return json(400, { ok: false, error: "MISSING_VENDOR_ID", message: "Enter your vendor UUID." });
+  }
+
+  if (selectedVendorId !== vendorId) {
+    return json(401, { ok: false, error: "VENDOR_MISMATCH", message: "Selected vendor and entered UUID do not match." });
   }
 
   if (!/^\d{6}$/.test(accessPin)) {
