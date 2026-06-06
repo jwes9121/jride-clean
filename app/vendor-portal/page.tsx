@@ -63,6 +63,17 @@ type MenuItemAddonOption = {
   price: number;
 };
 
+type MenuItemVariantDraft = {
+  group_name: string;
+  option_name: string;
+  price: string;
+};
+
+type MenuItemAddonDraft = {
+  addon_name: string;
+  price: string;
+};
+
 type TakeoutOrderItem = {
   menu_item_id?: string | null;
   name?: string | null;
@@ -558,6 +569,48 @@ function addonLines(rows: MenuItemAddonOption[] | null | undefined): string {
     .join("\n");
 }
 
+function defaultVariantDrafts(): MenuItemVariantDraft[] {
+  return [{ group_name: "Size", option_name: "", price: "" }];
+}
+
+function defaultAddonDrafts(): MenuItemAddonDraft[] {
+  return [{ addon_name: "", price: "" }];
+}
+
+function variantDraftsFromRows(rows: MenuItemVariantOption[] | null | undefined): MenuItemVariantDraft[] {
+  const next = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      group_name: clean(row.group_name || "Size"),
+      option_name: clean(row.option_name || ""),
+      price: clean(row.price ?? ""),
+    }))
+    .filter((row) => row.group_name || row.option_name || row.price);
+  return next.length ? next : defaultVariantDrafts();
+}
+
+function addonDraftsFromRows(rows: MenuItemAddonOption[] | null | undefined): MenuItemAddonDraft[] {
+  const next = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({ addon_name: clean(row.addon_name || ""), price: clean(row.price ?? "") }))
+    .filter((row) => row.addon_name || row.price);
+  return next.length ? next : defaultAddonDrafts();
+}
+
+function normalizeVariantDrafts(rows: MenuItemVariantDraft[]): MenuItemVariantOption[] {
+  return rows
+    .map((row) => ({
+      group_name: clean(row.group_name || "Size"),
+      option_name: clean(row.option_name),
+      price: toNum(row.price),
+    }))
+    .filter((row) => row.group_name && row.option_name && row.price >= 0);
+}
+
+function normalizeAddonDrafts(rows: MenuItemAddonDraft[]): MenuItemAddonOption[] {
+  return rows
+    .map((row) => ({ addon_name: clean(row.addon_name), price: toNum(row.price) }))
+    .filter((row) => row.addon_name && row.price >= 0);
+}
+
 
 export default function VendorPortalPage() {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
@@ -631,6 +684,9 @@ export default function VendorPortalPage() {
   const [itemPackagingNote, setItemPackagingNote] = useState("");
   const [itemVariantText, setItemVariantText] = useState("");
   const [itemAddonText, setItemAddonText] = useState("");
+  const [itemVariantDrafts, setItemVariantDrafts] = useState<MenuItemVariantDraft[]>(() => defaultVariantDrafts());
+  const [itemAddonDrafts, setItemAddonDrafts] = useState<MenuItemAddonDraft[]>(() => defaultAddonDrafts());
+  const [itemSaveNotice, setItemSaveNotice] = useState("");
   const [itemPremiumPackagingEnabled, setItemPremiumPackagingEnabled] = useState(false);
   const [itemPremiumPackagingFee, setItemPremiumPackagingFee] = useState("");
   const [itemPremiumPackagingLabel, setItemPremiumPackagingLabel] = useState("Premium packaging");
@@ -1061,6 +1117,9 @@ export default function VendorPortalPage() {
     setItemPackagingNote("");
     setItemVariantText("");
     setItemAddonText("");
+    setItemVariantDrafts(defaultVariantDrafts());
+    setItemAddonDrafts(defaultAddonDrafts());
+    setItemSaveNotice("");
     setItemPrepTimeMinutes(15);
     setItemPremiumPackagingEnabled(false);
     setItemPremiumPackagingFee("");
@@ -1083,6 +1142,9 @@ export default function VendorPortalPage() {
     setItemPackagingNote(m.packaging_note || "");
     setItemVariantText(variantLines(m.variants));
     setItemAddonText(addonLines(m.addons));
+    setItemVariantDrafts(variantDraftsFromRows(m.variants));
+    setItemAddonDrafts(addonDraftsFromRows(m.addons));
+    setItemSaveNotice("Editing existing menu item. Save to apply changes.");
     setItemPrepTimeMinutes(prepMinutes(m.prep_time_minutes));
     setItemPremiumPackagingEnabled(m.premium_packaging_enabled === true);
     setItemPremiumPackagingFee(clean(m.premium_packaging_fee || ""));
@@ -1161,6 +1223,7 @@ export default function VendorPortalPage() {
         setBusy(true);
     setError("");
     setMessage("");
+    setItemSaveNotice(editingId ? "Updating menu item..." : "Adding menu item...");
     try {
       const photoDataUrl = await fileToDataUrl(itemFile);
       const stockIsPositive = hasPositiveJrideStock(itemDailyAvailableQuantity, itemRemainingQuantity);
@@ -1180,16 +1243,18 @@ export default function VendorPortalPage() {
         premium_packaging_fee: itemPremiumPackagingFee,
         premium_packaging_label: itemPremiumPackagingLabel,
         price: itemPrice,
-        variants: parseVariantLines(itemVariantText),
-        addons: parseAddonLines(itemAddonText),
+        variants: normalizeVariantDrafts(itemVariantDrafts),
+        addons: normalizeAddonDrafts(itemAddonDrafts),
         is_available: nextAvailable,
         sold_out_today: nextSoldOut,
         daily_available_quantity: itemDailyAvailableQuantity,
         remaining_quantity: itemRemainingQuantity,
         photo_data_url: photoDataUrl,
       });
-      setMessage(j?.warning ? "Menu saved, but image warning: " + j.warning : editingId ? "Menu item updated." : "Menu item added.");
+      const savedMessage = j?.warning ? "Menu saved, but image warning: " + j.warning : editingId ? "Menu item updated." : "Menu item added.";
+      setMessage(savedMessage);
       resetItemForm();
+      setItemSaveNotice(savedMessage);
       await loadVendorData(vid, true);
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -1720,6 +1785,23 @@ export default function VendorPortalPage() {
                   <datalist id="jride-menu-category-suggestions">
                     {MENU_CATEGORIES.map((cat) => <option key={cat} value={cat} />)}
                   </datalist>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {MENU_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        disabled={limitReached}
+                        onClick={() => setItemCategory(cat)}
+                        className={[
+                          "rounded-full border px-2 py-1 text-[11px] font-semibold",
+                          itemCategory === cat ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                        ].join(" ")}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">Type a custom category if the preset list does not fit, for example Silog, Bilao, Pancit, or Milk Tea.</div>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-700">Price</label>
@@ -1756,31 +1838,61 @@ export default function VendorPortalPage() {
                   <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
                 </div>
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 md:col-span-6">
-                  <div className="text-sm font-semibold text-indigo-900">Priced options</div>
-                  <div className="mt-1 text-xs text-indigo-800">Use one line per option. Prices must be structural so totals are correct.</div>
-                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <label className="text-xs font-medium text-slate-700">
-                      Variants - required choices like Size or Flavor
-                      <textarea
-                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-                        rows={4}
-                        value={itemVariantText}
-                        onChange={(e) => setItemVariantText(e.target.value)}
-                        disabled={limitReached}
-                        placeholder={"Size | Small | 60\nSize | Medium | 80\nFlavor | Beef | 90"}
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Add-ons - optional extras
-                      <textarea
-                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-                        rows={4}
-                        value={itemAddonText}
-                        onChange={(e) => setItemAddonText(e.target.value)}
-                        disabled={limitReached}
-                        placeholder={"Egg | 15\nExtra noodles | 20\nCheese | 25"}
-                      />
-                    </label>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-indigo-900">Priced options</div>
+                      <div className="mt-1 text-xs text-indigo-800">Use structured rows. If an option changes the price, enter the price here, not in notes.</div>
+                    </div>
+                    <div className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm">Totals-ready</div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-indigo-100 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">Variants</div>
+                          <div className="text-[11px] text-slate-500">Required choices like Size or Flavor. Each row has its own price.</div>
+                        </div>
+                        <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts((rows) => [...rows, { group_name: rows[rows.length - 1]?.group_name || "Size", option_name: "", price: "" }])} className="rounded-full border border-indigo-200 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50">+ Add option</button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {itemVariantDrafts.map((row, idx) => (
+                          <div key={idx} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[1fr_1fr_90px_auto]">
+                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.group_name} disabled={limitReached} placeholder="Group: Size" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, group_name: e.target.value } : r))} />
+                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.option_name} disabled={limitReached} placeholder="Option: Medium" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, option_name: e.target.value } : r))} />
+                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.price} disabled={limitReached} inputMode="decimal" placeholder="Price" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))} />
+                            <button type="button" disabled={limitReached || itemVariantDrafts.length <= 1} onClick={() => setItemVariantDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts([{ group_name: "Size", option_name: "Small", price: "60" }, { group_name: "Size", option_name: "Medium", price: "80" }, { group_name: "Size", option_name: "Large", price: "100" }])} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Use size sample</button>
+                        <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts([{ group_name: "Flavor", option_name: "Beef", price: "90" }, { group_name: "Flavor", option_name: "Chicken", price: "85" }, { group_name: "Flavor", option_name: "Pork", price: "85" }])} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Use flavor sample</button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-indigo-100 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">Add-ons</div>
+                          <div className="text-[11px] text-slate-500">Optional extras. Prices add to the item line total.</div>
+                        </div>
+                        <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts((rows) => [...rows, { addon_name: "", price: "" }])} className="rounded-full border border-indigo-200 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50">+ Add add-on</button>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {itemAddonDrafts.map((row, idx) => (
+                          <div key={idx} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[1fr_90px_auto]">
+                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.addon_name} disabled={limitReached} placeholder="Add-on: Egg" onChange={(e) => setItemAddonDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, addon_name: e.target.value } : r))} />
+                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.price} disabled={limitReached} inputMode="decimal" placeholder="Price" onChange={(e) => setItemAddonDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))} />
+                            <button type="button" disabled={limitReached || itemAddonDrafts.length <= 1} onClick={() => setItemAddonDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40">Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts([{ addon_name: "Egg", price: "15" }, { addon_name: "Extra noodles", price: "20" }, { addon_name: "Cheese", price: "25" }])} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Use add-on sample</button>
+                        <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts(defaultAddonDrafts())} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Clear add-ons</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div className="rounded-2xl border bg-white p-3 md:col-span-6">
@@ -1817,8 +1929,9 @@ export default function VendorPortalPage() {
                     Set how many items are available for JRide customers. Keep a buffer for walk-in and in-store customers. Update availability throughout the day as items are sold or restocked.
                   </div>
                   {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
-                  <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">{editingId ? "Update item" : "Add item"}</button>
+                  <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">{busy ? "Saving..." : editingId ? "Update item" : "Add item"}</button>
                   <button type="button" onClick={resetItemForm} className="rounded-2xl border bg-white shadow-sm px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear</button>
+                  {itemSaveNotice ? <div className="basis-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">{itemSaveNotice}</div> : null}
                 </div>
               </div>
 
