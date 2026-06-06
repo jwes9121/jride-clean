@@ -694,7 +694,15 @@ export default function TakeoutPage() {
   const visibleVendors = useMemo(() => {
     const town = normalizeTakeoutTown(vendorTownFilter);
     if (!town) return [];
-    return vendors.filter((v) => vendorTown(v) === town);
+    return vendors.filter((v: any) => {
+      const accepting =
+        v?.accepting_orders ??
+        v?.acceptingOrders ??
+        v?.is_open ??
+        v?.isOpen ??
+        true;
+      return accepting !== false && vendorTown(v) === town;
+    });
   }, [vendors, vendorTownFilter]);
 
   const selectedVendor = useMemo(() => {
@@ -1115,7 +1123,16 @@ const contact = await fetchOptionalJson(
     getJson("/api/admin/vendors")
       .then((j) => {
         const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
-        setVendors(rows);
+        const activeRows = rows.filter((v: any) => {
+          const accepting =
+            v?.accepting_orders ??
+            v?.acceptingOrders ??
+            v?.is_open ??
+            v?.isOpen ??
+            true;
+          return accepting !== false;
+        });
+        setVendors(activeRows);
       })
       .catch(() => setVendors([]));
   }, []);
@@ -1759,7 +1776,7 @@ const contact = await fetchOptionalJson(
   Browse menu
 </div>
                 <div className="hidden text-xs text-slate-500 sm:block">
-  Swipe through available meals, drinks, and add-ons.
+  Browse available menu items from local vendors.
 </div>
               </div>
               <button

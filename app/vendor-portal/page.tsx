@@ -1760,7 +1760,7 @@ export default function VendorPortalPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
-                  <p className="text-xs text-slate-500">Menu catalog with categories, priced variants, priced add-ons, and optimized photos.</p>
+                  <p className="text-xs text-slate-500">Menu catalog with categories, fixed prices, packaging, availability, and optimized photos.</p>
                 </div>
                 <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
   Unlimited menu items
@@ -1837,62 +1837,13 @@ export default function VendorPortalPage() {
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
                   <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
                 </div>
-                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 md:col-span-6">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-indigo-900">Flavor options</div>
-                      <div className="mt-1 text-xs text-indigo-800">Pilot mode: use the menu price as the default delivery price. Add flavors only when the flavor changes the price.</div>
-                    </div>
-                    <div className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm">Totals-ready</div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 md:col-span-6">
+                  <div className="text-sm font-semibold text-slate-900">Pilot menu pricing rule</div>
+                  <div className="mt-1 text-xs leading-relaxed text-slate-600">
+                    For the pilot rollout, use one delivery-ready price per menu item. If a flavor or size has a different price, create it as a separate menu item.
                   </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-indigo-100 bg-white p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">Variants</div>
-                          <div className="text-[11px] text-slate-500">Required choices like Size or Flavor. Each row has its own price.</div>
-                        </div>
-                        <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts((rows) => [...rows, { group_name: rows[rows.length - 1]?.group_name || "Size", option_name: "", price: "" }])} className="rounded-full border border-indigo-200 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50">+ Add option</button>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {itemVariantDrafts.map((row, idx) => (
-                          <div key={idx} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[1fr_1fr_90px_auto]">
-                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.group_name} disabled={limitReached} placeholder="Group: Size" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, group_name: e.target.value } : r))} />
-                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.option_name} disabled={limitReached} placeholder="Option: Medium" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, option_name: e.target.value } : r))} />
-                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.price} disabled={limitReached} inputMode="decimal" placeholder="Price" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))} />
-                            <button type="button" disabled={limitReached || itemVariantDrafts.length <= 1} onClick={() => setItemVariantDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40">Remove</button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                        <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts([{ group_name: "Size", option_name: "Small", price: "60" }, { group_name: "Size", option_name: "Medium", price: "80" }, { group_name: "Size", option_name: "Large", price: "100" }])} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Use flavor sample</button>
-                        <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts([{ group_name: "Flavor", option_name: "Beef", price: "90" }, { group_name: "Flavor", option_name: "Chicken", price: "85" }, { group_name: "Flavor", option_name: "Pork", price: "85" }])} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Use flavor sample</button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-indigo-100 bg-white p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">Add-ons</div>
-                          <div className="text-[11px] text-slate-500">Optional extras. Prices add to the item line total.</div>
-                        </div>
-                        <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts((rows) => [...rows, { addon_name: "", price: "" }])} className="rounded-full border border-indigo-200 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50">+ Add add-on</button>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {itemAddonDrafts.map((row, idx) => (
-                          <div key={idx} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[1fr_90px_auto]">
-                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.addon_name} disabled={limitReached} placeholder="Add-on: Egg" onChange={(e) => setItemAddonDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, addon_name: e.target.value } : r))} />
-                            <input className="rounded-lg border px-2 py-2 text-sm" value={row.price} disabled={limitReached} inputMode="decimal" placeholder="Price" onChange={(e) => setItemAddonDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))} />
-                            <button type="button" disabled={limitReached || itemAddonDrafts.length <= 1} onClick={() => setItemAddonDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40">Remove</button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                        <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts([{ addon_name: "Egg", price: "15" }, { addon_name: "Extra noodles", price: "20" }, { addon_name: "Cheese", price: "25" }])} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Use add-on sample</button>
-                        <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts(defaultAddonDrafts())} className="rounded-full border bg-white px-2 py-1 text-slate-600 hover:bg-slate-50">Clear add-ons</button>
-                      </div>
-                    </div>
+                  <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold text-emerald-800">
+                    Example: Milk Tea - Wintermelon Large, Milk Tea - Matcha Large, Milk Tea - Okinawa Large.
                   </div>
                 </div>
                 <div className="rounded-2xl border bg-white p-3 md:col-span-6">
@@ -1956,16 +1907,6 @@ export default function VendorPortalPage() {
                         {m.description ? <div className="text-sm leading-relaxed text-slate-600">{m.description}</div> : null}
                         <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         <div className="text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
-                        {Array.isArray(m.variants) && m.variants.length > 0 ? (
-                          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-2 text-[11px] font-medium text-indigo-800">
-                            Variants: {m.variants.length} priced option{m.variants.length === 1 ? "" : "s"}
-                          </div>
-                        ) : null}
-                        {Array.isArray(m.addons) && m.addons.length > 0 ? (
-                          <div className="rounded-xl border border-sky-200 bg-sky-50 p-2 text-[11px] font-medium text-sky-800">
-                            Add-ons: {m.addons.length} priced extra{m.addons.length === 1 ? "" : "s"}
-                          </div>
-                        ) : null}
                         {m.packaging_note ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">Packaging: {m.packaging_note}</div> : null}
                         {m.premium_packaging_enabled ? (
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
