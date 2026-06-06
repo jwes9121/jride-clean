@@ -48,6 +48,19 @@ type MenuItem = {
   remaining_quantity?: number | string | null;
   last_updated_at?: string | null;
   prep_time_minutes?: number | string | null;
+  variants?: MenuItemVariantOption[] | null;
+  addons?: MenuItemAddonOption[] | null;
+};
+
+type MenuItemVariantOption = {
+  group_name: string;
+  option_name: string;
+  price: number;
+};
+
+type MenuItemAddonOption = {
+  addon_name: string;
+  price: number;
 };
 
 type TakeoutOrderItem = {
@@ -235,7 +248,7 @@ const VENDOR_CANCEL_REASONS = [
   "Other reason",
 ] as const;
 
-const MENU_CATEGORIES = ["Meals", "Drinks", "Snacks", "Desserts", "Add-ons", "Others"] as const;
+const MENU_CATEGORIES = ["Meals", "Rice Meals", "Noodles", "Drinks", "Coffee", "Bread", "Desserts", "Snacks", "Add-ons", "Others"] as const;
 
 const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
 const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
@@ -477,14 +490,74 @@ async function postJson(url: string, body: any) {
 async function fileToDataUrl(file: File | null): Promise<string | null> {
   if (!file) return null;
   if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed.");
-  if (file.size > 3 * 1024 * 1024) throw new Error("Image is too large. Maximum is 3MB.");
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Failed to read image."));
-    reader.readAsDataURL(file);
-  });
+  if (file.size > 5 * 1024 * 1024) throw new Error("Image is too large. Maximum input size is 5MB.");
+
+  const bitmap = await createImageBitmap(file);
+  const maxSide = 1200;
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Image compression is not available on this device.");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  const qualitySteps = [0.82, 0.76, 0.70, 0.64];
+  for (const quality of qualitySteps) {
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const approxBytes = Math.ceil((dataUrl.length - "data:image/jpeg;base64,".length) * 3 / 4);
+    if (approxBytes <= 1024 * 1024) return dataUrl;
+  }
+
+  return canvas.toDataURL("image/jpeg", 0.60);
 }
+
+
+function parseVariantLines(value: string): MenuItemVariantOption[] {
+  return value
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("|").map((part) => part.trim());
+      const groupName = parts[0] || "Option";
+      const optionName = parts[1] || "";
+      const price = toNum(parts[2] || 0);
+      return { group_name: groupName, option_name: optionName, price };
+    })
+    .filter((row) => row.option_name && row.price >= 0);
+}
+
+function parseAddonLines(value: string): MenuItemAddonOption[] {
+  return value
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("|").map((part) => part.trim());
+      const addonName = parts[0] || "";
+      const price = toNum(parts[1] || 0);
+      return { addon_name: addonName, price };
+    })
+    .filter((row) => row.addon_name && row.price >= 0);
+}
+
+function variantLines(rows: MenuItemVariantOption[] | null | undefined): string {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => [row.group_name || "Option", row.option_name || "", String(row.price ?? 0)].join(" | "))
+    .join("\n");
+}
+
+function addonLines(rows: MenuItemAddonOption[] | null | undefined): string {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => [row.addon_name || "", String(row.price ?? 0)].join(" | "))
+    .join("\n");
+}
+
 
 export default function VendorPortalPage() {
   const [vendors, setVendors] = useState<VendorRow[]>([]);
@@ -556,6 +629,8 @@ export default function VendorPortalPage() {
   const [itemDescription, setItemDescription] = useState("");
   const [itemCategory, setItemCategory] = useState("Meals");
   const [itemPackagingNote, setItemPackagingNote] = useState("");
+  const [itemVariantText, setItemVariantText] = useState("");
+  const [itemAddonText, setItemAddonText] = useState("");
   const [itemPremiumPackagingEnabled, setItemPremiumPackagingEnabled] = useState(false);
   const [itemPremiumPackagingFee, setItemPremiumPackagingFee] = useState("");
   const [itemPremiumPackagingLabel, setItemPremiumPackagingLabel] = useState("Premium packaging");
@@ -984,6 +1059,8 @@ export default function VendorPortalPage() {
     setItemDescription("");
     setItemCategory("Meals");
     setItemPackagingNote("");
+    setItemVariantText("");
+    setItemAddonText("");
     setItemPrepTimeMinutes(15);
     setItemPremiumPackagingEnabled(false);
     setItemPremiumPackagingFee("");
@@ -1004,6 +1081,8 @@ export default function VendorPortalPage() {
     setItemDescription(m.description || "");
     setItemCategory(String(m.category || "Others"));
     setItemPackagingNote(m.packaging_note || "");
+    setItemVariantText(variantLines(m.variants));
+    setItemAddonText(addonLines(m.addons));
     setItemPrepTimeMinutes(prepMinutes(m.prep_time_minutes));
     setItemPremiumPackagingEnabled(m.premium_packaging_enabled === true);
     setItemPremiumPackagingFee(clean(m.premium_packaging_fee || ""));
@@ -1101,6 +1180,8 @@ export default function VendorPortalPage() {
         premium_packaging_fee: itemPremiumPackagingFee,
         premium_packaging_label: itemPremiumPackagingLabel,
         price: itemPrice,
+        variants: parseVariantLines(itemVariantText),
+        addons: parseAddonLines(itemAddonText),
         is_available: nextAvailable,
         sold_out_today: nextSoldOut,
         daily_available_quantity: itemDailyAvailableQuantity,
@@ -1614,7 +1695,7 @@ export default function VendorPortalPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
-                  <p className="text-xs text-slate-500">Menu catalog with unlimited menu items.</p>
+                  <p className="text-xs text-slate-500">Menu catalog with categories, priced variants, priced add-ons, and optimized photos.</p>
                 </div>
                 <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
   Unlimited menu items
@@ -1628,9 +1709,17 @@ export default function VendorPortalPage() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-700">Category</label>
-                  <select className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} disabled={limitReached}>
-                    {MENU_CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
+                  <input
+                    className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                    value={itemCategory}
+                    onChange={(e) => setItemCategory(e.target.value)}
+                    disabled={limitReached}
+                    list="jride-menu-category-suggestions"
+                    placeholder="Example: Noodles"
+                  />
+                  <datalist id="jride-menu-category-suggestions">
+                    {MENU_CATEGORIES.map((cat) => <option key={cat} value={cat} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-700">Price</label>
@@ -1650,6 +1739,7 @@ export default function VendorPortalPage() {
                       if (f) setItemPreview(URL.createObjectURL(f));
                     }}
                   />
+                  <div className="mt-1 text-[11px] text-slate-500">Up to 5MB input. JRide compresses photos before upload for faster passenger browsing.</div>
                 </div>
                 <div className="md:col-span-6">
                   <label className="text-xs font-medium text-slate-700">Description</label>
@@ -1664,6 +1754,34 @@ export default function VendorPortalPage() {
                   <label className="text-xs font-medium text-slate-700">Packaging note</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
                   <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
+                </div>
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 md:col-span-6">
+                  <div className="text-sm font-semibold text-indigo-900">Priced options</div>
+                  <div className="mt-1 text-xs text-indigo-800">Use one line per option. Prices must be structural so totals are correct.</div>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label className="text-xs font-medium text-slate-700">
+                      Variants - required choices like Size or Flavor
+                      <textarea
+                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                        rows={4}
+                        value={itemVariantText}
+                        onChange={(e) => setItemVariantText(e.target.value)}
+                        disabled={limitReached}
+                        placeholder={"Size | Small | 60\nSize | Medium | 80\nFlavor | Beef | 90"}
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Add-ons - optional extras
+                      <textarea
+                        className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                        rows={4}
+                        value={itemAddonText}
+                        onChange={(e) => setItemAddonText(e.target.value)}
+                        disabled={limitReached}
+                        placeholder={"Egg | 15\nExtra noodles | 20\nCheese | 25"}
+                      />
+                    </label>
+                  </div>
                 </div>
                 <div className="rounded-2xl border bg-white p-3 md:col-span-6">
                   <label className="flex items-start justify-between gap-3 text-sm">
@@ -1725,6 +1843,16 @@ export default function VendorPortalPage() {
                         {m.description ? <div className="text-sm leading-relaxed text-slate-600">{m.description}</div> : null}
                         <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         <div className="text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
+                        {Array.isArray(m.variants) && m.variants.length > 0 ? (
+                          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-2 text-[11px] font-medium text-indigo-800">
+                            Variants: {m.variants.length} priced option{m.variants.length === 1 ? "" : "s"}
+                          </div>
+                        ) : null}
+                        {Array.isArray(m.addons) && m.addons.length > 0 ? (
+                          <div className="rounded-xl border border-sky-200 bg-sky-50 p-2 text-[11px] font-medium text-sky-800">
+                            Add-ons: {m.addons.length} priced extra{m.addons.length === 1 ? "" : "s"}
+                          </div>
+                        ) : null}
                         {m.packaging_note ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">Packaging: {m.packaging_note}</div> : null}
                         {m.premium_packaging_enabled ? (
                           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">

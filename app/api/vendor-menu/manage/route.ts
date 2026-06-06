@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +71,7 @@ function normalizeMenuRow(row: any) {
     vendor_id: cleanString(row?.vendor_id || ""),
     name: cleanString(row?.name || ""),
     description: cleanString(row?.description || ""),
+    category: cleanString(row?.category || "Others") || "Others",
     packaging_note: cleanString(row?.packaging_note || ""),
         prep_time_minutes: prepMinutes(row?.prep_time_minutes),
     premium_packaging_enabled: toBool(row?.premium_packaging_enabled, false),
@@ -87,6 +88,8 @@ function normalizeMenuRow(row: any) {
     sold_out_today: soldOut,
     is_sold_out_today: soldOut,
     last_updated_at: row?.last_updated_at || row?.updated_at || null,
+    variants: Array.isArray(row?.variants) ? row.variants : [],
+    addons: Array.isArray(row?.addons) ? row.addons : [],
   };
 }
 
@@ -105,8 +108,8 @@ async function uploadImage(admin: any, vendorId: string, kind: "logo" | "menu", 
   if (!parsed) return { url: null as string | null, warning: null as string | null };
 
   const bytes = Buffer.from(parsed.b64, "base64");
-  if (bytes.length > 3 * 1024 * 1024) {
-    return { url: null, warning: "IMAGE_TOO_LARGE_MAX_3MB" };
+  if (bytes.length > 5 * 1024 * 1024) {
+    return { url: null, warning: "IMAGE_TOO_LARGE_MAX_5MB" };
   }
 
   try {
@@ -175,7 +178,101 @@ async function getMenu(admin: any, vendorId: string) {
     .order("sort_order", { ascending: true });
 
   if (q.error) throw new Error(q.error.message);
-  return (Array.isArray(q.data) ? q.data : []).map(normalizeMenuRow);
+
+  const rows = (Array.isArray(q.data) ? q.data : []).map(normalizeMenuRow);
+  const ids = rows.map((row: any) => row.id).filter(Boolean);
+  if (!ids.length) return rows;
+
+  const variantMap: Record<string, any[]> = {};
+  const addonMap: Record<string, any[]> = {};
+
+  const variants = await admin
+    .from("vendor_menu_item_variants")
+    .select("menu_item_id,group_name,option_name,price,sort_order,is_active")
+    .eq("vendor_id", vendorId)
+    .in("menu_item_id", ids)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (!variants.error && Array.isArray(variants.data)) {
+    for (const row of variants.data) {
+      const key = cleanString(row?.menu_item_id);
+      if (!variantMap[key]) variantMap[key] = [];
+      variantMap[key].push({
+        group_name: cleanString(row?.group_name || "Option"),
+        option_name: cleanString(row?.option_name || ""),
+        price: toPrice(row?.price),
+      });
+    }
+  }
+
+  const addons = await admin
+    .from("vendor_menu_item_addons")
+    .select("menu_item_id,addon_name,price,sort_order,is_active")
+    .eq("vendor_id", vendorId)
+    .in("menu_item_id", ids)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  if (!addons.error && Array.isArray(addons.data)) {
+    for (const row of addons.data) {
+      const key = cleanString(row?.menu_item_id);
+      if (!addonMap[key]) addonMap[key] = [];
+      addonMap[key].push({
+        addon_name: cleanString(row?.addon_name || ""),
+        price: toPrice(row?.price),
+      });
+    }
+  }
+
+  return rows.map((row: any) => ({
+    ...row,
+    variants: variantMap[row.id] || [],
+    addons: addonMap[row.id] || [],
+  }));
+}
+
+function normalizeVariantRows(rows: any[]) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row, idx) => ({
+      group_name: cleanString(row?.group_name || row?.groupName || "Option") || "Option",
+      option_name: cleanString(row?.option_name || row?.optionName || ""),
+      price: toPrice(row?.price),
+      sort_order: idx + 1,
+      is_active: true,
+    }))
+    .filter((row) => row.option_name && row.price >= 0);
+}
+
+function normalizeAddonRows(rows: any[]) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row, idx) => ({
+      addon_name: cleanString(row?.addon_name || row?.addonName || row?.name || ""),
+      price: toPrice(row?.price),
+      sort_order: idx + 1,
+      is_active: true,
+    }))
+    .filter((row) => row.addon_name && row.price >= 0);
+}
+
+async function replaceMenuOptions(admin: any, vendorId: string, menuItemId: string, variantsInput: any[], addonsInput: any[]) {
+  const variants = normalizeVariantRows(variantsInput);
+  const addons = normalizeAddonRows(addonsInput);
+
+  await admin.from("vendor_menu_item_variants").delete().eq("vendor_id", vendorId).eq("menu_item_id", menuItemId);
+  await admin.from("vendor_menu_item_addons").delete().eq("vendor_id", vendorId).eq("menu_item_id", menuItemId);
+
+  if (variants.length) {
+    const payload = variants.map((row) => ({ ...row, vendor_id: vendorId, menu_item_id: menuItemId }));
+    const ins = await admin.from("vendor_menu_item_variants").insert(payload);
+    if (ins.error) throw new Error(ins.error.message);
+  }
+
+  if (addons.length) {
+    const payload = addons.map((row) => ({ ...row, vendor_id: vendorId, menu_item_id: menuItemId }));
+    const ins = await admin.from("vendor_menu_item_addons").insert(payload);
+    if (ins.error) throw new Error(ins.error.message);
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -266,6 +363,7 @@ export async function POST(req: NextRequest) {
         vendor_id: vendorId,
         name: cleanString(body?.name),
         description: cleanString(body?.description),
+        category: cleanString(body?.category || "Others") || "Others",
         packaging_note: cleanString(body?.packaging_note || body?.packagingNote),
         prep_time_minutes: prepMinutes(body?.prep_time_minutes ?? body?.prepTimeMinutes),
         premium_packaging_enabled: toBool(body?.premium_packaging_enabled ?? body?.premiumPackagingEnabled, false),
@@ -287,12 +385,25 @@ export async function POST(req: NextRequest) {
       if (itemId) {
         const up = await updateSchemaSafe(admin, "vendor_menu_items", base, "id", itemId);
         if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message, warning: photoUpload.warning });
-        return json(200, { ok: true, action: "updated", warning: photoUpload.warning, item: normalizeMenuRow(Array.isArray(up.data) ? up.data[0] : up.data) });
+
+        await replaceMenuOptions(admin, vendorId, itemId, body?.variants || [], body?.addons || []);
+
+        const updatedMenu = await getMenu(admin, vendorId);
+        const updatedItem = updatedMenu.find((row: any) => row.id === itemId) || normalizeMenuRow(Array.isArray(up.data) ? up.data[0] : up.data);
+        return json(200, { ok: true, action: "updated", warning: photoUpload.warning, item: updatedItem });
       }
 
       const ins = await insertSchemaSafe(admin, "vendor_menu_items", base);
       if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message, warning: photoUpload.warning });
-      return json(200, { ok: true, action: "created", warning: photoUpload.warning, item: normalizeMenuRow(ins.data) });
+
+      const createdId = menuId(ins.data);
+      if (createdId) {
+        await replaceMenuOptions(admin, vendorId, createdId, body?.variants || [], body?.addons || []);
+      }
+
+      const updatedMenu = await getMenu(admin, vendorId);
+      const createdItem = updatedMenu.find((row: any) => row.id === createdId) || normalizeMenuRow(ins.data);
+      return json(200, { ok: true, action: "created", warning: photoUpload.warning, item: createdItem });
     }
 
     if (action === "toggle_item") {
@@ -315,6 +426,7 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
   }
 }
+
 
 
 
