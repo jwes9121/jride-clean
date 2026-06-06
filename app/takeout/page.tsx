@@ -37,6 +37,19 @@ type AddressRow = {
   updated_at?: string | null;
 };
 
+type MenuItemOption = {
+  id?: string | null;
+  group_name?: string | null;
+  option_name?: string | null;
+  addon_name?: string | null;
+  price?: number | string | null;
+};
+
+type SelectedMenuOptions = {
+  variant?: MenuItemOption | null;
+  addons?: MenuItemOption[];
+};
+
 type MenuItem = {
   id: string;
   name: string;
@@ -55,6 +68,8 @@ type MenuItem = {
   remaining_quantity?: number | string | null;
   last_updated_at?: string | null;
   prep_time_minutes?: number | string | null;
+  variants?: MenuItemOption[] | null;
+  addons?: MenuItemOption[] | null;
 };
 
 type VendorRow = {
@@ -249,6 +264,19 @@ function toNum(v: any): number {
 function money(n: number) {
   const v = Number(n || 0);
   return "PHP " + v.toFixed(2);
+}
+
+function menuOptionLabel(option: MenuItemOption | null | undefined): string {
+  if (!option) return "";
+  return String(option.option_name || option.addon_name || "").trim();
+}
+
+function menuOptionPrice(option: MenuItemOption | null | undefined): number {
+  return toNum(option?.price);
+}
+
+function menuItemHasChoices(item: MenuItem): boolean {
+  return (Array.isArray(item.variants) && item.variants.length > 0) || (Array.isArray(item.addons) && item.addons.length > 0);
 }
 const PREP_TIME_OPTIONS = [15, 20, 30, 45, 60];
 
@@ -646,6 +674,10 @@ export default function TakeoutPage() {
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("All");
   const [menuVendorProfile, setMenuVendorProfile] = useState<any>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
+  const [selectedMenuOptions, setSelectedMenuOptions] = useState<Record<string, SelectedMenuOptions>>({});
+  const [optionModalItem, setOptionModalItem] = useState<MenuItem | null>(null);
+  const [optionModalVariantId, setOptionModalVariantId] = useState("");
+  const [optionModalAddonIds, setOptionModalAddonIds] = useState<Record<string, boolean>>({});
 
   const [note, setNote] = useState("");
   const [premiumPackagingSelections, setPremiumPackagingSelections] = useState<Record<string, boolean>>({});
@@ -786,6 +818,47 @@ function selectedAddressTown(
     });
   }
 
+  function openMenuOptionModal(item: MenuItem) {
+    const existing = selectedMenuOptions[item.id] || {};
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    const addons = Array.isArray(item.addons) ? item.addons : [];
+    setOptionModalItem(item);
+    setOptionModalVariantId(String(existing.variant?.id || existing.variant?.option_name || variants[0]?.id || variants[0]?.option_name || ""));
+    const nextAddonIds: Record<string, boolean> = {};
+    for (const addon of existing.addons || []) {
+      const key = String(addon.id || addon.addon_name || "");
+      if (key) nextAddonIds[key] = true;
+    }
+    for (const addon of addons) {
+      const key = String(addon.id || addon.addon_name || "");
+      if (key && nextAddonIds[key] === undefined) nextAddonIds[key] = false;
+    }
+    setOptionModalAddonIds(nextAddonIds);
+  }
+
+  function saveMenuOptionSelection() {
+    const item = optionModalItem;
+    if (!item) return;
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    const addons = Array.isArray(item.addons) ? item.addons : [];
+    const selectedVariant = variants.find((v) => String(v.id || v.option_name || "") === optionModalVariantId) || variants[0] || null;
+    const selectedAddons = addons.filter((a) => optionModalAddonIds[String(a.id || a.addon_name || "")] === true);
+    setSelectedMenuOptions((prev) => ({
+      ...prev,
+      [item.id]: { variant: selectedVariant, addons: selectedAddons },
+    }));
+    setItemQty(item.id, Math.max(1, Math.floor(toNum(qty[item.id])) || 1));
+    setOptionModalItem(null);
+  }
+
+  function selectedOptionSummary(item: MenuItem): string {
+    const selected = selectedMenuOptions[item.id];
+    const parts: string[] = [];
+    if (selected?.variant) parts.push(menuOptionLabel(selected.variant));
+    if (selected?.addons?.length) parts.push(selected.addons.map(menuOptionLabel).filter(Boolean).join(", "));
+    return parts.filter(Boolean).join(" + ");
+  }
+
   const selectedLines = useMemo(() => {
     const lines: Array<{
       id: string;
@@ -806,24 +879,33 @@ function selectedAddressTown(
         const premiumSelected = premiumPackagingSelections[m.id] === true && itemPremiumPackagingEnabled(m);
         const premiumFee = premiumSelected ? itemPremiumPackagingFee(m) : 0;
         const premiumLabel = premiumSelected ? itemPremiumPackagingLabel(m) : null;
+        const selected = selectedMenuOptions[m.id] || {};
+        const variant = selected.variant || null;
+        const addons = selected.addons || [];
+        const variantPrice = variant ? menuOptionPrice(variant) : toNum(m.price);
+        const addonTotal = addons.reduce((a, row) => a + menuOptionPrice(row), 0);
+        const unitPrice = variant ? variantPrice + addonTotal : toNum(m.price) + addonTotal;
 
         lines.push({
           id: m.id,
           name: m.name,
-          price: toNum(m.price),
+          price: unitPrice,
           qty: q,
-          line_total: q * toNum(m.price),
+          line_total: q * unitPrice,
           packaging_note: m.packaging_note || null,
+          selected_variant: variant,
+          selected_addons: addons,
+          option_summary: selectedOptionSummary(m),
           premium_packaging_selected: premiumSelected,
           premium_packaging_fee: premiumFee,
           premium_packaging_label: premiumLabel,
           premium_packaging_total: premiumFee * q,
-        });
+        } as any);
       }
     }
 
     return lines;
-  }, [menuSelectable, qty, premiumPackagingSelections]);
+  }, [menuSelectable, qty, premiumPackagingSelections, selectedMenuOptions]);
 
   const itemsSubtotal = useMemo(() => selectedLines.reduce((a, r) => a + toNum(r.line_total), 0), [selectedLines]);
   const packagingEstimate = useMemo(() => selectedLines.reduce((a, r) => a + toNum(r.premium_packaging_total), 0), [selectedLines]);
@@ -1395,6 +1477,9 @@ const contact = await fetchOptionalJson(
             price: Number.isFinite(price) ? price : 0,
             quantity: qty,
             packaging_note: String(mm?.packaging_note || l?.packaging_note || "").trim() || null,
+            selected_variant: l?.selected_variant || null,
+            selected_addons: Array.isArray(l?.selected_addons) ? l.selected_addons : [],
+            option_summary: String(l?.option_summary || "").trim() || null,
           };
         })
         .filter(Boolean);
@@ -1825,7 +1910,7 @@ const contact = await fetchOptionalJson(
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-4">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-24 w-24 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-28 sm:w-28" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start gap-2">
                           <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
@@ -1849,7 +1934,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                          <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1871,12 +1956,22 @@ const contact = await fetchOptionalJson(
                             </span>
                           </label>
                         ) : null}
+                        {menuItemHasChoices(m) ? (
+                          <button
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => openMenuOptionModal(m)}
+                            className="mt-3 w-full rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-left text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                          >
+                            {selectedOptionSummary(m) ? "Selected: " + selectedOptionSummary(m) : "Choose size, flavor, or add-ons"}
+                          </button>
+                        ) : null}
                         <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 grid w-full grid-cols-[44px_minmax(72px,120px)_44px] items-center gap-2">
+                      <div className="mt-3 grid w-full grid-cols-[44px_minmax(72px,120px)_44px] items-center gap-2">
                         <button
                           type="button"
                           className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
@@ -1897,7 +1992,10 @@ const contact = await fetchOptionalJson(
                           className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
-                          onClick={() => setItemQty(m.id, q + 1)}
+                          onClick={() => {
+                            if (menuItemHasChoices(m) && !selectedMenuOptions[m.id]) openMenuOptionModal(m);
+                            else setItemQty(m.id, q + 1);
+                          }}
                         >
                           +
                         </button>
@@ -2502,7 +2600,75 @@ const contact = await fetchOptionalJson(
           </pre>
         ) : null}
 
-        <style jsx global>{`
+        
+      {optionModalItem ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-black text-slate-900">{optionModalItem.name}</div>
+                <div className="text-xs text-slate-500">Choose required options and optional add-ons before adding to cart.</div>
+              </div>
+              <button type="button" onClick={() => setOptionModalItem(null)} className="rounded-lg border px-3 py-1 text-sm font-semibold">Close</button>
+            </div>
+
+            {Array.isArray(optionModalItem.variants) && optionModalItem.variants.length > 0 ? (
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">Required choice</div>
+                <div className="space-y-2">
+                  {optionModalItem.variants.map((v, idx) => {
+                    const key = String(v.id || v.option_name || idx);
+                    return (
+                      <label key={key} className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm">
+                        <span className="flex items-center gap-2">
+                          <input type="radio" name="takeout-item-variant" checked={optionModalVariantId === key} onChange={() => setOptionModalVariantId(key)} />
+                          <span>{v.group_name ? String(v.group_name) + ": " : ""}{menuOptionLabel(v)}</span>
+                        </span>
+                        <span className="font-bold">{money(menuOptionPrice(v))}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {Array.isArray(optionModalItem.addons) && optionModalItem.addons.length > 0 ? (
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">Optional add-ons</div>
+                <div className="space-y-2">
+                  {optionModalItem.addons.map((a, idx) => {
+                    const key = String(a.id || a.addon_name || idx);
+                    return (
+                      <label key={key} className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm">
+                        <span className="flex items-center gap-2">
+                          <input type="checkbox" checked={optionModalAddonIds[key] === true} onChange={(e) => setOptionModalAddonIds((prev) => ({ ...prev, [key]: e.target.checked }))} />
+                          <span>{menuOptionLabel(a)}</span>
+                        </span>
+                        <span className="font-bold">+{money(menuOptionPrice(a))}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-sm">
+              <div className="flex justify-between"><span>Item base</span><span>{money(toNum(optionModalItem.price))}</span></div>
+              <div className="mt-1 flex justify-between font-black"><span>Selected line price</span><span>{money(((() => {
+                const variants = Array.isArray(optionModalItem.variants) ? optionModalItem.variants : [];
+                const selectedVariant = variants.find((v) => String(v.id || v.option_name || "") === optionModalVariantId) || variants[0] || null;
+                const variantPrice = selectedVariant ? menuOptionPrice(selectedVariant) : toNum(optionModalItem.price);
+                const addons = Array.isArray(optionModalItem.addons) ? optionModalItem.addons : [];
+                const addonTotal = addons.filter((a) => optionModalAddonIds[String(a.id || a.addon_name || "")] === true).reduce((sum, a) => sum + menuOptionPrice(a), 0);
+                return (selectedVariant ? variantPrice : toNum(optionModalItem.price)) + addonTotal;
+              })()))}</span></div>
+            </div>
+
+            <button type="button" onClick={saveMenuOptionSelection} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white">Save options and add to cart</button>
+          </div>
+        </div>
+      ) : null}
+<style jsx global>{`
           /* JRIDE_TAKEOUT_PREMIUM_BRAND_UI_V7
              UI-only premium visual layer for Android WebView takeout.
              No API, lifecycle, dispatch, wallet, or auth logic is changed. */

@@ -1843,7 +1843,7 @@ export default function VendorPortalPage() {
                       <div className="text-sm font-semibold text-indigo-900">Priced options</div>
                       <div className="mt-1 text-xs text-indigo-800">Use structured rows. If an option changes the price, enter the price here, not in notes.</div>
                     </div>
-                    <div className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm">Totals-ready</div>
+                    <div className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm">Saved with item</div>
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1851,7 +1851,7 @@ export default function VendorPortalPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">Variants</div>
-                          <div className="text-[11px] text-slate-500">Required choices like Size or Flavor. Each row has its own price.</div>
+                          <div className="text-[11px] text-slate-500">Required choices. Use Add option, edit rows, then click Add item or Update item to save.</div>
                         </div>
                         <button type="button" disabled={limitReached} onClick={() => setItemVariantDrafts((rows) => [...rows, { group_name: rows[rows.length - 1]?.group_name || "Size", option_name: "", price: "" }])} className="rounded-full border border-indigo-200 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50">+ Add option</button>
                       </div>
@@ -1861,7 +1861,7 @@ export default function VendorPortalPage() {
                             <input className="rounded-lg border px-2 py-2 text-sm" value={row.group_name} disabled={limitReached} placeholder="Group: Size" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, group_name: e.target.value } : r))} />
                             <input className="rounded-lg border px-2 py-2 text-sm" value={row.option_name} disabled={limitReached} placeholder="Option: Medium" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, option_name: e.target.value } : r))} />
                             <input className="rounded-lg border px-2 py-2 text-sm" value={row.price} disabled={limitReached} inputMode="decimal" placeholder="Price" onChange={(e) => setItemVariantDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))} />
-                            <button type="button" disabled={limitReached || itemVariantDrafts.length <= 1} onClick={() => setItemVariantDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40">Remove</button>
+                            <button type="button" disabled={limitReached || itemVariantDrafts.length <= 1} onClick={() => setItemVariantDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 disabled:opacity-40">Remove</button>
                           </div>
                         ))}
                       </div>
@@ -1875,7 +1875,7 @@ export default function VendorPortalPage() {
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <div className="text-xs font-bold uppercase tracking-wide text-indigo-700">Add-ons</div>
-                          <div className="text-[11px] text-slate-500">Optional extras. Prices add to the item line total.</div>
+                          <div className="text-[11px] text-slate-500">Optional extras. Edit rows, then click Add item or Update item to save.</div>
                         </div>
                         <button type="button" disabled={limitReached} onClick={() => setItemAddonDrafts((rows) => [...rows, { addon_name: "", price: "" }])} className="rounded-full border border-indigo-200 px-3 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50">+ Add add-on</button>
                       </div>
@@ -1884,7 +1884,7 @@ export default function VendorPortalPage() {
                           <div key={idx} className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[1fr_90px_auto]">
                             <input className="rounded-lg border px-2 py-2 text-sm" value={row.addon_name} disabled={limitReached} placeholder="Add-on: Egg" onChange={(e) => setItemAddonDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, addon_name: e.target.value } : r))} />
                             <input className="rounded-lg border px-2 py-2 text-sm" value={row.price} disabled={limitReached} inputMode="decimal" placeholder="Price" onChange={(e) => setItemAddonDrafts((rows) => rows.map((r, i) => i === idx ? { ...r, price: e.target.value.replace(/[^0-9.]/g, "") } : r))} />
-                            <button type="button" disabled={limitReached || itemAddonDrafts.length <= 1} onClick={() => setItemAddonDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border px-2 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40">Remove</button>
+                            <button type="button" disabled={limitReached || itemAddonDrafts.length <= 1} onClick={() => setItemAddonDrafts((rows) => rows.filter((_, i) => i !== idx))} className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 disabled:opacity-40">Remove</button>
                           </div>
                         ))}
                       </div>
