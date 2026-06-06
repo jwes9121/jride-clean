@@ -130,6 +130,74 @@ function computeAcceptingOrders(rows: any[]): boolean {
   return rows.some((row) => row?.is_available !== false && row?.sold_out_today !== true);
 }
 
+async function loadMenuOptionsMap(admin: any, vendor_id: string, menu_item_ids: string[]) {
+  const ids = Array.from(new Set(menu_item_ids.map((id) => cleanString(id)).filter(Boolean)));
+
+  const variantsByItem = new Map<string, any[]>();
+  const addonsByItem = new Map<string, any[]>();
+
+  if (!ids.length) {
+    return { variantsByItem, addonsByItem };
+  }
+
+  const variants = await admin
+    .from("vendor_menu_item_variants")
+    .select("id,vendor_id,menu_item_id,group_name,option_name,price,sort_order,is_active")
+    .eq("vendor_id", vendor_id)
+    .in("menu_item_id", ids)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("option_name", { ascending: true });
+
+  if (variants.error) throw variants.error;
+
+  for (const row of Array.isArray(variants.data) ? variants.data : []) {
+    const key = cleanString(row?.menu_item_id);
+    if (!key) continue;
+    const list = variantsByItem.get(key) || [];
+    list.push({
+      id: cleanString(row?.id),
+      vendor_id: cleanString(row?.vendor_id),
+      menu_item_id: key,
+      group_name: cleanString(row?.group_name),
+      option_name: cleanString(row?.option_name),
+      price: toNum(row?.price) ?? 0,
+      sort_order: toNum(row?.sort_order) ?? 0,
+      is_active: row?.is_active !== false,
+    });
+    variantsByItem.set(key, list);
+  }
+
+  const addons = await admin
+    .from("vendor_menu_item_addons")
+    .select("id,vendor_id,menu_item_id,addon_name,price,sort_order,is_active")
+    .eq("vendor_id", vendor_id)
+    .in("menu_item_id", ids)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("addon_name", { ascending: true });
+
+  if (addons.error) throw addons.error;
+
+  for (const row of Array.isArray(addons.data) ? addons.data : []) {
+    const key = cleanString(row?.menu_item_id);
+    if (!key) continue;
+    const list = addonsByItem.get(key) || [];
+    list.push({
+      id: cleanString(row?.id),
+      vendor_id: cleanString(row?.vendor_id),
+      menu_item_id: key,
+      addon_name: cleanString(row?.addon_name),
+      price: toNum(row?.price) ?? 0,
+      sort_order: toNum(row?.sort_order) ?? 0,
+      is_active: row?.is_active !== false,
+    });
+    addonsByItem.set(key, list);
+  }
+
+  return { variantsByItem, addonsByItem };
+}
+
 
 async function loadVendorProfile(admin: any, vendor_id: string) {
   const byId = await admin.from("vendor_accounts").select("*").eq("id", vendor_id).limit(1);
@@ -155,7 +223,21 @@ async function loadMenuWithAuthoritativeDayState(admin: any, vendor_id: string, 
 
   const rows = Array.isArray(menu.data) ? menu.data : [];
   const dayStateMap = await loadDayStateMap(admin, vendor_id, service_date);
-  const items = overlayDayState(rows, dayStateMap);
+  const baseItems = overlayDayState(rows, dayStateMap);
+  const menuItemIds = baseItems.map((row) => idOf(row)).filter(Boolean);
+  const { variantsByItem, addonsByItem } = await loadMenuOptionsMap(admin, vendor_id, menuItemIds);
+
+  const items = baseItems.map((row) => {
+    const itemId = idOf(row);
+    return {
+      ...row,
+      variants: variantsByItem.get(itemId) || [],
+      addons: addonsByItem.get(itemId) || [],
+      has_variants: (variantsByItem.get(itemId) || []).length > 0,
+      has_addons: (addonsByItem.get(itemId) || []).length > 0,
+    };
+  });
+
   const accepting_orders = computeAcceptingOrders(items);
 
   return { items, accepting_orders };
