@@ -859,6 +859,20 @@ function selectedAddressTown(
     return parts.filter(Boolean).join(" + ");
   }
 
+  function displayUnitPriceForMenuItem(item: MenuItem): number | null {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    const selected = selectedMenuOptions[item.id] || {};
+    const selectedAddons = Array.isArray(selected.addons) ? selected.addons : [];
+    const addonTotal = selectedAddons.reduce((sum, row) => sum + menuOptionPrice(row), 0);
+
+    if (variants.length > 0) {
+      if (!selected.variant) return null;
+      return menuOptionPrice(selected.variant) + addonTotal;
+    }
+
+    return toNum(item.price) + addonTotal;
+  }
+
   const selectedLines = useMemo(() => {
     const lines: Array<{
       id: string;
@@ -1966,7 +1980,22 @@ const contact = await fetchOptionalJson(
                             {selectedOptionSummary(m) ? "Selected: " + selectedOptionSummary(m) : "Choose size, flavor, or add-ons"}
                           </button>
                         ) : null}
-                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
+                        {(() => {
+                          const displayPrice = displayUnitPriceForMenuItem(m);
+                          if (displayPrice == null) {
+                            return (
+                              <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-800">
+                                Choose options to see price
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="mt-3 text-xl font-black tracking-tight text-slate-900">
+                              {money(displayPrice)}
+                            </div>
+                          );
+                        })()}
                           </div>
                         </div>
                       </div>
@@ -2653,15 +2682,33 @@ const contact = await fetchOptionalJson(
             ) : null}
 
             <div className="mt-4 rounded-xl border bg-slate-50 p-3 text-sm">
-              <div className="flex justify-between"><span>Item base</span><span>{money(toNum(optionModalItem.price))}</span></div>
-              <div className="mt-1 flex justify-between font-black"><span>Selected line price</span><span>{money(((() => {
+              {(() => {
                 const variants = Array.isArray(optionModalItem.variants) ? optionModalItem.variants : [];
                 const selectedVariant = variants.find((v) => String(v.id || v.option_name || "") === optionModalVariantId) || variants[0] || null;
-                const variantPrice = selectedVariant ? menuOptionPrice(selectedVariant) : toNum(optionModalItem.price);
                 const addons = Array.isArray(optionModalItem.addons) ? optionModalItem.addons : [];
                 const addonTotal = addons.filter((a) => optionModalAddonIds[String(a.id || a.addon_name || "")] === true).reduce((sum, a) => sum + menuOptionPrice(a), 0);
-                return (selectedVariant ? variantPrice : toNum(optionModalItem.price)) + addonTotal;
-              })()))}</span></div>
+                const selectedBasePrice = selectedVariant ? menuOptionPrice(selectedVariant) : toNum(optionModalItem.price);
+                const linePrice = selectedBasePrice + addonTotal;
+
+                return (
+                  <>
+                    <div className="flex justify-between">
+                      <span>{selectedVariant ? "Selected option" : "Item price"}</span>
+                      <span>{money(selectedBasePrice)}</span>
+                    </div>
+                    {addonTotal > 0 ? (
+                      <div className="mt-1 flex justify-between">
+                        <span>Add-ons</span>
+                        <span>{money(addonTotal)}</span>
+                      </div>
+                    ) : null}
+                    <div className="mt-1 flex justify-between border-t pt-2 font-black">
+                      <span>Selected line price</span>
+                      <span>{money(linePrice)}</span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             <button type="button" onClick={saveMenuOptionSelection} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white">Save options and add to cart</button>
