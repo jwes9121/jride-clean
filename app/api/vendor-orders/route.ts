@@ -1531,3 +1531,19 @@ takeout_items_subtotal: subtotal,
 
 
 
+
+function normalizeDriverVehicleType(value: unknown): string {
+  const raw = String(value || '').trim().toLowerCase()
+
+  if (raw.includes('tricycle') || raw.includes('trike')) {
+    return 'Tricycle'
+  }
+
+  if (raw.includes('motor')) {
+    return 'Motorcycle'
+  }
+
+  return ''
+}
+
+
