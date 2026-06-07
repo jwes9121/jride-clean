@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -134,6 +134,12 @@ export default function TakeoutTrackPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [driverRating, setDriverRating] = useState(5);
+  const [vendorRating, setVendorRating] = useState(5);
+  const [driverComment, setDriverComment] = useState("");
+  const [vendorComment, setVendorComment] = useState("");
   const [nowTick, setNowTick] = useState(0);
 
   async function refreshOrder() {
@@ -184,6 +190,61 @@ export default function TakeoutTrackPage() {
     } finally {
       setConfirmBusy(false);
     }
+  }
+
+  async function submitTakeoutRating() {
+    if (!order) return;
+
+    const orderId = normText(order.id);
+    const bookingCode = normText(order.booking_code || order.code);
+
+    if (!orderId && !bookingCode) {
+      setErr("Missing takeout order id.");
+      return;
+    }
+
+    if (driverRating < 1 || driverRating > 5 || vendorRating < 1 || vendorRating > 5) {
+      setErr("Please rate both driver and store from 1 to 5 stars.");
+      return;
+    }
+
+    setRatingBusy(true);
+    setErr(null);
+
+    try {
+      await postJson("/api/takeout/rate", {
+        order_id: orderId || undefined,
+        booking_code: bookingCode || undefined,
+        driver_rating: driverRating,
+        driver_comment: driverComment,
+        vendor_rating: vendorRating,
+        vendor_comment: vendorComment,
+      });
+      setRatingSubmitted(true);
+    } catch (e: any) {
+      setErr(String(e?.message || e || "Failed to submit rating."));
+    } finally {
+      setRatingBusy(false);
+    }
+  }
+
+  function StarButtons(props: { value: number; onChange: (n: number) => void; disabled?: boolean }) {
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            disabled={props.disabled}
+            onClick={() => props.onChange(n)}
+            className={n <= props.value ? "text-2xl text-amber-500" : "text-2xl text-slate-300"}
+            aria-label={"Rate " + n + " stars"}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+    );
   }
 
   useEffect(() => {
@@ -530,13 +591,63 @@ export default function TakeoutTrackPage() {
             ) : null}
 
             {state.isCompleted ? (
-              <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                <div className="font-semibold">Order completed.</div>
-                <div className="mt-1">Thank you for using JRide Takeout.</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <a href="/takeout" className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Order again</a>
-                  <a href="/takeout" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Home</a>
-                  <a href="/takeout/orders" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">View orders</a>
+              <div className="space-y-3">
+                <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                  <div className="font-semibold">Order completed.</div>
+                  <div className="mt-1">Thank you for using JRide Takeout.</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <a href="/takeout" className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Order again</a>
+                    <a href="/takeout" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Home</a>
+                    <a href="/takeout/orders" className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">View orders</a>
+                  </div>
+                </div>
+
+                <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-800">
+                  <div className="font-semibold">Rate this takeout order</div>
+                  <div className="mt-1 text-xs text-slate-500">Rate the driver and the store separately.</div>
+
+                  {ratingSubmitted ? (
+                    <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
+                      Rating submitted. Thank you for helping improve JRide Takeout.
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-4">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Driver rating</div>
+                        <StarButtons value={driverRating} onChange={setDriverRating} disabled={ratingBusy} />
+                        <textarea
+                          value={driverComment}
+                          onChange={(e) => setDriverComment(e.target.value)}
+                          disabled={ratingBusy}
+                          placeholder="Optional driver comment"
+                          className="mt-2 w-full rounded border px-3 py-2 text-sm"
+                          rows={2}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Store rating</div>
+                        <StarButtons value={vendorRating} onChange={setVendorRating} disabled={ratingBusy} />
+                        <textarea
+                          value={vendorComment}
+                          onChange={(e) => setVendorComment(e.target.value)}
+                          disabled={ratingBusy}
+                          placeholder="Optional store comment"
+                          className="mt-2 w-full rounded border px-3 py-2 text-sm"
+                          rows={2}
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={submitTakeoutRating}
+                        disabled={ratingBusy}
+                        className="w-full rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
+                      >
+                        {ratingBusy ? "Submitting..." : "Submit rating"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
