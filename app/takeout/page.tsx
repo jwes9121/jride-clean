@@ -241,6 +241,25 @@ if (!res.ok || (j && j.ok === false)) {
   return j;
 }
 
+
+function isVendorAcceptingOrders(v: any): boolean {
+  const raw =
+    v?.accepting_orders ??
+    v?.acceptingOrders ??
+    v?.is_open ??
+    v?.isOpen ??
+    v?.vendor_accepting_orders ??
+    v?.vendorOpen ??
+    true;
+
+  if (raw === false) return false;
+  if (raw === true) return true;
+
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (["false", "0", "no", "closed", "inactive", "removed_from_pilot"].includes(s)) return false;
+  return true;
+}
+
 function toNum(v: any): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -694,15 +713,7 @@ export default function TakeoutPage() {
   const visibleVendors = useMemo(() => {
     const town = normalizeTakeoutTown(vendorTownFilter);
     if (!town) return [];
-    return vendors.filter((v: any) => {
-      const accepting =
-        v?.accepting_orders ??
-        v?.acceptingOrders ??
-        v?.is_open ??
-        v?.isOpen ??
-        true;
-      return accepting !== false && vendorTown(v) === town;
-    });
+    return vendors.filter((v) => vendorTown(v) === town);
   }, [vendors, vendorTownFilter]);
 
   const selectedVendor = useMemo(() => {
@@ -1123,16 +1134,7 @@ const contact = await fetchOptionalJson(
     getJson("/api/admin/vendors")
       .then((j) => {
         const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
-        const activeRows = rows.filter((v: any) => {
-          const accepting =
-            v?.accepting_orders ??
-            v?.acceptingOrders ??
-            v?.is_open ??
-            v?.isOpen ??
-            true;
-          return accepting !== false;
-        });
-        setVendors(activeRows);
+        setVendors(rows);
       })
       .catch(() => setVendors([]));
   }, []);
@@ -1657,13 +1659,7 @@ const contact = await fetchOptionalJson(
                     const isSelected = vendorId === id;
                     const label = vendorLabel(v);
                     const town = vendorTown(v) || vendorTownFilter;
-                    const rawAccepting =
-                      (v as any).accepting_orders ??
-                      (v as any).acceptingOrders ??
-                      (v as any).is_open ??
-                      (v as any).isOpen ??
-                      null;
-                    const isClosed = isSelected ? vendorClosed : rawAccepting === false;
+                    const isClosed = isSelected ? vendorClosed : !isVendorAcceptingOrders(v);
                     const logoUrl = vendorUploadedLogoUrl(v);
                     const prep = prepMinutes((v as any).prep_time_minutes ?? (v as any).default_prep_time_minutes ?? 15);
                     const hasPremiumPackaging = v.premium_packaging_enabled === true;
@@ -1776,7 +1772,7 @@ const contact = await fetchOptionalJson(
   Browse menu
 </div>
                 <div className="hidden text-xs text-slate-500 sm:block">
-  Browse available menu items from local vendors.
+  Swipe through available meals, drinks, and add-ons.
 </div>
               </div>
               <button
