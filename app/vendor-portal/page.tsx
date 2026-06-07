@@ -116,6 +116,12 @@ type TakeoutOrder = {
   order_preferences?: any;
   status?: string | null;
   service_type?: string | null;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  assigned_driver_name?: string | null;
+  driver_vehicle_type?: string | null;
+  vehicle_type?: string | null;
+  assigned_vehicle_type?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -413,6 +419,22 @@ function orderCustomerName(o: TakeoutOrder) {
 
 function orderCustomerPhone(o: TakeoutOrder) {
   return clean(o.customer_phone) || clean(o.passenger_phone) || clean(o.phone) || "No phone provided";
+}
+
+function orderDriverName(o: TakeoutOrder) {
+  return clean(o.driver_name) || clean(o.assigned_driver_name) || "Assigned rider";
+}
+
+function vehicleTypeLabel(value: any) {
+  const raw = clean(value).toLowerCase();
+  if (!raw) return "Vehicle not provided";
+  if (raw.includes("motor")) return "Motorcycle";
+  if (raw.includes("tricycle") || raw.includes("trike")) return "Tricycle";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function orderVehicleType(o: TakeoutOrder) {
+  return vehicleTypeLabel(o.driver_vehicle_type || o.vehicle_type || o.assigned_vehicle_type);
 }
 
 function looksLikeRawPinnedAddress(v: string) {
@@ -2142,6 +2164,15 @@ export default function VendorPortalPage() {
                             <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + vendorAcceptTimerClass(acceptDeadline.tone)}>
                               Accept within: {acceptDeadline.label}
                               {acceptDeadline.expired ? " - overdue" : ""}
+                            </div>
+                          ) : null}
+                          {["driver_assigned", "pickup_ready"].includes(s) ? (
+                            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                              <div className="font-semibold uppercase tracking-wide text-blue-700">Assigned rider</div>
+                              <div className="mt-1 grid gap-0.5">
+                                <div><span className="font-semibold">Name:</span> {orderDriverName(o)}</div>
+                                <div><span className="font-semibold">Vehicle:</span> {orderVehicleType(o)}</div>
+                              </div>
                             </div>
                           ) : null}
                           <div className="mt-3 rounded-xl border bg-slate-50 p-3">

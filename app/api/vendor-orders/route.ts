@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -599,6 +599,25 @@ export async function GET(req: NextRequest) {
   }
 
   const ids = rows.map((r) => r?.id).filter(Boolean);
+  const driverIds = Array.from(new Set(rows
+    .map((r) => String(r?.driver_id || r?.assigned_driver_id || "").trim())
+    .filter(Boolean)));
+
+  const vehicleTypeByDriver: Record<string, string> = {};
+  if (driverIds.length) {
+    const dl = await admin
+      .from("driver_locations")
+      .select("driver_id,vehicle_type")
+      .in("driver_id", driverIds);
+
+    if (!dl.error && Array.isArray(dl.data)) {
+      for (const r of dl.data as any[]) {
+        const did = String(r?.driver_id || "").trim();
+        const vehicle = String(r?.vehicle_type || "").trim();
+        if (did && vehicle) vehicleTypeByDriver[did] = vehicle;
+      }
+    }
+  }
 
   const itemsByBooking: Record<string, SnapshotItem[]> = {};
   const subtotalByBooking: Record<string, number> = {};
@@ -667,6 +686,10 @@ export async function GET(req: NextRequest) {
       vendor_accept_expired: vendorAcceptExpired(r),
       cancel_reason: r?.cancel_reason ?? null,
       vendor_cancel_reason: r?.vendor_cancel_reason ?? null,
+
+      driver_id: r?.driver_id ?? r?.assigned_driver_id ?? null,
+      driver_name: r?.driver_name ?? r?.assigned_driver_name ?? r?.rider_name ?? null,
+      driver_vehicle_type: vehicleTypeByDriver[String(r?.driver_id || r?.assigned_driver_id || "").trim()] || r?.driver_vehicle_type || r?.vehicle_type || r?.assigned_vehicle_type || null,
 
       customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
       customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? pricingSnapshot?.customer_phone ?? pricingSnapshot?.passenger_phone ?? pricingSnapshot?.phone ?? null,
