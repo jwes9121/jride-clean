@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1134,7 +1134,8 @@ const contact = await fetchOptionalJson(
     getJson("/api/admin/vendors")
       .then((j) => {
         const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
-        setVendors(rows);
+        const activeRows = rows.filter((v: any) => isVendorAcceptingOrders(v));
+        setVendors(activeRows);
       })
       .catch(() => setVendors([]));
   }, []);
@@ -2808,6 +2809,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
