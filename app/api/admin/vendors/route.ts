@@ -21,7 +21,11 @@ function normalizeTakeoutTown(value: any): string {
   return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
-// JRIDE_ADMIN_VENDORS_LOGO_URL_CONTRACT_V1
+function isRemovedFromPilot(status: any): boolean {
+  return cleanString(status).toLowerCase() === "removed_from_pilot";
+}
+
+// JRIDE_ADMIN_VENDORS_HIDE_REMOVED_FROM_PILOT_V1
 export async function GET() {
   const supabase = adminClient();
   if (!supabase) {
@@ -33,26 +37,53 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("vendor_accounts")
-    .select("id,email,display_name,created_at,town,lat,lng,location_label,logo_url")
+    .select("id,email,display_name,created_at,town,lat,lng,location_label,logo_url,accepting_orders")
     .order("created_at", { ascending: false });
 
   if (error) {
     return NextResponse.json({ ok: false, error: "DB_ERROR", message: error.message }, { status: 500 });
   }
 
-  const vendors = (Array.isArray(data) ? data : []).map((v: any) => {
-    const logoUrl = cleanString(v?.logo_url);
-    return {
-      ...v,
-      name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
-      display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
-      town: normalizeTakeoutTown(v?.town),
-      logo_url: logoUrl || null,
-      vendor_logo_url: logoUrl || null,
-      profile_logo_url: logoUrl || null,
-      business_logo_url: logoUrl || null,
-    };
-  });
+  const vendorIds = (Array.isArray(data) ? data : [])
+    .map((v: any) => cleanString(v?.id))
+    .filter(Boolean);
+
+  let removedIds = new Set<string>();
+
+  if (vendorIds.length > 0) {
+    const registry = await supabase
+      .from("vendor_onboarding_credentials")
+      .select("vendor_id,status")
+      .in("vendor_id", vendorIds);
+
+    if (registry.error) {
+      return NextResponse.json({ ok: false, error: "DB_ERROR", message: registry.error.message }, { status: 500 });
+    }
+
+    removedIds = new Set(
+      (Array.isArray(registry.data) ? registry.data : [])
+        .filter((row: any) => isRemovedFromPilot(row?.status))
+        .map((row: any) => cleanString(row?.vendor_id))
+        .filter(Boolean)
+    );
+  }
+
+  const vendors = (Array.isArray(data) ? data : [])
+    .filter((v: any) => !removedIds.has(cleanString(v?.id)))
+    .map((v: any) => {
+      const logoUrl = cleanString(v?.logo_url);
+      return {
+        ...v,
+        name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
+        display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
+        town: normalizeTakeoutTown(v?.town),
+        accepting_orders: v?.accepting_orders === true,
+        logo_url: logoUrl || null,
+        vendor_logo_url: logoUrl || null,
+        profile_logo_url: logoUrl || null,
+        business_logo_url: logoUrl || null,
+      };
+    });
 
   return NextResponse.json({ ok: true, vendors }, { status: 200 });
 }
