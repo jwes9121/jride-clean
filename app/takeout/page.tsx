@@ -1845,7 +1845,7 @@ const contact = await fetchOptionalJson(
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
-                        <div className="flex items-start gap-4">
+                        <div className="flex items-start gap-3">
                           {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start gap-2">
@@ -1897,7 +1897,7 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-3 grid w-full grid-cols-[44px_minmax(72px,120px)_44px] items-center gap-2">
+                      <div className="mt-2 grid w-full grid-cols-[44px_minmax(72px,120px)_44px] items-center gap-2">
                         <button
                           type="button"
                           className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
