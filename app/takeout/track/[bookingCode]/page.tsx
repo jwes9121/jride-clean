@@ -666,7 +666,12 @@ export default function TakeoutTrackPage() {
                         const raw = cancelReason(order);
                         const parts = raw.split(" - ");
                         if (parts.length < 2) return "Reason: " + raw;
-                        return "Reason: " + parts[0] + "\nNote: " + parts.slice(1).join(" - ");
+                        return (
+                          <>
+                            <div>Reason: {parts[0]}</div>
+                            <div className="mt-1">Note: {parts.slice(1).join(" - ")}</div>
+                          </>
+                        );
                       })()
                       : ""}
                 </div>
