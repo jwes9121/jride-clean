@@ -1829,7 +1829,7 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              <div className="mt-3 grid w-full grid-cols-1 xl:grid-cols-2 gap-4">
+              {/* JRIDE_TAKEOUT_COMPACT_MENU_GRID_V3 */}`r`n              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1841,16 +1841,16 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md",
+                        "w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:p-3",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-20 w-20 shrink-0 rounded-2xl border object-cover shadow-sm sm:h-24 sm:w-24" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-18 sm:w-18" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start gap-2">
-                          <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
+                          <div className="line-clamp-2 text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1859,9 +1859,9 @@ const contact = await fetchOptionalJson(
                           ) : null}
                         </div>
                         {m.description ? (
-                          <div className="mt-1 text-sm leading-relaxed text-slate-600">{m.description}</div>
+                          <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-600 sm:text-sm">{m.description}</div>
                         ) : null}
-                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {Number(m.remaining_quantity) > 0 ? (
                           <div className="mt-1 text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity)}</div>
                         ) : null}
@@ -1871,7 +1871,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+                          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold leading-tight text-emerald-800 sm:text-[11px]">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1884,7 +1884,7 @@ const contact = await fetchOptionalJson(
                               }}
                             />
                             <span>
-                              <span className="block font-semibold">
+                              <span className="line-clamp-2 font-semibold">
                                 Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
                               </span>
                               <span className="hidden text-emerald-700 sm:block">
@@ -1893,22 +1893,22 @@ const contact = await fetchOptionalJson(
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
+                        <div className="mt-2 text-lg font-black tracking-tight text-slate-900 sm:text-xl">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-2 grid w-full grid-cols-[44px_minmax(72px,120px)_44px] items-center gap-2">
+                      <div className="mt-2 grid w-full max-w-[230px] grid-cols-[38px_minmax(64px,1fr)_38px] items-center gap-2">
                         <button
                           type="button"
-                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
+                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-9 w-full rounded-xl border px-2 text-center text-sm font-black sm:h-11 sm:w-16 sm:text-base"
+                          className="h-9 w-full rounded-xl border px-2 text-center text-sm font-black"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -1916,7 +1916,7 @@ const contact = await fetchOptionalJson(
                         />
                         <button
                           type="button"
-                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-11 sm:w-11 sm:text-base"
+                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
@@ -2817,6 +2817,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
