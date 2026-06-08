@@ -661,6 +661,7 @@ export default function TakeoutPage() {
   const [menuBusy, setMenuBusy] = useState(false);
   const [menuErr, setMenuErr] = useState<string | null>(null);
   const [vendorClosed, setVendorClosed] = useState(false);
+  const menuSectionRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("All");
   const [menuVendorProfile, setMenuVendorProfile] = useState<any>(null);
@@ -1684,6 +1685,9 @@ const contact = await fetchOptionalJson(
                           setReceiptRequested(false);
                           setSubmitted(false);
                           refreshMenu(nextVendorId);
+                          window.setTimeout(() => {
+                            menuSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 150);
                         }}
                         className={cls(
                           "group flex min-h-[170px] w-full items-start gap-4 rounded-3xl border p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-none",
@@ -1751,7 +1755,7 @@ const contact = await fetchOptionalJson(
               )}
 
               {vendorId ? (
-                <div className={cls(
+                <div ref={menuSectionRef} className={cls(
                   "rounded-xl border p-3 text-xs",
                   vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 )}>
