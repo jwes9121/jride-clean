@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1661,7 +1661,8 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[repeat(2,minmax(420px,1fr))]">
-                  {visibleVendors.map((v) => {
+                  {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
+                  {(vendorId ? visibleVendors.filter((v) => vendorKey(v) === vendorId) : visibleVendors).map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
                     const isSelected = vendorId === id;
@@ -2816,6 +2817,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
