@@ -770,6 +770,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       "requested": ["vendor_accepted", "cancelled"],
       "vendor_pending": ["vendor_accepted", "cancelled"],
       "vendor_accepted": ["preparing", "cancelled"],
+      "driver_assigned": ["pickup_ready", "cancelled"],
       "preparing": ["pickup_ready", "cancelled"],
       "pickup_ready": ["completed", "cancelled"],
       "completed": [],
@@ -1545,6 +1546,7 @@ function normalizeDriverVehicleType(value: unknown): string {
 
   return ''
 }
+
 
 
 
