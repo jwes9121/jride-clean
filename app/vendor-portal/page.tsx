@@ -2214,7 +2214,7 @@ export default function VendorPortalPage() {
                             {s === "vendor_pending" ? (
                               <>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} title={acceptDeadline.expired ? "This order is past the 5-minute vendor accept target." : "Accept this order within the 5-minute target."} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Accept order</button>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "cancelled")} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
+                                <button type="button" disabled={busy} onClick={() => openCancelOrderDialog(o)} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Reject order</button>
                               </>
                             ) : null}
                             {s === "vendor_accepted" ? (
@@ -2223,7 +2223,7 @@ export default function VendorPortalPage() {
                             {s === "driver_assigned" ? (
                               <>
                                 <button type="button" disabled={busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Mark order ready</button>
-                                <button type="button" disabled={busy} onClick={() => openCancelOrderDialog(o)} className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50">Cancel</button>
+                                <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
                               </>
                             ) : null}
                                                       </div>
@@ -2413,6 +2413,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
