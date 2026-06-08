@@ -713,14 +713,7 @@ export default function TakeoutPage() {
   const visibleVendors = useMemo(() => {
     const town = normalizeTakeoutTown(vendorTownFilter);
     if (!town) return [];
-    return vendors
-      .filter((v) => vendorTown(v) === town)
-      .sort((a, b) => {
-        const ao = isVendorAcceptingOrders(a) ? 0 : 1;
-        const bo = isVendorAcceptingOrders(b) ? 0 : 1;
-        if (ao !== bo) return ao - bo;
-        return vendorLabel(a).localeCompare(vendorLabel(b));
-      });
+    return vendors.filter((v) => vendorTown(v) === town);
   }, [vendors, vendorTownFilter]);
 
   const selectedVendor = useMemo(() => {
@@ -1660,7 +1653,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="grid gap-4">
                   {visibleVendors.map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
