@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -713,7 +713,14 @@ export default function TakeoutPage() {
   const visibleVendors = useMemo(() => {
     const town = normalizeTakeoutTown(vendorTownFilter);
     if (!town) return [];
-    return vendors.filter((v) => vendorTown(v) === town);
+    return vendors
+      .filter((v) => vendorTown(v) === town)
+      .sort((a, b) => {
+        const ao = isVendorAcceptingOrders(a) ? 0 : 1;
+        const bo = isVendorAcceptingOrders(b) ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        return vendorLabel(a).localeCompare(vendorLabel(b));
+      });
   }, [vendors, vendorTownFilter]);
 
   const selectedVendor = useMemo(() => {
@@ -1653,7 +1660,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid gap-4">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   {visibleVendors.map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
@@ -1821,7 +1828,7 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              <div className="mt-3 grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] gap-4">
+              <div className="mt-3 grid w-full grid-cols-1 xl:grid-cols-2 gap-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -2809,6 +2816,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
