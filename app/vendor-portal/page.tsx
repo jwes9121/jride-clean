@@ -90,7 +90,6 @@ type TakeoutOrder = {
   vendor_status: string | null;
   customer_name: string | null;
   customer_phone?: string | null;
-  passenger_phone?: string | null;
   phone?: string | null;
   default_address?: string | null;
   saved_address?: string | null;
@@ -418,7 +417,7 @@ function orderCustomerName(o: TakeoutOrder) {
 }
 
 function orderCustomerPhone(o: TakeoutOrder) {
-  return clean(o.customer_phone) || clean(o.passenger_phone) || clean(o.phone) || "No phone provided";
+  return clean(o.customer_phone) || clean(o.customer_phone) || clean(o.phone) || "No phone provided";
 }
 
 function orderDriverName(o: TakeoutOrder) {
@@ -1496,7 +1495,7 @@ export default function VendorPortalPage() {
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Cancel takeout order</h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Cancelling this order will notify the passenger and JRide admin. A reason is required.
+                    Cancelling this order will notify the customer and JRide admin. A reason is required.
                   </p>
                 </div>
                 <button
@@ -1554,7 +1553,7 @@ export default function VendorPortalPage() {
 
               <div className="mt-3">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Note to passenger/admin (optional)
+                  Note to customer/admin (optional)
                 </label>
                 <textarea
                   value={cancelNote}
@@ -1620,7 +1619,7 @@ export default function VendorPortalPage() {
                 <div className="min-w-0 text-sm">
                   <div className="font-semibold">{profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor as any) : "Vendor")}</div>
                   <div className="text-xs text-slate-500">{profileTown || "Town not set"}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Logo is optional, but recommended for passenger trust.</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Logo is optional, but recommended for customer trust.</div>
                 </div>
               </div>
 
@@ -1628,7 +1627,7 @@ export default function VendorPortalPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-slate-900">Order availability</div>
-                    <div className="text-xs text-slate-600">This control saves immediately and controls passenger ordering.</div>
+                    <div className="text-xs text-slate-600">This control saves immediately and controls customer ordering.</div>
                   </div>
                   <span className={cls("rounded-full border px-2.5 py-1 text-[11px] font-semibold", acceptingOrders ? "border-emerald-300 bg-white text-emerald-800" : "border-rose-300 bg-white text-rose-700")}>
                     {busy ? "Saving" : "Auto-saved"}
@@ -1665,7 +1664,7 @@ export default function VendorPortalPage() {
                 </div>
 
                 <div className={cls("mt-3 rounded-xl border px-3 py-2 text-xs font-medium", acceptingOrders ? "border-emerald-200 bg-white text-emerald-800" : "border-rose-200 bg-white text-rose-700")}>
-                  {busy ? "Saving vendor availability..." : acceptingOrders ? "Vendor is open. Customers can place takeout orders." : "Vendor is closed. New passenger orders are blocked until reopened."}
+                  {busy ? "Saving vendor availability..." : acceptingOrders ? "Vendor is open. Customers can place takeout orders." : "Vendor is closed. New customer orders are blocked until reopened."}
                 </div>
               </div>
 
@@ -1687,7 +1686,7 @@ export default function VendorPortalPage() {
                     <option key={town} value={town}>{town}</option>
                   ))}
                 </select>
-                <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct passenger store location.</div>
+                <div className="mt-1 text-[11px] text-slate-500">Used to group this vendor under the correct customer store location.</div>
 
                 <div className="mt-4 rounded-2xl border bg-white p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1843,7 +1842,7 @@ export default function VendorPortalPage() {
                       if (f) setItemPreview(URL.createObjectURL(f));
                     }}
                   />
-                  <div className="mt-1 text-[11px] text-slate-500">Up to 5MB input. JRide compresses photos before upload for faster passenger browsing.</div>
+                  <div className="mt-1 text-[11px] text-slate-500">Up to 5MB input. JRide compresses photos before upload for faster customer browsing.</div>
                 </div>
                 <div className="md:col-span-6">
                   <label className="text-xs font-medium text-slate-700">Description</label>
@@ -1872,7 +1871,7 @@ export default function VendorPortalPage() {
                   <label className="flex items-start justify-between gap-3 text-sm">
                     <span>
                       <span className="block font-semibold">Premium packaging available</span>
-                      <span className="block text-xs text-slate-500">Shown on the passenger menu as Premium packaging available (+PHP fee).</span>
+                      <span className="block text-xs text-slate-500">Shown on the customer menu as Premium packaging available (+PHP fee).</span>
                     </span>
                     <input type="checkbox" checked={itemPremiumPackagingEnabled} onChange={(e) => setItemPremiumPackagingEnabled(e.target.checked)} disabled={limitReached} />
                   </label>
@@ -1941,7 +1940,7 @@ export default function VendorPortalPage() {
                         </div>
                         {m.sold_out_today || !m.is_available ? (
                           <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
-                            This item is blocked from passenger ordering until it is made available and sold-out status is cleared.
+                            This item is blocked from customer ordering until it is made available and sold-out status is cleared.
                           </div>
                         ) : null}
                         <div className="grid grid-cols-2 gap-2">
@@ -2140,7 +2139,7 @@ export default function VendorPortalPage() {
   </div>
 </div>
 <h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
-                  <div className="mb-2 text-[11px] text-slate-500">Shows passenger, address, items, receipt request, packaging, and notes.</div>
+                  <div className="mb-2 text-[11px] text-slate-500">Shows customer, address, items, receipt request, packaging, and notes.</div>
                   <div className="space-y-2">
                     {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
                     {activeOrders.map((o) => {
@@ -2152,7 +2151,7 @@ export default function VendorPortalPage() {
                             <div>
                               <div className="font-semibold">{o.booking_code || o.id}</div>
                               <div className="mt-1 grid gap-0.5 text-xs text-slate-600">
-                                <div><span className="font-semibold text-slate-700">Passenger:</span> {orderCustomerName(o)}</div>
+                                <div><span className="font-semibold text-slate-700">Customer:</span> {orderCustomerName(o)}</div>
                                 <div><span className="font-semibold text-slate-700">Phone:</span> {orderCustomerPhone(o)}</div>
                                 <div><span className="font-semibold text-slate-700">Delivery address:</span> {orderDeliveryAddress(o)}</div>
                                 {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
@@ -2413,6 +2412,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
