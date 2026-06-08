@@ -662,7 +662,12 @@ export default function TakeoutTrackPage() {
                   {isVendorAcceptTimeout(order)
                     ? "This order was automatically closed because the vendor did not accept it within 5 minutes."
                     : cancelReason(order)
-                      ? "Reason: " + cancelReason(order)
+                      ? (() => {
+                        const raw = cancelReason(order);
+                        const parts = raw.split(" - ");
+                        if (parts.length < 2) return "Reason: " + raw;
+                        return "Reason: " + parts[0] + "\nNote: " + parts.slice(1).join(" - ");
+                      })()
                       : ""}
                 </div>
 
