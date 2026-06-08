@@ -853,8 +853,9 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       // Keep this schema-safe: update only columns confirmed in the bookings table.
       patch.customer_status = "cancelled";
       patch.status = "cancelled";
-      patch.vendor_cancel_reason = cancelReason;
-      patch.cancel_reason = cancelReason;
+      const cancelSummary = cancelNote ? `${cancelReason} - ${cancelNote}` : cancelReason;
+      patch.vendor_cancel_reason = cancelSummary;
+      patch.cancel_reason = cancelSummary;
     }
 
     const up = await admin
@@ -1546,6 +1547,7 @@ function normalizeDriverVehicleType(value: unknown): string {
 
   return ''
 }
+
 
 
 
