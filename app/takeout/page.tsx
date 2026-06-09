@@ -1829,8 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_EXACT_V7 */}
-              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_EXACT_V8 */}
+              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1842,16 +1842,16 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:p-3",
+                        "w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[250px] sm:p-3",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-18 sm:w-18" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-14 sm:w-14 lg:h-16 lg:w-16" /> : null}
                           <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-start gap-2">
-                          <div className="line-clamp-2 text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
+                        <div className="flex min-w-0 flex-col items-start gap-1">
+                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-base lg:text-lg">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1860,7 +1860,7 @@ const contact = await fetchOptionalJson(
                           ) : null}
                         </div>
                         {m.description ? (
-                          <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-600 sm:text-sm">{m.description}</div>
+                          <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-600">{m.description}</div>
                         ) : null}
                         <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {Number(m.remaining_quantity) > 0 ? (
@@ -1872,7 +1872,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold leading-tight text-emerald-800 sm:text-[11px]">
+                          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold leading-tight text-emerald-800">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1888,28 +1888,28 @@ const contact = await fetchOptionalJson(
                               <span className="line-clamp-2 font-semibold">
                                 Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
                               </span>
-                              <span className="hidden text-emerald-700 sm:block">
-                                Optional add-on. This is added to your subtotal when checked.
+                              <span className="hidden text-emerald-700 xl:block">
+                                Optional add-on. Added to subtotal when checked.
                               </span>
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-2 text-lg font-black tracking-tight text-slate-900 sm:text-xl">{money(toNum(m.price))}</div>
+                        <div className="mt-2 text-lg font-black tracking-tight text-slate-900 sm:text-lg lg:text-xl">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-2 grid w-full max-w-[180px] grid-cols-[34px_minmax(52px,1fr)_34px] items-center gap-1.5">
+                      <div className="mt-3 grid w-full grid-cols-[40px_minmax(72px,1fr)_40px] items-center gap-2 sm:max-w-[230px]">
                         <button
                           type="button"
-                          className="h-8 w-8 rounded-lg border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-9 w-9 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-8 w-full rounded-lg border px-2 text-center text-sm font-black"
+                          className="h-9 w-full rounded-full border px-2 text-center text-sm font-black"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -1917,7 +1917,7 @@ const contact = await fetchOptionalJson(
                         />
                         <button
                           type="button"
-                          className="h-8 w-8 rounded-lg border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-9 w-9 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
