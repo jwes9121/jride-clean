@@ -1829,8 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_EXACT_V8 */}
-              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_EXACT_V9 */}
+              <div className="mt-3 grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1842,16 +1842,16 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[250px] sm:p-3",
+                        "w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[210px] sm:p-3",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-14 sm:w-14 lg:h-16 lg:w-16" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-[72px] sm:w-[72px] lg:h-20 lg:w-20" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
-                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-base lg:text-lg">{m.name}</div>
+                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1872,7 +1872,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold leading-tight text-emerald-800">
+                          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-tight text-emerald-800">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1888,28 +1888,25 @@ const contact = await fetchOptionalJson(
                               <span className="line-clamp-2 font-semibold">
                                 Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
                               </span>
-                              <span className="hidden text-emerald-700 xl:block">
-                                Optional add-on. Added to subtotal when checked.
-                              </span>
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-2 text-lg font-black tracking-tight text-slate-900 sm:text-lg lg:text-xl">{money(toNum(m.price))}</div>
+                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-3 grid w-full grid-cols-[40px_minmax(72px,1fr)_40px] items-center gap-2 sm:max-w-[230px]">
+                      <div className="mt-3 grid w-full max-w-[260px] grid-cols-[42px_minmax(90px,1fr)_42px] items-center gap-2">
                         <button
                           type="button"
-                          className="h-9 w-9 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-9 w-full rounded-full border px-2 text-center text-sm font-black"
+                          className="h-10 w-full rounded-full border px-2 text-center text-sm font-black"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -1917,7 +1914,7 @@ const contact = await fetchOptionalJson(
                         />
                         <button
                           type="button"
-                          className="h-9 w-9 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
