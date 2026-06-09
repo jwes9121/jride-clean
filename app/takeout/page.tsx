@@ -1529,7 +1529,7 @@ const contact = await fetchOptionalJson(
   }
 
   return (
-    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
+    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-6xl sm:px-4 lg:max-w-7xl md:p-6 md:pb-40">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
           <div className="jride-premium-brand-row">
@@ -1582,7 +1582,7 @@ const contact = await fetchOptionalJson(
         ) : null}
       </div>
 
-      <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
+      <div className="jride-takeout-main-panel mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
         <div className="grid gap-2.5 md:grid-cols-1 md:gap-3">
           <div className="space-y-2">
             <div>
@@ -1774,7 +1774,7 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="col-span-full w-full max-w-none">
+          <div className="jride-takeout-menu-section col-span-full w-full max-w-none">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
@@ -1829,8 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_ALLOCATED_WIDTH_V13 */}
-              <div className="mt-3 grid w-full max-w-none grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-4">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_ALLOCATED_WIDTH_V14 */}
+              <div className="jride-takeout-menu-grid mt-3 grid w-full max-w-none grid-cols-1 gap-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1842,7 +1842,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[210px] sm:p-3",
+                        "jride-takeout-menu-card w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[210px] sm:p-3",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2630,6 +2630,46 @@ const contact = await fetchOptionalJson(
           body .bg-slate-50 {
             background: linear-gradient(180deg, rgba(15, 30, 41, 0.94), rgba(7, 18, 25, 0.94)) !important;
             color: var(--jr-text) !important;
+          }
+
+
+          /* JRIDE_TAKEOUT_MENU_LAYOUT_ALLOCATED_WIDTH_V14
+             Desktop uses the full allocated page width with auto-fitting cards.
+             Android/WebView remains one readable column. */
+          .jride-takeout-main-panel,
+          .jride-takeout-main-panel > div,
+          .jride-takeout-menu-section {
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+          }
+
+          .jride-takeout-menu-grid {
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            display: grid !important;
+            grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+            gap: 1rem !important;
+          }
+
+          .jride-takeout-menu-card {
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+          }
+
+          @media (min-width: 768px) {
+            .jride-takeout-menu-grid {
+              grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+              align-items: stretch !important;
+            }
+          }
+
+          @media (min-width: 1180px) {
+            .jride-takeout-menu-grid {
+              grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+            }
           }
 
           body .rounded-2xl,
