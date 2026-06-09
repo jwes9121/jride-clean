@@ -1529,7 +1529,7 @@ const contact = await fetchOptionalJson(
   }
 
   return (
-    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-6xl sm:px-4 lg:max-w-7xl md:p-6 md:pb-40">
+    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
           <div className="jride-premium-brand-row">
@@ -1582,7 +1582,7 @@ const contact = await fetchOptionalJson(
         ) : null}
       </div>
 
-      <div className="jride-takeout-main-panel mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
+      <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
         <div className="grid gap-2.5 md:grid-cols-1 md:gap-3">
           <div className="space-y-2">
             <div>
@@ -1634,7 +1634,7 @@ const contact = await fetchOptionalJson(
               </div>
             </div>
 
-            <div className="col-span-full w-full max-w-none space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Vendor marketplace</div>
@@ -1660,7 +1660,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[repeat(2,minmax(420px,1fr))]">
+                <div className="grid w-full grid-cols-1 gap-4 lg:max-w-[520px]">
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
                   {(vendorId ? visibleVendors.filter((v) => vendorKey(v) === vendorId) : visibleVendors).map((v) => {
                     const id = vendorKey(v);
@@ -1753,7 +1753,7 @@ const contact = await fetchOptionalJson(
 
               {vendorId ? (
                 <div className={cls(
-                  "rounded-xl border p-3 text-xs",
+                  "w-full rounded-xl border p-3 text-xs lg:max-w-none",
                   vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 )}>
                   <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
@@ -1774,7 +1774,8 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="jride-takeout-menu-section col-span-full w-full max-w-none">
+          <div className="w-full min-w-0 md:col-span-2">
+            {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V15 */}
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
@@ -1829,8 +1830,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_ALLOCATED_WIDTH_V14 */}
-              <div className="jride-takeout-menu-grid mt-3 grid w-full max-w-none grid-cols-1 gap-4">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V15 */}
+              <div className="mt-4 grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1842,13 +1843,13 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "jride-takeout-menu-card w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[210px] sm:p-3",
+                        "flex min-h-[235px] w-full min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px]",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-[72px] sm:w-[72px] lg:h-20 lg:w-20" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-[70px] sm:w-[70px]" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
                           <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
@@ -1896,7 +1897,7 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-3 grid w-full max-w-[260px] grid-cols-[42px_minmax(90px,1fr)_42px] items-center gap-2">
+                      <div className="mt-4 grid w-full grid-cols-[42px_minmax(80px,1fr)_42px] items-center gap-2">
                         <button
                           type="button"
                           className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
@@ -2034,7 +2035,8 @@ const contact = await fetchOptionalJson(
           {/* JRIDE_TAKEOUT_PASSENGER_AUTOFILL_V1 */}
           {/* JRIDE_TAKEOUT_DELIVERY_PIN_MAP_V1 */}
           {/* PHASE2B0_ADDRESS_PICKER_DB */}
-          <div className="md:col-span-2">
+          <div className="w-full min-w-0 md:col-span-2">
+            {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V15 */}
             <div className="flex items-center justify-between gap-3">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Delivery details</label>
               <button
@@ -2630,46 +2632,6 @@ const contact = await fetchOptionalJson(
           body .bg-slate-50 {
             background: linear-gradient(180deg, rgba(15, 30, 41, 0.94), rgba(7, 18, 25, 0.94)) !important;
             color: var(--jr-text) !important;
-          }
-
-
-          /* JRIDE_TAKEOUT_MENU_LAYOUT_ALLOCATED_WIDTH_V14
-             Desktop uses the full allocated page width with auto-fitting cards.
-             Android/WebView remains one readable column. */
-          .jride-takeout-main-panel,
-          .jride-takeout-main-panel > div,
-          .jride-takeout-menu-section {
-            width: 100% !important;
-            max-width: none !important;
-            min-width: 0 !important;
-          }
-
-          .jride-takeout-menu-grid {
-            width: 100% !important;
-            max-width: none !important;
-            min-width: 0 !important;
-            display: grid !important;
-            grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
-            gap: 1rem !important;
-          }
-
-          .jride-takeout-menu-card {
-            width: 100% !important;
-            max-width: none !important;
-            min-width: 0 !important;
-          }
-
-          @media (min-width: 768px) {
-            .jride-takeout-menu-grid {
-              grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
-              align-items: stretch !important;
-            }
-          }
-
-          @media (min-width: 1180px) {
-            .jride-takeout-menu-grid {
-              grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
-            }
           }
 
           body .rounded-2xl,
