@@ -1,6 +1,6 @@
 "use client";
 
-// JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V23
+// JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1984,24 +1984,24 @@ const contact = await fetchOptionalJson(
               </div>
             ) : (
               <>
-              {/* JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V23 */}
-              <div className="sticky top-[76px] z-30 -mx-1 mt-3 rounded-2xl border border-emerald-900/40 bg-slate-950/95 p-2 shadow-lg backdrop-blur sm:static sm:top-auto sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
-                <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px]">
-                  <label className="block">
+              {/* JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24 */}
+              <div className="sticky top-[76px] z-30 -mx-1 mt-2 rounded-2xl border border-emerald-900/40 bg-slate-950/95 p-1.5 shadow-lg backdrop-blur sm:static sm:top-auto sm:z-auto sm:mx-0 sm:mt-3 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
+                <div className="grid grid-cols-[minmax(0,1fr)_128px] gap-1.5 sm:grid-cols-[minmax(0,1fr)_180px] sm:gap-2">
+                  <label className="block min-w-0">
                     <span className="sr-only">Search menu items</span>
                     <input
                       value={menuSearchTerm}
                       onChange={(e) => setMenuSearchTerm(e.target.value)}
                       placeholder="Search menu items"
-                      className="w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-4 py-2 text-sm font-semibold text-emerald-50 outline-none placeholder:text-slate-400 focus:border-emerald-400"
+                      className="h-9 w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-3 text-xs font-semibold text-emerald-50 outline-none placeholder:text-slate-400 focus:border-emerald-400 sm:h-auto sm:px-4 sm:py-2 sm:text-sm"
                     />
                   </label>
-                  <label className="block">
+                  <label className="block min-w-0">
                     <span className="sr-only">Sort menu items</span>
                     <select
                       value={menuSortMode}
                       onChange={(e) => setMenuSortMode(e.target.value as typeof menuSortMode)}
-                      className="w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-4 py-2 text-sm font-bold text-emerald-50 outline-none focus:border-emerald-400"
+                      className="h-9 w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-2 text-xs font-bold text-emerald-50 outline-none focus:border-emerald-400 sm:h-auto sm:px-4 sm:py-2 sm:text-sm"
                     >
                       <option value="recommended">Recommended</option>
                       <option value="price_asc">Price low to high</option>
@@ -2012,14 +2012,14 @@ const contact = await fetchOptionalJson(
                   </label>
                 </div>
 
-                <div className="mt-2 flex gap-2 overflow-x-auto pb-1 sm:mt-3 sm:flex-wrap sm:overflow-visible">
+                <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5 sm:mt-3 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pb-1">
                   {visibleMenuCategories.map((cat) => (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => setMenuCategoryFilter(cat)}
                       className={cls(
-                        "shrink-0 rounded-full border px-3 py-1.5 text-xs font-black",
+                        "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black sm:px-3 sm:py-1.5 sm:text-xs",
                         menuCategoryFilter === cat
                           ? "border-emerald-300 bg-emerald-600 text-white"
                           : "border-emerald-900/60 bg-slate-950/70 text-emerald-100"
