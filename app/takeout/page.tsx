@@ -1,5 +1,7 @@
 "use client";
 
+// JRIDE_TAKEOUT_VENDOR_AVAILABILITY_MOBILE_RESTORE_V22
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
@@ -74,16 +76,6 @@ type VendorRow = {
   premium_packaging_enabled?: boolean | null;
   premium_packaging_fee?: number | string | null;
   premium_packaging_label?: string | null;
-  accepting_orders?: boolean | string | number | null;
-  acceptingOrders?: boolean | string | number | null;
-  is_open?: boolean | string | number | null;
-  isOpen?: boolean | string | number | null;
-  vendor_accepting_orders?: boolean | string | number | null;
-  vendorOpen?: boolean | string | number | null;
-  status?: string | null;
-  vendor_status?: string | null;
-  availability_status?: string | null;
-  store_status?: string | null;
 };
 
 
@@ -700,10 +692,12 @@ export default function TakeoutPage() {
   const [menuBusy, setMenuBusy] = useState(false);
   const [menuErr, setMenuErr] = useState<string | null>(null);
   const [vendorClosed, setVendorClosed] = useState(false);
-  // JRIDE_TAKEOUT_VENDOR_AVAILABILITY_ORDER_V21
+  // JRIDE_TAKEOUT_VENDOR_AVAILABILITY_ORDER_V22
   const [vendorAvailabilityById, setVendorAvailabilityById] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("All");
+  const [menuSearchTerm, setMenuSearchTerm] = useState("");
+  const [menuSortMode, setMenuSortMode] = useState<"recommended" | "price_asc" | "price_desc" | "prep_fast" | "name_asc">("recommended");
   const [menuVendorProfile, setMenuVendorProfile] = useState<any>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
 
@@ -822,20 +816,88 @@ function selectedAddressTown(
   const menuSelectable = useMemo(() => {
     return (menu || []).map((m) => {
       const available = (m.is_available !== false) && (m.sold_out_today !== true);
-      return { ...m, category: String(m.category || "Others"), _available: available };
+      const category = String(m.category || "Others").trim() || "Others";
+      return { ...m, category, _available: available };
     });
   }, [menu]);
 
   const visibleMenuCategories = useMemo(() => {
     const set = new Set<string>();
-    for (const item of menuSelectable) set.add(String(item.category || "Others"));
-    return ["All", "Meals", "Drinks", "Snacks", "Desserts", "Add-ons", "Others"].filter((cat) => cat === "All" || set.has(cat));
+    for (const item of menuSelectable) {
+      const cat = String(item.category || "Others").trim() || "Others";
+      set.add(cat);
+    }
+
+    const preferred = [
+      "Meals",
+      "Rice Meals",
+      "Chicken",
+      "Pork",
+      "Seafood",
+      "Noodles",
+      "Pasta",
+      "Bread",
+      "Coffee",
+      "Milk Tea",
+      "Drinks",
+      "Fruit Soda",
+      "Desserts",
+      "Waffles",
+      "Snacks",
+      "Add-ons",
+      "Others",
+    ];
+
+    const out: string[] = ["All"];
+    for (const cat of preferred) {
+      if (set.has(cat)) {
+        out.push(cat);
+        set.delete(cat);
+      }
+    }
+    out.push(...Array.from(set).sort((a, b) => a.localeCompare(b, "en")));
+    return out;
   }, [menuSelectable]);
 
+  useEffect(() => {
+    if (!visibleMenuCategories.includes(menuCategoryFilter)) {
+      setMenuCategoryFilter("All");
+    }
+  }, [visibleMenuCategories, menuCategoryFilter]);
+
   const filteredMenuSelectable = useMemo(() => {
-    if (menuCategoryFilter === "All") return menuSelectable;
-    return menuSelectable.filter((m) => String(m.category || "Others") === menuCategoryFilter);
-  }, [menuSelectable, menuCategoryFilter]);
+    const q = menuSearchTerm.trim().toLowerCase();
+
+    const filtered = menuSelectable.filter((m) => {
+      const category = String(m.category || "Others").trim() || "Others";
+      if (menuCategoryFilter !== "All" && category !== menuCategoryFilter) return false;
+      if (!q) return true;
+
+      const haystack = [
+        m.name,
+        m.description,
+        category,
+        m.packaging_note,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (menuSortMode === "price_asc") return toNum(a.price) - toNum(b.price);
+      if (menuSortMode === "price_desc") return toNum(b.price) - toNum(a.price);
+      if (menuSortMode === "prep_fast") return prepMinutes(a.prep_time_minutes) - prepMinutes(b.prep_time_minutes);
+      if (menuSortMode === "name_asc") return String(a.name || "").localeCompare(String(b.name || ""), "en");
+
+      const ao = Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : 0;
+      const bo = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : 0;
+      if (ao !== bo) return ao - bo;
+      return String(a.name || "").localeCompare(String(b.name || ""), "en");
+    });
+  }, [menuSelectable, menuCategoryFilter, menuSearchTerm, menuSortMode]);
 
   function itemPremiumPackagingEnabled(m: MenuItem): boolean {
     return m.premium_packaging_enabled === true;
@@ -1090,6 +1152,8 @@ const contact = await fetchOptionalJson(
       setVendorClosed(false);
       setMenu([]);
       setMenuVendorProfile(null);
+      setMenuCategoryFilter("All");
+      setMenuSearchTerm("");
       setQty({});
       return;
     }
@@ -1112,6 +1176,7 @@ const contact = await fetchOptionalJson(
           id: String(r.id ?? r.menu_item_id ?? ""),
           name: String(r.name ?? ""),
           description: (r.description ?? null) as any,
+          category: (r.category ?? r.item_category ?? r.menu_category ?? r.category_name ?? "Others") as any,
           packaging_note: (r.packaging_note ?? r.packagingNote ?? r.packaging ?? null) as any,
           premium_packaging_enabled: (r.premium_packaging_enabled === true) as any,
           premium_packaging_fee: (r.premium_packaging_fee ?? 0) as any,
@@ -1189,30 +1254,13 @@ const contact = await fetchOptionalJson(
     }
   }
 
+
   useEffect(() => {
     const dk = getOrCreateDeviceKey();
     setDeviceKey(dk);
     refreshAddresses(dk).catch(() => undefined);
     loadPassengerAutofill().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    writeLocal(LS_TAKEOUT_CUSTOMER_NAME, customerName);
-  }, [customerName]);
-
-  useEffect(() => {
-    writeLocal(LS_TAKEOUT_CUSTOMER_PHONE, customerPhone);
-  }, [customerPhone]);
-
-
-  useEffect(() => {
-    getJson("/api/admin/vendors")
-      .then((j) => {
-        const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
-        setVendors(rows.filter(Boolean));
-      })
-      .catch(() => setVendors([]));
   }, []);
 
   useEffect(() => {
@@ -1245,6 +1293,25 @@ const contact = await fetchOptionalJson(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleVendors, vendorAvailabilityById]);
+
+  useEffect(() => {
+    writeLocal(LS_TAKEOUT_CUSTOMER_NAME, customerName);
+  }, [customerName]);
+
+  useEffect(() => {
+    writeLocal(LS_TAKEOUT_CUSTOMER_PHONE, customerPhone);
+  }, [customerPhone]);
+
+
+  useEffect(() => {
+    getJson("/api/admin/vendors")
+      .then((j) => {
+        const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
+        const activeRows = rows.filter((v: any) => isVendorAcceptingOrders(v));
+        setVendors(activeRows);
+      })
+      .catch(() => setVendors([]));
+  }, []);
 
   useEffect(() => {
     if (!vendorTownFilter) {
@@ -1682,8 +1749,8 @@ const contact = await fetchOptionalJson(
       </div>
 
       <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
-        <div className="grid gap-2.5 md:grid-cols-1 md:gap-3">
-          <div className="space-y-2">
+        <div className="jride-takeout-form-grid grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] md:gap-5">
+          <div className="jride-town-and-vendors space-y-2">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose town</label>
@@ -1733,7 +1800,7 @@ const contact = await fetchOptionalJson(
               </div>
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="jride-vendor-menu-section space-y-2 md:col-span-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Vendor marketplace</div>
@@ -1759,7 +1826,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid w-full grid-cols-1 gap-2.5 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className={cls("jride-vendor-grid grid w-full gap-4", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
                   {(vendorId ? visibleVendors.filter((v) => vendorKey(v) === vendorId) : visibleVendors).map((v) => {
                     const id = vendorKey(v);
@@ -1775,7 +1842,9 @@ const contact = await fetchOptionalJson(
                       <button
                         key={id}
                         type="button"
-                        
+                        disabled={isClosed}
+                        aria-disabled={isClosed}
+                        title={isClosed ? "This vendor is closed right now." : "View this vendor menu."}
                         onClick={() => {
                           if (isClosed) return;
                           const nextVendorId = id;
@@ -1786,11 +1855,8 @@ const contact = await fetchOptionalJson(
                           setSubmitted(false);
                           refreshMenu(nextVendorId);
                         }}
-                        disabled={isClosed}
-                        aria-disabled={isClosed}
-                        title={isClosed ? "This vendor is closed right now." : "View this vendor menu."}
                         className={cls(
-                          "group flex min-h-[118px] w-full items-start gap-2.5 rounded-2xl border p-3 text-left shadow-[0_12px_32px_rgba(0,0,0,0.20)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
+                          "group flex min-h-[92px] w-full items-start gap-2 rounded-xl border p-2 text-left shadow-[0_8px_20px_rgba(0,0,0,0.14)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:max-w-none",
                           isClosed
                             ? "border-slate-800 bg-slate-950/50 text-slate-400 grayscale"
                             : isSelected
@@ -1798,12 +1864,12 @@ const contact = await fetchOptionalJson(
                               : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
                         )}
                       >
-                        <div className="mt-0.5 h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-emerald-500/40 bg-slate-950 sm:mt-1 sm:h-20 sm:w-20 sm:rounded-3xl">
+                        <div className="mt-0.5 h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-emerald-500/40 bg-slate-950 sm:mt-1 sm:h-20 sm:w-20 sm:rounded-3xl">
                           {logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center px-1.5 text-center text-[8px] font-extrabold uppercase tracking-[0.1em] text-emerald-200 sm:px-2 sm:text-[10px] sm:tracking-[0.12em]">
+                            <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-200">
                               No logo uploaded
                             </div>
                           )}
@@ -1812,7 +1878,7 @@ const contact = await fetchOptionalJson(
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
                             <div className="min-w-0">
-                              <div className="break-words text-base font-black leading-tight text-white sm:text-xl">
+                              <div className="line-clamp-2 break-words text-base font-black leading-tight text-white sm:text-xl">
                                 {label}
                               </div>
                               <div className="mt-0.5 text-xs font-semibold text-emerald-100 sm:mt-1 sm:text-sm">
@@ -1822,7 +1888,7 @@ const contact = await fetchOptionalJson(
 
                             <span
                               className={cls(
-                                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black sm:px-2.5 sm:py-1 sm:text-[11px]",
+                                "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black",
                                 isClosed
                                   ? "border-rose-300/70 bg-rose-500/10 text-rose-100"
                                   : "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
@@ -1832,21 +1898,21 @@ const contact = await fetchOptionalJson(
                             </span>
                           </div>
 
-                          <p className="mt-1.5 line-clamp-1 max-w-2xl text-xs leading-relaxed text-slate-300 sm:mt-3 sm:line-clamp-2 sm:text-sm">
+                          <p className="mt-1 hidden line-clamp-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:mt-3 sm:block">
                             Fresh local meals and takeout favorites delivered to your location.
                           </p>
 
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-3">
-                            <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-2.5 py-1 text-[11px] font-bold text-emerald-100 sm:px-3 sm:py-1.5 sm:text-xs">
+                          <div className="mt-2 flex flex-row flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-3">
+                            <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-2 py-1 text-[10px] font-bold text-emerald-100 sm:px-3 sm:py-1.5 sm:text-xs">
                               Prep time: {prep} min
                             </span>
                             {hasPremiumPackaging ? (
-                              <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-2.5 py-1 text-[11px] font-bold text-amber-100 sm:px-3 sm:py-1.5 sm:text-xs">
+                              <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-2 py-1 text-[10px] font-bold text-amber-100 sm:px-3 sm:py-1.5 sm:text-xs">
                                 Premium packaging
                               </span>
                             ) : null}
-                            <span className="rounded-full border border-emerald-500/40 px-2.5 py-1 text-[11px] font-black text-emerald-100 sm:ml-auto sm:px-3 sm:py-1.5 sm:text-xs">
-                              {isClosed ? "Closed" : isSelected ? "Menu loaded" : "View menu"}
+                            <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
+                              {isSelected ? "Menu loaded" : "View menu"}
                             </span>
                           </div>
                         </div>
@@ -1858,7 +1924,7 @@ const contact = await fetchOptionalJson(
 
               {vendorId ? (
                 <div className={cls(
-                  "w-full rounded-xl border p-3 text-xs lg:max-w-none",
+                  "jride-selected-vendor-summary w-full rounded-xl border p-3 text-xs lg:max-w-none",
                   vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 )}>
                   <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
@@ -1879,8 +1945,8 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="w-full min-w-0 md:col-span-2">
-            {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V15 */}
+          <div className="jride-menu-section w-full min-w-0 md:col-span-2">
+            {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V16 */}
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
@@ -1918,14 +1984,40 @@ const contact = await fetchOptionalJson(
               </div>
             ) : (
               <>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_180px]">
+                <label className="block">
+                  <span className="sr-only">Search menu items</span>
+                  <input
+                    value={menuSearchTerm}
+                    onChange={(e) => setMenuSearchTerm(e.target.value)}
+                    placeholder="Search menu items"
+                    className="w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-4 py-2 text-sm font-semibold text-emerald-50 outline-none placeholder:text-slate-400 focus:border-emerald-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="sr-only">Sort menu items</span>
+                  <select
+                    value={menuSortMode}
+                    onChange={(e) => setMenuSortMode(e.target.value as typeof menuSortMode)}
+                    className="w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-4 py-2 text-sm font-bold text-emerald-50 outline-none focus:border-emerald-400"
+                  >
+                    <option value="recommended">Recommended</option>
+                    <option value="price_asc">Price low to high</option>
+                    <option value="price_desc">Price high to low</option>
+                    <option value="prep_fast">Prep time fastest</option>
+                    <option value="name_asc">Name A-Z</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
                 {visibleMenuCategories.map((cat) => (
                   <button
                     key={cat}
                     type="button"
                     onClick={() => setMenuCategoryFilter(cat)}
                     className={cls(
-                      "rounded-full border px-3 py-1.5 text-xs font-black",
+                      "shrink-0 rounded-full border px-3 py-1.5 text-xs font-black",
                       menuCategoryFilter === cat
                         ? "border-emerald-300 bg-emerald-600 text-white"
                         : "border-emerald-900/60 bg-slate-950/70 text-emerald-100"
@@ -1935,8 +2027,15 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V15 */}
-              <div className="mt-4 grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+
+              {filteredMenuSelectable.length === 0 ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 p-4 text-sm text-slate-300">
+                  No menu items match this category or search.
+                </div>
+              ) : null}
+
+              {/* JRIDE_TAKEOUT_DYNAMIC_MENU_CATEGORIES_V17 */}
+              <div className="jride-menu-grid mt-3 grid w-full min-w-0 grid-cols-1 gap-2 sm:mt-4 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1948,16 +2047,16 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex min-h-[235px] w-full min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px]",
+                        "flex min-h-[138px] w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px] sm:rounded-2xl sm:p-3.5",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
-                        <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-[70px] sm:w-[70px]" /> : null}
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-12 w-12 shrink-0 rounded-lg border object-cover shadow-sm sm:h-[70px] sm:w-[70px] sm:rounded-xl" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
-                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
+                          <div className="line-clamp-2 break-words text-sm font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1966,19 +2065,19 @@ const contact = await fetchOptionalJson(
                           ) : null}
                         </div>
                         {m.description ? (
-                          <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-600">{m.description}</div>
+                          <div className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-slate-600 sm:mt-1 sm:line-clamp-2 sm:text-xs">{m.description}</div>
                         ) : null}
-                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        <div className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold text-slate-700 sm:mt-2 sm:px-2.5 sm:text-[10px]">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {Number(m.remaining_quantity) > 0 ? (
-                          <div className="mt-1 text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity)}</div>
+                          <div className="mt-0.5 text-[10px] font-semibold text-emerald-700 sm:mt-1 sm:text-[11px]">Remaining today: {Number(m.remaining_quantity)}</div>
                         ) : null}
                         {m.packaging_note ? (
-                          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
+                          <div className="mt-1 line-clamp-2 rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-[10px] font-medium leading-snug text-amber-800 sm:mt-2 sm:rounded-xl sm:p-2 sm:text-[11px]">
                             Packaging: {m.packaging_note}
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-tight text-emerald-800">
+                          <label className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -1997,22 +2096,22 @@ const contact = await fetchOptionalJson(
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-3 text-xl font-black tracking-tight text-slate-900">{money(toNum(m.price))}</div>
+                        <div className="mt-2 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 grid w-full grid-cols-[42px_minmax(80px,1fr)_42px] items-center gap-2">
+                      <div className="mt-2 grid w-full grid-cols-[34px_minmax(72px,1fr)_34px] items-center gap-1.5 sm:mt-4 sm:grid-cols-[42px_minmax(80px,1fr)_42px] sm:gap-2">
                         <button
                           type="button"
-                          className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-8 w-8 rounded-full border bg-white text-xs font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-10 sm:w-10 sm:text-sm"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-10 w-full rounded-full border px-2 text-center text-sm font-black"
+                          className="h-8 w-full rounded-full border px-2 text-center text-xs font-black sm:h-10 sm:text-sm"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -2020,7 +2119,7 @@ const contact = await fetchOptionalJson(
                         />
                         <button
                           type="button"
-                          className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-8 w-8 rounded-full border bg-white text-xs font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-10 sm:w-10 sm:text-sm"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
@@ -2887,6 +2986,69 @@ const contact = await fetchOptionalJson(
           body .mapboxgl-map {
             border-radius: 1.15rem !important;
             filter: saturate(0.92) contrast(0.95);
+          }
+
+
+          /* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V16
+             Desktop layout contract:
+             - town selector and passenger name share the first row
+             - vendor marketplace, selected vendor, menu grid, and subtotal use the full allocated card width
+             - Android/WebView remains one-column and app-like. */
+          @media (min-width: 768px) {
+            .jride-takeout-form-grid {
+              display: grid !important;
+              grid-template-columns: minmax(0, 1fr) minmax(320px, 420px) !important;
+              align-items: start !important;
+              column-gap: 1.25rem !important;
+              row-gap: 1rem !important;
+            }
+
+            .jride-town-and-vendors {
+              display: contents !important;
+            }
+
+            .jride-town-and-vendors > div:first-child {
+              grid-column: 1 / 2 !important;
+              grid-row: 1 !important;
+              min-width: 0 !important;
+            }
+
+            .jride-vendor-menu-section {
+              grid-column: 1 / -1 !important;
+              grid-row: 2 !important;
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
+            }
+
+            .jride-vendor-grid {
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
+            }
+
+            .jride-vendor-grid > button {
+              width: 100% !important;
+              max-width: none !important;
+            }
+
+            .jride-selected-vendor-summary,
+            .jride-menu-section,
+            .jride-menu-grid {
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
+            }
+
+            .jride-menu-grid {
+              grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            }
+          }
+
+          @media (min-width: 768px) and (max-width: 1180px) {
+            .jride-menu-grid {
+              grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            }
           }
 
           @media (max-width: 640px) {
