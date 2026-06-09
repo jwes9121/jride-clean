@@ -1529,7 +1529,7 @@ const contact = await fetchOptionalJson(
   }
 
   return (
-    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-5xl sm:px-4 md:p-6 md:pb-40">
+    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-6xl sm:px-4 md:p-6 md:pb-40 xl:max-w-7xl">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
           <div className="jride-premium-brand-row">
@@ -1774,7 +1774,7 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="jride-takeout-menu-full md:col-span-2">
+          <div className="md:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
@@ -1829,8 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_CONTAINED_WIDTH_V11 */}
-              <div className="mt-3 grid w-full min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_ALLOCATED_WIDTH_V12 */}
+              <div className="mt-3 grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1842,7 +1842,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[230px] sm:p-4",
+                        "w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[220px]",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -1851,7 +1851,7 @@ const contact = await fetchOptionalJson(
                           {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-20 sm:w-20" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
-                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
+                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 md:text-lg">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1896,7 +1896,7 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-3 grid w-full max-w-[280px] grid-cols-[42px_minmax(110px,1fr)_42px] items-center gap-2">
+                      <div className="mt-4 grid w-full max-w-[320px] grid-cols-[42px_minmax(120px,1fr)_42px] items-center gap-3">
                         <button
                           type="button"
                           className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
@@ -2601,7 +2601,7 @@ const contact = await fetchOptionalJson(
           }
 
           body .mx-auto.w-full.max-w-5xl {
-            max-width: min(100%, 96rem) !important;
+            max-width: min(100%, 72rem) !important;
             min-height: 100vh;
             padding-top: 0.75rem !important;
             background: transparent !important;
@@ -2780,18 +2780,6 @@ const contact = await fetchOptionalJson(
           body .mapboxgl-map {
             border-radius: 1.15rem !important;
             filter: saturate(0.92) contrast(0.95);
-          }
-
-
-          /* JRIDE_TAKEOUT_MENU_LAYOUT_CONTAINED_WIDTH_V11
-             Keep the selected vendor menu inside the allocated page width.
-             Desktop uses the full parent width without viewport overflow.
-             Mobile remains one-column and app-like. */
-          .jride-takeout-menu-full {
-            width: 100%;
-            max-width: 100%;
-            min-width: 0;
-            overflow: hidden;
           }
 
           @media (max-width: 640px) {
