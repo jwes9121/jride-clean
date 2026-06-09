@@ -1774,7 +1774,7 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="md:col-span-2">
+          <div className="jride-takeout-menu-full md:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
@@ -1829,8 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_EXACT_V9 */}
-              <div className="mt-3 grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V10 */}
+              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1842,16 +1842,16 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[210px] sm:p-3",
+                        "w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[230px] sm:p-4",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-[72px] sm:w-[72px] lg:h-20 lg:w-20" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-20 sm:w-20" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
-                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
+                          <div className="line-clamp-2 break-words text-base font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
                           {m.sold_out_today ? (
                             <span className="rounded bg-red-100 px-2 py-0.5 text-[11px] text-red-700">Sold out</span>
                           ) : null}
@@ -1896,7 +1896,7 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-3 grid w-full max-w-[260px] grid-cols-[42px_minmax(90px,1fr)_42px] items-center gap-2">
+                      <div className="mt-3 grid w-full max-w-[280px] grid-cols-[42px_minmax(110px,1fr)_42px] items-center gap-2">
                         <button
                           type="button"
                           className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
@@ -2601,7 +2601,7 @@ const contact = await fetchOptionalJson(
           }
 
           body .mx-auto.w-full.max-w-5xl {
-            max-width: min(100%, 72rem) !important;
+            max-width: min(100%, 96rem) !important;
             min-height: 100vh;
             padding-top: 0.75rem !important;
             background: transparent !important;
@@ -2780,6 +2780,23 @@ const contact = await fetchOptionalJson(
           body .mapboxgl-map {
             border-radius: 1.15rem !important;
             filter: saturate(0.92) contrast(0.95);
+          }
+
+
+          /* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V10
+             Forces the selected vendor menu area to use the full desktop content width.
+             Mobile remains one-column and app-like. */
+          .jride-takeout-menu-full {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+          }
+
+          @media (min-width: 768px) {
+            .jride-takeout-menu-full {
+              width: min(calc(100vw - 3rem), 96rem);
+              max-width: min(calc(100vw - 3rem), 96rem);
+            }
           }
 
           @media (max-width: 640px) {
