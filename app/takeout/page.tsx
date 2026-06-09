@@ -1760,13 +1760,13 @@ const contact = await fetchOptionalJson(
                           refreshMenu(nextVendorId);
                         }}
                         className={cls(
-                          "group flex min-h-[170px] w-full items-start gap-4 rounded-3xl border p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-none",
+                          "group flex min-h-[128px] w-full items-start gap-3 rounded-2xl border p-3 text-left shadow-[0_12px_32px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:max-w-none",
                           isSelected
                             ? "border-emerald-400 bg-emerald-950 text-white ring-2 ring-emerald-300/30"
                             : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
                         )}
                       >
-                        <div className="mt-1 h-20 w-20 shrink-0 overflow-hidden rounded-3xl border border-emerald-500/40 bg-slate-950">
+                        <div className="mt-1 h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-emerald-500/40 bg-slate-950 sm:h-20 sm:w-20 sm:rounded-3xl">
                           {logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
@@ -1937,7 +1937,7 @@ const contact = await fetchOptionalJson(
               ) : null}
 
               {/* JRIDE_TAKEOUT_DYNAMIC_MENU_CATEGORIES_V17 */}
-              <div className="jride-menu-grid mt-4 grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="jride-menu-grid mt-4 grid w-full min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1949,7 +1949,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex min-h-[235px] w-full min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px]",
+                        "flex min-h-[190px] w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px] sm:rounded-2xl sm:p-3.5",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
