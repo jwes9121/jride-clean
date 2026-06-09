@@ -663,6 +663,8 @@ export default function TakeoutPage() {
   const [vendorClosed, setVendorClosed] = useState(false);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("All");
+  const [menuSearchTerm, setMenuSearchTerm] = useState("");
+  const [menuSortMode, setMenuSortMode] = useState<"recommended" | "price_asc" | "price_desc" | "prep_fast" | "name_asc">("recommended");
   const [menuVendorProfile, setMenuVendorProfile] = useState<any>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
 
@@ -776,20 +778,88 @@ function selectedAddressTown(
   const menuSelectable = useMemo(() => {
     return (menu || []).map((m) => {
       const available = (m.is_available !== false) && (m.sold_out_today !== true);
-      return { ...m, category: String(m.category || "Others"), _available: available };
+      const category = String(m.category || "Others").trim() || "Others";
+      return { ...m, category, _available: available };
     });
   }, [menu]);
 
   const visibleMenuCategories = useMemo(() => {
     const set = new Set<string>();
-    for (const item of menuSelectable) set.add(String(item.category || "Others"));
-    return ["All", "Meals", "Drinks", "Snacks", "Desserts", "Add-ons", "Others"].filter((cat) => cat === "All" || set.has(cat));
+    for (const item of menuSelectable) {
+      const cat = String(item.category || "Others").trim() || "Others";
+      set.add(cat);
+    }
+
+    const preferred = [
+      "Meals",
+      "Rice Meals",
+      "Chicken",
+      "Pork",
+      "Seafood",
+      "Noodles",
+      "Pasta",
+      "Bread",
+      "Coffee",
+      "Milk Tea",
+      "Drinks",
+      "Fruit Soda",
+      "Desserts",
+      "Waffles",
+      "Snacks",
+      "Add-ons",
+      "Others",
+    ];
+
+    const out: string[] = ["All"];
+    for (const cat of preferred) {
+      if (set.has(cat)) {
+        out.push(cat);
+        set.delete(cat);
+      }
+    }
+    out.push(...Array.from(set).sort((a, b) => a.localeCompare(b, "en")));
+    return out;
   }, [menuSelectable]);
 
+  useEffect(() => {
+    if (!visibleMenuCategories.includes(menuCategoryFilter)) {
+      setMenuCategoryFilter("All");
+    }
+  }, [visibleMenuCategories, menuCategoryFilter]);
+
   const filteredMenuSelectable = useMemo(() => {
-    if (menuCategoryFilter === "All") return menuSelectable;
-    return menuSelectable.filter((m) => String(m.category || "Others") === menuCategoryFilter);
-  }, [menuSelectable, menuCategoryFilter]);
+    const q = menuSearchTerm.trim().toLowerCase();
+
+    const filtered = menuSelectable.filter((m) => {
+      const category = String(m.category || "Others").trim() || "Others";
+      if (menuCategoryFilter !== "All" && category !== menuCategoryFilter) return false;
+      if (!q) return true;
+
+      const haystack = [
+        m.name,
+        m.description,
+        category,
+        m.packaging_note,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (menuSortMode === "price_asc") return toNum(a.price) - toNum(b.price);
+      if (menuSortMode === "price_desc") return toNum(b.price) - toNum(a.price);
+      if (menuSortMode === "prep_fast") return prepMinutes(a.prep_time_minutes) - prepMinutes(b.prep_time_minutes);
+      if (menuSortMode === "name_asc") return String(a.name || "").localeCompare(String(b.name || ""), "en");
+
+      const ao = Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : 0;
+      const bo = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : 0;
+      if (ao !== bo) return ao - bo;
+      return String(a.name || "").localeCompare(String(b.name || ""), "en");
+    });
+  }, [menuSelectable, menuCategoryFilter, menuSearchTerm, menuSortMode]);
 
   function itemPremiumPackagingEnabled(m: MenuItem): boolean {
     return m.premium_packaging_enabled === true;
@@ -1044,6 +1114,8 @@ const contact = await fetchOptionalJson(
       setVendorClosed(false);
       setMenu([]);
       setMenuVendorProfile(null);
+      setMenuCategoryFilter("All");
+      setMenuSearchTerm("");
       setQty({});
       return;
     }
@@ -1066,6 +1138,7 @@ const contact = await fetchOptionalJson(
           id: String(r.id ?? r.menu_item_id ?? ""),
           name: String(r.name ?? ""),
           description: (r.description ?? null) as any,
+          category: (r.category ?? r.item_category ?? r.menu_category ?? r.category_name ?? "Others") as any,
           packaging_note: (r.packaging_note ?? r.packagingNote ?? r.packaging ?? null) as any,
           premium_packaging_enabled: (r.premium_packaging_enabled === true) as any,
           premium_packaging_fee: (r.premium_packaging_fee ?? 0) as any,
@@ -1813,14 +1886,40 @@ const contact = await fetchOptionalJson(
               </div>
             ) : (
               <>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_180px]">
+                <label className="block">
+                  <span className="sr-only">Search menu items</span>
+                  <input
+                    value={menuSearchTerm}
+                    onChange={(e) => setMenuSearchTerm(e.target.value)}
+                    placeholder="Search menu items"
+                    className="w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-4 py-2 text-sm font-semibold text-emerald-50 outline-none placeholder:text-slate-400 focus:border-emerald-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="sr-only">Sort menu items</span>
+                  <select
+                    value={menuSortMode}
+                    onChange={(e) => setMenuSortMode(e.target.value as typeof menuSortMode)}
+                    className="w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-4 py-2 text-sm font-bold text-emerald-50 outline-none focus:border-emerald-400"
+                  >
+                    <option value="recommended">Recommended</option>
+                    <option value="price_asc">Price low to high</option>
+                    <option value="price_desc">Price high to low</option>
+                    <option value="prep_fast">Prep time fastest</option>
+                    <option value="name_asc">Name A-Z</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
                 {visibleMenuCategories.map((cat) => (
                   <button
                     key={cat}
                     type="button"
                     onClick={() => setMenuCategoryFilter(cat)}
                     className={cls(
-                      "rounded-full border px-3 py-1.5 text-xs font-black",
+                      "shrink-0 rounded-full border px-3 py-1.5 text-xs font-black",
                       menuCategoryFilter === cat
                         ? "border-emerald-300 bg-emerald-600 text-white"
                         : "border-emerald-900/60 bg-slate-950/70 text-emerald-100"
@@ -1830,7 +1929,14 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V16 */}
+
+              {filteredMenuSelectable.length === 0 ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 p-4 text-sm text-slate-300">
+                  No menu items match this category or search.
+                </div>
+              ) : null}
+
+              {/* JRIDE_TAKEOUT_DYNAMIC_MENU_CATEGORIES_V17 */}
               <div className="jride-menu-grid mt-4 grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
