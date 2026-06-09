@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -1829,7 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_COMPACT_MENU_GRID_V3 */}`r`n              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_EXACT_V7 */}
+              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -1898,17 +1899,17 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-2 grid w-full max-w-[230px] grid-cols-[38px_minmax(64px,1fr)_38px] items-center gap-2">
+                      <div className="mt-2 grid w-full max-w-[180px] grid-cols-[34px_minmax(52px,1fr)_34px] items-center gap-1.5">
                         <button
                           type="button"
-                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-8 w-8 rounded-lg border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || q <= 0}
                           onClick={() => setItemQty(m.id, q - 1)}
                         >
                           -
                         </button>
                         <input
-                          className="h-9 w-full rounded-xl border px-2 text-center text-sm font-black"
+                          className="h-8 w-full rounded-lg border px-2 text-center text-sm font-black"
                           value={String(q)}
                           onChange={(e) => setItemQty(m.id, Number(e.target.value))}
                           disabled={disabled}
@@ -1916,7 +1917,7 @@ const contact = await fetchOptionalJson(
                         />
                         <button
                           type="button"
-                          className="h-9 w-9 rounded-xl border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                          className="h-8 w-8 rounded-lg border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
                           disabled={disabled || plusDisabled}
                           title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
                           onClick={() => setItemQty(m.id, q + 1)}
@@ -2603,7 +2604,7 @@ const contact = await fetchOptionalJson(
           }
 
           body .mx-auto.w-full.max-w-5xl {
-            max-width: 30rem !important;
+            max-width: min(100%, 72rem) !important;
             min-height: 100vh;
             padding-top: 0.75rem !important;
             background: transparent !important;
@@ -2786,6 +2787,7 @@ const contact = await fetchOptionalJson(
 
           @media (max-width: 640px) {
             body .mx-auto.w-full.max-w-5xl {
+              max-width: 30rem !important;
               padding-left: 0.65rem !important;
               padding-right: 0.65rem !important;
             }
