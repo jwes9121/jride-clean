@@ -1583,8 +1583,8 @@ const contact = await fetchOptionalJson(
       </div>
 
       <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
-        <div className="grid gap-2.5 md:grid-cols-1 md:gap-3">
-          <div className="space-y-2">
+        <div className="jride-takeout-form-grid grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] md:gap-5">
+          <div className="jride-town-and-vendors space-y-2">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose town</label>
@@ -1634,7 +1634,7 @@ const contact = await fetchOptionalJson(
               </div>
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="jride-vendor-menu-section space-y-2 md:col-span-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Vendor marketplace</div>
@@ -1660,7 +1660,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid w-full grid-cols-1 gap-4 lg:max-w-[520px]">
+                <div className={cls("jride-vendor-grid grid w-full gap-4", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
                   {(vendorId ? visibleVendors.filter((v) => vendorKey(v) === vendorId) : visibleVendors).map((v) => {
                     const id = vendorKey(v);
@@ -1753,7 +1753,7 @@ const contact = await fetchOptionalJson(
 
               {vendorId ? (
                 <div className={cls(
-                  "w-full rounded-xl border p-3 text-xs lg:max-w-none",
+                  "jride-selected-vendor-summary w-full rounded-xl border p-3 text-xs lg:max-w-none",
                   vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 )}>
                   <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
@@ -1774,8 +1774,8 @@ const contact = await fetchOptionalJson(
                 </div>
               ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
-          <div className="w-full min-w-0 md:col-span-2">
-            {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V15 */}
+          <div className="jride-menu-section w-full min-w-0 md:col-span-2">
+            {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V16 */}
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
@@ -1830,8 +1830,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V15 */}
-              <div className="mt-4 grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V16 */}
+              <div className="jride-menu-grid mt-4 grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -2782,6 +2782,69 @@ const contact = await fetchOptionalJson(
           body .mapboxgl-map {
             border-radius: 1.15rem !important;
             filter: saturate(0.92) contrast(0.95);
+          }
+
+
+          /* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V16
+             Desktop layout contract:
+             - town selector and passenger name share the first row
+             - vendor marketplace, selected vendor, menu grid, and subtotal use the full allocated card width
+             - Android/WebView remains one-column and app-like. */
+          @media (min-width: 768px) {
+            .jride-takeout-form-grid {
+              display: grid !important;
+              grid-template-columns: minmax(0, 1fr) minmax(320px, 420px) !important;
+              align-items: start !important;
+              column-gap: 1.25rem !important;
+              row-gap: 1rem !important;
+            }
+
+            .jride-town-and-vendors {
+              display: contents !important;
+            }
+
+            .jride-town-and-vendors > div:first-child {
+              grid-column: 1 / 2 !important;
+              grid-row: 1 !important;
+              min-width: 0 !important;
+            }
+
+            .jride-vendor-menu-section {
+              grid-column: 1 / -1 !important;
+              grid-row: 2 !important;
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
+            }
+
+            .jride-vendor-grid {
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
+            }
+
+            .jride-vendor-grid > button {
+              width: 100% !important;
+              max-width: none !important;
+            }
+
+            .jride-selected-vendor-summary,
+            .jride-menu-section,
+            .jride-menu-grid {
+              width: 100% !important;
+              max-width: none !important;
+              min-width: 0 !important;
+            }
+
+            .jride-menu-grid {
+              grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            }
+          }
+
+          @media (min-width: 768px) and (max-width: 1180px) {
+            .jride-menu-grid {
+              grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            }
           }
 
           @media (max-width: 640px) {
