@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
@@ -74,6 +74,16 @@ type VendorRow = {
   premium_packaging_enabled?: boolean | null;
   premium_packaging_fee?: number | string | null;
   premium_packaging_label?: string | null;
+  accepting_orders?: boolean | string | number | null;
+  acceptingOrders?: boolean | string | number | null;
+  is_open?: boolean | string | number | null;
+  isOpen?: boolean | string | number | null;
+  vendor_accepting_orders?: boolean | string | number | null;
+  vendorOpen?: boolean | string | number | null;
+  status?: string | null;
+  vendor_status?: string | null;
+  availability_status?: string | null;
+  store_status?: string | null;
 };
 
 
@@ -250,13 +260,18 @@ function isVendorAcceptingOrders(v: any): boolean {
     v?.isOpen ??
     v?.vendor_accepting_orders ??
     v?.vendorOpen ??
+    v?.status ??
+    v?.vendor_status ??
+    v?.availability_status ??
+    v?.store_status ??
     true;
 
   if (raw === false) return false;
   if (raw === true) return true;
 
   const s = String(raw ?? "").trim().toLowerCase();
-  if (["false", "0", "no", "closed", "inactive", "removed_from_pilot"].includes(s)) return false;
+  if (["false", "0", "no", "closed", "offline", "inactive", "disabled", "unavailable", "not_accepting", "removed_from_pilot"].includes(s)) return false;
+  if (["true", "1", "yes", "open", "online", "active", "available", "accepting", "accepting_orders"].includes(s)) return true;
   return true;
 }
 
@@ -685,7 +700,7 @@ export default function TakeoutPage() {
   const [menuBusy, setMenuBusy] = useState(false);
   const [menuErr, setMenuErr] = useState<string | null>(null);
   const [vendorClosed, setVendorClosed] = useState(false);
-  // JRIDE_TAKEOUT_VENDOR_AVAILABILITY_ORDER_V20
+  // JRIDE_TAKEOUT_VENDOR_AVAILABILITY_ORDER_V21
   const [vendorAvailabilityById, setVendorAvailabilityById] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [menuCategoryFilter, setMenuCategoryFilter] = useState("All");
@@ -1150,6 +1165,30 @@ const contact = await fetchOptionalJson(
     }
   }
 
+  async function probeVendorAvailability(vid: string): Promise<boolean> {
+    try {
+      const j = await getJson("/api/vendor-menu/manage?vendor_id=" + encodeURIComponent(vid));
+      const items = Array.isArray(j?.items) ? j.items : [];
+      const orderableCount = items.filter((r: any) =>
+        r &&
+        r.is_available !== false &&
+        r.sold_out_today !== true
+      ).length;
+
+      const closedByApi =
+        j?.accepting_orders === false ||
+        j?.vendor?.accepting_orders === false ||
+        j?.vendor?.acceptingOrders === false ||
+        j?.acceptingOrders === false ||
+        j?.vendor_accepting_orders === false ||
+        j?.vendorAcceptingOrders === false;
+
+      return !(closedByApi || orderableCount <= 0);
+    } catch {
+      return true;
+    }
+  }
+
   useEffect(() => {
     const dk = getOrCreateDeviceKey();
     setDeviceKey(dk);
@@ -1175,6 +1214,37 @@ const contact = await fetchOptionalJson(
       })
       .catch(() => setVendors([]));
   }, []);
+
+  useEffect(() => {
+    const rows = visibleVendors;
+    if (!rows.length) return;
+
+    let cancelled = false;
+
+    async function run() {
+      const next: Record<string, boolean> = {};
+      for (const v of rows) {
+        const id = vendorKey(v);
+        if (!id) continue;
+        if (Object.prototype.hasOwnProperty.call(vendorAvailabilityById, id)) continue;
+
+        const open = await probeVendorAvailability(id);
+        if (cancelled) return;
+        next[id] = open;
+      }
+
+      if (!cancelled && Object.keys(next).length > 0) {
+        setVendorAvailabilityById((prev) => ({ ...prev, ...next }));
+      }
+    }
+
+    run().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleVendors, vendorAvailabilityById]);
 
   useEffect(() => {
     if (!vendorTownFilter) {
@@ -1689,7 +1759,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className="grid w-full grid-cols-1 gap-4 lg:max-w-[520px]">
+                <div className="grid w-full grid-cols-1 gap-2.5 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
                   {(vendorId ? visibleVendors.filter((v) => vendorKey(v) === vendorId) : visibleVendors).map((v) => {
                     const id = vendorKey(v);
@@ -1720,7 +1790,7 @@ const contact = await fetchOptionalJson(
                         aria-disabled={isClosed}
                         title={isClosed ? "This vendor is closed right now." : "View this vendor menu."}
                         className={cls(
-                          "group flex min-h-[170px] w-full items-start gap-4 rounded-3xl border p-5 text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55 sm:max-w-none",
+                          "group flex min-h-[118px] w-full items-start gap-2.5 rounded-2xl border p-3 text-left shadow-[0_12px_32px_rgba(0,0,0,0.20)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)]",
                           isClosed
                             ? "border-slate-800 bg-slate-950/50 text-slate-400 grayscale"
                             : isSelected
@@ -1728,12 +1798,12 @@ const contact = await fetchOptionalJson(
                               : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
                         )}
                       >
-                        <div className="mt-1 h-20 w-20 shrink-0 overflow-hidden rounded-3xl border border-emerald-500/40 bg-slate-950">
+                        <div className="mt-0.5 h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-emerald-500/40 bg-slate-950 sm:mt-1 sm:h-20 sm:w-20 sm:rounded-3xl">
                           {logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-200">
+                            <div className="flex h-full w-full items-center justify-center px-1.5 text-center text-[8px] font-extrabold uppercase tracking-[0.1em] text-emerald-200 sm:px-2 sm:text-[10px] sm:tracking-[0.12em]">
                               No logo uploaded
                             </div>
                           )}
@@ -1742,17 +1812,17 @@ const contact = await fetchOptionalJson(
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
                             <div className="min-w-0">
-                              <div className="break-words text-lg font-black leading-tight text-white sm:text-xl">
+                              <div className="break-words text-base font-black leading-tight text-white sm:text-xl">
                                 {label}
                               </div>
-                              <div className="mt-1 text-sm font-semibold text-emerald-100">
+                              <div className="mt-0.5 text-xs font-semibold text-emerald-100 sm:mt-1 sm:text-sm">
                                 {town}
                               </div>
                             </div>
 
                             <span
                               className={cls(
-                                "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black",
+                                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black sm:px-2.5 sm:py-1 sm:text-[11px]",
                                 isClosed
                                   ? "border-rose-300/70 bg-rose-500/10 text-rose-100"
                                   : "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
@@ -1762,20 +1832,20 @@ const contact = await fetchOptionalJson(
                             </span>
                           </div>
 
-                          <p className="mt-3 line-clamp-2 max-w-2xl text-sm leading-relaxed text-slate-300">
+                          <p className="mt-1.5 line-clamp-1 max-w-2xl text-xs leading-relaxed text-slate-300 sm:mt-3 sm:line-clamp-2 sm:text-sm">
                             Fresh local meals and takeout favorites delivered to your location.
                           </p>
 
-                          <div className="mt-4 flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                            <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-3 py-1.5 text-xs font-bold text-emerald-100">
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-3">
+                            <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-2.5 py-1 text-[11px] font-bold text-emerald-100 sm:px-3 sm:py-1.5 sm:text-xs">
                               Prep time: {prep} min
                             </span>
                             {hasPremiumPackaging ? (
-                              <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-3 py-1.5 text-xs font-bold text-amber-100">
+                              <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-2.5 py-1 text-[11px] font-bold text-amber-100 sm:px-3 sm:py-1.5 sm:text-xs">
                                 Premium packaging
                               </span>
                             ) : null}
-                            <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
+                            <span className="rounded-full border border-emerald-500/40 px-2.5 py-1 text-[11px] font-black text-emerald-100 sm:ml-auto sm:px-3 sm:py-1.5 sm:text-xs">
                               {isClosed ? "Closed" : isSelected ? "Menu loaded" : "View menu"}
                             </span>
                           </div>
