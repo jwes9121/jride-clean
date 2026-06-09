@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
@@ -2038,7 +2038,7 @@ const contact = await fetchOptionalJson(
               ) : null}
 
               {/* JRIDE_TAKEOUT_DYNAMIC_MENU_CATEGORIES_V17 */}
-              <div className="jride-menu-grid mt-3 grid w-full min-w-0 grid-cols-1 gap-2 sm:mt-4 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="jride-menu-grid mt-2 grid w-full min-w-0 grid-cols-1 gap-1.5 sm:mt-4 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -2050,13 +2050,13 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex min-h-[138px] w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px] sm:rounded-2xl sm:p-3.5",
+                        "flex min-h-[124px] w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px] sm:rounded-2xl sm:p-3.5",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-2 sm:gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-12 w-12 shrink-0 rounded-lg border object-cover shadow-sm sm:h-[70px] sm:w-[70px] sm:rounded-xl" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-10 w-10 shrink-0 rounded-lg border object-cover shadow-sm sm:h-[70px] sm:w-[70px] sm:rounded-xl" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
                           <div className="line-clamp-2 break-words text-sm font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
@@ -2075,12 +2075,12 @@ const contact = await fetchOptionalJson(
                           <div className="mt-0.5 text-[10px] font-semibold text-emerald-700 sm:mt-1 sm:text-[11px]">Remaining today: {Number(m.remaining_quantity)}</div>
                         ) : null}
                         {m.packaging_note ? (
-                          <div className="mt-1 line-clamp-2 rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-[10px] font-medium leading-snug text-amber-800 sm:mt-2 sm:rounded-xl sm:p-2 sm:text-[11px]">
+                          <div className="mt-0.5 line-clamp-1 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] font-medium leading-tight text-amber-800 sm:mt-2 sm:line-clamp-2 sm:rounded-xl sm:p-2 sm:text-[11px]">
                             Packaging: {m.packaging_note}
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-1 flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
+                          <label className="mt-0.5 flex cursor-pointer items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-1.5 py-1 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -2099,12 +2099,12 @@ const contact = await fetchOptionalJson(
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-2 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
+                        <div className="mt-1 text-base font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-2 grid w-full grid-cols-[34px_minmax(72px,1fr)_34px] items-center gap-1.5 sm:mt-4 sm:grid-cols-[42px_minmax(80px,1fr)_42px] sm:gap-2">
+                      <div className="mt-1 grid w-full grid-cols-[32px_minmax(64px,1fr)_32px] items-center gap-1 sm:mt-4 sm:grid-cols-[42px_minmax(80px,1fr)_42px] sm:gap-2">
                         <button
                           type="button"
                           className="h-8 w-8 rounded-full border bg-white text-xs font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-10 sm:w-10 sm:text-sm"
@@ -3088,6 +3088,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
