@@ -1829,8 +1829,8 @@ const contact = await fetchOptionalJson(
                   </button>
                 ))}
               </div>
-              {/* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V10 */}
-              <div className="mt-3 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {/* JRIDE_TAKEOUT_MENU_LAYOUT_CONTAINED_WIDTH_V11 */}
+              <div className="mt-3 grid w-full min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
                 {filteredMenuSelectable.map((m) => {
                   const q = Math.max(0, Math.floor(toNum(qty[m.id])));
                   const rawRemaining = (m as any)?.remaining_quantity;
@@ -2783,20 +2783,15 @@ const contact = await fetchOptionalJson(
           }
 
 
-          /* JRIDE_TAKEOUT_MENU_LAYOUT_FULL_WIDTH_V10
-             Forces the selected vendor menu area to use the full desktop content width.
+          /* JRIDE_TAKEOUT_MENU_LAYOUT_CONTAINED_WIDTH_V11
+             Keep the selected vendor menu inside the allocated page width.
+             Desktop uses the full parent width without viewport overflow.
              Mobile remains one-column and app-like. */
           .jride-takeout-menu-full {
             width: 100%;
             max-width: 100%;
             min-width: 0;
-          }
-
-          @media (min-width: 768px) {
-            .jride-takeout-menu-full {
-              width: min(calc(100vw - 3rem), 96rem);
-              max-width: min(calc(100vw - 3rem), 96rem);
-            }
+            overflow: hidden;
           }
 
           @media (max-width: 640px) {
