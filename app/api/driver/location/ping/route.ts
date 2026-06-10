@@ -249,6 +249,142 @@ async function enforceDeviceLockPing(opts: {
   return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
 }
 
+async function syncDriverPresenceSession(opts: {
+  supabase: any;
+  driverId: string;
+  driverName?: string | null;
+  town?: string | null;
+  status: string;
+  previousStatus?: string | null;
+  nowIso: string;
+  deviceId?: string | null;
+}) {
+  // JRIDE_DRIVER_SESSION_TELEMETRY_V1
+  // Best-effort analytics telemetry only. Never block driver location pings.
+  const supabase = opts.supabase;
+  const driverId = text(opts.driverId);
+  const status = norm(opts.status);
+  const previousStatus = norm(opts.previousStatus);
+  const nowIso = text(opts.nowIso) || new Date().toISOString();
+  const town = text(opts.town) || null;
+  const deviceId = text(opts.deviceId) || null;
+
+  if (!supabase || !driverId) {
+    return { attempted: false, ok: false, skipped: true, reason: "missing_context" };
+  }
+
+  try {
+    const onlineLike = new Set(["online", "available", "idle", "waiting"]);
+
+    if (onlineLike.has(status)) {
+      const { data: openSession, error: openErr } = await supabase
+        .from("driver_presence_sessions")
+        .select("id")
+        .eq("driver_id", driverId)
+        .is("logout_at", null)
+        .order("login_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (openErr) {
+        return { attempted: true, ok: false, reason: "open_session_lookup_failed", message: openErr.message };
+      }
+
+      if ((openSession as any)?.id) {
+        const { error: updateErr } = await supabase
+          .from("driver_presence_sessions")
+          .update({
+            status,
+            town,
+            last_seen_at: nowIso,
+            updated_at: nowIso,
+            device_id: deviceId,
+          })
+          .eq("id", (openSession as any).id);
+
+        if (updateErr) {
+          return { attempted: true, ok: false, reason: "open_session_update_failed", message: updateErr.message };
+        }
+
+        return { attempted: true, ok: true, action: "updated_open_session", session_id: (openSession as any).id };
+      }
+
+      const { data: profileRow } = await supabase
+        .from("driver_profiles")
+        .select("full_name")
+        .eq("driver_id", driverId)
+        .limit(1)
+        .maybeSingle();
+
+      const resolvedDriverName = text(opts.driverName) || text((profileRow as any)?.full_name) || null;
+
+      const { error: insertErr } = await supabase
+        .from("driver_presence_sessions")
+        .insert({
+          driver_id: driverId,
+          driver_name: resolvedDriverName,
+          town,
+          status,
+          login_at: nowIso,
+          last_seen_at: nowIso,
+          source: "driver_location_ping",
+          device_id: deviceId,
+          created_at: nowIso,
+          updated_at: nowIso,
+        });
+
+      if (insertErr) {
+        return { attempted: true, ok: false, reason: "open_session_insert_failed", message: insertErr.message };
+      }
+
+      return { attempted: true, ok: true, action: "inserted_open_session" };
+    }
+
+    if (status === "offline" || status === "logout" || status === "logged_out") {
+      const { error: closeErr } = await supabase
+        .from("driver_presence_sessions")
+        .update({
+          status: "offline",
+          logout_at: nowIso,
+          last_seen_at: nowIso,
+          updated_at: nowIso,
+          device_id: deviceId,
+        })
+        .eq("driver_id", driverId)
+        .is("logout_at", null);
+
+      if (closeErr) {
+        return { attempted: true, ok: false, reason: "close_session_failed", message: closeErr.message };
+      }
+
+      return { attempted: true, ok: true, action: "closed_open_sessions" };
+    }
+
+    if (previousStatus && onlineLike.has(previousStatus) && !onlineLike.has(status)) {
+      const { error: closeErr } = await supabase
+        .from("driver_presence_sessions")
+        .update({
+          status,
+          logout_at: nowIso,
+          last_seen_at: nowIso,
+          updated_at: nowIso,
+          device_id: deviceId,
+        })
+        .eq("driver_id", driverId)
+        .is("logout_at", null);
+
+      if (closeErr) {
+        return { attempted: true, ok: false, reason: "close_non_online_session_failed", message: closeErr.message };
+      }
+
+      return { attempted: true, ok: true, action: "closed_non_online_session" };
+    }
+
+    return { attempted: true, ok: true, skipped: true, reason: "status_not_session_boundary" };
+  } catch (e: any) {
+    return { attempted: true, ok: false, reason: "presence_session_exception", message: String(e?.message ?? e) };
+  }
+}
 async function triggerRetryAutoAssign(baseUrl: string, triggerReason: string) {
   if (!baseUrl || !String(baseUrl).trim()) {
     return {
@@ -534,6 +670,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const presenceSessionResult = await syncDriverPresenceSession({
+      supabase,
+      driverId,
+      town,
+      status,
+      previousStatus,
+      nowIso,
+      deviceId: (lock as any).active_device_id || deviceId,
+    });
+
+    if (!presenceSessionResult?.ok) {
+      console.warn("[JRIDE_DRIVER_SESSION_TELEMETRY_V1] sync failed", presenceSessionResult);
+    }
+
     console.log("[DISPATCH_TRACE] ping:upsert_result", {
       driver_id: driverId,
       auth_mode: authRes.authMode,
@@ -543,6 +693,7 @@ export async function POST(req: NextRequest) {
       previous_age_seconds: previousAgeSeconds,
       recovered_from_stale_online: recoveredFromStaleOnline,
       vehicle_type: vehicleType,
+      presence_session: presenceSessionResult,
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";
@@ -594,6 +745,7 @@ export async function POST(req: NextRequest) {
       lat: finalLat,
       lng: finalLng,
       vehicle_type: vehicleType,
+      presence_session: presenceSessionResult,
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
