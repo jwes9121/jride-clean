@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -531,6 +531,144 @@ function vendorAcceptExpiresAt(row: any): string | null {
   const deadlineMs = vendorAcceptDeadlineMs(row);
   return deadlineMs === null ? null : new Date(deadlineMs).toISOString();
 }
+// JRIDE_TAKEOUT_VENDOR_ACCEPT_AUTO_ASSIGN_V1
+// Takeout-only auto assignment after vendor confirms an order.
+// Rule: PHP 500 and below => nearest fresh driver to vendor pickup.
+// Rule: Above PHP 500 => nearest fresh driver to customer dropoff for cash-first collection.
+// Manual admin assignment remains available and can reassign later.
+function takeoutAutoAssignNum(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function takeoutAutoAssignDistanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const c =
+    2 *
+    Math.atan2(
+      Math.sqrt(s1 * s1 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * s2 * s2),
+      Math.sqrt(1 - (s1 * s1 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * s2 * s2)),
+    );
+  return R * c;
+}
+
+function takeoutAutoAssignDriverIsFreshAndOnline(row: any): boolean {
+  const status = String(row?.status || "").trim().toLowerCase();
+  const onlineLike = new Set(["online", "available", "idle", "waiting"]);
+  if (!onlineLike.has(status)) return false;
+
+  const raw = String(row?.updated_at || row?.created_at || "").trim();
+  if (!raw) return false;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t)) return false;
+  const ageMinutes = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  return ageMinutes <= 10;
+}
+
+async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
+  const alreadyAssigned = String(order?.assigned_driver_id || order?.driver_id || "").trim();
+  if (alreadyAssigned) {
+    return { attempted: false, assigned: false, reason: "already_assigned", driver_id: alreadyAssigned };
+  }
+
+  const subtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill ?? order?.items_subtotal ?? 0);
+  const cashFirst = subtotal > 500;
+
+  const vendorLat = takeoutAutoAssignNum(order?.pickup_lat);
+  const vendorLng = takeoutAutoAssignNum(order?.pickup_lng);
+  const customerLat = takeoutAutoAssignNum(order?.dropoff_lat);
+  const customerLng = takeoutAutoAssignNum(order?.dropoff_lng);
+
+  const anchorLat = cashFirst ? customerLat : vendorLat;
+  const anchorLng = cashFirst ? customerLng : vendorLng;
+  const anchor = cashFirst ? "customer" : "vendor";
+
+  if (anchorLat == null || anchorLng == null || anchorLat === 0 || anchorLng === 0) {
+    return { attempted: true, assigned: false, reason: "missing_anchor_coords", anchor, subtotal, cash_first: cashFirst };
+  }
+
+  const activeStatuses = new Set(["requested", "vendor_accepted", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering"]);
+  const terminalStatuses = new Set(["completed", "cancelled", "canceled", "vendor_timeout"]);
+
+  const assignedRes = await admin
+    .from("bookings")
+    .select("assigned_driver_id,driver_id,vendor_status,customer_status,status")
+    .eq("service_type", "takeout");
+
+  const reserved = new Set<string>();
+  if (!assignedRes.error && Array.isArray(assignedRes.data)) {
+    for (const r of assignedRes.data as any[]) {
+      const did = String(r?.assigned_driver_id || r?.driver_id || "").trim();
+      if (!did) continue;
+      const vendorStatus = String(r?.vendor_status || "").trim().toLowerCase();
+      const customerStatus = String(r?.customer_status || "").trim().toLowerCase();
+      const status = String(r?.status || "").trim().toLowerCase();
+      if (terminalStatuses.has(vendorStatus) || terminalStatuses.has(customerStatus) || terminalStatuses.has(status)) continue;
+      if (activeStatuses.has(vendorStatus) || activeStatuses.has(customerStatus) || activeStatuses.has(status)) reserved.add(did);
+    }
+  }
+
+  const driversRes = await admin
+    .from("driver_locations")
+    .select("driver_id,lat,lng,status,updated_at,created_at,town,home_town,vehicle_type")
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (driversRes.error || !Array.isArray(driversRes.data)) {
+    return { attempted: true, assigned: false, reason: "driver_locations_read_failed", anchor, subtotal, cash_first: cashFirst };
+  }
+
+  const latestByDriver: Record<string, any> = {};
+  for (const row of driversRes.data as any[]) {
+    const did = String(row?.driver_id || "").trim();
+    if (!did || latestByDriver[did]) continue;
+    latestByDriver[did] = row;
+  }
+
+  let best: any = null;
+  for (const row of Object.values(latestByDriver) as any[]) {
+    const did = String(row?.driver_id || "").trim();
+    if (!did || reserved.has(did)) continue;
+    if (!takeoutAutoAssignDriverIsFreshAndOnline(row)) continue;
+
+    const lat = takeoutAutoAssignNum(row?.lat);
+    const lng = takeoutAutoAssignNum(row?.lng);
+    if (lat == null || lng == null || lat === 0 || lng === 0) continue;
+
+    const meters = takeoutAutoAssignDistanceMeters(anchorLat, anchorLng, lat, lng);
+    if (!Number.isFinite(meters)) continue;
+
+    if (!best || meters < best.distance_meters) {
+      best = {
+        driver_id: did,
+        distance_meters: meters,
+        driver_lat: lat,
+        driver_lng: lng,
+        driver_status: row?.status || null,
+        driver_town: row?.town || row?.home_town || null,
+        vehicle_type: row?.vehicle_type || null,
+      };
+    }
+  }
+
+  if (!best) {
+    return { attempted: true, assigned: false, reason: "no_fresh_online_driver", anchor, subtotal, cash_first: cashFirst };
+  }
+
+  return {
+    attempted: true,
+    assigned: true,
+    reason: "nearest_fresh_online_driver",
+    anchor,
+    subtotal,
+    cash_first: cashFirst,
+    ...best,
+  };
+}
 
 export async function GET(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies });
@@ -753,7 +891,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   if (order_id) {
     const cur = await admin
       .from("bookings")
-      .select("id,status,vendor_status,created_at,cancel_reason,vendor_cancel_reason")
+      .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,total_bill,items_subtotal,town")
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
       .eq("service_type", "takeout")
@@ -836,8 +974,17 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     // JRIDE_TAKEOUT_VENDOR_ACCEPTANCE_FLOW_V1
     // Vendor state is separate from driver movement and passenger pricing.
     // Do not call ride lifecycle or wallet logic here.
+    let autoAssignResult: any = null;
+
     if (normalizedNext === "vendor_accepted") {
       patch.customer_status = "vendor_accepted";
+
+      autoAssignResult = await takeoutAutoAssignOnVendorAccept(admin, cur.data);
+      if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
+        patch.vendor_status = "driver_assigned";
+        patch.customer_status = "driver_assigned";
+        patch.assigned_driver_id = autoAssignResult.driver_id;
+      }
     } else if (normalizedNext === "preparing") {
       patch.customer_status = "preparing";
     } else if (normalizedNext === "pickup_ready") {
@@ -876,6 +1023,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       vendor_status: up.data?.vendor_status ?? nextVendor,
       status: up.data?.status ?? curStatus,
       bridgedToDispatch: !!patch.status,
+      auto_assign: autoAssignResult,
     });
   }
 
@@ -1547,6 +1695,7 @@ function normalizeDriverVehicleType(value: unknown): string {
 
   return ''
 }
+
 
 
 
