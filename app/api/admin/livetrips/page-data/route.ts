@@ -236,11 +236,16 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
     const walletRows = asArray<any>(driverWalletsRes.data);
     const deactivatedDriverIds = new Set<string>();
     const driverWalletMap: Record<string, any> = {};
+    // JRIDE_LIVETRIPS_HIDE_WALLET_LOCKED_DRIVERS_V1B
+    // Hide drivers removed from operations even when driver_status is only offline.
+    // Confirmed local truth: inactive rows are offline + wallet_locked=true.
+    // This is display filtering only: no booking, wallet, fare, dispatch, ride, or takeout lifecycle change.
     for (const row of walletRows) {
       const driverId = text(row?.id);
       if (!driverId) continue;
       const driverStatus = text(row?.driver_status).toLowerCase();
-      if (driverStatus === "deactivated") {
+      const walletLocked = Boolean(row?.wallet_locked);
+      if (driverStatus === "deactivated" || walletLocked) {
         deactivatedDriverIds.add(driverId);
         continue;
       }
@@ -425,4 +430,5 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
     );
   }
 }
+
 
