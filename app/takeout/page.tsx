@@ -1307,8 +1307,11 @@ const contact = await fetchOptionalJson(
     getJson("/api/admin/vendors")
       .then((j) => {
         const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
-        const activeRows = rows.filter((v: any) => isVendorAcceptingOrders(v));
-        setVendors(activeRows);
+        // JRIDE_TAKEOUT_KEEP_CLOSED_VENDORS_VISIBLE_V1
+        // Do not filter out vendors only because accepting_orders=false.
+        // Closed vendors must remain visible in the passenger marketplace,
+        // then vendorCardIsOpen/isVendorAcceptingOrders controls dimming and clickability.
+        setVendors(rows);
       })
       .catch(() => setVendors([]));
   }, []);
@@ -3088,6 +3091,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
