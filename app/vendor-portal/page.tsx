@@ -2093,7 +2093,8 @@ export default function VendorPortalPage() {
                 Vendor analytics show food/item sales and packaging/add-ons from completed orders only. Driver delivery fees are not counted as vendor sales.
               </div>
             </section>
-<section className="order-1 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200 lg:order-1 lg:col-span-2">
+            <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-2">
+<div className="mb-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200">
   <div className="flex items-start gap-3">
     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl">
       🏆
@@ -2110,8 +2111,7 @@ export default function VendorPortalPage() {
       </p>
     </div>
   </div>
-</section>
-            <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-2">
+</div>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Live order queue</h2>
