@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -285,6 +285,14 @@ const VENDOR_PORTAL_ALERT_SOUND_URL = "/sounds/vendor-order-alert.mp3";
 
 const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
 const LEGACY_LS_VENDOR_ID = "jride_vendor_id";
+const FOUNDING_PILOT_LAUNCH_AT_MS = new Date("2026-06-15T00:00:00+08:00").getTime();
+const FOUNDING_PILOT_DAYS = 182;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function foundingPilotDaysRemaining(nowMs: number) {
+  const expiresAt = FOUNDING_PILOT_LAUNCH_AT_MS + FOUNDING_PILOT_DAYS * DAY_MS;
+  return Math.max(0, Math.ceil((expiresAt - nowMs) / DAY_MS));
+}
 
 function readInitialVendorId() {
   if (typeof window === "undefined") return "";
@@ -2076,6 +2084,29 @@ export default function VendorPortalPage() {
                     </div>
                   )}
                 </div>
+<section className="order-1 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200 lg:order-1 lg:col-span-2">
+  <div className="flex items-start gap-3">
+    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl">
+      🏆
+    </div>
+
+    <div className="flex-1">
+      <div className="text-xs font-bold uppercase tracking-wider text-amber-700">
+        Founding Pilot Vendor Program
+      </div>
+
+      <div className="mt-1 text-3xl font-extrabold text-amber-900">
+        {foundingPilotDaysRemaining(nowMs)} Days Remaining
+      </div>
+
+      <p className="mt-2 text-sm text-slate-700">
+        As one of JRide&apos;s founding vendor partners in Lagawe, you enjoy
+        premium vendor benefits at no cost during the official pilot launch
+        period.
+      </p>
+    </div>
+  </div>
+</section>
               </div>
 
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
