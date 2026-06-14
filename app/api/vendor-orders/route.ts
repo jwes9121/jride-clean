@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -977,6 +977,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     let autoAssignResult: any = null;
 
     if (normalizedNext === "vendor_accepted") {
+      // LAUNCH-SAFE ACCEPT PATH:
+      // Persist vendor acceptance first. Auto-assign is best-effort and must never block acceptance.
       patch.customer_status = "vendor_accepted";
 
       const acceptUp = await admin
@@ -984,49 +986,72 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         .update(patch)
         .eq("id", order_id)
         .eq("vendor_id", vendor_id)
-        .eq("service_type", "takeout")
-        .select("*")
-        .single();
+        .eq("service_type", "takeout");
 
-      if (acceptUp.error) return json(500, { ok: false, error: "DB_ERROR", message: acceptUp.error.message });
+      if (acceptUp.error) {
+        return json(500, {
+          ok: false,
+          error: "ACCEPT_UPDATE_FAILED",
+          message: acceptUp.error.message,
+          details: acceptUp.error.details ?? null,
+          hint: acceptUp.error.hint ?? null,
+          code: acceptUp.error.code ?? null,
+        });
+      }
+
+      const acceptedRow = {
+        ...(cur.data as any),
+        vendor_status: "vendor_accepted",
+        customer_status: "vendor_accepted",
+      };
 
       try {
-        autoAssignResult = await takeoutAutoAssignOnVendorAccept(admin, acceptUp.data);
+        autoAssignResult = await takeoutAutoAssignOnVendorAccept(admin, acceptedRow);
       } catch (e: any) {
         autoAssignResult = { attempted: true, assigned: false, reason: "auto_assign_exception", message: String(e?.message || e) };
       }
 
       if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
+        const assignPatch = {
+          vendor_status: "driver_assigned",
+          customer_status: "driver_assigned",
+          assigned_driver_id: autoAssignResult.driver_id,
+        };
+
         const assignUp = await admin
           .from("bookings")
-          .update({
-            vendor_status: "driver_assigned",
-            customer_status: "driver_assigned",
-            assigned_driver_id: autoAssignResult.driver_id,
-          })
+          .update(assignPatch)
           .eq("id", order_id)
           .eq("vendor_id", vendor_id)
-          .eq("service_type", "takeout")
-          .select("*")
-          .single();
+          .eq("service_type", "takeout");
 
-        return json(200, {
-          ok: true,
-          action: "updated",
-          order_id: assignUp.data?.id ?? order_id,
-          vendor_status: assignUp.data?.vendor_status ?? "driver_assigned",
-          status: assignUp.data?.status ?? curStatus,
-          bridgedToDispatch: false,
-          auto_assign: autoAssignResult,
-        });
+        if (!assignUp.error) {
+          return json(200, {
+            ok: true,
+            action: "updated",
+            order_id,
+            vendor_status: "driver_assigned",
+            status: curStatus,
+            bridgedToDispatch: false,
+            auto_assign: autoAssignResult,
+          });
+        }
+
+        autoAssignResult = {
+          ...autoAssignResult,
+          assigned: false,
+          assignment_update_failed: true,
+          assignment_update_error: assignUp.error.message,
+          assignment_update_code: assignUp.error.code ?? null,
+        };
       }
 
       return json(200, {
         ok: true,
         action: "updated",
-        order_id: acceptUp.data?.id ?? order_id,
-        vendor_status: acceptUp.data?.vendor_status ?? "vendor_accepted",
-        status: acceptUp.data?.status ?? curStatus,
+        order_id,
+        vendor_status: "vendor_accepted",
+        status: curStatus,
         bridgedToDispatch: false,
         auto_assign: autoAssignResult,
       });
