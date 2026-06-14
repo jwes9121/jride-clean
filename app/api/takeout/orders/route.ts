@@ -253,7 +253,7 @@ export async function GET(req: NextRequest) {
 
       const locationRes = await serviceSupabase
         .from("driver_locations")
-        .select("driver_id,vehicle_type,updated_at")
+        .select("driver_id,vehicle_type,updated_at,lat,lng")
         .in("driver_id", assignedDriverIds)
         .order("updated_at", { ascending: false });
 
@@ -283,6 +283,9 @@ export async function GET(req: NextRequest) {
         driver_callsign: driverCallsign || null,
         driver_vehicle_type: driverVehicleType || null,
         vehicle_type: driverVehicleType || row?.vehicle_type || null,
+        driver_lat: location?.lat != null && Number.isFinite(Number(location.lat)) ? Number(location.lat) : null,
+        driver_lng: location?.lng != null && Number.isFinite(Number(location.lng)) ? Number(location.lng) : null,
+        driver_last_seen_at: location?.updated_at || null,
       };
     });
 
