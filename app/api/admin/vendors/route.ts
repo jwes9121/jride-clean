@@ -50,6 +50,14 @@ export async function GET() {
 
   let removedIds = new Set<string>();
 
+  const forceHiddenVendorIds = new Set<string>([
+    "23d549f7-565f-4476-90ca-ea10d7ee07b2",
+    "54762c55-829c-425a-8183-7a682f61b75c",
+    "ff951ad9-6bb4-4fe1-b495-acc7f1d8218b",
+    "1ad78ce7-a5a0-40fb-acec-e12cdefe94fb",
+    "ae4a56e7-ff63-4cde-ba7e-5fae273272a2",
+  ]);
+
   if (vendorIds.length > 0) {
     const registry = await supabase
       .from("vendor_onboarding_credentials")
@@ -69,8 +77,11 @@ export async function GET() {
   }
 
   const vendors = (Array.isArray(data) ? data : [])
-  .filter((v: any) => !removedIds.has(cleanString(v?.id)))
-  .filter((v: any) => v?.accepting_orders === true)
+    .filter((v: any) => {
+      const id = cleanString(v?.id);
+      return !removedIds.has(id) && !forceHiddenVendorIds.has(id);
+    })
+    .filter((v: any) => v?.accepting_orders === true)
     .map((v: any) => {
       const logoUrl = cleanString(v?.logo_url);
       return {
