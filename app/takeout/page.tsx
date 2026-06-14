@@ -1902,7 +1902,7 @@ const contact = await fetchOptionalJson(
                           </div>
 
                           <p className="mt-1 hidden line-clamp-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:mt-3 sm:block">
-                            Fresh local meals and takeout favorites delivered to your location.
+                            {String((v as any).tagline || (v as any).description || "").trim() || "Fresh local meals and takeout favorites delivered to your location."}
                           </p>
 
                           <div className="mt-2 flex flex-row flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-3">
