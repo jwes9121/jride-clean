@@ -298,12 +298,13 @@ export async function GET(req: NextRequest) {
             name: pickVendorName(vendor),
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
+            tagline: cleanString(vendor?.tagline || ""),
             accepting_orders: vendor?.accepting_orders !== false,
             vendor_lat: vendor?.vendor_lat ?? null,
             vendor_lng: vendor?.vendor_lng ?? null,
             vendor_location_label: cleanString(vendor?.vendor_location_label || ""),
           }
-        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, accepting_orders: true, vendor_lat: null, vendor_lng: null, vendor_location_label: "" },
+        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, tagline: "", accepting_orders: true, vendor_lat: null, vendor_lng: null, vendor_location_label: "" },
       items: menu,
       used: menu.length,
     });
@@ -339,6 +340,7 @@ export async function POST(req: NextRequest) {
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name),
         town: cleanString(body?.town),
+        tagline: cleanString(body?.tagline || body?.description || body?.vendorTagline),
         accepting_orders: body?.accepting_orders !== false && body?.acceptingOrders !== false,
         vendor_lat: vendorLat,
         vendor_lng: vendorLng,
