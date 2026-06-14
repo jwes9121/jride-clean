@@ -37,7 +37,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("vendor_accounts")
-    .select("id,email,display_name,created_at,town,lat,lng,location_label,logo_url,accepting_orders")
+    .select("id,email,display_name,created_at,town,lat,lng,location_label,logo_url,tagline,accepting_orders")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -77,6 +77,7 @@ export async function GET() {
         name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
         display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
         town: normalizeTakeoutTown(v?.town),
+        tagline: cleanString(v?.tagline || ""),
         accepting_orders: v?.accepting_orders === true,
         logo_url: logoUrl || null,
         vendor_logo_url: logoUrl || null,
