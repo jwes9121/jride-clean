@@ -614,7 +614,7 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
 
   const driversRes = await admin
     .from("driver_locations")
-    .select("driver_id,lat,lng,status,updated_at,created_at,town,home_town,vehicle_type")
+    .select("driver_id,lat,lng,status,updated_at,town,home_town,vehicle_type")
     .order("updated_at", { ascending: false })
     .limit(500);
 
