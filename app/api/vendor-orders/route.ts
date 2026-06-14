@@ -1025,7 +1025,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
           .update(assignPatch)
           .eq("id", order_id)
           .eq("vendor_id", vendor_id)
-          .eq("service_type", "takeout");
+          .eq("service_type", "takeout")
+.select("id,vendor_status,customer_status,status,assigned_driver_id,driver_id");
 
         if (!assignUp.error) {
           return json(200, {
