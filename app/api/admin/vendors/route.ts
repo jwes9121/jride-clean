@@ -69,7 +69,8 @@ export async function GET() {
   }
 
   const vendors = (Array.isArray(data) ? data : [])
-    .filter((v: any) => !removedIds.has(cleanString(v?.id)))
+  .filter((v: any) => !removedIds.has(cleanString(v?.id)))
+  .filter((v: any) => v?.accepting_orders === true)
     .map((v: any) => {
       const logoUrl = cleanString(v?.logo_url);
       return {
