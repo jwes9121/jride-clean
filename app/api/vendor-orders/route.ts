@@ -508,8 +508,8 @@ function computeSubtotal(items: SnapshotItem[]): number {
   return s;
 }
 
-const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
-const VENDOR_ACCEPT_TIMEOUT_REASON = "Vendor did not respond within 5 minutes";
+const VENDOR_ACCEPT_WINDOW_MS = 15 * 60 * 1000;
+const VENDOR_ACCEPT_TIMEOUT_REASON = "Vendor did not respond within 15 minutes";
 
 function vendorAcceptDeadlineMs(row: any): number | null {
   const raw = String(row?.created_at || "").trim();
@@ -940,7 +940,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       return json(409, {
         ok: false,
         error: "VENDOR_ACCEPT_EXPIRED",
-        message: "Vendor did not respond within 5 minutes. This order was automatically closed.",
+        message: "Vendor did not respond within 15 minutes. This order was automatically closed.",
         current: "vendor_timeout",
         attempted: normalizedNext,
         cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
@@ -979,12 +979,57 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     if (normalizedNext === "vendor_accepted") {
       patch.customer_status = "vendor_accepted";
 
-      autoAssignResult = await takeoutAutoAssignOnVendorAccept(admin, cur.data);
-      if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
-        patch.vendor_status = "driver_assigned";
-        patch.customer_status = "driver_assigned";
-        patch.assigned_driver_id = autoAssignResult.driver_id;
+      const acceptUp = await admin
+        .from("bookings")
+        .update(patch)
+        .eq("id", order_id)
+        .eq("vendor_id", vendor_id)
+        .eq("service_type", "takeout")
+        .select("*")
+        .single();
+
+      if (acceptUp.error) return json(500, { ok: false, error: "DB_ERROR", message: acceptUp.error.message });
+
+      try {
+        autoAssignResult = await takeoutAutoAssignOnVendorAccept(admin, acceptUp.data);
+      } catch (e: any) {
+        autoAssignResult = { attempted: true, assigned: false, reason: "auto_assign_exception", message: String(e?.message || e) };
       }
+
+      if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
+        const assignUp = await admin
+          .from("bookings")
+          .update({
+            vendor_status: "driver_assigned",
+            customer_status: "driver_assigned",
+            assigned_driver_id: autoAssignResult.driver_id,
+          })
+          .eq("id", order_id)
+          .eq("vendor_id", vendor_id)
+          .eq("service_type", "takeout")
+          .select("*")
+          .single();
+
+        return json(200, {
+          ok: true,
+          action: "updated",
+          order_id: assignUp.data?.id ?? order_id,
+          vendor_status: assignUp.data?.vendor_status ?? "driver_assigned",
+          status: assignUp.data?.status ?? curStatus,
+          bridgedToDispatch: false,
+          auto_assign: autoAssignResult,
+        });
+      }
+
+      return json(200, {
+        ok: true,
+        action: "updated",
+        order_id: acceptUp.data?.id ?? order_id,
+        vendor_status: acceptUp.data?.vendor_status ?? "vendor_accepted",
+        status: acceptUp.data?.status ?? curStatus,
+        bridgedToDispatch: false,
+        auto_assign: autoAssignResult,
+      });
     } else if (normalizedNext === "preparing") {
       patch.customer_status = "preparing";
     } else if (normalizedNext === "pickup_ready") {
@@ -1695,6 +1740,7 @@ function normalizeDriverVehicleType(value: unknown): string {
 
   return ''
 }
+
 
 
 
