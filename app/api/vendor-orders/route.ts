@@ -891,7 +891,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   if (order_id) {
     const cur = await admin
       .from("bookings")
-      .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,total_bill,items_subtotal,town")
+      .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,items_subtotal,town")
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
       .eq("service_type", "takeout")
