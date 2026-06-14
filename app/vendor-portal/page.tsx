@@ -290,9 +290,7 @@ const FOUNDING_PILOT_DAYS = 182;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function foundingPilotDaysRemaining(nowMs: number) {
-  if (nowMs < FOUNDING_PILOT_LAUNCH_AT_MS) return FOUNDING_PILOT_DAYS;
-
-  const expiresAt = FOUNDING_PILOT_LAUNCH_AT_MS + FOUNDING_PILOT_DAYS * DAY_MS;
+    const expiresAt = FOUNDING_PILOT_LAUNCH_AT_MS + FOUNDING_PILOT_DAYS * DAY_MS;
   return Math.max(0, Math.ceil((expiresAt - nowMs) / DAY_MS));
 }
 
