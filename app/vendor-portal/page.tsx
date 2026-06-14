@@ -693,6 +693,7 @@ export default function VendorPortalPage() {
 
   const [profileName, setProfileName] = useState("");
   const [profileTown, setProfileTown] = useState("");
+  const [profileTagline, setProfileTagline] = useState("");
   const [vendorLat, setVendorLat] = useState("");
   const [vendorLng, setVendorLng] = useState("");
   const [vendorLocationLabel, setVendorLocationLabel] = useState("");
@@ -945,6 +946,7 @@ export default function VendorPortalPage() {
       setProfile(v);
       setProfileName(clean(v?.name || (vendorRowForTown ? vendorLabel(vendorRowForTown as any) : vid)));
       setProfileTown(normalizeTakeoutTown(v?.town || vendorRowForTown?.town));
+      setProfileTagline(clean(v?.tagline || ""));
       setVendorLat(v?.vendor_lat == null ? "" : String(v.vendor_lat));
       setVendorLng(v?.vendor_lng == null ? "" : String(v.vendor_lng));
       setVendorLocationLabel(clean(v?.vendor_location_label || ""));
@@ -954,6 +956,7 @@ export default function VendorPortalPage() {
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor menu"));
       setProfile(null);
+      setProfileTagline("");
       setVendorLat("");
       setVendorLng("");
       setVendorLocationLabel("");
@@ -1202,6 +1205,7 @@ export default function VendorPortalPage() {
         vendor_id: vid,
         name: profileName,
         town: profileTown,
+        tagline: profileTagline,
         accepting_orders: acceptingOrders,
         vendor_lat: vendorLat,
         vendor_lng: vendorLng,
@@ -1232,6 +1236,7 @@ export default function VendorPortalPage() {
         vendor_id: vid,
         name: profileName,
         town: profileTown,
+        tagline: profileTagline,
         accepting_orders: nextOpen,
         vendor_lat: vendorLat,
         vendor_lng: vendorLng,
@@ -1680,10 +1685,26 @@ export default function VendorPortalPage() {
 
               <div className="mt-4 rounded-2xl border bg-slate-50 p-3">
                 <div className="text-sm font-semibold text-slate-900">General profile details</div>
-                <div className="text-xs text-slate-500">Use Save profile only for vendor name, town, and logo changes.</div>
+                <div className="text-xs text-slate-500">Use Save profile for vendor name, tagline, town, logo, and pickup location changes.</div>
 
                 <label className="mt-3 block text-xs font-medium text-slate-700">Vendor name</label>
                 <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Vendor name" />
+
+               <label className="mt-3 block text-xs font-medium text-slate-700">
+               Store tagline
+               </label>
+
+               <textarea
+               className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+               rows={2}
+               value={profileTagline}
+               onChange={(e) => setProfileTagline(e.target.value)}
+               placeholder="Tell customers what makes your store special."
+               />
+
+               <div className="mt-1 text-[11px] text-slate-500">
+               Appears below your logo in the customer marketplace.
+               </div>
 
                 <label className="mt-3 block text-xs font-medium text-slate-700">Town location</label>
                 <select
