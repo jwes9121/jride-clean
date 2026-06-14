@@ -558,7 +558,7 @@ function takeoutAutoAssignDistanceMeters(aLat: number, aLng: number, bLat: numbe
 
 function takeoutAutoAssignDriverIsFreshAndOnline(row: any): boolean {
   const status = String(row?.status || "").trim().toLowerCase();
-  const onlineLike = new Set(["online", "available", "idle", "waiting"]);
+  const onlineLike = new Set(["online", "available", "idle", "waiting", "walkin"]);
   if (!onlineLike.has(status)) return false;
 
   const raw = String(row?.updated_at || row?.created_at || "").trim();
@@ -986,7 +986,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         .update(patch)
         .eq("id", order_id)
         .eq("vendor_id", vendor_id)
-        .eq("service_type", "takeout");
+        .eq("service_type", "takeout")
+        .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,town");
 
       if (acceptUp.error) {
         return json(500, {
@@ -999,11 +1000,16 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         });
       }
 
-      const acceptedRow = {
-        ...(cur.data as any),
-        vendor_status: "vendor_accepted",
-        customer_status: "vendor_accepted",
-      };
+      const acceptedRow = Array.isArray(acceptUp.data) ? acceptUp.data[0] : acceptUp.data;
+      if (!acceptedRow) {
+        return json(409, {
+          ok: false,
+          error: "ACCEPT_UPDATE_NO_ROWS",
+          message: "Vendor accept did not match any takeout booking row.",
+          order_id,
+          vendor_id,
+        });
+      }
 
       try {
         autoAssignResult = await takeoutAutoAssignOnVendorAccept(admin, acceptedRow);
@@ -1013,12 +1019,12 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
       if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
         const assignPatch = {
-  vendor_status: "driver_assigned",
-  customer_status: "driver_assigned",
-  status: "assigned",
-  assigned_driver_id: autoAssignResult.driver_id,
-  driver_id: autoAssignResult.driver_id,
-};
+          vendor_status: "driver_assigned",
+          customer_status: "driver_assigned",
+          status: "assigned",
+          assigned_driver_id: autoAssignResult.driver_id,
+          driver_id: autoAssignResult.driver_id,
+        };
 
         const assignUp = await admin
           .from("bookings")
@@ -1026,17 +1032,19 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
           .eq("id", order_id)
           .eq("vendor_id", vendor_id)
           .eq("service_type", "takeout")
-.select("id,vendor_status,customer_status,status,assigned_driver_id,driver_id");
+          .select("id,vendor_status,customer_status,status,assigned_driver_id,driver_id");
 
-        if (!assignUp.error) {
+        const assignedRow = Array.isArray(assignUp.data) ? assignUp.data[0] : assignUp.data;
+        if (!assignUp.error && assignedRow) {
           return json(200, {
             ok: true,
             action: "updated",
-            order_id,
-            vendor_status: "driver_assigned",
-            status: curStatus,
-            bridgedToDispatch: false,
+            order_id: assignedRow.id ?? order_id,
+            vendor_status: assignedRow.vendor_status ?? "driver_assigned",
+            status: assignedRow.status ?? "assigned",
+            bridgedToDispatch: true,
             auto_assign: autoAssignResult,
+            assignment_update: assignedRow,
           });
         }
 
@@ -1044,8 +1052,8 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
           ...autoAssignResult,
           assigned: false,
           assignment_update_failed: true,
-          assignment_update_error: assignUp.error.message,
-          assignment_update_code: assignUp.error.code ?? null,
+          assignment_update_error: assignUp.error?.message || "No booking row updated during auto assignment.",
+          assignment_update_code: assignUp.error?.code ?? null,
         };
       }
 
