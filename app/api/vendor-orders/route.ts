@@ -1013,10 +1013,12 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
       if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
         const assignPatch = {
-          vendor_status: "driver_assigned",
-          customer_status: "driver_assigned",
-          assigned_driver_id: autoAssignResult.driver_id,
-        };
+  vendor_status: "driver_assigned",
+  customer_status: "driver_assigned",
+  status: "assigned",
+  assigned_driver_id: autoAssignResult.driver_id,
+  driver_id: autoAssignResult.driver_id,
+};
 
         const assignUp = await admin
           .from("bookings")
