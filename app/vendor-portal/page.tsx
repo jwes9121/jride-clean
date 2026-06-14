@@ -290,8 +290,10 @@ const FOUNDING_PILOT_DAYS = 182;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function foundingPilotDaysRemaining(nowMs: number) {
-    const expiresAt = FOUNDING_PILOT_LAUNCH_AT_MS + FOUNDING_PILOT_DAYS * DAY_MS;
-  return Math.max(0, Math.ceil((expiresAt - nowMs) / DAY_MS));
+  const displayStartAt = FOUNDING_PILOT_LAUNCH_AT_MS - 2 * DAY_MS;
+  const elapsedDays = Math.max(0, Math.floor((nowMs - displayStartAt) / DAY_MS));
+
+  return Math.max(0, FOUNDING_PILOT_DAYS - elapsedDays);
 }
 
 function readInitialVendorId() {
