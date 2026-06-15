@@ -10,8 +10,10 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 export interface LiveTripsMapProps {
   trips: LiveTrip[];
+  drivers?: any[];
   selectedTripId: string | null;
-  stuckTripIds: Set<string>; // external optional stuck set
+  stuckTripIds: Set<string>;
+  onEmergencyAssign?: (bookingCode: any) => void | Promise<void>;
   townFilter?: string;
 }
 
