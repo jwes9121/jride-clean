@@ -13,7 +13,8 @@ export interface LiveTripsMapProps {
   drivers: MapDriverRow[];
   selectedTripId: string | null;
   stuckTripIds: Set<string>;
-  onEmergencyAssign?: (bookingCode: string) => Promise<void>;
+  onEmergencyAssign?: (bookingCode: string) => void | Promise<void>;
+  townFilter?: string;
 }
 
 type MapDriverRow = {
@@ -33,6 +34,13 @@ type MapDriverRow = {
 };
 
 type LngLatTuple = [number, number];
+const TOWN_CENTERS: Record<string, LngLatTuple> = {
+  lagawe: [121.124289, 16.801351],
+  hingyon: [121.102294, 16.865595],
+  banaue: [121.06184, 16.91356],
+  lamut: [121.2236, 16.6494],
+  kiangan: [121.0834, 16.7750],
+};
 
 type StandaloneDriverFeatureProperties = {
   driverId: string;
@@ -409,6 +417,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   selectedTripId,
   stuckTripIds,
   onEmergencyAssign,
+  townFilter,
 }) => {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -739,7 +748,22 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       mapRef.current = null;
     };
   }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
 
+    const key = String(townFilter || "").trim().toLowerCase();
+    if (!key || key === "all") return;
+
+    const center = TOWN_CENTERS[key];
+    if (!center) return;
+
+    map.flyTo({
+      center,
+      zoom: 14,
+      essential: true,
+    });
+  }, [townFilter, mapReady]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
