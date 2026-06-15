@@ -772,8 +772,13 @@ export default function LiveTripsClient() {
   }, [drivers]);
 
   const driverRows = useMemo(() => {
-    return drivers
-      .map((d, idx) => {
+  return drivers
+    .filter((d) => {
+      if (d.is_stale) return false;
+      if (d.assign_eligible === false) return false;
+      return true;
+    })
+    .map((d, idx) => {
         const driverId = String(d.driver_id || "");
         const driverTrips = allTrips.filter((t) => String(t.assigned_driver_id || t.driver_id || "") === driverId);
         const activeTrip = driverTrips.find((t) => {
