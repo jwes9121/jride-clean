@@ -123,7 +123,6 @@ export async function GET() {
       if (FORCE_VISIBLE_VENDOR_IDS.has(id)) return true;
       return !removedIds.has(id) && !FORCE_HIDDEN_VENDOR_IDS.has(id);
     })
-    .filter((v: any) => v?.accepting_orders === true || FORCE_VISIBLE_VENDOR_IDS.has(cleanString(v?.id)))
     .map(normalizeVendor);
 
   return NextResponse.json({ ok: true, vendors }, { status: 200 });
