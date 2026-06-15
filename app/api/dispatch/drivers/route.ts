@@ -30,7 +30,7 @@ function deriveTownFromLatLng(lat: number, lng: number): string | null {
   const BOXES: Array<{ name: string; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
     { name: "Lagawe", minLat: 17.05, maxLat: 17.16, minLng: 121.1, maxLng: 121.3 },
     { name: "Kiangan", minLat: 16.98, maxLat: 17.1, minLng: 121.05, maxLng: 121.25 },
-    { name: "Lamut", minLat: 16.86, maxLat: 17.02, minLng: 121.1, maxLng: 121.28 },
+    { name: "Lamut",   minLat: 16.60, maxLat: 16.72, minLng: 121.17, maxLng: 121.28 },
     { name: "Hingyon", minLat: 17.1, maxLat: 17.22, minLng: 121.0, maxLng: 121.18 },
     { name: "Banaue", minLat: 16.92, maxLat: 17.15, minLng: 121.02, maxLng: 121.38 },
   ];
