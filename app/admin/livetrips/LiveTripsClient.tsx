@@ -1419,6 +1419,7 @@ export default function LiveTripsClient() {
             drivers={drivers as any}
             selectedTripId={selectedTripId}
             stuckTripIds={stuckTripIds as any}
+            townFilter={townFilter}
             onEmergencyAssign={async (bookingCode) => {
               await emergencyAssignNearest(bookingCode);
             }}
