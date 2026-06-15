@@ -8,6 +8,7 @@ const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banau
 const FORCE_VISIBLE_VENDOR_IDS = new Set<string>([
   "afa691c6-4a29-441f-b3bf-a8bb3a589ebe", // AGUBENGBENG
   "8af2c5a5-d325-4d49-af43-d5d1d5ab14cb", // IFUGATO CAFE
+  "23d549f7-565f-4476-90ca-ea10d7ee07b2", // DJARRY'S NOODLE-BAR RESTAURANT
 ]);
 
 const FORCE_HIDDEN_VENDOR_IDS = new Set<string>([
