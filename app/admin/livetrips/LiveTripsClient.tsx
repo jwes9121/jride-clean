@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import LiveTripsMap from "./components/LiveTripsMap";
@@ -406,7 +406,56 @@ export default function LiveTripsClient() {
     await loadPage();
   }
 
-  const showThresholds = `Stuck watcher thresholds: on_the_way ≥ ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ≥ ${STUCK_THRESHOLDS_MIN.on_trip} min`;
+  const showThresholds = `Stuck watcher thresholds: on_the_way >= ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip >= ${STUCK_THRESHOLDS_MIN.on_trip} min`;
+
+  const smartAssignDrivers = useMemo(() => {
+    return drivers
+      .map((d) => {
+        const lat = typeof d.lat === "number" ? d.lat : Number(d.lat);
+        const lng = typeof d.lng === "number" ? d.lng : Number(d.lng);
+        const id = String(d.driver_id || "");
+        const town = String(d.town || "Unknown");
+
+        if (!id || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+        return {
+          id,
+          name: String(d.name || "Driver"),
+          lat,
+          lng,
+          zone: town,
+          homeTown: town,
+          status: String(d.status || "available"),
+        };
+      })
+      .filter(Boolean) as any[];
+  }, [drivers]);
+
+  const smartAssignTrip = useMemo(() => {
+    if (!selectedTrip) return null;
+
+    const pickupLat = typeof selectedTrip.pickup_lat === "number" ? selectedTrip.pickup_lat : Number(selectedTrip.pickup_lat);
+    const pickupLng = typeof selectedTrip.pickup_lng === "number" ? selectedTrip.pickup_lng : Number(selectedTrip.pickup_lng);
+
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return null;
+
+    return {
+      id: normTripId(selectedTrip),
+      pickupLat,
+      pickupLng,
+      zone: String(selectedTrip.town || selectedTrip.zone || "Unknown"),
+      tripType: String((selectedTrip as any).trip_type || (selectedTrip as any).service_type || "ride"),
+    };
+  }, [selectedTrip]);
+
+  const smartAssignZoneStats = useMemo(() => {
+    const out: Record<string, { util: number; status: string }> = {};
+    for (const z of zones) {
+      const key = String(z.zone_name || "Unknown");
+      out[key] = { util: Number(z.active_drivers || 0), status: String(z.status || "OK") };
+    }
+    return out;
+  }, [zones]);
 
   return (
     <div className="p-4">
@@ -417,7 +466,13 @@ export default function LiveTripsClient() {
         </div>
         <div className="text-xs text-gray-600 text-right">
           <div className="font-medium">Stuck watcher thresholds</div>
-          <div>on_the_way ≥ {STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip ≥ {STUCK_THRESHOLDS_MIN.on_trip} min</div>
+          <div>
+            {"on_the_way >= "}
+            {STUCK_THRESHOLDS_MIN.on_the_way}
+            {" min, on_trip >= "}
+            {STUCK_THRESHOLDS_MIN.on_trip}
+            {" min"}
+          </div>
         </div>
       </div>
 
@@ -481,10 +536,10 @@ export default function LiveTripsClient() {
           <div key={z.zone_id} className="rounded-lg border p-3">
             <div className="flex items-center justify-between">
               <div className="font-semibold">{z.zone_name}</div>
-              <div className="text-xs text-gray-600">{z.status || "—"}</div>
+              <div className="text-xs text-gray-600">{z.status || "-"}</div>
             </div>
             <div className="text-xs text-gray-600">
-              Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "—"}
+              Active: {z.active_drivers ?? 0} / Limit: {z.capacity_limit ?? "-"}
             </div>
           </div>
         ))}
@@ -538,22 +593,22 @@ export default function LiveTripsClient() {
                         onClick={() => setSelectedTripId(id)}
                       >
                         <td className="p-2 font-medium">
-                          {t.booking_code || "—"}
+                          {t.booking_code || "-"}
                           {isProblem ? (
                             <span className="ml-2 inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700">
                               PROBLEM
                             </span>
                           ) : null}
                         </td>
-                        <td className="p-2">{t.passenger_name || "—"}</td>
-                        <td className="p-2">{t.pickup_label || "—"}</td>
-                        <td className="p-2">{t.dropoff_label || "—"}</td>
+                        <td className="p-2">{t.passenger_name || "-"}</td>
+                        <td className="p-2">{t.pickup_label || "-"}</td>
+                        <td className="p-2">{t.dropoff_label || "-"}</td>
                         <td className="p-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
-                            {s || "—"}
+                            {s || "-"}
                           </span>
                         </td>
-                        <td className="p-2">{t.zone || t.town || "—"}</td>
+                        <td className="p-2">{t.zone || t.town || "-"}</td>
                         <td className="p-2">
                           {/* Minimal inline status actions */}
                           <div className="flex flex-wrap gap-2 items-center">
@@ -640,7 +695,7 @@ export default function LiveTripsClient() {
                   <option value="">Select driver</option>
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
-                    const label = `${d.name || "Driver"} ${d.town ? `— ${d.town}` : ""} ${d.status ? `— ${d.status}` : ""}`.trim();
+                    const label = `${d.name || "Driver"} ${d.town ? `- ${d.town}` : ""} ${d.status ? `- ${d.status}` : ""}`.trim();
                     return (
                       <option key={id || idx} value={id}>
                         {label}
@@ -673,7 +728,15 @@ export default function LiveTripsClient() {
               </div>
 
               <div className="mt-2">
-                <SmartAutoAssignSuggestions trip={selectedTrip as any} drivers={drivers as any} />
+                <SmartAutoAssignSuggestions
+  trip={smartAssignTrip as any}
+  drivers={smartAssignDrivers as any}
+  zoneStats={{} as any}
+  onAssign={(driverId: string) => {
+    if (!selectedTrip?.booking_code) return;
+    assignDriver(selectedTrip.booking_code, driverId).catch((err) => setLastAction(String(err?.message || err)));
+  }}
+/>
               </div>
             </div>
           </div>
@@ -692,5 +755,6 @@ export default function LiveTripsClient() {
     </div>
   );
 }
+
 
 
