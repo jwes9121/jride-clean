@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -734,6 +734,8 @@ export default function VendorPortalPage() {
   const lastVendorAlertRingRef = useRef(0);
   const vendorAlertAudioUnlockedRef = useRef(false);
   const [vendorAlertSoundEnabled, setVendorAlertSoundEnabled] = useState(false);
+  const vendorNotificationLastCountRef = useRef(0);
+  const [vendorNotificationPermission, setVendorNotificationPermission] = useState<string>("unknown");
   const [vendorAlertDebug, setVendorAlertDebug] = useState({
     audioUnlocked: false,
     pendingCount: 0,
@@ -759,6 +761,35 @@ export default function VendorPortalPage() {
     return orders.filter((o) => isActivePendingVendorOrder(o, nowMs));
   }, [orders, nowMs]);
 
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setVendorNotificationPermission("unsupported");
+      return;
+    }
+    setVendorNotificationPermission(Notification.permission);
+  }, []);
+
+  async function requestVendorNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setVendorNotificationPermission("unsupported");
+      return "unsupported";
+    }
+
+    if (Notification.permission === "granted") {
+      setVendorNotificationPermission("granted");
+      return "granted";
+    }
+
+    if (Notification.permission === "denied") {
+      setVendorNotificationPermission("denied");
+      return "denied";
+    }
+
+    const permission = await Notification.requestPermission();
+    setVendorNotificationPermission(permission);
+    return permission;
+  }
 
   const markVendorPortalAudioUnlocked = React.useCallback(() => {
     vendorAlertAudioUnlockedRef.current = true;
@@ -800,7 +831,7 @@ export default function VendorPortalPage() {
     }
   }, []);
 
-  function enableVendorPortalSound() {
+  async function enableVendorPortalSound() {
     vendorAlertAudioUnlockedRef.current = true;
     setVendorAlertSoundEnabled(true);
     setVendorAlertDebug((prev) => ({
@@ -809,6 +840,7 @@ export default function VendorPortalPage() {
       lastAttempt: "enable click",
       lastResult: "enabled",
     }));
+    await requestVendorNotifications();
     void playVendorPortalAlert("enable test");
   }
 
@@ -855,6 +887,29 @@ export default function VendorPortalPage() {
       window.clearInterval(t);
     };
   }, [pendingVendorOrdersForAlert.length, playVendorPortalAlert, vendorAlertSoundEnabled]);
+
+  useEffect(() => {
+    const count = pendingVendorOrdersForAlert.length;
+
+    if (count <= 0) {
+      vendorNotificationLastCountRef.current = 0;
+      return;
+    }
+
+    if (count <= vendorNotificationLastCountRef.current) return;
+    vendorNotificationLastCountRef.current = count;
+
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    try {
+      new Notification("JRide Takeout", {
+        body: count === 1 ? "New order waiting for acceptance." : String(count) + " new orders waiting for acceptance.",
+        icon: "/icon-192.png",
+        tag: "jride-vendor-new-order",      });
+    } catch {
+    }
+  }, [pendingVendorOrdersForAlert.length]);
 
   const historyOrders = useMemo(() => {
     return orders.filter((o) => ["completed", "cancelled", "vendor_timeout"].includes(normalizeVendorStatus(o.vendor_status)));
@@ -2118,7 +2173,7 @@ export default function VendorPortalPage() {
 <div className="mb-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200">
   <div className="flex items-start gap-3">
     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl">
-      🏆
+      ðŸ†
     </div>
     <div className="flex-1">
       <div className="text-xs font-bold uppercase tracking-wider text-amber-700">
@@ -2159,6 +2214,7 @@ export default function VendorPortalPage() {
                     Test sound
                   </button>
                   <span>Vendor alert sound: {vendorAlertSoundEnabled ? "on" : "off"}</span>
+                  <span>Notifications: {vendorNotificationPermission}</span>
                   {pendingVendorOrdersForAlert.length > 0 ? <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">Pending accept: {pendingVendorOrdersForAlert.length}</span> : null}
                   <span className={vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "text-emerald-700" : "text-slate-500"}>
                     {vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "Sound ready" : "Sound off"}
