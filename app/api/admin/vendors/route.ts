@@ -58,6 +58,11 @@ export async function GET() {
     "ae4a56e7-ff63-4cde-ba7e-5fae273272a2",
   ]);
 
+  const forceVisibleVendorIds = new Set<string>([
+    "afa691c6-4a29-441f-b3bf-a8bb3a589ebe", // AGUBENGBENG
+    "8af2c5a5-d325-4d49-af43-d5d1d5ab14cb", // IFUGATO CAFE
+  ]);
+
   if (vendorIds.length > 0) {
     const registry = await supabase
       .from("vendor_onboarding_credentials")
@@ -79,6 +84,7 @@ export async function GET() {
   const vendors = (Array.isArray(data) ? data : [])
     .filter((v: any) => {
       const id = cleanString(v?.id);
+      if (forceVisibleVendorIds.has(id)) return true;
       return !removedIds.has(id) && !forceHiddenVendorIds.has(id);
     })
     .filter((v: any) => v?.accepting_orders === true)
