@@ -915,7 +915,25 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     dropMarkersRef.current = nextDrops;
     routeIdsRef.current = validRouteIds;
   }, [visibleTrips, drivers, activeStuckIds, mapReady]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
 
+    const key = normalizeZone(townFilter || "all");
+    if (!key || key === "all") return;
+
+    const center = TOWN_CENTERS[key];
+    if (!center) return;
+
+    lastFollowRef.current = null;
+
+    map.flyTo({
+      center,
+      zoom: 13,
+      speed: 1.2,
+      essential: true,
+    });
+  }, [townFilter, mapReady]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedTripId) return;
