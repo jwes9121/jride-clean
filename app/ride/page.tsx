@@ -771,6 +771,15 @@ export default function RidePage() {
 
     setPickupLng(String(g.center[0]));
     setPickupLat(String(g.center[1]));
+if (mapRef.current) {
+  try {
+    mapRef.current.flyTo({
+      center: g.center,
+      zoom: 14,
+      essential: true,
+    });
+  } catch {}
+}
     setFromLabel(`${norm(town)} Town Proper`);
     setGeoFrom([]);
     setDropLng(String(g.center[0]));
@@ -1146,7 +1155,6 @@ export default function RidePage() {
       const g0 = getTownGeo(town);
       const cLng = toNum(pickupLng, g0 ? g0.center[0] : 121.1175);
       const cLat = toNum(pickupLat, g0 ? g0.center[1] : 16.7999);
-
       if (!mapRef.current) {
         mapRef.current = new MapboxGL.Map({
           container: mapDivRef.current,
