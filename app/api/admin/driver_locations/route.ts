@@ -150,7 +150,7 @@ export async function GET() {
 
       const { data: profilesData, error: profilesError } = await supabase
         .from("driver_profiles")
-        .select("driver_id,phone,full_name")
+        .select("driver_id,phone,full_name,status")
         .in("driver_id", driverIds);
 
       if (profilesError) {
@@ -176,7 +176,11 @@ export async function GET() {
 
       const driverId = String(row.driver_id || "").trim();
       const identity = driverId ? identityById[driverId] : null;
-      const profile = driverId ? profileByDriverId[driverId] : null;
+            const profile = driverId ? profileByDriverId[driverId] : null;
+      const masterStatus = String(identity?.driver_status ?? "").trim().toLowerCase();
+      const profileStatus = String((profile as any)?.status ?? "").trim().toLowerCase();
+      const hiddenStatuses = new Set(["deactivated", "deleted", "removed", "removed_from_pilot", "inactive"]);
+      if (hiddenStatuses.has(masterStatus) || hiddenStatuses.has(profileStatus)) return null;
 
       return {
         ...row,
@@ -197,7 +201,7 @@ export async function GET() {
         assign_fresh: assignFresh,
         assign_online_eligible: assignOnlineEligible,
         assign_eligible: assignEligible};
-    });
+    }).filter(Boolean);
 
     return NextResponse.json(
       {
