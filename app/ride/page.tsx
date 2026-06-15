@@ -52,9 +52,13 @@ const TOWN_GEO: Record<
     center: [121.06184, 16.91356],
     bbox: [120.937562, 16.867337, 121.209619, 17.017519],
   },
-  hingyon: {
+    hingyon: {
     center: [121.102294, 16.865595],
     bbox: [121.033511, 16.811117, 121.156644, 16.901629],
+  },
+  lamut: {
+    center: [121.2236, 16.6494],
+    bbox: [121.17, 16.60, 121.28, 16.72],
   },
 };
 
@@ -62,6 +66,11 @@ const LOCAL_LANDMARKS: Record<
   string,
   Array<{ name: string; center: [number, number] }>
 > = {
+   lamut: [
+    { name: "Lamut Municipal Hall", center: [121.2236, 16.6494] },
+    { name: "Lamut Town Proper", center: [121.2236, 16.6494] },
+    { name: "Lamut Public Market", center: [121.2236, 16.6494] },
+  ],
   hingyon: [
     { name: "Hingyon Municipal Hall", center: [121.102294, 16.865595] },
     { name: "Hingyon Town Proper", center: [121.102294, 16.865595] },
