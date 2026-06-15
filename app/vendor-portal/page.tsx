@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -797,7 +797,44 @@ export default function VendorPortalPage() {
     setVendorNotificationPermission(permission);
     return permission;
   }
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  }
 
+  async function subscribeVendorPushNotifications() {
+    const vid = clean(vendorId);
+    if (!vid) return;
+
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) return;
+    if (!("PushManager" in window)) return;
+
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!publicKey) return;
+
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+    const subscription =
+      existing ||
+      (await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      }));
+
+    await fetch("/api/vendor-push/subscribe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        vendor_id: vid,
+        subscription,
+      }),
+    });
+  }
   const markVendorPortalAudioUnlocked = React.useCallback(() => {
     vendorAlertAudioUnlockedRef.current = true;
     setVendorAlertDebug((prev) => ({ ...prev, audioUnlocked: true }));
@@ -847,7 +884,10 @@ export default function VendorPortalPage() {
       lastAttempt: "enable click",
       lastResult: "enabled",
     }));
-    await requestVendorNotifications();
+        const permission = await requestVendorNotifications();
+    if (permission === "granted") {
+      await subscribeVendorPushNotifications();
+    }
     void playVendorPortalAlert("enable test");
   }
 
