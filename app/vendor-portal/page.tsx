@@ -763,6 +763,13 @@ export default function VendorPortalPage() {
 
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) return;
+
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setVendorNotificationPermission("unsupported");
       return;
@@ -2173,7 +2180,7 @@ export default function VendorPortalPage() {
 <div className="mb-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200">
   <div className="flex items-start gap-3">
     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl">
-      ðŸ†
+      Ã°Å¸Ââ€ 
     </div>
     <div className="flex-1">
       <div className="text-xs font-bold uppercase tracking-wider text-amber-700">
