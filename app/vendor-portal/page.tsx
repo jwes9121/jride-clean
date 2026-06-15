@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -282,6 +282,7 @@ function vendorLabel(v: VendorRow) {
 }
 
 const VENDOR_PORTAL_ALERT_SOUND_URL = "/sounds/vendor-order-alert.mp3";
+const LS_VENDOR_ALERT_SOUND_ENABLED = "JRIDE_VENDOR_ALERT_SOUND_ENABLED";
 
 const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
 const LEGACY_LS_VENDOR_ID = "jride_vendor_id";
@@ -733,7 +734,10 @@ export default function VendorPortalPage() {
   const vendorAlertAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastVendorAlertRingRef = useRef(0);
   const vendorAlertAudioUnlockedRef = useRef(false);
-  const [vendorAlertSoundEnabled, setVendorAlertSoundEnabled] = useState(false);
+  const [vendorAlertSoundEnabled, setVendorAlertSoundEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(LS_VENDOR_ALERT_SOUND_ENABLED) === "1";
+  });
   const vendorNotificationLastCountRef = useRef(0);
   const [vendorNotificationPermission, setVendorNotificationPermission] = useState<string>("unknown");
   const [vendorAlertDebug, setVendorAlertDebug] = useState({
@@ -878,6 +882,7 @@ export default function VendorPortalPage() {
   async function enableVendorPortalSound() {
     vendorAlertAudioUnlockedRef.current = true;
     setVendorAlertSoundEnabled(true);
+    if (typeof window !== "undefined") window.localStorage.setItem(LS_VENDOR_ALERT_SOUND_ENABLED, "1");
     setVendorAlertDebug((prev) => ({
       ...prev,
       audioUnlocked: true,
@@ -894,6 +899,7 @@ export default function VendorPortalPage() {
   function disableVendorPortalSound() {
     vendorAlertAudioUnlockedRef.current = false;
     setVendorAlertSoundEnabled(false);
+    if (typeof window !== "undefined") window.localStorage.removeItem(LS_VENDOR_ALERT_SOUND_ENABLED);
     setVendorAlertDebug((prev) => ({
       ...prev,
       audioUnlocked: false,
@@ -2255,6 +2261,7 @@ export default function VendorPortalPage() {
                     onClick={() => {
                       markVendorPortalAudioUnlocked();
                       setVendorAlertSoundEnabled(true);
+    if (typeof window !== "undefined") window.localStorage.setItem(LS_VENDOR_ALERT_SOUND_ENABLED, "1");
                       void playVendorPortalAlert("manual test");
                     }}
                   >
