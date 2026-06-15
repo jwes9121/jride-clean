@@ -24,7 +24,7 @@ const TOKEN_KEY = "jride_access_token";
 const LOCAL_VERIFY_KEY = "jride.local_verify_code";
 const HISTORY_KEY = "jride.passenger_recent_trips.v1";
 
-const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue"] as const;
+const PILOT_TOWNS = ["Lagawe", "Hingyon", "Banaue", "Lamut"] as const;
 
 const STATUS_STEPS = [
   "searching",
