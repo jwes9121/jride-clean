@@ -408,55 +408,6 @@ export default function LiveTripsClient() {
 
   const showThresholds = `Stuck watcher thresholds: on_the_way >= ${STUCK_THRESHOLDS_MIN.on_the_way} min, on_trip >= ${STUCK_THRESHOLDS_MIN.on_trip} min`;
 
-  const smartAssignDrivers = useMemo(() => {
-    return drivers
-      .map((d) => {
-        const lat = typeof d.lat === "number" ? d.lat : Number(d.lat);
-        const lng = typeof d.lng === "number" ? d.lng : Number(d.lng);
-        const id = String(d.driver_id || "");
-        const town = String(d.town || "Unknown");
-
-        if (!id || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-        return {
-          id,
-          name: String(d.name || "Driver"),
-          lat,
-          lng,
-          zone: town,
-          homeTown: town,
-          status: String(d.status || "available"),
-        };
-      })
-      .filter(Boolean) as any[];
-  }, [drivers]);
-
-  const smartAssignTrip = useMemo(() => {
-    if (!selectedTrip) return null;
-
-    const pickupLat = typeof selectedTrip.pickup_lat === "number" ? selectedTrip.pickup_lat : Number(selectedTrip.pickup_lat);
-    const pickupLng = typeof selectedTrip.pickup_lng === "number" ? selectedTrip.pickup_lng : Number(selectedTrip.pickup_lng);
-
-    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return null;
-
-    return {
-      id: normTripId(selectedTrip),
-      pickupLat,
-      pickupLng,
-      zone: String(selectedTrip.town || selectedTrip.zone || "Unknown"),
-      tripType: String((selectedTrip as any).trip_type || (selectedTrip as any).service_type || "ride"),
-    };
-  }, [selectedTrip]);
-
-  const smartAssignZoneStats = useMemo(() => {
-    const out: Record<string, { util: number; status: string }> = {};
-    for (const z of zones) {
-      const key = String(z.zone_name || "Unknown");
-      out[key] = { util: Number(z.active_drivers || 0), status: String(z.status || "OK") };
-    }
-    return out;
-  }, [zones]);
-
   return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-4">
@@ -729,12 +680,14 @@ export default function LiveTripsClient() {
 
               <div className="mt-2">
                 <SmartAutoAssignSuggestions
-  trip={smartAssignTrip as any}
-  drivers={smartAssignDrivers as any}
+  trip={selectedTrip as any}
+  drivers={drivers as any}
   zoneStats={{} as any}
   onAssign={(driverId: string) => {
     if (!selectedTrip?.booking_code) return;
-    assignDriver(selectedTrip.booking_code, driverId).catch((err) => setLastAction(String(err?.message || err)));
+    assignDriver(selectedTrip.booking_code, driverId).catch((err) =>
+      setLastAction(String(err?.message || err))
+    );
   }}
 />
               </div>
