@@ -812,17 +812,25 @@ export async function GET(req: Request) {
         row.assigned_bookings += 1;
       }
 
-      if (
-        [
-          "accepted",
-          "fare_proposed",
-          "ready",
-          "on_the_way",
-          "arrived",
-          "on_trip",
-          "completed",
-        ].includes(status)
-      ) {
+      const acceptedStatuses = new Set([
+        "accepted",
+        "assigned",
+        "driver_assigned",
+        "fare_proposed",
+        "ready",
+        "on_the_way",
+        "arrived",
+        "arrived_vendor",
+        "picked_up",
+        "picked_up_vendor",
+        "delivering",
+        "on_trip",
+        "completed",
+        "vendor_accepted",
+        "customer_confirmed",
+      ]);
+
+      if (acceptedStatuses.has(status)) {
         row.accepted_bookings += 1;
       }
 
