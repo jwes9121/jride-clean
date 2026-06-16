@@ -762,6 +762,13 @@ export default function TakeoutPage() {
         return vendorLabel(a).localeCompare(vendorLabel(b));
       });
   }, [vendors, vendorTownFilter, vendorAvailabilityById]);
+  const activeVendors = useMemo(() => {
+    return visibleVendors.filter((v: any) => String(v?.marketplace_status || v?.onboarding_status || "").toLowerCase() !== "batch2");
+  }, [visibleVendors]);
+
+  const comingSoonVendors = useMemo(() => {
+    return visibleVendors.filter((v: any) => String(v?.marketplace_status || v?.onboarding_status || "").toLowerCase() === "batch2");
+  }, [visibleVendors]);
 
   const selectedVendor = useMemo(() => {
     const id = String(vendorId || "").trim();
@@ -1823,7 +1830,7 @@ const contact = await fetchOptionalJson(
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   Select a town above to browse JRide Takeout vendors.
                 </div>
-              ) : visibleVendors.length === 0 ? (
+                            ) : activeVendors.length === 0 && comingSoonVendors.length === 0 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   <div className="font-semibold">No vendors are listed for this town yet.</div>
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
@@ -1831,7 +1838,7 @@ const contact = await fetchOptionalJson(
               ) : (
                 <div className={cls("jride-vendor-grid grid w-full gap-4", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
-                  {(vendorId ? visibleVendors.filter((v) => vendorKey(v) === vendorId) : visibleVendors).map((v) => {
+                                    {(vendorId ? activeVendors.filter((v) => vendorKey(v) === vendorId) : activeVendors).map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
                     const isSelected = vendorId === id;
@@ -1924,7 +1931,46 @@ const contact = await fetchOptionalJson(
                   })}
                 </div>
               )}
+              {comingSoonVendors.length > 0 && !vendorId ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-black text-slate-900">Coming soon</div>
+                      <div className="text-[11px] text-slate-500">These partner vendors are queued for the next takeout batch.</div>
+                    </div>
+                    <div className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                      {comingSoonVendors.length} {comingSoonVendors.length === 1 ? "store" : "stores"}
+                    </div>
+                  </div>
 
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {comingSoonVendors.map((v: any) => {
+                      const id = vendorKey(v);
+                      const label = vendorLabel(v);
+                      const logoUrl = vendorUploadedLogoUrl(v);
+
+                      return (
+                        <div key={id || label} className="flex min-h-[78px] items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 opacity-70 grayscale">
+                          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                            {logoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center px-1 text-center text-[8px] font-extrabold uppercase tracking-[0.08em] text-slate-500">
+                                No logo
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="line-clamp-2 text-sm font-black leading-tight text-slate-700">{label}</div>
+                            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Coming soon</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               {vendorId ? (
                 <div className={cls(
                   "jride-selected-vendor-summary w-full rounded-xl border p-3 text-xs lg:max-w-none",

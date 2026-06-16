@@ -98,7 +98,8 @@ export async function GET() {
   const rows = Array.from(byId.values());
   const vendorIds = rows.map((v: any) => cleanString(v?.id)).filter(Boolean);
 
-  let removedIds = new Set<string>();
+    let removedIds = new Set<string>();
+  let statusByVendorId = new Map<string, string>();
   if (vendorIds.length > 0) {
     const registry = await supabase
       .from("vendor_onboarding_credentials")
@@ -108,6 +109,14 @@ export async function GET() {
     if (registry.error) {
       return NextResponse.json({ ok: false, error: "DB_ERROR", message: registry.error.message }, { status: 500 });
     }
+        const statusEntries: Array<[string, string]> = (Array.isArray(registry.data) ? registry.data : [])
+      .map((row: any): [string, string] => [
+        cleanString(row?.vendor_id),
+        cleanString(row?.status).toLowerCase(),
+      ])
+      .filter((row: [string, string]) => Boolean(row[0]));
+
+    statusByVendorId = new Map<string, string>(statusEntries);
 
     removedIds = new Set(
       (Array.isArray(registry.data) ? registry.data : [])
@@ -117,13 +126,23 @@ export async function GET() {
     );
   }
 
-  const vendors = rows
+    const vendors = rows
     .filter((v: any) => {
       const id = cleanString(v?.id);
       if (FORCE_VISIBLE_VENDOR_IDS.has(id)) return true;
       return !removedIds.has(id) && !FORCE_HIDDEN_VENDOR_IDS.has(id);
     })
-    .map(normalizeVendor);
+    .map((v: any) => {
+      const normalized = normalizeVendor(v);
+      const id = cleanString(v?.id);
+      const marketplaceStatus = statusByVendorId.get(id) || "";
+      return {
+        ...normalized,
+        marketplace_status: marketplaceStatus,
+        onboarding_status: marketplaceStatus,
+        is_batch2: marketplaceStatus === "batch2",
+      };
+    });
 
   return NextResponse.json({ ok: true, vendors }, { status: 200 });
 }
