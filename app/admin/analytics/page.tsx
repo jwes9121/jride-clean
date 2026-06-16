@@ -1292,11 +1292,11 @@ export default function AdminAnalyticsPage() {
               <h2 className="text-lg font-bold tracking-tight text-slate-900">
                 Driver workforce intelligence
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Read-only driver workforce snapshot. Current production DB has
-                driver_locations and bookings, but no driver session history
-                table yet, so attendance-hour and coverage-gap metrics stay
-                disabled instead of being faked.
+                            <p className="mt-1 text-sm text-slate-500">
+                Read-only driver workforce analytics using driver_locations,
+                bookings, and driver_presence_sessions when available. Session
+                rows power exact login, logout, attendance-hour, and coverage-gap
+                metrics.
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -1321,7 +1321,7 @@ export default function AdminAnalyticsPage() {
                 driverWorkforceTotals.loggedInToday ||
                   Number(driverWorkforceSummary.drivers_logged_in_today || 0),
               )}
-              sub="Disabled until driver session logs exist"
+                            sub="From driver session logs"
             />
             <Card
               title="Online hours today"
@@ -1331,7 +1331,7 @@ export default function AdminAnalyticsPage() {
                     driverWorkforceSummary.total_online_minutes_today || 0,
                   ),
               )}
-              sub="Disabled until driver session logs exist"
+                            sub="From driver session logs"
             />
             <Card
               title="Qualified today"
@@ -1339,7 +1339,7 @@ export default function AdminAnalyticsPage() {
                 driverWorkforceTotals.qualifiedToday ||
                   Number(driverWorkforceSummary.qualified_today || 0),
               )}
-              sub="Needs session history"
+                            sub="8h online threshold"
             />
             <Card
               title="Qualified this week"
@@ -1347,7 +1347,7 @@ export default function AdminAnalyticsPage() {
                 driverWorkforceTotals.qualifiedWeek ||
                   Number(driverWorkforceSummary.qualified_this_week || 0),
               )}
-              sub="Needs session history"
+                            sub="5 qualified days target"
             />
             <Card
               title="No-driver time today"
@@ -1447,11 +1447,9 @@ export default function AdminAnalyticsPage() {
                     </div>
                     {selectedDriverSessions.length === 0 ? (
                       <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                        No session rows available for this driver. To show exact
-                        login time, logout time, and shift duration, Android must
-                        write driver_presence_sessions on login/online and
-                        logout/offline. Current summary remains read-only and
-                        snapshot-based.
+                                                No session rows available for this driver in the current
+                        scope. Check if the driver has logged in after session
+                        tracking was enabled, or widen the town filter.
                       </div>
                     ) : (
                       <div className="mt-2 max-h-[220px] overflow-auto rounded-xl border border-slate-200">
@@ -1598,10 +1596,9 @@ export default function AdminAnalyticsPage() {
               <h3 className="text-sm font-semibold text-slate-900">
                 Live coverage by town
               </h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Uses real driver_locations snapshot data only. This replaces the
-                empty coverage-gap space until a real driver session history
-                table exists.
+                            <p className="mt-1 text-xs text-slate-500">
+                Uses live driver_locations plus driver_presence_sessions when
+                available to show current coverage and no-driver gaps by town.
               </p>
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
