@@ -613,11 +613,20 @@ export default function AdminAnalyticsPage() {
       .slice(0, 20);
   }, [scopedDriverSessionRows, selectedDriverWorkforceId]);
   React.useEffect(() => {
-    if (!selectedDriverWorkforceId) return;
+    const firstDriverId = String(scopedDriverWorkforceRows[0]?.driver_id || "");
+
+    if (!selectedDriverWorkforceId) {
+      if (firstDriverId) setSelectedDriverWorkforceId(firstDriverId);
+      return;
+    }
+
     const stillVisible = scopedDriverWorkforceRows.some(
       (r) => String(r.driver_id || "") === selectedDriverWorkforceId,
     );
-    if (!stillVisible) setSelectedDriverWorkforceId("");
+
+    if (!stillVisible) {
+      setSelectedDriverWorkforceId(firstDriverId);
+    }
   }, [scopedDriverWorkforceRows, selectedDriverWorkforceId]);
   const driverWorkforceTotals = React.useMemo(() => {
     const rows = scopedDriverWorkforceRows;
