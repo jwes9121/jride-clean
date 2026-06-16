@@ -518,7 +518,7 @@ export default function AdminAnalyticsPage() {
           const mode = String(workforceJson.source?.mode || "snapshot_only");
           setDriverWorkforceStatus(
             mode === "snapshot_only"
-              ? "Live snapshot mode: driver_locations plus bookings. No driver session history table exists yet."
+              ? "Loaded live driver snapshot. Session details appear when driver_presence_sessions has rows."
               : "Loaded from /api/admin/analytics/driver-workforce.",
           );
         } else {
@@ -1352,7 +1352,7 @@ export default function AdminAnalyticsPage() {
             <Card
               title="No-driver time today"
               value={formatMinutesLabel(driverWorkforceTotals.noDriverMinutes)}
-              sub="Needs session history"
+              sub="Detected from session gaps"
             />
           </div>
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1365,7 +1365,7 @@ export default function AdminAnalyticsPage() {
                   Click a driver in the ranking table to inspect today, week,
                   and month activity. Exact login and logout times appear here
                   when driver_presence_sessions has rows; otherwise this safely
-                  shows snapshot-based activity from driver_locations.
+                  shows available activity from driver_locations.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
@@ -1625,7 +1625,7 @@ export default function AdminAnalyticsPage() {
                     Mode
                   </div>
                   <div className="mt-1 text-sm font-bold text-slate-950">
-                    Snapshot
+                    Live
                   </div>
                 </div>
               </div>
@@ -1698,7 +1698,7 @@ export default function AdminAnalyticsPage() {
                 {formatCount(driverActivationSummary.total)} drivers
               </div>
               <div className="mt-1 text-xs text-slate-500">
-                Snapshot only. No automated changes.
+                Read-only. No automated changes.
               </div>
             </div>
           </div>
@@ -2436,4 +2436,6 @@ export default function AdminAnalyticsPage() {
     </main>
   );
 }
+
+
 
