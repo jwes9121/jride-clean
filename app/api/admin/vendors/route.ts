@@ -145,3 +145,60 @@ export async function GET() {
 
   return NextResponse.json({ ok: true, vendors }, { status: 200 });
 }
+export async function POST(req: Request) {
+  const supabase = adminClient();
+
+  if (!supabase) {
+    return NextResponse.json(
+      { ok: false, error: "MISSING_SERVICE_ROLE" },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const body = await req.json();
+
+    const vendorId = cleanString(body?.vendor_id);
+    const status = cleanString(body?.status).toLowerCase();
+
+    if (!vendorId) {
+      return NextResponse.json(
+        { ok: false, error: "MISSING_VENDOR_ID" },
+        { status: 400 }
+      );
+    }
+
+    if (!["pilot_lagawe", "batch2", "removed_from_pilot"].includes(status)) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_STATUS" },
+        { status: 400 }
+      );
+    }
+
+    const result = await supabase
+      .from("vendor_onboarding_credentials")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("vendor_id", vendorId);
+
+    if (result.error) {
+      return NextResponse.json(
+        { ok: false, error: result.error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      vendor_id: vendorId,
+      status,
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: String(e?.message || e) },
+      { status: 500 }
+    );
+  }
+}
