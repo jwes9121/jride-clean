@@ -13,7 +13,6 @@ const FORCE_VISIBLE_VENDOR_IDS = new Set<string>([
 
 const FORCE_HIDDEN_VENDOR_IDS = new Set<string>([
   "54762c55-829c-425a-8183-7a682f61b75c",
-  "ff951ad9-6bb4-4fe1-b495-acc7f1d8218b",
   "1ad78ce7-a5a0-40fb-acec-e12cdefe94fb",
   "ae4a56e7-ff63-4cde-ba7e-5fae273272a2",
 ]);
