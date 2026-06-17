@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 
@@ -718,6 +718,13 @@ export async function GET(req: NextRequest) {
       pricing_status: takeoutPricingStatusForDriver,
       fee_status: takeoutPricingStatusForDriver,
       driver_fee_status: takeoutPricingStatusForDriver,
+      driver_assignment_expires_at: s((booking as any).driver_assignment_expires_at),
+      driver_accept_expires_at: s((booking as any).driver_accept_expires_at),
+      takeout_driver_accept_expires_at: s((booking as any).takeout_driver_accept_expires_at),
+      takeout_fee_proposal_expires_at: s((booking as any).takeout_fee_proposal_expires_at),
+      driver_fee_proposal_expires_at: s((booking as any).driver_fee_proposal_expires_at),
+      takeout_fee_proposed_at: s((booking as any).takeout_fee_proposed_at),
+      takeout_fee_expires_at: s((booking as any).takeout_fee_expires_at),
       takeout_customer_confirmed_at: takeoutConfirmedAtForDriver,
       customer_confirmed_at: takeoutConfirmedAtForDriver,
       passenger_confirmed_total: takeoutPassengerConfirmedTotal,

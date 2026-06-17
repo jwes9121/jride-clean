@@ -68,6 +68,14 @@ function formatDateTime(value?: string | null) {
   return d.toLocaleString();
 }
 
+
+function secondsUntil(value?: string | null) {
+  if (!value) return 0;
+  const expiry = new Date(value).getTime();
+  if (!Number.isFinite(expiry)) return 0;
+  return Math.max(0, Math.floor((expiry - Date.now()) / 1000));
+}
+
 function normalizeStatus(order: Order | null): StepKey | "cancelled" {
   if (!order) return "requested";
   const raw = text(order.customer_status || order.vendor_status || order.status).toLowerCase();
@@ -112,6 +120,9 @@ export default function TakeoutTrackPage({ params }: PageProps) {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const currentStatus = useMemo(() => normalizeStatus(order), [order]);
   const totals = useMemo(() => makeBreakdown(order), [order]);
+  const pricingStatus = text(order?.takeout_pricing_status).toLowerCase();
+  const quoteExpiresIn = secondsUntil(order?.takeout_fee_expires_at);
+  const quoteReady = pricingStatus === "driver_fee_proposed" || pricingStatus === "fare_proposed";
 
   const currentStepIndex = useMemo(() => {
     if (currentStatus === "cancelled") return -1;
@@ -194,6 +205,16 @@ export default function TakeoutTrackPage({ params }: PageProps) {
           </div>
           {copyMessage ? <p className="mt-3 text-xs text-slate-600">{copyMessage}</p> : null}
           {error ? <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+          {quoteReady ? (
+            <div className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-4 text-rose-900">
+              <div className="text-sm font-black uppercase tracking-wide">Action required</div>
+              <div className="mt-1 text-base font-bold">Driver delivery fee is ready. Confirm the total payable in the order screen to continue.</div>
+              <div className="mt-3 flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                <span className="text-xs font-semibold uppercase text-slate-600">Proposal expires in</span>
+                <span className="text-xl font-black tabular-nums text-rose-700">{quoteExpiresIn == null ? "--" : String(quoteExpiresIn) + " sec"}</span>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="rounded-2xl border bg-white p-5 shadow-sm">

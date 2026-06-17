@@ -511,6 +511,24 @@ function driverVendorStatusNote(o: TakeoutOrder) {
   return "Dispatch is still attaching a driver. Do not prepare yet.";
 }
 
+function vendorPrepGateButtonLabel(o: TakeoutOrder) {
+  const tone = vendorPrepGateTone(o);
+  if (tone === "ready") return "Mark order ready";
+  if (tone === "fare") return "Waiting for customer approval";
+  if (tone === "accepted") return "Waiting for driver fare proposal";
+  if (tone === "assigned") return "Waiting for driver confirmation";
+  return "Waiting for driver assignment";
+}
+
+function vendorPrepGateBadgeLabel(o: TakeoutOrder) {
+  const tone = vendorPrepGateTone(o);
+  if (tone === "ready") return "Prepare now";
+  if (tone === "fare") return "Fare proposed";
+  if (tone === "accepted") return "Driver accepted";
+  if (tone === "assigned") return "Driver selected";
+  return statusLabel(o.vendor_status);
+}
+
 function parseDeadlineMs(v: any): number | null {
   const raw = clean(v);
   if (!raw) return null;
@@ -2458,7 +2476,7 @@ export default function VendorPortalPage() {
                                 {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
                               </div>
                             </div>
-                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{statusLabel(s)}</span>
+                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{["driver_assigned", "pickup_ready"].includes(s) ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
                           </div>
                           {s === "vendor_pending" ? (
                             <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + vendorAcceptTimerClass(acceptDeadline.tone)}>
@@ -2542,7 +2560,7 @@ export default function VendorPortalPage() {
                             ) : null}
                             {s === "driver_assigned" ? (
                               <>
-                                <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer approval of the proposed delivery fee before the vendor can prepare." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{customerConfirmedForVendor(o) ? "Mark order ready" : "Waiting for customer confirmation"}</button>
+                                <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer approval of the proposed delivery fee before the vendor can prepare." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{vendorPrepGateButtonLabel(o)}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
                               </>
                             ) : null}

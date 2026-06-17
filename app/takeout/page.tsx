@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 // JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
@@ -1677,7 +1677,7 @@ const contact = await fetchOptionalJson(
         window.location.href = "/takeout/track/" + encodeURIComponent(trackingKey);
         return;
       }
-      setResult("Takeout order submitted. Waiting for a delivery fee quote." + (maybeId ? " ID: " + String(maybeId) : ""));
+      setResult("Order sent. Keep this screen open. Your order is not final until you approve the driver delivery fee." + (maybeId ? " ID: " + String(maybeId) : ""));
       setPricingOrder({
         id: normText(maybeId) || null,
         booking_code: maybeCode || null,
@@ -2545,7 +2545,7 @@ const contact = await fetchOptionalJson(
                 canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
               )}
             >
-              {submitted ? "Submitted" : busy ? "Submitting..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Sign in required" : "Review order"}
+              {submitted ? "Order sent" : busy ? "Submitting order..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Sign in required" : "Submit order and wait for driver quote"}
             </button>
 
             <a href="/takeout/orders" className="rounded-xl border px-3 py-2.5 text-center text-xs font-bold hover:bg-slate-50">
@@ -2566,9 +2566,9 @@ const contact = await fetchOptionalJson(
           <div className="mt-3 rounded border bg-white p-4 text-sm">
             <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
               <div>
-                <div className="font-semibold text-slate-900">Takeout pricing confirmation</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  Waiting for a delivery fee quote before the order is finally confirmed.
+                <div className="font-semibold text-slate-900">Order sent - keep this screen open</div>
+                <div className="mt-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                  Your order is not final yet. Wait for the driver delivery fee, then approve the total payable to continue.
                 </div>
               </div>
               <button
@@ -2701,8 +2701,13 @@ const contact = await fetchOptionalJson(
                       </div>
                     ) : null}
                     {status === "driver_fee_proposed" && !isOrderCompleted && !isOrderCancelled ? (
-                      <div className="mt-2 text-xs text-slate-600">
-                        Proposal expires in: <span className="font-semibold">{expiresIn === null ? "--" : String(expiresIn) + " sec"}</span>
+                      <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">
+                        <div className="text-base font-black uppercase tracking-wide">Action required</div>
+                        <div className="mt-1 font-semibold">Driver proposed the delivery fee. Confirm the total payable to continue.</div>
+                        <div className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                          <span className="text-xs font-semibold uppercase text-slate-600">Proposal expires in</span>
+                          <span className="text-xl font-black tabular-nums text-rose-700">{expiresIn === null ? "--" : String(expiresIn) + " sec"}</span>
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -2765,7 +2770,7 @@ const contact = await fetchOptionalJson(
                       disabled={confirmBusy}
                       className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
                     >
-                      {confirmBusy ? "Confirming..." : "Confirm order total"}
+                      {confirmBusy ? "Confirming..." : "Confirm total payable now"}
                     </button>
                   ) : null}
                 </div>
