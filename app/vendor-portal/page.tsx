@@ -450,31 +450,54 @@ function hasNamedAssignedDriver(o: TakeoutOrder) {
   return Boolean(clean(o.driver_name) || clean(o.assigned_driver_name));
 }
 
-function driverConfirmedForVendor(o: TakeoutOrder) {
+function customerConfirmedForVendor(o: TakeoutOrder) {
   const s = normalizeVendorStatus(o.vendor_status);
   const pricing = clean(o.takeout_pricing_status).toLowerCase();
 
   if (["pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(s)) return true;
-
-  if (["accepted", "driver_accepted", "fare_proposed", "customer_confirmed", "confirmed"].includes(pricing)) return true;
-
-  if (clean(o.takeout_fee_proposed_by_driver_id)) return true;
-  if (clean(o.takeout_fee_proposed_at)) return true;
+  if (["customer_confirmed", "confirmed"].includes(pricing)) return true;
   if (clean(o.takeout_customer_confirmed_at)) return true;
   if (clean(o.customer_confirmed_at)) return true;
 
   return false;
 }
 
+function driverAcceptedForVendor(o: TakeoutOrder) {
+  const pricing = clean(o.takeout_pricing_status).toLowerCase();
+  return ["accepted", "driver_accepted"].includes(pricing);
+}
+
+function fareProposedForVendor(o: TakeoutOrder) {
+  const pricing = clean(o.takeout_pricing_status).toLowerCase();
+  if (["fare_proposed", "driver_fee_proposed", "fee_proposed"].includes(pricing)) return true;
+  if (clean(o.takeout_fee_proposed_by_driver_id)) return true;
+  if (clean(o.takeout_fee_proposed_at)) return true;
+  return false;
+}
+
+function vendorPrepGateTone(o: TakeoutOrder) {
+  if (customerConfirmedForVendor(o)) return "ready";
+  if (fareProposedForVendor(o)) return "fare";
+  if (driverAcceptedForVendor(o)) return "accepted";
+  if (hasNamedAssignedDriver(o)) return "assigned";
+  return "finding";
+}
+
 function driverVendorStatusTitle(o: TakeoutOrder) {
-  if (driverConfirmedForVendor(o)) return "Driver confirmed";
-  if (hasNamedAssignedDriver(o)) return "Waiting for driver confirmation";
+  const tone = vendorPrepGateTone(o);
+  if (tone === "ready") return "Customer confirmed - prepare now";
+  if (tone === "fare") return "Fare proposed - waiting for customer approval";
+  if (tone === "accepted") return "Driver accepted - waiting for fare proposal";
+  if (tone === "assigned") return "Waiting for driver confirmation";
   return "Finding driver";
 }
 
 function driverVendorStatusNote(o: TakeoutOrder) {
-  if (driverConfirmedForVendor(o)) return "Driver has confirmed or engaged this order. You may prepare the order when your team is ready.";
-  if (hasNamedAssignedDriver(o)) return "A driver was selected, but has not confirmed yet. Do not prepare yet.";
+  const tone = vendorPrepGateTone(o);
+  if (tone === "ready") return "Customer approved the total payable. Prepare the order now.";
+  if (tone === "fare") return "Driver sent the delivery fee. Waiting for customer approval. Do not prepare yet.";
+  if (tone === "accepted") return "Driver accepted the job but has not proposed the delivery fee yet. Do not prepare yet.";
+  if (tone === "assigned") return "A driver was selected, but has not confirmed yet. Do not prepare yet.";
   return "Dispatch is still attaching a driver. Do not prepare yet.";
 }
 
@@ -2368,8 +2391,8 @@ export default function VendorPortalPage() {
                             </div>
                           ) : null}
                           {["driver_assigned", "pickup_ready"].includes(s) ? (
-                            <div className={cls("mt-3 rounded-xl border p-3 text-xs", driverConfirmedForVendor(o) ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
-                              <div className={cls("font-semibold uppercase tracking-wide", driverConfirmedForVendor(o) ? "text-emerald-700" : "text-amber-700")}>
+                            <div className={cls("mt-3 rounded-xl border p-3 text-xs", customerConfirmedForVendor(o) ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-300 bg-amber-50 text-amber-950")}>
+                              <div className={cls("font-semibold uppercase tracking-wide", customerConfirmedForVendor(o) ? "text-emerald-700" : "text-amber-800")}>
                                 {driverVendorStatusTitle(o)}
                               </div>
                               <div className="mt-1 grid gap-0.5">
@@ -2377,7 +2400,7 @@ export default function VendorPortalPage() {
                                 <div><span className="font-semibold">Vehicle:</span> {orderVehicleType(o)}</div>
                                 <div><span className="font-semibold">Phone:</span> {orderDriverPhone(o)}</div>
                               </div>
-                              <div className="mt-2 rounded-lg bg-white/60 px-2 py-1 text-[11px]">
+                              <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs font-semibold">
                                 {driverVendorStatusNote(o)}
                               </div>
                             </div>
@@ -2425,11 +2448,11 @@ export default function VendorPortalPage() {
                               </>
                             ) : null}
                             {s === "vendor_accepted" ? (
-                              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. No second vendor action is required. Wait for driver assignment and mark Wait for driver assignment and mark the order ready only when food preparation is complete.</div>
+                              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. No second vendor action is required. Wait for driver assignment, driver fee proposal, and customer confirmation before preparing.</div>
                             ) : null}
                             {s === "driver_assigned" ? (
                               <>
-                                <button type="button" disabled={busy || !driverConfirmedForVendor(o)} title={!driverConfirmedForVendor(o) ? "Waiting for driver confirmation before the vendor can mark this order ready." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{driverConfirmedForVendor(o) ? "Mark order ready" : "Waiting for driver confirmation"}</button>
+                                <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer confirmation before the vendor can mark this order ready." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{customerConfirmedForVendor(o) ? "Mark order ready" : "Do not prepare yet"}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
                               </>
                             ) : null}
