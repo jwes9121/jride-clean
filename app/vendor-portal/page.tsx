@@ -2464,11 +2464,6 @@ export default function VendorPortalPage() {
                     {activeOrders.map((o) => {
                       const s = normalizeVendorStatus(o.vendor_status);
                       const acceptDeadline = vendorAcceptTimer(o, nowMs);
-                      const showDriverProgress =
-                        hasNamedAssignedDriver(o) ||
-                        ["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) ||
-                        fareProposedForVendor(o) ||
-                        customerConfirmedForVendor(o);
                       return (
                         <div key={o.id || o.booking_code || Math.random()} className={cls("rounded-2xl border p-3 shadow-[0_0_18px_rgba(16,185,129,0.08)]", s === "vendor_pending" ? "border-amber-300/70 bg-amber-950/20" : "border-emerald-500/30 bg-slate-950/20")}>
                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -2481,7 +2476,7 @@ export default function VendorPortalPage() {
                                 {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
                               </div>
                             </div>
-                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{showDriverProgress ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
+                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{(hasNamedAssignedDriver(o) || ["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) || fareProposedForVendor(o) || customerConfirmedForVendor(o)) ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
                           </div>
                           {s === "vendor_pending" ? (
                             <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + vendorAcceptTimerClass(acceptDeadline.tone)}>
@@ -2489,7 +2484,7 @@ export default function VendorPortalPage() {
                               {acceptDeadline.expired ? " - overdue" : ""}
                             </div>
                           ) : null}
-                          {showDriverProgress ? (
+                          {(hasNamedAssignedDriver(o) || ["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) || fareProposedForVendor(o) || customerConfirmedForVendor(o)) ? (
                             <div className={cls("mt-3 rounded-xl border p-3 text-xs", customerConfirmedForVendor(o) ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-300 bg-amber-50 text-amber-950")}>
                               <div className={cls("font-semibold uppercase tracking-wide", customerConfirmedForVendor(o) ? "text-emerald-700" : "text-amber-800")}>
                                 {driverVendorStatusTitle(o)}
@@ -2549,7 +2544,7 @@ export default function VendorPortalPage() {
                             {s === "vendor_accepted" ? (
                               <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. No second vendor action is required. Wait for driver assignment, driver fee proposal, and customer confirmation before preparing.</div>
                             ) : null}
-                            {showDriverProgress ? (
+                            {s === "driver_assigned" ? (
                               <>
                                 <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer approval of the proposed delivery fee before the vendor can prepare." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{vendorPrepGateButtonLabel(o)}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
