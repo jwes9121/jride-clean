@@ -6,9 +6,11 @@ export const revalidate = 0;
 
 const ACTIVE_TAKEOUT_STATUSES = new Set([
   "requested",
+  "vendor_accepted",
   "preparing",
   "pickup_ready",
   "driver_assigned",
+  "driver_accepted",
   "rider_arrived_vendor",
   "picked_up",
   "delivering",

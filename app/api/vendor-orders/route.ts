@@ -1044,12 +1044,21 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       }
 
       if (autoAssignResult?.assigned && autoAssignResult?.driver_id) {
+        const nowIso = new Date().toISOString();
+        const acceptExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
         const assignPatch = {
           vendor_status: "driver_assigned",
           customer_status: "driver_assigned",
+          driver_status: "driver_assigned",
           status: "assigned",
           assigned_driver_id: autoAssignResult.driver_id,
           driver_id: autoAssignResult.driver_id,
+          assigned_at: nowIso,
+          driver_accept_expires_at: acceptExpiresIso,
+          takeout_driver_accept_expires_at: acceptExpiresIso,
+          takeout_fee_proposal_expires_at: null,
+          driver_fee_proposal_expires_at: null,
         };
 
         const assignUp = await admin
@@ -1058,7 +1067,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
           .eq("id", order_id)
           .eq("vendor_id", vendor_id)
           .eq("service_type", "takeout")
-          .select("id,vendor_status,customer_status,status,assigned_driver_id,driver_id");
+          .select("id,vendor_status,customer_status,driver_status,status,assigned_driver_id,driver_id,assigned_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at");
 
         const assignedRow = Array.isArray(assignUp.data) ? assignUp.data[0] : assignUp.data;
         if (!assignUp.error && assignedRow) {
@@ -1802,10 +1811,3 @@ function normalizeDriverVehicleType(value: unknown): string {
 
   return ''
 }
-
-
-
-
-
-
-
