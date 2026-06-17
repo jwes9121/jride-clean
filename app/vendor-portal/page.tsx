@@ -529,72 +529,6 @@ function vendorPrepGateBadgeLabel(o: TakeoutOrder) {
   return statusLabel(o.vendor_status);
 }
 
-function parseDeadlineMs(v: any): number | null {
-  const raw = clean(v);
-  if (!raw) return null;
-  const ms = new Date(raw).getTime();
-  return Number.isFinite(ms) ? ms : null;
-}
-
-function addMinutesMs(v: any, minutes: number): number | null {
-  const base = parseDeadlineMs(v);
-  if (base == null) return null;
-  return base + minutes * 60 * 1000;
-}
-
-function formatCountdownMs(ms: number) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const mm = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
-  const ss = String(totalSeconds % 60).padStart(2, "0");
-  return `${mm}:${ss}`;
-}
-
-function vendorCountdownInfo(o: TakeoutOrder, nowMs: number) {
-  const tone = vendorPrepGateTone(o);
-  let deadlineMs: number | null = null;
-  let label = "";
-  let help = "";
-
-  if (tone === "assigned") {
-    deadlineMs =
-      parseDeadlineMs(o.driver_assignment_expires_at) ??
-      parseDeadlineMs(o.takeout_driver_accept_expires_at) ??
-      parseDeadlineMs(o.driver_accept_expires_at) ??
-      addMinutesMs(o.updated_at, 5);
-    label = "Driver accept timer";
-    help = "Auto-reassign if the driver does not accept before this timer ends.";
-  } else if (tone === "accepted") {
-    deadlineMs =
-      parseDeadlineMs(o.takeout_fee_proposal_expires_at) ??
-      parseDeadlineMs(o.driver_fee_proposal_expires_at) ??
-      addMinutesMs(o.updated_at, 5);
-    label = "Driver fare proposal timer";
-    help = "Auto-reassign if the driver does not propose the fare before this timer ends.";
-  } else if (tone === "fare") {
-    deadlineMs =
-      parseDeadlineMs(o.takeout_fee_expires_at) ??
-      addMinutesMs(o.takeout_fee_proposed_at, 5);
-    label = "Customer approval timer";
-    help = "Order is not final until the customer approves the proposed total payable.";
-  }
-
-  if (deadlineMs == null) return null;
-  const remainingMs = deadlineMs - nowMs;
-  const expired = remainingMs <= 0;
-  const seconds = Math.max(0, Math.floor(remainingMs / 1000));
-  const urgent = seconds <= 30;
-  const warning = seconds <= 120;
-
-  return { label, help, remainingMs, expired, urgent, warning, text: expired ? "00:00" : formatCountdownMs(remainingMs) };
-}
-
-function vendorCountdownClass(info: ReturnType<typeof vendorCountdownInfo>) {
-  if (!info) return "";
-  if (info.expired || info.urgent) return "border-rose-400 bg-rose-100 text-rose-950";
-  if (info.warning) return "border-orange-300 bg-orange-100 text-orange-950";
-  return "border-amber-300 bg-amber-100 text-amber-950";
-}
-
 function vehicleTypeLabel(value: any) {
   const raw = clean(value).toLowerCase();
   if (!raw) return "Vehicle not provided";
@@ -2476,7 +2410,7 @@ export default function VendorPortalPage() {
                                 {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
                               </div>
                             </div>
-                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{(hasNamedAssignedDriver(o) || ["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) || fareProposedForVendor(o) || customerConfirmedForVendor(o)) ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
+                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{["driver_assigned", "pickup_ready"].includes(s) ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
                           </div>
                           {s === "vendor_pending" ? (
                             <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + vendorAcceptTimerClass(acceptDeadline.tone)}>
@@ -2484,7 +2418,7 @@ export default function VendorPortalPage() {
                               {acceptDeadline.expired ? " - overdue" : ""}
                             </div>
                           ) : null}
-                          {(hasNamedAssignedDriver(o) || ["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) || fareProposedForVendor(o) || customerConfirmedForVendor(o)) ? (
+                          {["driver_assigned", "pickup_ready"].includes(s) ? (
                             <div className={cls("mt-3 rounded-xl border p-3 text-xs", customerConfirmedForVendor(o) ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-300 bg-amber-50 text-amber-950")}>
                               <div className={cls("font-semibold uppercase tracking-wide", customerConfirmedForVendor(o) ? "text-emerald-700" : "text-amber-800")}>
                                 {driverVendorStatusTitle(o)}
