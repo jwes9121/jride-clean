@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
 
@@ -96,6 +96,42 @@ function normalizeTownKey(v: unknown): string {
 function isStaffRole(role: unknown): boolean {
   const r = String(role || "").toLowerCase();
   return r === "admin" || r === "dispatcher";
+}
+
+type HistoryRange = "today" | "week" | "month";
+type BookingView = "active" | "completed" | "cancelled";
+
+function normalizeHistoryRange(v: unknown): HistoryRange {
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "week" || s === "month") return s;
+  return "today";
+}
+
+function normalizeBookingView(v: unknown): BookingView {
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "completed" || s === "cancelled") return s;
+  return "active";
+}
+
+function getManilaRangeStartIso(range: HistoryRange): string {
+  const offsetMs = 8 * 60 * 60 * 1000;
+  const nowManila = new Date(Date.now() + offsetMs);
+
+  const y = nowManila.getUTCFullYear();
+  const m = nowManila.getUTCMonth();
+  const d = nowManila.getUTCDate();
+
+  let startManilaUtcMs = Date.UTC(y, m, d, 0, 0, 0, 0);
+
+  if (range === "week") {
+    const day = nowManila.getUTCDay();
+    const daysSinceMonday = day === 0 ? 6 : day - 1;
+    startManilaUtcMs = Date.UTC(y, m, d - daysSinceMonday, 0, 0, 0, 0);
+  } else if (range === "month") {
+    startManilaUtcMs = Date.UTC(y, m, 1, 0, 0, 0, 0);
+  }
+
+  return new Date(startManilaUtcMs - offsetMs).toISOString();
 }
 
 export async function GET(req: NextRequest) {
@@ -203,11 +239,22 @@ export async function GET(req: NextRequest) {
       "delivering",
     ];
 
-    const bookingsRes = await supabase
+    const bookingView = normalizeBookingView(req.nextUrl.searchParams.get("history") || req.nextUrl.searchParams.get("view"));
+    const historyRange = normalizeHistoryRange(req.nextUrl.searchParams.get("range"));
+    const historicalStatuses = bookingView === "completed" ? ["completed"] : bookingView === "cancelled" ? ["cancelled", "vendor_timeout"] : activeStatuses;
+    const historyStartIso = bookingView === "active" ? null : getManilaRangeStartIso(historyRange);
+
+    let bookingsQuery = supabase
       .from("bookings")
       .select("*")
-      .in("status", activeStatuses)
+      .in("status", historicalStatuses)
       .order("updated_at", { ascending: false });
+
+    if (historyStartIso) {
+      bookingsQuery = bookingsQuery.gte("updated_at", historyStartIso).limit(500);
+    }
+
+    const bookingsRes = await bookingsQuery;
 
     if (bookingsRes.error) {
       return NextResponse.json(
@@ -217,6 +264,10 @@ export async function GET(req: NextRequest) {
           message: bookingsRes.error.message,
           ...buildDebug(debugMode, {
             stage: "bookings",
+            booking_view: bookingView,
+            history_range: historyRange,
+            history_start_iso: historyStartIso,
+            booking_statuses: historicalStatuses,
             active_statuses: activeStatuses,
           }),
         },
@@ -259,6 +310,9 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
 
       const takeoutStatus = text(row?.customer_status || row?.vendor_status || row?.status).toLowerCase();
       if (!takeoutStatus) return false;
+      if (bookingView === "completed") return takeoutStatus === "completed";
+      if (bookingView === "cancelled") return takeoutStatus === "cancelled" || takeoutStatus === "vendor_timeout";
+
       if (takeoutStatus === "cancelled" || takeoutStatus === "completed" || takeoutStatus === "vendor_timeout") return false;
 
       return activeStatuses.includes(takeoutStatus);
@@ -404,6 +458,10 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
     return NextResponse.json({
       ok: true,
       ...buildDebug(debugMode, {
+        booking_view: bookingView,
+        history_range: historyRange,
+        history_start_iso: historyStartIso,
+        booking_statuses: historicalStatuses,
         active_statuses: activeStatuses,
         booking_row_count: bookingRows.length,
         trip_count: tripsArray.length,

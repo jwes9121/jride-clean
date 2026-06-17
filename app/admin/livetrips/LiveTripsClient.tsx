@@ -187,6 +187,7 @@ function computeIsProblem(t: TripRow): boolean {
 }
 
 type ViewMode = "dispatch" | "trips" | "drivers";
+type HistoryRange = "today" | "week" | "month";
 
 type FilterKey =
   | "all"
@@ -306,6 +307,10 @@ function filterLiveTrips(rows: TripRow[]): TripRow[] {
   return rows.filter((row) => shouldKeepTripInLiveTrips(normalizeTripRow(row)));
 }
 
+function isHistoricalTripFilter(f: FilterKey): boolean {
+  return f === "completed" || f === "cancelled";
+}
+
 function mergeTripRows(prev: TripRow[], incoming: TripRow): TripRow[] {
   const row = normalizeTripRow(incoming);
   const key = normTripId(row);
@@ -373,6 +378,7 @@ export default function LiveTripsClient() {
   const [manualDriverId, setManualDriverId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [townFilter, setTownFilter] = useState<string>("all");
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -381,7 +387,15 @@ export default function LiveTripsClient() {
   const channelsRef = useRef<RealtimeChannel[]>([]);
 
   const loadPage = useCallback(async () => {
-    const r = await fetch("/api/admin/livetrips/page-data?debug=1&t=" + Date.now(), {
+    const params = new URLSearchParams();
+    params.set("debug", "1");
+    params.set("t", String(Date.now()));
+    if (isHistoricalTripFilter(tripFilter)) {
+      params.set("history", tripFilter);
+      params.set("range", historyRange);
+    }
+
+    const r = await fetch("/api/admin/livetrips/page-data?" + params.toString(), {
       cache: "no-store",
       headers: {
         "Cache-Control": "no-cache",
@@ -391,7 +405,8 @@ export default function LiveTripsClient() {
     const j: PageData = await r.json().catch(() => ({} as any));
 
     const z = safeArray<ZoneRow>(j.zones);
-    const trips = filterLiveTrips(parseTripsFromPageData(j).map(normalizeTripRow));
+    const rawTrips = parseTripsFromPageData(j).map(normalizeTripRow);
+    const trips = isHistoricalTripFilter(tripFilter) ? rawTrips : filterLiveTrips(rawTrips);
 
     setZones(z);
     setAllTrips(trips);
@@ -400,7 +415,7 @@ export default function LiveTripsClient() {
     if (selectedTripId && !ids.has(selectedTripId)) {
       setSelectedTripId(null);
     }
-  }, [selectedTripId]);
+  }, [selectedTripId, tripFilter, historyRange]);
 
   const loadDrivers = useCallback(async () => {
     const ts = Date.now();
@@ -455,6 +470,10 @@ export default function LiveTripsClient() {
   useEffect(() => {
     refreshAllRef.current?.("initial").catch(() => {});
   }, []);
+
+  useEffect(() => {
+    refreshAllRef.current?.("filter").catch(() => {});
+  }, [tripFilter, historyRange]);
 
   useEffect(() => {
     const clearTimer = () => {
@@ -976,7 +995,7 @@ export default function LiveTripsClient() {
             </select>
             <button
               className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              onClick={() => { setSearchQuery(""); setTownFilter("all"); }}
+              onClick={() => { setSearchQuery(""); setTownFilter("all"); setHistoryRange("today"); }}
             >
               Clear filters
             </button>
@@ -1052,6 +1071,18 @@ export default function LiveTripsClient() {
           <button className={pillClass(tripFilter === "cancelled")} onClick={() => setFilterAndFocus("cancelled")}>
             Cancelled <span className="text-xs opacity-80">{counts.cancelled}</span>
           </button>
+          {isHistoricalTripFilter(tripFilter) ? (
+            <select
+              value={historyRange}
+              onChange={(e) => setHistoryRange(e.target.value as HistoryRange)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-700 outline-none hover:bg-slate-50"
+              title="Historical range uses Philippine time"
+            >
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+            </select>
+          ) : null}
           <button
             className={[
               pillClass(tripFilter === "problem"),
