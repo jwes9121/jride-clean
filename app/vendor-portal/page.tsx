@@ -130,6 +130,12 @@ type TakeoutOrder = {
   takeout_fee_proposed_at?: string | null;
   takeout_customer_confirmed_at?: string | null;
   customer_confirmed_at?: string | null;
+  driver_assignment_expires_at?: string | null;
+  takeout_driver_accept_expires_at?: string | null;
+  driver_accept_expires_at?: string | null;
+  takeout_fee_proposal_expires_at?: string | null;
+  driver_fee_proposal_expires_at?: string | null;
+  takeout_fee_expires_at?: string | null;
 };
 
 type VendorAnalyticsRange = "today" | "week" | "month" | "all";
@@ -499,6 +505,72 @@ function driverVendorStatusNote(o: TakeoutOrder) {
   if (tone === "accepted") return "Driver accepted the job but has not proposed the delivery fee yet. Do not prepare yet.";
   if (tone === "assigned") return "A driver was selected, but has not confirmed yet. Do not prepare yet.";
   return "Dispatch is still attaching a driver. Do not prepare yet.";
+}
+
+function parseDeadlineMs(v: any): number | null {
+  const raw = clean(v);
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function addMinutesMs(v: any, minutes: number): number | null {
+  const base = parseDeadlineMs(v);
+  if (base == null) return null;
+  return base + minutes * 60 * 1000;
+}
+
+function formatCountdownMs(ms: number) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const mm = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const ss = String(totalSeconds % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
+function vendorCountdownInfo(o: TakeoutOrder, nowMs: number) {
+  const tone = vendorPrepGateTone(o);
+  let deadlineMs: number | null = null;
+  let label = "";
+  let help = "";
+
+  if (tone === "assigned") {
+    deadlineMs =
+      parseDeadlineMs(o.driver_assignment_expires_at) ??
+      parseDeadlineMs(o.takeout_driver_accept_expires_at) ??
+      parseDeadlineMs(o.driver_accept_expires_at) ??
+      addMinutesMs(o.updated_at, 5);
+    label = "Driver accept timer";
+    help = "Auto-reassign if the driver does not accept before this timer ends.";
+  } else if (tone === "accepted") {
+    deadlineMs =
+      parseDeadlineMs(o.takeout_fee_proposal_expires_at) ??
+      parseDeadlineMs(o.driver_fee_proposal_expires_at) ??
+      addMinutesMs(o.updated_at, 5);
+    label = "Driver fare proposal timer";
+    help = "Auto-reassign if the driver does not propose the fare before this timer ends.";
+  } else if (tone === "fare") {
+    deadlineMs =
+      parseDeadlineMs(o.takeout_fee_expires_at) ??
+      addMinutesMs(o.takeout_fee_proposed_at, 5);
+    label = "Customer approval timer";
+    help = "Order is not final until the customer approves the proposed total payable.";
+  }
+
+  if (deadlineMs == null) return null;
+  const remainingMs = deadlineMs - nowMs;
+  const expired = remainingMs <= 0;
+  const seconds = Math.max(0, Math.floor(remainingMs / 1000));
+  const urgent = seconds <= 30;
+  const warning = seconds <= 120;
+
+  return { label, help, remainingMs, expired, urgent, warning, text: expired ? "00:00" : formatCountdownMs(remainingMs) };
+}
+
+function vendorCountdownClass(info: ReturnType<typeof vendorCountdownInfo>) {
+  if (!info) return "";
+  if (info.expired || info.urgent) return "border-rose-400 bg-rose-100 text-rose-950";
+  if (info.warning) return "border-orange-300 bg-orange-100 text-orange-950";
+  return "border-amber-300 bg-amber-100 text-amber-950";
 }
 
 function vehicleTypeLabel(value: any) {
@@ -2403,6 +2475,20 @@ export default function VendorPortalPage() {
                               <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs font-semibold">
                                 {driverVendorStatusNote(o)}
                               </div>
+                              {vendorCountdownInfo(o, nowMs) ? (() => {
+                                const info = vendorCountdownInfo(o, nowMs);
+                                return info ? (
+                                  <div className={["mt-3 rounded-xl border px-3 py-3", vendorCountdownClass(info)].join(" ")}>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div>
+                                        <div className="text-xs font-bold uppercase tracking-wide">{info.label}</div>
+                                        <div className="mt-1 text-xs font-semibold">{info.help}</div>
+                                      </div>
+                                      <div className="rounded-lg bg-white/80 px-4 py-2 text-2xl font-black tabular-nums">{info.text}</div>
+                                    </div>
+                                  </div>
+                                ) : null;
+                              })() : null}
                             </div>
                           ) : null}
                           <div className="mt-3 rounded-xl border bg-slate-50 p-3">
