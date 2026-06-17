@@ -82,6 +82,7 @@ function jrideTakeoutDriverStatus(row: any): string | null {
   if (raw === "out_for_delivery" || raw === "in_delivery") return "delivering";
 
   if (raw === "requested" || raw === "pending") return "preparing";
+  if (raw === "driver_accepted" || raw === "accepted_by_driver") return "driver_accepted";
   if (raw === "assigned" || raw === "accepted" || raw === "driver_assigned") return "driver_assigned";
   if (raw === "pickup_ready") return "driver_assigned";
   if (raw === "arrived_vendor" || raw === "at_vendor") return "arrived_vendor";
@@ -475,7 +476,7 @@ export async function GET(req: NextRequest) {
       // Ride lifecycle statuses remain unchanged. This only lets Android see
       // assigned takeout rows where bookings.status is still "requested" but
       // vendor_status/customer_status already shows driver assignment.
-      .or("status.in.(assigned,accepted,fare_proposed,ready,on_the_way,arrived,on_trip),and(service_type.eq.takeout,vendor_status.in.(driver_assigned,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering)),and(service_type.eq.takeout,customer_status.in.(driver_assigned,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering))")
+      .or("status.in.(assigned,accepted,fare_proposed,ready,on_the_way,arrived,on_trip),and(service_type.eq.takeout,vendor_status.in.(driver_assigned,driver_accepted,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering)),and(service_type.eq.takeout,customer_status.in.(driver_assigned,driver_accepted,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering))")
       .order("updated_at", { ascending: false })
       .limit(10);
 
@@ -845,16 +846,4 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

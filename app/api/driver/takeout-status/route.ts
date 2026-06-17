@@ -1,10 +1,10 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const ALLOWED = new Set(["requested", "driver_assigned", "rider_arrived_vendor", "picked_up", "delivering", "completed", "cancelled"]);
+const ALLOWED = new Set(["requested", "driver_assigned", "driver_accepted", "rider_arrived_vendor", "picked_up", "delivering", "completed", "cancelled"]);
 
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
@@ -27,6 +27,7 @@ function isDriverSecretAuthorized(req: NextRequest): boolean {
 function normStatus(value: any) {
   const s = String(value || "").trim().toLowerCase();
   if (s === "assigned") return "driver_assigned";
+  if (s === "accepted" || s === "driver_confirmed" || s === "accepted_by_driver") return "driver_accepted";
   if (s === "arrived_vendor" || s === "rider_at_vendor") return "rider_arrived_vendor";
   if (s === "pickedup") return "picked_up";
   if (s === "canceled") return "cancelled";
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,completed_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,completed_at")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -155,7 +156,13 @@ export async function POST(req: NextRequest) {
   const patch: any = {
     vendor_status: nextStatus,
     customer_status: nextStatus,
+    driver_status: nextStatus,
   };
+
+  if (nextStatus === "driver_accepted") {
+    patch.driver_status = "driver_accepted";
+    patch.takeout_pricing_status = "pricing_pending";
+  }
 
   if (nextStatus === "completed") {
     const nowIso = new Date().toISOString();
@@ -166,6 +173,8 @@ export async function POST(req: NextRequest) {
 
   if (nextStatus === "requested") {
     patch.assigned_driver_id = null;
+    patch.driver_id = null;
+    patch.driver_status = null;
   }
 
   const up = await admin
@@ -173,7 +182,7 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", (existing.data as any).id)
     .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,completed_at,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,completed_at,updated_at")
     .single();
 
   if (up.error) {
