@@ -4,7 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-// JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V4
+// JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V5
 // JRIDE_VENDOR_REALTIME_OPERATIONS_UI_V3
 
 type VendorRow = {
@@ -458,12 +458,16 @@ function hasNamedAssignedDriver(o: TakeoutOrder) {
 
 function customerConfirmedForVendor(o: TakeoutOrder) {
   const s = normalizeVendorStatus(o.vendor_status);
-  const pricing = clean(o.takeout_pricing_status).toLowerCase();
 
+  // Do not trust takeout_pricing_status alone here. In the driver flow, generic
+  // values like "accepted" or "confirmed" can mean driver-side acceptance, not
+  // customer approval of the proposed delivery fee. The vendor may prepare only
+  // after an explicit customer confirmation timestamp exists, or after the order
+  // has already moved into a post-confirmation vendor lifecycle state.
   if (["pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(s)) return true;
-  if (["customer_confirmed", "confirmed"].includes(pricing)) return true;
   if (clean(o.takeout_customer_confirmed_at)) return true;
   if (clean(o.customer_confirmed_at)) return true;
+  if (clean((o as any).passenger_confirmed_at)) return true;
 
   return false;
 }
@@ -2472,7 +2476,7 @@ export default function VendorPortalPage() {
                                 <div><span className="font-semibold">Vehicle:</span> {orderVehicleType(o)}</div>
                                 <div><span className="font-semibold">Phone:</span> {orderDriverPhone(o)}</div>
                               </div>
-                              <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs font-semibold">
+                              <div className={cls("mt-3 rounded-xl border px-3 py-2 text-xs font-semibold", customerConfirmedForVendor(o) ? "border-emerald-700 bg-emerald-950/40 text-emerald-50" : "border-amber-700 bg-amber-950/50 text-amber-50")}>
                                 {driverVendorStatusNote(o)}
                               </div>
                               {vendorCountdownInfo(o, nowMs) ? (() => {
@@ -2538,7 +2542,7 @@ export default function VendorPortalPage() {
                             ) : null}
                             {s === "driver_assigned" ? (
                               <>
-                                <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer confirmation before the vendor can mark this order ready." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{customerConfirmedForVendor(o) ? "Mark order ready" : "Do not prepare yet"}</button>
+                                <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer approval of the proposed delivery fee before the vendor can prepare." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{customerConfirmedForVendor(o) ? "Mark order ready" : "Waiting for customer confirmation"}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
                               </>
                             ) : null}
