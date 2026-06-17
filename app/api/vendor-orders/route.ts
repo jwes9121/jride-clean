@@ -757,6 +757,26 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const driverProfileByDriver: Record<string, { name: string | null; phone: string | null; vehicle_type: string | null }> = {};
+  if (driverIds.length) {
+    const dp = await admin
+      .from("driver_profiles")
+      .select("driver_id,full_name,phone,vehicle_type")
+      .in("driver_id", driverIds);
+
+    if (!dp.error && Array.isArray(dp.data)) {
+      for (const r of dp.data as any[]) {
+        const did = String(r?.driver_id || "").trim();
+        if (!did) continue;
+        driverProfileByDriver[did] = {
+          name: String(r?.full_name || "").trim() || null,
+          phone: String(r?.phone || "").trim() || null,
+          vehicle_type: String(r?.vehicle_type || "").trim() || null,
+        };
+      }
+    }
+  }
+
   const itemsByBooking: Record<string, SnapshotItem[]> = {};
   const subtotalByBooking: Record<string, number> = {};
 
@@ -826,8 +846,9 @@ export async function GET(req: NextRequest) {
       vendor_cancel_reason: r?.vendor_cancel_reason ?? null,
 
       driver_id: r?.driver_id ?? r?.assigned_driver_id ?? null,
-      driver_name: r?.driver_name ?? r?.assigned_driver_name ?? r?.rider_name ?? null,
-      driver_vehicle_type: vehicleTypeByDriver[String(r?.driver_id || r?.assigned_driver_id || "").trim()] || r?.driver_vehicle_type || r?.vehicle_type || r?.assigned_vehicle_type || null,
+      driver_name: r?.driver_name ?? r?.assigned_driver_name ?? r?.rider_name ?? driverProfileByDriver[String(r?.driver_id || r?.assigned_driver_id || "").trim()]?.name ?? null,
+      driver_phone: r?.driver_phone ?? r?.assigned_driver_phone ?? driverProfileByDriver[String(r?.driver_id || r?.assigned_driver_id || "").trim()]?.phone ?? null,
+      driver_vehicle_type: vehicleTypeByDriver[String(r?.driver_id || r?.assigned_driver_id || "").trim()] || r?.driver_vehicle_type || r?.vehicle_type || r?.assigned_vehicle_type || driverProfileByDriver[String(r?.driver_id || r?.assigned_driver_id || "").trim()]?.vehicle_type || null,
 
       customer_name: r?.customer_name ?? r?.passenger_name ?? r?.rider_name ?? null,
       customer_phone: r?.customer_phone ?? r?.passenger_phone ?? r?.phone ?? r?.contact_phone ?? r?.rider_phone ?? pricingSnapshot?.customer_phone ?? pricingSnapshot?.passenger_phone ?? pricingSnapshot?.phone ?? null,

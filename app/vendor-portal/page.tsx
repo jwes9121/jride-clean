@@ -118,6 +118,8 @@ type TakeoutOrder = {
   driver_id?: string | null;
   driver_name?: string | null;
   assigned_driver_name?: string | null;
+  driver_phone?: string | null;
+  assigned_driver_phone?: string | null;
   driver_vehicle_type?: string | null;
   vehicle_type?: string | null;
   assigned_vehicle_type?: string | null;
@@ -433,6 +435,14 @@ function orderCustomerPhone(o: TakeoutOrder) {
 
 function orderDriverName(o: TakeoutOrder) {
   return clean(o.driver_name) || clean(o.assigned_driver_name) || "Assigned rider";
+}
+
+function orderDriverPhone(o: TakeoutOrder) {
+  return clean(o.driver_phone) || clean(o.assigned_driver_phone) || "No phone provided";
+}
+
+function hasNamedAssignedDriver(o: TakeoutOrder) {
+  return Boolean(clean(o.driver_name) || clean(o.assigned_driver_name));
 }
 
 function vehicleTypeLabel(value: any) {
@@ -2226,7 +2236,7 @@ export default function VendorPortalPage() {
 <div className="mb-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200">
   <div className="flex items-start gap-3">
     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl">
-      Ã°Å¸Ââ€ 
+      
     </div>
     <div className="flex-1">
       <div className="text-xs font-bold uppercase tracking-wider text-amber-700">
@@ -2325,11 +2335,17 @@ export default function VendorPortalPage() {
                             </div>
                           ) : null}
                           {["driver_assigned", "pickup_ready"].includes(s) ? (
-                            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-                              <div className="font-semibold uppercase tracking-wide text-blue-700">Assigned rider</div>
+                            <div className={cls("mt-3 rounded-xl border p-3 text-xs", hasNamedAssignedDriver(o) ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
+                              <div className={cls("font-semibold uppercase tracking-wide", hasNamedAssignedDriver(o) ? "text-blue-700" : "text-amber-700")}>
+                                {hasNamedAssignedDriver(o) ? "Driver assigned" : "Waiting for driver details"}
+                              </div>
                               <div className="mt-1 grid gap-0.5">
                                 <div><span className="font-semibold">Name:</span> {orderDriverName(o)}</div>
                                 <div><span className="font-semibold">Vehicle:</span> {orderVehicleType(o)}</div>
+                                <div><span className="font-semibold">Phone:</span> {orderDriverPhone(o)}</div>
+                              </div>
+                              <div className="mt-2 rounded-lg bg-white/60 px-2 py-1 text-[11px]">
+                                {hasNamedAssignedDriver(o) ? "Driver has been assigned to this order. Prepare only when your team is ready to release the order." : "Do not prepare yet. Dispatch is still attaching a confirmed driver profile to this order."}
                               </div>
                             </div>
                           ) : null}
@@ -2380,7 +2396,7 @@ export default function VendorPortalPage() {
                             ) : null}
                             {s === "driver_assigned" ? (
                               <>
-                                <button type="button" disabled={busy} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">Mark order ready</button>
+                                <button type="button" disabled={busy || !hasNamedAssignedDriver(o)} title={!hasNamedAssignedDriver(o) ? "Waiting for driver details before the vendor can mark this order ready." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{hasNamedAssignedDriver(o) ? "Mark order ready" : "Waiting for driver details"}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
                               </>
                             ) : null}
