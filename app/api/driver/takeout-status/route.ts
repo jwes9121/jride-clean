@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,completed_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -160,8 +160,11 @@ export async function POST(req: NextRequest) {
   };
 
   if (nextStatus === "driver_accepted") {
+    const feeProposalExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     patch.driver_status = "driver_accepted";
     patch.takeout_pricing_status = "pricing_pending";
+    patch.takeout_fee_proposal_expires_at = feeProposalExpiresIso;
+    patch.driver_fee_proposal_expires_at = feeProposalExpiresIso;
   }
 
   if (nextStatus === "completed") {
@@ -172,6 +175,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (nextStatus === "requested") {
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
     patch.assigned_driver_id = null;
     patch.driver_id = null;
     patch.driver_status = null;
@@ -182,7 +189,7 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", (existing.data as any).id)
     .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,completed_at,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,updated_at")
     .single();
 
   if (up.error) {
