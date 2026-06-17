@@ -125,6 +125,11 @@ type TakeoutOrder = {
   assigned_vehicle_type?: string | null;
   created_at: string | null;
   updated_at: string | null;
+  takeout_pricing_status?: string | null;
+  takeout_fee_proposed_by_driver_id?: string | null;
+  takeout_fee_proposed_at?: string | null;
+  takeout_customer_confirmed_at?: string | null;
+  customer_confirmed_at?: string | null;
 };
 
 type VendorAnalyticsRange = "today" | "week" | "month" | "all";
@@ -443,6 +448,34 @@ function orderDriverPhone(o: TakeoutOrder) {
 
 function hasNamedAssignedDriver(o: TakeoutOrder) {
   return Boolean(clean(o.driver_name) || clean(o.assigned_driver_name));
+}
+
+function driverConfirmedForVendor(o: TakeoutOrder) {
+  const s = normalizeVendorStatus(o.vendor_status);
+  const pricing = clean(o.takeout_pricing_status).toLowerCase();
+
+  if (["pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(s)) return true;
+
+  if (["accepted", "driver_accepted", "fare_proposed", "customer_confirmed", "confirmed"].includes(pricing)) return true;
+
+  if (clean(o.takeout_fee_proposed_by_driver_id)) return true;
+  if (clean(o.takeout_fee_proposed_at)) return true;
+  if (clean(o.takeout_customer_confirmed_at)) return true;
+  if (clean(o.customer_confirmed_at)) return true;
+
+  return false;
+}
+
+function driverVendorStatusTitle(o: TakeoutOrder) {
+  if (driverConfirmedForVendor(o)) return "Driver confirmed";
+  if (hasNamedAssignedDriver(o)) return "Waiting for driver confirmation";
+  return "Finding driver";
+}
+
+function driverVendorStatusNote(o: TakeoutOrder) {
+  if (driverConfirmedForVendor(o)) return "Driver has confirmed or engaged this order. You may prepare the order when your team is ready.";
+  if (hasNamedAssignedDriver(o)) return "A driver was selected, but has not confirmed yet. Do not prepare yet.";
+  return "Dispatch is still attaching a driver. Do not prepare yet.";
 }
 
 function vehicleTypeLabel(value: any) {
@@ -2335,9 +2368,9 @@ export default function VendorPortalPage() {
                             </div>
                           ) : null}
                           {["driver_assigned", "pickup_ready"].includes(s) ? (
-                            <div className={cls("mt-3 rounded-xl border p-3 text-xs", hasNamedAssignedDriver(o) ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
-                              <div className={cls("font-semibold uppercase tracking-wide", hasNamedAssignedDriver(o) ? "text-blue-700" : "text-amber-700")}>
-                                {hasNamedAssignedDriver(o) ? "Driver assigned" : "Waiting for driver details"}
+                            <div className={cls("mt-3 rounded-xl border p-3 text-xs", driverConfirmedForVendor(o) ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
+                              <div className={cls("font-semibold uppercase tracking-wide", driverConfirmedForVendor(o) ? "text-emerald-700" : "text-amber-700")}>
+                                {driverVendorStatusTitle(o)}
                               </div>
                               <div className="mt-1 grid gap-0.5">
                                 <div><span className="font-semibold">Name:</span> {orderDriverName(o)}</div>
@@ -2345,7 +2378,7 @@ export default function VendorPortalPage() {
                                 <div><span className="font-semibold">Phone:</span> {orderDriverPhone(o)}</div>
                               </div>
                               <div className="mt-2 rounded-lg bg-white/60 px-2 py-1 text-[11px]">
-                                {hasNamedAssignedDriver(o) ? "Driver has been assigned to this order. Prepare only when your team is ready to release the order." : "Do not prepare yet. Dispatch is still attaching a confirmed driver profile to this order."}
+                                {driverVendorStatusNote(o)}
                               </div>
                             </div>
                           ) : null}
@@ -2396,7 +2429,7 @@ export default function VendorPortalPage() {
                             ) : null}
                             {s === "driver_assigned" ? (
                               <>
-                                <button type="button" disabled={busy || !hasNamedAssignedDriver(o)} title={!hasNamedAssignedDriver(o) ? "Waiting for driver details before the vendor can mark this order ready." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{hasNamedAssignedDriver(o) ? "Mark order ready" : "Waiting for driver details"}</button>
+                                <button type="button" disabled={busy || !driverConfirmedForVendor(o)} title={!driverConfirmedForVendor(o) ? "Waiting for driver confirmation before the vendor can mark this order ready." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{driverConfirmedForVendor(o) ? "Mark order ready" : "Waiting for driver confirmation"}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
                               </>
                             ) : null}
