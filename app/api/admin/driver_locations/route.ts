@@ -150,7 +150,7 @@ export async function GET() {
 
       const { data: profilesData, error: profilesError } = await supabase
         .from("driver_profiles")
-        .select("driver_id,phone,full_name,status")
+        .select("driver_id,phone,full_name")
         .in("driver_id", driverIds);
 
       if (profilesError) {
