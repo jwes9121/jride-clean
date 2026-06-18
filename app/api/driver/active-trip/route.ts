@@ -150,6 +150,56 @@ function jrideIsExpiredTakeoutDriverAssignment(row: any, nowMs: number): boolean
 
   return expiryMs <= nowMs;
 }
+
+function jrideIsExpiredTakeoutFeeProposal(row: any, nowMs: number): boolean {
+  if (!jrideIsTakeoutActiveTrip(row)) return false;
+
+  const vendorStatus = jrideActiveTripLower(row.vendor_status ?? row.vendorStatus);
+  const customerStatus = jrideActiveTripLower(row.customer_status ?? row.customerStatus);
+  const driverStatus = jrideActiveTripLower(row.driver_status ?? row.driverStatus);
+  const pricingStatus = jrideActiveTripLower(row.takeout_pricing_status ?? row.pricing_status);
+
+  const waitingForFee =
+    vendorStatus === "driver_accepted" ||
+    customerStatus === "driver_accepted" ||
+    driverStatus === "driver_accepted" ||
+    pricingStatus === "pricing_pending";
+
+  if (!waitingForFee) return false;
+
+  const expiryRaw = jrideActiveTripText(
+    row.takeout_fee_proposal_expires_at ??
+      row.driver_fee_proposal_expires_at ??
+      row.takeout_fee_expires_at
+  );
+
+  if (!expiryRaw) return false;
+
+  const expiryMs = new Date(expiryRaw).getTime();
+  if (!Number.isFinite(expiryMs)) return false;
+
+  return expiryMs <= nowMs;
+}
+
+async function jrideTriggerTakeoutAutoReassign(req: NextRequest, row: any, driverId: string, reason: string) {
+  const bookingCode = jrideActiveTripText(row?.booking_code ?? row?.bookingCode);
+  if (!bookingCode || !driverId) return;
+
+  try {
+    await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bookingCode,
+        excludeDriverId: driverId,
+        autoReassignReason: reason,
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    // Best-effort only. Driver active-trip response must not fail because reassignment failed.
+  }
+}
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const x = Number(v);
@@ -519,7 +569,14 @@ export async function GET(req: NextRequest) {
     const bookingRows = Array.isArray(bookingRes.data) ? bookingRes.data : (bookingRes.data ? [bookingRes.data] : []);
     const booking = bookingRows.find((row: any) => {
       if (jrideIsTerminalTakeoutActiveTrip(row)) return false;
-      if (jrideIsExpiredTakeoutDriverAssignment(row, nowMs)) return false;
+      if (jrideIsExpiredTakeoutDriverAssignment(row, nowMs)) {
+        void jrideTriggerTakeoutAutoReassign(req, row, driverId, "driver_assignment_expired");
+        return false;
+      }
+      if (jrideIsExpiredTakeoutFeeProposal(row, nowMs)) {
+        void jrideTriggerTakeoutAutoReassign(req, row, driverId, "fee_proposal_expired");
+        return false;
+      }
       return true;
     }) ?? null;
     if (!booking) {
@@ -879,4 +936,5 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
+
 

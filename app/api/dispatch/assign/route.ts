@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function text(v: unknown): string {
@@ -364,6 +364,7 @@ export async function POST(req: NextRequest) {
     const bookingCode = text(body?.bookingCode || body?.booking_code);
     const bookingId = text(body?.bookingId || body?.booking_id || body?.id);
     const explicitDriverId = text(body?.driverId || body?.driver_id);
+    const excludedDriverId = text(body?.excludeDriverId || body?.exclude_driver_id);
     const emergencyMode = body?.emergency_mode === true;
 
     if (!bookingCode && !bookingId) {
@@ -372,6 +373,10 @@ export async function POST(req: NextRequest) {
 
     if (explicitDriverId && !isUuid(explicitDriverId)) {
       return NextResponse.json({ ok: false, error: "invalid_driver_id" }, { status: 400 });
+    }
+
+    if (excludedDriverId && !isUuid(excludedDriverId)) {
+      return NextResponse.json({ ok: false, error: "invalid_excluded_driver_id" }, { status: 400 });
     }
 
     let bookingQuery = supabase
@@ -628,6 +633,7 @@ export async function POST(req: NextRequest) {
       for (const row of ranked) {
         const candidateDriverId = text(row?.driver_id);
         if (!candidateDriverId) continue;
+        if (excludedDriverId && candidateDriverId === excludedDriverId) continue;
         if (!row?.eligibility?.assignEligible) continue;
 
         const activeTrip = await findActiveTripForDriver(supabase, candidateDriverId, bookingDbId);
@@ -755,8 +761,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-
-
-
-
