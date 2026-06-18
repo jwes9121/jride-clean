@@ -476,7 +476,14 @@ function customerConfirmedForVendor(o: TakeoutOrder) {
 
 function driverAcceptedForVendor(o: TakeoutOrder) {
   const pricing = clean(o.takeout_pricing_status).toLowerCase();
-  return ["accepted", "driver_accepted"].includes(pricing);
+  const vendorStatus = normalizeVendorStatus(o.vendor_status);
+  const driverStatus = clean((o as any).driver_status).toLowerCase();
+
+  return (
+    ["accepted", "driver_accepted"].includes(pricing) ||
+    vendorStatus === "driver_accepted" ||
+    driverStatus === "driver_accepted"
+  );
 }
 
 function fareProposedForVendor(o: TakeoutOrder) {
