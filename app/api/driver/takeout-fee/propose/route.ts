@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -369,7 +369,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-        .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
+        .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -434,6 +434,16 @@ export async function POST(req: NextRequest) {
     } else {
       const driverOk = await assertDriverCanPropose(serviceSupabase, driverAuth.driverId, order.id);
       if (!driverOk.ok) return json(409, { ok: false, error: driverOk.error, message: driverOk.message });
+    }
+    const feeProposalExpiryRaw = text(order.takeout_fee_proposal_expires_at || order.driver_fee_proposal_expires_at);
+    const feeProposalExpiryMs = feeProposalExpiryRaw ? new Date(feeProposalExpiryRaw).getTime() : NaN;
+
+    if (Number.isFinite(feeProposalExpiryMs) && feeProposalExpiryMs <= Date.now()) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_FEE_PROPOSAL_EXPIRED",
+        message: "This takeout fee proposal window expired. Please wait for dispatch to reassign.",
+      });
     }
 
     const pricingStatus = lower(order.takeout_pricing_status || "pricing_pending");
