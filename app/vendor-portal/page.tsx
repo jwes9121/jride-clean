@@ -348,6 +348,7 @@ function statusLabel(s: any) {
   if (x === "vendor_pending") return "Waiting for vendor confirmation";
   if (x === "vendor_accepted") return "Vendor accepted";
   if (x === "driver_assigned") return "Driver assigned";
+  if (x === "driver_accepted") return "Driver accepted";
   if (x === "pickup_ready") return "Order ready";
   if (x === "preparing") return "Preparing";
   if (x === "completed") return "Completed";
@@ -361,6 +362,7 @@ function orderClass(s: any) {
   if (x === "vendor_pending") return "border-blue-300 bg-blue-50 text-blue-800";
   if (x === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "driver_assigned") return "border-blue-300 bg-blue-50 text-blue-800";
+  if (x === "driver_accepted") return "border-blue-300 bg-blue-50 text-blue-800";
   if (x === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
   if (x === "vendor_timeout") return "border-rose-300 bg-rose-50 text-rose-700";
@@ -851,7 +853,7 @@ export default function VendorPortalPage() {
     return orders.filter((o) => {
       const status = normalizeVendorStatus(o.vendor_status);
       if (status === "vendor_pending") return !vendorAcceptTimer(o, nowMs).expired;
-      return ["vendor_accepted", "driver_assigned", "pickup_ready"].includes(status);
+      return ["vendor_accepted", "driver_assigned", "driver_accepted", "pickup_ready"].includes(status);
     });
   }, [orders, nowMs]);
 
@@ -2410,7 +2412,7 @@ export default function VendorPortalPage() {
                                 {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-700">Map pin:</span> Saved for driver navigation</div> : null}
                               </div>
                             </div>
-                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{["driver_assigned", "pickup_ready"].includes(s) ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
+                            <span className={cls("rounded-full border px-2 py-1 text-xs font-semibold", orderClass(s))}>{["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) ? vendorPrepGateBadgeLabel(o) : statusLabel(s)}</span>
                           </div>
                           {s === "vendor_pending" ? (
                             <div className={"mt-2 inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold " + vendorAcceptTimerClass(acceptDeadline.tone)}>
@@ -2418,7 +2420,7 @@ export default function VendorPortalPage() {
                               {acceptDeadline.expired ? " - overdue" : ""}
                             </div>
                           ) : null}
-                          {["driver_assigned", "pickup_ready"].includes(s) ? (
+                          {["driver_assigned", "driver_accepted", "pickup_ready"].includes(s) ? (
                             <div className={cls("mt-3 rounded-xl border p-3 text-xs", customerConfirmedForVendor(o) ? "border-emerald-300 bg-emerald-50 text-emerald-950" : "border-amber-300 bg-amber-50 text-amber-950")}>
                               <div className={cls("font-semibold uppercase tracking-wide", customerConfirmedForVendor(o) ? "text-emerald-700" : "text-amber-800")}>
                                 {driverVendorStatusTitle(o)}
