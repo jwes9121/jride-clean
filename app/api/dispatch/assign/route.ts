@@ -93,6 +93,7 @@ function isUniqueViolation(error: any): boolean {
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const ASSIGN_CUTOFF_MINUTES = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
 const ASSIGN_CUTOFF_SECONDS = ASSIGN_CUTOFF_MINUTES * 60;
+const TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS = 300;
 const ONLINE_LIKE_STATUSES = new Set(["online", "available", "idle", "waiting"]);
 
 const ACTIVE_DRIVER_BOOKING_STATUSES = [
@@ -661,6 +662,9 @@ export async function POST(req: NextRequest) {
     }
 
     const nowIso = new Date().toISOString();
+    const isTakeoutBooking = cleanStatus((booking as any).service_type || (booking as any).booking_type) === "takeout";
+    const takeoutDriverAcceptExpiresIso = new Date(Date.now() + TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS * 1000).toISOString();
+
     const updatePayload: Record<string, unknown> = {
       driver_id: chosenDriverId,
       assigned_driver_id: chosenDriverId,
@@ -668,6 +672,22 @@ export async function POST(req: NextRequest) {
       assigned_at: nowIso,
       updated_at: nowIso,
     };
+
+    if (isTakeoutBooking) {
+      updatePayload.vendor_status = "driver_assigned";
+      updatePayload.customer_status = "driver_assigned";
+      updatePayload.driver_status = "driver_assigned";
+      updatePayload.takeout_pricing_status = "waiting_driver_accept";
+      updatePayload.takeout_delivery_fee = null;
+      updatePayload.takeout_service_fee = null;
+      updatePayload.takeout_total_payable = null;
+      updatePayload.takeout_fee_proposed_at = null;
+      updatePayload.takeout_fee_expires_at = null;
+      updatePayload.takeout_fee_proposal_expires_at = null;
+      updatePayload.driver_fee_proposal_expires_at = null;
+      updatePayload.driver_accept_expires_at = takeoutDriverAcceptExpiresIso;
+      updatePayload.takeout_driver_accept_expires_at = takeoutDriverAcceptExpiresIso;
+    }
 
     if (typeof body?.emergency_mode === "boolean") {
       updatePayload.is_emergency = body.emergency_mode;
@@ -735,6 +755,7 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
 
 
 
