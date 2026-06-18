@@ -122,6 +122,34 @@ function jrideIsTerminalTakeoutActiveTrip(row: any): boolean {
     takeoutStatus === "cancelled"
   );
 }
+function jrideIsExpiredTakeoutDriverAssignment(row: any, nowMs: number): boolean {
+  if (!jrideIsTakeoutActiveTrip(row)) return false;
+
+  const vendorStatus = jrideActiveTripLower(row.vendor_status ?? row.vendorStatus);
+  const customerStatus = jrideActiveTripLower(row.customer_status ?? row.customerStatus);
+  const driverStatus = jrideActiveTripLower(row.driver_status ?? row.driverStatus);
+
+  const waitingForDriver =
+    vendorStatus === "driver_assigned" ||
+    customerStatus === "driver_assigned" ||
+    driverStatus === "driver_assigned";
+
+  if (!waitingForDriver) return false;
+
+  const expiryRaw = jrideActiveTripText(
+    row.driver_accept_expires_at ??
+      row.driverAcceptExpiresAt ??
+      row.takeout_driver_accept_expires_at ??
+      row.takeoutDriverAcceptExpiresAt
+  );
+
+  if (!expiryRaw) return false;
+
+  const expiryMs = new Date(expiryRaw).getTime();
+  if (!Number.isFinite(expiryMs)) return false;
+
+  return expiryMs <= nowMs;
+}
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const x = Number(v);
@@ -487,8 +515,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const nowMs = Date.now();
     const bookingRows = Array.isArray(bookingRes.data) ? bookingRes.data : (bookingRes.data ? [bookingRes.data] : []);
-    const booking = bookingRows.find((row: any) => !jrideIsTerminalTakeoutActiveTrip(row)) ?? null;
+    const booking = bookingRows.find((row: any) => {
+      if (jrideIsTerminalTakeoutActiveTrip(row)) return false;
+      if (jrideIsExpiredTakeoutDriverAssignment(row, nowMs)) return false;
+      return true;
+    }) ?? null;
     if (!booking) {
       return NextResponse.json(
         { ok: true, trip: null, active_trip: null, auth_mode: authMode },

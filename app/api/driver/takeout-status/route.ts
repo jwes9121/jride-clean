@@ -146,6 +146,24 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED" });
   }
 
+  if (nextStatus === "driver_accepted") {
+    const expiryRaw = String(
+      (existing.data as any).driver_accept_expires_at ||
+        (existing.data as any).takeout_driver_accept_expires_at ||
+        ""
+    ).trim();
+
+    const expiryMs = expiryRaw ? new Date(expiryRaw).getTime() : NaN;
+
+    if (Number.isFinite(expiryMs) && expiryMs <= Date.now()) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ASSIGNMENT_EXPIRED",
+        message: "This takeout assignment already expired. Please wait for dispatch to reassign.",
+      });
+    }
+  }
+
   if (nextStatus === "completed") {
     const canonical = await ensureTakeoutCanonicalPathForCompletion(admin, existing.data, driverId);
     if (!canonical.ok) {
