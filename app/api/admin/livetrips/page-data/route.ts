@@ -247,11 +247,12 @@ export async function GET(req: NextRequest) {
     let bookingsQuery = supabase
       .from("bookings")
       .select("*")
-      .in("status", historicalStatuses)
       .order("updated_at", { ascending: false });
 
     if (historyStartIso) {
       bookingsQuery = bookingsQuery.gte("updated_at", historyStartIso).limit(500);
+    } else {
+      bookingsQuery = bookingsQuery.in("status", historicalStatuses);
     }
 
     const bookingsRes = await bookingsQuery;
@@ -306,16 +307,32 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
 
     const bookingRows = asArray<any>(bookingsRes.data).filter((row: any) => {
       const serviceType = text(row?.service_type).toLowerCase();
-      if (serviceType !== "takeout") return true;
+      if (serviceType !== "takeout") return historicalStatuses.includes(text(row?.status).toLowerCase());
 
-      const takeoutStatus = text(row?.customer_status || row?.vendor_status || row?.status).toLowerCase();
-      if (!takeoutStatus) return false;
-      if (bookingView === "completed") return takeoutStatus === "completed";
-      if (bookingView === "cancelled") return takeoutStatus === "cancelled" || takeoutStatus === "vendor_timeout";
+      const takeoutStatuses = [
+        row?.customer_status,
+        row?.vendor_status,
+        row?.driver_status,
+        row?.takeout_pricing_status,
+        row?.status,
+      ].map((value) => text(value).toLowerCase()).filter(Boolean);
 
-      if (takeoutStatus === "cancelled" || takeoutStatus === "completed" || takeoutStatus === "vendor_timeout") return false;
+      if (!takeoutStatuses.length) return false;
 
-      return activeStatuses.includes(takeoutStatus);
+      if (bookingView === "completed") return takeoutStatuses.includes("completed");
+      if (bookingView === "cancelled") {
+        return takeoutStatuses.includes("cancelled") || takeoutStatuses.includes("vendor_timeout");
+      }
+
+      if (
+        takeoutStatuses.includes("cancelled") ||
+        takeoutStatuses.includes("completed") ||
+        takeoutStatuses.includes("vendor_timeout")
+      ) {
+        return false;
+      }
+
+      return takeoutStatuses.some((status) => activeStatuses.includes(status));
     });
     const profileRows = asArray<any>(driverProfilesRes.data);
 
