@@ -121,6 +121,38 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
     reason,
   });
 
+  const currentStatus = normStatus(row?.status);
+
+  if (currentStatus === "assigned") {
+    try {
+      const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          bookingCode: bookingCode,
+          excludeDriverId: oldDriverId,
+          autoReassignReason: reason,
+        }),
+        cache: "no-store",
+      });
+
+      debug.push({
+        step: "assign_direct_for_expired_assigned",
+        booking_code: bookingCode,
+        status: assignRes.status,
+      });
+
+      return assignRes.ok;
+    } catch (e: any) {
+      debug.push({
+        step: "assign_direct_failed",
+        booking_code: bookingCode,
+        error: String(e?.message || e || "unknown"),
+      });
+      return false;
+    }
+  }
+
   const nowIso = new Date().toISOString();
 
   let resetQuery = admin
