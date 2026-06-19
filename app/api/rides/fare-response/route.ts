@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient as createServerSupabase } from "@/utils/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
 function text(v: unknown): string {
@@ -55,14 +56,6 @@ function noStoreHeaders() {
 
 export async function POST(req: NextRequest) {
   try {
-    const accessToken = getBearerToken(req);
-    if (!accessToken) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401, headers: noStoreHeaders() }
-      );
-    }
-
     const body = await req.json().catch(() => ({}));
 
     const bookingId = text(body?.booking_id || body?.bookingId || body?.id);
@@ -86,14 +79,25 @@ export async function POST(req: NextRequest) {
     const anonSupabase = getAnonSupabase();
     const serviceSupabase = getServiceSupabase();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await anonSupabase.auth.getUser(accessToken);
+    let user: any = null;
 
-    if (authError || !user?.id) {
+    try {
+      const cookieSupabase = createServerSupabase();
+      const cookieUserRes = await cookieSupabase.auth.getUser();
+      user = cookieUserRes.data?.user ?? null;
+    } catch {}
+
+    if (!user?.id) {
+      const accessToken = getBearerToken(req);
+      if (accessToken) {
+        const bearerUserRes = await anonSupabase.auth.getUser(accessToken);
+        user = bearerUserRes.data?.user ?? null;
+      }
+    }
+
+    if (!user?.id) {
       return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
+        { ok: false, error: "NOT_AUTHED", message: "Missing or invalid passenger session." },
         { status: 401, headers: noStoreHeaders() }
       );
     }

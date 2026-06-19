@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * app/ride/page.tsx
