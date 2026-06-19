@@ -1942,9 +1942,9 @@ if (mapRef.current) {
         return;
       }
 
-      if (geoPermission !== "granted" || geoInsideIfugao !== true) {
+      if (!geoOrLocalOk) {
         const geoAllowed = await refreshGeoGate(true);
-        if (!geoAllowed) {
+        if (!geoAllowed && !norm(localVerify)) {
           setResult("GEO_BLOCKED: Location required inside Ifugao.");
           setBusy(false);
           return;
