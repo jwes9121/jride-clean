@@ -2490,24 +2490,29 @@ if (mapRef.current) {
                     ) : (
                       <>
                         <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-1" role="radiogroup" aria-label="Rate your driver">
                           {[1, 2, 3, 4, 5].map((star) => {
-                            const active = ratingValue === star;
+                            const active = ratingValue >= star;
                             return (
                               <button
                                 key={star}
                                 type="button"
                                 onClick={() => setRatingValue(star)}
+                                aria-label={`${star} ${star === 1 ? "star" : "stars"}`}
+                                aria-checked={ratingValue === star}
+                                role="radio"
                                 className={
-                                  "rounded-xl px-3 py-2 text-sm font-semibold shadow-sm " +
+                                  "rounded-lg px-1.5 py-1 text-3xl leading-none transition " +
                                   (active
-                                    ? "bg-emerald-500 text-white"
-                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50")
+                                    ? "text-amber-400 drop-shadow-sm"
+                                    : "text-slate-300 hover:text-amber-300")
                                 }
                               >
-                                {star} star{star > 1 ? "s" : ""}
+                                {active ? "★" : "☆"}
                               </button>
                             );
                           })}
+                        </div>
                         </div>
 
                         <div>
