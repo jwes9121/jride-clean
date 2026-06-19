@@ -1118,6 +1118,12 @@ export default function LiveTripsClient() {
                 ? "Drivers view"
                 : viewMode === "trips"
                 ? "Trips view"
+                : tripFilter === "completed"
+                ? "Completed trips"
+                : tripFilter === "cancelled"
+                ? "Cancelled trips"
+                : tripFilter === "problem"
+                ? "Problem trips"
                 : "Dispatch view (Requested + Searching + Assigned + Accepted + Fare proposed + Ready + On the way + Arrived + On trip)"}
             </div>
             <div className="text-xs text-gray-600">
@@ -1258,59 +1264,63 @@ export default function LiveTripsClient() {
                           </td>
                           <td className="p-2">{t.zone || t.town || "-"}</td>
                           <td className="p-2">
-                            <div className="flex flex-wrap gap-2 items-center">
-                              <button
-                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!t.booking_code) return;
-                                  updateTripStatus(t.booking_code, "on_the_way").catch((err) => setLastAction(String(err?.message || err)));
-                                }}
-                                disabled={s !== "assigned"}
-                                title={s !== "assigned" ? "Allowed only when status=assigned" : "Mark on_the_way"}
-                              >
-                                On the way
-                              </button>
+                            {s === "completed" || s === "cancelled" ? (
+                              <span className="text-xs text-slate-400">Read-only</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-2 items-center">
+                                <button
+                                  className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!t.booking_code) return;
+                                    updateTripStatus(t.booking_code, "on_the_way").catch((err) => setLastAction(String(err?.message || err)));
+                                  }}
+                                  disabled={s !== "assigned"}
+                                  title={s !== "assigned" ? "Allowed only when status=assigned" : "Mark on_the_way"}
+                                >
+                                  On the way
+                                </button>
 
-                              <button
-                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!t.booking_code) return;
-                                  updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err)));
-                                }}
-                                disabled={s !== "on_the_way"}
-                                title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Start trip"}
-                              >
-                                Start trip
-                              </button>
+                                <button
+                                  className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!t.booking_code) return;
+                                    updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err)));
+                                  }}
+                                  disabled={s !== "on_the_way"}
+                                  title={s !== "on_the_way" ? "Allowed only when status=on_the_way" : "Start trip"}
+                                >
+                                  Start trip
+                                </button>
 
-                              <button
-                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!t.booking_code) return;
-                                  updateTripStatus(t.booking_code, "completed").catch((err) => setLastAction(String(err?.message || err)));
-                                }}
-                                disabled={s !== "on_trip"}
-                                title={s !== "on_trip" ? "Allowed only when status=on_trip" : "Complete trip"}
-                              >
-                                Drop off
-                              </button>
+                                <button
+                                  className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!t.booking_code) return;
+                                    updateTripStatus(t.booking_code, "completed").catch((err) => setLastAction(String(err?.message || err)));
+                                  }}
+                                  disabled={s !== "on_trip"}
+                                  title={s !== "on_trip" ? "Allowed only when status=on_trip" : "Complete trip"}
+                                >
+                                  Drop off
+                                </button>
 
-                              <button
-                                className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedTripId(id);
-                                  setTripFilter("problem");
-                                  setViewMode("dispatch");
-                                }}
-                                title="Focus Problem trips view"
-                              >
-                                Find problem
-                              </button>
-                            </div>
+                                <button
+                                  className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedTripId(id);
+                                    setTripFilter("problem");
+                                    setViewMode("dispatch");
+                                  }}
+                                  title="Focus Problem trips view"
+                                >
+                                  Find problem
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
