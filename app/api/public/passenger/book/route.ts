@@ -936,8 +936,6 @@ const boundaryOverrideRequested =
       passenger_count: passengerCount,
       created_by_user_id: createdByUserId,
       passenger_name: passengerName,
-      passenger_phone: text(body.phone) || null,
-      phone: text(body.phone) || null,
       notes,
       customer_status: "pending",
       is_emergency: emergencyMode,
@@ -1118,7 +1116,6 @@ const boundaryOverrideRequested =
     );
   }
 }
-
 
 
 
