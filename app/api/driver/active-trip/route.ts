@@ -230,7 +230,6 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
         passenger_fare_response: null,
         updated_at: nowIso,
       })
-      .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
       .in("status", ["assigned", "accepted"]);
 
     resetQuery = bookingCode

@@ -119,7 +119,6 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
       passenger_fare_response: null,
       updated_at: nowIso,
     })
-    .or(`assigned_driver_id.eq.${oldDriverId},driver_id.eq.${oldDriverId}`)
     .in("status", ["assigned", "accepted"]);
 
   resetQuery = bookingCode
