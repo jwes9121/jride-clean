@@ -2008,7 +2008,7 @@ if (mapRef.current) {
           true,
         );
         const bj = book.json || {};
-        const code = norm(bj.booking?.booking_code || bj.booking_code || "");
+        const code = norm(bj.booking?.booking_code || bj.booking?.bookingCode || bj.booking?.code || bj.booking_code || bj.bookingCode || bj.code || "");
 
         if (book.ok && isRealBookingCode(code)) {
           preBookingSearchRef.current = false;
