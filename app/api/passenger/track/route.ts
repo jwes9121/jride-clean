@@ -101,28 +101,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const accessToken = getBearerToken(req);
-    if (!accessToken) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Missing bearer token." },
-        { status: 401, headers: noStoreHeaders() }
-      );
-    }
-
-    const authSupabase = createAnonSupabase();
     const serviceSupabase = createServiceSupabase();
-
-    const {
-      data: { user },
-      error: userErr,
-    } = await authSupabase.auth.getUser(accessToken);
-
-    if (userErr || !user?.id) {
-      return NextResponse.json(
-        { ok: false, error: "NOT_AUTHED", message: "Invalid bearer token." },
-        { status: 401, headers: noStoreHeaders() }
-      );
-    }
 
     const bookingRes = await serviceSupabase
       .from("bookings")
