@@ -101,11 +101,25 @@ const ACTIVE_RIDE_STATUSES = new Set([
   "on_trip",
 ]);
 
-async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: any, reason: string) {
+async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: any, reason: string, debug: any[] = []) {
   const bookingCode = text(row?.booking_code);
   const bookingId = text(row?.id);
   const oldDriverId = text(row?.assigned_driver_id || row?.driver_id);
-  if ((!bookingCode && !bookingId) || !oldDriverId) return false;
+  if ((!bookingCode && !bookingId) || !oldDriverId) {
+    debug.push({ step: "missing_required", booking_code: bookingCode, booking_id: bookingId, old_driver_id: oldDriverId, reason });
+    return false;
+  }
+
+  debug.push({
+    step: "reset_candidate",
+    booking_code: bookingCode,
+    booking_id: bookingId,
+    old_driver_id: oldDriverId,
+    status: row?.status,
+    driver_accept_expires_at: row?.driver_accept_expires_at,
+    updated_at: row?.updated_at,
+    reason,
+  });
 
   const nowIso = new Date().toISOString();
 
@@ -126,13 +140,28 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
     : resetQuery.eq("id", bookingId);
 
   const resetRes = await resetQuery.select("id,booking_code").limit(1);
-  if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) return false;
+  if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
+    debug.push({
+      step: "reset_failed",
+      booking_code: bookingCode,
+      booking_id: bookingId,
+      error: resetRes.error?.message || null,
+      data_count: Array.isArray(resetRes.data) ? resetRes.data.length : null,
+    });
+    return false;
+  }
+
+  debug.push({
+    step: "reset_ok",
+    booking_code: bookingCode,
+    reset_count: resetRes.data.length,
+  });
 
   const resetBookingCode = text((resetRes.data[0] as any)?.booking_code || bookingCode);
   if (!resetBookingCode) return false;
 
   try {
-    await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+    const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -142,7 +171,19 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
       }),
       cache: "no-store",
     });
-  } catch {}
+
+    debug.push({
+      step: "assign_called",
+      booking_code: resetBookingCode,
+      status: assignRes.status,
+    });
+  } catch (e: any) {
+    debug.push({
+      step: "assign_call_failed",
+      booking_code: resetBookingCode,
+      error: String(e?.message || e || "unknown"),
+    });
+  }
 
   return true;
 }
@@ -184,15 +225,16 @@ export async function GET(req: NextRequest) {
   const initialBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
 
   let sweptExpired = 0;
+  const sweepDebug: any[] = [];
   for (const row of initialBookings as any[]) {
     if (isExpiredAssignedRide(row)) {
-      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_driver_accept_expired_dispatch_sweep");
+      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_driver_accept_expired_dispatch_sweep", sweepDebug);
       if (didSweep) sweptExpired += 1;
       continue;
     }
 
     if (isExpiredAcceptedRide(row)) {
-      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_fare_proposal_expired_dispatch_sweep");
+      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_fare_proposal_expired_dispatch_sweep", sweepDebug);
       if (didSweep) sweptExpired += 1;
     }
   }
@@ -359,6 +401,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     source: "app/api/admin/ride-dispatch/route.ts",
     swept_expired: sweptExpired,
+    sweep_debug: sweepDebug,
     filter,
     counts,
     rides: filtered,
