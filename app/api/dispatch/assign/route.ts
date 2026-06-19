@@ -94,6 +94,7 @@ const DRIVER_STALE_AFTER_SECONDS = 120;
 const ASSIGN_CUTOFF_MINUTES = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
 const ASSIGN_CUTOFF_SECONDS = ASSIGN_CUTOFF_MINUTES * 60;
 const TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS = 300;
+const RIDE_DRIVER_ACCEPT_TTL_SECONDS = 300;
 const ONLINE_LIKE_STATUSES = new Set(["online", "available", "idle", "waiting"]);
 
 const ACTIVE_DRIVER_BOOKING_STATUSES = [
@@ -670,12 +671,14 @@ export async function POST(req: NextRequest) {
     const nowIso = new Date().toISOString();
     const isTakeoutBooking = cleanStatus((booking as any).service_type || (booking as any).booking_type) === "takeout";
     const takeoutDriverAcceptExpiresIso = new Date(Date.now() + TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS * 1000).toISOString();
+    const rideDriverAcceptExpiresIso = new Date(Date.now() + RIDE_DRIVER_ACCEPT_TTL_SECONDS * 1000).toISOString();
 
     const updatePayload: Record<string, unknown> = {
       driver_id: chosenDriverId,
       assigned_driver_id: chosenDriverId,
       status: "assigned",
       assigned_at: nowIso,
+      driver_accept_expires_at: isTakeoutBooking ? takeoutDriverAcceptExpiresIso : rideDriverAcceptExpiresIso,
       updated_at: nowIso,
     };
 

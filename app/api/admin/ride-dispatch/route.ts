@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -51,8 +51,21 @@ function isOnlineDriver(row: any) {
   return ["online", "available", "idle", "waiting"].includes(s) && age <= 10;
 }
 
-function ridePriority(status: string, ageMinutes: number, updateAgeMinutes: number) {
+function isExpiredIso(value: any) {
+  const raw = text(value);
+  if (!raw) return false;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t)) return false;
+  return t <= Date.now();
+}
+
+function ridePriority(status: string, ageMinutes: number, updateAgeMinutes: number, row?: any) {
+  const assignedExpired = status === "assigned" && isExpiredIso(row?.driver_accept_expires_at);
+  const acceptedExpired = status === "accepted" && updateAgeMinutes >= 5;
+
   const stuck =
+    assignedExpired ||
+    acceptedExpired ||
     (status === "searching" && ageMinutes >= 5) ||
     (status === "assigned" && updateAgeMinutes >= 5) ||
     (status === "accepted" && updateAgeMinutes >= 5) ||
@@ -200,7 +213,7 @@ export async function GET(req: NextRequest) {
     const status = normStatus(r?.status);
     const ageMinutes = minutesSince(r?.created_at);
     const updateAgeMinutes = minutesSince(r?.updated_at || r?.created_at);
-    const op = ridePriority(status, ageMinutes, updateAgeMinutes);
+    const op = ridePriority(status, ageMinutes, updateAgeMinutes, r);
     const assignedDriverId = text(r?.assigned_driver_id || r?.driver_id) || null;
 
     return {
@@ -221,6 +234,7 @@ export async function GET(req: NextRequest) {
       updated_at: r.updated_at || null,
       age_minutes: ageMinutes,
       update_age_minutes: updateAgeMinutes,
+      driver_accept_expires_at: r.driver_accept_expires_at || null,
       is_stuck: op.stuck,
       priority: op.priority,
     };

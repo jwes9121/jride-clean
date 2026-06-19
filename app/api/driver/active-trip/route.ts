@@ -179,6 +179,54 @@ function jrideIsExpiredTakeoutFeeProposal(row: any, nowMs: number): boolean {
   if (!Number.isFinite(expiryMs)) return false;
 
   return expiryMs <= nowMs;
+}function jrideIsRideBooking(row: any): boolean {
+  return !jrideIsTakeoutActiveTrip(row);
+}
+
+function jrideIsExpiredRideDriverAssignment(row: any, nowMs: number): boolean {
+  if (!jrideIsRideBooking(row)) return false;
+  const status = statusOf(row?.status);
+  if (status !== "assigned") return false;
+
+  const expiryRaw = jrideActiveTripText(row?.driver_accept_expires_at ?? row?.driverAcceptExpiresAt);
+  if (!expiryRaw) return false;
+
+  const expiryMs = new Date(expiryRaw).getTime();
+  if (!Number.isFinite(expiryMs)) return false;
+
+  return expiryMs <= nowMs;
+}
+
+function jrideIsExpiredRideFareProposalWindow(row: any, nowMs: number): boolean {
+  if (!jrideIsRideBooking(row)) return false;
+  const status = statusOf(row?.status);
+  if (status !== "accepted") return false;
+
+  const updatedRaw = jrideActiveTripText(row?.updated_at ?? row?.updatedAt ?? row?.assigned_at ?? row?.assignedAt);
+  if (!updatedRaw) return false;
+
+  const updatedMs = new Date(updatedRaw).getTime();
+  if (!Number.isFinite(updatedMs)) return false;
+
+  return updatedMs + 5 * 60 * 1000 <= nowMs;
+}
+
+async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId: string, reason: string) {
+  const bookingCode = jrideActiveTripText(row?.booking_code ?? row?.bookingCode);
+  if (!bookingCode || !driverId) return;
+
+  try {
+    await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bookingCode,
+        excludeDriverId: driverId,
+        autoReassignReason: reason,
+      }),
+      cache: "no-store",
+    });
+  } catch {}
 }
 
 async function jrideTriggerTakeoutAutoReassign(req: NextRequest, row: any, driverId: string, reason: string) {
@@ -575,6 +623,14 @@ export async function GET(req: NextRequest) {
       }
       if (jrideIsExpiredTakeoutFeeProposal(row, nowMs)) {
         void jrideTriggerTakeoutAutoReassign(req, row, driverId, "fee_proposal_expired");
+        return false;
+      }
+      if (jrideIsExpiredRideDriverAssignment(row, nowMs)) {
+        void jrideTriggerRideAutoReassign(req, row, driverId, "ride_driver_accept_expired");
+        return false;
+      }
+      if (jrideIsExpiredRideFareProposalWindow(row, nowMs)) {
+        void jrideTriggerRideAutoReassign(req, row, driverId, "ride_fare_proposal_expired");
         return false;
       }
       return true;
