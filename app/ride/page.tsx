@@ -935,7 +935,7 @@ if (mapRef.current) {
           return;
         }
 
-        const resp = await getJsonAuth(
+        const resp = await getJson(
           `/api/passenger/track?booking_code=${encodeURIComponent(activeCode)}`,
         );
 
