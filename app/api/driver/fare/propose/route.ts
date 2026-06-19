@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createClient as createSupabaseServiceClient } from "@supabase/supabase-js";
 
 type ProposeBody = {
   booking_code?: string;
@@ -32,6 +33,22 @@ function noStoreHeaders() {
     Pragma: "no-cache",
     Expires: "0",
   };
+}
+
+function serviceSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY_MISSING");
+  }
+
+  return createSupabaseServiceClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
 function pickupDistanceFee(km: number): number {
@@ -161,7 +178,8 @@ async function getRoadDistance(
 
 export async function POST(req: Request) {
   try {
-    const supabase = createClient();
+    const authSupabase = createClient();
+    const supabase = serviceSupabase();
     const body = (await req.json().catch(() => ({}))) as ProposeBody;
 
     const bookingCode = text(body.booking_code || body.bookingCode);
@@ -187,7 +205,7 @@ export async function POST(req: Request) {
     );
 
     if (!effectiveDriverId) {
-      const { data: userRes } = await supabase.auth.getUser();
+      const { data: userRes } = await authSupabase.auth.getUser();
       if (userRes?.user?.id) {
         effectiveDriverId = userRes.user.id;
       }
@@ -310,15 +328,14 @@ export async function POST(req: Request) {
         pickupEtaMinutes = road.durationMinutes ?? estimateEtaMinutes(road.distanceKm);
         pickupFee = pickupDistanceFee(road.distanceKm);
       } catch (e: any) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "ROAD_DISTANCE_UNAVAILABLE",
-            message: String(e?.message ?? e),
-            stage: "driver_to_pickup",
-          },
-          { status: 500, headers: noStoreHeaders() }
-        );
+        console.warn("[FARE_PROPOSE_DRIVER_TO_PICKUP_DISTANCE_FALLBACK]", {
+          booking_code: (booking as any).booking_code ?? null,
+          driver_id: effectiveDriverId,
+          message: String(e?.message ?? e),
+        });
+        driverToPickupKm = null;
+        pickupEtaMinutes = null;
+        pickupFee = 0;
       }
     }
 
@@ -327,15 +344,11 @@ export async function POST(req: Request) {
       const roadTrip = await getRoadDistance(pickupLng, pickupLat, dropoffLng, dropoffLat);
       tripDistanceKm = roadTrip.distanceKm;
     } catch (e: any) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "ROAD_DISTANCE_UNAVAILABLE",
-          message: String(e?.message ?? e),
-          stage: "pickup_to_dropoff",
-        },
-        { status: 500, headers: noStoreHeaders() }
-      );
+      console.warn("[FARE_PROPOSE_TRIP_DISTANCE_FALLBACK]", {
+        booking_code: (booking as any).booking_code ?? null,
+        message: String(e?.message ?? e),
+      });
+      tripDistanceKm = null;
     }
 
     const nightRate = getNightRateDetails(submittedRegularFare, (booking as any).created_at);
