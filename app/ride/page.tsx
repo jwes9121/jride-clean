@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * app/ride/page.tsx
@@ -1340,7 +1340,7 @@ if (mapRef.current) {
     }
   }
 
-  async function refreshGeoGate(prompt: boolean) {
+  async function refreshGeoGate(prompt: boolean): Promise<boolean> {
     setGeoGateErr("");
     try {
       const anyNav: any = navigator;
@@ -1350,19 +1350,20 @@ if (mapRef.current) {
         if (s === "granted") setGeoPermission("granted");
         else if (s === "denied") setGeoPermission("denied");
         else setGeoPermission("unknown");
-        if (!prompt && s !== "granted") return;
+        if (!prompt && s !== "granted") return false;
       }
 
       const geo: any = navigator?.geolocation;
       if (!geo?.getCurrentPosition) {
         setGeoGateErr("Geolocation not available.");
         setGeoPermission("denied");
-        return;
+        return false;
       }
       const isMobile = /Android|iPhone|iPad|iPod/i.test(
         navigator.userAgent || "",
       );
 
+      let nextInsideIfugao = false;
       await new Promise<void>((resolve) => {
         geo.getCurrentPosition(
           (pos: any) => {
@@ -1376,7 +1377,8 @@ if (mapRef.current) {
             setGeoPermission("granted");
             setGeoLat(lat);
             setGeoLng(lng);
-            setGeoInsideIfugao(inIfugaoBBox(lat, lng));
+            nextInsideIfugao = inIfugaoBBox(lat, lng);
+            setGeoInsideIfugao(nextInsideIfugao);
             resolve();
           },
           (err: any) => {
@@ -1395,8 +1397,10 @@ if (mapRef.current) {
           },
         );
       });
+      return nextInsideIfugao;
     } catch (e: any) {
       setGeoGateErr(`Location check failed: ${String(e?.message || e)}`);
+      return false;
     }
   }
 
@@ -1939,8 +1943,8 @@ if (mapRef.current) {
       }
 
       if (geoPermission !== "granted" || geoInsideIfugao !== true) {
-        await refreshGeoGate(true);
-        if (geoPermission !== "granted" || geoInsideIfugao !== true) {
+        const geoAllowed = await refreshGeoGate(true);
+        if (!geoAllowed) {
           setResult("GEO_BLOCKED: Location required inside Ifugao.");
           setBusy(false);
           return;
