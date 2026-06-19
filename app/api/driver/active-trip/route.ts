@@ -213,14 +213,43 @@ function jrideIsExpiredRideFareProposalWindow(row: any, nowMs: number): boolean 
 
 async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId: string, reason: string) {
   const bookingCode = jrideActiveTripText(row?.booking_code ?? row?.bookingCode);
-  if (!bookingCode || !driverId) return;
+  const bookingId = jrideActiveTripText(row?.id ?? row?.booking_id ?? row?.bookingId);
+  if ((!bookingCode && !bookingId) || !driverId) return;
 
   try {
+    const serviceSupabase = createServiceSupabase();
+    const nowIso = new Date().toISOString();
+
+    let resetQuery = serviceSupabase
+      .from("bookings")
+      .update({
+        status: "searching",
+        driver_id: null,
+        assigned_driver_id: null,
+        driver_accept_expires_at: null,
+        passenger_fare_response: null,
+        updated_at: nowIso,
+      })
+      .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
+      .in("status", ["assigned", "accepted"]);
+
+    resetQuery = bookingCode
+      ? resetQuery.eq("booking_code", bookingCode)
+      : resetQuery.eq("id", bookingId);
+
+    const resetRes = await resetQuery.select("id,booking_code").limit(1);
+
+    if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
+      return;
+    }
+
+    const resetBookingCode = jrideActiveTripText((resetRes.data[0] as any)?.booking_code ?? bookingCode);
+
     await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        bookingCode,
+        bookingCode: resetBookingCode,
         excludeDriverId: driverId,
         autoReassignReason: reason,
       }),
