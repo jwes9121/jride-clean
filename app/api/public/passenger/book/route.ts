@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -1092,7 +1092,15 @@ const boundaryOverrideRequested =
       {
         ok: true,
         booking_code: bookingCode,
-        booking,
+        bookingCode,
+        code: bookingCode,
+        id: (booking as any)?.id ?? null,
+        booking: {
+          ...(booking as any),
+          booking_code: (booking as any)?.booking_code || bookingCode,
+          bookingCode,
+          code: bookingCode,
+        },
         validated_town: derivedTown,
         service_town: effectiveTown,
         boundary_override_applied: boundaryOverrideApplied,
@@ -1111,7 +1119,6 @@ const boundaryOverrideRequested =
     );
   }
 }
-
 
 
 

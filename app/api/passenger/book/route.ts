@@ -1130,7 +1130,15 @@ const boundaryOverrideRequested =
       {
         ok: true,
         booking_code: bookingCode,
-        booking,
+        bookingCode,
+        code: bookingCode,
+        id: (booking as any)?.id ?? null,
+        booking: {
+          ...(booking as any),
+          booking_code: (booking as any)?.booking_code || bookingCode,
+          bookingCode,
+          code: bookingCode,
+        },
         validated_town: derivedTown,
         service_town: effectiveTown,
         boundary_override_applied: boundaryOverrideApplied,
@@ -1149,7 +1157,6 @@ const boundaryOverrideRequested =
     );
   }
 }
-
 
 
 
