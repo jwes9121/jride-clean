@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * app/ride/page.tsx
@@ -1676,11 +1676,16 @@ if (mapRef.current) {
     if (!bookingId) return;
     setFareBusy(true);
     try {
-      await postJson(
+      const resp = await postJson(
         "/api/rides/fare-response",
         { booking_id: bookingId, response: "accepted" },
         true,
       );
+      if (!resp.ok || resp.json?.ok === false) {
+        throw new Error(resp.json?.message || resp.json?.error || `HTTP ${resp.status}`);
+      }
+    } catch (e: any) {
+      setLiveErr(String(e?.message || e || "Fare response failed."));
     } finally {
       setFareBusy(false);
     }
@@ -1691,11 +1696,16 @@ if (mapRef.current) {
     if (!bookingId) return;
     setFareBusy(true);
     try {
-      await postJson(
+      const resp = await postJson(
         "/api/rides/fare-response",
         { booking_id: bookingId, response: "rejected" },
         true,
       );
+      if (!resp.ok || resp.json?.ok === false) {
+        throw new Error(resp.json?.message || resp.json?.error || `HTTP ${resp.status}`);
+      }
+    } catch (e: any) {
+      setLiveErr(String(e?.message || e || "Fare response failed."));
     } finally {
       setFareBusy(false);
     }
