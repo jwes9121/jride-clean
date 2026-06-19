@@ -101,6 +101,64 @@ const ACTIVE_RIDE_STATUSES = new Set([
   "on_trip",
 ]);
 
+async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: any, reason: string) {
+  const bookingCode = text(row?.booking_code);
+  const bookingId = text(row?.id);
+  const oldDriverId = text(row?.assigned_driver_id || row?.driver_id);
+  if ((!bookingCode && !bookingId) || !oldDriverId) return false;
+
+  const nowIso = new Date().toISOString();
+
+  let resetQuery = admin
+    .from("bookings")
+    .update({
+      status: "searching",
+      driver_id: null,
+      assigned_driver_id: null,
+      driver_accept_expires_at: null,
+      passenger_fare_response: null,
+      updated_at: nowIso,
+    })
+    .or(`assigned_driver_id.eq.${oldDriverId},driver_id.eq.${oldDriverId}`)
+    .in("status", ["assigned", "accepted"]);
+
+  resetQuery = bookingCode
+    ? resetQuery.eq("booking_code", bookingCode)
+    : resetQuery.eq("id", bookingId);
+
+  const resetRes = await resetQuery.select("id,booking_code").limit(1);
+  if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) return false;
+
+  const resetBookingCode = text((resetRes.data[0] as any)?.booking_code || bookingCode);
+  if (!resetBookingCode) return false;
+
+  try {
+    await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bookingCode: resetBookingCode,
+        excludeDriverId: oldDriverId,
+        autoReassignReason: reason,
+      }),
+      cache: "no-store",
+    });
+  } catch {}
+
+  return true;
+}
+
+function isExpiredAssignedRide(row: any) {
+  const status = normStatus(row?.status);
+  if (status !== "assigned") return false;
+  return isExpiredIso(row?.driver_accept_expires_at);
+}
+
+function isExpiredAcceptedRide(row: any) {
+  const status = normStatus(row?.status);
+  if (status !== "accepted") return false;
+  return minutesSince(row?.updated_at || row?.assigned_at || row?.created_at) >= 5;
+}
 export async function GET(req: NextRequest) {
   const admin = getAdmin();
   if (!admin) {
@@ -124,8 +182,35 @@ export async function GET(req: NextRequest) {
     return json(500, { ok: false, error: "BOOKINGS_READ_FAILED", message: bookingsRes.error.message });
   }
 
-  const rawBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
+  const initialBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
 
+  let sweptExpired = 0;
+  for (const row of initialBookings as any[]) {
+    if (isExpiredAssignedRide(row)) {
+      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_driver_accept_expired_dispatch_sweep");
+      if (didSweep) sweptExpired += 1;
+      continue;
+    }
+
+    if (isExpiredAcceptedRide(row)) {
+      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_fare_proposal_expired_dispatch_sweep");
+      if (didSweep) sweptExpired += 1;
+    }
+  }
+
+  let rawBookings = initialBookings;
+  if (sweptExpired > 0) {
+    const reread = await admin
+      .from("bookings")
+      .select("*")
+      .or("service_type.is.null,service_type.neq.takeout")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (!reread.error && Array.isArray(reread.data)) {
+      rawBookings = reread.data;
+    }
+  }
   const assignedDriverIds = Array.from(
     new Set(rawBookings.map((r: any) => text(r?.assigned_driver_id || r?.driver_id)).filter(Boolean))
   );
@@ -274,6 +359,7 @@ export async function GET(req: NextRequest) {
   return json(200, {
     ok: true,
     source: "app/api/admin/ride-dispatch/route.ts",
+    swept_expired: sweptExpired,
     filter,
     counts,
     rides: filtered,
