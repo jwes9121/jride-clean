@@ -37,6 +37,18 @@ type TakeoutOrder = {
   driver_callsign?: string | null;
   driver_vehicle_type?: string | null;
   vehicle_type?: string | null;
+  driver_status?: string | null;
+  takeout_route_plan?: string | null;
+  driver_lat?: number | string | null;
+  driver_lng?: number | string | null;
+  vendor_lat?: number | string | null;
+  vendor_lng?: number | string | null;
+  customer_lat?: number | string | null;
+  customer_lng?: number | string | null;
+  pickup_lat?: number | string | null;
+  pickup_lng?: number | string | null;
+  dropoff_lat?: number | string | null;
+  dropoff_lng?: number | string | null;
 };
 
 function normText(v: any): string {
@@ -60,7 +72,33 @@ function formatPhilippineDateTime(v: unknown): string {
     hour12: true,
   }).format(d);
 }
+type TakeoutMapPoint = {
+  lat: number;
+  lng: number;
+};
 
+function takeoutMapNum(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function takeoutMapPoint(lat: any, lng: any): TakeoutMapPoint | null {
+  const y = takeoutMapNum(lat);
+  const x = takeoutMapNum(lng);
+  if (y === null || x === null) return null;
+  return { lat: y, lng: x };
+}
+
+function takeoutMapsDirectionsUrl(origin: TakeoutMapPoint, destination: TakeoutMapPoint): string {
+  const params = new URLSearchParams({
+    api: "1",
+    origin: String(origin.lat) + "," + String(origin.lng),
+    destination: String(destination.lat) + "," + String(destination.lng),
+    travelmode: "driving",
+  });
+  return "https://www.google.com/maps/dir/?" + params.toString();
+}
 
 function toNum(v: any): number {
   const n = Number(v);
@@ -313,6 +351,27 @@ export default function TakeoutTrackPage() {
     const driverPhone = normText(order?.driver_phone);
     const driverVehicleType = normText(order?.driver_vehicle_type || order?.vehicle_type);
     const hasDriverIdentity = Boolean(assignedDriverId || driverName || driverPhone || driverVehicleType);
+        const driverStatus = normText(order?.driver_status || "").toLowerCase();
+    const routePlan = normText(order?.takeout_route_plan || order?.takeout_pricing_snapshot?.takeout_route_plan || order?.takeout_pricing_snapshot?.route_plan || "").toLowerCase();
+    const driverPoint = takeoutMapPoint(order?.driver_lat, order?.driver_lng);
+    const vendorPoint = takeoutMapPoint(order?.vendor_lat ?? order?.pickup_lat, order?.vendor_lng ?? order?.pickup_lng);
+    const customerPoint = takeoutMapPoint(order?.customer_lat ?? order?.dropoff_lat, order?.customer_lng ?? order?.dropoff_lng);
+    const cashFirstRoute = order?.takeout_cash_collection_required === true || routePlan === "customer_cash_first";
+    const alreadyPickedUp = ["picked_up", "delivering", "completed"].includes(progressStatus);
+    const cashAlreadyCollected = ["cash_collected", "vendor_bound", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].some((s) =>
+      [progressStatus, customerStatus, vendorStatus, driverStatus].includes(s)
+    );
+    const takeoutMapTarget = alreadyPickedUp
+      ? customerPoint
+      : cashFirstRoute && !cashAlreadyCollected
+        ? customerPoint
+        : vendorPoint;
+    const takeoutMapTargetLabel = alreadyPickedUp
+      ? "customer"
+      : cashFirstRoute && !cashAlreadyCollected
+        ? "customer"
+        : "vendor";
+    const takeoutMapUrl = driverPoint && takeoutMapTarget ? takeoutMapsDirectionsUrl(driverPoint, takeoutMapTarget) : "";
 
     return {
       pricingStatus,
@@ -341,6 +400,8 @@ export default function TakeoutTrackPage() {
       driverPhone,
       driverVehicleType,
       hasDriverIdentity,
+            takeoutMapUrl,
+      takeoutMapTargetLabel,
     };
     // nowTick keeps expiry text fresh without changing backend state.
   }, [order, nowTick]);
@@ -576,6 +637,16 @@ export default function TakeoutTrackPage() {
                 <div className="mt-1">{state.progressLabel}</div>
                 {state.vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {state.vendorStatus.replace(/_/g, " ")}</div> : null}
                 {state.customerStatus ? <div className="mt-1 text-slate-500">Customer status: {state.customerStatus.replace(/_/g, " ")}</div> : null}
+                                {state.takeoutMapUrl ? (
+                  <a
+                    href={state.takeoutMapUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex w-full items-center justify-center rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    View driver route to {state.takeoutMapTargetLabel}
+                  </a>
+                ) : null}
               </div>
             ) : null}
 
