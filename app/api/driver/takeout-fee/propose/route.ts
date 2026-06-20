@@ -447,7 +447,7 @@ export async function POST(req: NextRequest) {
     }
 
     const pricingStatus = lower(order.takeout_pricing_status || "pricing_pending");
-    const allowedPricingStates = new Set(["", "pricing_pending", "expired", "cancelled"]);
+    const allowedPricingStates = new Set(["", "pricing_pending", "expired", "cancelled", "waiting_driver_accept"]);
     if (!allowedPricingStates.has(pricingStatus)) {
       return json(409, { ok: false, error: "TAKEOUT_PRICING_NOT_OPEN", message: "Takeout order is not open for delivery fee proposal." });
     }
