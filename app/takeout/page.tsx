@@ -106,6 +106,18 @@ type TakeoutPricingOrder = {
     premium_packaging_fee?: number | string | null;
     [key: string]: any;
   } | null;
+  driver_status?: string | null;
+  takeout_route_plan?: string | null;
+  driver_lat?: number | string | null;
+  driver_lng?: number | string | null;
+  vendor_lat?: number | string | null;
+  vendor_lng?: number | string | null;
+  customer_lat?: number | string | null;
+  customer_lng?: number | string | null;
+  pickup_lat?: number | string | null;
+  pickup_lng?: number | string | null;
+  dropoff_lat?: number | string | null;
+  dropoff_lng?: number | string | null;
 };
 
 function normText(v: any): string {
@@ -114,6 +126,34 @@ function normText(v: any): string {
 
 function takeoutOrderId(o: TakeoutPricingOrder | null | undefined): string {
   return normText(o?.id || o?.booking_code || o?.code);
+}
+
+type TakeoutMapPoint = {
+  lat: number;
+  lng: number;
+};
+
+function takeoutMapNum(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function takeoutMapPoint(lat: any, lng: any): TakeoutMapPoint | null {
+  const y = takeoutMapNum(lat);
+  const x = takeoutMapNum(lng);
+  if (y === null || x === null) return null;
+  return { lat: y, lng: x };
+}
+
+function takeoutMapsDirectionsUrl(origin: TakeoutMapPoint, destination: TakeoutMapPoint): string {
+  const params = new URLSearchParams({
+    api: "1",
+    origin: String(origin.lat) + "," + String(origin.lng),
+    destination: String(destination.lat) + "," + String(destination.lng),
+    travelmode: "driving",
+  });
+  return "https://www.google.com/maps/dir/?" + params.toString();
 }
 
 function secondsUntil(value: any): number | null {
@@ -2634,6 +2674,27 @@ const contact = await fetchOptionalJson(
               );
               const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
               const readyToConfirm = !isOrderCompleted && !isOrderCancelled && status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+              const driverStatus = normText(order?.driver_status || "").toLowerCase();
+              const routePlan = normText(order?.takeout_route_plan || "").toLowerCase();
+              const driverPoint = takeoutMapPoint(order?.driver_lat, order?.driver_lng);
+              const vendorPoint = takeoutMapPoint(order?.vendor_lat ?? order?.pickup_lat, order?.vendor_lng ?? order?.pickup_lng);
+              const customerPoint = takeoutMapPoint(order?.customer_lat ?? order?.dropoff_lat, order?.customer_lng ?? order?.dropoff_lng);
+              const cashFirstRoute = order?.takeout_cash_collection_required === true || routePlan === "customer_cash_first";
+              const alreadyPickedUp = ["picked_up", "delivering", "completed"].includes(progressStatus);
+              const cashAlreadyCollected = ["cash_collected", "vendor_bound", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].some((s) =>
+                [progressStatus, customerStatus, vendorStatus, driverStatus].includes(s)
+              );
+              const takeoutMapTarget = alreadyPickedUp
+                ? customerPoint
+                : cashFirstRoute && !cashAlreadyCollected
+                  ? customerPoint
+                  : vendorPoint;
+              const takeoutMapTargetLabel = alreadyPickedUp
+                ? "customer"
+                : cashFirstRoute && !cashAlreadyCollected
+                  ? "customer"
+                  : "vendor";
+              const takeoutMapUrl = driverPoint && takeoutMapTarget ? takeoutMapsDirectionsUrl(driverPoint, takeoutMapTarget) : "";
 
               if (isOrderCompleted) {
                 return (
@@ -2740,6 +2801,20 @@ const contact = await fetchOptionalJson(
                       <div className="mt-1">{progressLabel}</div>
                       {vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {vendorStatus.replace(/_/g, " ")}</div> : null}
                       {customerStatus ? <div className="mt-1 text-slate-500">Customer status: {customerStatus.replace(/_/g, " ")}</div> : null}
+                      {takeoutMapUrl && !isOrderCompleted && !isOrderCancelled ? (
+                        <a
+                          href={takeoutMapUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 inline-flex w-full items-center justify-center rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                        >
+                          View driver route to {takeoutMapTargetLabel}
+                        </a>
+                      ) : !isOrderCompleted && !isOrderCancelled ? (
+                        <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-500">
+                          Driver map will appear once driver and destination coordinates are available.
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
 
