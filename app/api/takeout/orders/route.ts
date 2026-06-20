@@ -50,6 +50,10 @@ const TAKEOUT_ORDER_SELECT = [
   "vendor_cancel_reason",
   "takeout_route_plan",
   "takeout_pricing_snapshot",
+  "pickup_lat",
+  "pickup_lng",
+  "dropoff_lat",
+  "dropoff_lng",
   "created_at",
   "updated_at",
 ].join(",");
@@ -286,6 +290,11 @@ export async function GET(req: NextRequest) {
         driver_lat: location?.lat != null && Number.isFinite(Number(location.lat)) ? Number(location.lat) : null,
         driver_lng: location?.lng != null && Number.isFinite(Number(location.lng)) ? Number(location.lng) : null,
         driver_last_seen_at: location?.updated_at || null,
+
+        vendor_lat: row?.pickup_lat != null && Number.isFinite(Number(row.pickup_lat)) ? Number(row.pickup_lat) : null,
+        vendor_lng: row?.pickup_lng != null && Number.isFinite(Number(row.pickup_lng)) ? Number(row.pickup_lng) : null,
+        customer_lat: row?.dropoff_lat != null && Number.isFinite(Number(row.dropoff_lat)) ? Number(row.dropoff_lat) : null,
+        customer_lng: row?.dropoff_lng != null && Number.isFinite(Number(row.dropoff_lng)) ? Number(row.dropoff_lng) : null,
       };
     });
 
