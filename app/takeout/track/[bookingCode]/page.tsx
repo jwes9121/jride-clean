@@ -467,32 +467,32 @@ export default function TakeoutTrackPage() {
               </div>
             ) : null}
 
-            <div className="rounded border bg-slate-50 p-3">
+            <div className="rounded border border-slate-300 bg-white p-3 text-slate-900">
               <div className="flex justify-between gap-3">
-                <span className="text-slate-600">Pricing status</span>
+                <span className="text-slate-800">Pricing status</span>
                 <span className="font-semibold">{state.pricingStatus.replace(/_/g, " ")}</span>
               </div>
               <div className="mt-1 flex justify-between gap-3">
-                <span className="text-slate-600">Order progress</span>
+                <span className="text-slate-800">Order progress</span>
                 <span className="font-semibold">{state.progressLabel}</span>
               </div>
               <div className="mt-1 flex justify-between gap-3">
-                <span className="text-slate-600">Food subtotal</span>
+                <span className="text-slate-800">Food subtotal</span>
                 <span>{money(state.foodSubtotal)}</span>
               </div>
               {state.packagingSubtotal > 0 ? (
                 <div className="mt-1 flex justify-between gap-3">
-                  <span className="text-slate-600">Premium packaging</span>
+                  <span className="text-slate-800">Premium packaging</span>
                   <span>{money(state.packagingSubtotal)}</span>
                 </div>
               ) : null}
               <div className="mt-1 flex justify-between gap-3">
-                <span className="text-slate-600">Delivery fee</span>
-                <span>{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.displayDeliveryFee > 0 ? money(state.displayDeliveryFee) : "Waiting for delivery quote"}</span>
+                <span className="text-slate-800">Delivery fee</span>
+                <span className="font-bold text-slate-950">{order && isVendorAcceptTimeout(order) ? "Not applicable" : state.displayDeliveryFee > 0 ? money(state.displayDeliveryFee) : "Waiting for delivery quote"}</span>
               </div>
                             {state.pickupExcessFee > 0 ? (
                 <div className="mt-1 flex justify-between gap-3">
-                  <span className="text-slate-600">Pickup distance fee</span>
+                  <span className="text-slate-800">Pickup distance fee</span>
                   <span>{money(state.pickupExcessFee)}</span>
                 </div>
               ) : null}
@@ -504,7 +504,7 @@ export default function TakeoutTrackPage() {
 
                   <div className="mt-2 space-y-1">
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">
+                      <span className="text-slate-800">
                         Nearest available driver road distance
                       </span>
                       <span>
@@ -515,7 +515,7 @@ export default function TakeoutTrackPage() {
                     </div>
 
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">
+                      <span className="text-slate-900">
                         Free pickup allowance
                       </span>
                       <span>
@@ -526,7 +526,7 @@ export default function TakeoutTrackPage() {
                     </div>
 
                     <div className="flex justify-between gap-3">
-                      <span className="text-slate-600">
+                      <span className="text-slate-900">
                         Billable pickup distance
                       </span>
                       <span>
@@ -562,7 +562,7 @@ export default function TakeoutTrackPage() {
               ) : null}
               <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-base">
                 <span className="font-semibold">Total payable</span>
-                <span className="font-bold">{order && isVendorAcceptTimeout(order) ? "Order expired" : state.totalPayable > 0 ? money(state.totalPayable) : "Pending"}</span>
+                <span className="font-black text-slate-950">{order && isVendorAcceptTimeout(order) ? "Order expired" : state.totalPayable > 0 ? money(state.totalPayable) : "Pending"}</span>
               </div>
               {order?.takeout_cash_collection_required === true ? (
                 <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Cash collection required before vendor pickup.</div>
@@ -585,7 +585,7 @@ export default function TakeoutTrackPage() {
   </div>
 ) : null}
               {state.pricingStatus === "driver_fee_proposed" && !state.isCompleted && !state.isCancelled ? (
-                <div className="mt-2 text-xs text-slate-600">Proposal expires in: <span className="font-semibold">{state.expiresIn === null ? "--" : String(state.expiresIn) + " sec"}</span></div>
+                <div className="mt-2 rounded border border-rose-200 bg-rose-50 p-2 text-xs font-semibold text-rose-900">Proposal expires in: <span className="font-semibold">{state.expiresIn === null ? "--" : String(state.expiresIn) + " sec"}</span></div>
               ) : null}
             </div>
 
