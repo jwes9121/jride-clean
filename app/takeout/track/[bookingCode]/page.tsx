@@ -97,7 +97,7 @@ function takeoutMapsDirectionsUrl(origin: TakeoutMapPoint, destination: TakeoutM
     destination: String(destination.lat) + "," + String(destination.lng),
     travelmode: "driving",
   });
-  return "https://www.google.com/maps/dir/?" + params.toString();
+  return "https://maps.google.com/maps?saddr=" + encodeURIComponent(String(origin.lat) + "," + String(origin.lng)) + "&daddr=" + encodeURIComponent(String(destination.lat) + "," + String(destination.lng)) + "&dirflg=d";
 }
 
 function toNum(v: any): number {
