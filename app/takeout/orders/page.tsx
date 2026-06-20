@@ -186,9 +186,9 @@ export default function TakeoutOrdersPage() {
             {activeOrders.map((order) => (
               <Link
                 key={order.id}
-                href={`/takeout/orders/${encodeURIComponent(
-                  order.booking_code
-                )}`}
+                href={`/takeout/track/${encodeURIComponent(
+  order.booking_code
+)}`}
                 className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm transition hover:border-sky-200 hover:bg-sky-50"
               >
                 <div className="flex flex-col">
@@ -234,9 +234,9 @@ export default function TakeoutOrdersPage() {
             {pastOrders.map((order) => (
               <Link
                 key={order.id}
-                href={`/takeout/orders/${encodeURIComponent(
-                  order.booking_code
-                )}`}
+                href={`/takeout/track/${encodeURIComponent(
+  order.booking_code
+)}`}
                 className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm transition hover:border-sky-200 hover:bg-sky-50"
               >
                 <div className="flex flex-col">
