@@ -2801,6 +2801,9 @@ const contact = await fetchOptionalJson(
                       <div className="mt-1">{progressLabel}</div>
                       {vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {vendorStatus.replace(/_/g, " ")}</div> : null}
                       {customerStatus ? <div className="mt-1 text-slate-500">Customer status: {customerStatus.replace(/_/g, " ")}</div> : null}
+                      <div className="mt-1 text-[10px] text-red-600">
+  mapdiag url={takeoutMapUrl ? "yes" : "no"} driver={driverPoint ? "yes" : "no"} vendor={vendorPoint ? "yes" : "no"} customer={customerPoint ? "yes" : "no"} done={isOrderCompleted ? "yes" : "no"} cancelled={isOrderCancelled ? "yes" : "no"}
+</div>
                       {takeoutMapUrl && !isOrderCompleted && !isOrderCancelled ? (
                         <a
                           href={takeoutMapUrl}
