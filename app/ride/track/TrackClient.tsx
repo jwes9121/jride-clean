@@ -8,6 +8,7 @@ type TrackResponse = {
   ok?: boolean;
   booking_code?: string | null;
   status?: string | null;
+  passenger_fare_response?: string | null;
   id?: string | null;
   booking_id?: string | null;
 
@@ -86,8 +87,10 @@ function normStatus(v: unknown): string {
   return String(v ?? "").trim().toLowerCase();
 }
 
-function statusMessage(statusRaw: unknown): string {
+function statusMessage(statusRaw: unknown, passengerFareResponse?: unknown): string {
   const st = normStatus(statusRaw);
+  const fareRejected = String(passengerFareResponse ?? "").trim().toLowerCase() === "rejected";
+  if (st === "searching" && fareRejected) return "Fare proposal was rejected. Searching for another driver.";
   if (st === "searching") return "Looking for a nearby driver.";
   if (st === "assigned") return "A driver has been assigned to your booking.";
   if (st === "accepted") return "Your driver accepted the booking.";
@@ -437,7 +440,7 @@ export default function TrackClient({ code }: { code?: string }) {
       {data ? (
         <div className={`rounded-xl border p-4 text-sm shadow-sm ${bannerClass}`}>
           <div className="font-semibold">Current trip status</div>
-          <div className="mt-1">{statusMessage(liveStatus)}</div>
+          <div className="mt-1">{statusMessage(liveStatus, data?.passenger_fare_response)}</div>
           <div className="mt-2 text-[11px] opacity-75">Status: {liveStatus || "--"}</div>
         </div>
       ) : null}

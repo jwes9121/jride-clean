@@ -137,6 +137,7 @@ type TrackPayload = {
   ok?: boolean;
   booking_code?: string;
   status?: string;
+  passenger_fare_response?: string | null;
   passenger_name?: string | null;
   town?: string | null;
   from_label?: string | null;
@@ -419,8 +420,10 @@ function statusIndex(status: string): number {
   return (STATUS_STEPS as readonly string[]).indexOf(st);
 }
 
-function statusMessage(statusRaw: unknown): string {
+function statusMessage(statusRaw: unknown, passengerFareResponse?: unknown): string {
   const st = normStatus(statusRaw);
+  const fareRejected = String(passengerFareResponse ?? "").trim().toLowerCase() === "rejected";
+  if (st === "searching" && fareRejected) return "Fare proposal was rejected. Searching for another driver.";
   if (st === "searching") return "Looking for a nearby driver.";
   if (st === "assigned") return "A driver has been assigned to your booking.";
   if (st === "accepted") return "Your driver accepted the booking.";
@@ -2110,7 +2113,7 @@ if (mapRef.current) {
     );
   }
 
-  const bannerMsg = activeCode ? statusMessage(liveStatus) : "";
+  
   const bannerTn = activeCode ? statusTone(liveStatus) : "slate";
 
   const hasPickupPoint =
@@ -2119,6 +2122,7 @@ if (mapRef.current) {
     numOrNull(dropLat) !== null && numOrNull(dropLng) !== null;
 
   const lb = liveBooking as TrackPayload | null;
+  const bannerMsg = activeCode ? statusMessage(liveStatus, lb?.passenger_fare_response) : "";
 
   const proposedFareValue = numValue(lb?.proposed_fare);
   const verifiedFareValue = numValue(lb?.verified_fare);
