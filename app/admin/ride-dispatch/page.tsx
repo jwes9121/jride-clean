@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -174,6 +174,30 @@ export default function RideDispatchPage() {
     }
   }
 
+  async function cancelRide(ride: RideRow) {
+    const bookingCode = ride.booking_code || "";
+    if (!bookingCode) {
+      setLastAction("Missing booking code.");
+      return;
+    }
+
+    const label = ride.booking_code || ride.id;
+    const ok = window.confirm(`Cancel ride ${label}? This will stop assignment and mark the ride as cancelled.`);
+    if (!ok) return;
+
+    setLastAction("Cancelling ride...");
+    try {
+      await postJson("/api/admin/ride-dispatch", {
+        action: "cancel_ride",
+        bookingCode,
+      });
+      setLastAction("Ride cancelled.");
+      await load();
+    } catch (err: any) {
+      setLastAction(err?.message || "Cancel failed");
+    }
+  }
+
   const counts = useMemo(() => {
     const next: Record<string, number> = {};
     for (const f of FILTERS) next[f] = 0;
@@ -314,6 +338,20 @@ export default function RideDispatchPage() {
                           </div>
                           <div className="mt-2 text-xs text-slate-500">
                             Assignment is allowed for searching or assigned rides only.
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-red-700">Admin cancel</div>
+                          <button
+                            className="w-full rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                            onClick={() => cancelRide(ride)}
+                            disabled={!ACTIVE.has(status)}
+                          >
+                            Cancel Ride
+                          </button>
+                          <div className="mt-2 text-xs text-red-700">
+                            Cancellation is terminal and will not requeue the ride.
                           </div>
                         </div>
                       </div>

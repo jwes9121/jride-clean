@@ -231,6 +231,102 @@ function isExpiredAcceptedRide(row: any) {
   if (status !== "accepted") return false;
   return minutesSince(row?.updated_at || row?.assigned_at || row?.created_at) >= 5;
 }
+
+export async function POST(req: NextRequest) {
+  const admin = getAdmin();
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing Supabase service role config.",
+    });
+  }
+
+  let body: any = null;
+  try {
+    body = await req.json();
+  } catch {
+    return json(400, { ok: false, error: "BAD_JSON", message: "Invalid JSON body." });
+  }
+
+  const action = text(body?.action).toLowerCase();
+  if (action !== "cancel_ride") {
+    return json(400, { ok: false, error: "BAD_ACTION", message: "Unsupported ride dispatch action." });
+  }
+
+  const bookingCode = text(body?.bookingCode || body?.booking_code);
+  const bookingId = text(body?.bookingId || body?.booking_id || body?.id);
+  if (!bookingCode && !bookingId) {
+    return json(400, { ok: false, error: "MISSING_BOOKING", message: "Missing booking code or booking id." });
+  }
+
+  let readQuery = admin
+    .from("bookings")
+    .select("id,booking_code,status,service_type,assigned_driver_id,driver_id")
+    .limit(1);
+
+  readQuery = bookingCode ? readQuery.eq("booking_code", bookingCode) : readQuery.eq("id", bookingId);
+  const readRes = await readQuery;
+
+  if (readRes.error) {
+    return json(500, { ok: false, error: "BOOKING_READ_FAILED", message: readRes.error.message });
+  }
+
+  const row = Array.isArray(readRes.data) ? readRes.data[0] : null;
+  if (!row?.id) {
+    return json(404, { ok: false, error: "BOOKING_NOT_FOUND", message: "Ride booking not found." });
+  }
+
+  const serviceType = text(row?.service_type).toLowerCase();
+  if (serviceType === "takeout") {
+    return json(409, { ok: false, error: "NOT_RIDE_BOOKING", message: "Use Takeout Dispatch to cancel takeout orders." });
+  }
+
+  const currentStatus = normStatus(row?.status);
+  if (currentStatus === "completed" || currentStatus === "cancelled") {
+    return json(409, {
+      ok: false,
+      error: "RIDE_NOT_CANCELLABLE",
+      message: `Ride is already ${currentStatus}.`,
+      booking: row,
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  const patch: Record<string, any> = {
+    status: "cancelled",
+    driver_id: null,
+    assigned_driver_id: null,
+    assigned_at: null,
+    driver_accept_expires_at: null,
+    passenger_fare_response: null,
+    updated_at: nowIso,
+  };
+
+  const updateRes = await admin
+    .from("bookings")
+    .update(patch)
+    .eq("id", row.id)
+    .not("status", "in", "(completed,cancelled,canceled)")
+    .select("id,booking_code,status,driver_id,assigned_driver_id,updated_at")
+    .limit(1);
+
+  if (updateRes.error) {
+    return json(500, { ok: false, error: "RIDE_CANCEL_FAILED", message: updateRes.error.message });
+  }
+
+  const updated = Array.isArray(updateRes.data) ? updateRes.data[0] : null;
+  if (!updated?.id) {
+    return json(409, { ok: false, error: "RIDE_CANCEL_NOT_APPLIED", message: "Ride could not be cancelled in its current state." });
+  }
+
+  return json(200, {
+    ok: true,
+    action: "cancel_ride",
+    booking: updated,
+  });
+}
+
 export async function GET(req: NextRequest) {
   const admin = getAdmin();
   if (!admin) {
