@@ -2508,7 +2508,7 @@ if (mapRef.current) {
                                     : "text-slate-300 hover:text-amber-300")
                                 }
                               >
-                                {active ? "★" : "☆"}
+                                {active ? "â˜…" : "â˜†"}
                               </button>
                             );
                           })}
@@ -2925,7 +2925,7 @@ if (mapRef.current) {
                   onChange={(e) => setFeesAck(e.target.checked)}
                   className="rounded"
                 />
-                I understand the fare shown
+                I understand pickup fees apply beyond 1.5 km.
               </label>
             </div>
 
