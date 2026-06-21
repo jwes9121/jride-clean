@@ -18,6 +18,42 @@ function noStoreHeaders() {
   };
 }
 
+async function retryAutoAssign(req: Request, rejectedDriverId: string) {
+  if (!rejectedDriverId) {
+    return { attempted: false, skipped: true, reason: "NO_REJECTED_DRIVER_ID" };
+  }
+
+  try {
+    const url = new URL("/api/dispatch/auto-assign", req.url);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        mode: "scan_requested",
+        trigger_reason: "passenger_fare_rejected_exclude_driver",
+        exclude_driver_ids: [rejectedDriverId],
+      }),
+      cache: "no-store",
+    });
+
+    const payload = await res.json().catch(() => null);
+    return {
+      attempted: true,
+      ok: res.ok,
+      status: res.status,
+      excluded_driver_ids: [rejectedDriverId],
+      result: payload,
+    };
+  } catch (e: any) {
+    return {
+      attempted: true,
+      ok: false,
+      excluded_driver_ids: [rejectedDriverId],
+      error: String(e?.message ?? e),
+    };
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createClient();
@@ -90,6 +126,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const rejectedDriverId = text(
+      (booking as any).assigned_driver_id || (booking as any).driver_id
+    );
+
     const updatePayload: Record<string, unknown> = {
       passenger_fare_response: "rejected",
       proposed_fare: null,
@@ -119,19 +159,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let reassignResult: any = null;
-    try {
-      const { data: rpcData, error: rpcErr } = await supabase.rpc(
-        "assign_nearest_driver_for_booking",
-        { p_booking_code: (booking as any).booking_code }
-      );
-
-      reassignResult = rpcErr
-        ? { ok: false, error: rpcErr.message }
-        : rpcData;
-    } catch (e: any) {
-      reassignResult = { ok: false, error: String(e?.message ?? e) };
-    }
+    const reassignResult = await retryAutoAssign(req, rejectedDriverId);
 
     return NextResponse.json(
       {
@@ -139,6 +167,8 @@ export async function POST(req: Request) {
         booking_code: (booking as any).booking_code,
         booking_id: (booking as any).id,
         status: "searching",
+        passenger_fare_response: "rejected",
+        rejected_driver_id: rejectedDriverId || null,
         reassign: reassignResult,
       },
       { status: 200, headers: noStoreHeaders() }
