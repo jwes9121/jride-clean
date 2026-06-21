@@ -2533,7 +2533,7 @@ const contact = await fetchOptionalJson(
               {deliveryPin ? (
                 <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Add a landmark in the address box if needed.</div>
               ) : (
-                <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+                <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] font-semibold text-amber-900">
   Set your delivery location before placing the order so the driver can navigate to the correct destination.
 </div>
               )}
