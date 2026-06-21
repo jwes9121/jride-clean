@@ -2533,7 +2533,9 @@ const contact = await fetchOptionalJson(
               {deliveryPin ? (
                 <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Add a landmark in the address box if needed.</div>
               ) : (
-                <div className="mt-2 text-[11px] text-red-600">No delivery spot marked yet. Set the exact delivery pin before placing the order.</div>
+                <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+  Set your delivery location before placing the order so the driver can navigate to the correct destination.
+</div>
               )}
               {showDeliveryPin ? (
                 <div className="mt-3">
@@ -2542,9 +2544,7 @@ const contact = await fetchOptionalJson(
               ) : null}
             </div>
 
-            <div className="mt-2 text-[11px] text-slate-500">
-              Device key: <code>{deviceKey || "..."}</code>
-            </div>
+            
           </div>
 
           
@@ -2574,7 +2574,11 @@ const contact = await fetchOptionalJson(
               <div className="text-base font-black text-slate-900">{money(estimatedSubtotalWithPackaging)}</div>
             </div>
           </div>
-
+	  {selectedLines.length === 0 ? (
+  <div className="mb-2 text-center text-[11px] font-medium text-slate-500">
+    Add at least one item to continue.
+  </div>
+) : null}
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <button
               type="button"
