@@ -697,13 +697,19 @@ export async function POST(req: NextRequest) {
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";
-    const shouldRetry = becameOnline || recoveredFromStaleOnline;
+    const onlineFreshPing =
+      status === "online" &&
+      Number.isFinite(finalLat as any) &&
+      Number.isFinite(finalLng as any) &&
+      finalLat !== 0 &&
+      finalLng !== 0;
+    const shouldRetry = becameOnline || recoveredFromStaleOnline || onlineFreshPing;
 
     let retryResult: any = {
       attempted: false,
       ok: false,
       skipped: true,
-      reason: "NOT_ONLINE_EDGE_OR_STALE_RECOVERY",
+      reason: "NOT_ONLINE_OR_NO_VALID_COORDS",
     };
 
     if (shouldRetry) {
@@ -712,7 +718,11 @@ export async function POST(req: NextRequest) {
         "NEXT_PUBLIC_BASE_URL",
         "NEXTAUTH_URL",
       ]);
-      const triggerReason = becameOnline ? "became_online" : "recovered_from_stale_online";
+      const triggerReason = becameOnline
+        ? "became_online"
+        : recoveredFromStaleOnline
+          ? "recovered_from_stale_online"
+          : "online_fresh_ping";
       retryResult = await triggerRetryAutoAssign(baseUrl, triggerReason);
     }
 
