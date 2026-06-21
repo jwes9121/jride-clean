@@ -77,7 +77,6 @@ export async function GET() {
     "vendor_location_label",
     "accepting_orders",
     "logo_url",
-    "updated_at",
     "created_at",
   ].join(",");
 
@@ -112,7 +111,7 @@ export async function GET() {
         location_label: pickLabel(row),
         accepting_orders: row?.accepting_orders === true,
         logo_url: cleanString(row?.logo_url) || null,
-        updated_at: row?.updated_at || row?.created_at || null,
+        updated_at: row?.created_at || null,
       };
     })
     .filter((v: any) => {
