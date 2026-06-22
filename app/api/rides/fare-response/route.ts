@@ -54,7 +54,7 @@ function noStoreHeaders() {
   };
 }
 
-async function retryAutoAssign(req: NextRequest, rejectedDriverId: string) {
+async function retryAutoAssign(req: NextRequest, rejectedDriverId: string, bookingId: string) {
   if (!rejectedDriverId) {
     return { attempted: false, skipped: true, reason: "NO_REJECTED_DRIVER_ID" };
   }
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
 
     const updated = updatedRows?.[0] ?? null;
     const reassignResult = action === "rejected"
-      ? await retryAutoAssign(req, rejectedDriverId)
+      ? await retryAutoAssign(req, rejectedDriverId, String(updated?.id || ""))
       : null;
 
     return NextResponse.json(
