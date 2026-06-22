@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * app/ride/page.tsx
@@ -2512,7 +2512,7 @@ if (mapRef.current) {
                                     : "text-slate-300 hover:text-amber-300")
                                 }
                               >
-                                {active ? "â˜…" : "â˜†"}
+                                {active ? "Ã¢Ëœâ€¦" : "Ã¢Ëœâ€ "}
                               </button>
                             );
                           })}
@@ -3083,3 +3083,4 @@ if (mapRef.current) {
     </main>
   );
 }
+
