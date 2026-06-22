@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerSupabase } from "@/utils/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -54,7 +54,7 @@ function noStoreHeaders() {
   };
 }
 
-async function retryAutoAssign(req: NextRequest, rejectedDriverId: string, bookingId: string) {
+async function retryAutoAssign(req: NextRequest, rejectedDriverId: string) {
   if (!rejectedDriverId) {
     return { attempted: false, skipped: true, reason: "NO_REJECTED_DRIVER_ID" };
   }
@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
     }
 
     const reassignResult = action === "rejected"
-      ? await retryAutoAssign(req, rejectedDriverId, String((updated as any).id))
+      ? await retryAutoAssign(req, rejectedDriverId)
       : null;
 
     return NextResponse.json(
@@ -270,3 +270,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
