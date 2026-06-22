@@ -54,6 +54,44 @@ function noStoreHeaders() {
   };
 }
 
+async function retryAutoAssign(req: NextRequest, rejectedDriverId: string) {
+  if (!rejectedDriverId) {
+    return { attempted: false, skipped: true, reason: "NO_REJECTED_DRIVER_ID" };
+  }
+
+  try {
+    const autoAssignUrl = new URL("/api/dispatch/auto-assign", req.url);
+    const autoAssignRes = await fetch(autoAssignUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        mode: "scan_requested",
+        trigger_reason: "fare_rejected_exclude_driver",
+        exclude_driver_ids: [rejectedDriverId],
+      }),
+      cache: "no-store",
+    });
+
+    const payload = await autoAssignRes.json().catch(() => null);
+    return {
+      attempted: true,
+      ok: autoAssignRes.ok,
+      status: autoAssignRes.status,
+      excluded_driver_ids: [rejectedDriverId],
+      result: payload,
+    };
+  } catch (e: any) {
+    return {
+      attempted: true,
+      ok: false,
+      excluded_driver_ids: [rejectedDriverId],
+      error: String(e?.message ?? e),
+    };
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -147,6 +185,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const rejectedDriverId = text(
+      (booking as any).assigned_driver_id || (booking as any).driver_id
+    );
+
     const nowIso = new Date().toISOString();
     const updatePayload =
       action === "accepted"
@@ -183,6 +225,9 @@ export async function POST(req: NextRequest) {
     }
 
     const updated = updatedRows?.[0] ?? null;
+    const reassignResult = action === "rejected"
+      ? await retryAutoAssign(req, rejectedDriverId)
+      : null;
 
     return NextResponse.json(
       {
@@ -194,6 +239,8 @@ export async function POST(req: NextRequest) {
         driver_id: updated?.driver_id ?? null,
         assigned_driver_id: updated?.assigned_driver_id ?? null,
         updated_at: updated?.updated_at ?? nowIso,
+        rejected_driver_id: action === "rejected" ? rejectedDriverId || null : null,
+        reassign: reassignResult,
       },
       { status: 200, headers: noStoreHeaders() }
     );
