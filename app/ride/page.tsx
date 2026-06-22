@@ -2610,6 +2610,95 @@ if (mapRef.current) {
             )}
           </div>
         )}
+	{recentTrips.length > 0 && (
+              <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Recent trips
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Last 7 days on this device, up to 10 trips.
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {recentTrips.map((trip) => (
+                    <div
+                      key={trip.booking_code}
+                      className="rounded-3xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold text-slate-900">
+                            {trip.from_label || "--"} {"->"}{" "}
+                            {trip.to_label || "--"}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {fmtDate(
+                              trip.completed_at ||
+                                trip.updated_at ||
+                                trip.saved_at,
+                            )}{" "}
+                            | {trip.driver_name || "Driver pending"} |{" "}
+                            {trip.status}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            Code:{" "}
+                            <span className="font-mono">
+                              {trip.booking_code}
+                            </span>{" "}
+                            | Total:{" "}
+                            {typeof trip.total === "number"
+                              ? money(trip.total)
+                              : "--"}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!isRealBookingCode(trip.booking_code)) return;
+                              storedSet(trip.booking_code);
+                              setActiveCode(trip.booking_code);
+                              if (typeof window !== "undefined") {
+                                const url = new URL(window.location.href);
+                                url.searchParams.set("code", trip.booking_code);
+                                window.history.replaceState(
+                                  {},
+                                  "",
+                                  url.toString(),
+                                );
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }
+                            }}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            View receipt
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleClear();
+                              setTown(trip.town || town);
+                              setPassengerName(
+                                (prev) => prev || trip.passenger_name || "",
+                              );
+                              setFromLabel(trip.from_label || "");
+                              setToLabel(trip.to_label || "");
+                            }}
+                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-400"
+                          >
+                            Book again
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
         {!activeCode && (
           <div className="space-y-4">
@@ -2988,95 +3077,7 @@ if (mapRef.current) {
               </div>
             )}
 
-            {recentTrips.length > 0 && (
-              <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    Recent trips
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Last 7 days on this device, up to 10 trips.
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {recentTrips.map((trip) => (
-                    <div
-                      key={trip.booking_code}
-                      className="rounded-3xl border border-slate-100 bg-slate-50/70 p-4 shadow-sm"
-                    >
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="space-y-1">
-                          <div className="text-sm font-semibold text-slate-900">
-                            {trip.from_label || "--"} {"->"}{" "}
-                            {trip.to_label || "--"}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {fmtDate(
-                              trip.completed_at ||
-                                trip.updated_at ||
-                                trip.saved_at,
-                            )}{" "}
-                            | {trip.driver_name || "Driver pending"} |{" "}
-                            {trip.status}
-                          </div>
-                          <div className="text-xs text-slate-600">
-                            Code:{" "}
-                            <span className="font-mono">
-                              {trip.booking_code}
-                            </span>{" "}
-                            | Total:{" "}
-                            {typeof trip.total === "number"
-                              ? money(trip.total)
-                              : "--"}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!isRealBookingCode(trip.booking_code)) return;
-                              storedSet(trip.booking_code);
-                              setActiveCode(trip.booking_code);
-                              if (typeof window !== "undefined") {
-                                const url = new URL(window.location.href);
-                                url.searchParams.set("code", trip.booking_code);
-                                window.history.replaceState(
-                                  {},
-                                  "",
-                                  url.toString(),
-                                );
-                                window.scrollTo({ top: 0, behavior: "smooth" });
-                              }
-                            }}
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            View receipt
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleClear();
-                              setTown(trip.town || town);
-                              setPassengerName(
-                                (prev) => prev || trip.passenger_name || "",
-                              );
-                              setFromLabel(trip.from_label || "");
-                              setToLabel(trip.to_label || "");
-                            }}
-                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-400"
-                          >
-                            Book again
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            
           </div>
         )}
       </div>
