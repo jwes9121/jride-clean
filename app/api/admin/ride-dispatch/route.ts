@@ -105,6 +105,7 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
   const bookingCode = text(row?.booking_code);
   const bookingId = text(row?.id);
   const oldDriverId = text(row?.assigned_driver_id || row?.driver_id);
+
   if ((!bookingCode && !bookingId) || !oldDriverId) {
     debug.push({ step: "missing_required", booking_code: bookingCode, booking_id: bookingId, old_driver_id: oldDriverId, reason });
     return false;
@@ -121,38 +122,6 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
     reason,
   });
 
-  const currentStatus = normStatus(row?.status);
-
-  if (currentStatus === "assigned") {
-    try {
-      const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          bookingCode: bookingCode,
-          excludeDriverId: oldDriverId,
-          autoReassignReason: reason,
-        }),
-        cache: "no-store",
-      });
-
-      debug.push({
-        step: "assign_direct_for_expired_assigned",
-        booking_code: bookingCode,
-        status: assignRes.status,
-      });
-
-      return assignRes.ok;
-    } catch (e: any) {
-      debug.push({
-        step: "assign_direct_failed",
-        booking_code: bookingCode,
-        error: String(e?.message || e || "unknown"),
-      });
-      return false;
-    }
-  }
-
   const nowIso = new Date().toISOString();
 
   let resetQuery = admin
@@ -161,7 +130,12 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
       status: "searching",
       driver_id: null,
       assigned_driver_id: null,
+      assigned_at: null,
       driver_accept_expires_at: null,
+      proposed_fare: null,
+      verified_fare: null,
+      pickup_distance_fee: null,
+      driver_to_pickup_km: null,
       passenger_fare_response: null,
       updated_at: nowIso,
     })
@@ -171,7 +145,8 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
     ? resetQuery.eq("booking_code", bookingCode)
     : resetQuery.eq("id", bookingId);
 
-  const resetRes = await resetQuery.select("id,booking_code").limit(1);
+  const resetRes = await resetQuery.select("id,booking_code,status,driver_id,assigned_driver_id").limit(1);
+
   if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
     debug.push({
       step: "reset_failed",
@@ -183,36 +158,39 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
     return false;
   }
 
+  const resetBookingCode = text((resetRes.data[0] as any)?.booking_code || bookingCode);
+
   debug.push({
     step: "reset_ok",
-    booking_code: bookingCode,
+    booking_code: resetBookingCode,
     reset_count: resetRes.data.length,
+    reset_row: resetRes.data[0],
   });
 
-  const resetBookingCode = text((resetRes.data[0] as any)?.booking_code || bookingCode);
   if (!resetBookingCode) return false;
 
-  const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    bookingCode: resetBookingCode,
-    excludeDriverId: oldDriverId,
-    autoReassignReason: reason,
-  }),
-  cache: "no-store",
-});
+  try {
+    const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        bookingCode: resetBookingCode,
+        excludeDriverId: oldDriverId,
+        autoReassignReason: reason,
+      }),
+      cache: "no-store",
+    });
 
-const assignPayload = await assignRes.json().catch(() => null);
+    const assignPayload = await assignRes.json().catch(() => null);
 
-debug.push({
-  step: "assign_called",
-  booking_code: resetBookingCode,
-  excluded_driver_id: oldDriverId,
-  status: assignRes.status,
-  ok: assignRes.ok,
-  result: assignPayload,
-});
+    debug.push({
+      step: "assign_called",
+      booking_code: resetBookingCode,
+      excluded_driver_id: oldDriverId,
+      status: assignRes.status,
+      ok: assignRes.ok,
+      result: assignPayload,
+    });
   } catch (e: any) {
     debug.push({
       step: "assign_call_failed",
@@ -223,7 +201,6 @@ debug.push({
 
   return true;
 }
-
 function isExpiredAssignedRide(row: any) {
   const status = normStatus(row?.status);
   if (status !== "assigned") return false;
