@@ -192,23 +192,27 @@ async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: an
   const resetBookingCode = text((resetRes.data[0] as any)?.booking_code || bookingCode);
   if (!resetBookingCode) return false;
 
-  try {
-    const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        bookingCode: resetBookingCode,
-        excludeDriverId: oldDriverId,
-        autoReassignReason: reason,
-      }),
-      cache: "no-store",
-    });
+  const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    bookingCode: resetBookingCode,
+    excludeDriverId: oldDriverId,
+    autoReassignReason: reason,
+  }),
+  cache: "no-store",
+});
 
-    debug.push({
-      step: "assign_called",
-      booking_code: resetBookingCode,
-      status: assignRes.status,
-    });
+const assignPayload = await assignRes.json().catch(() => null);
+
+debug.push({
+  step: "assign_called",
+  booking_code: resetBookingCode,
+  excluded_driver_id: oldDriverId,
+  status: assignRes.status,
+  ok: assignRes.ok,
+  result: assignPayload,
+});
   } catch (e: any) {
     debug.push({
       step: "assign_call_failed",
