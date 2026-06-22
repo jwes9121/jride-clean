@@ -475,12 +475,13 @@ async function matchSingle(
   const { error: updateError } = await supabase
     .from("bookings")
     .update({
-      driver_id: chosen.driver_id,
-      assigned_driver_id: chosen.driver_id,
-      status: "assigned",
-      assigned_at: nowIso,
-      updated_at: nowIso,
-    })
+  driver_id: chosen.driver_id,
+  assigned_driver_id: chosen.driver_id,
+  status: "assigned",
+  assigned_at: nowIso,
+  driver_accept_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  updated_at: nowIso,
+})
     .eq("id", booking.id)
     .in("status", ["searching"])
     .is("driver_id", null);
