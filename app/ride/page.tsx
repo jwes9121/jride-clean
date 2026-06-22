@@ -2610,7 +2610,7 @@ if (mapRef.current) {
             )}
           </div>
         )}
-	{activeCode && recentTrips.length > 0 && (
+	{recentTrips.length > 0 && (
               <div className="rounded-[24px] border border-white/80 bg-white/95 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] space-y-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">
