@@ -2512,7 +2512,7 @@ if (mapRef.current) {
                                     : "text-slate-300 hover:text-amber-300")
                                 }
                               >
-                                {active ? "Ã¢Ëœâ€¦" : "Ã¢Ëœâ€ "}
+                                {star}
                               </button>
                             );
                           })}
@@ -3083,4 +3083,5 @@ if (mapRef.current) {
     </main>
   );
 }
+
 
