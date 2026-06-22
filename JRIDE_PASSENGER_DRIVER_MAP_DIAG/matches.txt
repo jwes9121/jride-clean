@@ -1,0 +1,3725 @@
+
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\actions\dispatchActions.ts
+LineNumber : 91
+Line       :       `${SUPABASE_URL}/rest/v1/driver_locations` +
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\actions\dispatchActions.ts
+LineNumber : 103
+Line       :         "[dispatchActions] Failed to load driver_locations:",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\actions\dispatchActions.ts
+LineNumber : 109
+Line       :     console.error("[dispatchActions] Error fetching driver_locations:", err);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\actions\dispatchActions.ts
+LineNumber : 120
+Line       : /** Build totals + per-town groups from raw driver_locations rows */
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 7
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 26
+Line       :   const [bookingCode, setBookingCode] = React.useState("");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 37
+Line       :   const canUseCode = bookingCode.trim().length > 0;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 43
+Line       :   }, [bookingId, bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 52
+Line       :         : `booking_code=${encodeURIComponent(bookingCode.trim())}`;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 73
+Line       :     if (!inspect?.booking_id && !inspect?.booking_code) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 79
+Line       :       if (inspect.booking_code) body.booking_code = inspect.booking_code;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 134
+Line       :             value={bookingCode}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\actions\page.tsx
+LineNumber : 135
+Line       :             onChange={(e) => setBookingCode(e.target.value)}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 113
+Line       :   last_booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 521
+Line       :               ? "Live snapshot mode: driver_locations plus bookings. No driver session history table exists yet."
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 823
+Line       :       (r) => !!r.last_booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 828
+Line       :         !r.last_booking_code &&
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1049
+Line       :         r.last_booking_code || "-",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1297
+Line       :                 driver_locations and bookings, but no driver session history
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1368
+Line       :                   shows snapshot-based activity from driver_locations.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1508
+Line       :                 Uses driver_locations recent activity plus booking acceptance
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1602
+Line       :                 Uses real driver_locations snapshot data only. This replaces the
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1691
+Line       :                 Read-only activation risk view using the same driver_locations
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1963
+Line       :                       .filter((row) => !row.last_booking_code)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 1983
+Line       :                         .filter((row) => !row.last_booking_code)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\analytics\page.tsx
+LineNumber : 2074
+Line       :                           {row.last_booking_code || "-"}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 11
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 61
+Line       :   return String(t.uuid || t.id || t.booking_code || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 115
+Line       :   const bc = String(t.booking_code || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 292
+Line       :           t.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 393
+Line       :                 const title = String(t.booking_code || id || "(no id)");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 444
+Line       :                   <span style={mono}>booking_code</span>{" "}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\audit\page.tsx
+LineNumber : 445
+Line       :                   <b>{String(selectedTrip.booking_code || "") || "?"}</b>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 711
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 835
+Line       :                 <tr key={String(r.booking_id || r.booking_code || Math.random())}>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 836
+Line       :                   <td className="border p-2">{r.booking_code || "-"}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 851
+Line       :   booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 913
+Line       :               <td className="p-2 border">{r.booking_code}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 935
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 1035
+Line       :               <tr key={String(r.booking_code || i)}>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\control-center\page.tsx
+LineNumber : 1037
+Line       :                 <td className="border p-2">{r.booking_code || "-"}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livedrivers\page.tsx
+LineNumber : 4
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livedrivers\page.tsx
+LineNumber : 5
+Line       : import "mapbox-gl/dist/mapbox-gl.css";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\actions\getLiveTrips.ts
+LineNumber : 10
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\actions\getLiveTrips.ts
+LineNumber : 98
+Line       :       booking_code: String(b.booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\assign\page.tsx
+LineNumber : 11
+Line       :  booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\assign\page.tsx
+LineNumber : 189
+Line       :  {b.booking_code ?? b.id}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\AdminOpsPanel.tsx
+LineNumber : 28
+Line       :   return String(t?.uuid ?? t?.id ?? t?.booking_uuid ?? t?.booking_id ?? t?.bookingCode ?? t?.booking_code ?? "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\AdminOpsPanel.tsx
+LineNumber : 113
+Line       :                     <td className="px-2 py-2">{s(t.booking_code ?? t.bookingCode ?? id).slice(0, 18)}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\AdminOpsPanel.tsx
+LineNumber : 168
+Line       :                       ? "No drivers in dropdown: driver_locations blocked by RLS or not available."
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\AdminOpsPanel.tsx
+LineNumber : 198
+Line       :                 Dropdown sources: props  suggestions  driver_locations fallback.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DispatchActionPanel.tsx
+LineNumber : 6
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DispatchActionPanel.tsx
+LineNumber : 23
+Line       :   bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DispatchActionPanel.tsx
+LineNumber : 37
+Line       :     if (!bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DispatchActionPanel.tsx
+LineNumber : 43
+Line       :     fetch(`/api/admin/audit?bookingCode=${bookingCode}`)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DispatchActionPanel.tsx
+LineNumber : 50
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverDetailsModal.tsx
+LineNumber : 11
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverDetailsModal.tsx
+LineNumber : 36
+Line       :     booking_code: raw.booking_code ?? raw["bookingCode"] ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverDetailsModal.tsx
+LineNumber : 84
+Line       :     selectedTrip?.booking_code ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverDetailsModal.tsx
+LineNumber : 85
+Line       :     rawTrip?.booking_code ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverDetailsModal.tsx
+LineNumber : 86
+Line       :     rawTrip?.["bookingCode"] ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverDetailsModal.tsx
+LineNumber : 159
+Line       :             bookingCode={selectedTrip?.booking_code ?? undefined}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverLiveOverview.tsx
+LineNumber : 11
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\DriverLiveOverview.tsx
+LineNumber : 34
+Line       :     booking_code: raw.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 4
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 5
+Line       : import "mapbox-gl/dist/mapbox-gl.css";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 9
+Line       : mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 16
+Line       :   onEmergencyAssign?: (bookingCode: string) => Promise<void>;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 254
+Line       :   const lat = num(trip.driver_lat) ?? num(trip.driverLat) ?? num(trip.driver_latitude);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 255
+Line       :   const lng = num(trip.driver_lng) ?? num(trip.driverLng) ?? num(trip.driver_longitude);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 397
+Line       :   bookingCode?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 444
+Line       :       const id = String(raw.id ?? raw.bookingCode ?? i);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 474
+Line       :       trips.map((t: any, idx) => String((t as any).id ?? (t as any).bookingCode ?? idx))
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 496
+Line       :       const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 558
+Line       :       const id = String(tRaw.id ?? tRaw.bookingCode ?? "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 628
+Line       :             tripId: String(p.id ?? p.bookingCode ?? ""),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 629
+Line       :             bookingCode: p.bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 649
+Line       :     return (trips.find((t: any) => String(t.id ?? t.bookingCode ?? "") === selectedTripId) as any) ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 655
+Line       :     const id = String(selectedTrip.id ?? selectedTrip.bookingCode ?? "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 670
+Line       :     const bookingCode = selectedTrip.booking_code ?? selectedTrip.bookingCode ?? id;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 671
+Line       :     const lastUpdate = selectedTrip.driver_last_seen_at ?? selectedTrip.updated_at ?? selectedTrip.inserted_at ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 681
+Line       :       bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 757
+Line       :       const id = String(raw.id ?? raw.bookingCode ?? i);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 906
+Line       :     const raw = trips.find((t: any) => String(t.id ?? t.bookingCode ?? "") === selectedTripId) as any | undefined;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 1019
+Line       :                   <div className="text-[11px] font-semibold text-emerald-800">Trip {s.bookingCode ?? s.tripId}</div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 1042
+Line       :               <span className="text-[10px] text-slate-400">{selectedOverview.bookingCode}</span>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 1079
+Line       :               bookingCode={selectedOverview.bookingCode}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 1084
+Line       :                       booking_code: selectedTrip.booking_code ?? selectedTrip.bookingCode ?? selectedOverview.bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 1098
+Line       :                 selectedOverview.bookingCode && onEmergencyAssign
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\LiveTripsMap.tsx
+LineNumber : 1100
+Line       :                       await onEmergencyAssign(selectedOverview.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\ProblemTripAlertSounds.tsx
+LineNumber : 16
+Line       :   bookingCode?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\ProblemTripAlertSounds.tsx
+LineNumber : 104
+Line       :       problemTrips.map((t) => String(t.id ?? t.bookingCode ?? ""))
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\SelectedBookingPanel.tsx
+LineNumber : 19
+Line       :   const { booking_code, passenger_name, pickup, dropoff } = booking;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\SelectedBookingPanel.tsx
+LineNumber : 24
+Line       :         <div className="font-semibold text-slate-700">{booking_code}</div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\StuckTripWatcher.tsx
+LineNumber : 60
+Line       :       .map((t) => String(t.id ?? t.bookingCode ?? ""));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripControlWalletPanel.tsx
+LineNumber : 84
+Line       :   // 3) fallback fetch from driver_locations if both are empty
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripControlWalletPanel.tsx
+LineNumber : 95
+Line       :           .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripControlWalletPanel.tsx
+LineNumber : 100
+Line       :           if (!cancelled) setUiMsg("No drivers in dropdown: driver_locations blocked by RLS or not available.");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripControlWalletPanel.tsx
+LineNumber : 101
+Line       :           console.error("driver_locations fetch error:", error);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripControlWalletPanel.tsx
+LineNumber : 108
+Line       :         console.error("driver_locations fetch exception:", e);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripControlWalletPanel.tsx
+LineNumber : 275
+Line       :         Dropdown sources: props  suggestions  driver_locations fallback.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 37
+Line       :   const bookingCode = String(trip?.booking_code || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 47
+Line       :     if (!bookingCode) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 50
+Line       :       await postJson("/api/dispatch/status", { bookingCode, status: nextStatus });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 52
+Line       :       emitLiveTripsEvt({ bookingCode, status: nextStatus });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 74
+Line       :             Code: <span className="font-mono">{bookingCode || "N/A"}</span>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 88
+Line       :           disabled={!bookingCode || !canMarkOnTheWay}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 97
+Line       :           disabled={!bookingCode || !canStartTrip}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripLifecycleActions.tsx
+LineNumber : 106
+Line       :           disabled={!bookingCode || !canComplete}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\components\TripWalletPanel.tsx
+LineNumber : 47
+Line       :   const code = String(trip?.booking_code ?? trip?.bookingCode ?? "").trim().toUpperCase();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\BookingMapClient.tsx
+LineNumber : 4
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\BookingMapClient.tsx
+LineNumber : 18
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\BookingMapClient.tsx
+LineNumber : 106
+Line       :       toLatLng(booking?.driver_lat, booking?.driver_lng) ??
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\LiveTripMapClient.tsx
+LineNumber : 67
+Line       :         booking_code: props.bookingCode ?? props.code ?? "LIVE-TRIP",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\LiveTripMapClient.tsx
+LineNumber : 79
+Line       :         driver_lat: pickLat(props.driver),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\LiveTripMapClient.tsx
+LineNumber : 80
+Line       :         driver_lng: pickLng(props.driver),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\page.tsx
+LineNumber : 31
+Line       :       "id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\map\page.tsx
+LineNumber : 49
+Line       :         bookingCode={data.booking_code ?? null}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\status-test\page.tsx
+LineNumber : 9
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\status-test\page.tsx
+LineNumber : 21
+Line       :       const res = await fetch("/api/admin/active-trips", {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\status-test\page.tsx
+LineNumber : 42
+Line       :           booking_code: item.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\status-test\page.tsx
+LineNumber : 105
+Line       :           No active trips found from /api/admin/active-trips.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\status-test\page.tsx
+LineNumber : 132
+Line       :                   {trip.booking_code || trip.id}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\_components\ProblemTripAlerts.tsx
+LineNumber : 5
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\_components\ProblemTripAlerts.tsx
+LineNumber : 33
+Line       :             <span className="font-semibold mr-1">{t.booking_code}</span>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 4
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 8
+Line       : mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 13
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 26
+Line       :   driver_lat?: number | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 27
+Line       :   driver_lng?: number | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 58
+Line       :       console.warn("[BookingMapClient] NEXT_PUBLIC_MAPBOX_TOKEN is missing.");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 141
+Line       :         typeof booking.driver_lat === "number" ? booking.driver_lat : null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 143
+Line       :         typeof booking.driver_lng === "number" ? booking.driver_lng : null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 155
+Line       :         bookingCode: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 321
+Line       :       typeof booking.driver_lat === "number" ? booking.driver_lat : null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 323
+Line       :       typeof booking.driver_lng === "number" ? booking.driver_lng : null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 358
+Line       :     ? booking.booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\BookingMapClient.tsx
+LineNumber : 359
+Line       :       ? `JRide ${booking.booking_code}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\DispatchRow.tsx
+LineNumber : 16
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\DispatchRow.tsx
+LineNumber : 78
+Line       :         {booking.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\DriverListPanel.tsx
+LineNumber : 43
+Line       :         .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 50
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 140
+Line       :   return String(t.uuid || t.id || t.booking_code || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 298
+Line       :     booking_code: t?.booking_code ?? t?.bookingCode ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 483
+Line       :       .channel("livetrips-driver_locations-refresh")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 486
+Line       :         { event: "*", schema: "public", table: "driver_locations" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 488
+Line       :           refreshAllRef.current?.("realtime driver_locations").catch(() => {});
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 641
+Line       :         trip.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 763
+Line       :         row.activeTrip?.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 815
+Line       :   async function assignDriver(bookingCode: string, driverId: string, emergencyMode?: boolean) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 816
+Line       :     if (!bookingCode || !driverId) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 819
+Line       :       bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 827
+Line       :   async function updateTripStatus(bookingCode: string, status: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 828
+Line       :     if (!bookingCode || !status) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 829
+Line       :     setLastAction("Setting " + bookingCode + " -> " + status + "...");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 830
+Line       :     await postJson("/api/dispatch/status", { bookingCode, status });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 835
+Line       :   async function emergencyAssignNearest(bookingCode: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 836
+Line       :     if (!bookingCode) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 839
+Line       :       bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1097
+Line       :                                 {labelOrDash(trip.booking_code)} / {labelOrDash(trip.status)}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1162
+Line       :                             {t.booking_code || "-"}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1184
+Line       :                                   if (!t.booking_code) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1185
+Line       :                                   updateTripStatus(t.booking_code, "on_the_way").catch((err) => setLastAction(String(err?.message || err)));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1197
+Line       :                                   if (!t.booking_code) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1198
+Line       :                                   updateTripStatus(t.booking_code, "on_trip").catch((err) => setLastAction(String(err?.message || err)));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1210
+Line       :                                   if (!t.booking_code) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1211
+Line       :                                   updateTripStatus(t.booking_code, "completed").catch((err) => setLastAction(String(err?.message || err)));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1254
+Line       :                     <div><span className="text-gray-500">Code:</span> <span className="font-medium">{labelOrDash(selectedTrip.booking_code)}</span></div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1309
+Line       :                   disabled={!selectedTrip?.booking_code || !manualDriverId || !selectedManualDriver?.assign_eligible}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1311
+Line       :                     if (!selectedTrip?.booking_code || !selectedManualDriver?.assign_eligible) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1312
+Line       :                     assignDriver(selectedTrip.booking_code, manualDriverId, manualAssignRequiresEmergency).catch((err) => setLastAction(String(err?.message || err)));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1354
+Line       :                     if (!selectedTrip?.booking_code) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1358
+Line       :                     await assignDriver(selectedTrip.booking_code, driverId, emergencyMode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1372
+Line       :             onEmergencyAssign={async (bookingCode) => {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\livetrips\LiveTripsClient.tsx
+LineNumber : 1373
+Line       :               await emergencyAssignNearest(bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\ops\incidents\page.tsx
+LineNumber : 68
+Line       :   return String(t.booking_code || t.code || t.reference || t.id || t.booking_id || "").trim() || "(unknown)";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\overrides\page.tsx
+LineNumber : 9
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\overrides\page.tsx
+LineNumber : 166
+Line       :                     {row.booking_code || row.booking_id}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\ratings\page.tsx
+LineNumber : 8
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\ratings\page.tsx
+LineNumber : 230
+Line       :                     <tr key={String(row.id || row.booking_id || row.booking_code || Math.random())} className="border-t border-slate-100 align-top">
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\ratings\page.tsx
+LineNumber : 232
+Line       :                       <td className="px-4 py-4 font-medium text-slate-900">{row.booking_code || "-"}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 10
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 27
+Line       :   const [bookingCode, setBookingCode] = useState("");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 41
+Line       :       if (bookingCode.trim()) qs.set("booking_code", bookingCode.trim());
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 61
+Line       :     if (bookingCode.trim()) qs.set("booking_code", bookingCode.trim());
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 82
+Line       :           <input value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} placeholder="JR-2025-0002" />
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 113
+Line       :               <th style={{ padding: 8 }}>booking_code</th>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\reassign-audit\ui\ReassignAuditClient.tsx
+LineNumber : 124
+Line       :                 <td style={{ padding: 8 }}>{r.booking_code || ""}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 9
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 77
+Line       :   async function autoReassign(bookingCode: string, rank: number) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 78
+Line       :     const s = await post("/api/admin/reassign/suggest", { bookingCode });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 82
+Line       :       bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 148
+Line       :                   <div className="text-sm font-semibold">{r.booking_code || "-"}</div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 162
+Line       :                   onClick={() => autoReassign(r.booking_code || "", 0)}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 163
+Line       :                   disabled={!r.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 169
+Line       :                   onClick={() => autoReassign(r.booking_code || "", 1)}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 170
+Line       :                   disabled={!r.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 217
+Line       :                   <td className="p-2 font-semibold">{r.booking_code || "-"}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 223
+Line       :                     <button className="rounded bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => autoReassign(r.booking_code || "", 0)} disabled={!r.booking_code}>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\stuck-trips\ui\StuckTripsClient.tsx
+LineNumber : 226
+Line       :                     <button className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white" onClick={() => autoReassign(r.booking_code || "", 1)} disabled={!r.booking_code}>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-dispatch\page.tsx
+LineNumber : 7
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-dispatch\page.tsx
+LineNumber : 304
+Line       :                           <h2 className="text-lg font-bold">{o.booking_code || o.id}</h2>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-dispatch\page.tsx
+LineNumber : 363
+Line       :               <p className="mt-1 text-xs text-slate-500">Eligible drivers from the latest driver_locations read. Drivers already assigned to active takeout orders are hidden from this pool.</p>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-ops\page.tsx
+LineNumber : 7
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-ops\page.tsx
+LineNumber : 152
+Line       :     const ok = window.confirm("Admin action: " + label + " order " + String(order.booking_code || id) + "?");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-ops\page.tsx
+LineNumber : 301
+Line       :                     key={String(o.id || o.booking_code)}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\takeout-ops\page.tsx
+LineNumber : 308
+Line       :                       <div className="font-semibold text-slate-950">{o.booking_code || o.id || "-"}</div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 10
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 91
+Line       : function pickBookingCode(t: TripRow): string {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 92
+Line       :   const v = t.booking_code ?? (t as any).bookingCode ?? (t as any).code ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 193
+Line       :       const code = pickBookingCode(t);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 377
+Line       :             placeholder="booking_code, driver, town, reason..."
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 401
+Line       :               {["sla", "mins", "to_breach", "status", "reason", "booking_code", "trip_id", "driver", "town", "actions"].map((h) => (
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 422
+Line       :                 ? `/admin/livetrips?booking_code=${encodeURIComponent(code)}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\trips\at-risk\page.tsx
+LineNumber : 464
+Line       :                     {code ? <button style={miniBtn} onClick={() => copyText("booking_code", code)}>Copy</button> : null}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\vendors\page.tsx
+LineNumber : 98
+Line       :     return baseUrl + "/vendor-orders?vendor_id=" + encodeURIComponent(vendorId);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\admin\vendors\page.tsx
+LineNumber : 252
+Line       :           Tip: Send the "Copy link" URL to the vendor. They open it once and bookmark /vendor-orders after.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\driver-workforce\route.ts
+LineNumber : 586
+Line       :       safeSelect(supabase, "driver_locations", (q) =>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\driver-workforce\route.ts
+LineNumber : 927
+Line       :         driver_locations_error: driverLocationsResult.error,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\driver-workforce\route.ts
+LineNumber : 936
+Line       :           "driver_locations_recent_activity_plus_sessions_plus_bookings",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\passenger-presence\route.ts
+LineNumber : 40
+Line       :       .select("passenger_id, passenger_name, town, app_state, screen_name, last_seen_at, last_booking_code, platform")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\passenger-presence\route.ts
+LineNumber : 64
+Line       :       last_booking_code: text(row?.last_booking_code) || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\passenger-presence\route.ts
+LineNumber : 74
+Line       :       with_booking_now: presenceRows.filter((r) => !!r.last_booking_code).length,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\passenger-presence\route.ts
+LineNumber : 77
+Line       :           !r.last_booking_code &&
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 9
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 19
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 57
+Line       :         .select("id, booking_code, town, driver_id, passenger_name, created_at, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 63
+Line       :         .select("booking_id, booking_code, created_at"),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 91
+Line       :       const id = String(r.booking_id || r.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 96
+Line       :       const key = String(b.id || b.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-capture-audit\route.ts
+LineNumber : 100
+Line       :         booking_code: b.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 9
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 19
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 88
+Line       :         .select("id, booking_code, town, driver_id, passenger_name, created_at, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 94
+Line       :         .select("booking_id, booking_code, created_at"),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 124
+Line       :       const bookingCode = String(r.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 127
+Line       :       if (bookingCode) ratingMap.set(bookingCode, createdAt);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 138
+Line       :       booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 152
+Line       :       const bookingCode = String(b.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 153
+Line       :       const ratedAt = ratingMap.get(bookingId) || ratingMap.get(bookingCode) || null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-compliance-segmented\route.ts
+LineNumber : 165
+Line       :           booking_code: b.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 9
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 19
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 57
+Line       :         .select("id, booking_code, town, driver_id, passenger_name, created_at, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 63
+Line       :         .select("booking_id, booking_code"),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 95
+Line       :     const ratedBookingCodes = new Set<string>();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 99
+Line       :       const bookingCode = String(r.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 101
+Line       :       if (bookingCode) ratedBookingCodes.add(bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 114
+Line       :         const bookingCode = String(b.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 116
+Line       :         if (bookingCode && ratedBookingCodes.has(bookingCode)) return false;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 125
+Line       :           booking_code: b.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 141
+Line       :       const bookingCode = String(b.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\analytics\rating-coverage-gaps\route.ts
+LineNumber : 144
+Line       :         (bookingCode && ratedBookingCodes.has(bookingCode));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\assignment-log\route.ts
+LineNumber : 11
+Line       :     const bookingCode = (url.searchParams.get("bookingCode") || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\assignment-log\route.ts
+LineNumber : 13
+Line       :     if (!bookingId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\assignment-log\route.ts
+LineNumber : 19
+Line       :       .select("id, created_at, booking_id, booking_code, from_driver_id, to_driver_id, source, actor, note")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\assignment-log\route.ts
+LineNumber : 24
+Line       :     else q = q.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\audit\route.ts
+LineNumber : 15
+Line       :   const bookingCode = searchParams.get("bookingCode");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\audit\route.ts
+LineNumber : 17
+Line       :   if (!bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\audit\route.ts
+LineNumber : 19
+Line       :       { ok: false, code: "MISSING_BOOKING", message: "bookingCode required" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\audit\route.ts
+LineNumber : 27
+Line       :     .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\auto-assign\admin_auto-assign_route.ts
+LineNumber : 132
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\auto-assign\admin_auto-assign_route.ts
+LineNumber : 233
+Line       :       .select("id, booking_code, status, assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\auto-assign\route.ts
+LineNumber : 132
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\auto-assign\route.ts
+LineNumber : 233
+Line       :       .select("id, booking_code, status, assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 27
+Line       : async function finalizeTripSafe(input: { bookingCode?: string; bookingId?: string }) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 30
+Line       :   const code = (input.bookingCode || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 36
+Line       :     attempts.push({ booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 37
+Line       :     attempts.push({ p_booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 38
+Line       :     attempts.push({ in_booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 39
+Line       :     attempts.push({ _booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 41
+Line       :     attempts.push({ bookingCode: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 67
+Line       :     const bookingCode = (body?.bookingCode as string | undefined) || undefined;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 70
+Line       :     if (!bookingCode && !bookingId) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 71
+Line       :       return bad("MISSING_IDENTIFIER", "bookingCode (or bookingId) is required", 400);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 74
+Line       :     console.log("COMPLETE_TRIP_API_START", { bookingCode: bookingCode || null, bookingId: bookingId || null });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\complete-trip\route.ts
+LineNumber : 76
+Line       :     const res = await finalizeTripSafe({ bookingCode, bookingId });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\assign\route.ts
+LineNumber : 20
+Line       :     const bookingCode = body?.bookingCode;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\assign\route.ts
+LineNumber : 23
+Line       :     if (!bookingCode || !driverId) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\assign\route.ts
+LineNumber : 30
+Line       :       .select("id, booking_code, status")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\assign\route.ts
+LineNumber : 51
+Line       :       .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\assign\route.ts
+LineNumber : 75
+Line       :       .eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\audit\route.ts
+LineNumber : 15
+Line       :   const bookingCode = searchParams.get("bookingCode");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\audit\route.ts
+LineNumber : 17
+Line       :   if (!bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\audit\route.ts
+LineNumber : 19
+Line       :       { ok: false, code: "MISSING_BOOKING", message: "bookingCode required" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\dispatch\audit\route.ts
+LineNumber : 27
+Line       :     .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver-locations\route.ts
+LineNumber : 1
+Line       : export { GET } from "../driver_locations/route";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 84
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 90
+Line       :       console.error("ADMIN_DRIVER_LOCATIONS_ERROR", error);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 94
+Line       :           error: "ADMIN_DRIVER_LOCATIONS_ERROR",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 143
+Line       :         console.error("ADMIN_DRIVER_LOCATIONS_DRIVERS_JOIN_ERROR", driversError);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 157
+Line       :         console.error("ADMIN_DRIVER_LOCATIONS_DRIVER_PROFILES_JOIN_ERROR", profilesError);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 205
+Line       :         source: "app/api/admin/driver_locations/route.ts",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 225
+Line       :     console.error("ADMIN_DRIVER_LOCATIONS_UNEXPECTED", err);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\driver_locations\route.ts
+LineNumber : 229
+Line       :         error: "ADMIN_DRIVER_LOCATIONS_UNEXPECTED",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\fare-override\route.ts
+LineNumber : 16
+Line       :  *   "bookingCode": "JR-2025-0002",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\fare-override\route.ts
+LineNumber : 26
+Line       :     const bookingCode: string | undefined = body?.bookingCode;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\fare-override\route.ts
+LineNumber : 31
+Line       :     if (!bookingCode || typeof verifiedFare !== "number") {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\fare-override\route.ts
+LineNumber : 46
+Line       :       .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 42
+Line       :   const booking_code = body?.booking_code ? String(body.booking_code) : null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 48
+Line       :   if (!booking_code && !trip_id) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 54
+Line       :   const bookingRes = booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 55
+Line       :     ? await bookingQuery.eq("booking_code", booking_code).maybeSingle()
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 63
+Line       :     return NextResponse.json({ ok: false, code: "BOOKING_NOT_FOUND", booking_code, trip_id }, { status: 404 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 85
+Line       :       .ilike("booking_code", "TEST-%")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 100
+Line       :     return NextResponse.json({ ok: true, action, booking_code: b.booking_code ?? booking_code, patched: patch });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 114
+Line       :     return NextResponse.json({ ok: true, action, booking_code: upd.data?.booking_code ?? b.booking_code, booking: upd.data });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 125
+Line       :     const dl = await supabase.from("driver_locations").select("*").limit(500);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 127
+Line       :       return NextResponse.json({ ok: false, code: "DRIVER_LOCATIONS_ERROR", error: dl.error.message }, { status: 500 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 136
+Line       :       const rlat = num(r?.lat) ?? num(r?.latitude) ?? num(r?.driver_lat) ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 137
+Line       :       const rlng = num(r?.lng) ?? num(r?.longitude) ?? num(r?.driver_lng) ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\actions\route.ts
+LineNumber : 166
+Line       :       booking_code: upd.data?.booking_code ?? b.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 32
+Line       :     const booking_code = String(body?.booking_code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 35
+Line       :     if (!booking_code) return bad("MISSING_BOOKING_CODE", 400);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 40
+Line       :     const u1 = await supabase.from("bookings").update({ verified_fare: fare }).eq("booking_code", booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 42
+Line       :       const u2 = await supabase.from("bookings").update({ proposed_fare: fare }).eq("booking_code", booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 50
+Line       :       .select("booking_code, trip_type, pickup_distance_fee, platform_service_fee")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 51
+Line       :       .eq("booking_code", booking_code)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\apply-fare\route.ts
+LineNumber : 85
+Line       :         const r = await supabase.from("bookings").update(patch).eq("booking_code", booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\backfill-takeout\route.ts
+LineNumber : 123
+Line       :     process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\booking-map\route.ts
+LineNumber : 8
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\booking-map\route.ts
+LineNumber : 51
+Line       :         booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\booking-map\route.ts
+LineNumber : 94
+Line       :         .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\drivers-summary\route.ts
+LineNumber : 112
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\drivers-summary\route.ts
+LineNumber : 118
+Line       :       return bad("driver_locations query failed", "DRIVER_LOCATIONS_QUERY_FAILED", 500, {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\drivers-summary\route.ts
+LineNumber : 160
+Line       :       .select("id, booking_code, driver_id, assigned_driver_id, status, town, created_at, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\drivers-summary\route.ts
+LineNumber : 173
+Line       :       .select("id, booking_code, driver_id, assigned_driver_id, status, town, created_at, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\drivers-summary\route.ts
+LineNumber : 273
+Line       :         active_booking_code: counts.activeBooking?.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 5
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 21
+Line       :   const booking_code = norm(body.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 24
+Line       :   if (!booking_code) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 25
+Line       :     return NextResponse.json({ ok: false, code: "MISSING_BOOKING_CODE", message: "Missing booking_code" }, { status: 400 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 31
+Line       :   const br = await supabase.from("bookings").select("*").eq("booking_code", booking_code).maybeSingle();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 34
+Line       :       { ok: false, code: "BOOKING_NOT_FOUND", message: br.error?.message || "Booking not found", booking_code },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 45
+Line       :       { ok: false, code: "NOT_ASSIGNABLE", message: "Booking is not assignable: " + status, booking_code, status },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 54
+Line       :       { ok: false, code: "ALREADY_ASSIGNED", message: "Booking already has driver and is not assignable.", booking_code, status, driver_id: b.driver_id },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 68
+Line       :       { ok: false, code: "UPDATE_FAILED", message: upd.error.message, booking_code, driver_id },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\manual-assign\route.ts
+LineNumber : 77
+Line       :     booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\page-data\route.ts
+LineNumber : 133
+Line       :     const driverLocationsRes = await supabase.from("driver_locations").select("*");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\page-data\route.ts
+LineNumber : 139
+Line       :           error: "DRIVER_LOCATIONS_FAILED",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\page-data\route.ts
+LineNumber : 142
+Line       :             stage: "driver_locations",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\page-data\route.ts
+LineNumber : 355
+Line       :               booking_code: trip?.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\page-data\route.ts
+LineNumber : 410
+Line       :         booking_codes: tripsArray.map((t: any) => t?.booking_code).filter(Boolean),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\pending\route.ts
+LineNumber : 25
+Line       :     const url = `${SUPABASE_URL}/rest/v1/bookings?${query}&select=id,booking_code,status,assigned_driver_id,created_at,pickup_lat,pickup_lng`;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\purge-broken\route.ts
+LineNumber : 12
+Line       :   // Cancel broken live trips (missing booking_code)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\purge-broken\route.ts
+LineNumber : 18
+Line       :     .or("booking_code.is.null,booking_code.eq.")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\purge-broken\route.ts
+LineNumber : 19
+Line       :     .select("id, booking_code, status");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\purge-broken\route.ts
+LineNumber : 45
+Line       :         criteria: { statusIn: ["assigned", "on_the_way", "on_trip"], booking_code_missing: true },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\summary\route.ts
+LineNumber : 28
+Line       :       "id,booking_code,status,assigned_driver_id,created_at,pickup_lat,pickup_lng";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\summary\route.ts
+LineNumber : 66
+Line       :     const driversUrl = `${SUPABASE_URL}/rest/v1/driver_locations?${driverQuery}`;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\update-status\route.ts
+LineNumber : 29
+Line       :     const bookingCode = String(body?.bookingCode ?? body?.booking_code ?? "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\update-status\route.ts
+LineNumber : 32
+Line       :     if ((!bookingId && !bookingCode) || !rawNextStatus) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\update-status\route.ts
+LineNumber : 37
+Line       :           message: "bookingId or bookingCode and nextStatus are required",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\update-status\route.ts
+LineNumber : 65
+Line       :         bookingCode: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\livetrips\update-status\route.ts
+LineNumber : 66
+Line       :         booking_code: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\manual-assign\route.ts
+LineNumber : 32
+Line       :       .select("id, booking_code, status, assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\ratings\route.ts
+LineNumber : 10
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\ratings\route.ts
+LineNumber : 49
+Line       :       .select("id, booking_id, booking_code, rating, feedback, created_at, driver_id, passenger_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 35
+Line       :     const bookingCode = String(body?.bookingCode || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 36
+Line       :     if (!bookingCode) return NextResponse.json({ error: "bookingCode required" }, { status: 400 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 43
+Line       :       `/rest/v1/bookings?select=id,booking_code,status,assigned_driver_id,driver_id,pickup_lat,pickup_lng,town&booking_code=eq.${encodeURIComponent(bookingCode)}&limit=1`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 46
+Line       :     if (!b?.id) return NextResponse.json({ error: `booking not found: ${bookingCode}` }, { status: 404 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 57
+Line       :     // We use mv_driver_live if available, else driver_locations
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 66
+Line       :         `/rest/v1/driver_locations?select=driver_id,lat,lng,updated_at&limit=2000`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\suggest\route.ts
+LineNumber : 100
+Line       :       booking: { id: b.id, booking_code: b.booking_code, status: b.status, current_driver: currentDriver },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\route.ts
+LineNumber : 41
+Line       :     const bookingCode = String(body?.bookingCode || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\route.ts
+LineNumber : 46
+Line       :     if (!bookingCode) return NextResponse.json({ error: "bookingCode required" }, { status: 400 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\route.ts
+LineNumber : 54
+Line       :       `/rest/v1/bookings?select=id&booking_code=eq.${encodeURIComponent(bookingCode)}&limit=1`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign\route.ts
+LineNumber : 57
+Line       :     if (!bookingId) return NextResponse.json({ error: `booking not found: ${bookingCode}` }, { status: 404 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\export\route.ts
+LineNumber : 32
+Line       :     const bookingCode = u.searchParams.get("booking_code");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\export\route.ts
+LineNumber : 43
+Line       :     if (bookingCode) filters.push(`booking_code=ilike.*${encodeURIComponent(bookingCode)}*`);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\export\route.ts
+LineNumber : 52
+Line       :       `/rest/v1/admin_reassign_audit?select=id,created_at,created_by,booking_id,booking_code,from_driver_id,to_driver_id,reason&order=id.desc&limit=${limit}${q}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\export\route.ts
+LineNumber : 55
+Line       :     const header = ["id","created_at","created_by","booking_id","booking_code","from_driver_id","to_driver_id","reason"];
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\export\route.ts
+LineNumber : 64
+Line       :         csvEscape(r.booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\route.ts
+LineNumber : 26
+Line       :     const bookingCode = u.searchParams.get("booking_code");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\route.ts
+LineNumber : 38
+Line       :     if (bookingCode) filters.push(`booking_code=ilike.*${encodeURIComponent(bookingCode)}*`);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-audit\route.ts
+LineNumber : 46
+Line       :       `/rest/v1/admin_reassign_audit?select=id,created_at,created_by,booking_id,booking_code,from_driver_id,to_driver_id,reason&order=id.desc&limit=${limit}${q}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 36
+Line       :     const bookingCode = u.searchParams.get("bookingCode");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 42
+Line       :     const bookingSelect = "id,booking_code,pickup_lat,pickup_lng,assigned_driver_id,status";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 52
+Line       :     } else if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 55
+Line       :         `/rest/v1/bookings?select=${bookingSelect}&limit=1&booking_code=eq.${encodeURIComponent(bookingCode)}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 59
+Line       :       return NextResponse.json({ error: "Provide bookingId or bookingCode" }, { status: 400 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 74
+Line       :       `/rest/v1/driver_locations?select=driver_id,lat,lng,updated_at&order=updated_at.desc&limit=1500`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reassign-suggest\route.ts
+LineNumber : 111
+Line       :         booking_code: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts
+LineNumber : 79
+Line       :       .select("id,booking_code,status,driver_id,driver_payout,verified_fare,company_cut")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts
+LineNumber : 109
+Line       :         actions.push({ booking_id: b.id, booking_code: b.booking_code, status: "error_tx_lookup", error: txErr.message });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts
+LineNumber : 125
+Line       :         actions.push({ booking_id: b.id, booking_code: b.booking_code, status: "error_balance_lookup", error: balErr.message });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts
+LineNumber : 134
+Line       :         booking_code: b.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\fix\route.ts
+LineNumber : 139
+Line       :         reason: "reconcile_backfill " + s(b.booking_code || ""),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 54
+Line       :       .select("id,booking_code,status,service_type,vendor_status,driver_id,vendor_id,updated_at,driver_payout,verified_fare,company_cut")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 63
+Line       :     const completedCodes = completed.map((x: any) => x.booking_code).filter(Boolean);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 76
+Line       :       .select("id,vendor_id,booking_code,amount,kind,note,created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 77
+Line       :       .in("booking_code", completedCodes.length ? completedCodes : ["__none__"])
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 135
+Line       :         booking_code: x.b.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 155
+Line       :       const code = s((t as any).booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 165
+Line       :       !!b.booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 170
+Line       :         const code = s(b.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 175
+Line       :         booking_code: b.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\reconcile-wallets\route.ts
+LineNumber : 190
+Line       :         booking_code: x.code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\stuck-trips\route.ts
+LineNumber : 35
+Line       :       `/rest/v1/driver_stuck_alert_log?select=id,driver_id,first_detected_at,last_detected_at,times_detected,resolved_at,acknowledged_at,snooze_until,booking_uuid,booking_code&resolved_at=is.null
+             &order=last_detected_at.desc&limit=${limit}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\stuck-trips\route.ts
+LineNumber : 60
+Line       :           `/rest/v1/bookings?select=id,booking_code,status,assigned_driver_id,pickup_lat,pickup_lng&limit=1&id=eq.${encodeURIComponent(l.booking_uuid)}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\stuck-trips\route.ts
+LineNumber : 63
+Line       :       } else if (l.booking_code) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\stuck-trips\route.ts
+LineNumber : 66
+Line       :           `/rest/v1/bookings?select=id,booking_code,status,assigned_driver_id,pickup_lat,pickup_lng&limit=1&booking_code=eq.${encodeURIComponent(l.booking_code)}`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\stuck-trips\route.ts
+LineNumber : 75
+Line       :           `/rest/v1/driver_locations?select=driver_id,updated_at&limit=1&driver_id=eq.${encodeURIComponent(l.driver_id)}&order=updated_at.desc`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\stuck-trips\route.ts
+LineNumber : 84
+Line       :         booking_code: booking?.booking_code ?? l.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 81
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 106
+Line       :         booking_code: row?.booking_code || id,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 114
+Line       :         booking_code: row?.booking_code || id,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 140
+Line       :       body?.booking_code ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 141
+Line       :       body?.bookingCode ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 149
+Line       :       error: "order_id_or_booking_code_required",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 150
+Line       :       message: "order_id or booking_code required",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 157
+Line       :     .select("id,booking_code,service_type,vendor_status,customer_status,status,assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 163
+Line       :     : await existingQuery.eq("booking_code", orderRef).maybeSingle();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 202
+Line       :     .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 216
+Line       :       message: `Driver already has an active ${conflict.type} (${conflict.booking_code}) with status ${conflict.status}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\assign\route.ts
+LineNumber : 235
+Line       :     .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,assigned_at,updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\status\route.ts
+LineNumber : 78
+Line       :     .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\status\route.ts
+LineNumber : 167
+Line       :     .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\status\status.ts
+LineNumber : 78
+Line       :     .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\status\status.ts
+LineNumber : 167
+Line       :     .select("id,booking_code,service_type,vendor_status,customer_status,assigned_driver_id,driver_id,takeout_pricing_status,takeout_customer_confirmed_at,takeout_route_plan,updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\route.ts
+LineNumber : 101
+Line       :     .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\route.ts
+LineNumber : 130
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-dispatch\route.ts
+LineNumber : 227
+Line       :       booking_code: r.booking_code || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-orders\action\route.ts
+LineNumber : 68
+Line       :     .select("id,booking_code,vendor_status,customer_status,status,updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-orders\route.ts
+LineNumber : 66
+Line       :     .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,customer_name,passenger_name,rider_name,to_label,dropoff_label,takeout_items_subtotal,created_at,updated_a
+             t,town")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\takeout-orders\route.ts
+LineNumber : 123
+Line       :       booking_code: r.booking_code || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\update-trip-status\route.ts
+LineNumber : 27
+Line       :     const bookingCode = String(body?.booking_code ?? body?.bookingCode ?? "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\update-trip-status\route.ts
+LineNumber : 30
+Line       :     if ((!bookingId && !bookingCode) || !rawStatus) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\update-trip-status\route.ts
+LineNumber : 32
+Line       :         { success: false, error: "Missing booking_id or bookingCode or status" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\update-trip-status\route.ts
+LineNumber : 55
+Line       :         bookingCode: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\update-trip-status\route.ts
+LineNumber : 56
+Line       :         booking_code: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\admin\wallet\adjust\route.ts
+LineNumber : 125
+Line       :       booking_code: null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\debug\supabase\route.ts
+LineNumber : 13
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 193
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 219
+Line       :     .select("id, booking_code, status, driver_id, assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 363
+Line       :     const bookingCode = text(body?.bookingCode || body?.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 368
+Line       :     if (!bookingCode && !bookingId) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 381
+Line       :     bookingQuery = bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 382
+Line       :       ? bookingQuery.eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 418
+Line       :         booking_code: text((booking as any).booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 449
+Line       :             existing_booking_code: activeTripManual.trip.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 503
+Line       :             booking_code: text((booking as any).booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 561
+Line       :             booking_code: text((booking as any).booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 581
+Line       :         .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 681
+Line       :       .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 692
+Line       :             existing_booking_code: activeTrip.ok ? activeTrip.trip?.booking_code || null : null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 713
+Line       :           booking_code: text((booking as any).booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\assign\route.ts
+LineNumber : 722
+Line       :       booking_code: text(updated?.booking_code || (booking as any).booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 23
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 157
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 190
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 205
+Line       :     booking_code: booking?.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 279
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 381
+Line       :       .select("id, booking_code, status, service_type, driver_id, assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 492
+Line       :     booking_code: booking.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 519
+Line       :         .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 546
+Line       :         booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 563
+Line       :           booking_code: booking.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 628
+Line       :       .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 663
+Line       :       booking_code: booking.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\auto-assign\route.ts
+LineNumber : 675
+Line       :       booking_code: booking.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts
+LineNumber : 116
+Line       :           "booking_code",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts
+LineNumber : 197
+Line       :     const booking_code =
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts
+LineNumber : 201
+Line       :       booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\bookings\route.ts
+LineNumber : 222
+Line       :         "id,booking_code,status,town,driver_id,trip_type,vendor_id,takeout_service_level,pickup_lat,pickup_lng,created_at,updated_at"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers\route.ts
+LineNumber : 73
+Line       :     .select("id, booking_code, town, created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers\route.ts
+LineNumber : 96
+Line       :     bookingCode: candidate.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers\route.ts
+LineNumber : 132
+Line       :     const { error } = await supabaseServer.from("driver_locations").upsert({ driver_id: driverId, lat, lng, status, town }, { onConflict: "driver_id" });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers-live\route.ts
+LineNumber : 162
+Line       :       "dispatch_driver_locations_view",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers-live\route.ts
+LineNumber : 163
+Line       :       "driver_locations_view",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers-live\route.ts
+LineNumber : 164
+Line       :       "driver_locations",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers-live\route.ts
+LineNumber : 165
+Line       :       "dispatch_driver_locations",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\drivers-live\route.ts
+LineNumber : 169
+Line       :       "admin_driver_locations",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 7
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 8
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 14
+Line       : function pickBookingKey(body: Body): { bookingId: string; bookingCode: string } {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 16
+Line       :   const bookingCode = String(body.bookingCode ?? body.booking_code ?? "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 17
+Line       :   return { bookingId, bookingCode };
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 25
+Line       :     const { bookingId, bookingCode } = pickBookingKey(body);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 27
+Line       :     if (!bookingId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 36
+Line       :     // 2) If not found, fallback to bookingCode as bookings.booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 42
+Line       :         .select("id, booking_code")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 56
+Line       :     if (!booking?.id && bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 59
+Line       :         .select("id, booking_code")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 60
+Line       :         .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 75
+Line       :         { error: "BOOKING_NOT_FOUND", bookingId, bookingCode },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\emergency\route.ts
+LineNumber : 95
+Line       :       { ok: true, action: "emergency", bookingId: booking.id, bookingCode: booking.booking_code },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\lgu\route.ts
+LineNumber : 69
+Line       :       .select("id, booking_code, town, status, from_label, to_label, verified_fare, passenger_fare_response, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nearby-drivers\route.ts
+LineNumber : 31
+Line       :     .from("driver_locations_with_town")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nudge\route.ts
+LineNumber : 6
+Line       : type Body = { bookingCode?: string | null; bookingId?: string | null };
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nudge\route.ts
+LineNumber : 14
+Line       :     const bookingCode = String(body.bookingCode ?? "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nudge\route.ts
+LineNumber : 15
+Line       :     if (!bookingId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nudge\route.ts
+LineNumber : 19
+Line       :     let sel = supabase.from("bookings").select("id, booking_code, updated_at").limit(1);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nudge\route.ts
+LineNumber : 20
+Line       :     sel = bookingId ? sel.eq("id", bookingId) : sel.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\nudge\route.ts
+LineNumber : 36
+Line       :     return NextResponse.json({ ok: true, action: "nudge", bookingId: booking.id, bookingCode: booking.booking_code }, { status: 200 });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\advance\route.ts
+LineNumber : 6
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\advance\route.ts
+LineNumber : 16
+Line       :       bookingCode: body.bookingCode ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\respond\route.ts
+LineNumber : 6
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\respond\route.ts
+LineNumber : 22
+Line       :         bookingCode: body.bookingCode ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\respond\route.ts
+LineNumber : 33
+Line       :         bookingCode: body.bookingCode ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\offer_route.ts
+LineNumber : 6
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\offer_route.ts
+LineNumber : 17
+Line       :       bookingCode: body.bookingCode ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\route.ts
+LineNumber : 6
+Line       :   bookingCode?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\offer\route.ts
+LineNumber : 17
+Line       :       bookingCode: body.bookingCode ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 36
+Line       : async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bookingId?: string }) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 38
+Line       :   const code = clean(input.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 43
+Line       :     attempts.push({ booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 44
+Line       :     attempts.push({ p_booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 45
+Line       :     attempts.push({ in_booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 46
+Line       :     attempts.push({ _booking_code: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 48
+Line       :     attempts.push({ bookingCode: code });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 83
+Line       :   const bookingCode = clean(booking?.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 101
+Line       :     p_booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 116
+Line       :     const bookingCode = clean(body?.bookingCode || body?.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 120
+Line       :     if ((!bookingCode && !bookingId) || !nextStatus) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 128
+Line       :     let query = supabase.from("bookings").select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, verified_fare, pickup_distance_fee, promo_applied_amount, promo_status, 
+             promo_program_code").limit(1);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 130
+Line       :     if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 131
+Line       :       query = query.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\dispatch\status\route.ts
+LineNumber : 154
+Line       :         bookingCode: booking.booking_code || bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 6
+Line       : // Driver active-trip read shaping only.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 53
+Line       :   const bookingCode = jrideActiveTripText(row.booking_code ?? row.bookingCode ?? row.code ?? row.id);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 54
+Line       :   return serviceType === "takeout" || serviceType === "food" || serviceType === "delivery" || bookingCode.toUpperCase().startsWith("TO-");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 279
+Line       : // JRIDE_ACTIVE_TRIP_TAKEOUT_RECEIPT_SCHEMA_V1`r`n// Align active-trip takeout receipt loader with production takeout_order_items schema.`r`n// JRIDE_TAKEOUT_DRIVER_ORDER_RECEIPT_V3
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 474
+Line       :       // Read-only active-trip query widening for takeout assignments.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 576
+Line       :       .from("driver_locations_latest")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 708
+Line       :       booking_code: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 709
+Line       :       code: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 789
+Line       :       driver_lat: driverLat,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\active-trip\route.ts
+LineNumber : 790
+Line       :       driver_lng: driverLng,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 5
+Line       :   booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 6
+Line       :   bookingCode?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 112
+Line       :     process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 167
+Line       :     const bookingCode = text(body.booking_code || body.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 171
+Line       :     if (!bookingCode && !bookingId) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 173
+Line       :         { ok: false, error: "MISSING_BOOKING_CODE" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 205
+Line       :     if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 206
+Line       :       query = query.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 288
+Line       :       .from("driver_locations_latest")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 372
+Line       :         booking_code: (booking as any).booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 391
+Line       :           booking_code: (booking as any).booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 405
+Line       :         "id, booking_code, status, proposed_fare, verified_fare, passenger_fare_response, driver_to_pickup_km, pickup_distance_fee, trip_distance_km"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 416
+Line       :           booking_code: (booking as any).booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\fare\propose\route.ts
+LineNumber : 442
+Line       :         booking_code: (fresh as any).booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\location\ping\route.ts
+LineNumber : 219
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\location\ping\route.ts
+LineNumber : 224
+Line       :     if (locErr) throw new Error("driver_locations lookup failed: " + locErr.message);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\location\ping\route.ts
+LineNumber : 541
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\location\ping\route.ts
+LineNumber : 608
+Line       :         .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\location\ping\route.ts
+LineNumber : 655
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\profile\route.ts
+LineNumber : 123
+Line       :     booking_code: text(row?.booking_code) || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\profile\route.ts
+LineNumber : 192
+Line       :         "id, booking_code, status, town, from_label, to_label, passenger_name, proposed_fare, verified_fare, pickup_distance_fee, created_at, updated_at, driver_id, assigned_driver_id"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-active\route.ts
+LineNumber : 61
+Line       :     .select("id,booking_code,service_type,vendor_id,vendor_status,customer_status,status,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-active\route.ts
+LineNumber : 97
+Line       :     booking_code: row.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-active\route.ts
+LineNumber : 98
+Line       :     code: row.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 85
+Line       :   return text(process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 152
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 328
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 344
+Line       :     .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 369
+Line       : async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 372
+Line       :         .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,vendor_id,passenger_na
+             me,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 377
+Line       :   else q = q.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 407
+Line       :     const bookingCode = text(body?.booking_code || body?.bookingCode || body?.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 415
+Line       :     if (!orderId && !bookingCode) return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 423
+Line       :     const orderRes = await loadTakeoutOrder(serviceSupabase, orderId, bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\propose\route.ts
+LineNumber : 562
+Line       :       .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_p
+             roposed_at,takeout_fee_expires_at,takeout_pricing_snapshot")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\requests\route.ts
+LineNumber : 149
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\requests\route.ts
+LineNumber : 163
+Line       :     .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\requests\route.ts
+LineNumber : 250
+Line       :       .select("id,booking_code,service_type,status,vendor_status,customer_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,vendor_id,passenger_name,to_label,town,notes,crea
+             ted_at,updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-fee\requests\route.ts
+LineNumber : 276
+Line       :         booking_code: text(row?.booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-status\route.ts
+LineNumber : 39
+Line       : // This helper advances only takeout rows, only inside the takeout-status route, and never
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-status\route.ts
+LineNumber : 119
+Line       :   const bookingCode = String(body?.booking_code || body?.bookingCode || body?.code || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-status\route.ts
+LineNumber : 123
+Line       :   if (!orderId && !bookingCode) return json(400, { ok: false, error: "order_id_or_booking_code_required" });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-status\route.ts
+LineNumber : 128
+Line       :     
+             .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,completed_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-status\route.ts
+LineNumber : 133
+Line       :   q = orderId ? q.eq("id", orderId) : q.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver\takeout-status\route.ts
+LineNumber : 176
+Line       :     .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,completed_
+             at,updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver-heartbeat\route.ts
+LineNumber : 149
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver-locations\route.ts
+LineNumber : 1
+Line       : export { GET } from "../driver_locations/route";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations\route.ts
+LineNumber : 16
+Line       :   // This view already resolves the underlying source (driver_locations / latest) and is what you validated in DB.
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations\route.ts
+LineNumber : 20
+Line       :     .from("dispatch_driver_locations_view")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations\route.ts
+LineNumber : 30
+Line       :     console.error("[driver_locations] error", error);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations_test\route.ts
+LineNumber : 33
+Line       : // POST /api/driver_locations_test
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations_test\route.ts
+LineNumber : 64
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations_test\route.ts
+LineNumber : 73
+Line       :     const { error: insErr } = await supabase.from("driver_locations").insert({
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations_test\route.ts
+LineNumber : 108
+Line       : // GET /api/driver_locations_test
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\driver_locations_test\route.ts
+LineNumber : 116
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\eta\route.ts
+LineNumber : 27
+Line       :     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\eta\route.ts
+LineNumber : 30
+Line       :       console.error("ETA API: NEXT_PUBLIC_MAPBOX_TOKEN is missing");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\live-location\route.ts
+LineNumber : 150
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\rating\route.ts
+LineNumber : 14
+Line       :   context: { params: { bookingCode: string } }
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\rating\route.ts
+LineNumber : 24
+Line       :     const bookingCode = context.params.bookingCode;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\rating\route.ts
+LineNumber : 29
+Line       :     if (!bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\rating\route.ts
+LineNumber : 44
+Line       :       booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\route.ts
+LineNumber : 25
+Line       :   { params }: { params: { bookingCode: string } }
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\route.ts
+LineNumber : 28
+Line       :   const { bookingCode } = params;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\route.ts
+LineNumber : 33
+Line       :     .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\orders\[bookingCode]\route.ts
+LineNumber : 77
+Line       :     booking_code: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 209
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 294
+Line       : function bookingCodeNow(): string {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 352
+Line       :     "NEXT_PUBLIC_MAPBOX_TOKEN",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 934
+Line       :       .select("id, booking_code, status, created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 958
+Line       :           active_booking_code: existingActiveBooking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 964
+Line       :     const bookingCode = bookingCodeNow();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 967
+Line       :       booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 1004
+Line       :     if (promoCode && deviceId && booking?.id && bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 1043
+Line       :           p_booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\book\route.ts
+LineNumber : 1132
+Line       :         booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\history\route.ts
+LineNumber : 135
+Line       :     booking_code: booking.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\history\route.ts
+LineNumber : 156
+Line       :     driver_lat: n(booking.driver_lat),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\history\route.ts
+LineNumber : 157
+Line       :     driver_lng: n(booking.driver_lng),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\latest-booking\route.ts
+LineNumber : 70
+Line       :       .select("booking_code, status, created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\latest-booking\route.ts
+LineNumber : 84
+Line       :     if (!booking?.booking_code) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\latest-booking\route.ts
+LineNumber : 93
+Line       :       booking_code: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\presence\ping\route.ts
+LineNumber : 11
+Line       :   last_booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\presence\ping\route.ts
+LineNumber : 51
+Line       :     const lastBookingCode = text(body.last_booking_code) || null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\presence\ping\route.ts
+LineNumber : 68
+Line       :           last_booking_code: lastBookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\profile\route.ts
+LineNumber : 96
+Line       :     booking_code: text(row?.booking_code) || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\profile\route.ts
+LineNumber : 155
+Line       :         "id, booking_code, status, town, from_label, to_label, assigned_driver_id, passenger_name, proposed_fare, verified_fare, pickup_distance_fee, created_at, updated_at"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 95
+Line       :     const bookingCode = searchParams.get("booking_code")?.trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 97
+Line       :     if (!bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 99
+Line       :         { ok: false, error: "MISSING_BOOKING_CODE" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 130
+Line       :       .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 194
+Line       :         .from("driver_locations_latest")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 247
+Line       :       booking_code: booking.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 258
+Line       :       driver_lat: driverLat,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\passenger\track\route.ts
+LineNumber : 259
+Line       :       driver_lng: driverLng,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 211
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 296
+Line       : function bookingCodeNow(): string {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 354
+Line       :     "NEXT_PUBLIC_MAPBOX_TOKEN",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 923
+Line       :     const bookingCode = bookingCodeNow();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 926
+Line       :       booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 966
+Line       :     if (promoCode && deviceId && booking?.id && bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 1005
+Line       :           p_booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\book\route.ts
+LineNumber : 1094
+Line       :         booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 18
+Line       :   booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 43
+Line       :   booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 107
+Line       :     const bookingCode = String(
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 109
+Line       :         searchParams.get("booking_code") ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 115
+Line       :     if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 120
+Line       :           .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 142
+Line       :           { ok: false, error: "MISSING_BOOKING_CODE" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 184
+Line       :     let driver_lat: number | null = null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 185
+Line       :     let driver_lng: number | null = null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 192
+Line       :         .from("driver_locations_latest")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 198
+Line       :         driver_lat = (driverLoc as any).lat ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 199
+Line       :         driver_lng = (driverLoc as any).lng ?? null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 206
+Line       :       .eq("booking_code", (booking as any).booking_code)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 219
+Line       :           driver_lat,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\booking\route.ts
+LineNumber : 220
+Line       :           driver_lng,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 5
+Line       :   booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 26
+Line       :     const bookingCode = text(body.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 29
+Line       :     if (!bookingCode && !bookingId) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 31
+Line       :         { ok: false, error: "MISSING_BOOKING_CODE" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 52
+Line       :     if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 53
+Line       :       query = query.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\accept\route.ts
+LineNumber : 166
+Line       :         booking_code: (booking as any).booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 5
+Line       :   booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 26
+Line       :     const bookingCode = text(body.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 29
+Line       :     if (!bookingCode && !bookingId) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 31
+Line       :         { ok: false, error: "MISSING_BOOKING_CODE" },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 52
+Line       :     if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 53
+Line       :       query = query.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 126
+Line       :         { p_booking_code: (booking as any).booking_code }
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\public\passenger\fare\reject\route.ts
+LineNumber : 139
+Line       :         booking_code: (booking as any).booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 69
+Line       :     const bookingCode = text(body?.booking_code || body?.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 72
+Line       :     if (!bookingId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 103
+Line       :       .select("id, booking_code, status, created_by_user_id, driver_id, assigned_driver_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 106
+Line       :     bookingQuery = bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 107
+Line       :       ? bookingQuery.eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 171
+Line       :       .select("id, booking_code, status, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\fare-response\route.ts
+LineNumber : 187
+Line       :         booking_code: text(updated?.booking_code || (booking as any).booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 68
+Line       : async function loadOwnedBooking(service: any, bookingId: string, bookingCode: string, userId: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 71
+Line       :     .select("id, booking_code, status, driver_id, created_by_user_id")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 75
+Line       :   query = bookingCode ? query.eq("booking_code", bookingCode) : query.eq("id", bookingId);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 93
+Line       :     const bookingCode = text(url.searchParams.get("booking_code"));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 95
+Line       :     if (!bookingId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 103
+Line       :     const { booking, error: bookingError } = await loadOwnedBooking(service, bookingId, bookingCode, auth.user.id);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 141
+Line       :         booking_code: text(booking.booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 176
+Line       :     const bookingCode = text(body?.booking_code || body?.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 180
+Line       :     if ((!bookingId && !bookingCode) || !Number.isFinite(rating)) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 202
+Line       :     const { booking, error: bookingError } = await loadOwnedBooking(service, bookingId, bookingCode, auth.user.id);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 249
+Line       :       booking_code: text(booking.booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\rate\route.ts
+LineNumber : 267
+Line       :         booking_code: text(booking.booking_code),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\status\rides_status_route.ts
+LineNumber : 20
+Line       :     const bookingCode: string | undefined = body?.bookingCode;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\status\rides_status_route.ts
+LineNumber : 23
+Line       :     if (!bookingCode || !status) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\status\rides_status_route.ts
+LineNumber : 43
+Line       :       .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\status\route.ts
+LineNumber : 20
+Line       :     const bookingCode: string | undefined = body?.bookingCode;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\status\route.ts
+LineNumber : 23
+Line       :     if (!bookingCode || !status) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\rides\status\route.ts
+LineNumber : 43
+Line       :       .eq("booking_code", bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\admin\vendor-details\[vendorId]\route.ts
+LineNumber : 105
+Line       :         "id,booking_code,service_type,vendor_status,customer_status,total_service_fare,platform_fee_10pct,vendor_earnings_90pct,created_at,updated_at"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\admin\vendor-details\[vendorId]\route.ts
+LineNumber : 121
+Line       :       .select("booking_code,amount,kind,note,created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\admin\vendor-payout\settle-request\route.ts
+LineNumber : 98
+Line       :         booking_code: null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 62
+Line       :     const bookingCode = text(
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 63
+Line       :       body?.booking_code || body?.bookingCode || body?.code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 76
+Line       :     if (!orderId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 80
+Line       :         message: "order_id or booking_code is required.",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 87
+Line       :         "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash
+             _collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 92
+Line       :     q = orderId ? q.eq("id", orderId) : q.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\confirm-fee\route.ts
+LineNumber : 206
+Line       :         "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash
+             _collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\orders\route.ts
+LineNumber : 32
+Line       :   "booking_code",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\orders\route.ts
+LineNumber : 170
+Line       :     const bookingCode = text(url.searchParams.get("booking_code") || url.searchParams.get("bookingCode") || url.searchParams.get("code"));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\orders\route.ts
+LineNumber : 181
+Line       :     } else if (bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\orders\route.ts
+LineNumber : 182
+Line       :       q = q.eq("booking_code", bookingCode).limit(1);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\orders\route.ts
+LineNumber : 255
+Line       :         .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 51
+Line       : async function findTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 58
+Line       :   q = orderId ? q.eq("id", orderId) : q.eq("booking_code", bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 74
+Line       :     const bookingCode = text(req.nextUrl.searchParams.get("booking_code") || req.nextUrl.searchParams.get("code"));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 76
+Line       :     if (!orderId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 77
+Line       :       return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 80
+Line       :     const order = await findTakeoutOrder(serviceSupabase, orderId, bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 109
+Line       :     const bookingCode = text(body?.booking_code || body?.bookingCode || body?.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 111
+Line       :     if (!orderId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 112
+Line       :       return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 126
+Line       :     const order = await findTakeoutOrder(serviceSupabase, orderId, bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\rate\route.ts
+LineNumber : 147
+Line       :       booking_code: text(order.booking_code || bookingCode) || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor\orders\route.ts
+LineNumber : 25
+Line       :   url.pathname = "/api/vendor-orders";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor\payout\details\route.ts
+LineNumber : 105
+Line       :         "id,booking_code,service_type,vendor_status,customer_status,total_service_fare,platform_fee_10pct,vendor_earnings_90pct,created_at,updated_at"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor\payout\details\route.ts
+LineNumber : 121
+Line       :       .select("booking_code,amount,kind,note,created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor\payout\route.ts
+LineNumber : 107
+Line       :           "booking_code",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor\payout\route.ts
+LineNumber : 133
+Line       :       .select("booking_code,amount,kind,note,created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor-ratings\route.ts
+LineNumber : 11
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\takeout\vendor-wallet\route.ts
+LineNumber : 91
+Line       :       .select("booking_code,amount,kind,note,created_at")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 138
+Line       :     process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 616
+Line       :     .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 622
+Line       :     return { attempted: true, assigned: false, reason: "driver_locations_read_failed", anchor, subtotal, cash_first: cashFirst };
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 649
+Line       :         driver_lat: lat,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 650
+Line       :         driver_lng: lng,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 747
+Line       :       .from("driver_locations")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 816
+Line       :       booking_code: r?.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 1316
+Line       :   // TAKEOUT_BOOKING_CODE_CREATE_V1
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 1317
+Line       :   const takeoutBookingCode =
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 1318
+Line       :     String(body?.booking_code ?? body?.bookingCode ?? "").trim() ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 1335
+Line       :     booking_code: takeoutBookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\api\vendor-orders\route.ts
+LineNumber : 1651
+Line       :     booking_code: takeoutBookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\assign\page.tsx
+LineNumber : 65
+Line       :                 driver_locations.status = 'online'
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\assign\page.tsx
+LineNumber : 76
+Line       :                 booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 17
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 504
+Line       :     return String(b.booking_code || b.id);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 589
+Line       :         Booking_code: b.booking_code || "N/A",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 605
+Line       :     "Booking_code",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 703
+Line       :       booking: a.bookingCode || a.bookingId || "",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 799
+Line       :   function getBookingCode(b: any) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 800
+Line       :     return String(b?.booking_code ?? b?.bookingCode ?? b?.id ?? "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 839
+Line       :       const code = getBookingCode(b);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 899
+Line       :     setFocusBookingId(String((b).id || (b).uuid || (b).booking_code || ""));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 1284
+Line       :   const code = String((b as any).booking_code || (b as any).id || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 1474
+Line       :                     <div className="font-mono text-[11px]">{String(a.bookingCode || a.bookingId || "-")}</div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\dispatch\page.tsx
+LineNumber : 1499
+Line       :               Booking: <span className="font-mono">{fixTarget?.booking_code || fixTarget?.id}</span>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 7
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 24
+Line       :   const [bookingCode, setBookingCode] = React.useState("");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 30
+Line       :   const canUseCode = bookingCode.trim().length > 0;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 35
+Line       :   }, [bookingId, bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 43
+Line       :         : `booking_code=${encodeURIComponent(bookingCode.trim())}`;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 57
+Line       :     if (!inspect?.booking_id && !inspect?.booking_code) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 63
+Line       :       if (inspect.booking_code) body.booking_code = inspect.booking_code;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 113
+Line       :           value={bookingCode}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\driver\actions\page.tsx
+LineNumber : 114
+Line       :           onChange={(e) => setBookingCode(e.target.value)}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\history\page.tsx
+LineNumber : 284
+Line       :     const ref = safeStr(pickFirst(r, ["booking_code", "code", "ref", "reference", "id"]), EMPTY);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\orders\[bookingCode]\page.tsx
+LineNumber : 8
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\orders\[bookingCode]\page.tsx
+LineNumber : 33
+Line       :   const bookingCode = (params?.bookingCode as string) ?? "";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\orders\[bookingCode]\page.tsx
+LineNumber : 38
+Line       :     if (!bookingCode) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\orders\[bookingCode]\page.tsx
+LineNumber : 46
+Line       :           `/api/orders/${encodeURIComponent(bookingCode)}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\orders\[bookingCode]\page.tsx
+LineNumber : 76
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\orders\[bookingCode]\page.tsx
+LineNumber : 146
+Line       :               {booking.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\page.tsx
+LineNumber : 8
+Line       :     booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\page.tsx
+LineNumber : 15
+Line       :       searchParams?.booking_code ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 9
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 115
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 163
+Line       :         `/api/passenger/track?booking_code=${encodeURIComponent(code)}&ts=${Date.now()}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 188
+Line       :   async function refreshRatingState(bookingCode: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 189
+Line       :     const trimmedCode = String(bookingCode || "").trim();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 203
+Line       :       const res = await fetch(`/api/rides/rate?booking_code=${encodeURIComponent(trimmedCode)}`, {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\track\TrackClient.tsx
+LineNumber : 255
+Line       :           booking_code: trimmedCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 22
+Line       : const STORAGE_KEY = "jride_active_booking_code";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 109
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 129
+Line       :   booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 164
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 257
+Line       : function isRealBookingCode(code: string | null | undefined): boolean {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 279
+Line       :     if (isRealBookingCode(code)) return code;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 291
+Line       :     if (isRealBookingCode(clean)) localStorage.setItem(STORAGE_KEY, clean);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 304
+Line       :       .filter((it: any) => it && typeof it.booking_code === "string")
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 337
+Line       :     (it) => it.booking_code !== item.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 518
+Line       :   const MAPBOX_TOKEN = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 793
+Line       :       const urlCode = norm(sp.get("code") || sp.get("booking_code") || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 794
+Line       :       if (isRealBookingCode(urlCode)) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 800
+Line       :         sp.delete("booking_code");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 845
+Line       :         const code = norm(payload?.booking_code || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 851
+Line       :           isRealBookingCode(code) &&
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 869
+Line       :     if (!isRealBookingCode(activeCode)) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 904
+Line       :         url.searchParams.delete("booking_code");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 921
+Line       :           `/api/passenger/track?booking_code=${encodeURIComponent(activeCode)}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 943
+Line       :               booking_code: norm(resp.json?.booking_code || activeCode || ""),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1048
+Line       :       booking_code: activeCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1126
+Line       :           mbRef.current = await import("mapbox-gl");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1683
+Line       :   async function refreshRatingState(bookingCode: string) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1684
+Line       :     const code = norm(bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1697
+Line       :         `/api/rides/rate?booking_code=${encodeURIComponent(code)}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1728
+Line       :     const bookingCode = norm(activeCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1729
+Line       :     if (!bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1742
+Line       :           booking_code: bookingCode,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1758
+Line       :       await refreshRatingState(bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1856
+Line       :       url.searchParams.delete("booking_code");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1880
+Line       :       url.searchParams.delete("booking_code");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1990
+Line       :         const code = norm(bj.booking?.booking_code || bj.booking_code || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 1992
+Line       :         if (book.ok && isRealBookingCode(code)) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 2008
+Line       :         if (isNoDriverResponse(bj) || (book.ok && code && !isRealBookingCode(code))) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 2965
+Line       :                       key={trip.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 2986
+Line       :                               {trip.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 2999
+Line       :                               if (!isRealBookingCode(trip.booking_code)) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 3000
+Line       :                               storedSet(trip.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 3001
+Line       :                               setActiveCode(trip.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\ride\page.tsx
+LineNumber : 3004
+Line       :                                 url.searchParams.set("code", trip.booking_code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\rider\track\[rideId]\page.tsx
+LineNumber : 41
+Line       :         { event: "*", schema: "public", table: "driver_locations", filter: `driver_id=eq.${ride.driver_id}` },
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\admin\payouts\[vendorId]\page.tsx
+LineNumber : 33
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\admin\payouts\[vendorId]\page.tsx
+LineNumber : 45
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\admin\payouts\[vendorId]\page.tsx
+LineNumber : 138
+Line       :           booking_code: o.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\admin\payouts\[vendorId]\page.tsx
+LineNumber : 152
+Line       :             booking_code: t.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\admin\payouts\[vendorId]\page.tsx
+LineNumber : 473
+Line       :                   <td className="p-2">{o.booking_code}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\admin\payouts\[vendorId]\page.tsx
+LineNumber : 516
+Line       :                   <td className="p-2">{t.booking_code ?? "-"}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 15
+Line       :   booking_code?: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 23
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 34
+Line       :   params: { bookingCode: string };
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 53
+Line       : function buildReceiptUrl(bookingCode: string): string {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 55
+Line       :     return `/takeout/orders/${encodeURIComponent(bookingCode)}/receipt`;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 58
+Line       :     bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 63
+Line       :   const bookingCode = decodeURIComponent(params.bookingCode || "");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 79
+Line       :     if (!bookingCode) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 90
+Line       :           `/api/orders/${encodeURIComponent(bookingCode)}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 120
+Line       :               (r) => r.booking_code === bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 158
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 210
+Line       :         `/api/orders/${encodeURIComponent(bookingCode)}/rating`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 247
+Line       :       const url = buildReceiptUrl(bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\receipt\page.tsx
+LineNumber : 307
+Line       :                   {order.booking_code ?? bookingCode}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 15
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 38
+Line       : type PageProps = { params: { bookingCode: string } };
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 104
+Line       :   const bookingCode = decodeURIComponent(params.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 112
+Line       :   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 126
+Line       :       const res = await fetch("/api/orders/" + encodeURIComponent(bookingCode), { cache: "no-store" });
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 144
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 168
+Line       :       const path = "/takeout/orders/" + encodeURIComponent(bookingCode) + "/track";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 186
+Line       :               <p className="mt-1 text-sm text-slate-600">Order code: <span className="font-semibold text-slate-950">{bookingCode}</span></p>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\track\page.tsx
+LineNumber : 192
+Line       :               <button type="button" onClick={() => router.push("/takeout/orders/" + encodeURIComponent(bookingCode) + "/receipt")} className="rounded-full bg-slate-950 px-3 py-2 text-xs 
+             font-semibold text-white">Receipt</button>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 23
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 54
+Line       :   params: { bookingCode: string };
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 142
+Line       :   const bookingCode = decodeURIComponent(params.bookingCode);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 199
+Line       :       const res = await fetch(`/api/orders/${encodeURIComponent(bookingCode)}`);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 226
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 229
+Line       :     if (!bookingCode) return;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 236
+Line       :         .channel(`takeout-order-${bookingCode}`)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 243
+Line       :             filter: `booking_code=eq.${bookingCode}`,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 264
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 272
+Line       :   }, [bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 280
+Line       :         `/takeout/orders/${encodeURIComponent(bookingCode)}/receipt`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 285
+Line       :   }, [normalizedStatus, bookingCode, router]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 308
+Line       :           ? `/takeout/orders/${encodeURIComponent(bookingCode)}/track`
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 309
+Line       :           : `/takeout/orders/${encodeURIComponent(bookingCode)}/receipt`;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 338
+Line       :               {bookingCode}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\[bookingCode]\page.tsx
+LineNumber : 347
+Line       :                         bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\page.tsx
+LineNumber : 8
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\page.tsx
+LineNumber : 190
+Line       :                   order.booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\page.tsx
+LineNumber : 196
+Line       :                     {order.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\page.tsx
+LineNumber : 238
+Line       :                   order.booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\orders\page.tsx
+LineNumber : 244
+Line       :                     {order.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 8
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 130
+Line       :   const params = useParams<{ bookingCode?: string }>();
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 131
+Line       :   const trackingKey = useMemo(() => decodeURIComponent(normText(params?.bookingCode)), [params?.bookingCode]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 152
+Line       :         : "booking_code=" + encodeURIComponent(trackingKey);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 157
+Line       :         const code = normText(r.booking_code || r.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 172
+Line       :     const bookingCode = normText(order.booking_code || order.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 173
+Line       :     if (!orderId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 182
+Line       :         booking_code: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 199
+Line       :     const bookingCode = normText(order.booking_code || order.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 201
+Line       :     if (!orderId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\track\[bookingCode]\page.tsx
+LineNumber : 217
+Line       :         booking_code: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payout\page.tsx
+LineNumber : 26
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payout\page.tsx
+LineNumber : 38
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payout\page.tsx
+LineNumber : 125
+Line       :           booking_code: o.booking_code,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payout\page.tsx
+LineNumber : 139
+Line       :             booking_code: t.booking_code ?? null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payout\page.tsx
+LineNumber : 457
+Line       :                   <td className="p-2">{o.booking_code}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payout\page.tsx
+LineNumber : 500
+Line       :                   <td className="p-2">{t.booking_code ?? "-"}</td>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\payouts\page.tsx
+LineNumber : 7
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\ratings\page.tsx
+LineNumber : 11
+Line       :   booking_code: string;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\ratings\page.tsx
+LineNumber : 219
+Line       :         "booking_code",
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\ratings\page.tsx
+LineNumber : 256
+Line       :           escapeCsvField(o.booking_code || ""),
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\ratings\page.tsx
+LineNumber : 503
+Line       :                           {order.booking_code}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\vendor\ratings\page.tsx
+LineNumber : 529
+Line       :                               order.booking_code
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 6
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 21
+Line       : mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 86
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 116
+Line       :   return normText(o?.id || o?.booking_code || o?.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1395
+Line       :     // from device fallback to the exact order_id/booking_code as soon as the submit
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1399
+Line       :   }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, pricingOrder?.vendor_status, pricingOrder?.customer_status, lastJson?.order_id, 
+             lastJson?.booking_code]);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1460
+Line       :         const code = normText(r.booking_code || r.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1481
+Line       :           lastJson?.booking_code ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1482
+Line       :           lastJson?.bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1484
+Line       :       const bookingCode = normText(current?.booking_code || current?.code || lastJson?.booking_code || lastJson?.bookingCode || lastJson?.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1487
+Line       :         : bookingCode
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1488
+Line       :           ? "booking_code=" + encodeURIComponent(bookingCode)
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1504
+Line       :     const bookingCode = normText(pricingOrder.booking_code || pricingOrder.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1505
+Line       :     if (!orderId && !bookingCode) {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1514
+Line       :         booking_code: bookingCode || undefined,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1657
+Line       :       const j = await postJson("/api/vendor-orders", payload);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1663
+Line       :       const maybeCode = normText(j?.booking_code || j?.bookingCode || j?.code);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1670
+Line       :         window.location.href = "/takeout/track/" + encodeURIComponent(trackingKey);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\takeout\page.tsx
+LineNumber : 1676
+Line       :         booking_code: maybeCode || null,
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\test\live-location-map\page.tsx
+LineNumber : 4
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor\compare\page.tsx
+LineNumber : 213
+Line       :             href="/vendor-orders"
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor\page.tsx
+LineNumber : 13
+Line       :     redirect(`/vendor-orders?vendor_id=${encodeURIComponent(vendorId)}`);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor\page.tsx
+LineNumber : 16
+Line       :   redirect("/vendor-orders");
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-analytics\page.tsx
+LineNumber : 233
+Line       :                 href={"/vendor-orders" + vendorQuery}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-orders\page.tsx
+LineNumber : 15
+Line       :   booking_code?: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-orders\page.tsx
+LineNumber : 132
+Line       :   return text(order.booking_code) || orderId(order).slice(0, 8) || "-";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-orders\page.tsx
+LineNumber : 375
+Line       :       const data = await readJson("/api/vendor-orders?vendor_id=" + encodeURIComponent(vid));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-orders\page.tsx
+LineNumber : 434
+Line       :       await postJson("/api/vendor-orders", payload);
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 3
+Line       : import mapboxgl from "mapbox-gl";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 4
+Line       : import "mapbox-gl/dist/mapbox-gl.css";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 87
+Line       :   booking_code: string | null;
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 132
+Line       :   process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 657
+Line       :   const vendorOrdersHref = vendorId ? "/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-orders";
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 972
+Line       :       const j = await getJson("/api/vendor-orders?vendor_id=" + encodeURIComponent(vid));
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 1381
+Line       :       await postJson("/api/vendor-orders", {
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 1524
+Line       :                   {clean(cancelTargetOrder.booking_code) || clean(cancelTargetOrder.id) || "Selected order"}
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 2177
+Line       :                         <div key={o.id || o.booking_code || Math.random()} className={cls("rounded-2xl border p-3 shadow-[0_0_18px_rgba(16,185,129,0.08)]", s === "vendor_pending" ? 
+             "border-amber-300/70 bg-amber-950/20" : "border-emerald-500/30 bg-slate-950/20")}>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 2180
+Line       :                               <div className="font-semibold">{o.booking_code || o.id}</div>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 2268
+Line       :                       <div key={o.id || o.booking_code || Math.random()} className="rounded-xl border bg-slate-50 p-3 text-sm">
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\vendor-portal\page.tsx
+LineNumber : 2270
+Line       :                           <span className="font-semibold">{o.booking_code || o.id}</span>
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\website\WebsiteAuth.tsx
+LineNumber : 187
+Line       :             <Link href="/vendor-orders">
+
+Path       : C:\Users\jwes9\Desktop\jride-clean-fresh\app\layout.tsx
+LineNumber : 2
+Line       : import "mapbox-gl/dist/mapbox-gl.css";
+
+
+
