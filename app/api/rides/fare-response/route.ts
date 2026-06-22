@@ -202,7 +202,6 @@ export async function POST(req: NextRequest) {
             passenger_fare_response: "rejected",
             status: "searching",
             driver_id: null,
-            assigned_driver_id: null,
             assigned_at: null,
             proposed_fare: null,
             verified_fare: null,
@@ -252,6 +251,7 @@ const reassignResult = action === "rejected"
     );
   }
 }
+
 
 
 

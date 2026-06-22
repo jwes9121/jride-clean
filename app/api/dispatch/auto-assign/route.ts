@@ -247,12 +247,11 @@ async function matchSingle(
   }
 
   if (text((booking as any).passenger_fare_response).toLowerCase() === "rejected" && (booking as any).assigned_driver_id) {
-    return {
-      assigned: false,
-      reason: "BOOKING_REJECTED_PREVIOUS_DRIVER",
-      decision: "blocked",
-      debug,
-    };
+    const rejectedAssignedDriverId = text((booking as any).assigned_driver_id);
+    if (rejectedAssignedDriverId && !excluded.includes(rejectedAssignedDriverId)) {
+      excluded.push(rejectedAssignedDriverId);
+      debug.excluded_driver_ids = excluded;
+    }
   }
 
   if (booking.driver_id) {
@@ -701,6 +700,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
 
 
 
