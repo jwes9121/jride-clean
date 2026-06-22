@@ -223,20 +223,25 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
     let resetQuery = serviceSupabase
       .from("bookings")
       .update({
-        status: "searching",
-        driver_id: null,
-        assigned_driver_id: null,
-        driver_accept_expires_at: null,
-        passenger_fare_response: null,
-        updated_at: nowIso,
-      })
+  status: "searching",
+  driver_id: null,
+  assigned_driver_id: null,
+  assigned_at: null,
+  driver_accept_expires_at: null,
+  proposed_fare: null,
+  verified_fare: null,
+  pickup_distance_fee: null,
+  driver_to_pickup_km: null,
+  passenger_fare_response: null,
+  updated_at: nowIso,
+})
       .in("status", ["assigned", "accepted"]);
 
     resetQuery = bookingCode
       ? resetQuery.eq("booking_code", bookingCode)
       : resetQuery.eq("id", bookingId);
 
-    const resetRes = await resetQuery.select("id,booking_code").limit(1);
+    const resetRes = await resetQuery.select("id,booking_code,status,driver_id,assigned_driver_id").limit(1);
 
     if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
       return;
