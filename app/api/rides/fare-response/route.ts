@@ -224,9 +224,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const updated = updatedRows?.[0] ?? null;
+        const updated = updatedRows?.[0] ?? null;
+
+    if (action === "rejected") {
+      const updatedStatus = text((updated as any)?.status).toLowerCase();
+      const updatedDriverId = text((updated as any)?.driver_id || (updated as any)?.assigned_driver_id);
+
+      if (!updated || updatedStatus !== "searching" || updatedDriverId) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "REJECT_RESET_NOT_CONFIRMED",
+            booking_id: text((booking as any).id),
+            rejected_driver_id: rejectedDriverId,
+            updated,
+          },
+          { status: 500, headers: noStoreHeaders() }
+        );
+      }
+    }
+
     const reassignResult = action === "rejected"
-      ? await retryAutoAssign(req, rejectedDriverId, String(updated?.id || ""))
+      ? await retryAutoAssign(req, rejectedDriverId, String((updated as any).id))
       : null;
 
     return NextResponse.json(
