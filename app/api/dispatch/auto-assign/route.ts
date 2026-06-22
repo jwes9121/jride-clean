@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type DriverRow = {
@@ -241,6 +241,15 @@ async function matchSingle(
     return {
       assigned: false,
       reason: "BOOKING_NOT_ASSIGNABLE",
+      decision: "blocked",
+      debug,
+    };
+  }
+
+  if (text((booking as any).passenger_fare_response).toLowerCase() === "rejected" && (booking as any).assigned_driver_id) {
+    return {
+      assigned: false,
+      reason: "BOOKING_REJECTED_PREVIOUS_DRIVER",
       decision: "blocked",
       debug,
     };
@@ -516,7 +525,7 @@ export async function POST(req: Request) {
 
       const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
+        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id")
         .in("status", ["searching"])
         .is("driver_id", null)
         .order("created_at", { ascending: true })
@@ -625,7 +634,7 @@ export async function POST(req: Request) {
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type")
+      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id")
       .eq("id", bookingId)
       .single();
 
@@ -692,6 +701,7 @@ export async function POST(req: Request) {
     );
   }
 }
+
 
 
 
