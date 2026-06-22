@@ -2506,13 +2506,13 @@ if (mapRef.current) {
                                 aria-checked={ratingValue === star}
                                 role="radio"
                                 className={
-                                  "rounded-lg px-1.5 py-1 text-3xl leading-none transition " +
-                                  (active
-                                    ? "text-amber-400 drop-shadow-sm"
-                                    : "text-slate-300 hover:text-amber-300")
-                                }
+  				"rounded-lg border px-3 py-2 text-lg font-semibold transition " +
+  				(ratingValue === star
+   				 ? "border-emerald-500 bg-emerald-500 text-white shadow-sm"
+  				  : "border-slate-300 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50")
+				}
                               >
-                                {star}
+                                {`[${star}]`}
                               </button>
                             );
                           })}
