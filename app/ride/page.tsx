@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * app/ride/page.tsx
@@ -2390,10 +2390,7 @@ if (mapRef.current) {
               </div>
               <div className="text-sm">
                 Driver:{" "}
-                {driverName ||
-                  (lb?.booking_id
-                    ? String(lb.booking_id).substring(0, 8) + "..."
-                    : "Searching...")}
+                {driverName || "Waiting for assignment"}
               </div>
               <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
             </div>

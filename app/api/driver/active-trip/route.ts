@@ -241,7 +241,7 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
       ? resetQuery.eq("booking_code", bookingCode)
       : resetQuery.eq("id", bookingId);
 
-    const resetRes = await resetQuery.select("id,booking_code,status,driver_id,assigned_driver_id").limit(1);
+    const resetRes = await resetQuery.select("id,booking_code").limit(1);
 
     if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
       return;
@@ -1025,5 +1025,3 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
     );
   }
 }
-
-
