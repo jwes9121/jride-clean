@@ -233,6 +233,7 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
   pickup_distance_fee: null,
   driver_to_pickup_km: null,
   passenger_fare_response: null,
+  last_expired_driver_id: driverId,
   updated_at: nowIso,
 })
       .in("status", ["assigned", "accepted"]);

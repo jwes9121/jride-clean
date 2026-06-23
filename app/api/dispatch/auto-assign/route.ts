@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type DriverRow = {
@@ -26,6 +26,7 @@ type BookingRow = {
   town?: string | null;
   status?: string | null;
   driver_id?: string | null;
+  last_expired_driver_id?: string | null;
   is_emergency?: boolean | null;
   service_type?: string | null;
 };
@@ -525,7 +526,7 @@ export async function POST(req: Request) {
 
       const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id")
+        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id, last_expired_driver_id")
         .in("status", ["searching"])
         .is("driver_id", null)
         .order("created_at", { ascending: true })
@@ -561,7 +562,12 @@ export async function POST(req: Request) {
       }> = [];
 
       for (const booking of scanRows) {
-        const result = await matchSingle(supabase, booking, excludeDriverIds);
+        const bookingExclusions = [
+          ...excludeDriverIds,
+          String((booking as any).last_expired_driver_id || "").trim(),
+        ].filter(Boolean);
+
+        const result = await matchSingle(supabase, booking, bookingExclusions);
 
         if (result.decision === "assigned") assigned_count++;
         else if (result.decision === "skipped") skipped_count++;
@@ -634,7 +640,7 @@ export async function POST(req: Request) {
 
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id")
+      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id, last_expired_driver_id")
       .eq("id", bookingId)
       .single();
 
@@ -665,7 +671,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await matchSingle(supabase, booking as BookingRow, excludeDriverIds);
+    const bookingExclusions = [
+      ...excludeDriverIds,
+      String((booking as any).last_expired_driver_id || "").trim(),
+    ].filter(Boolean);
+
+    const result = await matchSingle(supabase, booking as BookingRow, bookingExclusions);
 
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
