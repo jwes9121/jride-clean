@@ -4,7 +4,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const ALLOWED = new Set(["requested", "driver_assigned", "driver_accepted", "rider_arrived_vendor", "picked_up", "delivering", "completed", "cancelled"]);
+const ALLOWED = new Set(["requested", "driver_assigned", "driver_accepted", "cash_collected", "rider_arrived_vendor", "picked_up", "delivering", "completed", "cancelled"]);
 
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
