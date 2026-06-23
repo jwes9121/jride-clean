@@ -350,34 +350,40 @@ export default function TrackClient({ code }: { code?: string }) {
         ].join("|")
       : "";
 
-  useEffect(() => {
-    if (proposalSoundRef.current) {
-    clearInterval(proposalSoundRef.current);
-    proposalSoundRef.current = null;
-  }
-
-    if (!rideProposalAlertKey) return;
-
-    const playProposalSound = () => {
-    try {
-      const audio = new Audio("/sounds/jride_audio.mp3");
-      audio.play().catch(() => {});
-    } catch {}
-  };
-
-    playProposalSound();
-
-    proposalSoundRef.current = setInterval(() => {
-    playProposalSound();
-  }, 30000);
-
-    return () => {
+    useEffect(() => {
     if (proposalSoundRef.current) {
       clearInterval(proposalSoundRef.current);
       proposalSoundRef.current = null;
     }
-  };
-}, [rideProposalAlertKey]);
+
+    if (!rideProposalAlertKey) return;
+
+    const playProposalSound = () => {
+      try {
+        const audio = new Audio("/sounds/jride_audio.mp3");
+        audio.volume = 1.0;
+        audio.play().catch((e) => {
+          console.error("[JRIDE_PROPOSAL_SOUND_FAILED]", e);
+        });
+      } catch (e) {
+        console.error("[JRIDE_PROPOSAL_SOUND_EXCEPTION]", e);
+      }
+    };
+
+    console.log("[JRIDE_PROPOSAL_SOUND_ACTIVE]", rideProposalAlertKey);
+    playProposalSound();
+
+    proposalSoundRef.current = setInterval(() => {
+      playProposalSound();
+    }, 30000);
+
+    return () => {
+      if (proposalSoundRef.current) {
+        clearInterval(proposalSoundRef.current);
+        proposalSoundRef.current = null;
+      }
+    };
+  }, [rideProposalAlertKey]);
 
   useEffect(() => {
     if (liveStatus === "completed" && code) {
