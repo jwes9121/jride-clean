@@ -148,6 +148,8 @@ export default function TrackClient({ code }: { code?: string }) {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const proposalSoundRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const proposalAudioRef = useRef<HTMLAudioElement | null>(null);
+  const proposalSoundUnlockedRef = useRef(false);| null>(null);
 
   async function fetchTrack() {
     if (!code) {
@@ -350,7 +352,52 @@ export default function TrackClient({ code }: { code?: string }) {
         ].join("|")
       : "";
 
-    useEffect(() => {
+    function getProposalAudio(): HTMLAudioElement | null {
+    if (typeof window === "undefined") return null;
+    if (!proposalAudioRef.current) {
+      const audio = new Audio("/sounds/jride_audio.mp3");
+      audio.preload = "auto";
+      audio.volume = 1.0;
+      proposalAudioRef.current = audio;
+    }
+    return proposalAudioRef.current;
+  }
+
+  function unlockProposalSoundNow() {
+    const audio = getProposalAudio();
+    if (!audio) return;
+
+    audio.muted = true;
+    audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+        proposalSoundUnlockedRef.current = true;
+        setProposalSoundReady(true);
+      })
+      .catch((e) => {
+        audio.muted = false;
+        console.error("[JRIDE_PROPOSAL_SOUND_UNLOCK_FAILED]", e);
+      });
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onFirstInteraction = () => unlockProposalSoundNow();
+
+    window.addEventListener("pointerdown", onFirstInteraction);
+    window.addEventListener("keydown", onFirstInteraction);
+
+    return () => {
+      window.removeEventListener("pointerdown", onFirstInteraction);
+      window.removeEventListener("keydown", onFirstInteraction);
+    };
+  }, []);
+
+  useEffect(() => {
     if (proposalSoundRef.current) {
       clearInterval(proposalSoundRef.current);
       proposalSoundRef.current = null;
@@ -360,8 +407,10 @@ export default function TrackClient({ code }: { code?: string }) {
 
     const playProposalSound = () => {
       try {
-        const audio = new Audio("/sounds/jride_audio.mp3");
-        audio.volume = 1.0;
+        const audio = getProposalAudio();
+        if (!audio) return;
+        audio.muted = false;
+        audio.currentTime = 0;
         audio.play().catch((e) => {
           console.error("[JRIDE_PROPOSAL_SOUND_FAILED]", e);
         });
@@ -370,12 +419,8 @@ export default function TrackClient({ code }: { code?: string }) {
       }
     };
 
-    console.log("[JRIDE_PROPOSAL_SOUND_ACTIVE]", rideProposalAlertKey);
     playProposalSound();
-
-    proposalSoundRef.current = setInterval(() => {
-      playProposalSound();
-    }, 30000);
+    proposalSoundRef.current = setInterval(playProposalSound, 30000);
 
     return () => {
       if (proposalSoundRef.current) {
@@ -523,6 +568,15 @@ export default function TrackClient({ code }: { code?: string }) {
                   ? "Please accept or reject the fare proposal. Reminder sounds will continue until a response is made."
                   : "Fare, pickup fee, and total shown for this trip."}
               </div>
+              {liveStatus === "fare_proposed" && !proposalSoundReady ? (
+                <button
+                  type="button"
+                  onClick={unlockProposalSoundNow}
+                  className="mt-3 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white shadow-sm"
+                >
+                  Enable sound alerts
+                </button>
+              ) : null}
             </div>
 
             <div className="space-y-1 text-sm">
