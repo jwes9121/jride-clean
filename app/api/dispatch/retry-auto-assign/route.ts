@@ -1,9 +1,13 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function POST() {
-  return NextResponse.json({
-    ok: true,
-    disabled: true,
-    reason: "Blind retry auto-assign disabled because it reassigns expired rides to the same excluded driver.",
-  });
+  return NextResponse.json(
+    {
+      ok: false,
+      disabled: true,
+      error: "RETRY_AUTO_ASSIGN_DISABLED",
+      reason: "Blind retry auto-assign is disabled. Expired rides must reassign through /api/dispatch/assign with excluded driver id.",
+    },
+    { status: 409 }
+  );
 }
