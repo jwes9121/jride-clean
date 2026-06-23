@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -266,6 +266,8 @@ export default function TakeoutTrackPage() {
     }
   }
 
+  const STAR_CHAR = String.fromCharCode(9733);
+
   function StarButtons(props: { value: number; onChange: (n: number) => void; disabled?: boolean }) {
     return (
       <div className="flex gap-1">
@@ -278,8 +280,8 @@ export default function TakeoutTrackPage() {
             className={n <= props.value ? "text-2xl text-amber-500" : "text-2xl text-slate-300"}
             aria-label={"Rate " + n + " stars"}
           >
-  {"\u2605"}
-</button>
+            {STAR_CHAR}
+          </button>
         ))}
       </div>
     );
