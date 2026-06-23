@@ -249,7 +249,7 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
 
     const resetBookingCode = jrideActiveTripText((resetRes.data[0] as any)?.booking_code ?? bookingCode);
 
-    await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
+    const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -259,6 +259,15 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
       }),
       cache: "no-store",
     });
+
+    const assignPayload = await assignRes.json().catch(() => null);
+    console.log("[JRIDE_RIDE_EXPIRE_REASSIGN]", JSON.stringify({
+      bookingCode: resetBookingCode,
+      excludedDriverId: driverId,
+      reason,
+      status: assignRes.status,
+      result: assignPayload,
+    }));
   } catch {}
 }
 
