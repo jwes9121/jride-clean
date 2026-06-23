@@ -145,11 +145,12 @@ export default function TrackClient({ code }: { code?: string }) {
   const [ratingValue, setRatingValue] = useState(5);
   const [ratingFeedback, setRatingFeedback] = useState("");
   const [ratingThanks, setRatingThanks] = useState(false);
+  const [proposalSoundReady, setProposalSoundReady] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const proposalSoundRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const proposalAudioRef = useRef<HTMLAudioElement | null>(null);
-  const proposalSoundUnlockedRef = useRef(false);| null>(null);
+  const proposalSoundUnlockedRef = useRef(false);
 
   async function fetchTrack() {
     if (!code) {
