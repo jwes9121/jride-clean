@@ -147,6 +147,7 @@ export default function TrackClient({ code }: { code?: string }) {
   const [ratingThanks, setRatingThanks] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const proposalSoundRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function fetchTrack() {
     if (!code) {
@@ -338,8 +339,45 @@ export default function TrackClient({ code }: { code?: string }) {
       }
     };
   }, [code]);
-
   const liveStatus = normStatus(data?.status);
+  const fareResponseText = String(data?.passenger_fare_response || "").trim().toLowerCase();
+
+  const rideProposalAlertKey =
+    liveStatus === "fare_proposed" && !fareResponseText
+      ? [
+          String(data?.booking_code || code || data?.id || data?.booking_id || ""),
+          String(data?.proposed_fare ?? data?.verified_fare ?? data?.fare ?? ""),
+        ].join("|")
+      : "";
+
+  useEffect(() => {
+    if (proposalSoundRef.current) {
+    clearInterval(proposalSoundRef.current);
+    proposalSoundRef.current = null;
+  }
+
+    if (!rideProposalAlertKey) return;
+
+    const playProposalSound = () => {
+    try {
+      const audio = new Audio("/sounds/jride_audio.mp3");
+      audio.play().catch(() => {});
+    } catch {}
+  };
+
+    playProposalSound();
+
+    proposalSoundRef.current = setInterval(() => {
+    playProposalSound();
+  }, 30000);
+
+    return () => {
+    if (proposalSoundRef.current) {
+      clearInterval(proposalSoundRef.current);
+      proposalSoundRef.current = null;
+    }
+  };
+}, [rideProposalAlertKey]);
 
   useEffect(() => {
     if (liveStatus === "completed" && code) {
@@ -469,14 +507,14 @@ export default function TrackClient({ code }: { code?: string }) {
             <div>Updated: {fmtDate(data.updated_at)}</div>
           </div>
 
-          <div className={`rounded-xl border p-4 space-y-3 ${liveStatus === "fare_proposed" ? "border-amber-200 bg-amber-50/50" : "border-black/10 bg-white"}`}>
+          <div className={`rounded-xl border p-4 space-y-3 ${liveStatus === "fare_proposed" ? "sticky top-2 z-50 border-amber-400 bg-amber-50 shadow-xl" : "border-black/10 bg-white"}`}>
             <div>
               <div className={`text-sm font-semibold ${liveStatus === "fare_proposed" ? "text-amber-900" : "text-slate-900"}`}>
-                {liveStatus === "fare_proposed" ? "Driver proposed fare" : "Trip fare summary"}
+                {liveStatus === "fare_proposed" ? "ACTION REQUIRED - Driver Proposed Fare" : "Trip fare summary"}
               </div>
               <div className="mt-1 text-xs opacity-70">
                 {liveStatus === "fare_proposed"
-                  ? "Accept to continue or reject to request a new quote."
+                  ? "Please accept or reject the fare proposal. Reminder sounds will continue until a response is made."
                   : "Fare, pickup fee, and total shown for this trip."}
               </div>
             </div>
