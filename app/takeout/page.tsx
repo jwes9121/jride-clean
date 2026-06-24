@@ -2523,8 +2523,8 @@ const contact = await fetchOptionalJson(
 		>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-sm font-bold text-slate-900">Exact delivery location</div>
-                  <div className="hidden text-[11px] text-slate-500 sm:block">Set the exact drop-off pin so the driver goes to the correct spot.</div>
+                  <div className="text-sm font-extrabold text-slate-950">Exact delivery location</div>
+                  <div className="text-[11px] font-medium text-slate-600">Set the exact drop-off pin so the driver goes to the correct spot.</div>
                 </div>
                 <button
                   type="button"
@@ -2544,7 +2544,7 @@ const contact = await fetchOptionalJson(
         return next;
       });
       }}
-                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
+                  className="rounded-full border border-emerald-700 bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-800 sm:rounded sm:px-4 sm:py-2 sm:text-sm"
                 >
                   {showDeliveryPin ? "Hide map" : deliveryPin ? "Change exact location" : "Set exact location"}
                 </button>
@@ -2560,6 +2560,9 @@ const contact = await fetchOptionalJson(
               )}
               {showDeliveryPin ? (
                 <div className="mt-3">
+                  <div className="mb-3 rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-950">
+                    Select your exact delivery location below. Move the map pin to your real drop-off point.
+                  </div>
                   <DeliveryPinPicker
                     value={deliveryPin}
                     onChange={(next) => {
@@ -3252,6 +3255,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
