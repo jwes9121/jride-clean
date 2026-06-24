@@ -2172,7 +2172,7 @@ if (mapRef.current) {
     }
 
     if (!fareProposalAudioRef.current && typeof Audio !== "undefined") {
-      fareProposalAudioRef.current = new Audio("/audio/jride_audio.mp3");
+      fareProposalAudioRef.current = new Audio("/sounds/jride_audio.mp3");
       fareProposalAudioRef.current.preload = "auto";
     }
 
