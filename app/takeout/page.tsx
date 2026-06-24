@@ -568,6 +568,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
       return;
     }
 
+        const hasInitialPin = !!value;
     const initialLng = value?.lng ?? 121.1;
     const initialLat = value?.lat ?? 16.8;
 
@@ -575,7 +576,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
       container: containerRef.current,
       style: "mapbox://styles/mapbox/streets-v11",
       center: [initialLng, initialLat],
-      zoom: value ? 16 : 12,
+      zoom: hasInitialPin ? 16 : 12,
     });
 
     mapRef.current = map;
@@ -629,6 +630,23 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
     };
 
     if (value) placeMarker(value.lng, value.lat);
+        if (!value && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          map.flyTo({
+            center: [pos.coords.longitude, pos.coords.latitude],
+            zoom: 16,
+            essential: true,
+          });
+        },
+        () => undefined,
+        {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 60000,
+        },
+      );
+    }
 
     map.on("click", (event: mapboxgl.MapMouseEvent) => {
       const lng = event.lngLat.lng;
