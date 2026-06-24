@@ -728,6 +728,8 @@ export default function TakeoutPage() {
   const [showDeliveryPin, setShowDeliveryPin] = useState(false);
   const deliveryPinSectionRef = useRef<HTMLDivElement | null>(null);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPin | null>(null);
+  const [deliveryPinNeedsConfirmation, setDeliveryPinNeedsConfirmation] =
+    useState(false);
 
   // Phase 2B - menu consumption
   const [menuBusy, setMenuBusy] = useState(false);
@@ -2573,14 +2575,47 @@ const contact = await fetchOptionalJson(
                   <div className="mb-3 rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-950">
                     Select your exact delivery location below. Move the map pin to your real drop-off point.
                   </div>
-                  <DeliveryPinPicker
+                    <DeliveryPinPicker
                     value={deliveryPin}
                     onChange={(next) => {
                       setDeliveryPin(next);
                       setSubmitted(false);
-                      setShowDeliveryPin(false);
+                      setDeliveryPinNeedsConfirmation(true);
                     }}
                   />
+
+                  {deliveryPinNeedsConfirmation && deliveryPin ? (
+                    <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3">
+                      <div className="text-sm font-bold text-emerald-900">
+                        Pin selected
+                      </div>
+                      <div className="mt-1 text-xs text-emerald-800">
+                        Review the map before continuing.
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                          onClick={() => {
+                            setDeliveryPinNeedsConfirmation(false);
+                            setShowDeliveryPin(false);
+                          }}
+                        >
+                          Confirm location
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border px-4 py-2 text-sm font-semibold"
+                          onClick={() => {
+  			// Keep the confirmation panel visible while the user adjusts the pin.
+				}}
+                        >
+                          Adjust location
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                      
                 </div>
               ) : null}
             </div>
