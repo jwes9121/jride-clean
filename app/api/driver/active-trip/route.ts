@@ -200,15 +200,17 @@ function jrideIsExpiredRideDriverAssignment(row: any, nowMs: number): boolean {
 function jrideIsExpiredRideFareProposalWindow(row: any, nowMs: number): boolean {
   if (!jrideIsRideBooking(row)) return false;
   const status = statusOf(row?.status);
-  if (status !== "accepted") return false;
+  if (status !== "fare_proposed") return false;
 
-  const updatedRaw = jrideActiveTripText(row?.updated_at ?? row?.updatedAt ?? row?.assigned_at ?? row?.assignedAt);
-  if (!updatedRaw) return false;
+  const expiryRaw = jrideActiveTripText(
+    row?.driver_fee_proposal_expires_at ?? row?.driverFeeProposalExpiresAt
+  );
+  if (!expiryRaw) return false;
 
-  const updatedMs = new Date(updatedRaw).getTime();
-  if (!Number.isFinite(updatedMs)) return false;
+  const expiryMs = new Date(expiryRaw).getTime();
+  if (!Number.isFinite(expiryMs)) return false;
 
-  return updatedMs + 5 * 60 * 1000 <= nowMs;
+  return expiryMs <= nowMs;
 }
 
 async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId: string, reason: string) {
@@ -220,23 +222,24 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
     const serviceSupabase = createServiceSupabase();
     const nowIso = new Date().toISOString();
 
-    let resetQuery = serviceSupabase
+            let resetQuery = serviceSupabase
       .from("bookings")
       .update({
-  status: "searching",
-  driver_id: null,
-  assigned_driver_id: null,
-  assigned_at: null,
-  driver_accept_expires_at: null,
-  proposed_fare: null,
-  verified_fare: null,
-  pickup_distance_fee: null,
-  driver_to_pickup_km: null,
-  passenger_fare_response: null,
-  last_expired_driver_id: driverId,
-  updated_at: nowIso,
-})
-      .in("status", ["assigned", "accepted"]);
+        status: "searching",
+        driver_id: null,
+        assigned_driver_id: null,
+        assigned_at: null,
+        driver_accept_expires_at: null,
+        driver_fee_proposal_expires_at: null,
+        proposed_fare: null,
+        verified_fare: null,
+        pickup_distance_fee: null,
+        driver_to_pickup_km: null,
+        passenger_fare_response: null,
+        last_expired_driver_id: driverId,
+        updated_at: nowIso,
+      })
+      .in("status", ["assigned", "accepted", "fare_proposed"]);
 
     resetQuery = bookingCode
       ? resetQuery.eq("booking_code", bookingCode)
