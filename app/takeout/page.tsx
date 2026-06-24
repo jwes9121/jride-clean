@@ -2523,8 +2523,8 @@ const contact = await fetchOptionalJson(
 		>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-sm font-bold text-slate-900">Exact delivery pin</div>
-                  <div className="hidden text-[11px] text-slate-500 sm:block">Required: set the exact delivery pin so the driver route uses the correct passenger location.</div>
+                  <div className="text-sm font-bold text-slate-900">Exact delivery location</div>
+                  <div className="hidden text-[11px] text-slate-500 sm:block">Set the exact drop-off pin so the driver goes to the correct spot.</div>
                 </div>
                 <button
                   type="button"
@@ -2546,11 +2546,13 @@ const contact = await fetchOptionalJson(
       }}
                   className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
                 >
-                  {showDeliveryPin ? "Hide location options" : deliveryPin ? "Change exact location" : "Set exact location"}
+                  {showDeliveryPin ? "Hide map" : deliveryPin ? "Change exact location" : "Set exact location"}
                 </button>
               </div>
               {deliveryPin ? (
-                <div className="mt-2 text-[11px] text-emerald-700">Delivery spot saved for this order. Add a landmark in the address box if needed.</div>
+                <div className="mt-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+                  Exact delivery location saved. Add a landmark in the address box if needed.
+                </div>
               ) : (
                 <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-900">
   Delivery location required before placing the order.
@@ -2558,7 +2560,14 @@ const contact = await fetchOptionalJson(
               )}
               {showDeliveryPin ? (
                 <div className="mt-3">
-                  <DeliveryPinPicker value={deliveryPin} onChange={(next) => { setDeliveryPin(next); setSubmitted(false); }} />
+                  <DeliveryPinPicker
+                    value={deliveryPin}
+                    onChange={(next) => {
+                      setDeliveryPin(next);
+                      setSubmitted(false);
+                      setShowDeliveryPin(false);
+                    }}
+                  />
                 </div>
               ) : null}
             </div>
@@ -3243,6 +3252,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
