@@ -2554,15 +2554,15 @@ const contact = await fetchOptionalJson(
                   Exact delivery location saved. Add a landmark in the address box if needed.
                 </div>
               ) : (
-                <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-400 bg-amber-50 px-3 py-3 text-amber-950">
+                <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-300 bg-white px-3 py-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-black text-white">
                     !
                   </div>
                   <div>
-                    <div className="text-sm font-extrabold">
+                    <div className="text-sm font-extrabold text-slate-900">
                       Delivery location required before placing the order.
                     </div>
-                    <div className="mt-1 text-xs font-semibold">
+                    <div className="mt-1 text-xs text-slate-600">
                       Set your exact delivery location on the map to continue.
                     </div>
                   </div>
