@@ -355,6 +355,8 @@ export async function POST(req: Request) {
     const adjustedProposedFare = nightRate.adjustedBaseFare;
     const platformFee = 15;
     const totalFare = adjustedProposedFare + pickupFee + platformFee;
+    const nowIso = new Date().toISOString();
+    const feeProposalExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
     // Canonical lifecycle allows direct accepted -> fare_proposed.
     // Do not regress accepted back to assigned before proposing fare.
@@ -365,13 +367,14 @@ export async function POST(req: Request) {
       night_rate_mode: nightRate.mode,
       verified_fare: null,
       passenger_fare_response: null,
+      driver_fee_proposal_expires_at: feeProposalExpiresAt,
       driver_to_pickup_km: driverToPickupKm,
       pickup_distance_fee: pickupFee,
       trip_distance_km: tripDistanceKm,
       status: "fare_proposed",
       assigned_driver_id: assignedDriverId || effectiveDriverId,
       driver_id: bookingDriverId || effectiveDriverId,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     };
 
     const { error: updateErr } = await supabase

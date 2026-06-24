@@ -577,6 +577,9 @@ export default function RidePage() {
   );
   const [liveErr, setLiveErr] = React.useState("");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const fareProposalAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const fareProposalAlertRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFareProposalAlertKeyRef = React.useRef("");
   const [fareBusy, setFareBusy] = React.useState(false);
 
   const [feesAck, setFeesAck] = React.useState(false);
@@ -2149,10 +2152,49 @@ if (mapRef.current) {
   const liveTotal = backendLiveTotal ?? fallbackLiveTotal;
   const hasFare = liveFare != null;
   const hasLiveTotal = liveTotal != null;
-
-  const totalIsFallback = backendLiveTotal == null && fallbackLiveTotal != null;
-
+  const totalIsFallback =
+    backendLiveTotal == null && fallbackLiveTotal != null && hasFare;
   const isFareProposed = normStatus(liveStatus) === "fare_proposed";
+  const fareProposalAlertKey = isFareProposed && activeCode ? `${activeCode}:${liveFare ?? ""}:${liveTotal ?? ""}` : "";
+
+  React.useEffect(() => {
+    function stopFareProposalAlert() {
+      if (fareProposalAlertRef.current) {
+        clearInterval(fareProposalAlertRef.current);
+        fareProposalAlertRef.current = null;
+      }
+    }
+
+    if (!fareProposalAlertKey) {
+      stopFareProposalAlert();
+      lastFareProposalAlertKeyRef.current = "";
+      return stopFareProposalAlert;
+    }
+
+    if (!fareProposalAudioRef.current && typeof Audio !== "undefined") {
+      fareProposalAudioRef.current = new Audio("/audio/jride_audio.mp3");
+      fareProposalAudioRef.current.preload = "auto";
+    }
+
+    const playAlert = () => {
+      const audio = fareProposalAudioRef.current;
+      if (!audio) return;
+      try {
+        audio.currentTime = 0;
+        void audio.play();
+      } catch {}
+    };
+
+    if (lastFareProposalAlertKeyRef.current !== fareProposalAlertKey) {
+      lastFareProposalAlertKeyRef.current = fareProposalAlertKey;
+      playAlert();
+    }
+
+    stopFareProposalAlert();
+    fareProposalAlertRef.current = setInterval(playAlert, 30000);
+
+    return stopFareProposalAlert;
+  }, [fareProposalAlertKey]);
   const driverName = norm(lb?.driver_name || "");
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
   const tripToLabel = norm(lb?.to_label || toLabel || "");
@@ -2286,20 +2328,25 @@ if (mapRef.current) {
           <div className="space-y-4">
             {liveStatus && <StatusStepper status={liveStatus} />}
 
-            {hasFare && (
+                        {hasFare && (
               <div
                 className={
                   "rounded-xl border p-4 space-y-3 " +
                   (isFareProposed
-                    ? "border-amber-200 bg-amber-50/50"
+                    ? "sticky top-3 z-40 border-amber-400 bg-amber-50 shadow-[0_18px_45px_rgba(245,158,11,0.28)]"
                     : "border-black/10 bg-white")
                 }
               >
                 <div>
+                  {isFareProposed && (
+                    <div className="mb-2 inline-flex rounded-full bg-amber-500 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                      Action required
+                    </div>
+                  )}
                   <div
                     className={
                       "text-sm font-semibold " +
-                      (isFareProposed ? "text-amber-900" : "text-slate-900")
+                      (isFareProposed ? "text-amber-950" : "text-slate-900")
                     }
                   >
                     {isFareProposed
@@ -2308,7 +2355,7 @@ if (mapRef.current) {
                   </div>
                   <div className="mt-1 text-xs opacity-70">
                     {isFareProposed
-                      ? "Accept to continue or request a new quote."
+                      ? "Approve the proposed fare now to continue this ride. The reminder sound repeats every 30 seconds."
                       : "Fare, pickup fee, and total shown for this trip."}
                   </div>
                 </div>
