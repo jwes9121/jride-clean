@@ -199,16 +199,19 @@ export async function POST(req: NextRequest) {
             updated_at: nowIso,
           }
         : {
-            passenger_fare_response: "rejected",
-            status: "searching",
-            driver_id: null,
-            assigned_at: null,
-            proposed_fare: null,
-            verified_fare: null,
-            driver_to_pickup_km: null,
-            pickup_distance_fee: null,
-            updated_at: nowIso,
-          };
+  passenger_fare_response: "rejected",
+  status: "searching",
+  driver_id: null,
+  assigned_driver_id: null,
+  assigned_at: null,
+  last_expired_driver_id: rejectedDriverId,
+  driver_fee_proposal_expires_at: null,
+  proposed_fare: null,
+  verified_fare: null,
+  driver_to_pickup_km: null,
+  pickup_distance_fee: null,
+  updated_at: nowIso,
+}
 
     const { data: updatedRows, error: updateError } = await serviceSupabase
       .from("bookings")
