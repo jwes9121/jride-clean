@@ -196,6 +196,8 @@ export async function GET(req: NextRequest) {
   "pickup_ready",
   "driver_assigned",
   "driver_accepted",
+  "driver_fee_proposed",
+  "fare_proposed",
   "rider_arrived_vendor",
   "picked_up",
   "delivering"
