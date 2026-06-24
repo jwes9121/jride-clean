@@ -726,6 +726,7 @@ export default function TakeoutPage() {
   const [saveAddr, setSaveAddr] = useState(true);
   const [setPrimary, setSetPrimary] = useState(true);
   const [showDeliveryPin, setShowDeliveryPin] = useState(false);
+  const deliveryPinSectionRef = useRef<HTMLDivElement | null>(null);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPin | null>(null);
 
   // Phase 2B - menu consumption
@@ -2516,7 +2517,10 @@ const contact = await fetchOptionalJson(
               </div>
             ) : null}
 
-            <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 sm:p-3">
+            <div
+  		ref={deliveryPinSectionRef}
+ 		 className="mt-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 sm:p-3"
+		>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="text-sm font-bold text-slate-900">Exact delivery pin</div>
@@ -2524,7 +2528,22 @@ const contact = await fetchOptionalJson(
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowDeliveryPin((v) => !v)}
+                  onClick={() => {
+            setShowDeliveryPin((current) => {
+             const next = !current;
+
+             if (next) {
+         requestAnimationFrame(() => {
+        deliveryPinSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+       });
+       }
+
+        return next;
+      });
+      }}
                   className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
                 >
                   {showDeliveryPin ? "Hide location options" : deliveryPin ? "Change exact location" : "Set exact location"}
