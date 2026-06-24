@@ -2048,7 +2048,18 @@ if (mapRef.current) {
           setLiveErr("");
           setResult("Searching for available drivers...");
           setPreBookingSearch(true);
-        } else if (!book.ok) {
+                } else if (!book.ok) {
+          const errCode = norm(bj.code || bj.error || "");
+          if (errCode === "not_authed") {
+            preBookingSearchRef.current = false;
+            setPreBookingSearch(false);
+            setResult("Please sign in again to book a ride.");
+            if (typeof window !== "undefined") {
+              window.location.href = "/passenger-login?next=/ride";
+            }
+            return;
+          }
+
           setResult(
             `BOOK_FAILED: ${bj.code || "FAILED"} - ${bj.message || "Insert failed"}`,
           );
