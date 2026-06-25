@@ -304,15 +304,9 @@ export async function POST(req: Request) {
         );
       }
 
-      return NextResponse.json(
-        {
-          ok: true,
-          eligible: false,
-          error: "PROMO_NOT_ALLOWED",
-          message: "This promo is not approved for this passenger account.",
-        },
-        { status: 200 }
-      );
+      // No active allowlist row.
+      // Continue to Android promo ownership validation below.
+      // Open Android mode relies on passenger_promo_credits instead of allowlist approval.
     }
 
     const approvedDeviceId = text(allowRow?.approved_device_id);
