@@ -34,45 +34,25 @@ function getAdminClient(req: NextRequest) {
 }
 
 async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bookingId?: string }) {
-  const rpcName = "admin_finalize_trip_and_credit_wallets";
   const code = clean(input.bookingCode);
-  const id = clean(input.bookingId);
-  const attempts: any[] = [];
 
-  if (code) {
-    attempts.push({ booking_code: code });
-    attempts.push({ p_booking_code: code });
-    attempts.push({ in_booking_code: code });
-    attempts.push({ _booking_code: code });
-    attempts.push({ code });
-    attempts.push({ bookingCode: code });
+  if (!code) {
+    return { ok: false, error: "MISSING_BOOKING_CODE" };
   }
 
-  if (id) {
-    attempts.push({ booking_id: id });
-    attempts.push({ p_booking_id: id });
-    attempts.push({ in_booking_id: id });
-    attempts.push({ _booking_id: id });
-    attempts.push({ id });
-    attempts.push({ bookingId: id });
+  const { data, error } = await supabase.rpc("complete_booking_and_credit_driver", {
+    p_booking_code: code,
+  });
+
+  if (error) {
+    return { ok: false, error: String(error?.message || error) };
   }
 
-  for (const args of attempts) {
-    const { data, error } = await supabase.rpc(rpcName as any, args);
-    if (!error) {
-      return { ok: true, data, usedArgs: args };
-    }
+  if (data && data.ok === false) {
+    return { ok: false, error: String(data.error || "COMPLETE_AND_CREDIT_FAILED"), data };
   }
 
-  const fallback = await supabase.rpc(rpcName as any);
-  if (!fallback.error) {
-    return { ok: true, data: fallback.data, usedArgs: null };
-  }
-
-  return {
-    ok: false,
-    error: String(fallback.error?.message || fallback.error || "FINALIZE_RPC_FAILED"),
-  };
+  return { ok: true, data, usedArgs: { p_booking_code: code } };
 }
 
 async function finalizePromoSafe(supabase: any, booking: any) {
