@@ -153,10 +153,29 @@ export async function POST(req: NextRequest) {
     patch.customer_status = "cash_collected";
   }
 
-  if (nextStatus === "requested" || nextStatus === "cancelled") {
+    if (nextStatus === "requested") {
     patch.assigned_driver_id = null;
     patch.driver_id = null;
     patch.assigned_at = null;
+  }
+
+  if (nextStatus === "cancelled") {
+    patch.status = "cancelled";
+    patch.vendor_status = "cancelled";
+    patch.customer_status = "cancelled";
+    patch.driver_status = "cancelled";
+    patch.assigned_driver_id = null;
+    patch.driver_id = null;
+    patch.assigned_at = null;
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_pricing_status = null;
+    patch.takeout_delivery_fee = null;
+    patch.takeout_service_fee = null;
+    patch.takeout_total_payable = null;
+    patch.takeout_fee_expires_at = null;
+    patch.takeout_customer_confirmed_at = null;
+    patch.updated_at = new Date().toISOString();
   }
 
   const up = await admin
