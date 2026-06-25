@@ -620,12 +620,35 @@ export async function POST(req: Request) {
       }> = [];
 
       for (const booking of scanRows) {
-        const bookingExclusions = [
-          ...excludeDriverIds,
-          String((booking as any).last_expired_driver_id || "").trim(),
-        ].filter(Boolean);
+        const expiredDriverId = String((booking as any).last_expired_driver_id || "").trim();
 
-        const result = await matchSingle(supabase, booking, bookingExclusions);
+const bookingExclusions = [
+  ...excludeDriverIds,
+  expiredDriverId,
+].filter(Boolean);
+
+let result = await matchSingle(
+  supabase,
+  booking as BookingRow,
+  bookingExclusions
+);
+
+if (
+  !result.assigned &&
+  result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
+  expiredDriverId
+) {
+  console.log("[AUTO_ASSIGN_FALLBACK] Retrying with previously expired driver allowed", {
+    booking_code: (booking as any).booking_code,
+    expired_driver_id: expiredDriverId,
+  });
+
+  result = await matchSingle(
+    supabase,
+    booking as BookingRow,
+    excludeDriverIds
+  );
+}
 
         if (result.decision === "assigned") assigned_count++;
         else if (result.decision === "skipped") skipped_count++;
@@ -729,12 +752,35 @@ export async function POST(req: Request) {
       );
     }
 
-    const bookingExclusions = [
-      ...excludeDriverIds,
-      String((booking as any).last_expired_driver_id || "").trim(),
-    ].filter(Boolean);
+   const expiredDriverId = String((booking as any).last_expired_driver_id || "").trim();
 
-    const result = await matchSingle(supabase, booking as BookingRow, bookingExclusions);
+const bookingExclusions = [
+  ...excludeDriverIds,
+  expiredDriverId,
+].filter(Boolean);
+
+let result = await matchSingle(
+  supabase,
+  booking as BookingRow,
+  bookingExclusions
+);
+
+if (
+  !result.assigned &&
+  result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
+  expiredDriverId
+) {
+  console.log("[AUTO_ASSIGN_FALLBACK] Retrying with previously expired driver allowed", {
+    booking_code: (booking as any).booking_code,
+    expired_driver_id: expiredDriverId,
+  });
+
+  result = await matchSingle(
+    supabase,
+    booking as BookingRow,
+    excludeDriverIds
+  );
+}
 
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
