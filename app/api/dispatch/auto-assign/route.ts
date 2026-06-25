@@ -23,14 +23,18 @@ type BookingRow = {
   booking_code: string | null;
   pickup_lat: number | null;
   pickup_lng: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
   town?: string | null;
   status?: string | null;
   driver_id?: string | null;
+  assigned_driver_id?: string | null;
   last_expired_driver_id?: string | null;
   is_emergency?: boolean | null;
   service_type?: string | null;
+  vendor_status?: string | null;
+  takeout_items_subtotal?: number | string | null;
 };
-
 const REQUEST_SEARCH_EXPIRY_SECONDS = 300; // JRIDE_SEARCHING_EXPIRE_5MIN_V1
 const ASSIGN_FRESHNESS_SECONDS = 120;
 const SCAN_LIMIT = 5;
@@ -116,9 +120,43 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return r * c;
 }
 
-function isAssignableSearchingState(status: any): boolean {
-  const s = norm(status);
-  return s === "searching";
+function isAssignableAutoAssignState(booking: BookingRow): boolean {
+  const status = norm(booking?.status);
+  const serviceType = norm(booking?.service_type);
+  const vendorStatus = norm(booking?.vendor_status);
+
+  if (status === "searching") return true;
+
+  return (
+    serviceType === "takeout" &&
+    status === "requested" &&
+    vendorStatus === "vendor_accepted"
+  );
+}
+
+function isTakeoutCashFirst(booking: BookingRow): boolean {
+  const subtotal = num(booking?.takeout_items_subtotal) ?? 0;
+  return norm(booking?.service_type) === "takeout" && subtotal > 500;
+}
+
+function assignmentTargetCoords(booking: BookingRow): {
+  lat: number | null;
+  lng: number | null;
+  basis: "pickup_vendor" | "dropoff_customer_cash_first";
+} {
+  if (isTakeoutCashFirst(booking)) {
+    return {
+      lat: num(booking?.dropoff_lat),
+      lng: num(booking?.dropoff_lng),
+      basis: "dropoff_customer_cash_first",
+    };
+  }
+
+  return {
+    lat: num(booking?.pickup_lat),
+    lng: num(booking?.pickup_lng),
+    basis: "pickup_vendor",
+  };
 }
 
 function effectiveMinWalletRequired(v: any): number {
@@ -141,6 +179,7 @@ function compareDrivers(a: DriverRow, b: DriverRow, pickupLat: number | null, pi
     const bKm = haversineKm(bLat as number, bLng as number, pickupLat as number, pickupLng as number);
     if (aKm !== bKm) return aKm - bKm;
   } else if (aHasCoords && !bHasCoords) {
+  
     return -1;
   } else if (!aHasCoords && bHasCoords) {
     return 1;
@@ -179,6 +218,8 @@ type MatchDebug = {
   chosen_driver_vehicle_type: string | null;
   freshness_seconds_threshold: number;
   excluded_driver_ids: string[];
+  assignment_distance_basis: "pickup_vendor" | "dropoff_customer_cash_first";
+  takeout_items_subtotal: number | null;
 };
 
 async function matchSingle(
@@ -196,10 +237,11 @@ async function matchSingle(
   const excluded = (excludeDriverIds || []).map((x) => String(x || "").trim()).filter(Boolean);
   const bookingTown = text(booking?.town);
   const emergencyMode = !!booking?.is_emergency;
-  const requestedVehicleType = normalizeVehicleType(booking?.service_type);
+    const requestedVehicleType = normalizeVehicleType(booking?.service_type);
   const allowedTowns = allowedTownsForBooking(bookingTown, emergencyMode);
-  const pickupLat = num(booking?.pickup_lat);
-  const pickupLng = num(booking?.pickup_lng);
+  const targetCoords = assignmentTargetCoords(booking);
+  const pickupLat = targetCoords.lat;
+  const pickupLng = targetCoords.lng;
 
   const debug: MatchDebug = {
     booking_id: booking?.id ?? null,
@@ -227,6 +269,8 @@ async function matchSingle(
     chosen_driver_vehicle_type: null,
     freshness_seconds_threshold: ASSIGN_FRESHNESS_SECONDS,
     excluded_driver_ids: excluded,
+    assignment_distance_basis: targetCoords.basis,
+    takeout_items_subtotal: num(booking?.takeout_items_subtotal),
   };
 
   if (!booking?.id) {
@@ -238,7 +282,7 @@ async function matchSingle(
     };
   }
 
-  if (!isAssignableSearchingState(booking.status)) {
+    if (!isAssignableAutoAssignState(booking)) {
     return {
       assigned: false,
       reason: "BOOKING_NOT_ASSIGNABLE",
@@ -473,18 +517,32 @@ async function matchSingle(
 
   const nowIso = isoNow();
 
+    const updatePayload: Record<string, unknown> = {
+    driver_id: chosen.driver_id,
+    assigned_driver_id: chosen.driver_id,
+    status: "assigned",
+    assigned_at: nowIso,
+    driver_accept_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    updated_at: nowIso,
+  };
+
+  if (norm(booking.service_type) === "takeout") {
+    updatePayload.vendor_status = "driver_assigned";
+    updatePayload.customer_status = "driver_assigned";
+    updatePayload.driver_status = "driver_assigned";
+    updatePayload.takeout_pricing_status = "waiting_driver_accept";
+    updatePayload.takeout_driver_accept_expires_at = updatePayload.driver_accept_expires_at;
+  }
+
+  const guardedStatuses = norm(booking.service_type) === "takeout"
+    ? ["requested", "searching"]
+    : ["searching"];
+
   const { error: updateError } = await supabase
     .from("bookings")
-    .update({
-  driver_id: chosen.driver_id,
-  assigned_driver_id: chosen.driver_id,
-  status: "assigned",
-  assigned_at: nowIso,
-  driver_accept_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-  updated_at: nowIso,
-})
+    .update(updatePayload)
     .eq("id", booking.id)
-    .in("status", ["searching"])
+    .in("status", guardedStatuses)
     .is("driver_id", null);
 
   if (updateError) {
@@ -524,10 +582,10 @@ export async function POST(req: Request) {
       // Assignment scan must not be blocked by cleanup.
       const expiredSearchingCount = 0;
 
-      const { data: bookings, error } = await supabase
+     const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id, last_expired_driver_id")
-        .in("status", ["searching"])
+        .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
+        .or("status.eq.searching,and(service_type.eq.takeout,status.eq.requested,vendor_status.eq.vendor_accepted)")
         .is("driver_id", null)
         .order("created_at", { ascending: true })
         .limit(SCAN_LIMIT);
@@ -638,9 +696,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: booking, error: bookingError } = await supabase
+        const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, town, status, driver_id, is_emergency, service_type, passenger_fare_response, assigned_driver_id, last_expired_driver_id")
+      .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
       .eq("id", bookingId)
       .single();
 
