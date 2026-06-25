@@ -353,29 +353,21 @@ export async function POST(req: Request) {
     if (ensureStatus?.ok === false) {
       const ensureError = norm(ensureStatus?.error);
 
-      if (ensureError === "promo_already_exists_for_user_or_device") {
+      if (ensureError !== "promo_already_exists_for_user_or_device") {
         return NextResponse.json(
           {
             ok: true,
             eligible: false,
-            error: "PROMO_ALREADY_EXISTS_FOR_USER_OR_DEVICE",
-            message: "This promo is already attached to this Android device or another passenger account on this device.",
+            error: ensureStatus?.error || "PROMO_NOT_AVAILABLE",
+            message: "This promo is not currently available for this Android passenger account and device.",
             promo_status: ensureStatus,
           },
           { status: 200 }
         );
       }
 
-      return NextResponse.json(
-        {
-          ok: true,
-          eligible: false,
-          error: ensureStatus?.error || "PROMO_NOT_AVAILABLE",
-          message: "This promo is not currently available for this Android passenger account and device.",
-          promo_status: ensureStatus,
-        },
-        { status: 200 }
-      );
+      // Existing promo credit may already belong to this same passenger and device.
+      // Continue to jride_promo_get_status below, which checks the actual credit row.
     }
 
     const statusRes = await admin.rpc("jride_promo_get_status", {
