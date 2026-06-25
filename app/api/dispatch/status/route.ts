@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -40,19 +40,30 @@ async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bo
     return { ok: false, error: "MISSING_BOOKING_CODE" };
   }
 
-  const { data, error } = await supabase.rpc("complete_booking_and_credit_driver", {
-    p_booking_code: code,
-  });
+  const { data, error } = await supabase.rpc(
+    "admin_finalize_trip_and_credit_wallets",
+    {
+      p_booking_code: code,
+    }
+  );
 
   if (error) {
     return { ok: false, error: String(error?.message || error) };
   }
 
   if (data && data.ok === false) {
-    return { ok: false, error: String(data.error || "COMPLETE_AND_CREDIT_FAILED"), data };
+    return {
+      ok: false,
+      error: String(data.error || "FINALIZE_TRIP_FAILED"),
+      data,
+    };
   }
 
-  return { ok: true, data, usedArgs: { p_booking_code: code } };
+  return {
+    ok: true,
+    data,
+    usedArgs: { p_booking_code: code },
+  };
 }
 
 async function finalizePromoSafe(supabase: any, booking: any) {
