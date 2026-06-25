@@ -120,6 +120,74 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return r * c;
 }
 
+function mapboxMatrixToken(): string {
+  return String(
+    process.env.MAPBOX_ACCESS_TOKEN ||
+      process.env.MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+      ""
+  ).trim();
+}
+
+async function getRoadDurationsSeconds(
+  target: { lat: number; lng: number },
+  drivers: DriverRow[]
+): Promise<Map<string, number>> {
+  const token = mapboxMatrixToken();
+  if (!token || !drivers.length) return new Map();
+
+  const candidates = drivers
+    .map((d) => ({
+      driver_id: text(d.driver_id),
+      lat: num(d.lat),
+      lng: num(d.lng),
+    }))
+    .filter((d) => d.driver_id && d.lat != null && d.lng != null)
+    .slice(0, 24);
+
+  if (!candidates.length) return new Map();
+
+  const allCoords = [
+    ...candidates.map((d) => `${d.lng},${d.lat}`),
+    `${target.lng},${target.lat}`,
+  ].join(";");
+
+  const destinationIndex = candidates.length;
+
+  const url =
+    `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${allCoords}` +
+    `?sources=${candidates.map((_, idx) => idx).join(",")}` +
+    `&destinations=${destinationIndex}` +
+    `&annotations=duration` +
+    `&access_token=${encodeURIComponent(token)}`;
+
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      console.error("[AUTO_ASSIGN_MAPBOX_MATRIX_ERROR]", res.status, await res.text());
+      return new Map();
+    }
+
+    const json = (await res.json()) as { durations?: (number | null)[][] };
+    const durations = Array.isArray(json?.durations) ? json.durations : [];
+
+    const out = new Map<string, number>();
+    candidates.forEach((driver, idx) => {
+      const value = durations[idx]?.[0];
+      if (typeof value === "number" && Number.isFinite(value)) {
+        out.set(driver.driver_id, value);
+      }
+    });
+
+    return out;
+  } catch (e: any) {
+    console.error("[AUTO_ASSIGN_MAPBOX_MATRIX_EXCEPTION]", String(e?.message || e));
+    return new Map();
+  }
+}
+
+
 function isAssignableAutoAssignState(booking: BookingRow): boolean {
   const status = norm(booking?.status);
   const serviceType = norm(booking?.service_type);
@@ -490,7 +558,24 @@ async function matchSingle(
     eligible.push(d);
   }
 
-  eligible.sort((a, b) => compareDrivers(a, b, pickupLat, pickupLng));
+  const roadDurations =
+    pickupLat != null && pickupLng != null
+      ? await getRoadDurationsSeconds({ lat: pickupLat, lng: pickupLng }, eligible)
+      : new Map<string, number>();
+
+  eligible.sort((a, b) => {
+    const aId = text(a.driver_id);
+    const bId = text(b.driver_id);
+    const aRoad = roadDurations.get(aId);
+    const bRoad = roadDurations.get(bId);
+
+    if (aRoad != null && bRoad != null && aRoad !== bRoad) return aRoad - bRoad;
+    if (aRoad != null && bRoad == null) return -1;
+    if (aRoad == null && bRoad != null) return 1;
+
+    return compareDrivers(a, b, pickupLat, pickupLng);
+  });
+
   debug.eligible_count = eligible.length;
 
   if (eligible.length === 0) {
@@ -515,9 +600,14 @@ async function matchSingle(
     );
   }
 
+  (debug as any).chosen_driver_road_duration_seconds =
+    roadDurations.get(text(chosen.driver_id)) ?? null;
+  (debug as any).driver_selection_metric =
+    roadDurations.size > 0 ? "mapbox_road_duration" : "haversine_fallback";
+
   const nowIso = isoNow();
 
-    const updatePayload: Record<string, unknown> = {
+  const updatePayload: Record<string, unknown> = {
     driver_id: chosen.driver_id,
     assigned_driver_id: chosen.driver_id,
     status: "assigned",
