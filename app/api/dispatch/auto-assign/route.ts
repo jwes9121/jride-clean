@@ -616,12 +616,16 @@ async function matchSingle(
     updated_at: nowIso,
   };
 
-  if (norm(booking.service_type) === "takeout") {
+    if (norm(booking.service_type) === "takeout") {
+    const cashFirst = isTakeoutCashFirst(booking);
+
     updatePayload.vendor_status = "driver_assigned";
     updatePayload.customer_status = "driver_assigned";
     updatePayload.driver_status = "driver_assigned";
     updatePayload.takeout_pricing_status = "waiting_driver_accept";
     updatePayload.takeout_driver_accept_expires_at = updatePayload.driver_accept_expires_at;
+    updatePayload.takeout_route_plan = cashFirst ? "customer_cash_first" : "vendor_first";
+    updatePayload.takeout_cash_collection_required = cashFirst;
   }
 
   const guardedStatuses = norm(booking.service_type) === "takeout"
