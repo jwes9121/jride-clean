@@ -1017,23 +1017,27 @@ const boundaryOverrideRequested =
       } else {
         const ensureData = (ensureRes.data as any) || null;
 
-        if ((ensureData as any)?.ok === false) {
-          await userSupabase.from("bookings").delete().eq("id", booking.id);
+                if ((ensureData as any)?.ok === false) {
+          const ensureError = String((ensureData as any)?.error || "");
 
-          return NextResponse.json(
-            {
-              ok: false,
-              code: "PROMO_ENSURE_BLOCKED",
-              message: String((ensureData as any)?.error || "Promo is not available for this account or device."),
-              promo: {
+          if (ensureError !== "PROMO_ALREADY_EXISTS_FOR_USER_OR_DEVICE") {
+            await userSupabase.from("bookings").delete().eq("id", booking.id);
+
+            return NextResponse.json(
+              {
                 ok: false,
-                stage: "ensure",
-                ensure: ensureData,
-                error: String((ensureData as any)?.error || "PROMO_ENSURE_BLOCKED"),
+                code: "PROMO_ENSURE_BLOCKED",
+                message: String((ensureData as any)?.error || "Promo is not available for this account or device."),
+                promo: {
+                  ok: false,
+                  stage: "ensure",
+                  ensure: ensureData,
+                  error: String((ensureData as any)?.error || "PROMO_ENSURE_BLOCKED"),
+                },
               },
-            },
-            { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
-          );
+              { status: 409, headers: { "Cache-Control": "no-store, max-age=0" } }
+            );
+          }
         }
 
         const reserveRes = await userSupabase.rpc("jride_promo_reserve_for_booking", {
