@@ -629,34 +629,115 @@ export async function POST(req: NextRequest) {
           return bUpdated - aUpdated;
         });
 
-      let eligibleDriverId = "";
+            let eligibleDriverId = "";
+      const assignDiagnostics: any[] = [];
 
       for (const row of ranked) {
         const candidateDriverId = text(row?.driver_id);
-        if (!candidateDriverId) continue;
-        if (excludedDriverId && candidateDriverId === excludedDriverId) continue;
-        if (!row?.eligibility?.assignEligible) continue;
+
+        const diag: any = {
+          driver_id: candidateDriverId || null,
+          town: row?.town ?? null,
+          status: row?.status ?? null,
+          updated_at: row?.updated_at ?? null,
+          distKm: row?.distKm ?? null,
+          eligibility: row?.eligibility ?? null,
+          rejected_at: null,
+          rejected_reason: null,
+        };
+
+        if (!candidateDriverId) {
+          diag.rejected_at = "candidate_driver_id";
+          diag.rejected_reason = "missing_driver_id";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
+        if (excludedDriverId && candidateDriverId === excludedDriverId) {
+          diag.rejected_at = "excluded_driver";
+          diag.rejected_reason = "candidate_is_excluded_driver";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
+        if (!row?.eligibility?.assignEligible) {
+          diag.rejected_at = "location_eligibility";
+          diag.rejected_reason = "assignEligible_false";
+          assignDiagnostics.push(diag);
+          continue;
+        }
 
         const activeTrip = await findActiveTripForDriver(supabase, candidateDriverId, bookingDbId);
-        if (!activeTrip.ok) continue;
-        if (activeTrip.trip) continue;
+        diag.active_trip_check = activeTrip;
+
+        if (!activeTrip.ok) {
+          diag.rejected_at = "active_trip_check";
+          diag.rejected_reason = "active_trip_query_failed";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
+        if (activeTrip.trip) {
+          diag.rejected_at = "active_trip";
+          diag.rejected_reason = "driver_has_active_trip";
+          assignDiagnostics.push(diag);
+          continue;
+        }
 
         const eligibility = await isDriverWalletEligible(supabase, candidateDriverId);
-        if (!eligibility.ok) continue;
-        if (!eligibility.eligible) continue;
+        diag.wallet_check = eligibility;
+
+        if (!eligibility.ok) {
+          diag.rejected_at = "wallet_check";
+          diag.rejected_reason = "wallet_query_failed";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
+        if (!eligibility.eligible) {
+          diag.rejected_at = "wallet_balance";
+          diag.rejected_reason = "wallet_not_eligible";
+          assignDiagnostics.push(diag);
+          continue;
+        }
 
         const vehicleCapacity = evaluateVehicleCapacity(booking, row, (eligibility as any).driver);
-        if (!vehicleCapacity.ok) continue;
+        diag.vehicle_capacity = vehicleCapacity;
+
+        if (!vehicleCapacity.ok) {
+          diag.rejected_at = "vehicle_capacity";
+          diag.rejected_reason = vehicleCapacity.error || "vehicle_capacity_failed";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
+        diag.rejected_at = null;
+        diag.rejected_reason = "selected";
+        assignDiagnostics.push(diag);
 
         eligibleDriverId = candidateDriverId;
         break;
       }
 
-      if (!eligibleDriverId) {
+            if (!eligibleDriverId) {
+        console.error("[JRIDE_ASSIGN_DIAG]", JSON.stringify({
+          booking_id: bookingDbId,
+          booking_code: text((booking as any).booking_code),
+          baseTown,
+          normalizedTowns,
+          emergencyMode,
+          excludedDriverId: excludedDriverId || null,
+          raw_driver_rows: Array.isArray(drivers) ? drivers.length : 0,
+          ranked_driver_rows: ranked.length,
+          assignDiagnostics,
+        }));
+
         return NextResponse.json(
           {
             ok: false,
-            error: emergencyMode ? "no_drivers_even_in_emergency" : "no_local_drivers",
+            error: emergencyMode
+              ? "no_drivers_even_in_emergency"
+              : "no_local_drivers",
             town: baseTown || null,
             reason: "NO_ASSIGN_ELIGIBLE_DRIVER_WITH_MIN_WALLET",
             assign_cutoff_minutes: ASSIGN_CUTOFF_MINUTES,
@@ -764,3 +845,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
