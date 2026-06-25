@@ -287,7 +287,7 @@ async function jrideTriggerTakeoutAutoReassign(req: NextRequest, row: any, drive
     let resetQuery = serviceSupabase
       .from("bookings")
       .update({
-        status: "requested",
+        status: "searching",
         vendor_status: "vendor_accepted",
         customer_status: "vendor_accepted",
         driver_status: null,
