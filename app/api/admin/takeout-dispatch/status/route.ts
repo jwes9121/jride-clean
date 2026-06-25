@@ -169,16 +169,6 @@ export async function POST(req: NextRequest) {
   // The DB lifecycle trigger expects the assignment to exist while
   // transitioning assigned -> cancelled.
 
-  patch.driver_accept_expires_at = null;
-  patch.takeout_driver_accept_expires_at = null;
-  patch.takeout_pricing_status = null;
-  patch.takeout_delivery_fee = null;
-  patch.takeout_service_fee = null;
-  patch.takeout_total_payable = null;
-  patch.takeout_fee_expires_at = null;
-  patch.takeout_customer_confirmed_at = null;
-  patch.updated_at = new Date().toISOString();
-}
     patch.driver_accept_expires_at = null;
     patch.takeout_driver_accept_expires_at = null;
     patch.takeout_pricing_status = null;
