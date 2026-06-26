@@ -290,6 +290,68 @@ type MatchDebug = {
   takeout_items_subtotal: number | null;
 };
 
+
+async function cleanupExpiredTakeoutDriverAssignment(
+  supabase: any,
+  booking: BookingRow
+): Promise<BookingRow> {
+  if (norm(booking?.service_type) !== "takeout") return booking;
+  if (norm(booking?.status) !== "assigned") return booking;
+
+  const expiryRaw = text((booking as any).takeout_driver_accept_expires_at ?? (booking as any).driver_accept_expires_at);
+  if (!expiryRaw) return booking;
+
+  const expiryMs = new Date(expiryRaw).getTime();
+  if (!Number.isFinite(expiryMs) || expiryMs > Date.now()) return booking;
+
+  const expiredDriverId = text(booking.assigned_driver_id ?? booking.driver_id);
+  if (!expiredDriverId) return booking;
+
+  const cashFirst = isTakeoutCashFirst(booking);
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("bookings")
+    .update({
+      status: "searching",
+      vendor_status: "vendor_accepted",
+      customer_status: "vendor_accepted",
+      driver_status: null,
+      driver_id: null,
+      assigned_driver_id: null,
+      assigned_at: null,
+      driver_accept_expires_at: null,
+      takeout_driver_accept_expires_at: null,
+      takeout_route_plan: cashFirst ? "customer_cash_first" : "vendor_first",
+      takeout_cash_collection_required: cashFirst,
+      last_expired_driver_id: expiredDriverId,
+      updated_at: nowIso,
+    })
+    .eq("id", booking.id)
+    .eq("service_type", "takeout")
+    .eq("status", "assigned")
+    .lt("driver_accept_expires_at", nowIso)
+    .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
+    .single();
+
+  if (error || !data) {
+    console.error("[AUTO_ASSIGN_EXPIRED_TAKEOUT_RESET_FAILED]", {
+      booking_id: booking.id,
+      booking_code: booking.booking_code,
+      error: error?.message || null,
+    });
+    return booking;
+  }
+
+  console.log("[AUTO_ASSIGN_EXPIRED_TAKEOUT_RESET]", {
+    booking_id: booking.id,
+    booking_code: booking.booking_code,
+    expired_driver_id: expiredDriverId,
+    route_plan: cashFirst ? "customer_cash_first" : "vendor_first",
+  });
+
+  return data as BookingRow;
+}
 async function matchSingle(
   supabase: any,
   booking: BookingRow,
@@ -303,6 +365,7 @@ async function matchSingle(
   debug: MatchDebug;
 }> {
   const excluded = (excludeDriverIds || []).map((x) => String(x || "").trim()).filter(Boolean);
+  booking = await cleanupExpiredTakeoutDriverAssignment(supabase, booking);
   const bookingTown = text(booking?.town);
   const emergencyMode = !!booking?.is_emergency;
     const requestedVehicleType = normalizeVehicleType(booking?.service_type);
