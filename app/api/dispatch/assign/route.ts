@@ -763,11 +763,16 @@ export async function POST(req: NextRequest) {
       updated_at: nowIso,
     };
 
-    if (isTakeoutBooking) {
+        if (isTakeoutBooking) {
+      const takeoutSubtotal = Number((booking as any).takeout_items_subtotal || 0);
+      const cashFirst = Number.isFinite(takeoutSubtotal) && takeoutSubtotal > 500;
+
       updatePayload.vendor_status = "driver_assigned";
       updatePayload.customer_status = "driver_assigned";
       updatePayload.driver_status = "driver_assigned";
       updatePayload.takeout_pricing_status = "waiting_driver_accept";
+      updatePayload.takeout_route_plan = cashFirst ? "customer_cash_first" : "vendor_first";
+      updatePayload.takeout_cash_collection_required = cashFirst;
       updatePayload.takeout_delivery_fee = null;
       updatePayload.takeout_service_fee = null;
       updatePayload.takeout_total_payable = null;
