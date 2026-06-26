@@ -138,8 +138,9 @@ export async function GET(req: NextRequest) {
       null;
 
     let driverPhone: string | null = s((booking as any).driver_phone) || null;
-    let driverLat: number | null = null;
-    let driverLng: number | null = null;
+	let driverPhotoUrl: string | null = null;
+	let driverLat: number | null = null;
+	let driverLng: number | null = null;
 
     if (driverId) {
       const driverRes = await serviceSupabase
@@ -155,7 +156,7 @@ export async function GET(req: NextRequest) {
 
       const driverProfileRes = await serviceSupabase
         .from("driver_profiles")
-        .select("driver_id, full_name, callsign, phone")
+        .select("driver_id, full_name, callsign, phone, photo_url")
         .eq("driver_id", driverId)
         .limit(1)
         .maybeSingle();
@@ -167,6 +168,9 @@ export async function GET(req: NextRequest) {
           s((driverProfileRes.data as any).callsign);
 
         driverPhone = driverPhone ?? s((driverProfileRes.data as any).phone);
+
+      driverPhotoUrl =
+  	s((driverProfileRes.data as any).photo_url);
       }
 
       const driverLocRes = await serviceSupabase
@@ -234,6 +238,7 @@ export async function GET(req: NextRequest) {
       assigned_driver_id: s((booking as any).assigned_driver_id),
       driver_name: driverName,
       driver_phone: driverPhone,
+      driver_photo_url: driverPhotoUrl,
       driver_lat: driverLat,
       driver_lng: driverLng,
       pickup_lat: pickupLat,
