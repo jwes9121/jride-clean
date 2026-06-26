@@ -34,6 +34,7 @@ type TakeoutOrder = {
   driver_id?: string | null;
   driver_name?: string | null;
   driver_phone?: string | null;
+  driver_photo_url?: string | null;
   driver_callsign?: string | null;
   driver_vehicle_type?: string | null;
   vehicle_type?: string | null;
@@ -351,6 +352,7 @@ export default function TakeoutTrackPage() {
     const assignedDriverId = normText(order?.assigned_driver_id || order?.driver_id);
     const driverName = normText(order?.driver_name || order?.driver_callsign);
     const driverPhone = normText(order?.driver_phone);
+    const driverPhotoUrl = normText(order?.driver_photo_url);
     const driverVehicleType = normText(order?.driver_vehicle_type || order?.vehicle_type);
     const hasDriverIdentity = Boolean(assignedDriverId || driverName || driverPhone || driverVehicleType);
         const driverStatus = normText(order?.driver_status || "").toLowerCase();
@@ -400,6 +402,7 @@ export default function TakeoutTrackPage() {
       assignedDriverId,
       driverName,
       driverPhone,
+      driverPhotoUrl,
       driverVehicleType,
       hasDriverIdentity,
             takeoutMapUrl,
@@ -447,26 +450,45 @@ export default function TakeoutTrackPage() {
           <div className="mt-3 space-y-2">
             {state.hasDriverIdentity ? (
               <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                <div className="font-semibold">Assigned driver</div>
-                <div className="mt-2 space-y-1 text-xs">
-                  <div className="flex justify-between gap-3">
-                    <span className="text-emerald-700">Name</span>
-                    <span className="font-semibold text-emerald-950">{state.driverName || state.assignedDriverId || "Assigned"}</span>
-                  </div>
-                  {state.driverPhone ? (
-                    <div className="flex justify-between gap-3">
-                      <span className="text-emerald-700">Phone</span>
-                      <a className="font-semibold text-emerald-950 underline" href={"tel:" + state.driverPhone}>{state.driverPhone}</a>
-                    </div>
-                  ) : null}
-                  {state.driverVehicleType ? (
-                    <div className="flex justify-between gap-3">
-                      <span className="text-emerald-700">Vehicle</span>
-                      <span className="font-semibold text-emerald-950">{state.driverVehicleType}</span>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
+  <div className="flex items-center gap-3">
+    {state.driverPhotoUrl ? (
+      <img
+        src={state.driverPhotoUrl}
+        alt="Driver"
+        className="h-16 w-16 rounded-full border border-emerald-200 object-cover"
+      />
+    ) : (
+      <div className="flex h-16 w-16 items-center justify-center rounded-full border border-emerald-200 bg-emerald-100 text-[10px] text-emerald-700">
+        No photo
+      </div>
+    )}
+
+    <div className="min-w-0">
+      <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+        Assigned driver
+      </div>
+
+      <div className="text-base font-semibold text-emerald-950">
+        {state.driverName || state.assignedDriverId || "Assigned"}
+      </div>
+
+      {state.driverPhone ? (
+        <a
+          className="mt-1 block text-sm font-semibold text-emerald-950 underline"
+          href={"tel:" + state.driverPhone}
+        >
+          {state.driverPhone}
+        </a>
+      ) : null}
+
+      {state.driverVehicleType ? (
+        <div className="mt-1 text-xs text-emerald-800">
+          {state.driverVehicleType}
+        </div>
+      ) : null}
+    </div>
+  </div>
+</div>
             ) : null}
 
             <div className="rounded border border-slate-300 bg-white p-3 text-slate-900">
