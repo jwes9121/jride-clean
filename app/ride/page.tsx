@@ -145,6 +145,8 @@ type TrackPayload = {
   driver_name?: string | null;
   driver_phone?: string | null;
   driver_photo_url?: string | null;
+  driver_average_rating?: number | string | null;
+  driver_ratings_count?: number | string | null;
   proposed_fare?: number | null;
   verified_fare?: number | null;
   fare?: number | null;
@@ -2208,7 +2210,9 @@ if (mapRef.current) {
     return stopFareProposalAlert;
   }, [fareProposalAlertKey]);
     const driverName = norm(lb?.driver_name || "");
-  const driverPhotoUrl = norm((lb as any)?.driver_photo_url || "");
+    const driverPhotoUrl = norm((lb as any)?.driver_photo_url || "");
+  const driverAverageRating = numValue((lb as any)?.driver_average_rating);
+  const driverRatingsCount = numValue((lb as any)?.driver_ratings_count) ?? 0;
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
   const tripToLabel = norm(lb?.to_label || toLabel || "");
   const tripPassengerName = norm(
@@ -2467,9 +2471,18 @@ if (mapRef.current) {
         Driver
       </div>
 
-      <div className="text-base font-semibold text-slate-900">
+            <div className="text-base font-semibold text-slate-900">
         {driverName || "Waiting for assignment"}
       </div>
+
+      {driverAverageRating != null && driverRatingsCount > 0 ? (
+        <div className="mt-1 text-sm font-semibold text-amber-600">
+          {"\u2605"} {driverAverageRating.toFixed(2)}{" "}
+          <span className="font-normal text-slate-500">
+            ({driverRatingsCount} rating{driverRatingsCount === 1 ? "" : "s"})
+          </span>
+        </div>
+      ) : null}
 
       {lb?.driver_phone ? (
         <div className="text-sm text-slate-600">
