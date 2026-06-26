@@ -245,7 +245,7 @@ export async function GET(req: NextRequest) {
     if (assignedDriverIds.length > 0) {
       const profileRes = await serviceSupabase
         .from("driver_profiles")
-        .select("driver_id,full_name,callsign,phone")
+        .select("driver_id,full_name,callsign,phone,photo_url")
         .in("driver_id", assignedDriverIds);
 
       if (!profileRes.error && Array.isArray(profileRes.data)) {
@@ -276,6 +276,7 @@ export async function GET(req: NextRequest) {
       const driverName = text(row?.driver_name || profile?.full_name || profile?.callsign);
       const driverPhone = text(row?.driver_phone || profile?.phone);
       const driverCallsign = text(row?.driver_callsign || profile?.callsign);
+      const driverPhotoUrl = text(row?.driver_photo_url || profile?.photo_url);
       const driverVehicleType = text(row?.driver_vehicle_type || row?.vehicle_type || location?.vehicle_type);
 
       return {
@@ -284,6 +285,7 @@ export async function GET(req: NextRequest) {
         driver_id: driverId || row?.driver_id || null,
         driver_name: driverName || null,
         driver_phone: driverPhone || null,
+	driver_photo_url: driverPhotoUrl || null,
         driver_callsign: driverCallsign || null,
         driver_vehicle_type: driverVehicleType || null,
         vehicle_type: driverVehicleType || row?.vehicle_type || null,
