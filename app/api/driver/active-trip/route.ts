@@ -1030,7 +1030,7 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       town: s((booking as any).town),
       from_label: s((booking as any).from_label),
       to_label: s((booking as any).to_label),
-      pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorName ?? takeoutReceipt.vendorLocationLabel ?? s((booking as any).from_label)) : s((booking as any).from_label),
+            pickup_label: isTakeoutBooking ? (takeoutReceipt.vendorName ?? takeoutReceipt.vendorLocationLabel ?? s((booking as any).from_label)) : s((booking as any).from_label),
       pickup_address_label: isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? s((booking as any).from_label)) : s((booking as any).from_label),
       pickup_store_name: isTakeoutBooking ? (takeoutReceipt.vendorName ?? null) : null,
       dropoff_label: s((booking as any).to_label),
@@ -1038,6 +1038,23 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       pickup_lng: pickupLng,
       dropoff_lat: dropoffLat,
       dropoff_lng: dropoffLng,
+
+      current_nav_target:
+        isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed
+          ? "customer_cash_collection"
+          : "vendor_or_pickup",
+      current_nav_label:
+        isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed
+          ? cashCollectionAddress
+          : (isTakeoutBooking ? (takeoutReceipt.vendorLocationLabel ?? s((booking as any).from_label)) : s((booking as any).from_label)),
+      current_nav_lat:
+        isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed
+          ? cashCollectionLat
+          : pickupLat,
+      current_nav_lng:
+        isTakeoutBooking && cashCollectionRequired && !cashCollectionConfirmed
+          ? cashCollectionLng
+          : pickupLng,
       passenger_name: s((booking as any).passenger_name),
       passenger_phone: passengerPhone,
       customer_phone: passengerPhone,
