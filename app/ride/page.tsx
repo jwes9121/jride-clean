@@ -144,6 +144,7 @@ type TrackPayload = {
   to_label?: string | null;
   driver_name?: string | null;
   driver_phone?: string | null;
+  driver_photo_url?: string | null;
   proposed_fare?: number | null;
   verified_fare?: number | null;
   fare?: number | null;
@@ -2206,7 +2207,8 @@ if (mapRef.current) {
 
     return stopFareProposalAlert;
   }, [fareProposalAlertKey]);
-  const driverName = norm(lb?.driver_name || "");
+    const driverName = norm(lb?.driver_name || "");
+  const driverPhotoUrl = norm((lb as any)?.driver_photo_url || "");
   const tripFromLabel = norm(lb?.from_label || fromLabel || "");
   const tripToLabel = norm(lb?.to_label || toLabel || "");
   const tripPassengerName = norm(
@@ -2446,10 +2448,37 @@ if (mapRef.current) {
               <div className="text-sm">
                 Status: {normStatus(liveStatus) || "--"}
               </div>
-              <div className="text-sm">
-                Driver:{" "}
-                {driverName || "Waiting for assignment"}
-              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+  <div className="flex items-center gap-3">
+    {driverPhotoUrl ? (
+      <img
+        src={driverPhotoUrl}
+        alt="Driver"
+        className="h-16 w-16 rounded-full border border-slate-200 object-cover"
+      />
+    ) : (
+      <div className="flex h-16 w-16 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs text-slate-500">
+        No photo
+      </div>
+    )}
+
+    <div className="min-w-0">
+      <div className="text-xs uppercase tracking-wide text-slate-500">
+        Driver
+      </div>
+
+      <div className="text-base font-semibold text-slate-900">
+        {driverName || "Waiting for assignment"}
+      </div>
+
+      {lb?.driver_phone ? (
+        <div className="text-sm text-slate-600">
+          {lb.driver_phone}
+        </div>
+      ) : null}
+    </div>
+  </div>
+</div>
               <div className="text-sm">Updated: {fmtDate(lb?.updated_at)}</div>
             </div>
 
