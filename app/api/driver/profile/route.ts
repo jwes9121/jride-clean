@@ -318,7 +318,8 @@ export async function POST(req: NextRequest) {
       .from("driver-assets")
       .getPublicUrl(storagePath);
 
-    const photoUrl = text(publicUrlData?.publicUrl);
+    const basePhotoUrl = text(publicUrlData?.publicUrl);
+const photoUrl = basePhotoUrl ? `${basePhotoUrl}?v=${Date.now()}` : "";
 
     if (!photoUrl) {
       return NextResponse.json(
