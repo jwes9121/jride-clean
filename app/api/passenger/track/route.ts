@@ -141,7 +141,8 @@ export async function GET(req: NextRequest) {
 	let driverPhotoUrl: string | null = null;
 	let driverLat: number | null = null;
 	let driverLng: number | null = null;
-
+	let driverAverageRating: number | null = null;
+	let driverRatingsCount = 0;
     if (driverId) {
       const driverRes = await serviceSupabase
         .from("drivers")
@@ -184,6 +185,24 @@ export async function GET(req: NextRequest) {
         driverLng = n((driverLocRes.data as any).lng);
       }
     }
+	const ratingRes = await serviceSupabase
+  .from("trip_ratings")
+  .select("rating")
+  .eq("driver_id", driverId);
+
+if (!ratingRes.error && Array.isArray(ratingRes.data)) {
+  const ratings = ratingRes.data
+    .map((row: any) => Number(row?.rating || 0))
+    .filter((rating: number) => Number.isFinite(rating) && rating > 0);
+
+  driverRatingsCount = ratings.length;
+
+  if (ratings.length > 0) {
+    driverAverageRating = Number(
+      (ratings.reduce((sum: number, rating: number) => sum + rating, 0) / ratings.length).toFixed(2)
+    );
+  }
+}
 
     const pickupLat = n((booking as any).pickup_lat);
     const pickupLng = n((booking as any).pickup_lng);
@@ -239,6 +258,8 @@ export async function GET(req: NextRequest) {
       driver_name: driverName,
       driver_phone: driverPhone,
       driver_photo_url: driverPhotoUrl,
+      driver_average_rating: driverAverageRating,
+      driver_ratings_count: driverRatingsCount,
       driver_lat: driverLat,
       driver_lng: driverLng,
       pickup_lat: pickupLat,
