@@ -1,30 +1,297 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
+
+type AnyRow = Record<string, any>;
+
+function money(v: any) {
+  const n = Number(v || 0);
+  return "PHP " + n.toLocaleString("en-PH", { maximumFractionDigits: 0 });
+}
+
+function count(v: any) {
+  return Number(v || 0).toLocaleString("en-PH");
+}
+
+function minutes(v: any) {
+  const n = Number(v || 0);
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  if (h <= 0) return m + "m";
+  return h + "h " + m + "m";
+}
+
+function fmtDate(v: any) {
+  if (!v) return "-";
+  const d = new Date(String(v));
+  if (!Number.isFinite(d.getTime())) return "-";
+  return d.toLocaleString("en-PH", { timeZone: "Asia/Manila" });
+}
+
+function Card(props: { title: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{props.title}</div>
+      <div className="mt-2 text-2xl font-bold text-slate-950">{props.value}</div>
+      {props.sub ? <div className="mt-1 text-xs text-slate-500">{props.sub}</div> : null}
+    </div>
+  );
+}
 
 export default function AnalyticsV3Page() {
   const [data, setData] = React.useState<any>(null);
   const [err, setErr] = React.useState("");
+  const [loading, setLoading] = React.useState(true);
+  const [days, setDays] = React.useState(30);
+  const [selectedDriverId, setSelectedDriverId] = React.useState("");
+  const [driverDetail, setDriverDetail] = React.useState<any>(null);
 
   React.useEffect(() => {
-    fetch("/api/admin/analytics/v3?days=30", { cache: "no-store" })
+    let alive = true;
+    setLoading(true);
+    setErr("");
+
+    fetch("/api/admin/analytics/v3?days=" + days, { cache: "no-store" })
       .then((r) => r.json())
-      .then(setData)
-      .catch((e) => setErr(String(e?.message || e)));
-  }, []);
+      .then((j) => {
+        if (!alive) return;
+        if (!j?.ok) throw new Error(j?.error || "Failed to load analytics.");
+        setData(j);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setErr(String(e?.message || e));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [days]);
+
+  async function openDriver(driverId: string) {
+    setSelectedDriverId(driverId);
+    setDriverDetail(null);
+
+    const r = await fetch(
+      "/api/admin/analytics/v3?days=" + days + "&driver_id=" + encodeURIComponent(driverId),
+      { cache: "no-store" }
+    );
+    const j = await r.json();
+    setDriverDetail(j?.driver_detail || null);
+  }
+
+  const summary = data?.summary || {};
+  const daily = data?.periods?.daily || [];
+  const towns = data?.towns || [];
+  const drivers = data?.drivers || [];
+  const activeTrips = data?.active_uncompleted_trips || [];
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
-      <h1 className="text-2xl font-bold">Analytics V3</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        Backend validation shell. Full UI will be built after the V3 payload is verified.
-      </p>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Analytics V3</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Canonical operations analytics using bookings.status as lifecycle source.
+          </p>
+        </div>
 
-      {err ? <pre className="mt-4 rounded bg-red-50 p-4 text-sm text-red-700">{err}</pre> : null}
+        <select
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+        >
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+      </div>
 
-      <pre className="mt-4 max-h-[70vh] overflow-auto rounded bg-white p-4 text-xs shadow">
-        {data ? JSON.stringify(data, null, 2) : "Loading..."}
-      </pre>
+      {err ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
+      {loading ? <div className="rounded-lg bg-white p-4 text-sm shadow-sm">Loading...</div> : null}
+
+      {data ? (
+        <>
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Card title="Total bookings" value={count(summary.total_bookings)} sub={`${count(summary.completed)} completed / ${count(summary.cancelled)} cancelled`} />
+            <Card title="Active uncompleted" value={count(summary.active_uncompleted)} sub={`${count(summary.ride_active)} ride / ${count(summary.takeout_active)} takeout`} />
+            <Card title="Gross bookings" value={money(summary.revenue)} sub={`Company cut: ${money(summary.company_cut)}`} />
+            <Card title="Drivers online" value={count(summary.online_now)} sub={`${count(summary.total_login_sessions)} login sessions`} />
+          </section>
+
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold">Active / Uncompleted Trips</h2>
+            <div className="mt-3 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-2">Booking</th>
+                    <th className="p-2">Type</th>
+                    <th className="p-2">Town</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2">Passenger</th>
+                    <th className="p-2">Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeTrips.length ? activeTrips.map((r: AnyRow) => (
+                    <tr key={r.booking_code} className="border-t">
+                      <td className="p-2 font-semibold">{r.booking_code}</td>
+                      <td className="p-2">{r.service_type}</td>
+                      <td className="p-2">{r.town || "-"}</td>
+                      <td className="p-2">{r.status || "-"}</td>
+                      <td className="p-2">{r.passenger_name || "-"}</td>
+                      <td className="p-2">{fmtDate(r.updated_at)}</td>
+                    </tr>
+                  )) : (
+                    <tr><td className="p-3 text-slate-500" colSpan={6}>No active uncompleted trips.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="mt-6 grid gap-6 xl:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-bold">Daily Summary</h2>
+              <div className="mt-3 overflow-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="p-2">Date</th>
+                      <th className="p-2">Total</th>
+                      <th className="p-2">Completed</th>
+                      <th className="p-2">Cancelled</th>
+                      <th className="p-2">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {daily.slice(0, 14).map((r: AnyRow) => (
+                      <tr key={r.key} className="border-t">
+                        <td className="p-2 font-semibold">{r.key}</td>
+                        <td className="p-2">{count(r.total)}</td>
+                        <td className="p-2">{count(r.completed)}</td>
+                        <td className="p-2">{count(r.cancelled)}</td>
+                        <td className="p-2">{money(r.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-bold">Town Summary</h2>
+              <div className="mt-3 overflow-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="p-2">Town</th>
+                      <th className="p-2">Ride</th>
+                      <th className="p-2">Takeout</th>
+                      <th className="p-2">Completed</th>
+                      <th className="p-2">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {towns.map((r: AnyRow) => (
+                      <tr key={r.key} className="border-t">
+                        <td className="p-2 font-semibold">{r.key}</td>
+                        <td className="p-2">{count(r.ride_total)}</td>
+                        <td className="p-2">{count(r.takeout_total)}</td>
+                        <td className="p-2">{count(r.completed)}</td>
+                        <td className="p-2">{money(r.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold">Driver Analytics</h2>
+            <div className="mt-3 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-2">Driver</th>
+                    <th className="p-2">Town</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2">Completed</th>
+                    <th className="p-2">Active</th>
+                    <th className="p-2">Sessions</th>
+                    <th className="p-2">Login Time</th>
+                    <th className="p-2">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drivers.map((r: AnyRow) => (
+                    <tr
+                      key={r.driver_id}
+                      className="cursor-pointer border-t hover:bg-slate-50"
+                      onClick={() => openDriver(r.driver_id)}
+                    >
+                      <td className="p-2 font-semibold">{r.driver_name || r.driver_id}</td>
+                      <td className="p-2">{r.town || "-"}</td>
+                      <td className="p-2">{r.current_status || "-"}</td>
+                      <td className="p-2">{count(r.completed_trips)}</td>
+                      <td className="p-2">{count(r.active_trips)}</td>
+                      <td className="p-2">{count(r.login_sessions)}</td>
+                      <td className="p-2">{minutes(r.login_minutes)}</td>
+                      <td className="p-2">{money(r.gross_revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {selectedDriverId ? (
+            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-bold">Driver Detail</h2>
+              {!driverDetail ? (
+                <div className="mt-3 text-sm text-slate-500">Loading driver detail...</div>
+              ) : (
+                <div className="mt-3 grid gap-4 xl:grid-cols-2">
+                  <div>
+                    <h3 className="font-semibold">Sessions</h3>
+                    <div className="mt-2 max-h-80 overflow-auto rounded border">
+                      {(driverDetail.sessions || []).map((s: AnyRow) => (
+                        <div key={s.id} className="border-b p-2 text-sm">
+                          <div className="font-semibold">{s.status || "-"}</div>
+                          <div className="text-xs text-slate-500">
+                            {fmtDate(s.login_at)} to {s.logout_at ? fmtDate(s.logout_at) : "Online"}
+                          </div>
+                          <div className="text-xs text-slate-500">{s.source || "-"} / {s.device_id || "-"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold">Bookings</h3>
+                    <div className="mt-2 max-h-80 overflow-auto rounded border">
+                      {(driverDetail.bookings || []).map((b: AnyRow) => (
+                        <div key={b.id || b.booking_code} className="border-b p-2 text-sm">
+                          <div className="font-semibold">{b.booking_code}</div>
+                          <div className="text-xs text-slate-500">
+                            {b.service_type || "ride"} / {b.status || "-"} / {b.town || "-"}
+                          </div>
+                          <div className="text-xs text-slate-500">{fmtDate(b.created_at)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+          ) : null}
+        </>
+      ) : null}
     </main>
   );
 }
