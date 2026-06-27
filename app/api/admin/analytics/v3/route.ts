@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
   if (allDriverIds.length > 0) {
     const driverIdentityRes = await admin
       .from("drivers")
-      .select("id,driver_name,driver_status,zone_id,toda_name")
+      .select("id,driver_name,driver_status,zone_id,toda_name,wallet_balance,min_wallet_required,wallet_locked,is_toda_member")
       .in("id", allDriverIds);
 
     if (!driverIdentityRes.error && Array.isArray(driverIdentityRes.data)) {
@@ -178,13 +178,17 @@ export async function GET(req: NextRequest) {
           driver_status_master: s(row?.driver_status) || null,
           zone_id: row?.zone_id || null,
           toda_name: s(row?.toda_name) || null,
+	 wallet_balance: row?.wallet_balance ?? null,
+	min_wallet_required: row?.min_wallet_required ?? null,
+	wallet_locked: row?.wallet_locked ?? null,
+	is_toda_member: row?.is_toda_member ?? null,
         };
       }
     }
 
     const driverProfileRes = await admin
       .from("driver_profiles")
-      .select("driver_id,full_name,phone")
+      .select("driver_id,full_name,callsign,municipality,vehicle_type,plate_number,phone,photo_url,toda_org,is_toda_member")
       .in("driver_id", allDriverIds);
 
     if (!driverProfileRes.error && Array.isArray(driverProfileRes.data)) {
@@ -195,6 +199,13 @@ export async function GET(req: NextRequest) {
           ...(driverIdentityById[did] || {}),
           profile_full_name: s(row?.full_name) || null,
           phone: s(row?.phone) || null,
+	callsign: s(row?.callsign) || null,
+	municipality: s(row?.municipality) || null,
+	vehicle_type: s(row?.vehicle_type) || null,
+	plate_number: s(row?.plate_number) || null,
+	photo_url: s(row?.photo_url) || null,
+	toda_org: s(row?.toda_org) || null,
+	profile_is_toda_member: row?.is_toda_member ?? null,
         };
       }
     }
@@ -376,16 +387,83 @@ export async function GET(req: NextRequest) {
       updated_at: row.updated_at,
     }));
 
-  let driver_detail: any = null;
+    let driver_detail: any = null;
   if (driverIdFilter) {
     const d = drivers[driverIdFilter] || null;
+    const identity = driverIdentityById[driverIdFilter] || {};
+
+    const driverSessions = sessions
+      .filter((row: any) => s(row.driver_id) === driverIdFilter)
+      .slice(0, 100);
+
+    const driverBookings = bookings
+      .filter((row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter)
+      .slice(0, 100);
+
+    const currentActiveBooking = driverBookings.find((row: any) => isActive(row)) || null;
+
+    const timeline = [
+      ...driverSessions.map((row: any) => ({
+        type: "session",
+        at: row.login_at || row.created_at,
+        label: "Driver login",
+        status: row.status,
+        source: row.source,
+        device_id: row.device_id,
+      })),
+      ...driverSessions
+        .filter((row: any) => row.logout_at)
+        .map((row: any) => ({
+          type: "session",
+          at: row.logout_at,
+          label: "Driver logout",
+          status: row.status,
+          source: row.source,
+          device_id: row.device_id,
+        })),
+      ...driverBookings.map((row: any) => ({
+        type: "booking",
+        at: row.created_at,
+        label: "Booking created",
+        booking_code: row.booking_code,
+        service_type: serviceType(row),
+        status: normStatus(row.status),
+        gross_booking:
+          n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare),
+        driver_payout: n(row?.driver_payout),
+        company_cut: n(row?.company_cut),
+      })),
+    ]
+      .sort((a: any, b: any) => {
+        const aa = new Date(String(a.at || "")).getTime();
+        const bb = new Date(String(b.at || "")).getTime();
+        return (Number.isFinite(bb) ? bb : 0) - (Number.isFinite(aa) ? aa : 0);
+      })
+      .slice(0, 200);
+
     driver_detail = {
-      driver: d,
-      sessions: sessions.filter((row: any) => s(row.driver_id) === driverIdFilter).slice(0, 100),
-      bookings: bookings
-        .filter((row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter)
-        .slice(0, 100),
+      driver: {
+        ...(d || {}),
+        driver_id: driverIdFilter,
+        driver_name: driverDisplayName(driverIdFilter, d?.driver_name),
+        callsign: s(identity.callsign) || null,
+        phone: s(identity.phone) || null,
+        photo_url: s(identity.photo_url) || null,
+        municipality: s(identity.municipality) || null,
+        vehicle_type: s(identity.vehicle_type) || null,
+        plate_number: s(identity.plate_number) || null,
+        driver_status_master: s(identity.driver_status_master) || d?.driver_status_master || null,
+        wallet_balance: identity.wallet_balance ?? null,
+        min_wallet_required: identity.min_wallet_required ?? null,
+        wallet_locked: identity.wallet_locked ?? null,
+        is_toda_member: identity.is_toda_member ?? identity.profile_is_toda_member ?? null,
+        toda_name: s(identity.toda_name || identity.toda_org) || null,
+      },
+      current_booking: currentActiveBooking,
       current_location: latestLocationByDriver[driverIdFilter] || null,
+      sessions: driverSessions,
+      bookings: driverBookings,
+      timeline,
     };
   }
 
