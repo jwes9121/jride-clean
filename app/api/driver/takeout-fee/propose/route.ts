@@ -554,7 +554,7 @@ const passengerLng =
       // Persist pickup excess breakdown so read routes and UIs can display the hidden total line item.
     };
 
-    const updateRes = await serviceSupabase
+        const updateRes = await serviceSupabase
       .from("bookings")
       .update({
         takeout_pricing_status: "driver_fee_proposed",
@@ -564,12 +564,14 @@ const passengerLng =
         takeout_cash_collection_required: cashRequired,
         takeout_fee_proposed_at: nowIso,
         takeout_fee_expires_at: expiresIso,
+        takeout_fee_proposal_expires_at: expiresIso,
+        driver_fee_proposal_expires_at: expiresIso,
         takeout_route_plan: routePlan,
         takeout_pricing_snapshot: snapshot,
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_pricing_snapshot")
+      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_pricing_snapshot")
       .single();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });

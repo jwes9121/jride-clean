@@ -4,7 +4,17 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const ALLOWED = new Set(["requested", "driver_assigned", "driver_accepted", "cash_collected", "rider_arrived_vendor", "picked_up", "delivering", "completed", "cancelled"]);
+const ALLOWED = new Set([
+  "requested",
+  "driver_assigned",
+  "driver_accepted",
+  "cash_collected",
+  "rider_arrived_vendor",
+  "picked_up",
+  "delivering",
+  "completed",
+  "cancelled",
+]);
 
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
@@ -65,11 +75,6 @@ async function ensureTakeoutCanonicalPathForCompletion(admin: any, order: any, d
       patch.driver_status = canonicalStatus;
     }
 
-    // JRIDE_TAKEOUT_COMPLETION_FARE_PROPOSED_GUARD_V1
-    // Takeout completion must pass the active DB lifecycle guard, but the ride fare
-    // timeout trigger can rewrite bare fare_proposed updates to searching.
-    // Keep this takeout-only canonical step alive by attaching fresh takeout pricing
-    // confirmation data. Do not weaken ride lifecycle guards and do not touch ride rows.
     if (canonicalStatus === "fare_proposed") {
       const nowIso = new Date().toISOString();
       const feeExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -126,7 +131,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,cancelled_at")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -192,6 +197,21 @@ export async function POST(req: NextRequest) {
     patch.completed_at = nowIso;
   }
 
+  if (nextStatus === "cancelled") {
+    const nowIso = new Date().toISOString();
+    patch.status = "cancelled";
+    patch.vendor_status = "cancelled";
+    patch.customer_status = "cancelled";
+    patch.driver_status = "cancelled";
+    patch.takeout_pricing_status = "cancelled";
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
+    patch.takeout_fee_expires_at = null;
+    patch.cancelled_at = nowIso;
+  }
+
   if (nextStatus === "requested") {
     patch.driver_accept_expires_at = null;
     patch.takeout_driver_accept_expires_at = null;
@@ -207,7 +227,7 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", (existing.data as any).id)
     .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,cancelled_at,updated_at")
     .single();
 
   if (up.error) {
@@ -217,11 +237,8 @@ export async function POST(req: NextRequest) {
   const wallet_deduction = {
     ok: true,
     owner: "database_trigger",
-    reason: "takeout wallet deduction is handled by the existing database trigger"
+    reason: "takeout wallet deduction is handled by the existing database trigger",
   };
+
   return json(200, { ok: true, order: up.data, wallet_deduction });
 }
-
-
-
-
