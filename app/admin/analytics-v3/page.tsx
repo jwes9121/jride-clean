@@ -235,7 +235,7 @@ export default function AnalyticsV3Page() {
                       className="cursor-pointer border-t hover:bg-slate-50"
                       onClick={() => openDriver(r.driver_id)}
                     >
-                      <td className="p-2 font-semibold">{r.driver_name || r.driver_id}</td>
+                      <td className="p-2 font-semibold">{r.driver_name || "Unknown Driver"}</td>
                       <td className="p-2">{r.town || "-"}</td>
                       <td className="p-2">{r.current_status || "-"}</td>
                       <td className="p-2">{count(r.completed_trips)}</td>

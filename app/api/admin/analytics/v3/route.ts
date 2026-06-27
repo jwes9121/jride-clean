@@ -154,6 +154,57 @@ export async function GET(req: NextRequest) {
   const sessions = Array.isArray(sessionsRes.data) ? sessionsRes.data : [];
   const locations = !locationsRes.error && Array.isArray(locationsRes.data) ? locationsRes.data : [];
 
+  const allDriverIds = Array.from(new Set([
+    ...bookings.map((row: any) => s(row?.assigned_driver_id || row?.driver_id)).filter(Boolean),
+    ...sessions.map((row: any) => s(row?.driver_id)).filter(Boolean),
+    ...locations.map((row: any) => s(row?.driver_id)).filter(Boolean),
+  ]));
+
+  const driverIdentityById: Record<string, any> = {};
+
+  if (allDriverIds.length > 0) {
+    const driverIdentityRes = await admin
+      .from("drivers")
+      .select("id,driver_name,driver_status,zone_id,toda_name")
+      .in("id", allDriverIds);
+
+    if (!driverIdentityRes.error && Array.isArray(driverIdentityRes.data)) {
+      for (const row of driverIdentityRes.data as any[]) {
+        const did = s(row?.id);
+        if (!did) continue;
+        driverIdentityById[did] = {
+          ...(driverIdentityById[did] || {}),
+          driver_name: driverDisplayName(did, row?.driver_name),
+          driver_status_master: s(row?.driver_status) || null,
+          zone_id: row?.zone_id || null,
+          toda_name: s(row?.toda_name) || null,
+        };
+      }
+    }
+
+    const driverProfileRes = await admin
+      .from("driver_profiles")
+      .select("driver_id,full_name,phone")
+      .in("driver_id", allDriverIds);
+
+    if (!driverProfileRes.error && Array.isArray(driverProfileRes.data)) {
+      for (const row of driverProfileRes.data as any[]) {
+        const did = s(row?.driver_id);
+        if (!did) continue;
+        driverIdentityById[did] = {
+          ...(driverIdentityById[did] || {}),
+          profile_full_name: s(row?.full_name) || null,
+          phone: s(row?.phone) || null,
+        };
+      }
+    }
+  }
+
+  function driverDisplayName(driverId: string, fallback?: any) {
+    const identity = driverIdentityById[driverId] || {};
+    return s(identity.driver_name) || s(identity.profile_full_name) || s(fallback) || "Unknown Driver";
+  }
+
   const summary = {
     total_bookings: bookings.length,
     completed: 0,
@@ -203,7 +254,7 @@ export async function GET(req: NextRequest) {
       if (!drivers[did]) {
         drivers[did] = {
           driver_id: did,
-          driver_name: null,
+          driver_name: driverDisplayName(did),
           town: s(row?.town) || null,
           completed_trips: 0,
           active_trips: 0,
@@ -243,7 +294,7 @@ export async function GET(req: NextRequest) {
     if (!drivers[did]) {
       drivers[did] = {
         driver_id: did,
-        driver_name: s(row?.driver_name) || null,
+        driver_name: driverDisplayName(did, row?.driver_name),
         town: s(row?.town) || null,
         completed_trips: 0,
         active_trips: 0,
@@ -279,7 +330,7 @@ export async function GET(req: NextRequest) {
     if (!drivers[did]) {
       drivers[did] = {
         driver_id: did,
-        driver_name: null,
+        driver_name: driverDisplayName(did),
         town: s((loc as any)?.town || (loc as any)?.home_town) || null,
         completed_trips: 0,
         active_trips: 0,
