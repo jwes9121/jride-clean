@@ -475,7 +475,7 @@ export default function TakeoutTrackPage() {
       </div>
 
       <div className="text-base font-semibold text-emerald-950">
-        {state.driverName || state.assignedDriverId || "Assigned"}
+       {state.driverName || (state.assignedDriverId ? "Driver assigned" : "Assigned")}
       </div>
 
             {state.driverPhone ? (
