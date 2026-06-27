@@ -225,7 +225,8 @@ export default function AnalyticsV3Page() {
                     <th className="p-2">Active</th>
                     <th className="p-2">Sessions</th>
                     <th className="p-2">Login Time</th>
-                    <th className="p-2">Revenue</th>
+                    <th className="p-2">Gross Bookings</th>
+		    <th className="p-2">Driver Earnings</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,6 +244,7 @@ export default function AnalyticsV3Page() {
                       <td className="p-2">{count(r.login_sessions)}</td>
                       <td className="p-2">{minutes(r.login_minutes)}</td>
                       <td className="p-2">{money(r.gross_revenue)}</td>
+		      <td className="p-2">{money(r.driver_payout)}</td>
                     </tr>
                   ))}
                 </tbody>
