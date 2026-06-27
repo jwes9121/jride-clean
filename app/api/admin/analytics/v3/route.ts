@@ -387,10 +387,38 @@ export async function GET(req: NextRequest) {
       updated_at: row.updated_at,
     }));
 
-    let driver_detail: any = null;
+      let driver_detail: any = null;
   if (driverIdFilter) {
     const d = drivers[driverIdFilter] || null;
     const identity = driverIdentityById[driverIdFilter] || {};
+
+    const rideRatingsRes = await admin
+      .from("trip_ratings")
+      .select("id,booking_code,driver_id,rating,feedback,created_at")
+      .eq("driver_id", driverIdFilter)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    const takeoutRatingsRes = await admin
+      .from("takeout_ratings")
+      .select("id,booking_code,driver_id,driver_rating,driver_comment,created_at")
+      .eq("driver_id", driverIdFilter)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    const rideRatings = !rideRatingsRes.error && Array.isArray(rideRatingsRes.data) ? rideRatingsRes.data : [];
+    const takeoutRatings = !takeoutRatingsRes.error && Array.isArray(takeoutRatingsRes.data) ? takeoutRatingsRes.data : [];
+
+    const rideRatingCount = rideRatings.length;
+    const takeoutRatingCount = takeoutRatings.length;
+    const rideRatingAverage =
+      rideRatingCount > 0
+        ? rideRatings.reduce((sum: number, row: any) => sum + n(row?.rating), 0) / rideRatingCount
+        : null;
+    const takeoutRatingAverage =
+      takeoutRatingCount > 0
+        ? takeoutRatings.reduce((sum: number, row: any) => sum + n(row?.driver_rating), 0) / takeoutRatingCount
+        : null;
 
     const driverSessions = sessions
       .filter((row: any) => s(row.driver_id) === driverIdFilter)
@@ -463,6 +491,14 @@ export async function GET(req: NextRequest) {
       current_location: latestLocationByDriver[driverIdFilter] || null,
       sessions: driverSessions,
       bookings: driverBookings,
+            ratings: {
+        ride_average: rideRatingAverage,
+        ride_count: rideRatingCount,
+        takeout_average: takeoutRatingAverage,
+        takeout_count: takeoutRatingCount,
+        ride: rideRatings,
+        takeout: takeoutRatings,
+      },
       timeline,
     };
   }
