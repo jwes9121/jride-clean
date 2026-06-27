@@ -490,7 +490,7 @@ export default function TakeoutTrackPage() {
       {state.driverAverageRating != null && state.driverRatingsCount > 0 ? (
         <div className="mt-1 text-xs">
           <span className="font-semibold text-amber-600">
-            ***** {state.driverAverageRating.toFixed(2)}
+            {"\u2605\u2605\u2605\u2605\u2605"} {state.driverAverageRating.toFixed(2)}
           </span>
           <span className="ml-1 text-slate-500">
             ({state.driverRatingsCount} rating{state.driverRatingsCount === 1 ? "" : "s"})

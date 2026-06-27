@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -50,14 +50,32 @@ export async function POST(req: NextRequest) {
   const patch: Record<string, any> = {};
 
   if (action === "force_cancel") {
+    patch.status = "cancelled";
     patch.vendor_status = "cancelled";
     patch.customer_status = "cancelled";
+    patch.driver_status = "cancelled";
+    patch.takeout_pricing_status = "cancelled";
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
+    patch.takeout_fee_expires_at = null;
   } else if (action === "force_complete") {
+    patch.status = "completed";
     patch.vendor_status = "completed";
     patch.customer_status = "completed";
+    patch.driver_status = "completed";
   } else if (action === "reopen_preparing") {
+    patch.status = "requested";
     patch.vendor_status = "preparing";
     patch.customer_status = "requested";
+    patch.driver_status = null;
+    patch.takeout_pricing_status = null;
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
+    patch.takeout_fee_expires_at = null;
   }
 
   const up = await admin
@@ -65,7 +83,7 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", orderId)
     .eq("service_type", "takeout")
-    .select("id,booking_code,vendor_status,customer_status,status,updated_at")
+    .select("id,booking_code,status,vendor_status,customer_status,driver_status,takeout_pricing_status,updated_at")
     .single();
 
   if (up.error) {
@@ -74,3 +92,4 @@ export async function POST(req: NextRequest) {
 
   return json(200, { ok: true, action, order: up.data });
 }
+
