@@ -241,6 +241,7 @@ export async function GET(req: NextRequest) {
 
     const driverProfileById: Record<string, any> = {};
     const driverLocationById: Record<string, any> = {};
+    const driverRatingById: Record<string, { average: number | null; count: number }> = {};
 
     if (assignedDriverIds.length > 0) {
       const profileRes = await serviceSupabase
@@ -266,6 +267,31 @@ export async function GET(req: NextRequest) {
           const id = text(row?.driver_id);
           if (id && !driverLocationById[id]) driverLocationById[id] = row;
         }
+      const ratingRes = await serviceSupabase
+        .from("takeout_ratings")
+        .select("driver_id,driver_rating")
+        .in("driver_id", assignedDriverIds);
+
+      if (!ratingRes.error && Array.isArray(ratingRes.data)) {
+        const buckets: Record<string, number[]> = {};
+
+        for (const row of ratingRes.data as any[]) {
+          const id = text(row?.driver_id);
+          const rating = Number(row?.driver_rating || 0);
+          if (!id || !Number.isFinite(rating) || rating <= 0) continue;
+          if (!buckets[id]) buckets[id] = [];
+          buckets[id].push(rating);
+        }
+
+        for (const [id, ratings] of Object.entries(buckets)) {
+          driverRatingById[id] = {
+            count: ratings.length,
+            average: Number(
+              (ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(2)
+            ),
+          };
+        }
+      }
       }
     }
 
@@ -273,6 +299,7 @@ export async function GET(req: NextRequest) {
       const driverId = text(row?.assigned_driver_id || row?.driver_id);
       const profile = driverId ? driverProfileById[driverId] : null;
       const location = driverId ? driverLocationById[driverId] : null;
+      const rating = driverId ? driverRatingById[driverId] : null;
       const driverName = text(row?.driver_name || profile?.full_name || profile?.callsign);
       const driverPhone = text(row?.driver_phone || profile?.phone);
       const driverCallsign = text(row?.driver_callsign || profile?.callsign);
@@ -286,6 +313,8 @@ export async function GET(req: NextRequest) {
         driver_name: driverName || null,
         driver_phone: driverPhone || null,
 	driver_photo_url: driverPhotoUrl || null,
+	driver_average_rating: rating?.average ?? null,
+        driver_ratings_count: rating?.count ?? 0,
         driver_callsign: driverCallsign || null,
         driver_vehicle_type: driverVehicleType || null,
         vehicle_type: driverVehicleType || row?.vehicle_type || null,
