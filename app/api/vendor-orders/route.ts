@@ -591,12 +591,21 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
     return { attempted: true, assigned: false, reason: "missing_anchor_coords", anchor, subtotal, cash_first: cashFirst };
   }
 
-  const activeStatuses = new Set(["requested", "vendor_accepted", "preparing", "pickup_ready", "driver_assigned", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering"]);
-  const terminalStatuses = new Set(["completed", "cancelled", "canceled", "vendor_timeout"]);
+    const activeCanonicalStatuses = new Set([
+    "requested",
+    "searching",
+    "assigned",
+    "accepted",
+    "fare_proposed",
+    "ready",
+    "on_the_way",
+    "arrived",
+    "on_trip",
+  ]);
 
   const assignedRes = await admin
     .from("bookings")
-    .select("assigned_driver_id,driver_id,vendor_status,customer_status,status")
+    .select("assigned_driver_id,driver_id,status")
     .eq("service_type", "takeout");
 
   const reserved = new Set<string>();
@@ -604,11 +613,9 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
     for (const r of assignedRes.data as any[]) {
       const did = String(r?.assigned_driver_id || r?.driver_id || "").trim();
       if (!did) continue;
-      const vendorStatus = String(r?.vendor_status || "").trim().toLowerCase();
-      const customerStatus = String(r?.customer_status || "").trim().toLowerCase();
-      const status = String(r?.status || "").trim().toLowerCase();
-      if (terminalStatuses.has(vendorStatus) || terminalStatuses.has(customerStatus) || terminalStatuses.has(status)) continue;
-      if (activeStatuses.has(vendorStatus) || activeStatuses.has(customerStatus) || activeStatuses.has(status)) reserved.add(did);
+
+      const canonicalStatus = String(r?.status || "").trim().toLowerCase();
+      if (activeCanonicalStatuses.has(canonicalStatus)) reserved.add(did);
     }
   }
 
