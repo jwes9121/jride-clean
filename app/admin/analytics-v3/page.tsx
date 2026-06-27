@@ -260,11 +260,52 @@ export default function AnalyticsV3Page() {
                 <div className="mt-3 text-sm text-slate-500">Loading driver detail...</div>
               ) : (
                 <div className="mt-4 space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <Card title="Driver" value={driverDetail.driver?.driver_name || "Unknown Driver"} sub={driverDetail.driver?.callsign || driverDetail.driver?.driver_id || "-"} />
-                    <Card title="Vehicle" value={driverDetail.driver?.vehicle_type || "-"} sub={driverDetail.driver?.municipality || driverDetail.driver?.town || "-"} />
-                    <Card title="Wallet" value={money(driverDetail.driver?.wallet_balance)} sub={`Min: ${money(driverDetail.driver?.min_wallet_required)} / Locked: ${driverDetail.driver?.wallet_locked ? "Yes" : "No"}`} />
-                    <Card title="TODA" value={driverDetail.driver?.is_toda_member ? "Yes" : "No"} sub={driverDetail.driver?.toda_name || "-"} />
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-center gap-4">
+                      {driverDetail.driver?.photo_url ? (
+                        <img
+                          src={driverDetail.driver.photo_url}
+                          alt={driverDetail.driver?.driver_name || "Driver photo"}
+                          className="h-20 w-20 rounded-full border border-slate-200 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-500">
+                          No photo
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Driver Profile
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-slate-950">
+                          {driverDetail.driver?.driver_name || "Unknown Driver"}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-600">
+                          {driverDetail.driver?.callsign || "-"} / {driverDetail.driver?.vehicle_type || "-"} / {driverDetail.driver?.municipality || driverDetail.driver?.town || "-"}
+                        </div>
+                        <div className="mt-1 text-sm text-slate-600">
+                          Phone: {driverDetail.driver?.phone || "-"}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 text-sm md:grid-cols-3">
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-xs font-semibold uppercase text-slate-500">Wallet</div>
+                          <div className="mt-1 font-bold">{money(driverDetail.driver?.wallet_balance)}</div>
+                          <div className="text-xs text-slate-500">Min: {money(driverDetail.driver?.min_wallet_required)}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-xs font-semibold uppercase text-slate-500">Locked</div>
+                          <div className="mt-1 font-bold">{driverDetail.driver?.wallet_locked ? "Yes" : "No"}</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-xs font-semibold uppercase text-slate-500">TODA</div>
+                          <div className="mt-1 font-bold">{driverDetail.driver?.is_toda_member ? "Yes" : "No"}</div>
+                          <div className="text-xs text-slate-500">{driverDetail.driver?.toda_name || "-"}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-2">
