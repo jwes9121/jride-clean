@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 
   const res = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_id,vendor_status,customer_status,status,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
+    .select("id,booking_code,service_type,vendor_id,vendor_status,customer_status,status,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .in("vendor_status", activeStatuses)
@@ -112,7 +112,14 @@ to_label: pickLabel(row.to_label),
     assigned_driver_id: row.assigned_driver_id,
     town: row.town,
     created_at: row.created_at,
-    updated_at: row.updated_at,
+updated_at: row.updated_at,
+
+driver_accept_expires_at: row.driver_accept_expires_at,
+takeout_driver_accept_expires_at: row.takeout_driver_accept_expires_at,
+
+takeout_fee_expires_at: row.takeout_fee_expires_at,
+takeout_fee_proposal_expires_at: row.takeout_fee_proposal_expires_at,
+driver_fee_proposal_expires_at: row.driver_fee_proposal_expires_at,
   };
 
   return json(200, { ok: true, note: "ACTIVE_TAKEOUT", trip });

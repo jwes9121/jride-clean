@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
     patch.takeout_fee_proposal_expires_at = null;
     patch.driver_fee_proposal_expires_at = null;
     patch.takeout_fee_expires_at = null;
-    patch.cancelled_at = nowIso;
+    
   }
 
   if (nextStatus === "requested") {
