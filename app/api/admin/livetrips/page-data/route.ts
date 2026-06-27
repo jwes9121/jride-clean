@@ -303,36 +303,13 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
       }
       driverWalletMap[driverId] = row;
     }
-
-
     const bookingRows = asArray<any>(bookingsRes.data).filter((row: any) => {
-      const serviceType = text(row?.service_type).toLowerCase();
-      if (serviceType !== "takeout") return historicalStatuses.includes(text(row?.status).toLowerCase());
+      const canonicalStatus = text(row?.status).toLowerCase();
 
-      const takeoutStatuses = [
-        row?.customer_status,
-        row?.vendor_status,
-        row?.driver_status,
-        row?.takeout_pricing_status,
-        row?.status,
-      ].map((value) => text(value).toLowerCase()).filter(Boolean);
+      if (bookingView === "completed") return canonicalStatus === "completed";
+      if (bookingView === "cancelled") return canonicalStatus === "cancelled";
 
-      if (!takeoutStatuses.length) return false;
-
-      if (bookingView === "completed") return takeoutStatuses.includes("completed");
-      if (bookingView === "cancelled") {
-        return takeoutStatuses.includes("cancelled") || takeoutStatuses.includes("vendor_timeout");
-      }
-
-      if (
-        takeoutStatuses.includes("cancelled") ||
-        takeoutStatuses.includes("completed") ||
-        takeoutStatuses.includes("vendor_timeout")
-      ) {
-        return false;
-      }
-
-      return takeoutStatuses.some((status) => activeStatuses.includes(status));
+      return activeStatuses.includes(canonicalStatus);
     });
     const profileRows = asArray<any>(driverProfilesRes.data);
 

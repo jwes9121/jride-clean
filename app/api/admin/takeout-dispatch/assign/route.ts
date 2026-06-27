@@ -222,7 +222,7 @@ export async function POST(req: NextRequest) {
 
   const nowIso = new Date().toISOString();
   const acceptExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-  const patch = {
+    const patch = {
     assigned_driver_id: driverId,
     driver_id: driverId,
     assigned_at: nowIso,
@@ -230,6 +230,7 @@ export async function POST(req: NextRequest) {
     takeout_driver_accept_expires_at: acceptExpiresIso,
     takeout_fee_proposal_expires_at: null,
     driver_fee_proposal_expires_at: null,
+    status: "assigned",
     vendor_status: "driver_assigned",
     customer_status: "driver_assigned",
     driver_status: "driver_assigned",
@@ -240,7 +241,7 @@ export async function POST(req: NextRequest) {
     .update(patch)
     .eq("id", currentOrderId)
     .eq("service_type", "takeout")
-    .select("id,booking_code,service_type,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,assigned_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,updated_at")
+        .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,assigned_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,updated_at")
     .single();
 
   if (up.error) {

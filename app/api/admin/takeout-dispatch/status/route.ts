@@ -55,7 +55,19 @@ function normStatus(value: any) {
 function normText(value: any) {
   return String(value || "").trim().toLowerCase();
 }
+function canonicalTakeoutStatus(nextStatus: string, row: any): string {
+  if (nextStatus === "completed") return "completed";
+  if (nextStatus === "cancelled") return "cancelled";
+  if (nextStatus === "requested") return "requested";
 
+  const hasDriver = !!String(row?.assigned_driver_id || row?.driver_id || "").trim();
+
+  if ((nextStatus === "preparing" || nextStatus === "pickup_ready") && !hasDriver) {
+    return "requested";
+  }
+
+  return "assigned";
+}
 export async function POST(req: NextRequest) {
   const admin = getAdmin();
   if (!admin) {
@@ -139,8 +151,8 @@ export async function POST(req: NextRequest) {
       message: "Customer cash collection statuses are only allowed for customer_cash_first route plan.",
     });
   }
-
   const patch: any = {
+    status: canonicalTakeoutStatus(nextStatus, row),
     vendor_status: nextStatus,
     customer_status: nextStatus === "requested" ? "requested" : nextStatus,
   };
@@ -153,35 +165,41 @@ export async function POST(req: NextRequest) {
     patch.customer_status = "cash_collected";
   }
 
-    if (nextStatus === "requested") {
+  if (nextStatus === "requested") {
     patch.assigned_driver_id = null;
     patch.driver_id = null;
     patch.assigned_at = null;
   }
 
   if (nextStatus === "cancelled") {
-  patch.status = "cancelled";
-  patch.vendor_status = "cancelled";
-  patch.customer_status = "cancelled";
-  patch.driver_status = "cancelled";
-
-  // Leave assigned_driver_id, driver_id and assigned_at untouched.
-  // The DB lifecycle trigger expects the assignment to exist while
-  // transitioning assigned -> cancelled.
-
+    patch.status = "cancelled";
+    patch.vendor_status = "cancelled";
+    patch.customer_status = "cancelled";
+    patch.driver_status = "cancelled";
     patch.driver_accept_expires_at = null;
     patch.takeout_driver_accept_expires_at = null;
     patch.takeout_pricing_status = null;
-    patch.takeout_delivery_fee = null;
-    patch.takeout_service_fee = null;
-    patch.takeout_total_payable = null;
     patch.takeout_fee_expires_at = null;
-    patch.takeout_customer_confirmed_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
     patch.updated_at = new Date().toISOString();
   }
 
-  const up = await admin
-    .from("bookings")
+  if (nextStatus === "completed") {
+    patch.status = "completed";
+    patch.vendor_status = "completed";
+    patch.customer_status = "completed";
+    patch.driver_status = "completed";
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_pricing_status = null;
+    patch.takeout_fee_expires_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
+    patch.updated_at = new Date().toISOString();
+  }
+
+  const up = await admin.from("bookings")
     .update(patch)
     .eq("id", orderId)
     .eq("service_type", "takeout")

@@ -28,6 +28,13 @@ function normStatus(value: any) {
   return s || "requested";
 }
 
+function normCanonicalStatus(value: any) {
+  const s = String(value || "").trim().toLowerCase();
+  if (!s || s === "pending") return "requested";
+  if (s === "canceled") return "cancelled";
+  return s;
+}
+
 function minutesSince(value: any) {
   const raw = String(value || "").trim();
   if (!raw) return 999999;
@@ -46,16 +53,11 @@ function pickDriverName(row: any) {
 
 function isAssignableDriver(row: any) {
   const effective = String(row?.status || "").trim().toLowerCase();
-      const ageMinutes = minutesSince(row?.updated_at || row?.created_at);
-
+  const ageMinutes = minutesSince(row?.updated_at || row?.created_at);
   const onlineLike = new Set(["online", "available", "idle", "waiting"]);
 
-    
-  // hard freshness cutoff for takeout dispatch pool
   if (ageMinutes > 10) return false;
 
-  
-  
   return onlineLike.has(effective);
 }
 
@@ -131,6 +133,7 @@ export async function GET(req: NextRequest) {
       .select("*")
       .order("updated_at", { ascending: false })
       .limit(500);
+
     if (!dl.error && Array.isArray(dl.data)) {
       const byDriver: Record<string, any> = {};
       for (const row of dl.data as any[]) {
@@ -145,6 +148,7 @@ export async function GET(req: NextRequest) {
   const driverIds = Array.from(new Set([...latestDriverRows.map((r: any) => String(r?.driver_id || "").trim()).filter(Boolean), ...driverIdsFromOrders]));
   const driverNameById: Record<string, string> = {};
   const driverPhoneById: Record<string, string> = {};
+
   if (driverIds.length) {
     try {
       const d = await admin.from("drivers").select("id,driver_name,driver_status,zone_id,toda_name").in("id", driverIds);
@@ -172,6 +176,7 @@ export async function GET(req: NextRequest) {
   const drivers = latestDriverRows.map((row: any) => {
     const id = String(row?.driver_id || "").trim();
     const ageMinutes = minutesSince(row?.updated_at || row?.created_at);
+
     return {
       driver_id: id,
       name: driverNameById[id] || row?.name || id,
@@ -186,37 +191,24 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // JRIDE_TAKEOUT_DISPATCH_ACTIVE_POOL_V2
-  // Only active takeout jobs should reserve a driver in the manual dispatch pool.
-  // Completed/cancelled takeout rows must not keep drivers hidden after delivery.
-  const activeStatuses = new Set([
-  "requested",
-  "vendor_accepted",
-  "preparing",
-  "pickup_ready",
-  "driver_assigned",
-  "driver_accepted",
-  "driver_fee_proposed",
-  "fare_proposed",
-  "rider_arrived_vendor",
-  "picked_up",
-  "delivering"
-]);
+  const activeCanonicalStatuses = new Set([
+    "requested",
+    "searching",
+    "assigned",
+    "accepted",
+    "fare_proposed",
+    "ready",
+    "on_the_way",
+    "arrived",
+    "on_trip",
+  ]);
 
-  const terminalTakeoutStatuses = new Set(["completed", "cancelled", "canceled"]);
   const isActiveTakeoutAssignment = (r: any) => {
     const assignedDriverId = String(r?.assigned_driver_id || "").trim();
     if (!assignedDriverId) return false;
 
-    const vendorStatus = normStatus(r?.vendor_status || r?.customer_status || r?.status || "requested");
-    const customerStatus = normStatus(r?.customer_status || "");
-    const bookingStatus = normStatus(r?.status || "");
-
-    if (terminalTakeoutStatuses.has(vendorStatus)) return false;
-    if (terminalTakeoutStatuses.has(customerStatus)) return false;
-    if (terminalTakeoutStatuses.has(bookingStatus)) return false;
-
-    return activeStatuses.has(vendorStatus) || activeStatuses.has(customerStatus) || activeStatuses.has(bookingStatus);
+    const canonicalStatus = normCanonicalStatus(r?.status || "requested");
+    return activeCanonicalStatuses.has(canonicalStatus);
   };
 
   const assignedDriverSet = new Set(
@@ -225,23 +217,27 @@ export async function GET(req: NextRequest) {
       .map((r: any) => String(r?.assigned_driver_id || "").trim())
       .filter(Boolean)
   );
+
   const availableDrivers = drivers.filter((d: any) => d.assign_eligible && !assignedDriverSet.has(String(d.driver_id || "")));
 
   const orders = rawOrders.map((r: any) => {
-    const vendorStatus = normStatus(r.vendor_status || r.customer_status || r.status || "requested");
+    const workflowStatus = normStatus(r.vendor_status || r.customer_status || r.status || "requested");
+    const canonicalStatus = normCanonicalStatus(r.status || "requested");
     const ageMinutes = minutesSince(r.created_at);
     const updateAgeMinutes = minutesSince(r.updated_at || r.created_at);
-    const op = orderPriority(vendorStatus, ageMinutes, updateAgeMinutes);
+    const op = orderPriority(workflowStatus, ageMinutes, updateAgeMinutes);
     const subtotal = Number(r.takeout_items_subtotal || 0);
     const assignedDriverId = String(r.assigned_driver_id || "").trim() || null;
+
     return {
       id: r.id || null,
       booking_code: r.booking_code || null,
       vendor_id: r.vendor_id || null,
       vendor_name: vendorNameById[String(r.vendor_id || "").trim()] || r.vendor_id || null,
-      vendor_status: vendorStatus,
+      vendor_status: workflowStatus,
+      workflow_status: workflowStatus,
       customer_status: r.customer_status || null,
-      status: r.status || null,
+      status: canonicalStatus,
       customer_name: r.passenger_name || "Takeout Customer",
       to_label: r.to_label || null,
       takeout_items_subtotal: subtotal,
@@ -258,15 +254,16 @@ export async function GET(req: NextRequest) {
       priority: op.priority,
     };
   });
+
   const filtered = orders.filter((o: any) => {
     if (filter === "all") return true;
-    if (filter === "active") return activeStatuses.has(o.vendor_status);
+    if (filter === "active") return activeCanonicalStatuses.has(o.status);
     if (filter === "stuck") return !!o.is_stuck;
     if (filter === "cash") return !!o.cash_required;
-    if (filter === "unassigned") return activeStatuses.has(o.vendor_status) && !o.assigned_driver_id;
-    if (filter === "completed") return o.vendor_status === "completed";
-    if (filter === "cancelled" || filter === "canceled") return o.vendor_status === "cancelled";
-    return o.vendor_status === filter;
+    if (filter === "unassigned") return activeCanonicalStatuses.has(o.status) && !o.assigned_driver_id;
+    if (filter === "completed") return o.status === "completed";
+    if (filter === "cancelled" || filter === "canceled") return o.status === "cancelled";
+    return o.vendor_status === filter || o.status === filter;
   });
 
   filtered.sort((a: any, b: any) => {
@@ -276,18 +273,18 @@ export async function GET(req: NextRequest) {
 
   const counts = {
     all: orders.length,
-    active: orders.filter((o: any) => activeStatuses.has(o.vendor_status)).length,
+    active: orders.filter((o: any) => activeCanonicalStatuses.has(o.status)).length,
     requested: orders.filter((o: any) => o.vendor_status === "requested").length,
     vendor_accepted: orders.filter((o: any) => o.vendor_status === "vendor_accepted").length,
     preparing: orders.filter((o: any) => o.vendor_status === "preparing").length,
     pickup_ready: orders.filter((o: any) => o.vendor_status === "pickup_ready").length,
     driver_assigned: orders.filter((o: any) => o.vendor_status === "driver_assigned").length,
     picked_up: orders.filter((o: any) => o.vendor_status === "picked_up" || o.vendor_status === "delivering").length,
-    completed: orders.filter((o: any) => o.vendor_status === "completed").length,
-    cancelled: orders.filter((o: any) => o.vendor_status === "cancelled").length,
+    completed: orders.filter((o: any) => o.status === "completed").length,
+    cancelled: orders.filter((o: any) => o.status === "cancelled").length,
     stuck: orders.filter((o: any) => !!o.is_stuck).length,
     cash: orders.filter((o: any) => !!o.cash_required).length,
-    unassigned: orders.filter((o: any) => activeStatuses.has(o.vendor_status) && !o.assigned_driver_id).length,
+    unassigned: orders.filter((o: any) => activeCanonicalStatuses.has(o.status) && !o.assigned_driver_id).length,
   };
 
   return json(200, {
@@ -299,8 +296,3 @@ export async function GET(req: NextRequest) {
     drivers: availableDrivers,
   });
 }
-
-
-
-
-
