@@ -35,6 +35,8 @@ type TakeoutOrder = {
   driver_name?: string | null;
   driver_phone?: string | null;
   driver_photo_url?: string | null;
+  driver_average_rating?: number | string | null;
+  driver_ratings_count?: number | string | null;
   driver_callsign?: string | null;
   driver_vehicle_type?: string | null;
   vehicle_type?: string | null;
@@ -353,6 +355,8 @@ export default function TakeoutTrackPage() {
     const driverName = normText(order?.driver_name || order?.driver_callsign);
     const driverPhone = normText(order?.driver_phone);
     const driverPhotoUrl = normText(order?.driver_photo_url);
+    const driverAverageRating = toNum(order?.driver_average_rating);
+    const driverRatingsCount = Math.max(0, Math.floor(toNum(order?.driver_ratings_count) || 0));
     const driverVehicleType = normText(order?.driver_vehicle_type || order?.vehicle_type);
     const hasDriverIdentity = Boolean(assignedDriverId || driverName || driverPhone || driverVehicleType);
         const driverStatus = normText(order?.driver_status || "").toLowerCase();
@@ -403,6 +407,8 @@ export default function TakeoutTrackPage() {
       driverName,
       driverPhone,
       driverPhotoUrl,
+      driverAverageRating,
+      driverRatingsCount,
       driverVehicleType,
       hasDriverIdentity,
             takeoutMapUrl,
@@ -472,13 +478,24 @@ export default function TakeoutTrackPage() {
         {state.driverName || state.assignedDriverId || "Assigned"}
       </div>
 
-      {state.driverPhone ? (
+            {state.driverPhone ? (
         <a
           className="mt-1 block text-sm font-semibold text-emerald-950 underline"
           href={"tel:" + state.driverPhone}
         >
           {state.driverPhone}
         </a>
+      ) : null}
+
+      {state.driverAverageRating != null && state.driverRatingsCount > 0 ? (
+        <div className="mt-1 text-xs">
+          <span className="font-semibold text-amber-600">
+            ***** {state.driverAverageRating.toFixed(2)}
+          </span>
+          <span className="ml-1 text-slate-500">
+            ({state.driverRatingsCount} rating{state.driverRatingsCount === 1 ? "" : "s"})
+          </span>
+        </div>
       ) : null}
 
       {state.driverVehicleType ? (
