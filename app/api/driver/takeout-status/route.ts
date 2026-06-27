@@ -190,10 +190,18 @@ export async function POST(req: NextRequest) {
     patch.driver_fee_proposal_expires_at = feeProposalExpiresIso;
   }
 
-  if (nextStatus === "completed") {
+    if (nextStatus === "completed") {
     const nowIso = new Date().toISOString();
     patch.status = "completed";
+    patch.vendor_status = "completed";
+    patch.customer_status = "completed";
     patch.driver_status = "completed";
+    patch.takeout_pricing_status = "completed";
+    patch.driver_accept_expires_at = null;
+    patch.takeout_driver_accept_expires_at = null;
+    patch.takeout_fee_expires_at = null;
+    patch.takeout_fee_proposal_expires_at = null;
+    patch.driver_fee_proposal_expires_at = null;
     patch.completed_at = nowIso;
   }
 
