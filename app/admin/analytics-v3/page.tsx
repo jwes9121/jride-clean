@@ -385,24 +385,29 @@ export default function AnalyticsV3Page() {
                     <div className="rounded-lg border border-slate-200 p-3">
                       <h3 className="font-semibold">Logged Hours</h3>
                       {(() => {
-                        const logged = driverLoggedHours(driverDetail.sessions || []);
+                        const logged = driverDetail.login_summary || {
+  			today_minutes: 0,
+  			week_minutes: 0,
+  			month_minutes: 0,
+  			overall_minutes: 0,
+			};
                         return (
                           <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                             <div className="rounded border border-slate-200 bg-slate-50 p-2">
                               <div className="text-xs uppercase text-slate-500">Today</div>
-                              <div className="font-bold">{minutes(logged.today)}</div>
+                              <div className="font-bold">{minutes(logged.today_minutes)}</div>
                             </div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2">
                               <div className="text-xs uppercase text-slate-500">This Week</div>
-                              <div className="font-bold">{minutes(logged.week)}</div>
+                              <div className="font-bold">{minutes(logged.week_minutes)}</div>
                             </div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2">
                               <div className="text-xs uppercase text-slate-500">This Month</div>
-                              <div className="font-bold">{minutes(logged.month)}</div>
+                              <div className="font-bold">{minutes(logged.month_minutes)}</div>
                             </div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2">
                               <div className="text-xs uppercase text-slate-500">Overall</div>
-                              <div className="font-bold">{minutes(logged.overall)}</div>
+                              <div className="font-bold">{minutes(logged.overall_minutes)}</div>
                             </div>
                           </div>
                         );
