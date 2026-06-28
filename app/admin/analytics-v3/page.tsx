@@ -373,6 +373,20 @@ export default function AnalyticsV3Page() {
                         );
                       })()}
                     </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="font-semibold">Daily Sessions</h3>
+                      <div className="mt-2 max-h-64 overflow-auto rounded border">
+                        {(driverDetail.daily_login_summary || []).map((d: AnyRow) => (
+                          <div key={d.date} className="grid grid-cols-4 gap-2 border-b p-2 text-sm">
+                            <div className="font-semibold">{d.date || "-"}</div>
+                            <div>{minutes(d.minutes)}</div>
+                            <div>{count(d.sessions)} sessions</div>
+                            <div className="text-xs text-slate-500">{fmtDate(d.first_login_at)} to {fmtDate(d.last_seen_at)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-3">

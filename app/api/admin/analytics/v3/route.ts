@@ -485,6 +485,46 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const dailyLoginMap: Record<string, any> = {};
+
+    for (const row of allDriverSessions as any[]) {
+      const start = new Date(String(row?.login_at || row?.created_at || ""));
+      if (!Number.isFinite(start.getTime())) continue;
+
+      const phStart = new Date(start.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+      const key = phStart.toISOString().slice(0, 10);
+      const mins = sessionMinutesLocal(row);
+
+      if (!dailyLoginMap[key]) {
+        dailyLoginMap[key] = {
+          date: key,
+          minutes: 0,
+          sessions: 0,
+          first_login_at: row?.login_at || row?.created_at || null,
+          last_seen_at: row?.logout_at || row?.last_seen_at || row?.updated_at || null,
+        };
+      }
+
+      dailyLoginMap[key].minutes += mins;
+      dailyLoginMap[key].sessions += 1;
+
+      const existingFirst = new Date(String(dailyLoginMap[key].first_login_at || "")).getTime();
+      const currentFirst = new Date(String(row?.login_at || row?.created_at || "")).getTime();
+      if (Number.isFinite(currentFirst) && (!Number.isFinite(existingFirst) || currentFirst < existingFirst)) {
+        dailyLoginMap[key].first_login_at = row?.login_at || row?.created_at || null;
+      }
+
+      const existingLast = new Date(String(dailyLoginMap[key].last_seen_at || "")).getTime();
+      const currentLast = new Date(String(row?.logout_at || row?.last_seen_at || row?.updated_at || "")).getTime();
+      if (Number.isFinite(currentLast) && (!Number.isFinite(existingLast) || currentLast > existingLast)) {
+        dailyLoginMap[key].last_seen_at = row?.logout_at || row?.last_seen_at || row?.updated_at || null;
+      }
+    }
+
+    const dailyLoginSummary = Object.values(dailyLoginMap)
+      .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)))
+      .slice(0, 31);
+
     const driverSessions = allDriverSessions.slice(0, 100);
 
     const driverBookings = bookings
@@ -555,6 +595,7 @@ export async function GET(req: NextRequest) {
       sessions: driverSessions,
       bookings: driverBookings,
       login_summary: loginSummary,
+      daily_login_summary: dailyLoginSummary,
             ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,
@@ -584,3 +625,5 @@ export async function GET(req: NextRequest) {
     driver_detail,
   });
 }
+
+
