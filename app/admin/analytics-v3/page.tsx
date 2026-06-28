@@ -407,8 +407,7 @@ export default function AnalyticsV3Page() {
                             </div>
                           );
                         })}
-                        ))}
-                      </div>
+                        </div>
                     </div>
 
                     <div>
