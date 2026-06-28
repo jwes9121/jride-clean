@@ -48,6 +48,7 @@ export default function AnalyticsV3Page() {
   const [driverDetail, setDriverDetail] = React.useState<any>(null);
   const [expandedBookingCode, setExpandedBookingCode] = React.useState("");
   const [selectedTown, setSelectedTown] = React.useState("");
+  const [selectedDriverStatus, setSelectedDriverStatus] = React.useState("");
 
   React.useEffect(() => {
     let alive = true;
@@ -93,7 +94,7 @@ export default function AnalyticsV3Page() {
   const activeTrips = data?.active_uncompleted_trips || [];
   const townMatches = (v: any) => !selectedTown || String(v || "").toLowerCase() === selectedTown.toLowerCase();
   const filteredActiveTrips = activeTrips.filter((r: AnyRow) => townMatches(r.town));
-  const filteredDrivers = drivers.filter((r: AnyRow) => townMatches(r.town));
+  const filteredDrivers = drivers.filter((r: AnyRow) => townMatches(r.town) && (!selectedDriverStatus || String(r.current_status || "").toLowerCase() === selectedDriverStatus.toLowerCase()));
 
   const operationsAlerts = towns.flatMap((town: AnyRow) => {
     const townName = String(town.key || town.town || town.name || "Unknown");
@@ -125,7 +126,7 @@ export default function AnalyticsV3Page() {
   const cancellationAlerts = operationsAlerts.filter((a: AnyRow) => String(a.message || "").toLowerCase().includes("cancellation rate"));
   const actionQueue = [
     { level: offlineTownAlerts.length ? "red" : "green", label: `${offlineTownAlerts.length} town(s) with no online drivers` },
-    { level: gpsPendingDrivers.length ? "yellow" : "green", label: `${gpsPendingDrivers.length} driver(s) GPS pending` },
+    { level: gpsPendingDrivers.length ? "yellow" : "green", label: `${gpsPendingDrivers.length} driver(s) GPS pending`, action: "gps_pending" },
     { level: cancellationAlerts.length ? "yellow" : "green", label: `${cancellationAlerts.length} town(s) with high cancellation rate` },
     { level: activeTrips.length ? "yellow" : "green", label: `${activeTrips.length} active/uncompleted trip(s)` },
   ];
@@ -247,6 +248,13 @@ export default function AnalyticsV3Page() {
             <div className="mt-6 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
               <div><span className="font-bold">Town filter:</span> {selectedTown}</div>
               <button className="rounded border border-blue-300 bg-white px-3 py-1 text-xs font-semibold" onClick={() => setSelectedTown("")}>Clear filter</button>
+            </div>
+          ) : null}
+
+          {selectedDriverStatus ? (
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+              <div><span className="font-bold">Driver status filter:</span> {selectedDriverStatus}</div>
+              <button className="rounded border border-yellow-300 bg-white px-3 py-1 text-xs font-semibold" onClick={() => setSelectedDriverStatus("")}>Clear filter</button>
             </div>
           ) : null}
 
@@ -580,4 +588,5 @@ export default function AnalyticsV3Page() {
     </main>
   );
 }
+
 
