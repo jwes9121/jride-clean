@@ -125,6 +125,40 @@ export default function AnalyticsV3Page() {
           </section>
 
           <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold">Town Operations Dashboard</h2>
+            <div className="mt-3 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="p-2">Town</th>
+                    <th className="p-2">Total</th>
+                    <th className="p-2">Active</th>
+                    <th className="p-2">Completed</th>
+                    <th className="p-2">Cancelled</th>
+                    <th className="p-2">Ride</th>
+                    <th className="p-2">Takeout</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.towns || []).length ? (data.towns || []).map((t: AnyRow) => (
+                    <tr key={t.key || t.town || t.name} className="border-t">
+                      <td className="p-2 font-semibold">{t.key || t.town || t.name || "Unknown"}</td>
+                      <td className="p-2">{count(t.total_bookings)}</td>
+                      <td className="p-2">{count(t.active_uncompleted)}</td>
+                      <td className="p-2">{count(t.completed)}</td>
+                      <td className="p-2">{count(t.cancelled)}</td>
+                      <td className="p-2">{count(t.ride_completed + t.ride_active)}</td>
+                      <td className="p-2">{count(t.takeout_completed + t.takeout_active)}</td>
+                    </tr>
+                  )) : (
+                    <tr><td className="p-3 text-slate-500" colSpan={7}>No town data.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-lg font-bold">Active / Uncompleted Trips</h2>
             <div className="mt-3 overflow-auto">
               <table className="w-full text-left text-sm">
