@@ -91,6 +91,31 @@ export default function AnalyticsV3Page() {
   const drivers = data?.drivers || [];
   const activeTrips = data?.active_uncompleted_trips || [];
 
+  const operationsAlerts = towns.flatMap((town: AnyRow) => {
+    const townName = String(town.key || town.town || town.name || "Unknown");
+    const townDrivers = drivers.filter((d: AnyRow) => String(d.town || "").toLowerCase() === townName.toLowerCase());
+    const onlineDrivers = townDrivers.filter((d: AnyRow) => String(d.current_status || "").toLowerCase() === "online").length;
+    const active = Number(town.active || town.active_uncompleted || 0);
+    const total = Number(town.total || town.total_bookings || 0);
+    const cancelled = Number(town.cancelled || 0);
+    const cancellationRate = total > 0 ? Math.round((cancelled / total) * 100) : 0;
+    const alerts: AnyRow[] = [];
+
+    if (onlineDrivers === 0) {
+      alerts.push({ level: "red", town: townName, message: "No online drivers." });
+    }
+
+    if (active > 0 && onlineDrivers < 2) {
+      alerts.push({ level: "yellow", town: townName, message: `${active} active bookings with only ${onlineDrivers} online driver(s).` });
+    }
+
+    if (total >= 3 && cancellationRate >= 30) {
+      alerts.push({ level: "yellow", town: townName, message: `Cancellation rate is ${cancellationRate}%.` });
+    }
+
+    return alerts;
+  });
+
   return (
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -124,6 +149,30 @@ export default function AnalyticsV3Page() {
             <Card title="Drivers online" value={count(summary.online_now)} sub={`${count(summary.total_login_sessions)} login sessions`} />
           </section>
 
+
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold">Operations Alerts</h2>
+            {operationsAlerts.length ? (
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {operationsAlerts.map((a: AnyRow, idx: number) => (
+                  <div
+                    key={`${a.town}-${idx}`}
+                    className={[
+                      "rounded-lg border p-3 text-sm",
+                      a.level === "red" ? "border-red-200 bg-red-50 text-red-800" : "border-yellow-200 bg-yellow-50 text-yellow-800",
+                    ].join(" ")}
+                  >
+                    <div className="font-bold">{a.level === "red" ? "Red" : "Yellow"} - {a.town}</div>
+                    <div className="mt-1">{a.message}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                Green - No operational alerts for the selected period.
+              </div>
+            )}
+          </section>
           <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-lg font-bold">Town Operations Dashboard</h2>
             <div className="mt-3 overflow-auto">
