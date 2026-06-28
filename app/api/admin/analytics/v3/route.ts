@@ -240,6 +240,11 @@ export async function GET(req: NextRequest) {
   const towns: Record<string, any> = {};
   const drivers: Record<string, any> = {};
 
+  const operatingTowns = ["Banaue", "Hingyon", "Lagawe", "Lamut"];
+  for (const town of operatingTowns) {
+    addBucket(towns, town);
+  }
+
   for (const row of bookings as any[]) {
     if (isCompleted(row)) summary.completed += 1;
     else if (isCancelled(row)) summary.cancelled += 1;
@@ -645,6 +650,7 @@ export async function GET(req: NextRequest) {
     driver_detail,
   });
 }
+
 
 
 
