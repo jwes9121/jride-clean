@@ -420,9 +420,72 @@ export async function GET(req: NextRequest) {
         ? takeoutRatings.reduce((sum: number, row: any) => sum + n(row?.driver_rating), 0) / takeoutRatingCount
         : null;
 
-    const driverSessions = sessions
-      .filter((row: any) => s(row.driver_id) === driverIdFilter)
-      .slice(0, 100);
+        const allDriverSessionsRes = await admin
+      .from("driver_presence_sessions")
+      .select("id,driver_id,driver_name,town,status,login_at,logout_at,last_seen_at,source,device_id,created_at,updated_at")
+      .eq("driver_id", driverIdFilter)
+      .order("login_at", { ascending: false })
+      .limit(5000);
+
+    const allDriverSessions =
+      !allDriverSessionsRes.error && Array.isArray(allDriverSessionsRes.data)
+        ? allDriverSessionsRes.data
+        : sessions.filter((row: any) => s(row.driver_id) === driverIdFilter);
+
+    function sessionMinutesLocal(row: any) {
+      const start = new Date(String(row?.login_at || row?.created_at || "")).getTime();
+      const endRaw = row?.logout_at || row?.last_seen_at || row?.updated_at || new Date().toISOString();
+      const end = new Date(String(endRaw)).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+      return Math.floor((end - start) / 60000);
+    }
+
+    const phNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+    const todayKey = phNow.toISOString().slice(0, 10);
+    const monthKey = todayKey.slice(0, 7);
+    const weekStart = new Date(phNow);
+    weekStart.setDate(phNow.getDate() - phNow.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+
+    const loginSummary = {
+      today_minutes: 0,
+      week_minutes: 0,
+      month_minutes: 0,
+      overall_minutes: 0,
+      today_sessions: 0,
+      week_sessions: 0,
+      month_sessions: 0,
+      overall_sessions: 0,
+    };
+
+    for (const row of allDriverSessions as any[]) {
+      const start = new Date(String(row?.login_at || row?.created_at || ""));
+      if (!Number.isFinite(start.getTime())) continue;
+
+      const phStart = new Date(start.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+      const key = phStart.toISOString().slice(0, 10);
+      const mins = sessionMinutesLocal(row);
+
+      loginSummary.overall_minutes += mins;
+      loginSummary.overall_sessions += 1;
+
+      if (key === todayKey) {
+        loginSummary.today_minutes += mins;
+        loginSummary.today_sessions += 1;
+      }
+
+      if (phStart >= weekStart) {
+        loginSummary.week_minutes += mins;
+        loginSummary.week_sessions += 1;
+      }
+
+      if (key.slice(0, 7) === monthKey) {
+        loginSummary.month_minutes += mins;
+        loginSummary.month_sessions += 1;
+      }
+    }
+
+    const driverSessions = allDriverSessions.slice(0, 100);
 
     const driverBookings = bookings
       .filter((row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter)
@@ -491,6 +554,7 @@ export async function GET(req: NextRequest) {
       current_location: latestLocationByDriver[driverIdFilter] || null,
       sessions: driverSessions,
       bookings: driverBookings,
+      login_summary: loginSummary,
             ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,
