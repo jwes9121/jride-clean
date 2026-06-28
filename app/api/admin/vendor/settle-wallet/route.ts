@@ -22,7 +22,10 @@ function envFirst(...keys: string[]) {
 
 function requireAdminKey(req: Request) {
   const need = envFirst("ADMIN_API_KEY");
-  if (!need) return { ok: true, mode: "open" as const };
+  if (!need) {
+    return { ok: false, mode: "missing_env" as const };
+  }
+
   const got = req.headers.get("x-admin-key") || "";
   if (got !== need) return { ok: false, mode: "locked" as const };
   return { ok: true, mode: "locked" as const };
@@ -66,7 +69,21 @@ async function callRpc(rpcName: string, payload: any) {
 export async function POST(req: Request) {
   try {
     const gate = requireAdminKey(req);
-    if (!gate.ok) return json(401, { ok: false, code: "UNAUTHORIZED", message: "Missing/invalid x-admin-key." });
+if (!gate.ok) {
+  if (gate.mode === "missing_env") {
+    return json(500, {
+      ok: false,
+      code: "ADMIN_API_KEY_MISSING",
+      message: "ADMIN_API_KEY must be set before vendor wallet settlement is allowed.",
+    });
+  }
+
+  return json(401, {
+    ok: false,
+    code: "UNAUTHORIZED",
+    message: "Missing/invalid x-admin-key.",
+  });
+}
 
     const body = await req.json().catch(() => ({}));
     const vendor_id = String(body?.vendor_id || "");
