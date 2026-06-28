@@ -47,6 +47,7 @@ export default function AnalyticsV3Page() {
   const [selectedDriverId, setSelectedDriverId] = React.useState("");
   const [driverDetail, setDriverDetail] = React.useState<any>(null);
   const [expandedBookingCode, setExpandedBookingCode] = React.useState("");
+  const [selectedTown, setSelectedTown] = React.useState("");
 
   React.useEffect(() => {
     let alive = true;
@@ -90,6 +91,9 @@ export default function AnalyticsV3Page() {
   const towns = data?.towns || [];
   const drivers = data?.drivers || [];
   const activeTrips = data?.active_uncompleted_trips || [];
+  const townMatches = (v: any) => !selectedTown || String(v || "").toLowerCase() === selectedTown.toLowerCase();
+  const filteredActiveTrips = activeTrips.filter((r: AnyRow) => townMatches(r.town));
+  const filteredDrivers = drivers.filter((r: AnyRow) => townMatches(r.town));
 
   const operationsAlerts = towns.flatMap((town: AnyRow) => {
     const townName = String(town.key || town.town || town.name || "Unknown");
@@ -222,7 +226,7 @@ export default function AnalyticsV3Page() {
                 </thead>
                 <tbody>
                   {(data.towns || []).length ? (data.towns || []).map((t: AnyRow) => (
-                    <tr key={t.key || t.town || t.name} className="border-t">
+                    <tr key={t.key || t.town || t.name} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => setSelectedTown(String(t.key || t.town || t.name || ""))}>
                       <td className="p-2 font-semibold">{t.key || t.town || t.name || "Unknown"}</td>
                       <td className="p-2">{count(t.total_bookings)}</td>
                       <td className="p-2">{count(t.active_uncompleted)}</td>
@@ -239,6 +243,13 @@ export default function AnalyticsV3Page() {
             </div>
           </section>
 
+          {selectedTown ? (
+            <div className="mt-6 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              <div><span className="font-bold">Town filter:</span> {selectedTown}</div>
+              <button className="rounded border border-blue-300 bg-white px-3 py-1 text-xs font-semibold" onClick={() => setSelectedTown("")}>Clear filter</button>
+            </div>
+          ) : null}
+
           <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-lg font-bold">Active / Uncompleted Trips</h2>
             <div className="mt-3 overflow-auto">
@@ -254,7 +265,7 @@ export default function AnalyticsV3Page() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeTrips.length ? activeTrips.map((r: AnyRow) => (
+                  {filteredActiveTrips.length ? filteredActiveTrips.map((r: AnyRow) => (
                     <tr key={r.booking_code} className="border-t">
                       <td className="p-2 font-semibold">{r.booking_code}</td>
                       <td className="p-2">{r.service_type}</td>
@@ -320,7 +331,7 @@ export default function AnalyticsV3Page() {
                   </tr>
                 </thead>
                 <tbody>
-                  {drivers.map((r: AnyRow) => (
+                  {filteredDrivers.map((r: AnyRow) => (
                     <tr
                       key={r.driver_id}
                       className="cursor-pointer border-t hover:bg-slate-50"
@@ -569,3 +580,4 @@ export default function AnalyticsV3Page() {
     </main>
   );
 }
+
