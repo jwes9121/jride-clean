@@ -531,6 +531,25 @@ export async function GET(req: NextRequest) {
       .filter((row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter)
       .slice(0, 100);
 
+
+    const driverKpis = {
+      total_bookings: driverBookings.length,
+      completed_bookings: driverBookings.filter((row: any) => normStatus(row.status) === "completed").length,
+      cancelled_bookings: driverBookings.filter((row: any) => normStatus(row.status) === "cancelled").length,
+      active_bookings: driverBookings.filter((row: any) => isActive(row)).length,
+      ride_bookings: driverBookings.filter((row: any) => serviceType(row) !== "takeout").length,
+      takeout_bookings: driverBookings.filter((row: any) => serviceType(row) === "takeout").length,
+      gross_total: driverBookings.reduce((sum: number, row: any) => sum + (n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare)), 0),
+      driver_payout_total: driverBookings.reduce((sum: number, row: any) => sum + n(row?.driver_payout), 0),
+      company_cut_total: driverBookings.reduce((sum: number, row: any) => sum + n(row?.company_cut), 0),
+    };
+
+    const driverKpiDenominator = driverKpis.completed_bookings + driverKpis.cancelled_bookings;
+    const driverPerformance = {
+      ...driverKpis,
+      completion_rate: driverKpiDenominator > 0 ? Math.round((driverKpis.completed_bookings / driverKpiDenominator) * 100) : null,
+      cancellation_rate: driverKpiDenominator > 0 ? Math.round((driverKpis.cancelled_bookings / driverKpiDenominator) * 100) : null,
+    };
     const currentActiveBooking = driverBookings.find((row: any) => isActive(row)) || null;
 
     const timeline = [
@@ -596,6 +615,7 @@ export async function GET(req: NextRequest) {
       bookings: driverBookings,
       login_summary: loginSummary,
       daily_login_summary: dailyLoginSummary,
+      performance: driverPerformance,
             ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,
@@ -625,5 +645,7 @@ export async function GET(req: NextRequest) {
     driver_detail,
   });
 }
+
+
 
 
