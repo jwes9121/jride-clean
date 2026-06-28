@@ -21,9 +21,10 @@ function envFirst(...keys: string[]) {
 }
 
 function requireAdminKey(req: Request) {
-  // If ADMIN_API_KEY is set, require it. If not set, allow (dev convenience).
   const need = envFirst("ADMIN_API_KEY");
-  if (!need) return { ok: true, mode: "open" as const };
+  if (!need) {
+    return { ok: false, mode: "missing_env" as const };
+  }
 
   const got = req.headers.get("x-admin-key") || "";
   if (got !== need) return { ok: false, mode: "locked" as const };
@@ -68,7 +69,21 @@ async function callRpc(rpcName: string, payload: any) {
 export async function POST(req: Request) {
   try {
     const gate = requireAdminKey(req);
-    if (!gate.ok) return json(401, { ok: false, code: "UNAUTHORIZED", message: "Missing/invalid x-admin-key." });
+if (!gate.ok) {
+  if (gate.mode === "missing_env") {
+    return json(500, {
+      ok: false,
+      code: "ADMIN_API_KEY_MISSING",
+      message: "ADMIN_API_KEY must be set before wallet adjustments are allowed.",
+    });
+  }
+
+  return json(401, {
+    ok: false,
+    code: "UNAUTHORIZED",
+    message: "Missing/invalid x-admin-key.",
+  });
+}
 
     const body = await req.json().catch(() => ({}));
 
@@ -81,7 +96,7 @@ export async function POST(req: Request) {
       const driver_id = String(body?.driver_id || "");
       const amount = Number(body?.amount || 0);
       const reason = body?.reason != null ? String(body.reason) : "";
-      const created_by = body?.created_by != null ? String(body.created_by) : "admin";
+      const created_by = "admin-key";
 
       if (!driver_id) return json(400, { ok: false, code: "BAD_REQUEST", message: "driver_id is required." });
       if (!amount || Number.isNaN(amount)) return json(400, { ok: false, code: "BAD_REQUEST", message: "amount must be non-zero number." });
