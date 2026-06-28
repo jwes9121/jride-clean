@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "../../../../auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,13 @@ function jsonOk(body: any, status = 200) {
 
 function jsonErr(code: string, message: string, status: number, extra?: any) {
   return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
+}
+
+async function requireAdmin() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (role !== "admin") return { ok: false as const };
+  return { ok: true as const, session };
 }
 
 async function restGetOneById(SUPABASE_URL: string, SERVICE_ROLE: string, id: string) {
@@ -70,6 +78,9 @@ async function restPatchById(
 
 export async function GET(req: Request) {
   try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
+
     const url = new URL(req.url);
     const status = (url.searchParams.get("status") || "pending").toLowerCase();
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200);
@@ -108,7 +119,10 @@ type ActionReq = {
 };
 
 export async function POST(req: Request) {
-try {
+  try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
+
     const body = (await req.json().catch(() => ({}))) as ActionReq;
 
     const idRaw = body?.id;
@@ -156,10 +170,11 @@ try {
       );
     }
 
-        const patch: any = {
+    const patch: any = {
       status: targetStatus,
       processed_at: new Date().toISOString(),
     };
+
     if (body.payout_method != null) patch.payout_method = body.payout_method;
     if (body.payout_ref != null) patch.payout_ref = body.payout_ref;
     if (body.receipt_url != null) patch.receipt_url = body.receipt_url;
