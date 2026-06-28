@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "../../../../auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,13 @@ function jsonOk(body: any, status = 200) {
 
 function jsonErr(code: string, message: string, status: number, extra?: any) {
   return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
+}
+
+async function requireAdmin() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (role !== "admin") return { ok: false as const };
+  return { ok: true as const, session };
 }
 
 async function restGetOneById(SUPABASE_URL: string, SERVICE_ROLE: string, id: string) {
@@ -65,6 +73,8 @@ async function restPatchById(SUPABASE_URL: string, SERVICE_ROLE: string, id: str
 
 export async function GET(req: Request) {
   try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
     const url = new URL(req.url);
     const status = (url.searchParams.get("status") || "pending").toLowerCase();
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200);
@@ -101,6 +111,8 @@ type ActionReq = {
 
 export async function POST(req: Request) {
   try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
     const body = (await req.json().catch(() => ({}))) as ActionReq;
 
     const idRaw = body?.id;
@@ -138,13 +150,16 @@ export async function POST(req: Request) {
       });
     }
 
+    const reviewer =
+      String((gate.session?.user as any)?.email || "").trim().toLowerCase() ||
+      String((gate.session?.user as any)?.name || "").trim() ||
+      "admin";
+
     // IMPORTANT: NO wallet mutations. Only update payout request row fields.
     const patch: any = {
       status: "paid",
       reviewed_at: new Date().toISOString(),
-      reviewed_by: (body.reviewed_by != null && String(body.reviewed_by).trim().length)
-        ? String(body.reviewed_by).trim()
-        : "admin",
+      reviewed_by: reviewer,
     };
 
     const upd = await restPatchById(SUPABASE_URL, SERVICE_ROLE, id, patch);
