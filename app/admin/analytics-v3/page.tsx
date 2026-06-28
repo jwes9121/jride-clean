@@ -219,33 +219,6 @@ export default function AnalyticsV3Page() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-bold">Town Summary</h2>
-              <div className="mt-3 overflow-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="p-2">Town</th>
-                      <th className="p-2">Ride</th>
-                      <th className="p-2">Takeout</th>
-                      <th className="p-2">Completed</th>
-                      <th className="p-2">Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {towns.map((r: AnyRow) => (
-                      <tr key={r.key} className="border-t">
-                        <td className="p-2 font-semibold">{r.key}</td>
-                        <td className="p-2">{count(r.ride_total)}</td>
-                        <td className="p-2">{count(r.takeout_total)}</td>
-                        <td className="p-2">{count(r.completed)}</td>
-                        <td className="p-2">{money(r.revenue)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </section>
 
           <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
