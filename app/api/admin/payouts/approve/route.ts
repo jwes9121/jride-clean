@@ -1,25 +1,36 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "../../../../../auth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-export async function POST(req: Request) {
+function forbid() {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const session = await auth();
+    const role = (session?.user as any)?.role ?? "user";
+
+    if (role !== "admin") return forbid();
+
+    const body = await req.json().catch(() => ({}));
     const requestId = body?.requestId as string | undefined;
-    const reviewedBy = (body?.reviewedBy as string | undefined) ?? "admin";
     const note = (body?.note as string | undefined) ?? null;
 
-    if (!requestId) return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
+    const reviewer =
+      String((session?.user as any)?.email || "").trim().toLowerCase() ||
+      String((session?.user as any)?.name || "").trim() ||
+      "admin";
 
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) {
-      return NextResponse.json({ error: "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+    if (!requestId) {
+      return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
     }
 
-    const supabase = createClient(url, key);
+    const supabase = supabaseAdmin();
+
     const { data, error } = await supabase.rpc("admin_mark_payout_paid_v1", {
       p_request_id: requestId,
-      p_reviewed_by: reviewedBy,
+      p_reviewed_by: reviewer,
       p_note: note,
     });
 
@@ -33,6 +44,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Unexpected error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message ?? "Unexpected error" },
+      { status: 500 }
+    );
   }
 }
