@@ -1,25 +1,39 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { auth } from "../../../../../auth";
 
 export const runtime = "nodejs";
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  // IMPORTANT: service role key must be set on server (never expose in client)
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   return createClient(url, service, { auth: { persistSession: false } });
 }
 
+function jsonErr(code: string, message: string, status: number, extra?: any) {
+  return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
+}
+
+async function requireAdmin() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (role !== "admin") return { ok: false as const };
+  return { ok: true as const };
+}
+
 export async function POST(req: Request) {
   try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
+
     const body = await req.json().catch(() => ({}));
     const limit = Math.max(1, Math.min(500, Number(body?.limit || 50)));
 
     const sb = adminClient();
 
-    // Your SQL function name may vary; keep this aligned with your DB.
-    // If your function is public.admin_auto_approve_driver_payouts(limit int) return json, use this:
-    const { data, error } = await sb.rpc("admin_auto_approve_driver_payouts", { p_limit: limit });
+    const { data, error } = await sb.rpc("admin_auto_approve_driver_payouts", {
+      p_limit: limit,
+    });
 
     if (error) {
       return NextResponse.json(
@@ -32,7 +46,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // If function returns json already:
     const r: any = data || {};
 
     const checked = Number(r.checked_count || r.checked || 0);
@@ -42,7 +55,6 @@ export async function POST(req: Request) {
     const ruleEnabled = !!(r.rule_enabled ?? r.enabled ?? true);
     const runId = r.run_id ?? r.id ?? null;
 
-    // Friendly message
     let message = "";
     if (checked === 0 && approved === 0 && skippedIns === 0 && skippedOther === 0) {
       message = "Nothing to auto-approve (no pending payouts).";
