@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "../../../../auth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,10 +8,27 @@ function mustEnv(name: string) {
   if (!v) throw new Error("Missing env var: " + name);
   return v;
 }
-function s(v: any) { return String(v ?? "").trim(); }
+
+function s(v: any) {
+  return String(v ?? "").trim();
+}
+
+function jsonErr(code: string, message: string, status: number, extra?: any) {
+  return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
+}
+
+async function requireAdmin() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (role !== "admin") return { ok: false as const };
+  return { ok: true as const };
+}
 
 export async function GET(req: Request) {
   try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
+
     const url = new URL(req.url);
     const view = (url.searchParams.get("view") || "monthly").toLowerCase();
     const vendorId = s(url.searchParams.get("vendor_id"));
@@ -29,7 +47,6 @@ export async function GET(req: Request) {
     qs.set("select", "*");
     qs.set("limit", String(limit));
 
-    // Safe ordering for monthly (known column exists)
     if (source === "admin_vendor_payout_monthly") {
       qs.set("order", "month_start.desc");
       if (monthStart) qs.set("month_start", "eq." + monthStart);
