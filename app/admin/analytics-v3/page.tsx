@@ -28,6 +28,47 @@ function fmtDate(v: any) {
   return d.toLocaleString("en-PH", { timeZone: "Asia/Manila" });
 }
 
+function sessionMinutes(row: AnyRow) {
+  const start = new Date(String(row?.login_at || row?.created_at || "")).getTime();
+  const endRaw = row?.logout_at || row?.last_seen_at || row?.updated_at || new Date().toISOString();
+  const end = new Date(String(endRaw)).getTime();
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+  return Math.floor((end - start) / 60000);
+}
+
+function driverLoggedHours(rows: AnyRow[]) {
+  const now = new Date();
+  const phNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+  const todayKey = phNow.toISOString().slice(0, 10);
+  const monthKey = todayKey.slice(0, 7);
+  const day = phNow.getDay();
+  const weekStart = new Date(phNow);
+  weekStart.setDate(phNow.getDate() - day);
+  weekStart.setHours(0, 0, 0, 0);
+
+  let today = 0;
+  let week = 0;
+  let month = 0;
+  let overall = 0;
+
+  for (const row of rows || []) {
+    const start = new Date(String(row?.login_at || row?.created_at || ""));
+    if (!Number.isFinite(start.getTime())) continue;
+
+    const phStart = new Date(start.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+    const key = phStart.toISOString().slice(0, 10);
+    const mins = sessionMinutes(row);
+
+    overall += mins;
+    if (key === todayKey) today += mins;
+    if (phStart >= weekStart) week += mins;
+    if (key.slice(0, 7) === monthKey) month += mins;
+  }
+
+  return { today, week, month, overall };
+}
+
 function Card(props: { title: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -253,7 +294,7 @@ export default function AnalyticsV3Page() {
             </div>
           </section>
 
-                    {selectedDriverId ? (
+          {selectedDriverId ? (
             <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <h2 className="text-lg font-bold">Driver Detail</h2>
 
@@ -261,7 +302,7 @@ export default function AnalyticsV3Page() {
                 <div className="mt-3 text-sm text-slate-500">Loading driver detail...</div>
               ) : (
                 <div className="mt-4 space-y-4">
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex flex-wrap items-center gap-4">
                       {driverDetail.driver?.photo_url ? (
                         <img
@@ -276,18 +317,12 @@ export default function AnalyticsV3Page() {
                       )}
 
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Driver Profile
-                        </div>
-                        <div className="mt-1 text-2xl font-bold text-slate-950">
-                          {driverDetail.driver?.driver_name || "Unknown Driver"}
-                        </div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Driver Profile</div>
+                        <div className="mt-1 text-2xl font-bold text-slate-950">{driverDetail.driver?.driver_name || "Unknown Driver"}</div>
                         <div className="mt-1 text-sm text-slate-600">
                           {driverDetail.driver?.callsign || "-"} / {driverDetail.driver?.vehicle_type || "-"} / {driverDetail.driver?.municipality || driverDetail.driver?.town || "-"}
                         </div>
-                        <div className="mt-1 text-sm text-slate-600">
-                          Phone: {driverDetail.driver?.phone || "-"}
-                        </div>
+                        <div className="mt-1 text-sm text-slate-600">Phone: {driverDetail.driver?.phone || "-"}</div>
                       </div>
 
                       <div className="grid gap-2 text-sm md:grid-cols-5">
@@ -305,25 +340,21 @@ export default function AnalyticsV3Page() {
                           <div className="mt-1 font-bold">{driverDetail.driver?.is_toda_member ? "Yes" : "No"}</div>
                           <div className="text-xs text-slate-500">{driverDetail.driver?.toda_name || "-"}</div>
                         </div>
-			                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
                           <div className="text-xs font-semibold uppercase text-slate-500">Ride Rating</div>
-                          <div className="mt-1 font-bold">
-                            {driverDetail.ratings?.ride_count ? Number(driverDetail.ratings.ride_average || 0).toFixed(2) : "-"}
-                          </div>
+                          <div className="mt-1 font-bold">{driverDetail.ratings?.ride_count ? Number(driverDetail.ratings.ride_average || 0).toFixed(2) : "-"}</div>
                           <div className="text-xs text-slate-500">{driverDetail.ratings?.ride_count || 0} ratings</div>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white p-3">
                           <div className="text-xs font-semibold uppercase text-slate-500">Takeout Rating</div>
-                          <div className="mt-1 font-bold">
-                            {driverDetail.ratings?.takeout_count ? Number(driverDetail.ratings.takeout_average || 0).toFixed(2) : "-"}
-                          </div>
+                          <div className="mt-1 font-bold">{driverDetail.ratings?.takeout_count ? Number(driverDetail.ratings.takeout_average || 0).toFixed(2) : "-"}</div>
                           <div className="text-xs text-slate-500">{driverDetail.ratings?.takeout_count || 0} ratings</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="grid gap-4 xl:grid-cols-3">
                     <div className="rounded-lg border border-slate-200 p-3">
                       <h3 className="font-semibold">Current Booking</h3>
                       {driverDetail.current_booking ? (
@@ -350,6 +381,33 @@ export default function AnalyticsV3Page() {
                         <div className="mt-2 text-sm text-slate-500">No location row.</div>
                       )}
                     </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="font-semibold">Logged Hours</h3>
+                      {(() => {
+                        const logged = driverLoggedHours(driverDetail.sessions || []);
+                        return (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">Today</div>
+                              <div className="font-bold">{minutes(logged.today)}</div>
+                            </div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">This Week</div>
+                              <div className="font-bold">{minutes(logged.week)}</div>
+                            </div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">This Month</div>
+                              <div className="font-bold">{minutes(logged.month)}</div>
+                            </div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">Overall</div>
+                              <div className="font-bold">{minutes(logged.overall)}</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-3">
@@ -359,9 +417,7 @@ export default function AnalyticsV3Page() {
                         {(driverDetail.sessions || []).map((s: AnyRow) => (
                           <div key={s.id} className="border-b p-2 text-sm">
                             <div className="font-semibold">{s.status || "-"}</div>
-                            <div className="text-xs text-slate-500">
-                              {fmtDate(s.login_at)} to {s.logout_at ? fmtDate(s.logout_at) : "Online"}
-                            </div>
+                            <div className="text-xs text-slate-500">{fmtDate(s.login_at)} to {s.logout_at ? fmtDate(s.logout_at) : "Online"}</div>
                             <div className="text-xs text-slate-500">{s.source || "-"} / {s.device_id || "-"}</div>
                           </div>
                         ))}
@@ -371,9 +427,8 @@ export default function AnalyticsV3Page() {
                     <div>
                       <h3 className="font-semibold">Bookings</h3>
                       <div className="mt-2 max-h-80 overflow-auto rounded border">
-                                             {(driverDetail.bookings || []).map((b: AnyRow) => {
+                        {(driverDetail.bookings || []).map((b: AnyRow) => {
                           const expanded = expandedBookingCode === b.booking_code;
-
                           return (
                             <div
                               key={b.id || b.booking_code}
@@ -381,9 +436,7 @@ export default function AnalyticsV3Page() {
                               onClick={() => setExpandedBookingCode(expanded ? "" : String(b.booking_code || ""))}
                             >
                               <div className="font-semibold">{b.booking_code}</div>
-                              <div className="text-xs text-slate-500">
-                                {b.service_type || "ride"} / {b.status || "-"} / {b.town || "-"}
-                              </div>
+                              <div className="text-xs text-slate-500">{b.service_type || "ride"} / {b.status || "-"} / {b.town || "-"}</div>
                               <div className="text-xs text-slate-500">
                                 Gross: {money(Number(b.verified_fare || b.takeout_total_payable || b.proposed_fare || 0))} / Driver: {money(b.driver_payout)} / Company: {money(b.company_cut)}
                               </div>
@@ -407,7 +460,7 @@ export default function AnalyticsV3Page() {
                             </div>
                           );
                         })}
-                        </div>
+                      </div>
                     </div>
 
                     <div>
@@ -417,9 +470,7 @@ export default function AnalyticsV3Page() {
                           <div key={`${t.type}-${t.at}-${idx}`} className="border-b p-2 text-sm">
                             <div className="font-semibold">{t.label || t.type}</div>
                             <div className="text-xs text-slate-500">{fmtDate(t.at)}</div>
-                            <div className="text-xs text-slate-500">
-                              {t.booking_code ? `${t.booking_code} / ${t.status || "-"}` : t.status || "-"}
-                            </div>
+                            <div className="text-xs text-slate-500">{t.booking_code ? `${t.booking_code} / ${t.status || "-"}` : t.status || "-"}</div>
                           </div>
                         ))}
                       </div>
