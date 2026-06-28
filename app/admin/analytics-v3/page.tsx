@@ -116,6 +116,16 @@ export default function AnalyticsV3Page() {
     return alerts;
   });
 
+  const gpsPendingDrivers = drivers.filter((d: AnyRow) => String(d.current_status || "").toLowerCase() === "gps_pending");
+  const offlineTownAlerts = operationsAlerts.filter((a: AnyRow) => a.level === "red");
+  const cancellationAlerts = operationsAlerts.filter((a: AnyRow) => String(a.message || "").toLowerCase().includes("cancellation rate"));
+  const actionQueue = [
+    { level: offlineTownAlerts.length ? "red" : "green", label: `${offlineTownAlerts.length} town(s) with no online drivers` },
+    { level: gpsPendingDrivers.length ? "yellow" : "green", label: `${gpsPendingDrivers.length} driver(s) GPS pending` },
+    { level: cancellationAlerts.length ? "yellow" : "green", label: `${cancellationAlerts.length} town(s) with high cancellation rate` },
+    { level: activeTrips.length ? "yellow" : "green", label: `${activeTrips.length} active/uncompleted trip(s)` },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -150,6 +160,28 @@ export default function AnalyticsV3Page() {
           </section>
 
 
+
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-bold">Action Queue</h2>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {actionQueue.map((item: AnyRow, idx: number) => (
+                <div
+                  key={idx}
+                  className={[
+                    "rounded-lg border p-3 text-sm",
+                    item.level === "red"
+                      ? "border-red-200 bg-red-50 text-red-800"
+                      : item.level === "yellow"
+                        ? "border-yellow-200 bg-yellow-50 text-yellow-800"
+                        : "border-green-200 bg-green-50 text-green-800",
+                  ].join(" ")}
+                >
+                  <div className="text-xs font-semibold uppercase">{item.level}</div>
+                  <div className="mt-1 font-bold">{item.label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
           <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-lg font-bold">Operations Alerts</h2>
             {operationsAlerts.length ? (
