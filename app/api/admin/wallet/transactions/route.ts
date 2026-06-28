@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { auth } from "../../../../../auth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 function bad(message: string, code: string, status = 400, extra: any = {}) {
   return NextResponse.json(
@@ -23,6 +19,11 @@ function ok(data: any = {}) {
   );
 }
 
+function isStaffRole(role: unknown) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
@@ -35,7 +36,7 @@ function isIdOk(v: string) {
   return isUuid(v) || isNumericId(v);
 }
 
-async function fetchRowsWithSafeOrdering(table: string, key: string, id: string, limit: number) {
+async function fetchRowsWithSafeOrdering(supabase: any, table: string, key: string, id: string, limit: number) {
   const orderFields = ["created_at", "updated_at", "inserted_at", "occurred_at", "timestamp", "ts", "id"];
 
   for (let i = 0; i < orderFields.length; i++) {
@@ -75,7 +76,7 @@ async function fetchRowsWithSafeOrdering(table: string, key: string, id: string,
   return { rows: data ?? [], orderedBy: null };
 }
 
-async function fetchDriverSnapshot(id: string) {
+async function fetchDriverSnapshot(supabase: any, id: string) {
   const { data, error } = await supabase
     .from("drivers")
     .select("id, driver_name, wallet_balance, min_wallet_required, wallet_locked, driver_status")
@@ -89,13 +90,13 @@ async function fetchDriverSnapshot(id: string) {
   return { snapshot: data ?? null, snapshotError: null };
 }
 
-async function fetchVendorBalanceSafe(id: string) {
+async function fetchVendorBalanceSafe(supabase: any, id: string) {
   const rpcName = "admin_get_vendor_wallet_balance_v1";
   const argSets = [
     { vendor_id: id },
     { p_vendor_id: id },
     { in_vendor_id: id },
-    { _vendor_id: id }
+    { _vendor_id: id },
   ];
 
   for (let i = 0; i < argSets.length; i++) {
@@ -111,6 +112,15 @@ async function fetchVendorBalanceSafe(id: string) {
 
 export async function GET(req: Request) {
   try {
+    const session = await auth();
+    const role = (session?.user as any)?.role ?? "user";
+
+    if (!isStaffRole(role)) {
+      return bad("Forbidden", "FORBIDDEN", 403);
+    }
+
+    const supabase = supabaseAdmin();
+
     const url = new URL(req.url);
     const kindRaw = (url.searchParams.get("kind") || "").toLowerCase();
     const kind = kindRaw === "driver" || kindRaw === "vendor" ? kindRaw : null;
@@ -123,13 +133,13 @@ export async function GET(req: Request) {
     const table = kind === "driver" ? "driver_wallet_transactions" : "vendor_wallet_transactions";
     const key = kind === "driver" ? "driver_id" : "vendor_id";
 
-    const res = await fetchRowsWithSafeOrdering(table, key, id, limit);
+    const res = await fetchRowsWithSafeOrdering(supabase, table, key, id, limit);
     if ((res as any).fatalError) {
       return bad("Wallet tx fetch failed", "WALLET_TX_FETCH_FAILED", 500, { details: (res as any).fatalError });
     }
 
     if (kind === "driver") {
-      const snapshotRes = await fetchDriverSnapshot(id);
+      const snapshotRes = await fetchDriverSnapshot(supabase, id);
       return ok({
         kind,
         id,
@@ -138,18 +148,18 @@ export async function GET(req: Request) {
         balance: snapshotRes.snapshot?.wallet_balance ?? null,
         balanceError: snapshotRes.snapshotError,
         driver: snapshotRes.snapshot,
-        rows: res.rows
+        rows: res.rows,
       });
     }
 
-    const bal = await fetchVendorBalanceSafe(id);
+    const bal = await fetchVendorBalanceSafe(supabase, id);
     return ok({
       kind,
       id,
       orderedBy: res.orderedBy,
       balance: bal.balance,
       balanceError: bal.balanceError,
-      rows: res.rows
+      rows: res.rows,
     });
   } catch (e: any) {
     return bad("Unhandled error", "UNHANDLED", 500, { details: String(e?.message || e) });
