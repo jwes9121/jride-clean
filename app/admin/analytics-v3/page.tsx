@@ -39,12 +39,13 @@ function Card(props: { title: string; value: string; sub?: string }) {
 }
 
 export default function AnalyticsV3Page() {
-  const [data, setData] = React.useState<any>(null);
+    const [data, setData] = React.useState<any>(null);
   const [err, setErr] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [days, setDays] = React.useState(30);
   const [selectedDriverId, setSelectedDriverId] = React.useState("");
   const [driverDetail, setDriverDetail] = React.useState<any>(null);
+  const [expandedBookingCode, setExpandedBookingCode] = React.useState("");
 
   React.useEffect(() => {
     let alive = true;
@@ -289,7 +290,7 @@ export default function AnalyticsV3Page() {
                         </div>
                       </div>
 
-                      <div className="grid gap-2 text-sm md:grid-cols-3">
+                      <div className="grid gap-2 text-sm md:grid-cols-5">
                         <div className="rounded-lg border border-slate-200 bg-white p-3">
                           <div className="text-xs font-semibold uppercase text-slate-500">Wallet</div>
                           <div className="mt-1 font-bold">{money(driverDetail.driver?.wallet_balance)}</div>
@@ -303,6 +304,20 @@ export default function AnalyticsV3Page() {
                           <div className="text-xs font-semibold uppercase text-slate-500">TODA</div>
                           <div className="mt-1 font-bold">{driverDetail.driver?.is_toda_member ? "Yes" : "No"}</div>
                           <div className="text-xs text-slate-500">{driverDetail.driver?.toda_name || "-"}</div>
+                        </div>
+			                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-xs font-semibold uppercase text-slate-500">Ride Rating</div>
+                          <div className="mt-1 font-bold">
+                            {driverDetail.ratings?.ride_count ? Number(driverDetail.ratings.ride_average || 0).toFixed(2) : "-"}
+                          </div>
+                          <div className="text-xs text-slate-500">{driverDetail.ratings?.ride_count || 0} ratings</div>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-xs font-semibold uppercase text-slate-500">Takeout Rating</div>
+                          <div className="mt-1 font-bold">
+                            {driverDetail.ratings?.takeout_count ? Number(driverDetail.ratings.takeout_average || 0).toFixed(2) : "-"}
+                          </div>
+                          <div className="text-xs text-slate-500">{driverDetail.ratings?.takeout_count || 0} ratings</div>
                         </div>
                       </div>
                     </div>
@@ -356,17 +371,42 @@ export default function AnalyticsV3Page() {
                     <div>
                       <h3 className="font-semibold">Bookings</h3>
                       <div className="mt-2 max-h-80 overflow-auto rounded border">
-                        {(driverDetail.bookings || []).map((b: AnyRow) => (
-                          <div key={b.id || b.booking_code} className="border-b p-2 text-sm">
-                            <div className="font-semibold">{b.booking_code}</div>
-                            <div className="text-xs text-slate-500">
-                              {b.service_type || "ride"} / {b.status || "-"} / {b.town || "-"}
+                                             {(driverDetail.bookings || []).map((b: AnyRow) => {
+                          const expanded = expandedBookingCode === b.booking_code;
+
+                          return (
+                            <div
+                              key={b.id || b.booking_code}
+                              className="cursor-pointer border-b p-2 text-sm hover:bg-slate-50"
+                              onClick={() => setExpandedBookingCode(expanded ? "" : String(b.booking_code || ""))}
+                            >
+                              <div className="font-semibold">{b.booking_code}</div>
+                              <div className="text-xs text-slate-500">
+                                {b.service_type || "ride"} / {b.status || "-"} / {b.town || "-"}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                Gross: {money(Number(b.verified_fare || b.takeout_total_payable || b.proposed_fare || 0))} / Driver: {money(b.driver_payout)} / Company: {money(b.company_cut)}
+                              </div>
+                              <div className="text-xs text-slate-500">{fmtDate(b.created_at)}</div>
+
+                              {expanded ? (
+                                <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                                  <div>Passenger: {b.passenger_name || "-"}</div>
+                                  <div>Pickup: {b.from_label || "-"}</div>
+                                  <div>Dropoff: {b.to_label || "-"}</div>
+                                  <div>Canonical Status: {b.status || "-"}</div>
+                                  <div>Vendor Status: {b.vendor_status || "-"}</div>
+                                  <div>Customer Status: {b.customer_status || "-"}</div>
+                                  <div>Driver Status: {b.driver_status || "-"}</div>
+                                  <div>Pricing Status: {b.takeout_pricing_status || "-"}</div>
+                                  <div>Created: {fmtDate(b.created_at)}</div>
+                                  <div>Updated: {fmtDate(b.updated_at)}</div>
+                                  <div>Completed: {fmtDate(b.completed_at)}</div>
+                                </div>
+                              ) : null}
                             </div>
-                            <div className="text-xs text-slate-500">
-                              Gross: {money(Number(b.verified_fare || b.takeout_total_payable || b.proposed_fare || 0))} / Driver: {money(b.driver_payout)} / Company: {money(b.company_cut)}
-                            </div>
-                            <div className="text-xs text-slate-500">{fmtDate(b.created_at)}</div>
-                          </div>
+                          );
+                        })}
                         ))}
                       </div>
                     </div>
