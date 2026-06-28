@@ -28,46 +28,6 @@ function fmtDate(v: any) {
   return d.toLocaleString("en-PH", { timeZone: "Asia/Manila" });
 }
 
-function sessionMinutes(row: AnyRow) {
-  const start = new Date(String(row?.login_at || row?.created_at || "")).getTime();
-  const endRaw = row?.logout_at || row?.last_seen_at || row?.updated_at || new Date().toISOString();
-  const end = new Date(String(endRaw)).getTime();
-
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
-  return Math.floor((end - start) / 60000);
-}
-
-function driverLoggedHours(rows: AnyRow[]) {
-  const now = new Date();
-  const phNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
-  const todayKey = phNow.toISOString().slice(0, 10);
-  const monthKey = todayKey.slice(0, 7);
-  const day = phNow.getDay();
-  const weekStart = new Date(phNow);
-  weekStart.setDate(phNow.getDate() - day);
-  weekStart.setHours(0, 0, 0, 0);
-
-  let today = 0;
-  let week = 0;
-  let month = 0;
-  let overall = 0;
-
-  for (const row of rows || []) {
-    const start = new Date(String(row?.login_at || row?.created_at || ""));
-    if (!Number.isFinite(start.getTime())) continue;
-
-    const phStart = new Date(start.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
-    const key = phStart.toISOString().slice(0, 10);
-    const mins = sessionMinutes(row);
-
-    overall += mins;
-    if (key === todayKey) today += mins;
-    if (phStart >= weekStart) week += mins;
-    if (key.slice(0, 7) === monthKey) month += mins;
-  }
-
-  return { today, week, month, overall };
-}
 
 function Card(props: { title: string; value: string; sub?: string }) {
   return (
