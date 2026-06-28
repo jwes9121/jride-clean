@@ -387,6 +387,23 @@ export default function AnalyticsV3Page() {
                         ))}
                       </div>
                     </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="font-semibold">Performance KPIs</h3>
+                      {(() => {
+                        const p = driverDetail.performance || {};
+                        return (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completed</div><div className="font-bold">{count(p.completed_bookings)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Cancelled</div><div className="font-bold">{count(p.cancelled_bookings)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completion Rate</div><div className="font-bold">{p.completion_rate == null ? "-" : p.completion_rate + "%"}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Cancellation Rate</div><div className="font-bold">{p.cancellation_rate == null ? "-" : p.cancellation_rate + "%"}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Ride / Takeout</div><div className="font-bold">{count(p.ride_bookings)} / {count(p.takeout_bookings)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Gross Total</div><div className="font-bold">{money(p.gross_total)}</div></div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-3">
