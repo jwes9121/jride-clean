@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "../../../../auth";
 
 export const dynamic = "force-dynamic";
 
@@ -8,21 +9,36 @@ function mustEnv(name: string) {
   return v;
 }
 
-function s(v: any) { return String(v ?? "").trim(); }
+function s(v: any) {
+  return String(v ?? "").trim();
+}
+
+function jsonErr(code: string, message: string, status: number, extra?: any) {
+  return NextResponse.json({ ok: false, code, message, ...(extra || {}) }, { status });
+}
+
+async function requireAdmin() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (role !== "admin") return { ok: false as const };
+  return { ok: true as const };
+}
 
 export async function GET(req: Request) {
   try {
+    const gate = await requireAdmin();
+    if (!gate.ok) return jsonErr("FORBIDDEN", "Forbidden", 403);
+
     const url = new URL(req.url);
 
     const view = (url.searchParams.get("view") || "monthly").toLowerCase();
     const vendorId = s(url.searchParams.get("vendor_id"));
-    const monthStart = s(url.searchParams.get("month_start")); // YYYY-MM-01 (optional)
+    const monthStart = s(url.searchParams.get("month_start"));
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10) || 200, 500);
 
     const SUPABASE_URL = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
     const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-    // Only allow expected sources (read-only)
     const source =
       view === "summary"
         ? "admin_vendor_payout_summary"
@@ -32,8 +48,6 @@ export async function GET(req: Request) {
     qs.set("select", "*");
     qs.set("limit", String(limit));
 
-    // Order (best-effort; if a column doesn't exist, Supabase REST may error.
-    // We'll only set month_start order for monthly.)
     if (source === "admin_vendor_payout_monthly") {
       qs.set("order", "month_start.desc");
       if (monthStart) qs.set("month_start", "eq." + monthStart);
@@ -56,7 +70,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // Return raw JSON array to keep UI simple (same pattern as your payouts list APIs)
     return new NextResponse(text, { status: 200, headers: { "Content-Type": "application/json" } });
   } catch (e: any) {
     return NextResponse.json({ ok: false, code: "SERVER_ERROR", message: e?.message || String(e) }, { status: 500 });
