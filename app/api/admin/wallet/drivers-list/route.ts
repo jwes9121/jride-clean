@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 function isDriverDeviceLockAllowed(body: any): boolean {
   // Minimal gate: require driver_id + device_id present
@@ -24,10 +24,17 @@ function envFirst(...keys: string[]) {
 
 function requireAdminKey(req: Request) {
   const need = envFirst("ADMIN_API_KEY");
-  if (!need) return { ok: true };
+
+  if (!need) {
+    return { ok: false, mode: "missing_env" as const };
+  }
+
   const got = req.headers.get("x-admin-key") || "";
-  if (got !== need) return { ok: false };
-  return { ok: true };
+  if (got !== need) {
+    return { ok: false, mode: "locked" as const };
+  }
+
+  return { ok: true, mode: "locked" as const };
 }
 
 async function sbGet(SUPABASE_URL: string, SERVICE_KEY: string, path: string) {
@@ -54,7 +61,17 @@ function pick(o: any, keys: string[]) {
 export async function GET(req: Request) {
   try {
     const gate = requireAdminKey(req);
-    if (!gate.ok) return json(401, { ok: false, code: "UNAUTHORIZED" });
+  if (!gate.ok) {
+    if (gate.mode === "missing_env") {
+      return json(500, {
+        ok: false,
+        code: "ADMIN_API_KEY_MISSING",
+        message: "ADMIN_API_KEY must be configured.",
+      });
+    }
+
+    return json(401, { ok: false, code: "UNAUTHORIZED" });
+  }
 
     const SUPABASE_URL = envFirst("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
     const SERVICE_KEY = envFirst(
