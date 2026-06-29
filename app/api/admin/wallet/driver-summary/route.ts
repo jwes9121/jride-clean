@@ -1,19 +1,27 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { auth } from "../../../../../auth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
 function json(status: number, body: any) {
   return NextResponse.json(body, {
     status,
     headers: { "Cache-Control": "no-store" },
   });
+}
+
+function isStaffRole(role: unknown) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
+async function requireStaff() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (!isStaffRole(role)) return { ok: false as const };
+  return { ok: true as const };
 }
 
 function isUuid(v: string) {
@@ -30,7 +38,7 @@ function isIdOk(v: string) {
   return isUuid(v) || isNumericId(v);
 }
 
-async function fetchDriverTx(driverId: string, limit: number) {
+async function fetchDriverTx(supabase: any, driverId: string, limit: number) {
   const r = await supabase
     .from("driver_wallet_transactions")
     .select("id, created_at, amount, balance_after, reason, booking_id")
@@ -53,6 +61,11 @@ async function fetchDriverTx(driverId: string, limit: number) {
 
 export async function GET(req: Request) {
   try {
+    const gate = await requireStaff();
+    if (!gate.ok) return json(403, { ok: false, code: "FORBIDDEN", message: "Forbidden" });
+
+    const supabase = supabaseAdmin();
+
     const url = new URL(req.url);
     const q = String(url.searchParams.get("q") || "").trim();
 
@@ -71,16 +84,15 @@ export async function GET(req: Request) {
         return json(500, { ok: false, code: "SEARCH_FAILED", message: r.error.message });
       }
 
-      const drivers = (r.data || [])
-        .map((d: any) => {
-          const id = String(d?.id ?? "");
-          const name = String(d?.driver_name ?? "").trim() || id;
-          return {
-            id,
-            driver_name: name,
-            label: `${name} (${id})`,
-          };
-        });
+      const drivers = (r.data || []).map((d: any) => {
+        const id = String(d?.id ?? "");
+        const name = String(d?.driver_name ?? "").trim() || id;
+        return {
+          id,
+          driver_name: name,
+          label: `${name} (${id})`,
+        };
+      });
 
       return json(200, { ok: true, drivers });
     }
@@ -116,7 +128,7 @@ export async function GET(req: Request) {
       });
     }
 
-    const last = await fetchDriverTx(driverId, 20);
+    const last = await fetchDriverTx(supabase, driverId, 20);
 
     return json(200, {
       ok: true,
