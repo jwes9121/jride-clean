@@ -1,17 +1,17 @@
-export const runtime = "nodejs";
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const body = Object.fromEntries(
-    Object.entries(process.env)
-      .filter(([k]) =>
-        k.includes("GOOGLE") ||
-        k.includes("NEXTAUTH") ||
-        k.includes("SUPABASE")
-      )
+  return NextResponse.json(
+    { ok: false, error: "NOT_FOUND" },
+    { status: 404 }
   );
-  return new Response(JSON.stringify(body, null, 2), {
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
 }
 
-
+export async function POST() {
+  return NextResponse.json(
+    { ok: false, error: "NOT_FOUND" },
+    { status: 404 }
+  );
+}

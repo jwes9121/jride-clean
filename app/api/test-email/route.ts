@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { sendEmail } from "@/utils/email/sendEmail";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  try {
-    await sendEmail({
-      to: "your_test_email@gmail.com",
-      subject: "JRide SMTP Test",
-      html: "<p>SMTP is working.</p>",
-    });
+  return NextResponse.json(
+    { ok: false, error: "NOT_FOUND" },
+    { status: 404 }
+  );
+}
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "EMAIL_TEST_FAILED" },
-      { status: 500 }
-    );
-  }
+export async function POST() {
+  return NextResponse.json(
+    { ok: false, error: "NOT_FOUND" },
+    { status: 404 }
+  );
 }
