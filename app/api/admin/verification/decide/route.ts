@@ -11,10 +11,7 @@ function env(name: string) {
 }
 
 function parseCsv(v: string) {
-  return String(v || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return String(v || "").split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 function toLowerList(xs: string[]) {
@@ -23,14 +20,12 @@ function toLowerList(xs: string[]) {
 
 function isInList(val: string | null | undefined, list: string[]) {
   const v = String(val || "").trim();
-  if (!v) return false;
-  return list.includes(v);
+  return !!v && list.includes(v);
 }
 
 function isEmailInList(email: string | null | undefined, listLower: string[]) {
   const e = String(email || "").trim().toLowerCase();
-  if (!e) return false;
-  return listLower.includes(e);
+  return !!e && listLower.includes(e);
 }
 
 async function isRequesterAdmin(adminSb: any, userId: string, email: string) {
@@ -54,25 +49,13 @@ async function isRequesterAdmin(adminSb: any, userId: string, email: string) {
 export async function POST(req: Request) {
   try {
     const url = env("SUPABASE_URL") || env("NEXT_PUBLIC_SUPABASE_URL");
-    const anon =
-      env("SUPABASE_ANON_KEY") ||
-      env("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
-      env("NEXT_PUBLIC_SUPABASE_KEY");
-    const service =
-      env("SUPABASE_SERVICE_ROLE_KEY") ||
-      env("SUPABASE_SERVICE_ROLE") ||
-      env("SUPABASE_SERVICE_KEY");
+    const anon = env("SUPABASE_ANON_KEY") || env("NEXT_PUBLIC_SUPABASE_ANON_KEY") || env("NEXT_PUBLIC_SUPABASE_KEY");
+    const service = env("SUPABASE_SERVICE_ROLE_KEY") || env("SUPABASE_SERVICE_ROLE") || env("SUPABASE_SERVICE_KEY");
 
     if (!url) return NextResponse.json({ ok: false, error: "Missing SUPABASE_URL" }, { status: 500 });
     if (!anon) return NextResponse.json({ ok: false, error: "Missing SUPABASE_ANON_KEY" }, { status: 500 });
-    if (!service) {
-      return NextResponse.json(
-        { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" },
-        { status: 500 }
-      );
-    }
+    if (!service) return NextResponse.json({ ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
 
-    // 1) Supabase cookie session (who is calling)
     const cookieStore = cookies();
     const userSb = createServerClient(url, anon, {
       cookies: {
@@ -92,7 +75,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
     }
 
-    // 2) Admin/service client (privileged DB + auth admin)
     const adminSb = createClient(url, service, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -120,7 +102,7 @@ export async function POST(req: Request) {
       .update({
         status: newStatus,
         reviewed_at: now,
-        reviewed_by: "admin",
+        reviewed_by: requesterEmail || requesterId,
         admin_notes: admin_notes || null,
       })
       .eq("passenger_id", passenger_id)
