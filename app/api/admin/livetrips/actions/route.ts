@@ -1,7 +1,20 @@
 import { NextResponse } from "next/server";
+import { auth } from "../../../../../auth";
 import { createClient } from "@/utils/supabase/server";
 
 type ActionName = "NUDGE_DRIVER" | "REASSIGN_DRIVER" | "AUTO_ASSIGN" | "ARCHIVE_TEST_TRIPS";
+
+function isStaffRole(role: unknown) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
+async function requireStaff() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (!isStaffRole(role)) return { ok: false as const };
+  return { ok: true as const };
+}
 
 function num(v: any): number | null {
   const n = typeof v === "number" ? v : Number(v);
@@ -29,6 +42,11 @@ function dist2(aLat: number, aLng: number, bLat: number, bLng: number) {
 }
 
 export async function POST(req: Request) {
+  const gate = await requireStaff();
+  if (!gate.ok) {
+    return NextResponse.json({ ok: false, code: "FORBIDDEN", message: "Forbidden" }, { status: 403 });
+  }
+
   const supabase = createClient();
 
   let body: any = null;
