@@ -95,8 +95,136 @@ function useFinanceInbox() {
   return { data, loading, err, reload: load };
 }
 
+function ReviewDrawer({
+  row,
+  onClose,
+}: {
+  row: InboxRow | null;
+  onClose: () => void;
+}) {
+  if (!row) return null;
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        aria-label="Close review drawer"
+        className="absolute inset-0 bg-slate-900/30"
+        onClick={onClose}
+      />
+
+      <aside className="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-2xl">
+        <div className="sticky top-0 border-b border-slate-200 bg-white p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Review Finance Event</h2>
+              <p className="mt-1 text-sm text-slate-500">{row.id}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Event Details</h3>
+            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
+              <div>
+                <dt className="text-slate-500">Business Event</dt>
+                <dd className="font-semibold text-slate-900">{label(row.business_event)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Source Module</dt>
+                <dd className="font-semibold text-slate-900">{row.source_module || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Source Record</dt>
+                <dd className="font-semibold text-slate-900">{row.source_id || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Business Unit</dt>
+                <dd className="font-semibold text-slate-900">{row.business_unit || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Location</dt>
+                <dd className="font-semibold text-slate-900">{row.location || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Amount</dt>
+                <dd className="font-semibold text-slate-900">{money(row.amount)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Created At</dt>
+                <dd className="font-semibold text-slate-900">{fmtDate(row.created_at)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Posting Rule</h3>
+            <div className="mt-3 text-sm">
+              <div className="font-semibold text-slate-900">{row.posting_rule || "Not resolved"}</div>
+              <div className="mt-1 text-slate-500">
+                Rule Version: {row.rule_version ? `v${row.rule_version}` : "-"}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Warnings</h3>
+            {row.warnings?.length ? (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-orange-700">
+                {row.warnings.map((w) => (
+                  <li key={w}>{label(w)}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">No warnings.</p>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Proposed Journal</h3>
+            <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+              Proposed journal preview will appear after posting rule execution is wired.
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Posting History</h3>
+            <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+              Posting history will show finance_posting_runs in the next sprint step.
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-900">Actions</h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button disabled className="rounded-lg bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">
+                Approve soon
+              </button>
+              <button disabled className="rounded-lg bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">
+                Reject soon
+              </button>
+              <button disabled className="rounded-lg bg-slate-300 px-4 py-2 text-sm font-semibold text-slate-600">
+                Replay soon
+              </button>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 export default function FinanceInboxPage() {
   const { data, loading, err, reload } = useFinanceInbox();
+  const [selectedRow, setSelectedRow] = useState<InboxRow | null>(null);
 
   const summary = data?.summary || {
     pending: 0,
@@ -150,7 +278,7 @@ export default function FinanceInboxPage() {
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 p-4">
             <h2 className="font-semibold text-slate-900">Inbox Items</h2>
-            <p className="mt-1 text-sm text-slate-500">Read-only v1. Actions come next.</p>
+            <p className="mt-1 text-sm text-slate-500">Review drawer is read-only in this version.</p>
           </div>
 
           {loading ? (
@@ -201,10 +329,10 @@ export default function FinanceInboxPage() {
                       <td className="px-4 py-3">
                         <button
                           type="button"
+                          onClick={() => setSelectedRow(row)}
                           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          disabled
                         >
-                          Review soon
+                          Review
                         </button>
                       </td>
                     </tr>
@@ -215,6 +343,8 @@ export default function FinanceInboxPage() {
           )}
         </section>
       </div>
+
+      <ReviewDrawer row={selectedRow} onClose={() => setSelectedRow(null)} />
     </main>
   );
 }
