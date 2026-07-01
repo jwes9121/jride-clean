@@ -1,4 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "../../../../auth";
+
+function isStaffRole(role: unknown) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
+async function requireStaff() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (!isStaffRole(role)) return { ok: false as const };
+  return { ok: true as const };
+}
 
 const STATUS_MAP: Record<string, string> = {
   pending: "requested",
@@ -21,6 +34,14 @@ const STATUS_MAP: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   try {
+    const gate = await requireStaff();
+    if (!gate.ok) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden" },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json().catch(() => null);
 
     const bookingId = String(body?.booking_id ?? body?.bookingId ?? "").trim();
