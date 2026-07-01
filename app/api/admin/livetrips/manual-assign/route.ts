@@ -1,5 +1,18 @@
 import { NextResponse } from "next/server";
+import { auth } from "../../../../../auth";
 import { createClient } from "@/utils/supabase/server";
+
+function isStaffRole(role: unknown) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
+async function requireStaff() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (!isStaffRole(role)) return { ok: false as const };
+  return { ok: true as const };
+}
 
 type Req = {
   booking_code?: string | null;
@@ -15,6 +28,11 @@ function isUuid(v: string) {
 }
 
 export async function POST(req: Request) {
+  const gate = await requireStaff();
+  if (!gate.ok) {
+    return NextResponse.json({ ok: false, code: "FORBIDDEN", message: "Forbidden" }, { status: 403 });
+  }
+
   const supabase = createClient();
   const body = (await req.json().catch(() => ({}))) as Req;
 
