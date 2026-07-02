@@ -21,7 +21,7 @@ function envFirst(...keys: string[]) {
 }
 
 function requireAdminKey(req: Request) {
-  const need = envFirst("ADMIN_API_KEY");
+  const need = envFirst("ADMIN_API_KEY", "JRIDE_ADMIN_SECRET");
   if (!need) {
     return { ok: false, mode: "missing_env" as const };
   }
@@ -74,7 +74,7 @@ if (!gate.ok) {
     return json(500, {
       ok: false,
       code: "ADMIN_API_KEY_MISSING",
-      message: "ADMIN_API_KEY must be set before wallet adjustments are allowed.",
+      message: "ADMIN_API_KEY or JRIDE_ADMIN_SECRET must be set before wallet adjustments are allowed.",
     });
   }
 
@@ -171,5 +171,3 @@ if (!gate.ok) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message || String(e) });
   }
 }
-
-
