@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 function isDriverDeviceLockAllowed(body: any): boolean {
   // Minimal gate: require driver_id + device_id present
@@ -94,14 +94,18 @@ if (!gate.ok) {
 
     if (kind === "driver_adjust") {
       const driver_id = String(body?.driver_id || "");
-      const amount = Number(body?.amount || 0);
+      const rawAmount = Math.abs(Number(body?.amount || 0));
+      const operation = String(body?.operation || "credit").trim().toLowerCase();
+      const amount = operation === "debit" ? -rawAmount : rawAmount;
       const reason = body?.reason != null ? String(body.reason) : "";
       const created_by = "admin-key";
 
       if (!driver_id) return json(400, { ok: false, code: "BAD_REQUEST", message: "driver_id is required." });
-      if (!amount || Number.isNaN(amount)) return json(400, { ok: false, code: "BAD_REQUEST", message: "amount must be non-zero number." });
+      if (!rawAmount || Number.isNaN(rawAmount)) return json(400, { ok: false, code: "BAD_REQUEST", message: "amount must be non-zero number." });
+      if (operation !== "credit" && operation !== "debit") return json(400, { ok: false, code: "BAD_REQUEST", message: "operation must be credit or debit." });
 
-      // Uses your SECURITY DEFINER function which also prevents negative wallet
+      // Uses your SECURITY DEFINER function which also prevents negative wallet.
+      // Operation controls the accounting sign. Reason is audit metadata only.
       const r = await callRpc("admin_adjust_driver_wallet", {
         p_driver_id: driver_id,
         p_amount: amount,
