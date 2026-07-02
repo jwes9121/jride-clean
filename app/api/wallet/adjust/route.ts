@@ -1,145 +1,175 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-export const dynamic = "force-dynamic";
+function isDriverDeviceLockAllowed(body: any): boolean {
+  // Minimal gate: require driver_id + device_id present
+  if (!body) return false;
+  const driver_id = body.driver_id || body.driverId;
+  const device_id = body.device_id || body.deviceId;
+  return !!(driver_id && device_id);
+}
+
+function json(status: number, body: any) {
+  return NextResponse.json(body, { status });
+}
+
+function envFirst(...keys: string[]) {
+  for (const k of keys) {
+    const v = process.env[k];
+    if (v && String(v).trim().length > 0) return String(v).trim();
+  }
+  return "";
+}
 
 function requireAdminKey(req: Request) {
-  const required = process.env.ADMIN_API_KEY || "";
-  if (!required) return { ok: true as const };
-  const got = (req.headers.get("x-admin-key") || "").trim();
-  if (!got || got !== required) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 }),
-    };
+  const need = envFirst("ADMIN_API_KEY");
+  if (!need) {
+    return { ok: false, mode: "missing_env" as const };
   }
-  return { ok: true as const };
+
+  const got = req.headers.get("x-admin-key") || "";
+  if (got !== need) return { ok: false, mode: "locked" as const };
+  return { ok: true, mode: "locked" as const };
 }
 
-function ensureReceiptRef(input: any): string {
-  const val = (input ?? "").toString().trim();
-  if (val) return val;
+async function callRpc(rpcName: string, payload: any) {
+  const SUPABASE_URL = envFirst("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
+  const SERVICE_KEY = envFirst(
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_SERVICE_KEY",
+    "SUPABASE_SERVICE_ROLE",
+    "SUPABASE_SERVICE_ROLE_SECRET"
+  );
 
-  const d = new Date();
-  const yy = d.getFullYear().toString();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  const rand = Math.random().toString(16).slice(2, 6);
+  if (!SUPABASE_URL || !SERVICE_KEY) {
+    return { ok: false, status: 500, error: "Missing SUPABASE_URL or service role key env vars." };
+  }
 
-  return `JRIDE-WALLET-${yy}${mm}${dd}-${hh}${mi}${ss}-${rand}`;
-}
+  const url = `${SUPABASE_URL}/rest/v1/rpc/${rpcName}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SERVICE_KEY,
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
 
-function ensureRequestId(input: any): string {
-  const val = (input ?? "").toString().trim();
-  return val || randomUUID();
+  const text = await res.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+  if (!res.ok) {
+    return { ok: false, status: res.status, error: data?.message || data || "RPC failed", raw: data };
+  }
+
+  return { ok: true, status: res.status, data };
 }
 
 export async function POST(req: Request) {
   try {
-    const auth = requireAdminKey(req);
-    if (!auth.ok) return auth.res;
+    const gate = requireAdminKey(req);
+if (!gate.ok) {
+  if (gate.mode === "missing_env") {
+    return json(500, {
+      ok: false,
+      code: "ADMIN_API_KEY_MISSING",
+      message: "ADMIN_API_KEY must be set before wallet adjustments are allowed.",
+    });
+  }
 
-    const supabase = supabaseAdmin();
-    const body = await req.json().catch(() => ({} as any));
+  return json(401, {
+    ok: false,
+    code: "UNAUTHORIZED",
+    message: "Missing/invalid x-admin-key.",
+  });
+}
 
-    const kind = String(body.kind || "driver_adjust");
-    if (kind !== "driver_adjust") {
-      return NextResponse.json({ ok: false, error: "ONLY_DRIVER_ADJUST_SUPPORTED" }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+
+    const kind = String(body?.kind || "driver_adjust");
+    if (kind !== "driver_adjust" && kind !== "vendor_adjust") {
+      return json(400, { ok: false, code: "BAD_REQUEST", message: "kind must be driver_adjust or vendor_adjust." });
     }
 
-    const driverId = String(body.driver_id || "").trim();
-    const rawAmount = Number(body.amount || 0);
-    const reasonMode = String(body.reason_mode || "manual_topup").trim();
-    const createdBy = String(body.created_by || "admin").trim();
-    const method = String(body.method || "gcash").trim();
+    if (kind === "driver_adjust") {
+      const driver_id = String(body?.driver_id || "");
+      const rawAmount = Math.abs(Number(body?.amount || 0));
+      const operation = String(body?.operation || "credit").trim().toLowerCase();
+      const amount = operation === "debit" ? -rawAmount : rawAmount;
+      const reason = body?.reason != null ? String(body.reason) : "";
+      const created_by = "admin-key";
 
-    const finalReceiptRef = ensureReceiptRef(body.external_ref);
-    const finalRequestId = ensureRequestId(body.request_id);
+      if (!driver_id) return json(400, { ok: false, code: "BAD_REQUEST", message: "driver_id is required." });
+      if (!rawAmount || Number.isNaN(rawAmount)) return json(400, { ok: false, code: "BAD_REQUEST", message: "amount must be non-zero number." });
+      if (operation !== "credit" && operation !== "debit") return json(400, { ok: false, code: "BAD_REQUEST", message: "operation must be credit or debit." });
 
-    if (!driverId) {
-      return NextResponse.json({ ok: false, error: "MISSING_DRIVER_ID" }, { status: 400 });
-    }
-
-    if (!Number.isFinite(rawAmount) || rawAmount === 0) {
-      return NextResponse.json({ ok: false, error: "INVALID_AMOUNT" }, { status: 400 });
-    }
-
-    if (reasonMode === "manual_cashout") {
-      const cashoutAmount = Math.abs(rawAmount);
-
-      const { data, error } = await supabase.rpc("admin_driver_cashout_load_wallet", {
-        p_driver_id: driverId,
-        p_cashout_amount: cashoutAmount,
-        p_created_by: createdBy,
-        p_method: method,
-        p_external_ref: finalReceiptRef,
-        p_request_id: finalRequestId,
+      // Uses your SECURITY DEFINER function which also prevents negative wallet.
+      // Operation controls the accounting sign. Reason is audit metadata only.
+      const r = await callRpc("admin_adjust_driver_wallet", {
+        p_driver_id: driver_id,
+        p_amount: amount,
+        p_reason: reason,
+        p_created_by: created_by,
       });
 
-      if (error) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "CASHOUT_FAILED",
-            message: error.message,
-            receipt_ref: finalReceiptRef,
-            request_id: finalRequestId,
-          },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json(
-        data ?? {
-          ok: true,
-          receipt_ref: finalReceiptRef,
-          request_id: finalRequestId,
-        }
-      );
+      if (!r.ok) return json(502, { ok: false, code: "RPC_FAILED", stage: "admin_adjust_driver_wallet", details: r });
+      return json(200, { ok: true, result: r.data });
     }
 
-    const amount = Math.abs(rawAmount);
-    const reasonText =
-      String(body.reason || "Manual Topup (Admin Credit)").trim() || "Manual Topup (Admin Credit)";
+    // vendor_adjust: insert a ledger entry directly into vendor_wallet_transactions
+    // We do NOT guess any other tables; just write the ledger entry.
+    const vendor_id = String(body?.vendor_id || "");
+    const amount = Number(body?.amount || 0);
+    const note = body?.note != null ? String(body.note) : "";
+    const kind2 = body?.kind2 != null ? String(body.kind2) : "adjustment";
 
-    const { data, error } = await supabase.rpc("admin_adjust_driver_wallet_audited", {
-      p_driver_id: driverId,
-      p_amount: amount,
-      p_reason: reasonText,
-      p_created_by: createdBy,
-      p_method: method,
-      p_external_ref: finalReceiptRef,
-      p_request_id: finalRequestId,
+    if (!vendor_id) return json(400, { ok: false, code: "BAD_REQUEST", message: "vendor_id is required." });
+    if (!amount || Number.isNaN(amount)) return json(400, { ok: false, code: "BAD_REQUEST", message: "amount must be non-zero number." });
+
+    const SUPABASE_URL = envFirst("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
+    const SERVICE_KEY = envFirst(
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_SERVICE_KEY",
+      "SUPABASE_SERVICE_ROLE",
+      "SUPABASE_SERVICE_ROLE_SECRET"
+    );
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      return json(500, { ok: false, code: "ENV_MISSING", message: "Missing SUPABASE_URL or service role key." });
+    }
+
+    const insertUrl = `${SUPABASE_URL}/rest/v1/vendor_wallet_transactions`;
+    const payload = {
+      vendor_id,
+      booking_code: null,
+      amount,
+      kind: kind2,
+      note,
+    };
+
+    const res = await fetch(insertUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+        "apikey": SERVICE_KEY,
+        "Authorization": `Bearer ${SERVICE_KEY}`,
+      },
+      body: JSON.stringify(payload),
     });
 
-    if (error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "TOPUP_FAILED",
-          message: error.message,
-          receipt_ref: finalReceiptRef,
-          request_id: finalRequestId,
-        },
-        { status: 500 }
-      );
+    const text = await res.text();
+    let data: any = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+    if (!res.ok) {
+      return json(502, { ok: false, code: "DB_INSERT_FAILED", status: res.status, raw: data });
     }
 
-    return NextResponse.json(
-      data ?? {
-        ok: true,
-        receipt_ref: finalReceiptRef,
-        request_id: finalRequestId,
-      }
-    );
+    return json(200, { ok: true, inserted: data });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: "UNEXPECTED", message: e?.message || String(e) },
-      { status: 500 }
-    );
+    return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message || String(e) });
   }
 }
+
+

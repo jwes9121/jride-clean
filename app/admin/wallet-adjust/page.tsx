@@ -17,6 +17,7 @@ export default function WalletAdjustAdminPage() {
   const [driverQuery, setDriverQuery] = useState("");
   const [driverSuggestions, setDriverSuggestions] = useState<any[]>([]);
   const [driverId, setDriverId] = useState("");
+  const [operation, setOperation] = useState<"credit" | "debit">("credit");
   const [reasonMode, setReasonMode] = useState("manual_topup");
   const [receiptRef, setReceiptRef] = useState("");
   const [externalRef, setExternalRef] = useState("");
@@ -51,11 +52,16 @@ export default function WalletAdjustAdminPage() {
     setReceiptRef(r);
     if (!externalRef.trim()) setExternalRef(r);
     if (reasonMode === "manual_cashout") {
+      setOperation("debit");
       setReason("Driver Load Wallet Cashout (Manual Payout)");
     } else if (reasonMode === "manual_topup") {
+      setOperation("credit");
       setReason("Manual Topup (Admin Credit)");
     } else if (reasonMode === "promo_free_ride_credit") {
+      setOperation("credit");
       setReason("Promo Free Ride Credit");
+    } else if (reasonMode === "correction") {
+      setReason("Wallet Correction");
     }
   }
 
@@ -136,6 +142,7 @@ async function applyDriverAdjust() {
       kind: "driver_adjust",
       driver_id: id,
       amount: rawAmt,
+      operation,
       reason_mode: reasonMode,
       reason: reason.trim() || "manual_adjust",
       created_by: createdBy.trim() || "admin",
@@ -228,7 +235,19 @@ async function applyDriverAdjust() {
                 onChange={(e) => setDriverId(e.target.value)}
               />
 
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <div className="text-xs opacity-70 mb-1">Operation</div>
+                  <select
+                    value={operation}
+                    onChange={(e) => setOperation(e.target.value as "credit" | "debit")}
+                    className="w-full rounded-lg border border-black/10 px-3 py-2"
+                  >
+                    <option value="credit">Credit - add to wallet</option>
+                    <option value="debit">Debit - deduct from wallet</option>
+                  </select>
+                </div>
+
                 <div>
                   <div className="text-xs opacity-70 mb-1">Reason Mode</div>
                   <select
@@ -266,7 +285,7 @@ async function applyDriverAdjust() {
                 <div>
                   <input
                     className="w-full rounded-lg border border-black/10 px-3 py-2"
-                    placeholder="amount (e.g. 250 or -100)"
+                    placeholder="amount positive only, e.g. 300"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                   />
@@ -315,7 +334,7 @@ async function applyDriverAdjust() {
               </div>
 
               <div className="mt-2 text-xs opacity-60">
-                Uses audited functions where available. Cashout uses admin_driver_cashout_load_wallet (non-negative safety enforced by DB).
+                Operation controls credit or debit. Reason Mode is audit metadata only.
               </div>
             </div>
           </div>
