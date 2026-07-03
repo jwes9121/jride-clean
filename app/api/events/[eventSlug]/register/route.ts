@@ -5,13 +5,23 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function POST(req: NextRequest) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { eventSlug: string } }
+) {
   try {
     const body = await req.json();
 
-    const result = await registerAttendee(supabaseAdmin(), body, {
-      source: "online",
-    });
+    const result = await registerAttendee(
+      supabaseAdmin(),
+      {
+        ...body,
+        eventSlug: params.eventSlug,
+      },
+      {
+        source: "online",
+      }
+    );
 
     const status = result.success ? 200 : 400;
     return NextResponse.json(result, { status });
