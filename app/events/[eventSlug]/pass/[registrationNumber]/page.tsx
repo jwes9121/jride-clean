@@ -331,7 +331,7 @@ export default async function EventPassPage({
                   {guestList.map((guest) => (
                     <div key={guest.id} className="flex items-start gap-3">
                       <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">
-                        OK
+                        ✓
                       </span>
                       <div>
                         <p className="font-bold">{guest.name}</p>
