@@ -320,7 +320,7 @@ export default async function EventPassPage({
               </div>
             </div>
 
-            <div className="mx-auto mt-7 flex h-52 w-52 items-center justify-center rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mx-auto mt-7 flex h-72 w-72 items-center justify-center rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <img
                 src={qrDataUrl}
                 alt={`Event Pass QR for ${attendee.registration_number}`}
@@ -336,8 +336,8 @@ export default async function EventPassPage({
                 <div className="mt-4 space-y-3">
                   {guestList.map((guest) => (
                     <div key={guest.id} className="flex items-start gap-3">
-                      <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">
-                        Ã¢Å“â€œ
+                      <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-black text-emerald-700">
+                        OK
                       </span>
                       <div>
                         <p className="font-bold">{guest.name}</p>
@@ -394,3 +394,4 @@ export default async function EventPassPage({
     </main>
   );
 }
+

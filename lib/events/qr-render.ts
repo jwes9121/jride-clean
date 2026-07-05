@@ -8,9 +8,9 @@ export async function renderQrDataUrl(value: string): Promise<string> {
   }
 
   return QRCode.toDataURL(text, {
-    errorCorrectionLevel: "M",
-    margin: 4,
-    scale: 8,
+    errorCorrectionLevel: "H",
+    margin: 8,
+    scale: 12,
     type: "image/png",
   });
 }
