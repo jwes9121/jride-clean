@@ -103,17 +103,28 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-4">
-          {[
-            ["Register", "Coming soon"],
-            ["Program", "Coming soon"],
-            ["Venue", "Coming soon"],
-            ["Sponsors", "Coming soon"],
-          ].map(([title, status]) => (
-            <div key={title} className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-              <h2 className="text-xl font-bold">{title}</h2>
-              <p className="mt-2 text-sm text-slate-400">{status}</p>
-            </div>
-          ))}
+          <a
+            href={`/events/${event.slug}/register`}
+            className="rounded-2xl border border-amber-400 bg-amber-400 p-5 text-slate-950 transition hover:opacity-90"
+          >
+            <h2 className="text-xl font-black">Register</h2>
+            <p className="mt-2 text-sm font-semibold">Register for this event</p>
+          </a>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <h2 className="text-xl font-bold">Program</h2>
+            <p className="mt-2 text-sm text-slate-400">Coming soon</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <h2 className="text-xl font-bold">Venue</h2>
+            <p className="mt-2 text-sm text-slate-400">Coming soon</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <h2 className="text-xl font-bold">Sponsors</h2>
+            <p className="mt-2 text-sm text-slate-400">Coming soon</p>
+          </div>
         </div>
 
         <footer className="mt-12 border-t border-slate-800 pt-6 text-sm text-slate-500">
