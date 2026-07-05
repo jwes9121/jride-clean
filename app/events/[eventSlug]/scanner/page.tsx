@@ -39,7 +39,10 @@ type CheckInResponse = {
 
 function parsePassUrl(raw: string): ParsedPass | null {
   try {
-    const url = new URL(raw);
+    const text = String(raw || "").trim();
+    const url = new URL(
+      text.startsWith("/") ? `${window.location.origin}${text}` : text
+    );
     const parts = url.pathname.split("/").filter(Boolean);
     const passIndex = parts.indexOf("pass");
     const registrationNumber = passIndex >= 0 ? parts[passIndex + 1] : "";
