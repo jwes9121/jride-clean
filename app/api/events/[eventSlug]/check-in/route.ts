@@ -152,9 +152,40 @@ export async function POST(
       .select(
         "id,full_name,group_value,registration_number,attendance_status,checked_in_at"
       )
-      .single();
+      .maybeSingle();
 
     if (updateError) throw new Error(updateError.message);
+
+    if (!updated?.id) {
+      const { data: currentAttendee, error: currentError } = await supabase
+        .from("event_attendees")
+        .select(
+          "id,full_name,group_value,registration_number,attendance_status,checked_in_at"
+        )
+        .eq("id", attendee.id)
+        .maybeSingle();
+
+      if (currentError) throw new Error(currentError.message);
+
+      if (currentAttendee?.attendance_status === "checked_in") {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "already_checked_in",
+            attendeeId: currentAttendee.id,
+            fullName: currentAttendee.full_name,
+            registrationNumber: currentAttendee.registration_number,
+            groupValue: currentAttendee.group_value,
+            groupLabel: event.group_label || "Group",
+            checkedInAt: currentAttendee.checked_in_at,
+            message: "This Event Pass has already been checked in.",
+          },
+          { status: 409 }
+        );
+      }
+
+      throw new Error("Check-in update did not return a row.");
+    }
 
     const { data: guestRows, error: guestError } = await supabase
       .from("event_guest_links")
@@ -192,3 +223,4 @@ export async function POST(
     );
   }
 }
+
