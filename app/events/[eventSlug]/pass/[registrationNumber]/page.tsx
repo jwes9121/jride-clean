@@ -71,11 +71,13 @@ function formatDate(value: string | null): string {
 
 function formatCheckedIn(value: string | null): string {
   if (!value) return "";
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    hour12: true,
   }).format(new Date(value));
 }
 

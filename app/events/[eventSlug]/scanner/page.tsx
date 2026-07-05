@@ -85,13 +85,20 @@ function beep(frequency = 880, durationMs = 120) {
   } catch {}
 }
 
+function successDing() {
+  beep(1046, 90);
+  window.setTimeout(() => beep(1318, 140), 100);
+}
+
 function formatCheckedIn(value: string | null | undefined) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
     hour: "numeric",
     minute: "2-digit",
     month: "short",
     day: "numeric",
+    hour12: true,
   }).format(new Date(value));
 }
 
@@ -134,7 +141,7 @@ export default function EventScannerPage() {
         setScanState("success");
         setMessage("Checked in successfully.");
         navigator.vibrate?.(120);
-        beep(880, 120);
+        successDing();
         return;
       }
 
