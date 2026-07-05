@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { renderQrDataUrl } from "@/lib/events/qr-render";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,6 +15,10 @@ export const metadata: Metadata = {
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const appUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "https://app.jride.net";
 
 type EventRow = {
   id: string;
@@ -176,9 +181,7 @@ export default async function EventPassPage({
   const token = String(searchParams?.token || "").trim();
   if (!token) return unavailablePass();
 
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const supabase = supabaseAdmin();
 
   const { data: event } = await supabase
     .from("events")
@@ -216,6 +219,12 @@ export default async function EventPassPage({
   const guestList = normalizeGuests(guestRows || []);
   const groupLabel = event.group_label || "Group";
   const afterEventDate = formatDate(event.event_date);
+  const passUrl = `${appUrl.replace(/\/$/, "")}/events/${encodeURIComponent(
+    event.slug
+  )}/pass/${encodeURIComponent(attendee.registration_number)}?token=${encodeURIComponent(
+    attendee.qr_token
+  )}`;
+  const qrDataUrl = await renderQrDataUrl(passUrl);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white print:bg-white print:p-0">
@@ -311,15 +320,12 @@ export default async function EventPassPage({
               </div>
             </div>
 
-            <div className="mx-auto mt-7 flex h-44 w-44 items-center justify-center rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50 text-center">
-              <div>
-                <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">
-                  QR
-                </p>
-                <p className="mt-2 px-5 text-xs text-slate-500">
-                  QR rendering will be enabled in the scanner milestone.
-                </p>
-              </div>
+            <div className="mx-auto mt-7 flex h-52 w-52 items-center justify-center rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+              <img
+                src={qrDataUrl}
+                alt={`Event Pass QR for ${attendee.registration_number}`}
+                className="h-full w-full"
+              />
             </div>
 
             {guestList.length > 0 ? (
@@ -331,7 +337,7 @@ export default async function EventPassPage({
                   {guestList.map((guest) => (
                     <div key={guest.id} className="flex items-start gap-3">
                       <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">
-                        ✓
+                        Ã¢Å“â€œ
                       </span>
                       <div>
                         <p className="font-bold">{guest.name}</p>
