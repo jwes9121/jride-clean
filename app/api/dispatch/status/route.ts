@@ -34,16 +34,17 @@ function getAdminClient(req: NextRequest) {
 }
 
 async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bookingId?: string }) {
-  const code = clean(input.bookingCode);
+  const id = clean(input.bookingId);
 
-  if (!code) {
-    return { ok: false, error: "MISSING_BOOKING_CODE" };
+  if (!id) {
+    return { ok: false, error: "MISSING_BOOKING_ID" };
   }
 
   const { data, error } = await supabase.rpc(
-    "admin_finalize_trip_and_credit_wallets",
+    "settle_completed_ride_wallet_v2",
     {
-      p_booking_code: code,
+      p_booking_id: id,
+      p_settled_by: "dispatch_status_route",
     }
   );
 
@@ -62,7 +63,7 @@ async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bo
   return {
     ok: true,
     data,
-    usedArgs: { p_booking_code: code },
+    usedArgs: { p_booking_id: id },
   };
 }
 
