@@ -4,7 +4,8 @@ import * as React from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { useParams } from "next/navigation";
 
-type ScanState = "idle" | "starting" | "scanning" | "success" | "warning" | "error";
+type ScanState = "idle" | "scanning" | "result" | "pending_review";
+type ResultTone = "success" | "warning" | "error";
 
 type ParsedPass = {
   registrationNumber: string;
@@ -62,7 +63,9 @@ function parsePassUrl(raw: string): ParsedPass | null {
 function beep(frequency = 880, durationMs = 120) {
   try {
     const AudioContextClass =
-      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
 
     if (!AudioContextClass) return;
 
@@ -111,12 +114,52 @@ export default function EventScannerPage() {
   const lastScanRef = React.useRef("");
   const cooldownUntilRef = React.useRef(0);
   const checkingInRef = React.useRef(false);
+  const autoResumeTimerRef = React.useRef<number | null>(null);
 
   const [scanState, setScanState] = React.useState<ScanState>("idle");
+  const [resultTone, setResultTone] = React.useState<ResultTone>("success");
   const [message, setMessage] = React.useState("Press Start Scanner to begin.");
   const [lastRaw, setLastRaw] = React.useState("");
   const [parsed, setParsed] = React.useState<ParsedPass | null>(null);
   const [result, setResult] = React.useState<CheckInResponse | null>(null);
+
+  function clearAutoResumeTimer() {
+    if (autoResumeTimerRef.current !== null) {
+      window.clearTimeout(autoResumeTimerRef.current);
+      autoResumeTimerRef.current = null;
+    }
+  }
+
+  function stopReaderOnly() {
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+  }
+
+  function scheduleAutoResume() {
+    clearAutoResumeTimer();
+    autoResumeTimerRef.current = window.setTimeout(() => {
+      restartScanner();
+    }, 2000);
+  }
+
+  function showResult(tone: ResultTone, nextMessage: string, autoResume: boolean) {
+    stopReaderOnly();
+    setResultTone(tone);
+    setScanState("result");
+    setMessage(nextMessage);
+
+    if (autoResume) {
+      scheduleAutoResume();
+    }
+  }
+
+  function showPendingReview(nextMessage: string) {
+    clearAutoResumeTimer();
+    stopReaderOnly();
+    setResultTone("warning");
+    setScanState("pending_review");
+    setMessage(nextMessage);
+  }
 
   async function submitCheckIn(pass: ParsedPass) {
     if (checkingInRef.current) return;
@@ -124,7 +167,6 @@ export default function EventScannerPage() {
     checkingInRef.current = true;
     setParsed(pass);
     setResult(null);
-    setScanState("starting");
     setMessage("Checking Event Pass...");
 
     try {
@@ -138,47 +180,59 @@ export default function EventScannerPage() {
       setResult(data);
 
       if (data.success && data.reason === "checked_in") {
-        setScanState("success");
-        setMessage("Checked in successfully.");
         navigator.vibrate?.(120);
         successDing();
+        showResult("success", "Checked in successfully.", true);
         return;
       }
 
       if (data.reason === "already_checked_in") {
-        setScanState("warning");
-        setMessage("Already checked in.");
         navigator.vibrate?.([100, 80, 100]);
         beep(520, 180);
+        showResult("warning", "Already checked in.", true);
         return;
       }
 
       if (data.reason === "pending_review") {
-        setScanState("warning");
-        setMessage("Needs Help Desk review.");
         navigator.vibrate?.([150, 100, 150]);
         beep(440, 220);
+        showPendingReview("Needs Help Desk review.");
         return;
       }
 
-      setScanState("error");
-      setMessage(data.message || "Invalid Event Pass.");
       navigator.vibrate?.(300);
       beep(220, 250);
+      showResult("error", data.message || "Invalid Event Pass.", true);
     } catch (error) {
-      setScanState("error");
-      setMessage(error instanceof Error ? error.message : "Check-in failed.");
       navigator.vibrate?.(300);
       beep(220, 250);
+      showResult(
+        "error",
+        error instanceof Error ? error.message : "Check-in failed.",
+        true
+      );
     } finally {
       checkingInRef.current = false;
     }
   }
 
   async function startScanner() {
-    if (!videoRef.current) return;
+    clearAutoResumeTimer();
 
-    setScanState("starting");
+    if (!videoRef.current) {
+      setMessage("Camera is not ready. Try Restart Camera.");
+      setScanState("idle");
+      return;
+    }
+
+    stopReaderOnly();
+    lastScanRef.current = "";
+    cooldownUntilRef.current = Date.now() + 500;
+    checkingInRef.current = false;
+    setLastRaw("");
+    setParsed(null);
+    setResult(null);
+    setScanState("scanning");
     setMessage("Starting camera...");
 
     try {
@@ -189,6 +243,7 @@ export default function EventScannerPage() {
         videoRef.current,
         (scanResult) => {
           if (!scanResult) return;
+          if (scanState !== "scanning") return;
 
           const now = Date.now();
           if (now < cooldownUntilRef.current) return;
@@ -205,10 +260,9 @@ export default function EventScannerPage() {
           if (!pass) {
             setParsed(null);
             setResult(null);
-            setScanState("error");
-            setMessage("Invalid QR. This is not a JRide Event Pass.");
             navigator.vibrate?.(300);
             beep(220, 250);
+            showResult("error", "Invalid QR. This is not a JRide Event Pass.", true);
             return;
           }
 
@@ -220,58 +274,68 @@ export default function EventScannerPage() {
       setScanState("scanning");
       setMessage("Scanner ready. Point camera at Event Pass QR.");
     } catch (error) {
-      setScanState("error");
+      setResult(null);
+      setResultTone("error");
+      setScanState("result");
       setMessage(error instanceof Error ? error.message : "Camera failed to start.");
     }
   }
 
-  function stopScanner() {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    setScanState("idle");
-    setMessage("Scanner stopped.");
-  }
-
-  function resetScan() {
+  function restartScanner() {
+    clearAutoResumeTimer();
+    stopReaderOnly();
     lastScanRef.current = "";
-    cooldownUntilRef.current = 0;
+    cooldownUntilRef.current = Date.now() + 500;
     checkingInRef.current = false;
     setLastRaw("");
     setParsed(null);
     setResult(null);
-    setScanState(controlsRef.current ? "scanning" : "idle");
-    setMessage(
-      controlsRef.current
-        ? "Scanner ready. Point camera at Event Pass QR."
-        : "Press Start Scanner to begin."
-    );
+    setScanState("idle");
+    setMessage("Restarting scanner...");
+    window.setTimeout(() => {
+      void startScanner();
+    }, 150);
+  }
+
+  function stopScanner() {
+    clearAutoResumeTimer();
+    stopReaderOnly();
+    checkingInRef.current = false;
+    setScanState("idle");
+    setMessage("Scanner stopped.");
   }
 
   React.useEffect(() => {
     return () => {
-      controlsRef.current?.stop();
+      clearAutoResumeTimer();
+      stopReaderOnly();
     };
   }, []);
 
-  const panelClass =
-    scanState === "success"
-      ? "border-emerald-400 bg-emerald-950"
-      : scanState === "warning"
-      ? "border-amber-400 bg-amber-950"
-      : scanState === "error"
-      ? "border-red-400 bg-red-950"
-      : "border-slate-700 bg-slate-900";
+  const showOverlay = scanState === "result" || scanState === "pending_review";
 
-  const statusTitle =
+  const overlayClass =
+    resultTone === "success"
+      ? "border-emerald-300 bg-emerald-950"
+      : resultTone === "warning"
+      ? "border-amber-300 bg-amber-950"
+      : "border-red-300 bg-red-950";
+
+  const overlayTitle =
     result?.reason === "checked_in"
       ? "CHECKED IN"
       : result?.reason === "already_checked_in"
       ? "ALREADY CHECKED IN"
       : result?.reason === "pending_review"
       ? "HELP DESK REVIEW"
-      : result?.reason === "invalid_token"
-      ? "INVALID PASS"
-      : "SCANNER STATUS";
+      : resultTone === "error"
+      ? "INVALID QR"
+      : "SCANNER RESULT";
+
+  const overlayHint =
+    scanState === "pending_review"
+      ? "Manual action required. Send attendee to Help Desk, then tap Restart Camera."
+      : "Scanner will resume automatically.";
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
@@ -283,91 +347,109 @@ export default function EventScannerPage() {
           <h1 className="mt-3 text-3xl font-black">Gate Scanner</h1>
           <p className="mt-2 text-slate-300">Scan Event Pass QR codes for {eventSlug}.</p>
 
-          <div className="mt-5 overflow-hidden rounded-3xl border border-slate-700 bg-black">
-            <video
-              ref={videoRef}
-              className="aspect-[3/4] w-full object-cover md:aspect-video"
-              muted
-              playsInline
-            />
-          </div>
-
-          <div className={`mt-5 rounded-3xl border p-5 ${panelClass}`}>
-            <p className="text-sm font-bold uppercase tracking-[0.25em] text-slate-300">
-              {statusTitle}
-            </p>
-            <p className="mt-3 text-3xl font-black">{message}</p>
-
-            {result?.fullName ? (
-              <div className="mt-5 rounded-2xl bg-white p-5 text-slate-950">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-                  Attendee
-                </p>
-                <p className="mt-2 text-3xl font-black">{result.fullName}</p>
-                <p className="mt-2 text-lg font-bold text-slate-700">
-                  {result.groupLabel || "Group"} {result.groupValue || ""}
-                </p>
-                <p className="mt-3 font-mono text-xl font-black">
-                  {result.registrationNumber}
-                </p>
-
-                {result.checkedInAt ? (
-                  <p className="mt-3 text-sm font-semibold text-slate-500">
-                    Checked in: {formatCheckedIn(result.checkedInAt)}
-                  </p>
-                ) : null}
-
-                {result.guests && result.guests.length > 0 ? (
-                  <div className="mt-5 rounded-2xl bg-slate-100 p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-                      Guests & Family
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      {result.guests.map((guest) => (
-                        <div key={guest.attendeeId}>
-                          <p className="font-bold">{guest.fullName}</p>
-                          <p className="text-sm text-slate-500">
-                            {guest.relationship} - {guest.registrationNumber}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : parsed ? (
-              <div className="mt-5 rounded-2xl bg-white p-5 text-slate-950">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-                  Pass Detected
-                </p>
-                <p className="mt-2 font-mono text-2xl font-black">
-                  {parsed.registrationNumber}
-                </p>
-              </div>
-            ) : null}
-
-            {lastRaw && !parsed ? (
-              <p className="mt-4 break-all rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">
-                {lastRaw}
+          {showOverlay ? (
+            <div className={`mt-5 rounded-3xl border p-7 text-center ${overlayClass}`}>
+              <p className="text-sm font-black uppercase tracking-[0.35em] text-white/70">
+                {overlayTitle}
               </p>
-            ) : null}
-          </div>
+              <p className="mt-5 text-5xl font-black leading-tight">{message}</p>
+
+              {result?.fullName ? (
+                <div className="mt-7 rounded-3xl bg-white p-6 text-slate-950">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                    Attendee
+                  </p>
+                  <p className="mt-2 text-4xl font-black">{result.fullName}</p>
+                  <p className="mt-3 text-xl font-bold text-slate-700">
+                    {result.groupLabel || "Group"} {result.groupValue || ""}
+                  </p>
+                  <p className="mt-4 font-mono text-2xl font-black">
+                    {result.registrationNumber}
+                  </p>
+
+                  {result.checkedInAt ? (
+                    <p className="mt-4 text-base font-semibold text-slate-500">
+                      Checked in: {formatCheckedIn(result.checkedInAt)}
+                    </p>
+                  ) : null}
+
+                  {result.guests && result.guests.length > 0 ? (
+                    <div className="mt-6 rounded-2xl bg-slate-100 p-4 text-left">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                        Guests & Family
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {result.guests.map((guest) => (
+                          <div key={guest.attendeeId} className="flex gap-3">
+                            <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-black text-emerald-700">
+                              G
+                            </span>
+                            <div>
+                              <p className="font-bold">{guest.fullName}</p>
+                              <p className="text-sm text-slate-500">
+                                {guest.relationship} - {guest.registrationNumber}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : parsed ? (
+                <div className="mt-7 rounded-3xl bg-white p-6 text-slate-950">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                    Pass Detected
+                  </p>
+                  <p className="mt-2 font-mono text-3xl font-black">
+                    {parsed.registrationNumber}
+                  </p>
+                </div>
+              ) : null}
+
+              {lastRaw && !parsed ? (
+                <p className="mt-6 break-all rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">
+                  {lastRaw}
+                </p>
+              ) : null}
+
+              <p className="mt-6 text-sm font-semibold text-white/80">{overlayHint}</p>
+            </div>
+          ) : (
+            <div className="mt-5 overflow-hidden rounded-3xl border border-slate-700 bg-black">
+              <video
+                ref={videoRef}
+                className="aspect-[3/4] w-full object-cover md:aspect-video"
+                muted
+                playsInline
+              />
+            </div>
+          )}
+
+          {!showOverlay ? (
+            <div className="mt-5 rounded-3xl border border-slate-700 bg-slate-900 p-5">
+              <p className="text-sm font-bold uppercase tracking-[0.25em] text-slate-300">
+                SCANNER STATUS
+              </p>
+              <p className="mt-3 text-3xl font-black">{message}</p>
+            </div>
+          ) : null}
 
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <button
               type="button"
-              onClick={startScanner}
-              disabled={scanState === "starting" || scanState === "scanning"}
+              onClick={() => void startScanner()}
+              disabled={scanState === "scanning"}
               className="rounded-2xl bg-amber-400 px-5 py-4 font-black text-slate-950 disabled:opacity-50"
             >
               Start Scanner
             </button>
             <button
               type="button"
-              onClick={resetScan}
+              onClick={restartScanner}
               className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white"
             >
-              Scan Next
+              Restart Camera
             </button>
             <button
               type="button"
@@ -379,7 +461,7 @@ export default function EventScannerPage() {
           </div>
 
           <div className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">
-            EVT-006C connected scanner. Uses a 2-second scan cooldown to prevent duplicate API calls.
+            EVT-006D field scanner. Shows full-screen results and resumes automatically except Help Desk review.
           </div>
         </div>
       </section>
