@@ -45,7 +45,7 @@ async function getExistingRegistration(
 ): Promise<RegistrationResult> {
   const { data, error } = await supabase
     .from("event_attendees")
-    .select("id,registration_number,qr_token")
+    .select("id,full_name,registration_number,qr_token")
     .eq("id", attendeeId)
     .maybeSingle();
 
@@ -72,6 +72,9 @@ async function getExistingRegistration(
     registrationNumber: pass.registrationNumber,
     qrToken: pass.qrToken,
     eventPassUrl: pass.passUrl,
+    existingRegistration: true,
+    existingName: data.full_name,
+    message: `This mobile number is already registered. Opening existing Event Pass for ${data.full_name}.`,
   };
 }
 
@@ -204,7 +207,7 @@ export async function registerAttendee(
         registration_number: nextNumber.registrationNumber,
         created_by: context.registeredBy || null,
       })
-      .select("id,registration_number,qr_token")
+      .select("id,full_name,registration_number,qr_token")
       .single();
 
     if (insertError) {

@@ -69,6 +69,9 @@ export interface RegistrationResult {
   registrationNumber?: string;
   qrToken?: string;
   eventPassUrl?: string;
+  existingRegistration?: boolean;
+  existingName?: string;
+  message?: string;
   guests?: RegisteredGuestResult[];
   identityResolution?: IdentityResolution;
   error?: RegistrationError;

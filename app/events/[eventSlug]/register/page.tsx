@@ -28,6 +28,9 @@ type RegistrationResponse = {
   registrationNumber?: string;
   qrToken?: string;
   eventPassUrl?: string;
+  existingRegistration?: boolean;
+  existingName?: string;
+  message?: string;
   error?: {
     code: string;
     message: string;
@@ -66,6 +69,7 @@ export default function EventRegistrationPage() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState("");
+  const [existingNotice, setExistingNotice] = React.useState("");
   const [duplicatePrompt, setDuplicatePrompt] = React.useState<RegistrationResponse | null>(null);
 
   React.useEffect(() => {
@@ -150,6 +154,7 @@ export default function EventRegistrationPage() {
 
     setSubmitting(true);
     setFormError("");
+    setExistingNotice("");
 
     try {
       const res = await fetch(`/api/events/${eventSlug}/register`, {
@@ -188,11 +193,20 @@ export default function EventRegistrationPage() {
         throw new Error("Registration succeeded but Event Pass details are missing.");
       }
 
-      router.push(
-        `/events/${eventSlug}/pass/${encodeURIComponent(data.registrationNumber)}?token=${encodeURIComponent(
-          data.qrToken
-        )}`
-      );
+      const destination = `/events/${eventSlug}/pass/${encodeURIComponent(data.registrationNumber)}?token=${encodeURIComponent(
+        data.qrToken
+      )}`;
+
+      if (data.existingRegistration) {
+        setExistingNotice(
+          data.message ||
+            `This mobile number is already registered. Opening existing Event Pass for ${data.existingName || "the existing registrant"}.`
+        );
+        window.setTimeout(() => router.push(destination), 2000);
+        return;
+      }
+
+      router.push(destination);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Registration failed.");
     } finally {
@@ -380,6 +394,12 @@ export default function EventRegistrationPage() {
                 </div>
               ) : null}
             </div>
+
+            {existingNotice ? (
+              <p className="rounded-2xl bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900">
+                {existingNotice}
+              </p>
+            ) : null}
 
             {formError ? (
               <p className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
