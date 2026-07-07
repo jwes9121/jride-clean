@@ -221,7 +221,7 @@ export default async function EventPassPage({
   const guestList = normalizeGuests(guestRows || []);
   const groupLabel = event.group_label || "Group";
   const afterEventDate = formatDate(event.event_date);
-  const passUrl = `/events/${encodeURIComponent(
+  const passUrl = `${appUrl.replace(/\/$/, "")}/events/${encodeURIComponent(
     event.slug
   )}/pass/${encodeURIComponent(attendee.registration_number)}?token=${encodeURIComponent(
     attendee.qr_token
