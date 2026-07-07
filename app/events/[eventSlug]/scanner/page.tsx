@@ -114,6 +114,7 @@ export default function EventScannerPage() {
   const lastScanRef = React.useRef("");
   const cooldownUntilRef = React.useRef(0);
   const checkingInRef = React.useRef(false);
+  const scannerActiveRef = React.useRef(false);
   const autoResumeTimerRef = React.useRef<number | null>(null);
 
   const [scanState, setScanState] = React.useState<ScanState>("idle");
@@ -131,6 +132,7 @@ export default function EventScannerPage() {
   }
 
   function stopReaderOnly() {
+    scannerActiveRef.current = false;
     controlsRef.current?.stop();
     controlsRef.current = null;
   }
@@ -229,6 +231,7 @@ export default function EventScannerPage() {
     lastScanRef.current = "";
     cooldownUntilRef.current = Date.now() + 500;
     checkingInRef.current = false;
+    scannerActiveRef.current = true;
     setLastRaw("");
     setParsed(null);
     setResult(null);
@@ -243,7 +246,7 @@ export default function EventScannerPage() {
         videoRef.current,
         (scanResult) => {
           if (!scanResult) return;
-          if (scanState !== "scanning") return;
+          if (!scannerActiveRef.current) return;
 
           const now = Date.now();
           if (now < cooldownUntilRef.current) return;
@@ -287,6 +290,7 @@ export default function EventScannerPage() {
     lastScanRef.current = "";
     cooldownUntilRef.current = Date.now() + 500;
     checkingInRef.current = false;
+    scannerActiveRef.current = true;
     setLastRaw("");
     setParsed(null);
     setResult(null);
