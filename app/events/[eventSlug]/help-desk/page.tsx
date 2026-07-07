@@ -36,6 +36,57 @@ type SearchResponse = {
   error?: string;
 };
 
+type GroupValue = {
+  value: string;
+  label: string;
+  sort_order: number;
+};
+
+type GroupValuesResponse = {
+  success: boolean;
+  eventSlug?: string;
+  groupLabel?: string;
+  values?: GroupValue[];
+  error?: string;
+};
+
+type UpdateResponse = {
+  success: boolean;
+  attendee?: {
+    attendeeId: string;
+    fullName: string;
+    mobileNumber: string | null;
+    nickname: string | null;
+    groupValue: string | null;
+    registrationNumber: string;
+    registrationStatus: string | null;
+    attendanceStatus: string | null;
+    checkedInAt: string | null;
+    isDisqualified: boolean | null;
+    disqualificationReason: string | null;
+  };
+  error?: string;
+};
+
+type ReissueResponse = {
+  success: boolean;
+  attendeeId?: string;
+  registrationNumber?: string;
+  eventPassUrl?: string;
+  error?: string;
+};
+
+type DisqualifyResponse = {
+  success: boolean;
+  attendeeId?: string;
+  registrationNumber?: string;
+  fullName?: string;
+  isDisqualified?: boolean;
+  disqualificationReason?: string | null;
+  noChange?: boolean;
+  error?: string;
+};
+
 function formatCheckedIn(value: string | null) {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-PH", {
@@ -46,6 +97,10 @@ function formatCheckedIn(value: string | null) {
     minute: "2-digit",
     hour12: true,
   }).format(new Date(value));
+}
+
+function cleanPhone(value: string) {
+  return value.replace(/[^0-9]/g, "");
 }
 
 function phoneHref(value: string | null) {
@@ -71,20 +126,71 @@ function badgeText(row: HelpDeskResult) {
   return "Registered";
 }
 
+function mergeAttendee(row: HelpDeskResult, patch: Partial<HelpDeskResult>): HelpDeskResult {
+  return {
+    ...row,
+    ...patch,
+    guests: patch.guests || row.guests,
+  };
+}
+
 export default function EventHelpDeskPage() {
   const params = useParams<{ eventSlug: string }>();
   const eventSlug = String(params?.eventSlug || "");
 
   const [query, setQuery] = React.useState("");
   const [groupLabel, setGroupLabel] = React.useState("Group");
+  const [groupValues, setGroupValues] = React.useState<GroupValue[]>([]);
   const [results, setResults] = React.useState<HelpDeskResult[]>([]);
   const [selectedId, setSelectedId] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [actionLoading, setActionLoading] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
   const [searched, setSearched] = React.useState(false);
+
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editName, setEditName] = React.useState("");
+  const [editMobile, setEditMobile] = React.useState("");
+  const [editNickname, setEditNickname] = React.useState("");
+  const [editGroup, setEditGroup] = React.useState("");
+
+  const [disqualifyOpen, setDisqualifyOpen] = React.useState(false);
+  const [disqualifyReason, setDisqualifyReason] = React.useState("");
+  const [undoOpen, setUndoOpen] = React.useState(false);
 
   const selected =
     results.find((row) => row.attendeeId === selectedId) || results[0] || null;
+
+  React.useEffect(() => {
+    let active = true;
+
+    async function loadGroupValues() {
+      try {
+        const res = await fetch(`/api/events/${eventSlug}/group-values`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as GroupValuesResponse;
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to load group values.");
+        }
+
+        if (!active) return;
+        setGroupLabel(data.groupLabel || "Group");
+        setGroupValues(data.values || []);
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Failed to load group values.");
+      }
+    }
+
+    if (eventSlug) loadGroupValues();
+
+    return () => {
+      active = false;
+    };
+  }, [eventSlug]);
 
   React.useEffect(() => {
     const term = query.trim();
@@ -101,6 +207,7 @@ export default function EventHelpDeskPage() {
     const timer = window.setTimeout(async () => {
       setLoading(true);
       setError("");
+      setNotice("");
 
       try {
         const res = await fetch(
@@ -143,11 +250,177 @@ export default function EventHelpDeskPage() {
     setResults([]);
     setSelectedId("");
     setError("");
+    setNotice("");
     setSearched(false);
   }
 
+  function updateSelected(patch: Partial<HelpDeskResult>) {
+    if (!selected) return;
+
+    setResults((prev) =>
+      prev.map((row) =>
+        row.attendeeId === selected.attendeeId ? mergeAttendee(row, patch) : row
+      )
+    );
+  }
+
+  function openEditModal() {
+    if (!selected) return;
+    setError("");
+    setNotice("");
+    setEditName(selected.fullName || "");
+    setEditMobile(selected.mobileNumber || "");
+    setEditNickname(selected.nickname || "");
+    setEditGroup(selected.groupValue || "");
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    if (!selected) return;
+
+    setActionLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const res = await fetch(
+        `/api/events/${eventSlug}/attendees/${selected.attendeeId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: editName.trim(),
+            mobileNumber: cleanPhone(editMobile),
+            nickname: editNickname.trim(),
+            groupValue: editGroup,
+          }),
+        }
+      );
+
+      const data = (await res.json()) as UpdateResponse;
+
+      if (!res.ok || !data.success || !data.attendee) {
+        throw new Error(data.error || "Update failed.");
+      }
+
+      updateSelected({
+        fullName: data.attendee.fullName,
+        mobileNumber: data.attendee.mobileNumber,
+        nickname: data.attendee.nickname,
+        groupValue: data.attendee.groupValue,
+        registrationNumber: data.attendee.registrationNumber,
+        registrationStatus: data.attendee.registrationStatus,
+        attendanceStatus: data.attendee.attendanceStatus,
+        checkedInAt: data.attendee.checkedInAt,
+        isDisqualified: data.attendee.isDisqualified,
+        disqualificationReason: data.attendee.disqualificationReason,
+      });
+
+      setEditOpen(false);
+      setNotice("Registration updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function reissuePass() {
+    if (!selected) return;
+
+    setActionLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const res = await fetch(
+        `/api/events/${eventSlug}/attendees/${selected.attendeeId}/reissue-pass`,
+        { method: "POST" }
+      );
+
+      const data = (await res.json()) as ReissueResponse;
+
+      if (!res.ok || !data.success || !data.eventPassUrl) {
+        throw new Error(data.error || "Pass reissue failed.");
+      }
+
+      updateSelected({
+        eventPassUrl: data.eventPassUrl,
+        registrationNumber: data.registrationNumber || selected.registrationNumber,
+      });
+
+      window.open(data.eventPassUrl, "_blank");
+      setNotice("Event Pass opened.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pass reissue failed.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  function openDisqualifyModal() {
+    if (!selected) return;
+    setError("");
+    setNotice("");
+    setDisqualifyReason(selected.disqualificationReason || "");
+    setDisqualifyOpen(true);
+  }
+
+  async function submitDisqualification(disqualified: boolean) {
+    if (!selected) return;
+
+    setActionLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const res = await fetch(
+        `/api/events/${eventSlug}/attendees/${selected.attendeeId}/disqualify`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            disqualified,
+            reason: disqualified ? disqualifyReason.trim() : undefined,
+          }),
+        }
+      );
+
+      const data = (await res.json()) as DisqualifyResponse;
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Disqualification update failed.");
+      }
+
+      updateSelected({
+        isDisqualified: data.isDisqualified ?? disqualified,
+        disqualificationReason:
+          data.disqualificationReason === undefined
+            ? disqualified
+              ? disqualifyReason.trim()
+              : null
+            : data.disqualificationReason,
+      });
+
+      setDisqualifyOpen(false);
+      setUndoOpen(false);
+      setNotice(disqualified ? "Attendee marked for Help Desk review." : "Disqualification cleared.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Disqualification update failed.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  const modalPanelClass =
+    "fixed inset-x-0 bottom-0 z-50 mx-auto max-w-2xl rounded-t-3xl border border-slate-700 bg-slate-900 p-5 text-white shadow-2xl";
+
+  const modalBackdrop = editOpen || disqualifyOpen || undoOpen;
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
+      {modalBackdrop ? <div className="fixed inset-0 z-40 bg-black/70" /> : null}
+
       <section className="mx-auto max-w-5xl">
         <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
@@ -178,6 +451,12 @@ export default function EventHelpDeskPage() {
           {loading ? (
             <p className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-300">
               Searching...
+            </p>
+          ) : null}
+
+          {notice ? (
+            <p className="mt-4 rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-bold text-emerald-800">
+              {notice}
             </p>
           ) : null}
 
@@ -372,34 +651,195 @@ export default function EventHelpDeskPage() {
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
                   <button
                     type="button"
-                    disabled
-                    className="rounded-2xl bg-slate-200 px-4 py-3 font-black text-slate-500"
+                    onClick={openEditModal}
+                    disabled={actionLoading}
+                    className="rounded-2xl bg-amber-400 px-4 py-3 font-black text-slate-950 disabled:opacity-60"
                   >
                     Edit
                   </button>
                   <button
                     type="button"
-                    disabled
-                    className="rounded-2xl bg-slate-200 px-4 py-3 font-black text-slate-500"
+                    onClick={reissuePass}
+                    disabled={actionLoading}
+                    className="rounded-2xl bg-slate-950 px-4 py-3 font-black text-white disabled:opacity-60"
                   >
                     Reissue Pass
                   </button>
                   <button
                     type="button"
-                    disabled
-                    className="rounded-2xl bg-slate-200 px-4 py-3 font-black text-slate-500"
+                    onClick={selected.isDisqualified ? () => setUndoOpen(true) : openDisqualifyModal}
+                    disabled={actionLoading}
+                    className={`rounded-2xl px-4 py-3 font-black disabled:opacity-60 ${
+                      selected.isDisqualified
+                        ? "bg-emerald-600 text-white"
+                        : "bg-red-700 text-white"
+                    }`}
                   >
-                    Disqualify
+                    {selected.isDisqualified ? "Undo Review" : "Disqualify"}
                   </button>
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-500">
-                  Edit, reissue, and disqualification actions will be added in EVT-007D.
+                  Changes apply only to this attendee record.
                 </p>
               </div>
             </div>
           ) : null}
         </div>
       </section>
+
+      {editOpen ? (
+        <div className={modalPanelClass}>
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">
+            Edit Registration
+          </p>
+          <h2 className="mt-2 text-3xl font-black">Correct attendee details</h2>
+
+          <div className="mt-5 grid gap-4">
+            <label className="block">
+              <span className="text-sm font-bold text-slate-200">Full Name</span>
+              <input
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-bold text-slate-200">Mobile Number</span>
+              <input
+                value={editMobile}
+                onChange={(event) => setEditMobile(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                inputMode="numeric"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-bold text-slate-200">Nickname</span>
+              <input
+                value={editNickname}
+                onChange={(event) => setEditNickname(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-bold text-slate-200">{groupLabel}</span>
+              <select
+                value={editGroup}
+                onChange={(event) => setEditGroup(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+              >
+                <option value="">Select {groupLabel}</option>
+                {groupValues.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setEditOpen(false)}
+              disabled={actionLoading}
+              className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={actionLoading}
+              className="rounded-2xl bg-amber-400 px-5 py-4 font-black text-slate-950 disabled:opacity-60"
+            >
+              {actionLoading ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {disqualifyOpen ? (
+        <div className={modalPanelClass}>
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-red-300">
+            Disqualify
+          </p>
+          <h2 className="mt-2 text-3xl font-black">Mark for Help Desk review</h2>
+          <p className="mt-3 text-slate-300">
+            A reason is required and will be shown to event staff.
+          </p>
+
+          <textarea
+            value={disqualifyReason}
+            onChange={(event) => setDisqualifyReason(event.target.value)}
+            className="mt-5 min-h-32 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-red-300"
+            placeholder="Reason..."
+          />
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setDisqualifyOpen(false)}
+              disabled={actionLoading}
+              className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => submitDisqualification(true)}
+              disabled={actionLoading || !disqualifyReason.trim()}
+              className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              {actionLoading ? "Saving..." : "Disqualify"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {undoOpen ? (
+        <div className={modalPanelClass}>
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-300">
+            Undo Review
+          </p>
+          <h2 className="mt-2 text-3xl font-black">Clear disqualification?</h2>
+          <p className="mt-3 text-slate-300">
+            This attendee will be treated as eligible again.
+          </p>
+
+          {selected?.disqualificationReason ? (
+            <div className="mt-5 rounded-2xl bg-slate-950 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                Current Reason
+              </p>
+              <p className="mt-2 font-semibold text-slate-200">
+                {selected.disqualificationReason}
+              </p>
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setUndoOpen(false)}
+              disabled={actionLoading}
+              className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => submitDisqualification(false)}
+              disabled={actionLoading}
+              className="rounded-2xl bg-emerald-600 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              {actionLoading ? "Saving..." : "Clear Review"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
