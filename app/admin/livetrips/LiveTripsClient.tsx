@@ -150,7 +150,7 @@ type OperationsSearchResponse = {
   message?: string;
 };
 
-type TicketInspectorTab = "overview" | "timeline" | "diagnostics" | "raw";
+type TicketInspectorTab = "overview" | "journey" | "timeline" | "diagnostics" | "raw";
 
 const STUCK_THRESHOLDS_MIN = {
   on_the_way: 15,
@@ -344,6 +344,165 @@ function walletSummary(raw?: any) {
     reason: first?.reason,
     balanceAfter: first?.balance_after,
   };
+}
+
+function parseMs(v?: any): number | null {
+  if (!v) return null;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : null;
+}
+
+function durationLabel(ms: number | null) {
+  if (ms == null || !Number.isFinite(ms)) return "--";
+  const sign = ms < 0 ? "-" : "";
+  const totalSeconds = Math.abs(Math.round(ms / 1000));
+  if (totalSeconds < 60) return sign + String(totalSeconds) + " sec";
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return sign + String(minutes) + "m" + (seconds ? " " + String(seconds) + "s" : "");
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return sign + String(hours) + "h" + (remMinutes ? " " + String(remMinutes) + "m" : "");
+}
+
+function findTimelineAt(ticket: TicketInspectorResponse, opts: { source?: string; action?: string; to?: string; from?: string }) {
+  const rows = Array.isArray(ticket.timeline) ? ticket.timeline : [];
+  return rows.find((row) => {
+    if (opts.source && String(row.source || "") !== opts.source) return false;
+    if (opts.action && String(row.action || "") !== opts.action) return false;
+    if (opts.to && String(row.to_status || "") !== opts.to) return false;
+    if (opts.from && String(row.from_status || "") !== opts.from) return false;
+    return true;
+  }) || null;
+}
+
+function buildJourneyRows(ticket: TicketInspectorResponse) {
+  const booking = ticket.booking || {};
+  const rows: { label: string; at?: string | null; delta?: string; source: string; note?: string }[] = [];
+  const add = (label: string, at: any, source: string, note?: string) => {
+    const prevAt = rows.length ? rows[rows.length - 1].at : null;
+    const currentMs = parseMs(at);
+    const prevMs = parseMs(prevAt);
+    rows.push({
+      label,
+      at: at || null,
+      delta: rows.length === 0 ? "Start" : durationLabel(currentMs != null && prevMs != null ? currentMs - prevMs : null),
+      source,
+      note,
+    });
+  };
+
+  add("Booking Created", booking.created_at, "bookings", "Initial booking record");
+
+  const steps = [
+    ["Driver Assigned", "assigned"],
+    ["Driver Accepted", "accepted"],
+    ["Fare Proposed", "fare_proposed"],
+    ["Ready for Pickup", "ready"],
+    ["Driver On The Way", "on_the_way"],
+    ["Driver Arrived", "arrived"],
+    ["Trip Started", "on_trip"],
+    ["Trip Completed", "completed"],
+    ["Trip Cancelled", "cancelled"],
+  ] as const;
+
+  for (const [label, to] of steps) {
+    const row = findTimelineAt(ticket, { source: "dispatch_actions", action: "status_change", to });
+    if (row?.at) add(label, row.at, "dispatch_actions", row.from_status ? String(row.from_status) + " -> " + String(row.to_status || to) : undefined);
+  }
+
+  const walletRow = findTimelineAt(ticket, { source: "driver_wallet_transactions" });
+  if (walletRow?.at) add("Wallet Settled", walletRow.at, "driver_wallet_transactions", walletRow.evidence?.reason ? String(walletRow.evidence.reason) : undefined);
+  else if (booking.wallet_settled_at) add("Wallet Settled", booking.wallet_settled_at, "bookings", "wallet_settled_at");
+
+  return rows;
+}
+
+function timerBadgeClass(result: string) {
+  const r = String(result || "").toLowerCase();
+  if (r === "pass") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (r === "fail") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (r === "open") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function buildTimerRows(ticket: TicketInspectorResponse) {
+  const booking = ticket.booking || {};
+  const cutoffMs = parseMs(booking.completed_at || booking.updated_at) || Date.now();
+  const acceptedRow = findTimelineAt(ticket, { source: "dispatch_actions", action: "status_change", to: "accepted" });
+  const fareRow = findTimelineAt(ticket, { source: "dispatch_actions", action: "status_change", to: "fare_proposed" });
+  const readyRow = findTimelineAt(ticket, { source: "dispatch_actions", action: "status_change", to: "ready" });
+  const completedRow = findTimelineAt(ticket, { source: "dispatch_actions", action: "status_change", to: "completed" });
+
+  const rows: { name: string; window: string; started?: string | null; deadline?: string | null; metAt?: string | null; result: string; detail: string }[] = [];
+  const addTimer = (name: string, started: any, deadline: any, metAt: any, successText: string, failText: string) => {
+    const startMs = parseMs(started);
+    const deadlineMs = parseMs(deadline);
+    const metMs = parseMs(metAt);
+    const window = startMs != null && deadlineMs != null ? durationLabel(deadlineMs - startMs) : "--";
+    let result = "N/A";
+    let detail = "Timer evidence not present.";
+    if (deadlineMs != null && metMs != null) {
+      result = metMs <= deadlineMs ? "PASS" : "FAIL";
+      detail = (metMs <= deadlineMs ? successText : failText) + " after " + durationLabel(startMs != null ? metMs - startMs : null) + ".";
+    } else if (deadlineMs != null && !metMs) {
+      if (deadlineMs < cutoffMs) {
+        result = "FAIL";
+        detail = failText + "; deadline passed.";
+      } else {
+        result = "OPEN";
+        detail = "Waiting; deadline has not passed yet.";
+      }
+    }
+    rows.push({ name, window, started: started || null, deadline: deadline || null, metAt: metAt || null, result, detail });
+  };
+
+  addTimer(
+    "Driver Accept",
+    booking.assigned_at,
+    booking.driver_accept_expires_at || booking.takeout_driver_accept_expires_at,
+    acceptedRow?.at,
+    "Driver accepted within the window",
+    "Driver did not accept within the window"
+  );
+
+  addTimer(
+    "Fare Proposal",
+    acceptedRow?.at || booking.assigned_at,
+    booking.driver_fee_proposal_expires_at || booking.takeout_fee_proposal_expires_at || booking.takeout_fee_expires_at,
+    fareRow?.at || booking.takeout_fee_proposed_at,
+    "Fare was proposed within the window",
+    "Fare was not proposed within the window"
+  );
+
+  addTimer(
+    "Customer Confirmation",
+    fareRow?.at || booking.takeout_fee_proposed_at,
+    booking.takeout_fee_expires_at || booking.takeout_fee_proposal_expires_at || booking.driver_fee_proposal_expires_at,
+    readyRow?.at || booking.takeout_customer_confirmed_at,
+    "Customer confirmation was completed within the window",
+    "Customer confirmation did not happen within the window"
+  );
+
+  const status = String(booking.status || "").toLowerCase();
+  if (status === "completed" || booking.completed_at || completedRow?.at) {
+    const completedAt = booking.completed_at || completedRow?.at;
+    const walletAt = booking.wallet_settled_at;
+    const completedMs = parseMs(completedAt);
+    const walletMs = parseMs(walletAt);
+    const settled = String(booking.wallet_settlement_status || "").toLowerCase() === "settled";
+    rows.push({
+      name: "Wallet Settlement",
+      window: "Immediate",
+      started: completedAt || null,
+      deadline: null,
+      metAt: walletAt || null,
+      result: settled ? "PASS" : "FAIL",
+      detail: settled ? "Wallet settled after " + durationLabel(completedMs != null && walletMs != null ? walletMs - completedMs : null) + "." : "Completed booking is not settled.",
+    });
+  }
+
+  return rows;
 }
 
 
@@ -1905,7 +2064,7 @@ export default function LiveTripsClient() {
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                {(["overview", "timeline", "diagnostics", "raw"] as TicketInspectorTab[]).map((tab) => (
+                {(["overview", "journey", "timeline", "diagnostics", "raw"] as TicketInspectorTab[]).map((tab) => (
                   <button
                     key={tab}
                     className={pillClass(ticketInspectorTab === tab)}
@@ -1986,6 +2145,54 @@ export default function LiveTripsClient() {
                       <div><span className="text-slate-500">Driver accept expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.driver_accept_expires_at || ticketInspector.booking?.takeout_driver_accept_expires_at)}</span></div>
                       <div><span className="text-slate-500">Fee expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.takeout_fee_expires_at || ticketInspector.booking?.takeout_fee_proposal_expires_at)}</span></div>
                       <div><span className="text-slate-500">Completed:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.completed_at)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              ) : ticketInspectorTab === "journey" ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-slate-900">Journey Analysis</div>
+                        <div className="text-xs text-slate-500">Elapsed time between lifecycle milestones from confirmed timeline rows.</div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {buildJourneyRows(ticketInspector).map((row, idx) => (
+                        <div key={String(row.label) + String(idx)} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[1.3fr_1fr_0.7fr_1fr]">
+                          <div>
+                            <div className="font-semibold text-slate-800">{row.label}</div>
+                            {row.note ? <div className="text-xs text-slate-500">{row.note}</div> : null}
+                          </div>
+                          <div><span className="text-slate-500">At:</span> <span className="font-medium">{formatPHDateTime(row.at)}</span></div>
+                          <div><span className="text-slate-500">Delta:</span> <span className="font-medium">{labelOrDash(row.delta)}</span></div>
+                          <div><span className="text-slate-500">Source:</span> <span className="font-medium">{labelOrDash(row.source)}</span></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3">
+                      <div className="font-semibold text-slate-900">Timer Analysis</div>
+                      <div className="text-xs text-slate-500">PASS/FAIL is computed from confirmed booking timer fields and timeline milestones.</div>
+                    </div>
+                    <div className="space-y-2">
+                      {buildTimerRows(ticketInspector).map((row, idx) => (
+                        <div key={String(row.name) + String(idx)} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-800">{row.name}</div>
+                            <span className={["rounded-full border px-2 py-0.5 text-[11px] font-semibold", timerBadgeClass(row.result)].join(" ")}>{row.result}</span>
+                          </div>
+                          <div className="mt-2 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
+                            <div>Window: <span className="font-medium">{labelOrDash(row.window)}</span></div>
+                            <div>Started: <span className="font-medium">{formatPHDateTime(row.started)}</span></div>
+                            <div>Deadline: <span className="font-medium">{formatPHDateTime(row.deadline)}</span></div>
+                            <div>Met at: <span className="font-medium">{formatPHDateTime(row.metAt)}</span></div>
+                          </div>
+                          <div className="mt-2 text-xs text-slate-700">{row.detail}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
