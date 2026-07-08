@@ -309,8 +309,8 @@ export async function GET(req: NextRequest) {
           text(row?.dispatcher_name || row?.dispatcher_id || "system"),
           text(row?.action_type || "dispatch_action"),
           row,
-          null,
-          null,
+          row?.meta?.from ?? null,
+          row?.meta?.to ?? null,
         ),
       ),
       ...walletTransactionRows.map((row) =>
