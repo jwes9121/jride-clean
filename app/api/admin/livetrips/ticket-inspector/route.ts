@@ -300,7 +300,7 @@ export async function GET(req: NextRequest) {
         "booking_created",
         booking,
         null,
-        booking?.status ?? null,
+        null,
       ),
       ...dispatchActionRows.map((row) =>
         timelineItem(

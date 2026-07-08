@@ -244,6 +244,83 @@ function labelOrDash(v?: any) {
   return s ? s : "--";
 }
 
+function formatMoney(v?: any) {
+  if (v == null || v === "") return "--";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return "PHP " + n.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function timelineTitle(row: TicketInspectorTimelineItem) {
+  const source = String(row.source || "");
+  const action = String(row.action || "");
+  const to = String(row.to_status || "");
+
+  if (action === "booking_created") return "Booking Created";
+
+  if (source === "dispatch_actions" && action === "status_change") {
+    const titles: Record<string, string> = {
+      requested: "Requested",
+      searching: "Searching",
+      assigned: "Driver Assigned",
+      accepted: "Driver Accepted",
+      fare_proposed: "Fare Proposed",
+      ready: "Ready for Pickup",
+      on_the_way: "Driver On The Way",
+      arrived: "Driver Arrived",
+      on_trip: "Trip Started",
+      completed: "Trip Completed",
+      cancelled: "Trip Cancelled",
+    };
+    return titles[to] || "Status Changed";
+  }
+
+  if (source === "driver_wallet_transactions") {
+    const amount = row.evidence?.amount;
+    const reason = String(row.evidence?.reason || action || "");
+    if (Number(amount) < 0) return "Wallet Deducted";
+    if (Number(amount) > 0) return "Wallet Credited";
+    return reason || "Wallet Transaction";
+  }
+
+  if (source === "driver_wallet_ledger") return "Wallet Ledger Entry";
+
+  return action
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "--";
+}
+
+function timelineIcon(row: TicketInspectorTimelineItem) {
+  const source = String(row.source || "");
+  const to = String(row.to_status || "");
+  if (source === "driver_wallet_transactions" || source === "driver_wallet_ledger") return "W";
+  const icons: Record<string, string> = {
+    assigned: "A",
+    accepted: "OK",
+    fare_proposed: "P",
+    ready: "R",
+    on_the_way: "OTW",
+    arrived: "AR",
+    on_trip: "GO",
+    completed: "DONE",
+    cancelled: "X",
+  };
+  return icons[to] || "EV";
+}
+
+function walletSummary(raw?: any) {
+  const txs = Array.isArray(raw?.driver_wallet_transactions) ? raw.driver_wallet_transactions : [];
+  const first = txs[0] || null;
+  return {
+    transaction: first,
+    amount: first?.amount,
+    reason: first?.reason,
+    balanceAfter: first?.balance_after,
+  };
+}
+
 function tripPriorityScore(t: TripRow): number {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
@@ -1655,13 +1732,32 @@ export default function LiveTripsClient() {
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="mb-2 font-semibold">Fare and wallet fields</div>
+                    <div className="mb-2 font-semibold">Fare fields</div>
                     <div className="space-y-1 text-sm">
-                      <div><span className="text-slate-500">Proposed fare:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.proposed_fare)}</span></div>
-                      <div><span className="text-slate-500">Company cut:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.company_cut)}</span></div>
-                      <div><span className="text-slate-500">Driver payout:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.driver_payout)}</span></div>
-                      <div><span className="text-slate-500">Takeout payable:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.takeout_total_payable)}</span></div>
+                      <div><span className="text-slate-500">Proposed fare:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.proposed_fare)}</span></div>
+                      <div><span className="text-slate-500">Company cut:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.company_cut)}</span></div>
+                      <div><span className="text-slate-500">Driver payout:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.driver_payout)}</span></div>
+                      <div><span className="text-slate-500">Takeout payable:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.takeout_total_payable)}</span></div>
                     </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="mb-2 font-semibold">Wallet Settlement</div>
+                    {(() => {
+                      const ws = walletSummary(ticketInspector.raw);
+                      return (
+                        <div className="space-y-1 text-sm">
+                          <div><span className="text-slate-500">Status:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.wallet_settlement_status)}</span></div>
+                          <div><span className="text-slate-500">Version:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.wallet_settlement_version)}</span></div>
+                          <div><span className="text-slate-500">Settled at:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.wallet_settled_at)}</span></div>
+                          <div><span className="text-slate-500">Platform cut:</span> <span className="font-medium">{formatMoney(ws.amount != null ? Math.abs(Number(ws.amount)) : ticketInspector.booking?.company_cut)}</span></div>
+                          <div><span className="text-slate-500">Reason:</span> <span className="font-medium">{labelOrDash(ws.reason)}</span></div>
+                          <div><span className="text-slate-500">Balance after:</span> <span className="font-medium">{formatMoney(ws.balanceAfter)}</span></div>
+                          <div><span className="text-slate-500">Settlement ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.wallet_settlement_id)}</span></div>
+                          <div><span className="text-slate-500">Hash:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.wallet_settlement_hash)}</span></div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
@@ -1680,13 +1776,27 @@ export default function LiveTripsClient() {
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No timeline rows returned.</div>
                   ) : (ticketInspector.timeline || []).map((row, idx) => (
                     <div key={String(row.at || "") + String(idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="font-semibold">{labelOrDash(row.action)}</div>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 flex h-8 min-w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
+                            {timelineIcon(row)}
+                          </div>
+                          <div>
+                            <div className="font-semibold">{timelineTitle(row)}</div>
+                            {row.source === "driver_wallet_transactions" ? (
+                              <div className="mt-1 text-xs text-slate-600">
+                                <span className="font-medium">{formatMoney(Math.abs(Number(row.evidence?.amount ?? 0)))}</span>
+                                <span> deducted</span>
+                                {row.evidence?.balance_after != null ? <span> - Balance after {formatMoney(row.evidence.balance_after)}</span> : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                         <div className="text-xs text-slate-500">{formatPHDateTime(row.at)}</div>
                       </div>
-                      <div className="mt-1 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
+                      <div className="mt-2 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
                         <div>Source: <span className="font-medium">{labelOrDash(row.source)}</span></div>
-                        <div>Actor: <span className="font-medium">{labelOrDash(row.actor)}</span></div>
+                        <div>Actor: <span className="font-medium break-all">{labelOrDash(row.actor)}</span></div>
                         <div>From: <span className="font-medium">{labelOrDash(row.from_status)}</span></div>
                         <div>To: <span className="font-medium">{labelOrDash(row.to_status)}</span></div>
                       </div>
