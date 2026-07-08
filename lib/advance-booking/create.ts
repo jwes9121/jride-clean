@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tripDistanceKm } from "./distance";
+import { offerAdvanceBooking } from "./offer";
 import { estimateFare } from "./pricing";
 import { scheduleAdvanceBookingReminders } from "./reminders";
 import {
@@ -31,6 +32,7 @@ type CreateSuccess = AdvanceBookingCreateResult & {
   scheduledPickupAt: string;
   status: "open";
   reminderJobsCreated: number;
+  offersCreated: number;
 };
 
 export type CreateAdvanceBookingResult = CreateSuccess | CreateFailure;
@@ -237,6 +239,18 @@ export async function createAdvanceBooking(
     );
   }
 
+  const offers = await offerAdvanceBooking({
+    advanceBookingId: String(created.id),
+    pickupLat,
+    pickupLng,
+    vehicleType,
+    scheduledPickupAt,
+  });
+
+  if (!offers.ok) {
+    console.error("[advance-booking:create] offer failed", offers.error);
+  }
+
   return {
     ok: true,
     advanceBookingId: String(created.id),
@@ -245,5 +259,6 @@ export async function createAdvanceBooking(
     scheduledPickupAt: String(created.scheduled_pickup_at),
     status: "open",
     reminderJobsCreated: reminders.created,
+    offersCreated: offers.ok ? offers.offersCreated : 0,
   };
 }
