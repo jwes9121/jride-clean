@@ -125,6 +125,31 @@ type TicketInspectorResponse = {
   message?: string;
 };
 
+type OperationsSearchBooking = {
+  id?: string | null;
+  booking_code?: string | null;
+  status?: string | null;
+  service_type?: string | null;
+  passenger_name?: string | null;
+  town?: string | null;
+  from_label?: string | null;
+  to_label?: string | null;
+  driver_id?: string | null;
+  assigned_driver_id?: string | null;
+  vendor_id?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+type OperationsSearchResponse = {
+  ok?: boolean;
+  query?: string;
+  bookings?: OperationsSearchBooking[];
+  total?: number;
+  error?: string;
+  message?: string;
+};
+
 type TicketInspectorTab = "overview" | "timeline" | "diagnostics" | "raw";
 
 const STUCK_THRESHOLDS_MIN = {
@@ -555,6 +580,11 @@ export default function LiveTripsClient() {
   const [ticketInspectorLoading, setTicketInspectorLoading] = useState<boolean>(false);
   const [ticketInspectorError, setTicketInspectorError] = useState<string>("");
   const [ticketInspectorTab, setTicketInspectorTab] = useState<TicketInspectorTab>("overview");
+  const [operationsQuery, setOperationsQuery] = useState<string>("");
+  const [operationsSearchLoading, setOperationsSearchLoading] = useState<boolean>(false);
+  const [operationsSearchError, setOperationsSearchError] = useState<string>("");
+  const [operationsSearchResults, setOperationsSearchResults] = useState<OperationsSearchBooking[]>([]);
+
 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1125,6 +1155,41 @@ export default function LiveTripsClient() {
     }
   }
 
+  async function loadOperationsSearch(queryOverride?: string) {
+    const q = String(queryOverride ?? operationsQuery).trim();
+    if (!q) {
+      setOperationsSearchError("Enter a passenger name, ticket code, driver ID, vendor ID, town, pickup, or dropoff.");
+      setOperationsSearchResults([]);
+      return;
+    }
+
+    setOperationsSearchLoading(true);
+    setOperationsSearchError("");
+
+    try {
+      const r = await fetch("/api/admin/livetrips/search?q=" + encodeURIComponent(q), {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      });
+      const j: OperationsSearchResponse = await r.json().catch(() => ({} as any));
+      if (!r.ok || j?.ok === false) {
+        throw new Error(j?.message || j?.error || "Operations search failed");
+      }
+      const bookings = Array.isArray(j.bookings) ? j.bookings : [];
+      setOperationsSearchResults(bookings);
+      setLastAction("Operations search: " + q + " (" + bookings.length + ")");
+    } catch (e: any) {
+      setOperationsSearchResults([]);
+      setOperationsSearchError(String(e?.message || e));
+      setLastAction("Operations search failed");
+    } finally {
+      setOperationsSearchLoading(false);
+    }
+  }
+
   const zoneStats = useMemo(() => {
     const out: Record<string, { util: number; status: string }> = {};
     for (const z of zones) {
@@ -1185,8 +1250,87 @@ export default function LiveTripsClient() {
       <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm font-semibold text-slate-900">Find faster</div>
-            <div className="text-xs text-slate-500">Search booking code, passenger, driver, phone, or town. All timestamps stay on Philippine time.</div>
+            <div className="text-sm font-semibold text-slate-900">Operations Search</div>
+            <div className="text-xs text-slate-500">Global booking search by ticket, passenger, town, pickup, dropoff, driver ID, or vendor ID. Click a result to inspect it.</div>
+          </div>
+          <form
+            className="grid gap-3 md:grid-cols-[minmax(320px,1fr),auto,auto]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              loadOperationsSearch().catch((err) => setOperationsSearchError(String(err?.message || err)));
+            }}
+          >
+            <input
+              value={operationsQuery}
+              onChange={(e) => setOperationsQuery(e.target.value)}
+              placeholder="Passenger name, JR-UI, TO, town, pickup, dropoff"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-emerald-400 focus:bg-white"
+            />
+            <button
+              type="submit"
+              className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+              disabled={operationsSearchLoading}
+            >
+              {operationsSearchLoading ? "Searching..." : "Search"}
+            </button>
+            <button
+              type="button"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={() => { setOperationsQuery(""); setOperationsSearchResults([]); setOperationsSearchError(""); }}
+            >
+              Clear
+            </button>
+          </form>
+        </div>
+        {operationsSearchError ? (
+          <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {operationsSearchError}
+          </div>
+        ) : null}
+        {operationsSearchResults.length ? (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Results {operationsSearchResults.length}
+            </div>
+            <div className="max-h-72 overflow-auto divide-y divide-slate-100">
+              {operationsSearchResults.map((row, idx) => {
+                const code = String(row.booking_code || "");
+                return (
+                  <button
+                    key={String(row.id || code || idx)}
+                    type="button"
+                    className="block w-full px-3 py-3 text-left text-sm hover:bg-slate-50"
+                    onClick={() => {
+                      if (!code) return;
+                      setTicketQuery(code);
+                      loadTicketInspector(code).catch((err) => setTicketInspectorError(String(err?.message || err)));
+                    }}
+                  >
+                    <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="font-semibold text-slate-900">{labelOrDash(code)}</div>
+                        <div className="text-xs text-slate-600">
+                          {labelOrDash(row.passenger_name)} | {labelOrDash(row.service_type)} | {labelOrDash(row.status)} | {labelOrDash(row.town)}
+                        </div>
+                      </div>
+                      <div className="text-xs text-slate-500">Updated {formatPHDateTime(row.updated_at || row.created_at)}</div>
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-500">
+                      {labelOrDash(row.from_label)} {" -> "} {labelOrDash(row.to_label)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Filter Current View</div>
+            <div className="text-xs text-slate-500">Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup.</div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(280px,1fr),200px,auto]">
             <input
