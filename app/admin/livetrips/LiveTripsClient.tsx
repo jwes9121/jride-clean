@@ -321,6 +321,67 @@ function walletSummary(raw?: any) {
   };
 }
 
+
+function buildIncidentReport(ticket?: TicketInspectorResponse | null) {
+  if (!ticket?.booking) return "No ticket loaded.";
+
+  const booking = ticket.booking || {};
+  const raw = ticket.raw || {};
+  const ws = walletSummary(raw);
+  const lines: string[] = [];
+
+  lines.push("JRide Ticket Inspector Report");
+  lines.push("");
+  lines.push("Ticket: " + labelOrDash(booking.booking_code));
+  lines.push("Status: " + labelOrDash(booking.status));
+  lines.push("Service: " + labelOrDash(booking.service_type || booking.trip_type));
+  lines.push("Town: " + labelOrDash(booking.town));
+  lines.push("Passenger: " + labelOrDash(booking.passenger_name));
+  lines.push("Driver ID: " + labelOrDash(booking.driver_id || booking.assigned_driver_id));
+  lines.push("Vendor ID: " + labelOrDash(booking.vendor_id));
+  lines.push("Created: " + formatPHDateTime(booking.created_at));
+  lines.push("Updated: " + formatPHDateTime(booking.updated_at));
+  lines.push("");
+
+  lines.push("Timeline:");
+  const timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
+  if (!timeline.length) {
+    lines.push("- No timeline rows returned.");
+  } else {
+    for (const row of timeline) {
+      const from = labelOrDash(row.from_status);
+      const to = labelOrDash(row.to_status);
+      const transition = from !== "--" || to !== "--" ? " [" + from + " -> " + to + "]" : "";
+      lines.push("- " + formatPHDateTime(row.at) + " | " + timelineTitle(row) + transition + " | Source: " + labelOrDash(row.source) + " | Actor: " + labelOrDash(row.actor));
+    }
+  }
+  lines.push("");
+
+  lines.push("Wallet:");
+  lines.push("- Status: " + labelOrDash(booking.wallet_settlement_status));
+  lines.push("- Version: " + labelOrDash(booking.wallet_settlement_version));
+  lines.push("- Settlement ID: " + labelOrDash(booking.wallet_settlement_id));
+  lines.push("- Settled at: " + formatPHDateTime(booking.wallet_settled_at));
+  lines.push("- Platform cut: " + formatMoney(ws.amount != null ? Math.abs(Number(ws.amount)) : booking.company_cut));
+  lines.push("- Transaction reason: " + labelOrDash(ws.reason));
+  lines.push("- Balance after: " + formatMoney(ws.balanceAfter));
+  lines.push("");
+
+  lines.push("Diagnostics:");
+  const diagnostics = Array.isArray(ticket.diagnostics) ? ticket.diagnostics : [];
+  if (!diagnostics.length) {
+    lines.push("- No diagnostics returned.");
+  } else {
+    for (const d of diagnostics) {
+      lines.push("- [" + labelOrDash(d.severity).toUpperCase() + "] " + labelOrDash(d.code) + ": " + labelOrDash(d.message));
+      const evidence = Array.isArray(d.evidence) ? d.evidence : [];
+      for (const ev of evidence) lines.push("  - " + String(ev));
+    }
+  }
+
+  return lines.join("\n");
+}
+
 function tripPriorityScore(t: TripRow): number {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
@@ -1677,12 +1738,26 @@ export default function LiveTripsClient() {
                   <div className="text-xl font-bold text-slate-900">{labelOrDash(ticketInspector?.booking?.booking_code || ticketQuery)}</div>
                   <div className="text-xs text-slate-500">Rule-based forensic view from confirmed schema only.</div>
                 </div>
-                <button
-                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  onClick={() => setTicketInspectorOpen(false)}
-                >
-                  Close
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    disabled={!ticketInspector?.booking}
+                    onClick={() => {
+                      const report = buildIncidentReport(ticketInspector);
+                      navigator.clipboard.writeText(report)
+                        .then(() => setLastAction("Incident report copied"))
+                        .catch(() => setLastAction("Copy failed"));
+                    }}
+                  >
+                    Copy Incident Report
+                  </button>
+                  <button
+                    className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    onClick={() => setTicketInspectorOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
