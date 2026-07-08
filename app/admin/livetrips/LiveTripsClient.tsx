@@ -108,6 +108,7 @@ const LIVETRIPS_PENDING_STATUSES = [
   "requested",
   "searching",
   "assigned",
+  "driver_assigned",
   "accepted",
   "fare_proposed",
   "ready",
