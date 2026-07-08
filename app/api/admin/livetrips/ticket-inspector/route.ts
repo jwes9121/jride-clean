@@ -216,6 +216,18 @@ export async function GET(req: NextRequest) {
       diagnostics.push(diagnostic("warn", "NO_DRIVER_ATTACHED", "Active booking has no driver reference.", ["driver_id is empty", "assigned_driver_id is empty"]));
     }
 
+    if (status === "completed" && text(booking?.driver_status).toLowerCase() === "on_trip") {
+      diagnostics.push(diagnostic("warn", "STALE_DRIVER_STATUS", "Booking is completed but driver_status is still on_trip.", ["bookings.status = completed", "bookings.driver_status = on_trip"]));
+    }
+
+    if (status === "completed" && text(booking?.wallet_settlement_status).toLowerCase() !== "settled") {
+      diagnostics.push(diagnostic("warn", "WALLET_NOT_SETTLED", "Completed booking is not marked as wallet settled.", ["wallet_settlement_status = " + text(booking?.wallet_settlement_status)]));
+    }
+
+    if (text(booking?.wallet_settlement_status).toLowerCase() === "settled" && !booking?.wallet_settlement_id) {
+      diagnostics.push(diagnostic("warn", "MISSING_SETTLEMENT_ID", "Wallet is settled but settlement ID is missing.", ["wallet_settlement_status = settled", "wallet_settlement_id is null"]));
+    }
+
     const acceptExpiry = booking?.takeout_driver_accept_expires_at || booking?.driver_accept_expires_at || null;
     if (acceptExpiry && Date.parse(String(acceptExpiry)) < Date.now() && ["assigned", "driver_assigned", "searching"].includes(status)) {
       diagnostics.push(diagnostic("warn", "DRIVER_ACCEPT_EXPIRED", "Driver accept timer is expired while booking is still not completed or cancelled.", ["accept expiry is in the past", "status = " + status]));
