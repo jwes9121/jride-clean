@@ -96,6 +96,37 @@ type PageData = {
   [k: string]: any;
 };
 
+type TicketInspectorTimelineItem = {
+  at?: string | null;
+  source?: string | null;
+  actor?: string | null;
+  action?: string | null;
+  from_status?: string | null;
+  to_status?: string | null;
+  evidence?: any;
+};
+
+type TicketInspectorDiagnostic = {
+  severity?: string | null;
+  code?: string | null;
+  message?: string | null;
+  evidence?: string[];
+};
+
+type TicketInspectorResponse = {
+  ok?: boolean;
+  query?: string;
+  booking?: any;
+  matches?: any[];
+  timeline?: TicketInspectorTimelineItem[];
+  diagnostics?: TicketInspectorDiagnostic[];
+  raw?: any;
+  error?: string;
+  message?: string;
+};
+
+type TicketInspectorTab = "overview" | "timeline" | "diagnostics" | "raw";
+
 const STUCK_THRESHOLDS_MIN = {
   on_the_way: 15,
   on_trip: 25,
@@ -380,6 +411,12 @@ export default function LiveTripsClient() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [townFilter, setTownFilter] = useState<string>("all");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("today");
+  const [ticketQuery, setTicketQuery] = useState<string>("");
+  const [ticketInspector, setTicketInspector] = useState<TicketInspectorResponse | null>(null);
+  const [ticketInspectorOpen, setTicketInspectorOpen] = useState<boolean>(false);
+  const [ticketInspectorLoading, setTicketInspectorLoading] = useState<boolean>(false);
+  const [ticketInspectorError, setTicketInspectorError] = useState<string>("");
+  const [ticketInspectorTab, setTicketInspectorTab] = useState<TicketInspectorTab>("overview");
 
   const tableRef = useRef<HTMLDivElement | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -914,6 +951,42 @@ export default function LiveTripsClient() {
     await refreshAll("emergency");
   }
 
+  async function loadTicketInspector(queryOverride?: string) {
+    const q = String(queryOverride ?? ticketQuery).trim();
+    if (!q) {
+      setTicketInspectorError("Enter a JR-UI or TO ticket code.");
+      return;
+    }
+
+    setTicketInspectorLoading(true);
+    setTicketInspectorError("");
+    setTicketInspectorOpen(true);
+    setTicketInspectorTab("overview");
+
+    try {
+      const r = await fetch("/api/admin/livetrips/ticket-inspector?q=" + encodeURIComponent(q), {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+      });
+      const j: TicketInspectorResponse = await r.json().catch(() => ({} as any));
+      if (!r.ok || j?.ok === false) {
+        throw new Error(j?.message || j?.error || "Ticket inspector lookup failed");
+      }
+      setTicketInspector(j);
+      setTicketQuery(String(j?.booking?.booking_code || q));
+      setLastAction("Ticket inspected: " + String(j?.booking?.booking_code || q));
+    } catch (e: any) {
+      setTicketInspector(null);
+      setTicketInspectorError(String(e?.message || e));
+      setLastAction("Ticket inspector failed");
+    } finally {
+      setTicketInspectorLoading(false);
+    }
+  }
+
   const zoneStats = useMemo(() => {
     const out: Record<string, { util: number; status: string }> = {};
     for (const z of zones) {
@@ -1002,6 +1075,41 @@ export default function LiveTripsClient() {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Search Ticket</div>
+            <div className="text-xs text-slate-500">Open the forensic drawer for JR-UI or TO tickets using confirmed audit sources.</div>
+          </div>
+          <form
+            className="grid gap-3 md:grid-cols-[minmax(280px,1fr),auto]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              loadTicketInspector().catch((err) => setTicketInspectorError(String(err?.message || err)));
+            }}
+          >
+            <input
+              value={ticketQuery}
+              onChange={(e) => setTicketQuery(e.target.value)}
+              placeholder="JR-UI-... or TO-..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-emerald-400 focus:bg-white"
+            />
+            <button
+              type="submit"
+              className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+              disabled={ticketInspectorLoading}
+            >
+              {ticketInspectorLoading ? "Searching..." : "Open Inspector"}
+            </button>
+          </form>
+        </div>
+        {ticketInspectorError ? (
+          <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {ticketInspectorError}
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -1351,6 +1459,18 @@ export default function LiveTripsClient() {
                     <div><span className="text-gray-500">Status:</span> <span className="font-medium">{labelOrDash(selectedTrip.status)}</span></div>
                     <div><span className="text-gray-500">Town:</span> <span className="font-medium">{labelOrDash(selectedTrip.town || selectedTrip.zone)}</span></div>
                     <div><span className="text-gray-500">Updated:</span> <span className="font-medium">{formatPHDateTime(selectedTrip.updated_at)}</span></div>
+                    {selectedTrip.booking_code ? (
+                      <button
+                        className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        onClick={() => {
+                          const code = String(selectedTrip.booking_code || "");
+                          setTicketQuery(code);
+                          loadTicketInspector(code).catch((err) => setTicketInspectorError(String(err?.message || err)));
+                        }}
+                      >
+                        Open Ticket Inspector
+                      </button>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -1469,6 +1589,138 @@ export default function LiveTripsClient() {
           />
         </div>
       </div>
+
+      {ticketInspectorOpen ? (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
+          <div className="h-full w-full max-w-4xl overflow-auto bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 border-b border-slate-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ticket Inspector</div>
+                  <div className="text-xl font-bold text-slate-900">{labelOrDash(ticketInspector?.booking?.booking_code || ticketQuery)}</div>
+                  <div className="text-xs text-slate-500">Rule-based forensic view from confirmed schema only.</div>
+                </div>
+                <button
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => setTicketInspectorOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(["overview", "timeline", "diagnostics", "raw"] as TicketInspectorTab[]).map((tab) => (
+                  <button
+                    key={tab}
+                    className={pillClass(ticketInspectorTab === tab)}
+                    onClick={() => setTicketInspectorTab(tab)}
+                  >
+                    {tab === "raw" ? "Raw State" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {tab === "timeline" ? <span className="text-xs opacity-80">{ticketInspector?.timeline?.length ?? 0}</span> : null}
+                    {tab === "diagnostics" ? <span className="text-xs opacity-80">{ticketInspector?.diagnostics?.length ?? 0}</span> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4">
+              {ticketInspectorLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Loading ticket evidence...</div>
+              ) : ticketInspectorError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{ticketInspectorError}</div>
+              ) : !ticketInspector ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No ticket loaded.</div>
+              ) : ticketInspectorTab === "overview" ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="mb-2 font-semibold">Booking</div>
+                    <div className="space-y-1 text-sm">
+                      <div><span className="text-slate-500">Code:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.booking_code)}</span></div>
+                      <div><span className="text-slate-500">Status:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.status)}</span></div>
+                      <div><span className="text-slate-500">Service:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.service_type || ticketInspector.booking?.trip_type)}</span></div>
+                      <div><span className="text-slate-500">Town:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.town)}</span></div>
+                      <div><span className="text-slate-500">Created:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.created_at)}</span></div>
+                      <div><span className="text-slate-500">Updated:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.updated_at)}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="mb-2 font-semibold">People</div>
+                    <div className="space-y-1 text-sm">
+                      <div><span className="text-slate-500">Passenger:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.passenger_name)}</span></div>
+                      <div><span className="text-slate-500">Driver ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.driver_id || ticketInspector.booking?.assigned_driver_id)}</span></div>
+                      <div><span className="text-slate-500">Vendor ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.vendor_id)}</span></div>
+                      <div><span className="text-slate-500">Created by user:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.created_by_user_id)}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="mb-2 font-semibold">Fare and wallet fields</div>
+                    <div className="space-y-1 text-sm">
+                      <div><span className="text-slate-500">Proposed fare:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.proposed_fare)}</span></div>
+                      <div><span className="text-slate-500">Company cut:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.company_cut)}</span></div>
+                      <div><span className="text-slate-500">Driver payout:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.driver_payout)}</span></div>
+                      <div><span className="text-slate-500">Takeout payable:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.takeout_total_payable)}</span></div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="mb-2 font-semibold">Timers</div>
+                    <div className="space-y-1 text-sm">
+                      <div><span className="text-slate-500">Assigned at:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.assigned_at)}</span></div>
+                      <div><span className="text-slate-500">Driver accept expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.driver_accept_expires_at || ticketInspector.booking?.takeout_driver_accept_expires_at)}</span></div>
+                      <div><span className="text-slate-500">Fee expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.takeout_fee_expires_at || ticketInspector.booking?.takeout_fee_proposal_expires_at)}</span></div>
+                      <div><span className="text-slate-500">Completed:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.completed_at)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              ) : ticketInspectorTab === "timeline" ? (
+                <div className="space-y-2">
+                  {(ticketInspector.timeline || []).length === 0 ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No timeline rows returned.</div>
+                  ) : (ticketInspector.timeline || []).map((row, idx) => (
+                    <div key={String(row.at || "") + String(idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold">{labelOrDash(row.action)}</div>
+                        <div className="text-xs text-slate-500">{formatPHDateTime(row.at)}</div>
+                      </div>
+                      <div className="mt-1 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
+                        <div>Source: <span className="font-medium">{labelOrDash(row.source)}</span></div>
+                        <div>Actor: <span className="font-medium">{labelOrDash(row.actor)}</span></div>
+                        <div>From: <span className="font-medium">{labelOrDash(row.from_status)}</span></div>
+                        <div>To: <span className="font-medium">{labelOrDash(row.to_status)}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : ticketInspectorTab === "diagnostics" ? (
+                <div className="space-y-2">
+                  {(ticketInspector.diagnostics || []).length === 0 ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">No diagnostics returned by the rule engine.</div>
+                  ) : (ticketInspector.diagnostics || []).map((d, idx) => (
+                    <div key={String(d.code || idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-600">{labelOrDash(d.severity)}</span>
+                        <span className="font-semibold">{labelOrDash(d.code)}</span>
+                      </div>
+                      <div className="mt-1 text-slate-700">{labelOrDash(d.message)}</div>
+                      {(d.evidence || []).length ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
+                          {(d.evidence || []).map((ev, evIdx) => <li key={String(evIdx)}>{String(ev)}</li>)}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <pre className="max-h-[75vh] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 p-4 text-xs text-slate-100">
+                  {JSON.stringify(ticketInspector.raw || ticketInspector, null, 2)}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
