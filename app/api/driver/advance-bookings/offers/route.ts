@@ -23,44 +23,64 @@ export async function GET(req: NextRequest) {
 
   const supabase = supabaseAdmin();
 
-  const { data, error } = await supabase
+  const { data: queueRows, error: queueError } = await supabase
     .from("advance_booking_queue")
-    .select(`
-      id,
-      advance_booking_id,
-      offer_sent_at,
-      offer_expires_at,
-      advance_bookings (
-        id,
-        pickup_address,
-        destination_address,
-        scheduled_pickup_at,
-        booking_mode,
-        fare_bracket,
-        distance_km,
-        vehicle_type,
-        estimated_fare_min,
-        estimated_fare_max,
-        estimated_pickup_fee,
-        estimated_total
-      )
-    `)
+    .select("id, advance_booking_id, offer_sent_at, offer_expires_at")
     .eq("driver_id", auth.driverId)
     .eq("status", "offered")
     .order("offer_sent_at", { ascending: true });
 
-  if (error) {
+  if (queueError) {
     return NextResponse.json(
-      { ok: false, error: error.message },
+      { ok: false, error: queueError.message },
       { status: 500, headers: noStoreHeaders() }
     );
   }
 
+  const bookingIds = Array.from(
+    new Set((queueRows ?? []).map((r: any) => r.advance_booking_id).filter(Boolean))
+  );
+
+  if (bookingIds.length === 0) {
+    return NextResponse.json(
+      { ok: true, offers: [] },
+      { headers: noStoreHeaders() }
+    );
+  }
+
+  const { data: bookingRows, error: bookingError } = await supabase
+    .from("advance_bookings")
+    .select(`
+      id,
+      pickup_address,
+      destination_address,
+      scheduled_pickup_at,
+      booking_mode,
+      fare_bracket,
+      distance_km,
+      vehicle_type,
+      estimated_fare_min,
+      estimated_fare_max,
+      estimated_pickup_fee,
+      estimated_total
+    `)
+    .in("id", bookingIds);
+
+  if (bookingError) {
+    return NextResponse.json(
+      { ok: false, error: bookingError.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
+
+  const bookingById = new Map<string, any>();
+  for (const booking of bookingRows ?? []) {
+    bookingById.set(String((booking as any).id), booking);
+  }
+
   const offers =
-    data?.map((row: any) => {
-      const booking = Array.isArray(row.advance_bookings)
-        ? row.advance_bookings[0]
-        : row.advance_bookings;
+    queueRows?.map((row: any) => {
+      const booking = bookingById.get(String(row.advance_booking_id)) ?? null;
 
       return {
         offer_id: row.id,
