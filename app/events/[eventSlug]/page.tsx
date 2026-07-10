@@ -117,8 +117,10 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-            <h2 className="text-xl font-bold">Venue</h2>
-            <p className="mt-2 text-sm text-slate-400">Coming soon</p>
+            <h2 className="text-xl font-bold">Raffle</h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Live digital raffle during the event
+            </p>
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">

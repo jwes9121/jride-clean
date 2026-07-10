@@ -163,6 +163,9 @@ export default function RaffleProjectorDisplayPage() {
           <p className="text-xl font-black uppercase tracking-[0.4em] text-amber-300">
             JRide Events
           </p>
+          <p className="mt-2 text-sm font-black uppercase tracking-[0.22em] text-slate-400 md:text-base">
+            Powered by JRide Corporation
+          </p>
           <h1 className="mt-4 text-5xl font-black md:text-7xl">
             {state?.event?.title || "Digital Raffle"}
           </h1>
