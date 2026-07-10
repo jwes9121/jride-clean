@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -129,9 +129,47 @@ export async function GET(
 
     if (historyError) throw new Error(historyError.message);
 
+    const serverNow = new Date();
+    const revealAt = activeDraw?.winner_selected_at
+      ? new Date(activeDraw.winner_selected_at)
+      : null;
+    const claimDeadlineAt = activeWinner?.claim_deadline_at
+      ? new Date(activeWinner.claim_deadline_at)
+      : null;
+
+    const phase =
+      !activeDraw
+        ? "idle"
+        : revealAt && serverNow < revealAt
+        ? "rolling"
+        : claimDeadlineAt && serverNow < claimDeadlineAt
+        ? "claim"
+        : "expired";
+
+    const secondsUntilReveal =
+      revealAt === null
+        ? null
+        : Math.max(
+            0,
+            Math.ceil((revealAt.getTime() - serverNow.getTime()) / 1000)
+          );
+
+    const secondsUntilClaimDeadline =
+      claimDeadlineAt === null
+        ? null
+        : Math.max(
+            0,
+            Math.ceil(
+              (claimDeadlineAt.getTime() - serverNow.getTime()) / 1000
+            )
+          );
+
     return NextResponse.json({
       success: true,
-      generatedAt: new Date().toISOString(),
+      generatedAt: serverNow.toISOString(),
+      phase,
+      secondsUntilReveal,
+      secondsUntilClaimDeadline,
       event: {
         title: event.name,
         slug: event.slug,
@@ -147,6 +185,9 @@ export async function GET(
             startedAt: activeDraw.started_at,
             revealAt: activeDraw.winner_selected_at,
             completedAt: activeDraw.completed_at,
+            phase,
+            secondsUntilReveal,
+            secondsUntilClaimDeadline,
             winner: activeWinner
               ? {
                   winnerId: activeWinner.id,
