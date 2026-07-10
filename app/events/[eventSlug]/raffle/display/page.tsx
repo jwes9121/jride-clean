@@ -157,8 +157,8 @@ export default function RaffleProjectorDisplayPage() {
   const winnerStatus = activeDraw?.winner?.status || "";
 
   return (
-    <main className="min-h-screen overflow-hidden bg-black px-6 py-8 text-white">
-      <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col">
+    <main className="min-h-screen overflow-hidden bg-black px-6 pb-36 pt-8 text-white md:pb-40">
+      <section className="mx-auto flex min-h-[calc(100vh-12rem)] max-w-7xl flex-col">
         <header className="text-center">
           <p className="text-xl font-black uppercase tracking-[0.4em] text-amber-300">
             JRide Events
@@ -193,7 +193,8 @@ export default function RaffleProjectorDisplayPage() {
                   {currentName?.fullName || "Rolling..."}
                 </p>
                 <p className="mt-5 text-3xl font-black text-amber-700">
-                  {state?.event?.groupLabel || "Batch"} {currentName?.groupValue || "-"}
+                  {state?.event?.groupLabel || "Batch"}{" "}
+                  {currentName?.groupValue || "-"}
                 </p>
               </div>
 
@@ -229,7 +230,8 @@ export default function RaffleProjectorDisplayPage() {
                   {winner.fullName}
                 </p>
                 <p className="mt-6 text-4xl font-black text-amber-700">
-                  {state?.event?.groupLabel || "Batch"} {winner.groupValue || "-"}
+                  {state?.event?.groupLabel || "Batch"}{" "}
+                  {winner.groupValue || "-"}
                 </p>
               </div>
 
@@ -247,7 +249,9 @@ export default function RaffleProjectorDisplayPage() {
               {phase === "expired" ? (
                 <div className="mx-auto mt-8 w-full max-w-4xl rounded-3xl bg-red-700 p-8 text-center">
                   <p className="text-5xl font-black">Claim time expired</p>
-                  <p className="mt-3 text-2xl font-bold">Awaiting MC decision</p>
+                  <p className="mt-3 text-2xl font-bold">
+                    Awaiting MC decision
+                  </p>
                 </div>
               ) : null}
             </>
@@ -266,11 +270,16 @@ export default function RaffleProjectorDisplayPage() {
             </div>
           ) : null}
         </div>
-
-        <footer className="mt-8 text-center text-lg font-bold uppercase tracking-[0.25em] text-slate-500">
-          Server-controlled fair draw
-        </footer>
       </section>
+
+      <footer className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-300/40 bg-slate-950/95 px-4 py-4 text-center shadow-[0_-12px_30px_rgba(0,0,0,0.55)] backdrop-blur md:py-5">
+        <p className="text-sm font-black uppercase tracking-[0.25em] text-slate-400 md:text-base">
+          Sponsored by Batch 2001
+        </p>
+        <p className="mt-1 text-2xl font-black tracking-[0.08em] text-amber-300 md:text-4xl">
+          Dos Mil Uno
+        </p>
+      </footer>
     </main>
   );
 }
