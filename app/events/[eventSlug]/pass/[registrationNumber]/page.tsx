@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { renderQrDataUrl } from "@/lib/events/qr-render";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import EventPassActions from "./EventPassActions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -41,6 +42,7 @@ type AttendeeRow = {
   checked_in_at: string | null;
   is_disqualified: boolean;
   disqualification_reason: string | null;
+  registration_source: string | null;
 };
 
 type GuestLinkRow = {
@@ -197,7 +199,7 @@ export default async function EventPassPage({
   const { data: attendee } = await supabase
     .from("event_attendees")
     .select(
-      "id,full_name,nickname,group_value,registration_number,qr_token,attendance_status,checked_in_at,is_disqualified,disqualification_reason"
+      "id,full_name,nickname,group_value,registration_number,qr_token,attendance_status,checked_in_at,is_disqualified,disqualification_reason,registration_source"
     )
     .eq("event_id", event.id)
     .eq("registration_number", decodeURIComponent(params.registrationNumber))
@@ -221,6 +223,11 @@ export default async function EventPassPage({
   const guestList = normalizeGuests(guestRows || []);
   const groupLabel = event.group_label || "Group";
   const afterEventDate = formatDate(event.event_date);
+
+  const showOnlineInstruction =
+    attendee.registration_source === "online" &&
+    attendee.attendance_status !== "checked_in";
+
   const passUrl = `${appUrl.replace(/\/$/, "")}/events/${encodeURIComponent(
     event.slug
   )}/pass/${encodeURIComponent(attendee.registration_number)}?token=${encodeURIComponent(
@@ -330,6 +337,19 @@ export default async function EventPassPage({
               />
             </div>
 
+            {showOnlineInstruction ? (
+              <div className="mt-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+                  Online Registration Complete
+                </p>
+                <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">
+                  Thank you for registering online. Please present this Event
+                  Pass at the entrance for faster admission and to skip the
+                  registration queue.
+                </p>
+              </div>
+            ) : null}
+
             {guestList.length > 0 ? (
               <div className="mt-7 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
@@ -353,22 +373,12 @@ export default async function EventPassPage({
               </div>
             ) : null}
 
-            <div className="no-print mt-7 grid gap-3">
-              <button
-                type="button"
-                className="rounded-2xl bg-slate-950 px-5 py-4 text-base font-bold text-white"
-              >
-                Save Event Pass
-              </button>
-              <button
-                type="button"
-                className="rounded-2xl border border-slate-300 px-5 py-4 text-base font-bold text-slate-950"
-              >
-                Print Event Pass
-              </button>
-            </div>
+            <EventPassActions
+              cardId="event-pass-card"
+              filename={`${attendee.registration_number}.png`}
+            />
 
-            <div className="no-print mt-7 border-t border-slate-200 pt-5 text-center">
+            <div className="pass-capture-exclude no-print mt-7 border-t border-slate-200 pt-5 text-center">
               <p className="text-sm font-semibold text-slate-500">
                 Need another copy?
               </p>
@@ -377,7 +387,7 @@ export default async function EventPassPage({
               </a>
             </div>
 
-            <div className="no-print mt-7 rounded-2xl bg-slate-100 p-5 text-center">
+            <div className="pass-capture-exclude no-print mt-7 rounded-2xl bg-slate-100 p-5 text-center">
               <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
                 After the Event
               </p>
