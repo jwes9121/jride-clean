@@ -5,7 +5,7 @@
 //
 // Differs from the public /register route only in context:
 //   source:       "walk_in"   (public uses "online")
-//   registeredBy: staff identifier (public leaves blank)
+//   registeredBy: omitted until an authenticated staff UUID is available
 //
 // Preserves: duplicate detection, registration numbers, QR generation,
 //            guest linking, identity resolution, pass URL construction.
@@ -43,7 +43,6 @@ export async function POST(
       },
       {
         source: "walk_in",
-        registeredBy: body.registeredBy ?? "help_desk",
       }
     );
 
