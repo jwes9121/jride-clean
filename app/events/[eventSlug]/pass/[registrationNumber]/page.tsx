@@ -374,8 +374,11 @@ export default async function EventPassPage({
             ) : null}
 
             <EventPassActions
-              cardId="event-pass-card"
-              filename={`${attendee.registration_number}.png`}
+              imageUrl={`/api/events/${encodeURIComponent(
+                event.slug
+              )}/pass/${encodeURIComponent(
+                attendee.registration_number
+              )}/image?token=${encodeURIComponent(attendee.qr_token)}`}
             />
 
             <div className="pass-capture-exclude no-print mt-7 border-t border-slate-200 pt-5 text-center">
