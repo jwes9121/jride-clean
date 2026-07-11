@@ -1,20 +1,27 @@
 // app/api/events/[eventSlug]/help-desk/register/route.ts
 //
-// Walk-in registration endpoint for the Volunteer Console.
-// Thin wrapper -- all business logic lives in lib/events/registration.ts.
+// Walk-in registration endpoint for Help Desk and Registration.
+// Reuses the shared registration engine.
 //
-// Differs from the public /register route only in context:
-//   source:       "walk_in"   (public uses "online")
-//   registeredBy: omitted until an authenticated staff UUID is available
+// Walk-in behavior:
+//   1. Register with registration_source = "walk_in".
+//   2. Immediately check in the primary attendee and registered companions.
+//   3. Return the canonical event-specific Event Pass URL.
 //
-// Preserves: duplicate detection, registration numbers, QR generation,
-//            guest linking, identity resolution, pass URL construction.
+// registeredBy and checked_in_by are intentionally omitted until the
+// Help Desk is backed by an authenticated staff UUID.
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { registerAttendee } from "@/lib/events/registration";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "https://app.jride.net";
 
 export async function POST(
   req: NextRequest,
@@ -22,17 +29,25 @@ export async function POST(
 ) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { eventSlug } = params;
+    const eventSlug = String(params?.eventSlug || "").trim();
 
     if (!eventSlug) {
       return NextResponse.json(
-        { success: false, error: { code: "MISSING_PARAMS", message: "Event slug is required." } },
+        {
+          success: false,
+          error: {
+            code: "MISSING_PARAMS",
+            message: "Event slug is required.",
+          },
+        },
         { status: 400 }
       );
     }
 
+    const supabase = supabaseAdmin();
+
     const result = await registerAttendee(
-      supabaseAdmin(),
+      supabase,
       {
         eventSlug,
         fullName: body.fullName ?? "",
@@ -50,14 +65,63 @@ export async function POST(
       return NextResponse.json(result, { status: 400 });
     }
 
-    return NextResponse.json(result);
+    const attendeeIds = [
+      result.attendeeId,
+      ...(result.guests || []).map((guest) => guest.attendeeId),
+    ].filter((value): value is string => Boolean(value));
+
+    const checkedInAt = new Date().toISOString();
+    let checkInSucceeded = false;
+    let checkInErrorMessage: string | null = null;
+
+    if (attendeeIds.length > 0) {
+      const { error: checkInError } = await supabase
+        .from("event_attendees")
+        .update({
+          attendance_status: "checked_in",
+          checked_in_at: checkedInAt,
+        })
+        .in("id", attendeeIds);
+
+      checkInSucceeded = !checkInError;
+      checkInErrorMessage = checkInError?.message || null;
+
+      if (checkInError) {
+        console.error(
+          "[help-desk/register] Immediate check-in failed:",
+          checkInError.message
+        );
+      }
+    }
+
+    const registrationNumber = result.registrationNumber || "";
+    const qrToken = result.qrToken || "";
+
+    const eventPassUrl =
+      registrationNumber && qrToken
+        ? `${APP_URL}/events/${encodeURIComponent(
+            eventSlug
+          )}/pass/${encodeURIComponent(
+            registrationNumber
+          )}?token=${encodeURIComponent(qrToken)}`
+        : result.eventPassUrl;
+
+    return NextResponse.json({
+      ...result,
+      eventPassUrl,
+      checkedIn: checkInSucceeded,
+      checkedInAt: checkInSucceeded ? checkedInAt : null,
+      checkedInAttendeeCount: checkInSucceeded ? attendeeIds.length : 0,
+      checkInError: checkInSucceeded ? null : checkInErrorMessage,
+    });
   } catch (error) {
     return NextResponse.json(
       {
         success: false,
         error: {
           code: "SERVER_ERROR",
-          message: error instanceof Error ? error.message : "Registration failed.",
+          message:
+            error instanceof Error ? error.message : "Registration failed.",
         },
       },
       { status: 500 }
