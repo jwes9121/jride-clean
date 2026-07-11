@@ -3,6 +3,10 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 
+// -----------------------------------------------------------------
+// Types (all existing types preserved)
+// -----------------------------------------------------------------
+
 type GuestRow = {
   attendeeId: string;
   fullName: string;
@@ -87,6 +91,27 @@ type DisqualifyResponse = {
   error?: string;
 };
 
+// Walk-in registration result
+type WalkInRegisteredGuest = {
+  attendeeId: string;
+  fullName: string;
+  registrationNumber: string;
+  passUrl: string;
+  relationship: string;
+};
+
+type WalkInResult = {
+  attendeeId: string;
+  fullName: string;
+  registrationNumber: string;
+  eventPassUrl: string;
+  guests: WalkInRegisteredGuest[];
+};
+
+// -----------------------------------------------------------------
+// Helpers (all existing helpers preserved)
+// -----------------------------------------------------------------
+
 function formatCheckedIn(value: string | null) {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-PH", {
@@ -134,10 +159,15 @@ function mergeAttendee(row: HelpDeskResult, patch: Partial<HelpDeskResult>): Hel
   };
 }
 
+// -----------------------------------------------------------------
+// Main page component
+// -----------------------------------------------------------------
+
 export default function EventHelpDeskPage() {
   const params = useParams<{ eventSlug: string }>();
   const eventSlug = String(params?.eventSlug || "");
 
+  // Search state
   const [query, setQuery] = React.useState("");
   const [groupLabel, setGroupLabel] = React.useState("Group");
   const [groupValues, setGroupValues] = React.useState<GroupValue[]>([]);
@@ -149,19 +179,34 @@ export default function EventHelpDeskPage() {
   const [notice, setNotice] = React.useState("");
   const [searched, setSearched] = React.useState(false);
 
+  // Edit modal state
   const [editOpen, setEditOpen] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editMobile, setEditMobile] = React.useState("");
   const [editNickname, setEditNickname] = React.useState("");
   const [editGroup, setEditGroup] = React.useState("");
 
+  // Disqualify/undo modal state
   const [disqualifyOpen, setDisqualifyOpen] = React.useState(false);
   const [disqualifyReason, setDisqualifyReason] = React.useState("");
   const [undoOpen, setUndoOpen] = React.useState(false);
 
+  // Walk-in registration state (new)
+  const [walkInOpen, setWalkInOpen] = React.useState(false);
+  const [walkInName, setWalkInName] = React.useState("");
+  const [walkInMobile, setWalkInMobile] = React.useState("");
+  const [walkInGroup, setWalkInGroup] = React.useState("");
+  const [walkInHasCompanion, setWalkInHasCompanion] = React.useState(false);
+  const [walkInCompanionName, setWalkInCompanionName] = React.useState("");
+  const [walkInCompanionRelationship, setWalkInCompanionRelationship] = React.useState("Companion");
+  const [walkInLoading, setWalkInLoading] = React.useState(false);
+  const [walkInError, setWalkInError] = React.useState("");
+  const [walkInResult, setWalkInResult] = React.useState<WalkInResult | null>(null);
+
   const selected =
     results.find((row) => row.attendeeId === selectedId) || results[0] || null;
 
+  // Load group values on mount
   React.useEffect(() => {
     let active = true;
 
@@ -179,6 +224,9 @@ export default function EventHelpDeskPage() {
         if (!active) return;
         setGroupLabel(data.groupLabel || "Group");
         setGroupValues(data.values || []);
+        if (data.values && data.values.length > 0) {
+          setWalkInGroup(data.values[0].value);
+        }
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Failed to load group values.");
@@ -192,6 +240,7 @@ export default function EventHelpDeskPage() {
     };
   }, [eventSlug]);
 
+  // Debounced search
   React.useEffect(() => {
     const term = query.trim();
 
@@ -245,6 +294,10 @@ export default function EventHelpDeskPage() {
     };
   }, [eventSlug, query]);
 
+  // -----------------------------------------------------------------
+  // Search helpers
+  // -----------------------------------------------------------------
+
   function clearSearch() {
     setQuery("");
     setResults([]);
@@ -263,6 +316,10 @@ export default function EventHelpDeskPage() {
       )
     );
   }
+
+  // -----------------------------------------------------------------
+  // Edit
+  // -----------------------------------------------------------------
 
   function openEditModal() {
     if (!selected) return;
@@ -325,6 +382,10 @@ export default function EventHelpDeskPage() {
     }
   }
 
+  // -----------------------------------------------------------------
+  // Reissue pass
+  // -----------------------------------------------------------------
+
   async function reissuePass() {
     if (!selected) return;
 
@@ -357,6 +418,10 @@ export default function EventHelpDeskPage() {
       setActionLoading(false);
     }
   }
+
+  // -----------------------------------------------------------------
+  // Disqualify
+  // -----------------------------------------------------------------
 
   function openDisqualifyModal() {
     if (!selected) return;
@@ -412,10 +477,117 @@ export default function EventHelpDeskPage() {
     }
   }
 
+  // -----------------------------------------------------------------
+  // Walk-in registration (new)
+  // -----------------------------------------------------------------
+
+  function openWalkIn() {
+    setWalkInOpen(true);
+    setWalkInResult(null);
+    setWalkInError("");
+    setWalkInName("");
+    setWalkInMobile("");
+    setWalkInGroup(groupValues.length > 0 ? groupValues[0].value : "");
+    setWalkInHasCompanion(false);
+    setWalkInCompanionName("");
+    setWalkInCompanionRelationship("Companion");
+  }
+
+  function closeWalkIn() {
+    setWalkInOpen(false);
+    setWalkInResult(null);
+    setWalkInError("");
+  }
+
+  async function submitWalkIn() {
+    const name = walkInName.trim();
+    const mobile = cleanPhone(walkInMobile);
+    const group = walkInGroup.trim();
+
+    if (!name) { setWalkInError("Full name is required."); return; }
+    if (!mobile || mobile.length < 10) {
+      setWalkInError("A valid Philippine mobile number is required (at least 10 digits).");
+      return;
+    }
+    if (!group) { setWalkInError(`${groupLabel} is required.`); return; }
+
+    if (walkInHasCompanion && !walkInCompanionName.trim()) {
+      setWalkInError("Companion name is required when companion is selected.");
+      return;
+    }
+
+    setWalkInLoading(true);
+    setWalkInError("");
+
+    try {
+      const guests = walkInHasCompanion
+        ? [{ fullName: walkInCompanionName.trim(), relationship: walkInCompanionRelationship.trim() || "Companion" }]
+        : [];
+
+      const res = await fetch(
+        `/api/events/${eventSlug}/help-desk/register`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fullName: name,
+            mobileNumber: mobile,
+            groupValue: group,
+            guests,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        const msg = data.error?.message || data.error || "Registration failed.";
+        throw new Error(msg);
+      }
+
+      setWalkInResult({
+        attendeeId: data.attendeeId,
+        fullName: name,
+        registrationNumber: data.registrationNumber,
+        eventPassUrl: data.eventPassUrl,
+        guests: (data.guests || []).map((g: any) => ({
+          attendeeId: g.attendeeId,
+          fullName: g.fullName,
+          registrationNumber: g.registrationNumber,
+          passUrl: g.passUrl,
+          relationship: g.relationship,
+        })),
+      });
+    } catch (err) {
+      setWalkInError(err instanceof Error ? err.message : "Registration failed.");
+    } finally {
+      setWalkInLoading(false);
+    }
+  }
+
+  function registerAnother() {
+    setWalkInResult(null);
+    setWalkInError("");
+    setWalkInName("");
+    setWalkInMobile("");
+    setWalkInGroup(groupValues.length > 0 ? groupValues[0].value : "");
+    setWalkInHasCompanion(false);
+    setWalkInCompanionName("");
+    setWalkInCompanionRelationship("Companion");
+  }
+
+  // -----------------------------------------------------------------
+  // Layout helpers
+  // -----------------------------------------------------------------
+
   const modalPanelClass =
     "fixed inset-x-0 bottom-0 z-50 mx-auto max-w-2xl rounded-t-3xl border border-slate-700 bg-slate-900 p-5 text-white shadow-2xl";
 
-  const modalBackdrop = editOpen || disqualifyOpen || undoOpen;
+  const modalBackdrop = editOpen || disqualifyOpen || undoOpen || walkInOpen;
+
+  // -----------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
@@ -426,12 +598,13 @@ export default function EventHelpDeskPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
             JRide Events
           </p>
-          <h1 className="mt-3 text-4xl font-black">Volunteer Console</h1>
+          <h1 className="mt-3 text-4xl font-black">Help Desk and Registration</h1>
           <p className="mt-2 text-slate-300">
-            Search by registration number, name, nickname, or mobile number.
+            Search existing attendees or register walk-ins for this event.
           </p>
 
-          <div className="mt-6 flex gap-3">
+          {/* Search row + Register Walk-in button */}
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -445,6 +618,13 @@ export default function EventHelpDeskPage() {
               className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white"
             >
               Clear
+            </button>
+            <button
+              type="button"
+              onClick={openWalkIn}
+              className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950 hover:bg-amber-200"
+            >
+              + Register Walk-in
             </button>
           </div>
 
@@ -687,6 +867,7 @@ export default function EventHelpDeskPage() {
         </div>
       </section>
 
+      {/* Edit modal -- unchanged */}
       {editOpen ? (
         <div className={modalPanelClass}>
           <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">
@@ -761,6 +942,7 @@ export default function EventHelpDeskPage() {
         </div>
       ) : null}
 
+      {/* Disqualify modal -- unchanged */}
       {disqualifyOpen ? (
         <div className={modalPanelClass}>
           <p className="text-xs font-black uppercase tracking-[0.25em] text-red-300">
@@ -799,6 +981,7 @@ export default function EventHelpDeskPage() {
         </div>
       ) : null}
 
+      {/* Undo modal -- unchanged */}
       {undoOpen ? (
         <div className={modalPanelClass}>
           <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-300">
@@ -838,6 +1021,220 @@ export default function EventHelpDeskPage() {
               {actionLoading ? "Saving..." : "Clear Review"}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {/* Walk-in Registration panel (new) */}
+      {walkInOpen ? (
+        <div className={`${modalPanelClass} max-h-[90vh] overflow-y-auto`}>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">
+                Walk-in Registration
+              </p>
+              <h2 className="mt-2 text-3xl font-black">
+                {walkInResult ? "Registered" : "New Attendee"}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={closeWalkIn}
+              className="rounded-full border border-slate-600 px-3 py-2 text-sm font-black text-slate-400"
+            >
+              Close
+            </button>
+          </div>
+
+          {/* Success state */}
+          {walkInResult ? (
+            <div className="mt-5">
+              <div className="rounded-2xl bg-emerald-900/40 border border-emerald-700 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
+                  Registration Successful
+                </p>
+                <p className="mt-2 text-2xl font-black">{walkInResult.fullName}</p>
+                <p className="mt-1 font-mono text-lg font-bold text-amber-300">
+                  {walkInResult.registrationNumber}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <a
+                  href={walkInResult.eventPassUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl bg-amber-300 px-5 py-4 text-center font-black text-slate-950"
+                >
+                  Open Pass
+                </a>
+                <button
+                  type="button"
+                  onClick={() => window.open(walkInResult.eventPassUrl, "_blank")}
+                  className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white"
+                >
+                  Print Pass
+                </button>
+              </div>
+
+              {walkInResult.guests.length > 0 ? (
+                <div className="mt-5">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                    Companion Registered
+                  </p>
+                  {walkInResult.guests.map((g) => (
+                    <div key={g.attendeeId} className="mt-3 rounded-2xl border border-slate-700 bg-slate-950 p-4">
+                      <p className="font-black">{g.fullName}</p>
+                      <p className="mt-1 font-mono text-sm font-bold text-amber-300">
+                        {g.registrationNumber}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-400">
+                        Registered as a companion. Not eligible for raffle. Uses the primary attendee for gate entry.
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={registerAnother}
+                  className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950"
+                >
+                  Register Another
+                </button>
+                <button
+                  type="button"
+                  onClick={closeWalkIn}
+                  className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Form state */
+            <div className="mt-5 grid gap-4">
+              {walkInError ? (
+                <p className="rounded-2xl bg-red-900/40 border border-red-700 px-4 py-3 text-sm font-bold text-red-300">
+                  {walkInError}
+                </p>
+              ) : null}
+
+              <label className="block">
+                <span className="text-sm font-bold text-slate-200">Full Name *</span>
+                <input
+                  value={walkInName}
+                  onChange={(e) => setWalkInName(e.target.value)}
+                  placeholder="Enter full name"
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-slate-200">Mobile Number *</span>
+                <input
+                  value={walkInMobile}
+                  onChange={(e) => setWalkInMobile(e.target.value)}
+                  placeholder="09XXXXXXXXX"
+                  inputMode="numeric"
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-slate-200">{groupLabel} *</span>
+                <select
+                  value={walkInGroup}
+                  onChange={(e) => setWalkInGroup(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                >
+                  <option value="">Select {groupLabel}</option>
+                  {groupValues.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Companion section */}
+              <div className="rounded-2xl border border-slate-700 p-4">
+                <p className="text-sm font-bold text-slate-200">Has Companion?</p>
+                <div className="mt-3 flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={!walkInHasCompanion}
+                      onChange={() => setWalkInHasCompanion(false)}
+                      className="accent-amber-300"
+                    />
+                    <span className="font-semibold">No</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={walkInHasCompanion}
+                      onChange={() => setWalkInHasCompanion(true)}
+                      className="accent-amber-300"
+                    />
+                    <span className="font-semibold">Yes</span>
+                  </label>
+                </div>
+
+                {walkInHasCompanion ? (
+                  <div className="mt-4 grid gap-3">
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-200">Companion Name *</span>
+                      <input
+                        value={walkInCompanionName}
+                        onChange={(e) => setWalkInCompanionName(e.target.value)}
+                        placeholder="Enter companion name"
+                        className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-200">Relationship</span>
+                      <select
+                        value={walkInCompanionRelationship}
+                        onChange={(e) => setWalkInCompanionRelationship(e.target.value)}
+                        className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                      >
+                        <option value="Spouse">Spouse</option>
+                        <option value="Child">Child</option>
+                        <option value="Partner">Partner</option>
+                        <option value="Relative">Relative</option>
+                        <option value="Friend">Friend</option>
+                        <option value="Companion">Companion</option>
+                      </select>
+                    </label>
+                    <p className="text-xs text-slate-400">
+                      Companion will be registered as a guest. Separate attendance record created. Not eligible for raffle.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={closeWalkIn}
+                  disabled={walkInLoading}
+                  className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitWalkIn}
+                  disabled={walkInLoading}
+                  className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950 disabled:opacity-60"
+                >
+                  {walkInLoading ? "Registering..." : "Register"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
     </main>
