@@ -106,6 +106,9 @@ type WalkInResult = {
   registrationNumber: string;
   eventPassUrl: string;
   guests: WalkInRegisteredGuest[];
+  checkedIn: boolean;
+  checkedInAt: string | null;
+  checkInError: string | null;
 };
 
 // -----------------------------------------------------------------
@@ -557,6 +560,9 @@ export default function EventHelpDeskPage() {
           passUrl: g.passUrl,
           relationship: g.relationship,
         })),
+        checkedIn: data.checkedIn === true,
+        checkedInAt: data.checkedInAt || null,
+        checkInError: data.checkInError || null,
       });
     } catch (err) {
       setWalkInError(err instanceof Error ? err.message : "Registration failed.");
@@ -1048,32 +1054,57 @@ export default function EventHelpDeskPage() {
           {/* Success state */}
           {walkInResult ? (
             <div className="mt-5">
-              <div className="rounded-2xl bg-emerald-900/40 border border-emerald-700 p-4">
+              <div className="rounded-2xl border border-emerald-700 bg-emerald-900/40 p-4">
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
-                  Registration Successful
+                  Registration Complete
                 </p>
                 <p className="mt-2 text-2xl font-black">{walkInResult.fullName}</p>
                 <p className="mt-1 font-mono text-lg font-bold text-amber-300">
                   {walkInResult.registrationNumber}
                 </p>
+
+                {walkInResult.checkedIn ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-500 bg-emerald-500/15 p-4">
+                    <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">
+                      Checked In
+                    </p>
+                    <p className="mt-2 text-lg font-black text-white">
+                      Proceed to the venue.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-amber-500 bg-amber-500/15 p-4">
+                    <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">
+                      Check-in Required
+                    </p>
+                    <p className="mt-2 font-bold text-white">
+                      Please scan the Event Pass QR at the gate.
+                    </p>
+                    {walkInResult.checkInError ? (
+                      <p className="mt-2 text-sm text-slate-300">
+                        {walkInResult.checkInError}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => window.open(walkInResult.eventPassUrl, "_blank")}
+                  className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950"
+                >
+                  Print Pass
+                </button>
                 <a
                   href={walkInResult.eventPassUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-2xl bg-amber-300 px-5 py-4 text-center font-black text-slate-950"
+                  className="rounded-2xl border border-slate-600 px-5 py-4 text-center font-black text-white"
                 >
                   Open Pass
                 </a>
-                <button
-                  type="button"
-                  onClick={() => window.open(walkInResult.eventPassUrl, "_blank")}
-                  className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white"
-                >
-                  Print Pass
-                </button>
               </div>
 
               {walkInResult.guests.length > 0 ? (
