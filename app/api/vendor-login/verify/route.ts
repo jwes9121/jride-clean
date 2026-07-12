@@ -3,12 +3,18 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+const LOGIN_ALLOWED_STATUSES = ["pilot_lagawe", "active"];
+
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
 }
 
 function clean(v: any): string {
   return String(v ?? "").trim();
+}
+
+function normalizeStatus(v: any): string {
+  return clean(v).toLowerCase();
 }
 
 function getAdmin() {
@@ -34,6 +40,7 @@ function publicVendor(row: any) {
 
 export async function GET() {
   const admin = getAdmin();
+
   if (!admin) {
     return json(500, {
       ok: false,
@@ -46,7 +53,8 @@ export async function GET() {
     const q = await admin
       .from("vendor_onboarding_credentials")
       .select("vendor_id,vendor_name,town,phone,status")
-      .eq("status", "pilot_lagawe")
+      .in("status", LOGIN_ALLOWED_STATUSES)
+      .order("town", { ascending: true })
       .order("vendor_name", { ascending: true });
 
     if (q.error) {
@@ -58,12 +66,17 @@ export async function GET() {
       vendors: (Array.isArray(q.data) ? q.data : []).map(publicVendor),
     });
   } catch (e: any) {
-    return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
+    return json(500, {
+      ok: false,
+      error: "SERVER_ERROR",
+      message: String(e?.message || e),
+    });
   }
 }
 
 export async function POST(req: NextRequest) {
   const admin = getAdmin();
+
   if (!admin) {
     return json(500, {
       ok: false,
@@ -78,19 +91,35 @@ export async function POST(req: NextRequest) {
   const accessPin = clean(body?.access_pin || body?.pin || body?.vendor_access_pin);
 
   if (!selectedVendorId) {
-    return json(400, { ok: false, error: "MISSING_SELECTED_VENDOR", message: "Select your vendor name first." });
+    return json(400, {
+      ok: false,
+      error: "MISSING_SELECTED_VENDOR",
+      message: "Select your vendor name first.",
+    });
   }
 
   if (!vendorId) {
-    return json(400, { ok: false, error: "MISSING_VENDOR_ID", message: "Enter your vendor UUID." });
+    return json(400, {
+      ok: false,
+      error: "MISSING_VENDOR_ID",
+      message: "Enter your vendor UUID.",
+    });
   }
 
   if (selectedVendorId !== vendorId) {
-    return json(401, { ok: false, error: "VENDOR_MISMATCH", message: "Selected vendor and entered UUID do not match." });
+    return json(401, {
+      ok: false,
+      error: "VENDOR_MISMATCH",
+      message: "Selected vendor and entered UUID do not match.",
+    });
   }
 
   if (!/^\d{6}$/.test(accessPin)) {
-    return json(400, { ok: false, error: "INVALID_PIN", message: "Enter the 6-digit vendor access code." });
+    return json(400, {
+      ok: false,
+      error: "INVALID_PIN",
+      message: "Enter the 6-digit vendor access code.",
+    });
   }
 
   try {
@@ -106,12 +135,31 @@ export async function POST(req: NextRequest) {
     }
 
     const row = q.data;
+
     if (!row) {
-      return json(401, { ok: false, error: "VENDOR_NOT_FOUND", message: "Vendor is not registered for onboarding." });
+      return json(401, {
+        ok: false,
+        error: "VENDOR_NOT_FOUND",
+        message: "Vendor is not registered for onboarding.",
+      });
+    }
+
+    const status = normalizeStatus(row.status);
+
+    if (!LOGIN_ALLOWED_STATUSES.includes(status)) {
+      return json(403, {
+        ok: false,
+        error: "VENDOR_ACCESS_DISABLED",
+        message: "Vendor access is not currently enabled.",
+      });
     }
 
     if (clean(row.access_pin) !== accessPin) {
-      return json(401, { ok: false, error: "PIN_MISMATCH", message: "Vendor access code is incorrect." });
+      return json(401, {
+        ok: false,
+        error: "PIN_MISMATCH",
+        message: "Vendor access code is incorrect.",
+      });
     }
 
     return json(200, {
@@ -120,6 +168,10 @@ export async function POST(req: NextRequest) {
       vendor: publicVendor(row),
     });
   } catch (e: any) {
-    return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
+    return json(500, {
+      ok: false,
+      error: "SERVER_ERROR",
+      message: String(e?.message || e),
+    });
   }
 }
