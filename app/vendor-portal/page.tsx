@@ -312,10 +312,9 @@ function foundingPilotDaysRemaining(nowMs: number) {
 
 function readInitialVendorId() {
   if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
+
   return clean(
-    params.get("vendor_id") ||
-      window.sessionStorage.getItem(LS_VENDOR_ID) ||
+    window.sessionStorage.getItem(LS_VENDOR_ID) ||
       window.localStorage.getItem(LS_VENDOR_ID) ||
       window.sessionStorage.getItem(LEGACY_LS_VENDOR_ID) ||
       window.localStorage.getItem(LEGACY_LS_VENDOR_ID) ||
@@ -766,7 +765,8 @@ export default function VendorPortalPage() {
       const keysToClear = [
         "jride_vendor_session",
         "jride_vendor_token",
-        "jride_vendor_id",
+        LEGACY_LS_VENDOR_ID,
+        LS_VENDOR_ID,
         "JRIDE_VENDOR_ID",
         "vendor_id",
       ];
@@ -783,6 +783,11 @@ export default function VendorPortalPage() {
   }
 
   useEffect(() => {
+    if (!readInitialVendorId()) {
+      window.location.replace("/vendor-login");
+      return;
+    }
+
     const timer = window.setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
@@ -1121,27 +1126,22 @@ export default function VendorPortalPage() {
   const limitReached = false;
 
   async function loadVendors() {
+    const authenticatedVendorId = readInitialVendorId();
+
+    if (!authenticatedVendorId) {
+      setVendors([]);
+      setVendorId("");
+      window.location.replace("/vendor-login");
+      return;
+    }
+
     const j = await getJson("/api/admin/vendors");
     const rows = Array.isArray(j?.vendors) ? j.vendors : Array.isArray(j?.data) ? j.data : [];
-    setVendors(rows);
+    const authenticatedVendorRows = rows.filter((row: VendorRow) => vendorKey(row) === authenticatedVendorId);
 
-    const initialVendorId = readInitialVendorId();
-    if (initialVendorId && initialVendorId !== vendorId) {
-      setVendorId(initialVendorId);
-      persistPortalVendorId(initialVendorId);
-      return;
-    }
-
-    if (vendorId) {
-      persistPortalVendorId(vendorId);
-      return;
-    }
-
-    if (rows.length) {
-      const firstId = vendorKey(rows[0]);
-      setVendorId(firstId);
-      persistPortalVendorId(firstId);
-    }
+    setVendors(authenticatedVendorRows);
+    setVendorId(authenticatedVendorId);
+    persistPortalVendorId(authenticatedVendorId);
   }
 
   async function loadVendorData(id?: string, silent = false) {
@@ -1653,28 +1653,17 @@ export default function VendorPortalPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="min-w-72 rounded-xl border px-3 py-2 text-sm"
-              value={vendorId}
-              onChange={(e) => {
-                const nextVendorId = e.target.value;
-                setVendorId(nextVendorId);
-                persistPortalVendorId(nextVendorId);
-                resetItemForm();
-                setMessage("");
-                setError("");
-              }}
-            >
-              <option value="">Select vendor</option>
-              {vendors.map((v) => {
-                const id = vendorKey(v);
-                return (
-                  <option key={id} value={id}>
-                    {vendorLabel(v)}{normalizeTakeoutTown(v.town) ? " - " + normalizeTakeoutTown(v.town) : ""}
-                  </option>
-                );
-              })}
-            </select>
+            <div className="min-w-72 rounded-xl border px-3 py-2 text-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Authenticated vendor
+              </div>
+              <div className="mt-1 font-semibold text-slate-900">
+                {profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor) : "Vendor")}
+              </div>
+              <div className="text-xs text-slate-500">
+                {profileTown || normalizeTakeoutTown(selectedVendor?.town) || "Town not set"}
+              </div>
+            </div>
 
             <a
               href={vendorOrdersHref}
