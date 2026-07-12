@@ -62,12 +62,10 @@ export async function POST(req: NextRequest) {
 
     const supabase = supabaseAdmin();
 
+    // Query 1: fetch queue row without embed.
     const { data: offer, error: offerError } = await supabase
       .from("advance_booking_queue")
-      .select(`
-        *,
-        advance_bookings(*)
-      `)
+      .select("id, advance_booking_id, driver_id, status")
       .eq("id", offerId)
       .eq("driver_id", auth.driverId)
       .eq("status", "offered")
@@ -78,6 +76,28 @@ export async function POST(req: NextRequest) {
         {
           ok: false,
           error: "OFFER_NOT_FOUND",
+          message: offerError?.message ?? "Offer not found.",
+        },
+        {
+          status: 404,
+          headers: noStoreHeaders(),
+        }
+      );
+    }
+
+    // Query 2: fetch booking row separately.
+    const { data: booking, error: bookingError } = await supabase
+      .from("advance_bookings")
+      .select("id, distance_km, scheduled_pickup_at")
+      .eq("id", offer.advance_booking_id)
+      .single();
+
+    if (bookingError || !booking) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BOOKING_NOT_FOUND",
+          message: bookingError?.message ?? "Booking record not found.",
         },
         {
           status: 404,
@@ -87,12 +107,18 @@ export async function POST(req: NextRequest) {
     }
 
     const pricing = estimateFare(
-  Number(offer.advance_bookings.distance_km || 0),
-  new Date(offer.advance_bookings.scheduled_pickup_at),
-  0
-);
+      Number(booking.distance_km || 0),
+      new Date(booking.scheduled_pickup_at),
+      0
+    );
 
-    const { error: updateOfferError } = await supabase
+    // Update filters driver_id and status = "offered" to prevent
+    // the same queue row from being taken twice by the same driver.
+    // NOTE: This does not prevent two different drivers from taking different
+    // offered rows for the same advance_booking_id. Booking-level race
+    // protection requires the atomic RPC that will replace this route.
+    // Zero-row update (row already taken) returns 409.
+    const { data: updatedOffer, error: updateOfferError } = await supabase
       .from("advance_booking_queue")
       .update({
         status: "tentative_committed",
@@ -104,22 +130,29 @@ export async function POST(req: NextRequest) {
         fare_locked_total: pricing.total,
         commitment_confirmed: true,
       })
-      .eq("id", offerId);
+      .eq("id", offerId)
+      .eq("driver_id", auth.driverId)
+      .eq("status", "offered")
+      .select("id")
+      .maybeSingle();
 
-    if (updateOfferError) {
+    if (updateOfferError || !updatedOffer) {
       return NextResponse.json(
         {
           ok: false,
-          error: updateOfferError.message,
+          error: updateOfferError?.message ?? "Offer is no longer available.",
         },
         {
-          status: 500,
+          status: updateOfferError ? 500 : 409,
           headers: noStoreHeaders(),
         }
       );
     }
 
-    await supabase
+    // Capture booking update error explicitly.
+    // NOTE: queue row is already tentative_committed at this point.
+    // Without a transaction/RPC, a failure here cannot be rolled back.
+    const { error: updateBookingError } = await supabase
       .from("advance_bookings")
       .update({
         driver_reserved_at: new Date().toISOString(),
@@ -127,6 +160,19 @@ export async function POST(req: NextRequest) {
         estimated_total: pricing.total,
       })
       .eq("id", offer.advance_booking_id);
+
+    if (updateBookingError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: updateBookingError.message,
+        },
+        {
+          status: 500,
+          headers: noStoreHeaders(),
+        }
+      );
+    }
 
     return NextResponse.json(
       {
