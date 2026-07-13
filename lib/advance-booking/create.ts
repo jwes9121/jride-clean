@@ -17,11 +17,21 @@ import type {
   VehicleType,
 } from "./types";
 
+type ExistingAdvanceBooking = {
+  id: string;
+  status: string;
+  scheduledPickupAt: string;
+  pickupAddress: string;
+  destinationAddress: string;
+  vehicleType: string;
+};
+
 type CreateFailure = {
   ok: false;
   error: AdvanceBookingError;
   message: string;
   status: number;
+  existingBooking?: ExistingAdvanceBooking;
 };
 
 type CreateSuccess = AdvanceBookingCreateResult & {
@@ -209,16 +219,85 @@ export async function createAdvanceBooking(
     status: "open",
   };
 
-  const { data: created, error: insertError } = await supabase
-    .from("advance_bookings")
-    .insert(insertRow)
-    .select("id, booking_mode, fare_bracket, scheduled_pickup_at, status")
-    .single();
+  const { data: createData, error: createError } = await supabase.rpc(
+    "create_advance_booking_if_no_active",
+    {
+      p_passenger_id: passengerId,
+      p_booking_row: insertRow,
+    }
+  );
 
-  if (insertError || !created) {
+  if (createError) {
+    return fail("DATABASE_ERROR", createError.message, 500);
+  }
+
+  const createResult = createData as
+    | {
+        ok?: boolean;
+        created?: boolean;
+        error?: string;
+        message?: string;
+        booking?: {
+          id?: string;
+          status?: string;
+          scheduled_pickup_at?: string;
+          pickup_address?: string;
+          destination_address?: string;
+          vehicle_type?: string;
+          booking_mode?: "daytime" | "night";
+          fare_bracket?: "normal" | "double" | "late_night";
+        };
+      }
+    | null;
+
+  if (!createResult?.ok) {
     return fail(
       "DATABASE_ERROR",
-      insertError?.message || "Failed to create advance booking.",
+      createResult?.message ||
+        createResult?.error ||
+        "Failed to create advance booking.",
+      500
+    );
+  }
+
+  const bookingRow = createResult.booking;
+
+  if (!createResult.created) {
+    return {
+      ok: false,
+      error: "ACTIVE_ADVANCE_BOOKING_EXISTS",
+      message:
+        "You already have an active advance booking. Open it before scheduling another ride.",
+      status: 409,
+      existingBooking: {
+        id: String(bookingRow?.id || ""),
+        status: String(bookingRow?.status || ""),
+        scheduledPickupAt: String(bookingRow?.scheduled_pickup_at || ""),
+        pickupAddress: String(bookingRow?.pickup_address || ""),
+        destinationAddress: String(bookingRow?.destination_address || ""),
+        vehicleType: String(bookingRow?.vehicle_type || ""),
+      },
+    };
+  }
+
+  const created = {
+    id: String(bookingRow?.id || ""),
+    booking_mode: bookingRow?.booking_mode,
+    fare_bracket: bookingRow?.fare_bracket,
+    scheduled_pickup_at: bookingRow?.scheduled_pickup_at,
+    status: bookingRow?.status,
+  };
+
+  if (
+    !created.id ||
+    !created.booking_mode ||
+    !created.fare_bracket ||
+    !created.scheduled_pickup_at ||
+    created.status !== "open"
+  ) {
+    return fail(
+      "DATABASE_ERROR",
+      "Advance booking was created but the returned row was incomplete.",
       500
     );
   }

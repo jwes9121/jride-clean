@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: result.error,
           message: result.message,
+          existingBooking: result.existingBooking ?? null,
         },
         {
           status: result.status ?? 400,

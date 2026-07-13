@@ -243,6 +243,7 @@ export interface ConvertResult {
 
 export type AdvanceBookingError =
   | "PASSENGER_NOT_VERIFIED"
+  | "ACTIVE_ADVANCE_BOOKING_EXISTS"
   | "BOOKING_WINDOW_TOO_SOON"        // < 2 hours from now
   | "BOOKING_WINDOW_TOO_FAR"         // > 24 hours from now
   | "INVALID_SCHEDULED_TIME"
