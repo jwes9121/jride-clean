@@ -59,10 +59,6 @@ export async function GET(req: NextRequest) {
       fare_bracket,
       distance_km,
       vehicle_type,
-      estimated_fare_min,
-      estimated_fare_max,
-      estimated_pickup_fee,
-      estimated_total
     `)
     .in("id", bookingIds);
 
@@ -104,12 +100,6 @@ export async function GET(req: NextRequest) {
         tripDistanceKm: booking?.distance_km ?? null,
         vehicle_type: booking?.vehicle_type ?? null,
         vehicleType: booking?.vehicle_type ?? null,
-
-        estimated_fare: booking?.estimated_total ?? null,
-        estimatedFare: booking?.estimated_total ?? null,
-        estimated_total: booking?.estimated_total ?? null,
-        pickup_fee: booking?.estimated_pickup_fee ?? null,
-
         offer_expires_at: row.offer_expires_at,
         offerExpiresAt: row.offer_expires_at,
         seconds_remaining: secondsRemaining(row.offer_expires_at),
