@@ -3,12 +3,6 @@ import { MAX_SIMULTANEOUS_OFFERS } from "./constants";
 import { pickupDistanceKm } from "./distance";
 import type { EligibilityInput, EligibilityResult, VehicleType } from "./types";
 
-const REUSABLE_QUEUE_STATUSES = new Set([
-  "released",
-  "superseded",
-  "offer_expired",
-]);
-
 function isOnlineStatus(value: unknown): boolean {
   const s = String(value || "").trim().toLowerCase();
   return ["online", "available", "idle", "waiting"].includes(s);
@@ -23,12 +17,6 @@ function vehicleMatches(actual: unknown, requested: VehicleType): boolean {
   const r = normVehicle(requested);
   if (!a || !r) return false;
   return a === r;
-}
-
-function queueStatusAllowsReuse(value: unknown): boolean {
-  return REUSABLE_QUEUE_STATUSES.has(
-    String(value || "").trim().toLowerCase()
-  );
 }
 
 export async function checkDriverEligibility(
@@ -85,11 +73,7 @@ export async function checkDriverEligibility(
   const walletBalance = Number(driver.wallet_balance ?? 0);
   const minWalletRequired = Number(driver.min_wallet_required ?? 0);
 
-  if (
-    !Number.isFinite(walletBalance) ||
-    !Number.isFinite(minWalletRequired) ||
-    walletBalance < minWalletRequired
-  ) {
+  if (walletBalance < minWalletRequired) {
     return { eligible: false, reason: "Driver wallet is below minimum." };
   }
 
@@ -116,7 +100,7 @@ export async function checkDriverEligibility(
 
   const { data: existing, error: existingError } = await supabase
     .from("advance_booking_queue")
-    .select("id, status")
+    .select("id")
     .eq("advance_booking_id", advanceBookingId)
     .eq("driver_id", input.driverId)
     .limit(1);
@@ -125,23 +109,16 @@ export async function checkDriverEligibility(
     return { eligible: false, reason: "Could not verify previous offers." };
   }
 
-  if (
-    existing &&
-    existing.length > 0 &&
-    !queueStatusAllowsReuse(existing[0]?.status)
-  ) {
-    return {
-      eligible: false,
-      reason: "Driver already has a non-reusable queue state for this booking.",
-    };
+  if (existing && existing.length > 0) {
+    return { eligible: false, reason: "Driver already received this offer." };
   }
 
   const distanceToPickupKm = pickupDistanceKm(
-    driverLat,
-    driverLng,
-    pickupLat,
-    pickupLng
-  );
+  driverLat,
+  driverLng,
+  pickupLat,
+  pickupLng
+);
 
   return {
     eligible: true,
@@ -157,10 +134,13 @@ export async function findNearestEligibleDrivers(
   vehicleType: VehicleType,
   scheduledPickupAt: Date,
   advanceBookingId: string,
-  maxDrivers = MAX_SIMULTANEOUS_OFFERS
+  maxDrivers = MAX_SIMULTANEOUS_OFFERS,
+  excludedDriverIds: string[] = []
 ): Promise<Array<{ driverId: string; distanceKm: number }>> {
   const supabase = supabaseAdmin();
+  const excludedIds = new Set(excludedDriverIds.map(String));
 
+  // Step 1: fetch online driver locations filtered by vehicle type (same query as before)
   const { data: locations, error } = await supabase
     .from("driver_locations_latest")
     .select("driver_id, lat, lng, status, vehicle_type, updated_at")
@@ -168,8 +148,10 @@ export async function findNearestEligibleDrivers(
 
   if (error || !locations || locations.length === 0) return [];
 
+  // Keep only online drivers with valid coordinates and matching vehicle type
   const onlineLocs = locations.filter((loc) => {
     if (!loc.driver_id) return false;
+    if (excludedIds.has(String(loc.driver_id))) return false;
     if (!isOnlineStatus(loc.status)) return false;
     if (!vehicleMatches(loc.vehicle_type, vehicleType)) return false;
     const lat = Number(loc.lat);
@@ -181,11 +163,16 @@ export async function findNearestEligibleDrivers(
 
   const driverIds = onlineLocs.map((loc) => String(loc.driver_id));
 
+  // Booking window for conflict detection.
+  // slot_start = pickup - 45 min (Reserved Mode begins).
+  // slot_end   = pickup + 3h (matches production slotEnd in checkDriverEligibility).
   const scheduledMs = scheduledPickupAt.getTime();
   const windowStart = new Date(scheduledMs - 45 * 60 * 1000).toISOString();
-  const windowEnd = new Date(scheduledMs + 3 * 60 * 60 * 1000).toISOString();
+  const windowEnd   = new Date(scheduledMs + 3 * 60 * 60 * 1000).toISOString();
 
-  const [driversResult, slotsResult, queueResult] = await Promise.all([
+  // Steps 2-4: bulk load drivers, conflict slots, and existing offers in parallel.
+  // 3 queries regardless of how many drivers exist.
+  const [driversResult, slotsResult, offersResult] = await Promise.all([
     supabase
       .from("drivers")
       .select(
@@ -203,45 +190,58 @@ export async function findNearestEligibleDrivers(
 
     supabase
       .from("advance_booking_queue")
-      .select("driver_id, status")
+      .select("driver_id")
       .eq("advance_booking_id", advanceBookingId)
       .in("driver_id", driverIds),
   ]);
 
-  if (driversResult.error || slotsResult.error || queueResult.error) {
+  // Fail-closed: if any bulk query errors, return empty rather than using
+  // partial results which could incorrectly accept or reject drivers.
+  if (driversResult.error || slotsResult.error || offersResult.error) {
     return [];
   }
 
+  // Index by driver_id for O(1) in-memory lookup
   const driverById = new Map(
     (driversResult.data ?? []).map((d) => [String(d.id), d])
   );
   const conflictedIds = new Set(
     (slotsResult.data ?? []).map((s) => String(s.driver_id))
   );
+  const offeredIds = new Set(
+    (offersResult.data ?? []).map((o) => String(o.driver_id))
+  );
 
-  const blockedQueueDriverIds = new Set<string>();
-  for (const row of queueResult.data ?? []) {
-    if (!queueStatusAllowsReuse(row.status)) {
-      blockedQueueDriverIds.add(String(row.driver_id));
-    }
-  }
-
+  // Step 5: filter in memory using the same rules as checkDriverEligibility.
+  // Require both live location status and drivers.driver_status to be online.
   const candidates: Array<{ driverId: string; distanceKm: number }> = [];
 
   for (const loc of onlineLocs) {
     const driverId = String(loc.driver_id);
 
+    // Reservation conflict
     if (conflictedIds.has(driverId)) continue;
-    if (blockedQueueDriverIds.has(driverId)) continue;
 
+    // Already received an offer for this booking
+    if (offeredIds.has(driverId)) continue;
+
+    // Driver record checks
     const driver = driverById.get(driverId);
     if (!driver) continue;
+
+    // Require the driver account itself to be online.
+    // This prevents stale location rows marked online from keeping
+    // offline drivers eligible for Advance Booking offers.
     if (!isOnlineStatus(driver.driver_status)) continue;
+
+    // Wallet lock
     if (driver.wallet_locked) continue;
 
-    const walletBalance = Number(driver.wallet_balance ?? 0);
+    // Wallet balance threshold.
+    // Number.isFinite() guards against NaN: NaN < x returns false, so malformed
+    // values would bypass the check without the explicit isFinite guard.
+    const walletBalance     = Number(driver.wallet_balance ?? 0);
     const minWalletRequired = Number(driver.min_wallet_required ?? 0);
-
     if (
       !Number.isFinite(walletBalance) ||
       !Number.isFinite(minWalletRequired) ||
@@ -253,14 +253,10 @@ export async function findNearestEligibleDrivers(
     const driverLat = Number(loc.lat);
     const driverLng = Number(loc.lng);
 
+    // Reuse existing pickupDistanceKm() -- no Haversine duplication
     candidates.push({
       driverId,
-      distanceKm: pickupDistanceKm(
-        driverLat,
-        driverLng,
-        pickupLat,
-        pickupLng
-      ),
+      distanceKm: pickupDistanceKm(driverLat, driverLng, pickupLat, pickupLng),
     });
   }
 

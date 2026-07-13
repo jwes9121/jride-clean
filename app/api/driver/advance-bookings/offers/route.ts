@@ -4,11 +4,128 @@ import {
   resolveAuthenticatedDriver,
   noStoreHeaders,
 } from "@/lib/advance-booking/driverAuth";
+import { offerAdvanceBooking } from "@/lib/advance-booking/offer";
+import type { VehicleType } from "@/lib/advance-booking/types";
 
 function secondsRemaining(expiresAt: string | null): number {
   if (!expiresAt) return 0;
   const diff = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
   return diff > 0 ? diff : 0;
+}
+
+
+async function releaseAndReofferExpiredClaim(
+  driverId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = supabaseAdmin();
+  const nowIso = new Date().toISOString();
+
+  const { data: expiredRows, error: expiredError } = await supabase
+    .from("advance_booking_queue")
+    .select("id")
+    .eq("driver_id", driverId)
+    .eq("status", "tentative_committed")
+    .lte("fare_preparation_expires_at", nowIso)
+    .order("fare_preparation_expires_at", { ascending: true })
+    .limit(1);
+
+  if (expiredError) {
+    return { ok: false, error: expiredError.message };
+  }
+
+  const expiredQueueId = String((expiredRows?.[0] as any)?.id || "");
+  if (!expiredQueueId) {
+    return { ok: true };
+  }
+
+  const { data: releaseData, error: releaseError } = await supabase.rpc(
+    "release_expired_advance_booking_claim",
+    {
+      p_queue_entry_id: expiredQueueId,
+      p_driver_id: driverId,
+    }
+  );
+
+  if (releaseError) {
+    return { ok: false, error: releaseError.message };
+  }
+
+  const releaseResult = releaseData as
+    | {
+        ok?: boolean;
+        released?: boolean;
+        advanceBookingId?: string;
+        expiredDriverId?: string;
+        error?: string;
+        message?: string;
+      }
+    | null;
+
+  if (!releaseResult?.ok) {
+    return {
+      ok: false,
+      error:
+        releaseResult?.message ||
+        releaseResult?.error ||
+        "Expired claim could not be released.",
+    };
+  }
+
+  if (!releaseResult.released || !releaseResult.advanceBookingId) {
+    return { ok: true };
+  }
+
+  const { data: booking, error: bookingError } = await supabase
+    .from("advance_bookings")
+    .select(
+      "id, pickup_lat, pickup_lng, vehicle_type, scheduled_pickup_at, status"
+    )
+    .eq("id", releaseResult.advanceBookingId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (bookingError) {
+    return { ok: false, error: bookingError.message };
+  }
+
+  const bookingRow = booking as any;
+  if (!bookingRow) {
+    return { ok: true };
+  }
+
+  const pickupLat = Number(bookingRow.pickup_lat);
+  const pickupLng = Number(bookingRow.pickup_lng);
+  const scheduledPickupAt = new Date(bookingRow.scheduled_pickup_at);
+  const vehicleType = String(bookingRow.vehicle_type || "") as VehicleType;
+
+  if (
+    !Number.isFinite(pickupLat) ||
+    !Number.isFinite(pickupLng) ||
+    Number.isNaN(scheduledPickupAt.getTime()) ||
+    !["tricycle", "motorcycle"].includes(vehicleType)
+  ) {
+    return {
+      ok: false,
+      error: "Expired booking has invalid reoffer data.",
+    };
+  }
+
+  const reoffer = await offerAdvanceBooking({
+    advanceBookingId: String(bookingRow.id),
+    pickupLat,
+    pickupLng,
+    vehicleType,
+    scheduledPickupAt,
+    excludedDriverIds: [
+      String(releaseResult.expiredDriverId || driverId),
+    ],
+  });
+
+  if (!reoffer.ok) {
+    return { ok: false, error: reoffer.error };
+  }
+
+  return { ok: true };
 }
 
 export async function GET(req: NextRequest) {
@@ -18,6 +135,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { ok: false, error: auth.error, message: auth.message },
       { status: auth.status, headers: noStoreHeaders() }
+    );
+  }
+
+  const expiryResult = await releaseAndReofferExpiredClaim(auth.driverId);
+
+  if (!expiryResult.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "EXPIRED_CLAIM_PROCESSING_FAILED",
+        message: expiryResult.error,
+      },
+      { status: 500, headers: noStoreHeaders() }
     );
   }
 

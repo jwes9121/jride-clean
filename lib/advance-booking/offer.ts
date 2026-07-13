@@ -13,6 +13,7 @@ export type OfferAdvanceBookingInput = {
   pickupLng: number;
   vehicleType: VehicleType;
   scheduledPickupAt: Date;
+  excludedDriverIds?: string[];
 };
 
 export type OfferAdvanceBookingResult =
@@ -37,7 +38,8 @@ export async function offerAdvanceBooking(
     input.vehicleType,
     input.scheduledPickupAt,
     input.advanceBookingId,
-    MAX_SIMULTANEOUS_OFFERS
+    MAX_SIMULTANEOUS_OFFERS,
+    input.excludedDriverIds ?? []
   );
 
   if (drivers.length === 0) {
