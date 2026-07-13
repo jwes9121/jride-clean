@@ -22,12 +22,15 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = supabaseAdmin();
+  const nowIso = new Date().toISOString();
 
   const { data: queueRows, error: queueError } = await supabase
     .from("advance_booking_queue")
     .select("id, advance_booking_id, offer_sent_at, offer_expires_at")
     .eq("driver_id", auth.driverId)
     .eq("status", "offered")
+    .lte("offer_sent_at", nowIso)
+    .gt("offer_expires_at", nowIso)
     .order("offer_sent_at", { ascending: true });
 
   if (queueError) {
@@ -60,7 +63,9 @@ export async function GET(req: NextRequest) {
       distance_km,
       vehicle_type
     `)
-    .in("id", bookingIds);
+    .in("id", bookingIds)
+    .eq("status", "open")
+    .gt("scheduled_pickup_at", nowIso);
 
   if (bookingError) {
     return NextResponse.json(
