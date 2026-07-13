@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { findNearestEligibleDrivers } from "./eligibility";
-import { OFFER_STAGGER_SECONDS, MAX_SIMULTANEOUS_OFFERS } from "./constants";
+import {
+  OFFER_STAGGER_SECONDS,
+  MAX_SIMULTANEOUS_OFFERS,
+  OFFER_TIMEOUT_SECONDS,
+} from "./constants";
 import type { VehicleType } from "./types";
 
 export type OfferAdvanceBookingInput = {
@@ -55,7 +59,7 @@ export async function offerAdvanceBooking(
       now + index * OFFER_STAGGER_SECONDS * 1000
     ).toISOString(),
     offer_expires_at: new Date(
-      now + index * OFFER_STAGGER_SECONDS * 1000 + 5 * 60 * 1000
+      now + index * OFFER_STAGGER_SECONDS * 1000 + OFFER_TIMEOUT_SECONDS * 1000
     ).toISOString(),
     commitment_confirmed: false,
   }));

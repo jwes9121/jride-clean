@@ -62,6 +62,10 @@ export async function checkDriverEligibility(
     return { eligible: false, reason: "Driver record not found." };
   }
 
+  if (!isOnlineStatus(driver.driver_status)) {
+    return { eligible: false, reason: "Driver account is not online." };
+  }
+
   if (driver.wallet_locked) {
     return { eligible: false, reason: "Driver wallet is locked." };
   }
@@ -206,8 +210,7 @@ export async function findNearestEligibleDrivers(
   );
 
   // Step 5: filter in memory using the same rules as checkDriverEligibility.
-  // Note: driver_status is NOT evaluated here because production checkDriverEligibility
-  // fetches the field but does not evaluate it. Authoritative online check is loc.status.
+  // Require both live location status and drivers.driver_status to be online.
   const candidates: Array<{ driverId: string; distanceKm: number }> = [];
 
   for (const loc of onlineLocs) {
@@ -222,6 +225,11 @@ export async function findNearestEligibleDrivers(
     // Driver record checks
     const driver = driverById.get(driverId);
     if (!driver) continue;
+
+    // Require the driver account itself to be online.
+    // This prevents stale location rows marked online from keeping
+    // offline drivers eligible for Advance Booking offers.
+    if (!isOnlineStatus(driver.driver_status)) continue;
 
     // Wallet lock
     if (driver.wallet_locked) continue;
