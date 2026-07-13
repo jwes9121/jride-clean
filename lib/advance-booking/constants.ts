@@ -30,7 +30,7 @@ export const LOCK_HOURS_BEFORE_PICKUP = 2;
 // ------------------------------------------------------------
 
 // Seconds a driver has to TAKE or PASS after receiving an offer
-export const OFFER_TIMEOUT_SECONDS = 300; // 5 minutes
+export const OFFER_TIMEOUT_SECONDS = 600; // 10 minutes
 
 // Seconds between staggered offers to multiple drivers
 // Driver A -> +30s Driver B -> +60s Driver C
@@ -40,7 +40,7 @@ export const OFFER_STAGGER_SECONDS = 30;
 export const MAX_SIMULTANEOUS_OFFERS = 3;
 
 // Seconds passenger has to Accept or Decline after driver taps TAKE
-export const PASSENGER_RESPONSE_TIMEOUT_SECONDS = 300; // 5 minutes
+export const PASSENGER_RESPONSE_TIMEOUT_SECONDS = 1800; // 30 minutes
 
 // ------------------------------------------------------------
 // Pickup Fee
@@ -133,3 +133,7 @@ export const ESCALATION = {
   // Inform passenger honestly that we are still searching
   informPassengerMinutes: 60,      // 60 minutes before pickup
 } as const;
+
+export const FARE_PREPARATION_TIMEOUT_SECONDS = 600;
+
+export const PASSENGER_RESPONSE_MIN_LEAD_SECONDS = 3600;
