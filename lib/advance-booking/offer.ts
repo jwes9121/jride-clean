@@ -51,22 +51,25 @@ export async function offerAdvanceBooking(
   const now = Date.now();
 
   const rows = drivers.map((driver, index) => ({
-    advance_booking_id: input.advanceBookingId,
-    driver_id: driver.driverId,
-    status: "offered",
-    stagger_position: index + 1,
-    offer_sent_at: new Date(
+    driverId: driver.driverId,
+    staggerPosition: index + 1,
+    offerSentAt: new Date(
       now + index * OFFER_STAGGER_SECONDS * 1000
     ).toISOString(),
-    offer_expires_at: new Date(
-      now + index * OFFER_STAGGER_SECONDS * 1000 + OFFER_TIMEOUT_SECONDS * 1000
+    offerExpiresAt: new Date(
+      now +
+        index * OFFER_STAGGER_SECONDS * 1000 +
+        OFFER_TIMEOUT_SECONDS * 1000
     ).toISOString(),
-    commitment_confirmed: false,
   }));
 
-  const { error } = await supabase
-    .from("advance_booking_queue")
-    .insert(rows);
+  const { data, error } = await supabase.rpc(
+    "upsert_advance_booking_offers",
+    {
+      p_advance_booking_id: input.advanceBookingId,
+      p_offer_rows: rows,
+    }
+  );
 
   if (error) {
     return {
@@ -75,9 +78,31 @@ export async function offerAdvanceBooking(
     };
   }
 
+  const result = data as
+    | {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        offersCreated?: number;
+        driverIds?: string[];
+      }
+    | null;
+
+  if (!result?.ok) {
+    return {
+      ok: false,
+      error:
+        result?.message ||
+        result?.error ||
+        "Advance booking offers could not be created.",
+    };
+  }
+
   return {
     ok: true,
-    offersCreated: rows.length,
-    driverIds: drivers.map((d) => d.driverId),
+    offersCreated: Number(result.offersCreated ?? 0),
+    driverIds: Array.isArray(result.driverIds)
+      ? result.driverIds.map(String)
+      : [],
   };
 }
