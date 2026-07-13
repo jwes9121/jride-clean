@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       booking_mode,
       fare_bracket,
       distance_km,
-      vehicle_type,
+      vehicle_type
     `)
     .in("id", bookingIds);
 
