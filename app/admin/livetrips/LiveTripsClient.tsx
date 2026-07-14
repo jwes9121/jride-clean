@@ -506,6 +506,32 @@ function buildTimerRows(ticket: TicketInspectorResponse) {
 }
 
 
+function resolveDriverNameById(drivers: DriverRow[], driverId?: any) {
+  const id = String(driverId || "").trim();
+  if (!id) return "--";
+  const row = drivers.find((driver) => String(driver.driver_id || "") === id);
+  return row?.name ? String(row.name) : id;
+}
+
+function firstAssignedDriverId(ticket?: TicketInspectorResponse | null) {
+  const rows = Array.isArray(ticket?.raw?.dispatch_actions) ? ticket?.raw?.dispatch_actions : [];
+  const firstAssigned = rows.find((row: any) =>
+    String(row?.action_type || "") === "status_change" &&
+    String(row?.meta?.to || "") === "assigned" &&
+    String(row?.driver_id || "").trim()
+  );
+  return firstAssigned?.driver_id || null;
+}
+
+function cancellationActorLabel(ticket?: TicketInspectorResponse | null) {
+  const timeline = Array.isArray(ticket?.timeline) ? ticket?.timeline : [];
+  const cancelledRows = timeline.filter((row) => String(row?.to_status || "") === "cancelled");
+  const row = cancelledRows.length ? cancelledRows[cancelledRows.length - 1] : null;
+  const actor = String(row?.actor || "").trim();
+  if (actor && actor.toLowerCase() !== "system") return actor;
+  return "Unknown - no actor audit record";
+}
+
 function buildIncidentReport(ticket?: TicketInspectorResponse | null) {
   if (!ticket?.booking) return "No ticket loaded.";
 
@@ -2095,6 +2121,69 @@ export default function LiveTripsClient() {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No ticket loaded.</div>
               ) : ticketInspectorTab === "overview" ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {(() => {
+                    const booking = ticketInspector.booking || {};
+                    const firstDriverId = firstAssignedDriverId(ticketInspector);
+                    const lastExpiredDriverId = booking.last_expired_driver_id;
+                    const firstDriverName = resolveDriverNameById(drivers, firstDriverId);
+                    const lastExpiredDriverName = resolveDriverNameById(drivers, lastExpiredDriverId);
+                    const snapshot = booking.takeout_pricing_snapshot || {};
+                    const deliveryFee = booking.takeout_delivery_fee ?? snapshot.takeout_delivery_fee;
+                    const totalPayable = booking.takeout_total_payable ?? snapshot.takeout_total_payable;
+                    const cancelReason = booking.cancel_reason || booking.vendor_cancel_reason;
+                    const changedDriver =
+                      String(firstDriverId || "").trim() &&
+                      String(lastExpiredDriverId || "").trim() &&
+                      String(firstDriverId) !== String(lastExpiredDriverId);
+
+                    return (
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 md:col-span-2">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">Incident Summary</div>
+                            <div className="mt-1 text-xl font-bold text-slate-900">{labelOrDash(booking.status)}</div>
+                          </div>
+                          <span className={["inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold", statusPillClass(normStatus(booking.status))].join(" ")}>
+                            {labelOrDash(booking.status)}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">What happened</div>
+                            <div className="mt-2 space-y-2 text-sm text-slate-700">
+                              <div>1. Booking was created at <span className="font-semibold">{formatPHDateTime(booking.created_at)}</span>.</div>
+                              <div>2. First recorded assignment: <span className="font-semibold">{firstDriverName}</span>.</div>
+                              {changedDriver ? (
+                                <div>3. A later assignment involved <span className="font-semibold">{lastExpiredDriverName}</span>. The exact reassignment event was not recorded.</div>
+                              ) : lastExpiredDriverId ? (
+                                <div>3. Latest expired assignment: <span className="font-semibold">{lastExpiredDriverName}</span>.</div>
+                              ) : null}
+                              {deliveryFee != null ? (
+                                <div>4. Delivery fee proposed: <span className="font-semibold">{formatMoney(deliveryFee)}</span>{totalPayable != null ? <>; total payable <span className="font-semibold">{formatMoney(totalPayable)}</span></> : null}.</div>
+                              ) : null}
+                              {normStatus(booking.status) === "cancelled" ? (
+                                <div>5. Booking was cancelled{cancelReason ? <> with the recorded reason: <span className="font-semibold">{String(cancelReason)}</span></> : "."}</div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Key facts</div>
+                            <div className="mt-2 space-y-1.5 text-sm">
+                              <div><span className="text-slate-500">Final result:</span> <span className="font-semibold">{labelOrDash(booking.status)}</span></div>
+                              <div><span className="text-slate-500">Recorded reason:</span> <span className="font-semibold">{labelOrDash(cancelReason)}</span></div>
+                              <div><span className="text-slate-500">First assigned driver:</span> <span className="font-semibold">{firstDriverName}</span></div>
+                              <div><span className="text-slate-500">Last expired driver:</span> <span className="font-semibold">{lastExpiredDriverName}</span></div>
+                              <div><span className="text-slate-500">Delivery fee:</span> <span className="font-semibold">{formatMoney(deliveryFee)}</span></div>
+                              <div><span className="text-slate-500">Cancellation actor:</span> <span className="font-semibold">{cancellationActorLabel(ticketInspector)}</span></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                     <div className="mb-2 font-semibold">Booking</div>
                     <div className="space-y-1 text-sm">
