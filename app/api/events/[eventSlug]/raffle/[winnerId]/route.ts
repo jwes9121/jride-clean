@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff } from "@/lib/auth/requireStaff";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,6 +25,23 @@ export async function POST(
   }
 ) {
   try {
+    const authorization = await requireStaff(["admin", "dispatcher"]);
+
+    if (!authorization.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: authorization.error,
+        },
+        {
+          status: authorization.status,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
     const body = await req.json();
     type RaffleAction = keyof typeof STATUS_MAP;
 
