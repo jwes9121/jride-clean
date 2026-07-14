@@ -2138,48 +2138,110 @@ export default function LiveTripsClient() {
 
                     return (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 md:col-span-2">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">Incident Summary</div>
-                            <div className="mt-1 text-xl font-bold text-slate-900">{labelOrDash(booking.status)}</div>
-                          </div>
-                          <span className={["inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold", statusPillClass(normStatus(booking.status))].join(" ")}>
-                            {labelOrDash(booking.status)}
-                          </span>
-                        </div>
+                        {(() => {
+                          const status = normStatus(booking.status);
+                          const cancellationActor = cancellationActorLabel(ticketInspector);
+                          const cancellationActorKnown = cancellationActor !== "Unknown - no actor audit record";
+                          const resultTitle = status === "cancelled" ? "Cancelled" : status === "completed" ? "Completed" : labelOrDash(booking.status);
+                          const resultDetail = status === "cancelled"
+                            ? "The booking did not proceed to completion."
+                            : status === "completed"
+                            ? "The booking reached completion."
+                            : "This is the booking's current confirmed status.";
+                          const recommendedAction = status === "cancelled" && !cancellationActorKnown
+                            ? "Review cancellation audit coverage. A cancellation reason is recorded, but no actor audit identifies who cancelled the booking."
+                            : status === "completed" && normStatus(booking.wallet_settlement_status) !== "settled"
+                            ? "Investigate wallet settlement because the booking is completed but the wallet is not marked settled."
+                            : status === "completed"
+                            ? "No immediate incident action is indicated by the confirmed booking and wallet fields."
+                            : "Continue monitoring the booking using the confirmed timeline and timer evidence below.";
 
-                        <div className="mt-4 grid gap-3 md:grid-cols-2">
-                          <div className="rounded-xl border border-white/80 bg-white/80 p-3">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">What happened</div>
-                            <div className="mt-2 space-y-2 text-sm text-slate-700">
-                              <div>1. Booking was created at <span className="font-semibold">{formatPHDateTime(booking.created_at)}</span>.</div>
-                              <div>2. First recorded assignment: <span className="font-semibold">{firstDriverName}</span>.</div>
-                              {changedDriver ? (
-                                <div>3. A later assignment involved <span className="font-semibold">{lastExpiredDriverName}</span>. The exact reassignment event was not recorded.</div>
-                              ) : lastExpiredDriverId ? (
-                                <div>3. Latest expired assignment: <span className="font-semibold">{lastExpiredDriverName}</span>.</div>
-                              ) : null}
-                              {deliveryFee != null ? (
-                                <div>4. Delivery fee proposed: <span className="font-semibold">{formatMoney(deliveryFee)}</span>{totalPayable != null ? <>; total payable <span className="font-semibold">{formatMoney(totalPayable)}</span></> : null}.</div>
-                              ) : null}
-                              {normStatus(booking.status) === "cancelled" ? (
-                                <div>5. Booking was cancelled{cancelReason ? <> with the recorded reason: <span className="font-semibold">{String(cancelReason)}</span></> : "."}</div>
-                              ) : null}
-                            </div>
-                          </div>
+                          return (
+                            <>
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">Incident Summary</div>
+                                  <div className="mt-1 text-2xl font-bold text-slate-900">{resultTitle}</div>
+                                  <div className="mt-1 text-sm text-slate-600">{resultDetail}</div>
+                                </div>
+                                <span className={["inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold", statusPillClass(status)].join(" ")}>
+                                  {resultTitle}
+                                </span>
+                              </div>
 
-                          <div className="rounded-xl border border-white/80 bg-white/80 p-3">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Key facts</div>
-                            <div className="mt-2 space-y-1.5 text-sm">
-                              <div><span className="text-slate-500">Final result:</span> <span className="font-semibold">{labelOrDash(booking.status)}</span></div>
-                              <div><span className="text-slate-500">Recorded reason:</span> <span className="font-semibold">{labelOrDash(cancelReason)}</span></div>
-                              <div><span className="text-slate-500">First assigned driver:</span> <span className="font-semibold">{firstDriverName}</span></div>
-                              <div><span className="text-slate-500">Last expired driver:</span> <span className="font-semibold">{lastExpiredDriverName}</span></div>
-                              <div><span className="text-slate-500">Delivery fee:</span> <span className="font-semibold">{formatMoney(deliveryFee)}</span></div>
-                              <div><span className="text-slate-500">Cancellation actor:</span> <span className="font-semibold">{cancellationActorLabel(ticketInspector)}</span></div>
-                            </div>
-                          </div>
-                        </div>
+                              <div className="mt-4 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+                                <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">What happened</div>
+                                  <div className="mt-3 space-y-0 text-sm text-slate-700">
+                                    <div className="flex gap-3">
+                                      <div className="flex flex-col items-center">
+                                        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">1</span>
+                                        <span className="h-6 w-px bg-slate-200" />
+                                      </div>
+                                      <div className="pb-3"><div className="font-semibold text-slate-900">Booking created</div><div className="text-xs text-slate-500">{formatPHDateTime(booking.created_at)}</div></div>
+                                    </div>
+                                    <div className="flex gap-3">
+                                      <div className="flex flex-col items-center">
+                                        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-xs font-bold text-blue-700">2</span>
+                                        <span className="h-6 w-px bg-slate-200" />
+                                      </div>
+                                      <div className="pb-3"><div className="font-semibold text-slate-900">First recorded driver assignment</div><div className="text-xs text-slate-500">{firstDriverName}</div></div>
+                                    </div>
+                                    {lastExpiredDriverId ? (
+                                      <div className="flex gap-3">
+                                        <div className="flex flex-col items-center">
+                                          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-xs font-bold text-amber-700">3</span>
+                                          <span className="h-6 w-px bg-slate-200" />
+                                        </div>
+                                        <div className="pb-3">
+                                          <div className="font-semibold text-slate-900">Driver assignment expired</div>
+                                          <div className="text-xs text-slate-500">The last driver whose assignment expired was {lastExpiredDriverName}.</div>
+                                          {changedDriver ? <div className="mt-1 text-xs font-medium text-amber-700">The exact reassignment event was not recorded.</div> : null}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {deliveryFee != null ? (
+                                      <div className="flex gap-3">
+                                        <div className="flex flex-col items-center">
+                                          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-sky-200 bg-sky-50 text-xs font-bold text-sky-700">4</span>
+                                          <span className="h-6 w-px bg-slate-200" />
+                                        </div>
+                                        <div className="pb-3"><div className="font-semibold text-slate-900">Delivery fee proposed</div><div className="text-xs text-slate-500">{formatMoney(deliveryFee)}{totalPayable != null ? " delivery fee; " + formatMoney(totalPayable) + " total payable" : ""}</div></div>
+                                      </div>
+                                    ) : null}
+                                    {status === "cancelled" ? (
+                                      <div className="flex gap-3">
+                                        <div className="flex flex-col items-center">
+                                          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-xs font-bold text-rose-700">X</span>
+                                        </div>
+                                        <div><div className="font-semibold text-slate-900">Booking cancelled</div><div className="text-xs text-slate-500">{cancelReason ? "Recorded reason: " + String(cancelReason) : "No cancellation reason was returned."}</div></div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                  <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Confirmed facts</div>
+                                    <div className="mt-2 space-y-2 text-sm">
+                                      <div className="flex items-start gap-2"><span className="mt-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">CONFIRMED</span><div><span className="text-slate-500">Final result:</span> <span className="font-semibold">{resultTitle}</span></div></div>
+                                      {cancelReason ? <div className="flex items-start gap-2"><span className="mt-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">CONFIRMED</span><div><span className="text-slate-500">Recorded reason:</span> <span className="font-semibold">{String(cancelReason)}</span></div></div> : null}
+                                      {firstDriverId ? <div className="flex items-start gap-2"><span className="mt-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">CONFIRMED</span><div><span className="text-slate-500">First assigned driver:</span> <span className="font-semibold">{firstDriverName}</span></div></div> : null}
+                                      {lastExpiredDriverId ? <div className="flex items-start gap-2"><span className="mt-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">CONFIRMED</span><div><span className="text-slate-500">Last expired driver:</span> <span className="font-semibold">{lastExpiredDriverName}</span></div></div> : null}
+                                      {deliveryFee != null ? <div className="flex items-start gap-2"><span className="mt-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">CONFIRMED</span><div><span className="text-slate-500">Delivery fee:</span> <span className="font-semibold">{formatMoney(deliveryFee)}</span></div></div> : null}
+                                      {status === "cancelled" ? <div className="flex items-start gap-2"><span className={["mt-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold", cancellationActorKnown ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"].join(" ")}>{cancellationActorKnown ? "CONFIRMED" : "UNKNOWN"}</span><div><span className="text-slate-500">Cancellation actor:</span> <span className="font-semibold">{cancellationActor}</span></div></div> : null}
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3">
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Recommended next action</div>
+                                    <div className="mt-1 text-sm text-amber-950">{recommendedAction}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
@@ -2250,8 +2312,8 @@ export default function LiveTripsClient() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <div>
-                        <div className="font-semibold text-slate-900">Journey Analysis</div>
-                        <div className="text-xs text-slate-500">Elapsed time between lifecycle milestones from confirmed timeline rows.</div>
+                        <div className="font-semibold text-slate-900">What Happened</div>
+                        <div className="text-xs text-slate-500">Plain chronological explanation generated from confirmed timeline records.</div>
                       </div>
                     </div>
                     <div className="space-y-2">
