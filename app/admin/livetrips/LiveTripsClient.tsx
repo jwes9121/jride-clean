@@ -2070,7 +2070,15 @@ export default function LiveTripsClient() {
                     className={pillClass(ticketInspectorTab === tab)}
                     onClick={() => setTicketInspectorTab(tab)}
                   >
-                    {tab === "raw" ? "Raw State" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {
+                      ({
+                        overview: "Summary",
+                        journey: "What Happened",
+                        timeline: "Timeline",
+                        diagnostics: "Warnings",
+                        raw: "Technical",
+                      } as Record<TicketInspectorTab, string>)[tab]
+                    }
                     {tab === "timeline" ? <span className="text-xs opacity-80">{ticketInspector?.timeline?.length ?? 0}</span> : null}
                     {tab === "diagnostics" ? <span className="text-xs opacity-80">{ticketInspector?.diagnostics?.length ?? 0}</span> : null}
                   </button>
