@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerAttendee } from "@/lib/events/registration";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff } from "@/lib/auth/requireStaff";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,6 +29,29 @@ export async function POST(
   { params }: { params: { eventSlug: string } }
 ) {
   try {
+    const authorization = await requireStaff(["admin", "dispatcher"]);
+
+    if (!authorization.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: authorization.error,
+            message:
+              authorization.error === "NOT_SIGNED_IN"
+                ? "Staff sign-in is required."
+                : "You are not allowed to use Help Desk registration.",
+          },
+        },
+        {
+          status: authorization.status,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const eventSlug = String(params?.eventSlug || "").trim();
 
