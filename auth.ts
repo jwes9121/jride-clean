@@ -9,7 +9,7 @@ function parseEmailList(s?: string | null) {
     .filter(Boolean);
 }
 
-function roleFromEmail(email?: string | null): "admin" | "dispatcher" {
+function roleFromEmail(email?: string | null): "admin" | "dispatcher" | "user" {
   const e = String(email || "").toLowerCase().trim();
 
   const admins = parseEmailList(process.env.JRIDE_ADMIN_EMAILS || process.env.ADMIN_EMAILS);
@@ -19,8 +19,8 @@ function roleFromEmail(email?: string | null): "admin" | "dispatcher" {
   if (e && dispatchers.includes(e)) return "dispatcher";
   if (e && admins.includes(e)) return "admin";
 
-  // Default: admin (fail-open to prevent accidental lockout)
-  return "admin";
+  // Fail closed: a Google account is staff only when explicitly approved.
+  return "user";
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -91,7 +91,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
         async session({ session, token }) {
-      const role = (token as any)?.role || "admin";
+      const role = (token as any)?.role || "user";
       (session as any).user = (session as any).user || {};
       (session as any).user.role = role;
       (session as any).user.id = String(token?.sub || "");

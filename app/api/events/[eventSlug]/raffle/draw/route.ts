@@ -1,5 +1,6 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff } from "@/lib/auth/requireStaff";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,6 +31,23 @@ export async function POST(
   { params }: { params: { eventSlug: string } }
 ) {
   try {
+    const authorization = await requireStaff(["admin"]);
+
+    if (!authorization.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: authorization.error,
+        },
+        {
+          status: authorization.status,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
     let body: Record<string, unknown> = {};
 
     try {
