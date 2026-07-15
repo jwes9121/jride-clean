@@ -124,6 +124,11 @@ export async function GET(req: NextRequest) {
         "estimated_fare_max",
         "estimated_pickup_fee",
         "estimated_total",
+        "proposed_ride_fare",
+        "proposed_platform_fee",
+        "pickup_fee",
+        "total_fare",
+        "departure_option_used",
       ].join(", ")
     )
     .eq("passenger_id", auth.passengerId)
@@ -214,6 +219,11 @@ export async function GET(req: NextRequest) {
         estimatedFareMax: bookingRow.estimated_fare_max,
         estimatedPickupFee: bookingRow.estimated_pickup_fee,
         estimatedTotal: bookingRow.estimated_total,
+        proposedRideFare: bookingRow.proposed_ride_fare,
+        proposedPlatformFee: bookingRow.proposed_platform_fee,
+        pickupFee: bookingRow.pickup_fee,
+        totalFare: bookingRow.total_fare,
+        departureOptionUsed: bookingRow.departure_option_used,
         queue,
       },
     },
