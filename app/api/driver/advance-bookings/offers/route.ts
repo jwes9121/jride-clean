@@ -202,10 +202,15 @@ export async function GET(req: NextRequest) {
           "distance_km",
           "vehicle_type",
           "status",
+          "proposed_ride_fare",
+          "proposed_platform_fee",
+          "pickup_fee",
+          "total_fare",
+          "passenger_response_expires_at",
         ].join(", ")
       )
       .eq("id", activeQueue.advance_booking_id)
-      .eq("status", "open")
+      .in("status", ["open", "fare_proposed"])
       .gt("scheduled_pickup_at", nowIso)
       .maybeSingle();
 
@@ -257,6 +262,18 @@ export async function GET(req: NextRequest) {
         vehicleType: activeBookingRow.vehicle_type,
         booking_status: activeBookingRow.status,
         bookingStatus: activeBookingRow.status,
+        proposed_ride_fare: activeBookingRow.proposed_ride_fare,
+        proposedRideFare: activeBookingRow.proposed_ride_fare,
+        proposed_platform_fee: activeBookingRow.proposed_platform_fee,
+        proposedPlatformFee: activeBookingRow.proposed_platform_fee,
+        pickup_fee: activeBookingRow.pickup_fee,
+        pickupFee: activeBookingRow.pickup_fee,
+        total_fare: activeBookingRow.total_fare,
+        totalFare: activeBookingRow.total_fare,
+        passenger_response_expires_at:
+          activeBookingRow.passenger_response_expires_at,
+        passengerResponseExpiresAt:
+          activeBookingRow.passenger_response_expires_at,
 
         fare_preparation_expires_at:
           activeQueue.fare_preparation_expires_at,
