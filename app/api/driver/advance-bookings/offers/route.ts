@@ -78,7 +78,7 @@ async function releaseAndReofferExpiredClaim(
   const { data: booking, error: bookingError } = await supabase
     .from("advance_bookings")
     .select(
-      "id, pickup_lat, pickup_lng, vehicle_type, scheduled_pickup_at, status"
+      "id, pickup_lat, pickup_lng, pickup_town, vehicle_type, scheduled_pickup_at, status"
     )
     .eq("id", releaseResult.advanceBookingId)
     .eq("status", "open")
@@ -95,12 +95,14 @@ async function releaseAndReofferExpiredClaim(
 
   const pickupLat = Number(bookingRow.pickup_lat);
   const pickupLng = Number(bookingRow.pickup_lng);
+  const pickupTown = String(bookingRow.pickup_town || "").trim();
   const scheduledPickupAt = new Date(bookingRow.scheduled_pickup_at);
   const vehicleType = String(bookingRow.vehicle_type || "") as VehicleType;
 
   if (
     !Number.isFinite(pickupLat) ||
     !Number.isFinite(pickupLng) ||
+    !pickupTown ||
     Number.isNaN(scheduledPickupAt.getTime()) ||
     !["tricycle", "motorcycle"].includes(vehicleType)
   ) {
@@ -114,6 +116,7 @@ async function releaseAndReofferExpiredClaim(
     advanceBookingId: String(bookingRow.id),
     pickupLat,
     pickupLng,
+    pickupTown,
     vehicleType,
     scheduledPickupAt,
     excludedDriverIds: [

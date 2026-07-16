@@ -108,6 +108,7 @@ export interface PricingInput {
 
 export interface AdvanceBookingCreateInput {
   passengerId: string;           // passenger_profiles.user_id
+  town: string;                  // validated public.zones.zone_name
 
   pickupAddress: string;
   pickupLat: number;

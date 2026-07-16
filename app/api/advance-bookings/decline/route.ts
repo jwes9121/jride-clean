@@ -112,7 +112,9 @@ export async function POST(req: NextRequest) {
 
     const { data: bookingRow, error: bookingError } = await supabase
       .from("advance_bookings")
-      .select("id, pickup_lat, pickup_lng, vehicle_type, scheduled_pickup_at, status")
+      .select(
+        "id, pickup_lat, pickup_lng, pickup_town, vehicle_type, scheduled_pickup_at, status"
+      )
       .eq("id", advanceBookingId)
       .eq("status", "open")
       .single();
@@ -126,16 +128,30 @@ export async function POST(req: NextRequest) {
         ? [result.declinedDriverId]
         : [];
 
-      await offerAdvanceBooking({
-        advanceBookingId,
-        pickupLat:        Number((bookingRow as any).pickup_lat),
-        pickupLng:        Number((bookingRow as any).pickup_lng),
-        vehicleType:      String((bookingRow as any).vehicle_type) as VehicleType,
+      const pickupTown = String(
+        (bookingRow as any).pickup_town || ""
+      ).trim();
+
+      if (!pickupTown) {
+        console.error(
+          "[advance-booking:decline:re-offer]",
+          "Booking pickup_town is missing."
+        );
+      } else {
+        await offerAdvanceBooking({
+          advanceBookingId,
+          pickupLat: Number((bookingRow as any).pickup_lat),
+          pickupLng: Number((bookingRow as any).pickup_lng),
+          pickupTown,
+          vehicleType: String(
+            (bookingRow as any).vehicle_type
+          ) as VehicleType,
         scheduledPickupAt: new Date((bookingRow as any).scheduled_pickup_at),
-        excludedDriverIds,
-      }).catch((err) => {
-        console.error("[advance-booking:decline:re-offer]", err);
-      });
+          excludedDriverIds,
+        }).catch((err) => {
+          console.error("[advance-booking:decline:re-offer]", err);
+        });
+      }
     }
   }
 

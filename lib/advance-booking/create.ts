@@ -102,6 +102,7 @@ export async function createAdvanceBooking(
   input: AdvanceBookingCreateInput
 ): Promise<CreateAdvanceBookingResult> {
   const passengerId = String(input?.passengerId || "").trim();
+  const requestedTown = String(input?.town || "").trim();
   const pickupAddress = String(input?.pickupAddress || "").trim();
   const destinationAddress = String(input?.destinationAddress || "").trim();
   const notes =
@@ -129,6 +130,10 @@ export async function createAdvanceBooking(
       required.message || "Missing required fields.",
       400
     );
+  }
+
+  if (!requestedTown) {
+    return fail("MISSING_PARAMS", "Town is required.", 400);
   }
 
   const vehicle = validateVehicleType(vehicleType);
@@ -189,9 +194,30 @@ export async function createAdvanceBooking(
 
   const supabase = supabaseAdmin();
 
+  const { data: zoneRows, error: zoneError } = await supabase
+    .from("zones")
+    .select("zone_name")
+    .limit(100);
+
+  if (zoneError) {
+    return fail("DATABASE_ERROR", zoneError.message, 500);
+  }
+
+  const canonicalTown = (zoneRows ?? [])
+    .map((row) => String(row.zone_name || "").trim())
+    .find(
+      (zoneName) =>
+        zoneName.toLowerCase() === requestedTown.toLowerCase()
+    );
+
+  if (!canonicalTown) {
+    return fail("MISSING_PARAMS", "Selected town is not supported.", 400);
+  }
+
   const insertRow: Record<string, any> = {
     passenger_id: passengerId,
     passenger_verified_at: verified.verifiedAt,
+    pickup_town: canonicalTown,
 
     pickup_address: pickupAddress,
     pickup_lat: pickupLat,
@@ -322,6 +348,7 @@ export async function createAdvanceBooking(
     advanceBookingId: String(created.id),
     pickupLat,
     pickupLng,
+    pickupTown: canonicalTown,
     vehicleType,
     scheduledPickupAt,
   });

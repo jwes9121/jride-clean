@@ -138,6 +138,7 @@ export async function checkDriverEligibility(
 export async function findNearestEligibleDrivers(
   pickupLat: number,
   pickupLng: number,
+  pickupTown: string,
   vehicleType: VehicleType,
   scheduledPickupAt: Date,
   advanceBookingId: string,
@@ -146,11 +147,16 @@ export async function findNearestEligibleDrivers(
 ): Promise<Array<{ driverId: string; distanceKm: number }>> {
   const supabase = supabaseAdmin();
   const excludedIds = new Set(excludedDriverIds.map(String));
+  const normalizedPickupTown = String(pickupTown || "")
+    .trim()
+    .toLowerCase();
 
-  // Step 1: fetch online driver locations filtered by vehicle type (same query as before)
+  if (!normalizedPickupTown) return [];
+
+  // Step 1: fetch fresh driver locations filtered by vehicle type.
   const { data: locations, error } = await supabase
     .from("driver_locations_latest")
-    .select("driver_id, lat, lng, status, vehicle_type, updated_at")
+    .select("driver_id, lat, lng, status, town, vehicle_type, updated_at")
     .eq("vehicle_type", vehicleType)
     .gte("updated_at", locationFreshnessCutoffIso());
 
@@ -162,6 +168,12 @@ export async function findNearestEligibleDrivers(
     if (excludedIds.has(String(loc.driver_id))) return false;
     if (!isOnlineStatus(loc.status)) return false;
     if (!vehicleMatches(loc.vehicle_type, vehicleType)) return false;
+    if (
+      String(loc.town || "").trim().toLowerCase() !==
+      normalizedPickupTown
+    ) {
+      return false;
+    }
     const lat = Number(loc.lat);
     const lng = Number(loc.lng);
     return Number.isFinite(lat) && Number.isFinite(lng);

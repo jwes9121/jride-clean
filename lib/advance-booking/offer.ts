@@ -11,6 +11,7 @@ export type OfferAdvanceBookingInput = {
   advanceBookingId: string;
   pickupLat: number;
   pickupLng: number;
+  pickupTown: string;
   vehicleType: VehicleType;
   scheduledPickupAt: Date;
   excludedDriverIds?: string[];
@@ -35,6 +36,7 @@ export async function offerAdvanceBooking(
   const drivers = await findNearestEligibleDrivers(
     input.pickupLat,
     input.pickupLng,
+    input.pickupTown,
     input.vehicleType,
     input.scheduledPickupAt,
     input.advanceBookingId,
