@@ -3,6 +3,12 @@ import { MAX_SIMULTANEOUS_OFFERS } from "./constants";
 import { pickupDistanceKm } from "./distance";
 import type { EligibilityInput, EligibilityResult, VehicleType } from "./types";
 
+const LOCATION_FRESHNESS_WINDOW_MS = 10 * 60 * 1000;
+
+function locationFreshnessCutoffIso(): string {
+  return new Date(Date.now() - LOCATION_FRESHNESS_WINDOW_MS).toISOString();
+}
+
 function isOnlineStatus(value: unknown): boolean {
   const s = String(value || "").trim().toLowerCase();
   return ["online", "available", "idle", "waiting"].includes(s);
@@ -31,6 +37,7 @@ export async function checkDriverEligibility(
     .from("driver_locations_latest")
     .select("driver_id, lat, lng, status, vehicle_type, updated_at")
     .eq("driver_id", input.driverId)
+    .gte("updated_at", locationFreshnessCutoffIso())
     .single();
 
   if (locError || !loc) {
@@ -144,7 +151,8 @@ export async function findNearestEligibleDrivers(
   const { data: locations, error } = await supabase
     .from("driver_locations_latest")
     .select("driver_id, lat, lng, status, vehicle_type, updated_at")
-    .eq("vehicle_type", vehicleType);
+    .eq("vehicle_type", vehicleType)
+    .gte("updated_at", locationFreshnessCutoffIso());
 
   if (error || !locations || locations.length === 0) return [];
 
