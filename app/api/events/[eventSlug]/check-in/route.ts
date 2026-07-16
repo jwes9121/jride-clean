@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireScannerStation } from "@/lib/events/requireScannerStation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,21 +45,9 @@ export async function POST(
   { params }: { params: { eventSlug: string } }
 ) {
   try {
-    const body = await req.json();
-
-    const registrationNumber = String(body.registrationNumber || "").trim();
-    const qrToken = String(body.qrToken || "").trim();
-
-    if (!registrationNumber || !qrToken) {
-      return NextResponse.json(
-        {
-          success: false,
-          reason: "invalid_request",
-          message: "Registration number and QR token are required.",
-        },
-        { status: 400 }
-      );
-    }
+    const stationToken = String(
+      req.headers.get("x-event-station-token") || ""
+    ).trim();
 
     const supabase = supabaseAdmin();
 
@@ -78,6 +67,51 @@ export async function POST(
           message: "Event Pass is invalid.",
         },
         { status: 404 }
+      );
+    }
+
+    
+    const stationAuthorization = await requireScannerStation(
+      supabase,
+      event.id,
+      stationToken
+    );
+
+    if (!stationAuthorization.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "station_auth_required",
+          message:
+            stationAuthorization.error === "STATION_TOKEN_REQUIRED"
+              ? "Scanner station authorization is required."
+              : "Scanner station token is invalid, expired, or revoked.",
+        },
+        {
+          status: stationAuthorization.status,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+
+    const registrationNumber = String(
+      body.registrationNumber || ""
+    ).trim();
+
+    const qrToken = String(body.qrToken || "").trim();
+
+    if (!registrationNumber || !qrToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          reason: "invalid_request",
+          message: "Registration number and QR token are required.",
+        },
+        { status: 400 }
       );
     }
 
@@ -185,6 +219,26 @@ export async function POST(
       }
 
       throw new Error("Check-in update did not return a row.");
+    }
+
+    
+    const { error: checkinLogError } = await supabase
+      .from("event_checkins")
+      .insert({
+        event_id: event.id,
+        attendee_id: updated.id,
+        scanned_by: null,
+        station_name: stationAuthorization.station.stationName,
+        station_token_id: stationAuthorization.station.id,
+        checkin_method: "qr",
+        checked_in_at: updated.checked_in_at,
+      });
+
+    if (checkinLogError) {
+      console.error(
+        "[events/check-in] Check-in audit insert failed:",
+        checkinLogError.message
+      );
     }
 
     const { data: guestRows, error: guestError } = await supabase

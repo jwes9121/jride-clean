@@ -20,6 +20,7 @@ type CheckInResponse = {
     | "invalid_token"
     | "pending_review"
     | "invalid_request"
+    | "station_auth_required"
     | "server_error";
   attendeeId?: string;
   fullName?: string;
@@ -37,6 +38,16 @@ type CheckInResponse = {
   }[];
   message?: string;
 };
+
+const STATION_TOKEN_PREFIX = "jrst_";
+
+function stationTokenStorageKey(eventSlug: string) {
+  return `jride_event_scanner_token_${eventSlug}`;
+}
+
+function isValidStationTokenShape(value: string) {
+  return value.startsWith(STATION_TOKEN_PREFIX) && value.length > STATION_TOKEN_PREFIX.length;
+}
 
 function parsePassUrl(raw: string): ParsedPass | null {
   try {
@@ -117,12 +128,76 @@ export default function EventScannerPage() {
   const scannerActiveRef = React.useRef(false);
   const autoResumeTimerRef = React.useRef<number | null>(null);
 
+  // Station token is held in a ref, not just state, because the ZXing decode
+  // callback closes over whatever was in scope when decodeFromVideoDevice was
+  // called. Clearing React state alone does not invalidate that closure -
+  // submitCheckIn() must read stationTokenRef.current at call time so a
+  // revoked/reset token can never ride along on an in-flight callback.
+  const stationTokenRef = React.useRef<string>("");
+
+  // Bumped on every start, reset, revoke, stop, and unmount. A decode
+  // callback captures the session id at the moment it is registered; if the
+  // session id no longer matches when the callback fires (or when its
+  // check-in request resolves), the result is discarded as stale. This
+  // guards the case a token-only check would miss: user resets, sets up a
+  // *new valid* token, but a decode event from the old camera session is
+  // still in flight.
+  const sessionIdRef = React.useRef(0);
+
   const [scanState, setScanState] = React.useState<ScanState>("idle");
   const [resultTone, setResultTone] = React.useState<ResultTone>("success");
   const [message, setMessage] = React.useState("Press Start Scanner to begin.");
   const [lastRaw, setLastRaw] = React.useState("");
   const [parsed, setParsed] = React.useState<ParsedPass | null>(null);
   const [result, setResult] = React.useState<CheckInResponse | null>(null);
+
+  const [stationToken, setStationTokenState] = React.useState<string>("");
+  const [stationTokenLoaded, setStationTokenLoaded] = React.useState(false);
+  const [stationSetupInput, setStationSetupInput] = React.useState("");
+  const [stationSetupError, setStationSetupError] = React.useState("");
+
+  // Loads the stored station token (if any) for the current eventSlug.
+  // Scanning and check-in requests must not fire before this completes.
+  // Runs on mount and whenever eventSlug changes (the component instance
+  // can persist across a client-side route transition between two event
+  // slugs without a full unmount) - so any session/token state tied to the
+  // previous event is stopped and cleared first, never carried over.
+  React.useEffect(() => {
+    clearAutoResumeTimer();
+    stopReaderOnly();
+    invalidateActiveSession();
+    checkingInRef.current = false;
+    lastScanRef.current = "";
+    stationTokenRef.current = "";
+    setStationTokenState("");
+    setScanState("idle");
+    setResult(null);
+    setParsed(null);
+    setLastRaw("");
+    setStationSetupInput("");
+    setStationSetupError("");
+    setStationTokenLoaded(false);
+
+    if (!eventSlug) return;
+
+    let stored = "";
+    try {
+      stored = window.localStorage.getItem(stationTokenStorageKey(eventSlug)) || "";
+    } catch {
+      stored = "";
+    }
+
+    if (stored && isValidStationTokenShape(stored)) {
+      stationTokenRef.current = stored;
+      setStationTokenState(stored);
+    }
+
+    setStationTokenLoaded(true);
+  }, [eventSlug]);
+
+  function invalidateActiveSession() {
+    sessionIdRef.current += 1;
+  }
 
   function clearAutoResumeTimer() {
     if (autoResumeTimerRef.current !== null) {
@@ -135,6 +210,83 @@ export default function EventScannerPage() {
     scannerActiveRef.current = false;
     controlsRef.current?.stop();
     controlsRef.current = null;
+  }
+
+  function saveStationToken(token: string) {
+    const trimmed = token.trim();
+
+    if (!isValidStationTokenShape(trimmed)) {
+      setStationSetupError('Station token must begin with "jrst_".');
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(stationTokenStorageKey(eventSlug), trimmed);
+    } catch {
+      setStationSetupError("Could not save station token on this device.");
+      return;
+    }
+
+    // Invalidate any session that might still be active before a
+    // replacement token takes effect, so no stale callback tied to the
+    // previous token's session can act under the new one.
+    clearAutoResumeTimer();
+    stopReaderOnly();
+    invalidateActiveSession();
+    checkingInRef.current = false;
+
+    stationTokenRef.current = trimmed;
+    setStationTokenState(trimmed);
+    setStationSetupInput("");
+    setStationSetupError("");
+    setMessage("Press Start Scanner to begin.");
+    setScanState("idle");
+  }
+
+  function clearStationToken() {
+    try {
+      window.localStorage.removeItem(stationTokenStorageKey(eventSlug));
+    } catch {}
+
+    stationTokenRef.current = "";
+    setStationTokenState("");
+  }
+
+  function resetStation() {
+    clearAutoResumeTimer();
+    stopReaderOnly();
+    invalidateActiveSession();
+    checkingInRef.current = false;
+    lastScanRef.current = "";
+    clearStationToken();
+    setLastRaw("");
+    setParsed(null);
+    setResult(null);
+    setStationSetupInput("");
+    setStationSetupError("");
+    setScanState("idle");
+    setMessage("Station reset. Enter a station token to continue.");
+  }
+
+  function handleStationAuthFailure(serverMessage?: string) {
+    clearAutoResumeTimer();
+    stopReaderOnly();
+    invalidateActiveSession();
+    checkingInRef.current = false;
+    lastScanRef.current = "";
+    clearStationToken();
+    setLastRaw("");
+    setParsed(null);
+    setResult(null);
+    setScanState("idle");
+
+    // Clearing the token routes the operator to the setup screen, which
+    // only renders stationSetupError - not message. Put the reason there
+    // too so the operator actually sees why setup is required again.
+    const authMessage = serverMessage || "Scanner station authorization expired or was revoked.";
+    setMessage(authMessage);
+    setStationSetupInput("");
+    setStationSetupError(authMessage);
   }
 
   function scheduleAutoResume() {
@@ -163,8 +315,16 @@ export default function EventScannerPage() {
     setMessage(nextMessage);
   }
 
-  async function submitCheckIn(pass: ParsedPass) {
+  async function submitCheckIn(pass: ParsedPass, requestSessionId: number) {
     if (checkingInRef.current) return;
+
+    // Read the token fresh, at the moment of submission - not from a value
+    // captured earlier in a closure. If it is missing, a reset/revocation
+    // happened between scan and submit; do not send the request at all.
+    const requestToken = stationTokenRef.current;
+    if (!requestToken) {
+      return;
+    }
 
     checkingInRef.current = true;
     setParsed(pass);
@@ -174,11 +334,37 @@ export default function EventScannerPage() {
     try {
       const res = await fetch(`/api/events/${eventSlug}/check-in`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Event-Station-Token": requestToken,
+        },
         body: JSON.stringify(pass),
       });
 
-      const data = (await res.json()) as CheckInResponse;
+      let data: CheckInResponse;
+      try {
+        data = (await res.json()) as CheckInResponse;
+      } catch {
+        data = {
+          success: false,
+          reason: res.status === 401 ? "station_auth_required" : "server_error",
+        };
+      }
+
+      // Discard results from a session that is no longer active (reset,
+      // revoke, stop, or a new station setup happened while this request
+      // was in flight). Do not touch checkingInRef here - it may already be
+      // owned by a newer session's in-flight request, and this stale call
+      // has no business releasing a lock it doesn't hold.
+      if (requestSessionId !== sessionIdRef.current) {
+        return;
+      }
+
+      if (res.status === 401 || data.reason === "station_auth_required") {
+        handleStationAuthFailure(data.message);
+        return;
+      }
+
       setResult(data);
 
       if (data.success && data.reason === "checked_in") {
@@ -206,6 +392,10 @@ export default function EventScannerPage() {
       beep(220, 250);
       showResult("error", data.message || "Invalid Event Pass.", true);
     } catch (error) {
+      if (requestSessionId !== sessionIdRef.current) {
+        return;
+      }
+
       navigator.vibrate?.(300);
       beep(220, 250);
       showResult(
@@ -214,12 +404,26 @@ export default function EventScannerPage() {
         true
       );
     } finally {
-      checkingInRef.current = false;
+      // Only release the shared in-flight lock if this request still
+      // belongs to the current session. An old, stale request finishing
+      // must never clear a lock that a newer session's request now owns.
+      if (requestSessionId === sessionIdRef.current) {
+        checkingInRef.current = false;
+      }
     }
   }
 
   async function startScanner() {
     clearAutoResumeTimer();
+
+    // Hard requirement: startScanner() itself must refuse to initialize the
+    // camera when no valid station token is loaded. Disabling the button is
+    // not sufficient on its own.
+    if (!stationTokenRef.current) {
+      setMessage("Enter a station token before starting the scanner.");
+      setScanState("idle");
+      return;
+    }
 
     if (!videoRef.current) {
       setMessage("Camera is not ready. Try Restart Camera.");
@@ -228,6 +432,9 @@ export default function EventScannerPage() {
     }
 
     stopReaderOnly();
+    invalidateActiveSession();
+    const mySession = sessionIdRef.current;
+
     lastScanRef.current = "";
     cooldownUntilRef.current = Date.now() + 500;
     checkingInRef.current = false;
@@ -247,6 +454,12 @@ export default function EventScannerPage() {
         (scanResult) => {
           if (!scanResult) return;
           if (!scannerActiveRef.current) return;
+
+          // Reject decode events from a camera session that is no longer
+          // the active one (old callback still registered after reset).
+          if (mySession !== sessionIdRef.current) return;
+
+          if (!stationTokenRef.current) return;
 
           const now = Date.now();
           if (now < cooldownUntilRef.current) return;
@@ -269,9 +482,16 @@ export default function EventScannerPage() {
             return;
           }
 
-          submitCheckIn(pass);
+          submitCheckIn(pass, mySession);
         }
       );
+
+      // The token or session may have been cleared while the camera was
+      // still initializing (e.g. Reset Station tapped mid-startup).
+      if (mySession !== sessionIdRef.current || !stationTokenRef.current) {
+        controls.stop();
+        return;
+      }
 
       controlsRef.current = controls;
       setScanState("scanning");
@@ -287,6 +507,8 @@ export default function EventScannerPage() {
   function restartScanner() {
     clearAutoResumeTimer();
     stopReaderOnly();
+    invalidateActiveSession();
+    const restartSessionId = sessionIdRef.current;
     lastScanRef.current = "";
     cooldownUntilRef.current = Date.now() + 500;
     checkingInRef.current = false;
@@ -296,7 +518,18 @@ export default function EventScannerPage() {
     setResult(null);
     setScanState("idle");
     setMessage("Restarting scanner...");
-    window.setTimeout(() => {
+
+    // Tracked in autoResumeTimerRef (not a bare setTimeout) so Reset
+    // Station, station-auth failure, Stop, and unmount can all cancel it
+    // via clearAutoResumeTimer(). The session/token check just before
+    // calling startScanner() prevents the camera from being reinitialized
+    // if the operator reset the station during this 150ms window.
+    autoResumeTimerRef.current = window.setTimeout(() => {
+      autoResumeTimerRef.current = null;
+
+      if (restartSessionId !== sessionIdRef.current) return;
+      if (!stationTokenRef.current) return;
+
       void startScanner();
     }, 150);
   }
@@ -304,6 +537,7 @@ export default function EventScannerPage() {
   function stopScanner() {
     clearAutoResumeTimer();
     stopReaderOnly();
+    invalidateActiveSession();
     checkingInRef.current = false;
     setScanState("idle");
     setMessage("Scanner stopped.");
@@ -313,8 +547,11 @@ export default function EventScannerPage() {
     return () => {
       clearAutoResumeTimer();
       stopReaderOnly();
+      invalidateActiveSession();
     };
   }, []);
+
+  const needsStationSetup = stationTokenLoaded && !stationToken;
 
   const showOverlay = scanState === "result" || scanState === "pending_review";
 
@@ -341,15 +578,94 @@ export default function EventScannerPage() {
       ? "Manual action required. Send attendee to Help Desk, then tap Restart Camera."
       : "Scanner will resume automatically.";
 
+  if (!stationTokenLoaded) {
+    return (
+      <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
+        <section className="mx-auto max-w-3xl">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+              JRide Events Scanner
+            </p>
+            <p className="mt-3 text-lg font-bold text-slate-300">Loading station...</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (needsStationSetup) {
+    return (
+      <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
+        <section className="mx-auto max-w-3xl">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+              JRide Events Scanner
+            </p>
+            <h1 className="mt-3 text-3xl font-black">Scanner Station Setup</h1>
+            <p className="mt-2 text-slate-300">
+              This device is not authorized for {eventSlug}. Enter the station token
+              issued for this gate. This is not an attendee QR token.
+            </p>
+
+            <form
+              className="mt-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                saveStationToken(stationSetupInput);
+              }}
+            >
+              <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                Station Token
+              </label>
+              <input
+                type="password"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                value={stationSetupInput}
+                onChange={(event) => setStationSetupInput(event.target.value)}
+                placeholder="jrst_..."
+                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 font-mono text-lg text-white outline-none focus:border-amber-300"
+              />
+
+              {stationSetupError ? (
+                <p className="mt-3 text-sm font-bold text-red-300">{stationSetupError}</p>
+              ) : null}
+
+              <button
+                type="submit"
+                className="mt-5 w-full rounded-2xl bg-amber-400 px-5 py-4 font-black text-slate-950"
+              >
+                Save Station Token
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
       <section className="mx-auto max-w-3xl">
         <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
-            JRide Events Scanner
-          </p>
-          <h1 className="mt-3 text-3xl font-black">Gate Scanner</h1>
-          <p className="mt-2 text-slate-300">Scan Event Pass QR codes for {eventSlug}.</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+                JRide Events Scanner
+              </p>
+              <h1 className="mt-3 text-3xl font-black">Gate Scanner</h1>
+              <p className="mt-2 text-slate-300">Scan Event Pass QR codes for {eventSlug}.</p>
+            </div>
+            <button
+              type="button"
+              onClick={resetStation}
+              className="shrink-0 rounded-2xl border border-slate-600 px-4 py-2 text-xs font-black uppercase tracking-[0.15em] text-slate-300"
+            >
+              Reset Station
+            </button>
+          </div>
 
           {showOverlay ? (
             <div className={`mt-5 rounded-3xl border p-7 text-center ${overlayClass}`}>
@@ -443,7 +759,7 @@ export default function EventScannerPage() {
             <button
               type="button"
               onClick={() => void startScanner()}
-              disabled={scanState === "scanning"}
+              disabled={scanState === "scanning" || !stationToken}
               className="rounded-2xl bg-amber-400 px-5 py-4 font-black text-slate-950 disabled:opacity-50"
             >
               Start Scanner
@@ -451,7 +767,8 @@ export default function EventScannerPage() {
             <button
               type="button"
               onClick={restartScanner}
-              className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white"
+              disabled={!stationToken}
+              className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white disabled:opacity-50"
             >
               Restart Camera
             </button>
