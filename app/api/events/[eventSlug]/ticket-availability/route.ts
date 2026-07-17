@@ -44,7 +44,7 @@ export async function GET(
       await supabase
         .from("events")
         .select(
-          "id,slug,name,short_name,status,registration_opens_at,registration_closes_at"
+          "id,slug,name,short_name,status,event_date,venue,registration_opens_at,registration_closes_at"
         )
         .eq("slug", eventSlug)
         .maybeSingle();
@@ -65,7 +65,9 @@ export async function GET(
 
     const [
       totalResult,
-      remainingResult,
+      availableResult,
+      reservedResult,
+      claimedResult,
     ] = await Promise.all([
       supabase
         .from("event_tickets")
@@ -74,7 +76,8 @@ export async function GET(
           head: true,
         })
         .eq("event_id", event.id)
-        .eq("ticket_type", "regular"),
+        .eq("ticket_type", "regular")
+        .neq("status", "void"),
 
       supabase
         .from("event_tickets")
@@ -84,25 +87,44 @@ export async function GET(
         })
         .eq("event_id", event.id)
         .eq("ticket_type", "regular")
-        .in("status", [
-          "available",
-          "reserved",
-        ]),
+        .eq("status", "available"),
+
+      supabase
+        .from("event_tickets")
+        .select("id", {
+          count: "exact",
+          head: true,
+        })
+        .eq("event_id", event.id)
+        .eq("ticket_type", "regular")
+        .eq("status", "reserved"),
+
+      supabase
+        .from("event_tickets")
+        .select("id", {
+          count: "exact",
+          head: true,
+        })
+        .eq("event_id", event.id)
+        .eq("ticket_type", "regular")
+        .eq("status", "claimed"),
     ]);
 
-    if (totalResult.error) {
-      throw new Error(totalResult.error.message);
-    }
-
-    if (remainingResult.error) {
-      throw new Error(
-        remainingResult.error.message
-      );
+    for (const result of [
+      totalResult,
+      availableResult,
+      reservedResult,
+      claimedResult,
+    ]) {
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
     }
 
     const total = totalResult.count || 0;
-    const remaining =
-      remainingResult.count || 0;
+    const available = availableResult.count || 0;
+    const reserved = reservedResult.count || 0;
+    const claimed = claimedResult.count || 0;
 
     return noStore({
       success: true,
@@ -111,15 +133,22 @@ export async function GET(
         shortName: event.short_name,
         slug: event.slug,
         status: event.status,
+        eventDate: event.event_date,
+        venue: event.venue,
         registrationOpensAt:
           event.registration_opens_at,
         registrationClosesAt:
           event.registration_closes_at,
       },
       total,
-      remaining,
+      available,
+      reserved,
+      claimed,
+      registrationSlotsRemaining:
+        available + reserved,
       soldOut:
-        total > 0 && remaining === 0,
+        total > 0 &&
+        available + reserved === 0,
     });
   } catch (error) {
     return noStore(

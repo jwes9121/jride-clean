@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import * as React from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 
 type AvailabilityResponse = {
   success: boolean;
@@ -10,11 +11,16 @@ type AvailabilityResponse = {
     shortName: string;
     slug: string;
     status: string;
+    eventDate: string | null;
+    venue: string | null;
     registrationOpensAt: string | null;
     registrationClosesAt: string | null;
   };
   total?: number;
-  remaining?: number;
+  available?: number;
+  reserved?: number;
+  claimed?: number;
+  registrationSlotsRemaining?: number;
   soldOut?: boolean;
   error?: string;
 };
@@ -35,8 +41,26 @@ type TicketRegistrationResponse = {
   };
 };
 
+type SuccessState = {
+  registrationNumber: string;
+  eventPassUrl: string;
+  ticketNumber: string | null;
+  packageName: string | null;
+};
+
 function cleanPhone(value: string) {
   return value.replace(/[^0-9]/g, "");
+}
+
+function formatPhoneInput(value: string) {
+  const digits = cleanPhone(value).slice(0, 11);
+
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 7) {
+    return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  }
+
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
 }
 
 function formatManilaDate(
@@ -121,8 +145,6 @@ export default function TicketRegistrationPage() {
   const params =
     useParams<{ eventSlug: string }>();
 
-  const router = useRouter();
-
   const eventSlug = String(
     params?.eventSlug || ""
   );
@@ -139,6 +161,12 @@ export default function TicketRegistrationPage() {
   const [eventName, setEventName] =
     React.useState("Ticketed Event");
 
+  const [eventDate, setEventDate] =
+    React.useState<string | null>(null);
+
+  const [venue, setVenue] =
+    React.useState<string | null>(null);
+
   const [
     registrationOpensAt,
     setRegistrationOpensAt,
@@ -152,8 +180,13 @@ export default function TicketRegistrationPage() {
   const [total, setTotal] =
     React.useState(0);
 
-  const [remaining, setRemaining] =
+  const [claimed, setClaimed] =
     React.useState(0);
+
+  const [
+    registrationSlotsRemaining,
+    setRegistrationSlotsRemaining,
+  ] = React.useState(0);
 
   const [soldOut, setSoldOut] =
     React.useState(false);
@@ -178,6 +211,9 @@ export default function TicketRegistrationPage() {
 
   const [formError, setFormError] =
     React.useState("");
+
+  const [success, setSuccess] =
+    React.useState<SuccessState | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -212,6 +248,14 @@ export default function TicketRegistrationPage() {
             "Ticketed Event"
         );
 
+        setEventDate(
+          data.event?.eventDate || null
+        );
+
+        setVenue(
+          data.event?.venue || null
+        );
+
         setRegistrationOpensAt(
           data.event?.registrationOpensAt || null
         );
@@ -221,7 +265,12 @@ export default function TicketRegistrationPage() {
         );
 
         setTotal(data.total || 0);
-        setRemaining(data.remaining || 0);
+        setClaimed(data.claimed || 0);
+
+        setRegistrationSlotsRemaining(
+          data.registrationSlotsRemaining || 0
+        );
+
         setSoldOut(data.soldOut === true);
       } catch (error) {
         if (!active) return;
@@ -345,7 +394,20 @@ export default function TicketRegistrationPage() {
           data.qrToken
         )}`;
 
-      router.push(destination);
+      setClaimed((current) => current + 1);
+      setRegistrationSlotsRemaining(
+        (current) => Math.max(0, current - 1)
+      );
+
+      setSuccess({
+        registrationNumber:
+          data.registrationNumber,
+        eventPassUrl: destination,
+        ticketNumber:
+          data.ticket?.ticketNumber || null,
+        packageName:
+          data.ticket?.packageName || null,
+      });
     } catch (error) {
       setFormError(
         error instanceof Error
@@ -358,212 +420,307 @@ export default function TicketRegistrationPage() {
     }
   }
 
+  if (success) {
+    return (
+      <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+        <section className="mx-auto max-w-lg">
+          <div className="rounded-3xl border border-emerald-400/40 bg-slate-900 p-6 shadow-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-300">
+              Registration Successful
+            </p>
+
+            <h1 className="mt-4 text-4xl font-black leading-tight">
+              Your Event Pass is ready.
+            </h1>
+
+            <p className="mt-3 text-slate-300">
+              Save your Event Pass and present its QR code at check-in.
+            </p>
+
+            <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                Registration Number
+              </p>
+              <p className="mt-2 font-mono text-2xl font-black text-white">
+                {success.registrationNumber}
+              </p>
+
+              {success.ticketNumber ? (
+                <>
+                  <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Ticket Number
+                  </p>
+                  <p className="mt-2 font-mono text-lg font-bold text-amber-300">
+                    {success.ticketNumber}
+                  </p>
+                </>
+              ) : null}
+
+              {success.packageName ? (
+                <p className="mt-4 text-sm leading-6 text-slate-300">
+                  {success.packageName}
+                </p>
+              ) : null}
+            </div>
+
+            <a
+              href={success.eventPassUrl}
+              className="mt-6 block w-full rounded-2xl bg-amber-400 px-5 py-4 text-center text-lg font-black text-slate-950"
+            >
+              View My Event Pass
+            </a>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
       <section className="mx-auto max-w-lg">
-        <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
-            JRide Events
-          </p>
-
-          <h1 className="mt-4 text-4xl font-black leading-tight">
-            {eventName}
-          </h1>
-
-          <p className="mt-3 text-slate-300">
-            Enter the ticket number and private
-            claim code issued after payment.
-          </p>
-
-          <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-4">
-            {loading ? (
-              <p className="text-sm font-semibold text-slate-300">
-                Loading ticket availability...
-              </p>
-            ) : availabilityError ? (
-              <p className="text-sm font-semibold text-red-300">
-                {availabilityError}
-              </p>
-            ) : soldOut ? (
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">
-                  Sold Out
-                </p>
-                <p className="mt-2 text-2xl font-black">
-                  No regular tickets remain.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">
-                  Tickets Remaining
-                </p>
-
-                <p className="mt-2 text-3xl font-black">
-                  {remaining}
-                  <span className="text-lg text-slate-400">
-                    {" "}
-                    / {total}
-                  </span>
-                </p>
-              </div>
-            )}
+        <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl">
+          <div className="relative aspect-[4/3] w-full bg-slate-950">
+            <Image
+              src="/events/b2001-fun-run-logo.png"
+              alt="Batch 2001 Fun Run with Zumba"
+              fill
+              priority
+              sizes="(max-width: 640px) 100vw, 512px"
+              className="object-contain"
+            />
           </div>
 
-          <form
-            className="mt-6 space-y-6"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitRegistration();
-            }}
-          >
-            <fieldset
-              disabled={
-                submitting ||
-                loading ||
-                !!availabilityError ||
-                soldOut
-              }
-              className="space-y-6 disabled:opacity-60"
+          <div className="p-6">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+              JRide Events
+            </p>
+
+            <h1 className="mt-4 text-4xl font-black leading-tight">
+              {eventName}
+            </h1>
+
+            <p className="mt-3 text-slate-300">
+              Thank you for supporting the Batch 2001 fundraising event.
+            </p>
+
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              Enter the ticket number and private claim code written on the back of your paid ticket or sent by the authorized seller after payment confirmation.
+            </p>
+
+            {(eventDate || venue) ? (
+              <div className="mt-5 rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-300">
+                {eventDate ? (
+                  <p>
+                    <span className="font-bold text-white">
+                      Date:
+                    </span>{" "}
+                    {formatManilaDate(eventDate)}
+                  </p>
+                ) : null}
+
+                {venue ? (
+                  <p className={eventDate ? "mt-2" : ""}>
+                    <span className="font-bold text-white">
+                      Venue:
+                    </span>{" "}
+                    {venue}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-4">
+              {loading ? (
+                <p className="text-sm font-semibold text-slate-300">
+                  Loading registration status...
+                </p>
+              ) : availabilityError ? (
+                <p className="text-sm font-semibold text-red-300">
+                  {availabilityError}
+                </p>
+              ) : soldOut ? (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">
+                    Registration Full
+                  </p>
+                  <p className="mt-2 text-2xl font-black">
+                    All regular ticket codes have been claimed.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300">
+                    Event Passes Generated
+                  </p>
+
+                  <p className="mt-2 text-3xl font-black">
+                    {claimed}
+                    <span className="text-lg text-slate-400">
+                      {" "}
+                      / {total}
+                    </span>
+                  </p>
+
+                  <p className="mt-2 text-sm text-slate-400">
+                    {registrationSlotsRemaining} valid ticket registrations remain.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <form
+              className="mt-6 space-y-6"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitRegistration();
+              }}
             >
-              <section className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">
-                  1. Ticket Details
-                </p>
-
-                <label className="mt-4 block">
-                  <span className="text-sm font-bold text-slate-200">
-                    Ticket Number *
-                  </span>
-
-                  <input
-                    value={ticketNumber}
-                    onChange={(event) => {
-                      setTicketNumber(
-                        event.target.value
-                      );
-                      setFormError("");
-                    }}
-                    placeholder="FR-001"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 font-mono text-white outline-none focus:border-amber-300"
-                  />
-                </label>
-
-                <label className="mt-4 block">
-                  <span className="text-sm font-bold text-slate-200">
-                    Private Claim Code *
-                  </span>
-
-                  <input
-                    value={claimCode}
-                    onChange={(event) => {
-                      setClaimCode(
-                        event.target.value
-                      );
-                      setFormError("");
-                    }}
-                    placeholder="XXXX-XXXX-XXXX"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 font-mono text-white outline-none focus:border-amber-300"
-                  />
-                </label>
-
-                <p className="mt-3 text-xs leading-5 text-slate-400">
-                  The claim code is handwritten on
-                  the back of the paid ticket or
-                  sent privately by the authorized
-                  seller. It can only be used once.
-                </p>
-              </section>
-
-              <section className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">
-                  2. Participant Information
-                </p>
-
-                <label className="mt-4 block">
-                  <span className="text-sm font-bold text-slate-200">
-                    Full Name *
-                  </span>
-
-                  <input
-                    value={fullName}
-                    onChange={(event) => {
-                      setFullName(
-                        event.target.value
-                      );
-                      setFormError("");
-                    }}
-                    placeholder="Juan Dela Cruz"
-                    autoComplete="name"
-                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-white outline-none focus:border-amber-300"
-                  />
-                </label>
-
-                <label className="mt-4 block">
-                  <span className="text-sm font-bold text-slate-200">
-                    Mobile Number *
-                  </span>
-
-                  <input
-                    value={mobileNumber}
-                    onChange={(event) => {
-                      setMobileNumber(
-                        event.target.value
-                      );
-                      setFormError("");
-                    }}
-                    placeholder="09171234567"
-                    type="tel"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    autoComplete="tel"
-                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-white outline-none focus:border-amber-300"
-                  />
-                </label>
-
-                <label className="mt-4 block">
-                  <span className="text-sm font-bold text-slate-200">
-                    Nickname (optional)
-                  </span>
-
-                  <input
-                    value={nickname}
-                    onChange={(event) => {
-                      setNickname(
-                        event.target.value
-                      );
-                      setFormError("");
-                    }}
-                    placeholder="Optional"
-                    autoComplete="nickname"
-                    className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-white outline-none focus:border-amber-300"
-                  />
-                </label>
-              </section>
-
-              {formError ? (
-                <p className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
-                  {formError}
-                </p>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full rounded-2xl bg-amber-400 px-5 py-4 text-lg font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              <fieldset
+                disabled={
+                  submitting ||
+                  loading ||
+                  !!availabilityError ||
+                  soldOut
+                }
+                className="space-y-6 disabled:opacity-60"
               >
-                {submitting
-                  ? "Completing Registration..."
-                  : "Complete Registration"}
-              </button>
-            </fieldset>
-          </form>
+                <section className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">
+                    1. Ticket Details
+                  </p>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Ticket Number *
+                    </span>
+
+                    <input
+                      value={ticketNumber}
+                      onChange={(event) => {
+                        setTicketNumber(
+                          event.target.value
+                        );
+                        setFormError("");
+                      }}
+                      placeholder="Example: FR-001"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 font-mono text-white outline-none focus:border-amber-300"
+                    />
+                  </label>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Private Claim Code *
+                    </span>
+
+                    <input
+                      value={claimCode}
+                      onChange={(event) => {
+                        setClaimCode(
+                          event.target.value
+                        );
+                        setFormError("");
+                      }}
+                      placeholder="Example: A1B2-C3D4-E5F6"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 font-mono text-white outline-none focus:border-amber-300"
+                    />
+                  </label>
+
+                  <p className="mt-3 text-xs leading-5 text-slate-400">
+                    The claim code is issued only after payment confirmation and can be used once.
+                  </p>
+                </section>
+
+                <section className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">
+                    2. Participant Information
+                  </p>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Full Name *
+                    </span>
+
+                    <input
+                      value={fullName}
+                      onChange={(event) => {
+                        setFullName(
+                          event.target.value
+                        );
+                        setFormError("");
+                      }}
+                      placeholder="Juan Dela Cruz"
+                      autoComplete="name"
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-white outline-none focus:border-amber-300"
+                    />
+                  </label>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Mobile Number *
+                    </span>
+
+                    <input
+                      value={mobileNumber}
+                      onChange={(event) => {
+                        setMobileNumber(
+                          formatPhoneInput(
+                            event.target.value
+                          )
+                        );
+                        setFormError("");
+                      }}
+                      placeholder="0917 123 4567"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-white outline-none focus:border-amber-300"
+                    />
+                  </label>
+
+                  <label className="mt-4 block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Nickname (optional)
+                    </span>
+
+                    <input
+                      value={nickname}
+                      onChange={(event) => {
+                        setNickname(
+                          event.target.value
+                        );
+                        setFormError("");
+                      }}
+                      placeholder="Optional"
+                      autoComplete="nickname"
+                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-4 text-white outline-none focus:border-amber-300"
+                    />
+                  </label>
+                </section>
+
+                {formError ? (
+                  <p className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
+                    {formError}
+                  </p>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-2xl bg-amber-400 px-5 py-4 text-lg font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submitting
+                    ? "Generating Event Pass..."
+                    : "Generate My Event Pass"}
+                </button>
+              </fieldset>
+            </form>
+          </div>
         </div>
       </section>
     </main>
