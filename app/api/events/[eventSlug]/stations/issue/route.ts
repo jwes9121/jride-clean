@@ -1,6 +1,9 @@
 import { createHash, randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/requireStaff";
+import {
+  type EventStationType,
+} from "@/lib/events/requireEventStation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +26,24 @@ function sha256Hex(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function parseStationType(value: unknown): EventStationType | null {
+  const stationType = cleanText(value);
+
+  if (!stationType) {
+    return "scanner";
+  }
+
+  if (
+    stationType === "scanner" ||
+    stationType === "checkpoint" ||
+    stationType === "projector"
+  ) {
+    return stationType;
+  }
+
+  return null;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { eventSlug: string } }
@@ -40,7 +61,9 @@ export async function POST(
       );
     }
 
-    const issuerEmail = cleanText(authorization.staff.email).toLowerCase();
+    const issuerEmail = cleanText(
+      authorization.staff.email
+    ).toLowerCase();
 
     if (!issuerEmail) {
       return noStore(
@@ -56,6 +79,19 @@ export async function POST(
 
     const stationName = cleanText(body.stationName);
     const expiresAtRaw = cleanText(body.expiresAt);
+    const stationType = parseStationType(body.stationType);
+    const checkpointId = cleanText(body.checkpointId);
+
+    if (!stationType) {
+      return noStore(
+        {
+          success: false,
+          error:
+            "stationType must be scanner, checkpoint, or projector.",
+        },
+        400
+      );
+    }
 
     if (stationName.length < 2 || stationName.length > 80) {
       return noStore(
@@ -72,6 +108,27 @@ export async function POST(
         {
           success: false,
           error: "expiresAt is required.",
+        },
+        400
+      );
+    }
+
+    if (stationType === "checkpoint" && !checkpointId) {
+      return noStore(
+        {
+          success: false,
+          error: "checkpointId is required for checkpoint stations.",
+        },
+        400
+      );
+    }
+
+    if (stationType !== "checkpoint" && checkpointId) {
+      return noStore(
+        {
+          success: false,
+          error:
+            "checkpointId is only allowed for checkpoint stations.",
         },
         400
       );
@@ -148,22 +205,68 @@ export async function POST(
       );
     }
 
-    const plaintextToken = `jrst_${randomBytes(32).toString("hex")}`;
+    let checkpoint:
+      | {
+          id: string;
+          checkpoint_name: string;
+          checkpoint_no: number;
+          sort_order: number;
+        }
+      | null = null;
+
+    if (stationType === "checkpoint") {
+      const {
+        data: checkpointRow,
+        error: checkpointError,
+      } = await supabase
+        .from("event_checkpoints")
+        .select(
+          "id,checkpoint_name,checkpoint_no,sort_order"
+        )
+        .eq("id", checkpointId)
+        .eq("event_id", event.id)
+        .maybeSingle();
+
+      if (checkpointError) {
+        throw new Error(checkpointError.message);
+      }
+
+      if (!checkpointRow?.id) {
+        return noStore(
+          {
+            success: false,
+            error:
+              "Checkpoint was not found for this event.",
+          },
+          404
+        );
+      }
+
+      checkpoint = checkpointRow;
+    }
+
+    const plaintextToken =
+      `jrst_${randomBytes(32).toString("hex")}`;
+
     const tokenHash = sha256Hex(plaintextToken);
 
     const { data: station, error: insertError } = await supabase
       .from("event_station_tokens")
       .insert({
         event_id: event.id,
-        station_type: "scanner",
+        station_type: stationType,
         station_name: stationName,
+        checkpoint_id:
+          stationType === "checkpoint"
+            ? checkpoint?.id || null
+            : null,
         token_hash: tokenHash,
         status: "active",
         issued_by_email: issuerEmail,
         expires_at: expiresAt.toISOString(),
       })
       .select(
-        "id,event_id,station_type,station_name,status,issued_by_email,issued_at,expires_at"
+        "id,event_id,station_type,station_name,checkpoint_id,status,issued_by_email,issued_at,expires_at"
       )
       .single();
 
@@ -173,7 +276,7 @@ export async function POST(
           {
             success: false,
             error:
-              "An active scanner station with this name already exists for the event.",
+              "An active station with this name already exists for the event.",
           },
           409
         );
@@ -196,6 +299,13 @@ export async function POST(
           stationTokenId: station.id,
           stationType: station.station_type,
           stationName: station.station_name,
+          checkpointId: station.checkpoint_id,
+          checkpointName:
+            checkpoint?.checkpoint_name || null,
+          checkpointNumber:
+            checkpoint?.checkpoint_no || null,
+          checkpointSortOrder:
+            checkpoint?.sort_order || null,
           status: station.status,
           issuedByEmail: station.issued_by_email,
           issuedAt: station.issued_at,
@@ -212,7 +322,7 @@ export async function POST(
         error:
           error instanceof Error
             ? error.message
-            : "Scanner station token issuance failed.",
+            : "Station token issuance failed.",
       },
       500
     );
