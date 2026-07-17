@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireScannerStation } from "@/lib/events/requireScannerStation";
+import { requireEventStation } from "@/lib/events/requireEventStation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -71,11 +71,13 @@ export async function POST(
     }
 
     
-    const stationAuthorization = await requireScannerStation(
-      supabase,
-      event.id,
-      stationToken
-    );
+    const stationAuthorization =
+  await requireEventStation(
+    supabase,
+    event.id,
+    stationToken,
+    "scanner"
+  );
 
     if (!stationAuthorization.ok) {
       return NextResponse.json(
