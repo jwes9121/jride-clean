@@ -23,9 +23,16 @@ function numberOrNaN(value: unknown): number {
   return Number.NaN;
 }
 
+const DRIVER_LOCATION_FRESHNESS_MS = 10 * 60 * 1000;
+
 function validCoordinate(lat: number, lng: number): boolean {
   return Number.isFinite(lat) && Number.isFinite(lng) &&
     lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+function isOnlineStatus(value: unknown): boolean {
+  const status = String(value || "").trim().toLowerCase();
+  return ["online", "available", "idle", "waiting"].includes(status);
 }
 
 export async function POST(req: NextRequest) {
@@ -132,6 +139,50 @@ export async function POST(req: NextRequest) {
 
     departureLat = Number((homeRow as any).home_lat);
     departureLng = Number((homeRow as any).home_lng);
+  } else if (departureOption === "current_gps") {
+    const freshnessCutoffIso = new Date(
+      Date.now() - DRIVER_LOCATION_FRESHNESS_MS
+    ).toISOString();
+
+    const { data: liveRow, error: liveError } = await supabase
+      .from("driver_locations_latest")
+      .select("lat, lng, status, updated_at")
+      .eq("driver_id", auth.driverId)
+      .gte("updated_at", freshnessCutoffIso)
+      .maybeSingle();
+
+    if (liveError) {
+      return NextResponse.json(
+        { ok: false, error: liveError.message },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    if (!liveRow) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "CURRENT_LOCATION_STALE",
+          message:
+            "Current driver location is unavailable or older than 10 minutes.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
+    if (!isOnlineStatus((liveRow as any).status)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_NOT_ONLINE",
+          message: "Driver must be online to use Current GPS.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
+    departureLat = Number((liveRow as any).lat);
+    departureLng = Number((liveRow as any).lng);
   } else {
     departureLat = numberOrNaN(body?.departureLat);
     departureLng = numberOrNaN(body?.departureLng);
