@@ -634,31 +634,125 @@ async function postJson(url: string, body: any) {
 
 async function fileToDataUrl(file: File | null): Promise<string | null> {
   if (!file) return null;
-  if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("Image is too large. Maximum input size is 5MB.");
 
-  const bitmap = await createImageBitmap(file);
-  const maxSide = 1200;
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Image compression is not available on this device.");
-  ctx.drawImage(bitmap, 0, 0, width, height);
-
-  const qualitySteps = [0.82, 0.76, 0.70, 0.64];
-  for (const quality of qualitySteps) {
-    const dataUrl = canvas.toDataURL("image/jpeg", quality);
-    const approxBytes = Math.ceil((dataUrl.length - "data:image/jpeg;base64,".length) * 3 / 4);
-    if (approxBytes <= 1024 * 1024) return dataUrl;
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Only image files are allowed.");
   }
 
-  return canvas.toDataURL("image/jpeg", 0.60);
+  const maxInputBytes = 5 * 1024 * 1024;
+  if (file.size > maxInputBytes) {
+    throw new Error("Image is too large. Maximum input size is 5MB.");
+  }
+
+  const targetBytes = 700 * 1024;
+  const hardMaxOutputBytes = 1024 * 1024;
+  const dataUrlPrefix = "data:image/jpeg;base64,";
+
+  let source: CanvasImageSource;
+  let sourceWidth = 0;
+  let sourceHeight = 0;
+  let bitmap: ImageBitmap | null = null;
+  let objectUrl = "";
+
+  try {
+    try {
+      bitmap = await createImageBitmap(file);
+      source = bitmap;
+      sourceWidth = bitmap.width;
+      sourceHeight = bitmap.height;
+    } catch {
+      objectUrl = URL.createObjectURL(file);
+
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+
+        img.onload = () => resolve(img);
+        img.onerror = () =>
+          reject(new Error("The selected image could not be decoded."));
+        img.src = objectUrl;
+      });
+
+      source = image;
+      sourceWidth = image.naturalWidth || image.width;
+      sourceHeight = image.naturalHeight || image.height;
+    }
+
+    if (
+      !Number.isFinite(sourceWidth) ||
+      !Number.isFinite(sourceHeight) ||
+      sourceWidth <= 0 ||
+      sourceHeight <= 0
+    ) {
+      throw new Error("The selected image has invalid dimensions.");
+    }
+
+    const dimensionSteps = [1200, 1000, 900, 800, 700];
+    const qualitySteps = [0.82, 0.74, 0.66, 0.58, 0.50];
+
+    let smallestDataUrl = "";
+    let smallestBytes = Number.POSITIVE_INFINITY;
+
+    for (const maxSide of dimensionSteps) {
+      const scale = Math.min(
+        1,
+        maxSide / Math.max(sourceWidth, sourceHeight)
+      );
+
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx) {
+        throw new Error("Image compression is not available on this device.");
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(source, 0, 0, width, height);
+
+      for (const quality of qualitySteps) {
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        if (!dataUrl.startsWith(dataUrlPrefix)) continue;
+
+        const approxBytes = Math.ceil(
+          (dataUrl.length - dataUrlPrefix.length) * 3 / 4
+        );
+
+        if (approxBytes < smallestBytes) {
+          smallestBytes = approxBytes;
+          smallestDataUrl = dataUrl;
+        }
+
+        if (approxBytes <= targetBytes) {
+          return dataUrl;
+        }
+      }
+    }
+
+    if (!smallestDataUrl) {
+      throw new Error("The selected image could not be compressed.");
+    }
+
+    if (smallestBytes > hardMaxOutputBytes) {
+      throw new Error(
+        "The image remains too large after compression. Please choose another photo."
+      );
+    }
+
+    return smallestDataUrl;
+  } finally {
+    if (bitmap) {
+      bitmap.close();
+    }
+
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
 }
 
 
