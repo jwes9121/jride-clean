@@ -171,7 +171,14 @@ export async function GET(req: NextRequest) {
     const { data: queueRow, error: queueError } = await supabase
       .from("advance_booking_queue")
       .select(
-        "id, driver_id, status, fare_preparation_expires_at, offer_expires_at"
+        [
+          "id",
+          "driver_id",
+          "status",
+          "fare_preparation_expires_at",
+          "offer_expires_at",
+          "departure_distance_km",
+        ].join(", ")
       )
       .eq("id", bookingRow.current_offer_queue_id)
       .maybeSingle();
@@ -224,6 +231,8 @@ export async function GET(req: NextRequest) {
         pickupFee: bookingRow.pickup_fee,
         totalFare: bookingRow.total_fare,
         departureOptionUsed: bookingRow.departure_option_used,
+        departureDistanceKm:
+          (queue as any)?.departure_distance_km ?? null,
         queue,
       },
     },
