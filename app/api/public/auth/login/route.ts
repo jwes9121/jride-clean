@@ -189,6 +189,15 @@ export async function POST(req: NextRequest) {
     const user = data?.user ?? null;
     const session = data?.session ?? null;
     const accessToken = session?.access_token ?? null;
+    const refreshToken = session?.refresh_token ?? null;
+    const expiresIn =
+      typeof session?.expires_in === "number"
+        ? session.expires_in
+        : null;
+    const expiresAt =
+      typeof session?.expires_at === "number"
+        ? session.expires_at
+        : null;
 
     if (!user || !accessToken) {
       return bad("Missing authenticated user or access token.", 500);
@@ -248,6 +257,9 @@ export async function POST(req: NextRequest) {
         full_name: fullName,
         name: fullName,
         access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_in: expiresIn,
+        expires_at: expiresAt,
         device_id: deviceId,
         device_session: deviceId
           ? {
