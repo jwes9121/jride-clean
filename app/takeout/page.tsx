@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 // JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
@@ -723,6 +723,7 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
 
 export default function TakeoutPage() {
   const [vendorId, setVendorId] = useState("");
+  const [checkoutStage, setCheckoutStage] = useState<"browse" | "delivery">("browse");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [vendorTownFilter, setVendorTownFilter] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -1072,6 +1073,28 @@ function selectedAddressTown(
     const hasItems = selectedLines.length > 0;
     return hasVendor && hasVerifiedProfile && hasDeliveryPin && hasItems && !vendorClosed && !busy;
   }, [vendorId, authState, customerName, customerPhone, deliveryPin, selectedLines.length, vendorClosed, busy]);
+
+
+  const canOpenDelivery = selectedLines.length > 0 && !vendorClosed;
+  const canReviewAndSubmit = canSubmit && !deliveryPinNeedsConfirmation;
+
+  function openDeliveryStage() {
+    if (!canOpenDelivery) return;
+    setCheckoutStage("delivery");
+    setShowDeliveryPin(true);
+    setResult("");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  function returnToMenu() {
+    setCheckoutStage("browse");
+    setResult("");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
 
 
   async function loadPassengerAutofill() {
@@ -1818,6 +1841,8 @@ const contact = await fetchOptionalJson(
 
       <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
         <div className="jride-takeout-form-grid grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] md:gap-5">
+          {checkoutStage === "browse" ? (
+          <>
           <div className="jride-town-and-vendors space-y-2">
             <div>
               <div className="flex items-center justify-between gap-2">
@@ -2050,10 +2075,12 @@ const contact = await fetchOptionalJson(
                 <button
                   type="button"
                   onClick={() => refreshMenu().catch(() => undefined)}
-                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border bg-white text-lg font-black hover:bg-slate-50 disabled:opacity-60"
                   disabled={menuBusy}
+                  aria-label={menuBusy ? "Refreshing menu" : "Refresh menu"}
+                  title={menuBusy ? "Refreshing menu" : "Refresh menu"}
                 >
-                  {menuBusy ? "Loading..." : "Refresh menu"}
+                  {menuBusy ? "..." : "\u21bb"}
                 </button>
               ) : null}
             </div>
@@ -2293,6 +2320,27 @@ const contact = await fetchOptionalJson(
               <div className="mt-1 text-xs">Please try again later. New orders are blocked until the vendor reopens.</div>
             </div>
           ) : null}
+          </>
+          ) : null}
+
+          {checkoutStage === "delivery" ? (
+          <>
+          <div className="md:col-span-2 rounded-2xl border border-emerald-300 bg-emerald-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 4</div>
+                <div className="text-lg font-black text-slate-900">Delivery details</div>
+                <div className="mt-1 text-xs text-slate-600">Confirm your passenger details, delivery address, and exact map pin.</div>
+              </div>
+              <button
+                type="button"
+                onClick={returnToMenu}
+                className="shrink-0 rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-800 hover:bg-emerald-50"
+              >
+                Back to menu
+              </button>
+            </div>
+          </div>
 
           <div>
             <label className="text-xs font-medium text-slate-700">Verified passenger name (required)</label>
@@ -2638,6 +2686,8 @@ const contact = await fetchOptionalJson(
               placeholder="Any special instructions..."
             />
           </details>
+          </>
+          ) : null}
         </div>
 
         {/* JRIDE_TAKEOUT_APP_LIKE_UI_V6 */}
@@ -2662,14 +2712,36 @@ const contact = await fetchOptionalJson(
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <button
               type="button"
-              onClick={submit}
-              disabled={!canSubmit || busy || submitted}
+              onClick={checkoutStage === "browse" ? openDeliveryStage : submit}
+              disabled={
+                submitted ||
+                busy ||
+                (checkoutStage === "browse" ? !canOpenDelivery : !canReviewAndSubmit)
+              }
               className={cls(
                 "rounded-xl px-3 py-2.5 text-sm font-black text-white shadow-md",
-                canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
+                !submitted &&
+                  !busy &&
+                  (checkoutStage === "browse" ? canOpenDelivery : canReviewAndSubmit)
+                  ? "bg-slate-900 hover:bg-slate-800"
+                  : "bg-slate-400"
               )}
             >
-              {submitted ? "Order sent" : busy ? "Submitting order..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Sign in required" : "Continue"}
+              {submitted
+                ? "Order sent"
+                : busy
+                  ? "Submitting order..."
+                  : vendorClosed
+                    ? "Vendor closed"
+                    : authState !== "signed_in_profile"
+                      ? "Sign in required"
+                      : checkoutStage === "browse"
+                        ? selectedLines.length > 0
+                          ? "Continue to delivery details"
+                          : "Continue"
+                        : deliveryPin && !deliveryPinNeedsConfirmation
+                          ? "Review and submit order"
+                          : "Confirm delivery location"}
             </button>
 
             <a href="/takeout/orders" className="rounded-xl border px-3 py-2.5 text-center text-xs font-bold hover:bg-slate-50">
@@ -2677,7 +2749,11 @@ const contact = await fetchOptionalJson(
             </a>
           </div>
           <div className="mt-1 text-center text-[10px] text-slate-500">
-            Driver quote follows after checkout.
+            {checkoutStage === "browse"
+              ? "Add items, then continue to delivery details."
+              : deliveryPin && !deliveryPinNeedsConfirmation
+                ? "Review your details, then submit. Driver quote follows."
+                : "Set and confirm the exact delivery location to continue."}
           </div>
 
           {vendorClosed ? (
