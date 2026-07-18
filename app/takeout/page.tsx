@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
@@ -2160,7 +2160,7 @@ const contact = await fetchOptionalJson(
                     <div
                       key={m.id}
                       className={cls(
-                        "flex min-h-[124px] w-full min-w-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px] sm:rounded-2xl sm:p-3.5",
+                        "flex min-h-[124px] w-full min-w-0 overflow-hidden flex-col justify-between rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:border-emerald-200 hover:shadow-md sm:min-h-[245px] sm:rounded-2xl sm:p-3.5",
                         disabled ? "bg-slate-50 opacity-70" : "bg-white"
                       )}
                     >
@@ -2178,9 +2178,9 @@ const contact = await fetchOptionalJson(
                           ) : null}
                         </div>
                         {m.description ? (
-                          <div className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-slate-600 sm:mt-1 sm:line-clamp-2 sm:text-xs">{m.description}</div>
+                          <div className="mt-0.5 min-w-0 break-words line-clamp-1 text-[11px] leading-snug text-slate-600 sm:mt-1 sm:line-clamp-2 sm:text-xs">{m.description}</div>
                         ) : null}
-                        <div className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold text-slate-700 sm:mt-2 sm:px-2.5 sm:text-[10px]">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
+                        <div className="mt-1 inline-flex max-w-full self-start break-words rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold text-slate-700 sm:mt-2 sm:px-2.5 sm:text-[10px]">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
                         {Number(m.remaining_quantity) > 0 ? (
                           <div className="mt-0.5 text-[10px] font-semibold text-emerald-700 sm:mt-1 sm:text-[11px]">Remaining today: {Number(m.remaining_quantity)}</div>
                         ) : null}
@@ -2190,7 +2190,7 @@ const contact = await fetchOptionalJson(
                           </div>
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-0.5 flex cursor-pointer items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-1.5 py-1 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
+                          <label className="mt-0.5 flex min-w-0 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50 px-1.5 py-1 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
                             <input
                               type="checkbox"
                               className="mt-0.5"
@@ -2202,8 +2202,8 @@ const contact = await fetchOptionalJson(
                                 setItemPremiumPackaging(m.id, checked);
                               }}
                             />
-                            <span>
-                              <span className="line-clamp-2 font-semibold">
+                            <span className="min-w-0 flex-1">
+                              <span className="line-clamp-2 break-words font-semibold">
                                 Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
                               </span>
                             </span>
@@ -3318,6 +3318,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
