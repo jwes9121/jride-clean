@@ -355,6 +355,20 @@ export async function createAdvanceBooking(
 
   if (!offers.ok) {
     console.error("[advance-booking:create] offer failed", offers.error);
+  } else if (offers.offersCreated === 0) {
+    console.warn("[advance-booking:create] no eligible drivers found", {
+      bookingId: created.id,
+      pickupTown: canonicalTown,
+      vehicleType,
+      scheduledPickupAt: scheduledPickupAt.toISOString(),
+    });
+  } else if (offers.offersCreated === 0) {
+    console.warn("[advance-booking:create] no eligible drivers found", {
+      bookingId: created.id,
+      pickupTown: canonicalTown,
+      vehicleType,
+      scheduledPickupAt: scheduledPickupAt.toISOString(),
+    });
   }
 
   return {
