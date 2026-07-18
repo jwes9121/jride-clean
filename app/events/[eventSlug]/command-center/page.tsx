@@ -46,6 +46,8 @@ type DashboardResponse = {
     configuredStations: number;
     activeStations: number;
     offlineStations: number;
+    trackedParticipants: number;
+    completedParticipants: number;
   };
   checkpointSummary?: {
     checkpointId: string;
@@ -77,6 +79,38 @@ type DashboardResponse = {
     stationId: string;
     stationName: string;
     passedAt: string;
+  }[];
+  runnerTracking?: {
+    rank: number;
+    attendeeId: string;
+    fullName: string;
+    registrationNumber: string;
+    groupValue: string | null;
+    isDisqualified: boolean;
+    passedCheckpoints: number;
+    totalCheckpoints: number;
+    remainingCheckpoints: number;
+    progressPercent: number;
+    isComplete: boolean;
+    latestCheckpoint: {
+      checkpointId: string;
+      checkpointNo: number;
+      checkpointName: string;
+      sortOrder: number;
+      sequence: number;
+      status: "passed";
+      passedAt: string | null;
+    } | null;
+    nextCheckpoint: {
+      checkpointId: string;
+      checkpointNo: number;
+      checkpointName: string;
+      sortOrder: number;
+      sequence: number;
+      status: "pending";
+      passedAt: null;
+    } | null;
+    lastKnownPassageAt: string | null;
   }[];
   error?: string;
 };
@@ -250,6 +284,8 @@ export default function EventCommandCenterPage() {
     configuredStations: 0,
     activeStations: 0,
     offlineStations: 0,
+    trackedParticipants: 0,
+    completedParticipants: 0,
   };
 
   const topBatches = data?.topBatches || [];
@@ -259,6 +295,7 @@ export default function EventCommandCenterPage() {
   const checkpointStations = data?.checkpointStations || [];
   const recentCheckpointActivity =
     data?.recentCheckpointActivity || [];
+  const runnerTracking = data?.runnerTracking || [];
 
   const checkInPct = percent(
     summary.checkedIn,
@@ -608,6 +645,161 @@ export default function EventCommandCenterPage() {
                 ) : (
                   <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
                     No checkpoint passages yet.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white p-5 text-slate-950">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Runner Tracking
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Last known checkpoint ranking
+                    </h2>
+                  </div>
+
+                  <p className="text-sm font-semibold text-slate-500">
+                    Checkpoint-based only. No GPS or ETA inference.
+                  </p>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl bg-cyan-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.15em] text-cyan-800">
+                      Tracked Participants
+                    </p>
+                    <p className="mt-2 text-4xl font-black">
+                      {formatNumber(race.trackedParticipants)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-emerald-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.15em] text-emerald-800">
+                      Completed Participants
+                    </p>
+                    <p className="mt-2 text-4xl font-black">
+                      {formatNumber(race.completedParticipants)}
+                    </p>
+                  </div>
+                </div>
+
+                {runnerTracking.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto">
+                    <table className="min-w-full border-separate border-spacing-y-2 text-sm">
+                      <thead>
+                        <tr className="text-left text-xs font-black uppercase tracking-[0.15em] text-slate-500">
+                          <th className="px-3 py-2">Rank</th>
+                          <th className="px-3 py-2">Runner</th>
+                          <th className="px-3 py-2">Progress</th>
+                          <th className="px-3 py-2">Latest Known</th>
+                          <th className="px-3 py-2">Next</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {runnerTracking.map((runner) => (
+                          <tr
+                            key={runner.attendeeId}
+                            className="bg-slate-100 align-top"
+                          >
+                            <td className="rounded-l-2xl px-3 py-4 font-mono text-xl font-black">
+                              #{runner.rank}
+                            </td>
+
+                            <td className="px-3 py-4">
+                              <p className="text-lg font-black">
+                                {runner.fullName}
+                              </p>
+                              <p className="mt-1 font-mono text-xs font-bold text-slate-500">
+                                {runner.registrationNumber}
+                              </p>
+                              {runner.groupValue ? (
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                  {event?.groupLabel || "Group"} {runner.groupValue}
+                                </p>
+                              ) : null}
+                            </td>
+
+                            <td className="px-3 py-4">
+                              <p className="text-xl font-black">
+                                {runner.progressPercent}%
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-slate-500">
+                                {runner.passedCheckpoints} passed,{" "}
+                                {runner.remainingCheckpoints} remaining
+                              </p>
+                              <div className="mt-2 h-2 w-36 overflow-hidden rounded-full bg-slate-200">
+                                <div
+                                  className="h-full rounded-full bg-cyan-600"
+                                  style={{
+                                    width: `${runner.progressPercent}%`,
+                                  }}
+                                />
+                              </div>
+                            </td>
+
+                            <td className="px-3 py-4">
+                              {runner.latestCheckpoint ? (
+                                <>
+                                  <p className="font-black">
+                                    CP {runner.latestCheckpoint.checkpointNo} -{" "}
+                                    {runner.latestCheckpoint.checkpointName}
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    {formatTime(runner.lastKnownPassageAt)}
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold text-slate-400">
+                                    {relativeTime(runner.lastKnownPassageAt)}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="font-semibold text-slate-500">
+                                  No passage yet
+                                </p>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-4">
+                              {runner.nextCheckpoint ? (
+                                <p className="font-black">
+                                  CP {runner.nextCheckpoint.checkpointNo} -{" "}
+                                  {runner.nextCheckpoint.checkpointName}
+                                </p>
+                              ) : (
+                                <p className="font-black text-emerald-700">
+                                  Finished
+                                </p>
+                              )}
+                            </td>
+
+                            <td className="rounded-r-2xl px-3 py-4">
+                              <span
+                                className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${
+                                  runner.isDisqualified
+                                    ? "border-red-300 bg-red-100 text-red-800"
+                                    : runner.isComplete
+                                    ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                    : "border-cyan-300 bg-cyan-100 text-cyan-900"
+                                }`}
+                              >
+                                {runner.isDisqualified
+                                  ? "REVIEW"
+                                  : runner.isComplete
+                                  ? "FINISHED"
+                                  : "ACTIVE"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                    No participant checkpoint passages recorded yet.
                   </p>
                 )}
               </div>
