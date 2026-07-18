@@ -40,6 +40,44 @@ type DashboardResponse = {
     lastCheckinAt: string | null;
     secondsSinceLastScan: number | null;
   };
+  race?: {
+    totalCheckpoints: number;
+    totalCheckpointPassages: number;
+    configuredStations: number;
+    activeStations: number;
+    offlineStations: number;
+  };
+  checkpointSummary?: {
+    checkpointId: string;
+    checkpointName: string;
+    checkpointNo: number;
+    sortOrder: number;
+    passages: number;
+    lastPassageAt: string | null;
+  }[];
+  checkpointStations?: {
+    stationId: string;
+    stationName: string;
+    checkpointId: string | null;
+    checkpointName: string | null;
+    checkpointNo: number | null;
+    status: "online" | "offline";
+    tokenStatus: string;
+    expiresAt: string;
+    lastUsedAt: string | null;
+  }[];
+  recentCheckpointActivity?: {
+    passageId: string;
+    attendeeId: string;
+    attendeeName: string;
+    registrationNumber: string | null;
+    checkpointId: string;
+    checkpointName: string;
+    checkpointNo: number | null;
+    stationId: string;
+    stationName: string;
+    passedAt: string;
+  }[];
   error?: string;
 };
 
@@ -80,9 +118,35 @@ function secondsAgo(value: number | null | undefined) {
   return `${hours}h ago`;
 }
 
+function relativeTime(value: string | null | undefined) {
+  if (!value) return "No activity yet";
+
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "-";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+
+  if (seconds < 60) return `${seconds}s ago`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 function scannerBadgeClass(status: string | undefined) {
-  if (status === "online") return "border-emerald-300 bg-emerald-100 text-emerald-800";
-  if (status === "idle") return "border-amber-300 bg-amber-100 text-amber-900";
+  if (status === "online") {
+    return "border-emerald-300 bg-emerald-100 text-emerald-800";
+  }
+
+  if (status === "idle") {
+    return "border-amber-300 bg-amber-100 text-amber-900";
+  }
+
   return "border-slate-300 bg-slate-100 text-slate-700";
 }
 
@@ -92,9 +156,18 @@ function scannerLabel(status: string | undefined) {
   return "UNKNOWN";
 }
 
+function stationBadgeClass(status: "online" | "offline") {
+  return status === "online"
+    ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+    : "border-red-300 bg-red-100 text-red-800";
+}
+
 function percent(numerator: number, denominator: number) {
   if (!denominator) return 0;
-  return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 100)));
+  return Math.max(
+    0,
+    Math.min(100, Math.round((numerator / denominator) * 100))
+  );
 }
 
 function ratePerMinute(count: number, minutes: number) {
@@ -133,7 +206,11 @@ export default function EventCommandCenterPage() {
 
       setData(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dashboard failed to load.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Dashboard failed to load."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -153,23 +230,50 @@ export default function EventCommandCenterPage() {
   }, [eventSlug]);
 
   const event = data?.event;
+
   const summary = data?.summary || {
     registeredAlumni: 0,
     checkedIn: 0,
     pendingReview: 0,
     guests: 0,
   };
+
   const velocity = data?.velocity || {
     last1Min: 0,
     last5Min: 0,
     last15Min: 0,
   };
+
+  const race = data?.race || {
+    totalCheckpoints: 0,
+    totalCheckpointPassages: 0,
+    configuredStations: 0,
+    activeStations: 0,
+    offlineStations: 0,
+  };
+
   const topBatches = data?.topBatches || [];
   const recentActivity = data?.recentActivity || [];
   const scanner = data?.scanner;
+  const checkpointSummary = data?.checkpointSummary || [];
+  const checkpointStations = data?.checkpointStations || [];
+  const recentCheckpointActivity =
+    data?.recentCheckpointActivity || [];
 
-  const checkInPct = percent(summary.checkedIn, summary.registeredAlumni + summary.guests);
-  const maxBatchCount = Math.max(1, ...topBatches.map((item) => item.count));
+  const checkInPct = percent(
+    summary.checkedIn,
+    summary.registeredAlumni + summary.guests
+  );
+
+  const maxBatchCount = Math.max(
+    1,
+    ...topBatches.map((item) => item.count)
+  );
+
+  const maxCheckpointPassages = Math.max(
+    1,
+    ...checkpointSummary.map((item) => item.passages)
+  );
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
@@ -184,7 +288,7 @@ export default function EventCommandCenterPage() {
                 {event?.title || "Event Operations Dashboard"}
               </h1>
               <p className="mt-2 text-slate-300">
-                One-gate live operations view for {eventSlug}.
+                Live attendance and race operations for {eventSlug}.
               </p>
               {data?.generatedAt ? (
                 <p className="mt-2 text-sm font-semibold text-slate-500">
@@ -199,6 +303,7 @@ export default function EventCommandCenterPage() {
                   Refreshing...
                 </span>
               ) : null}
+
               <button
                 type="button"
                 onClick={() => loadDashboard(false)}
@@ -224,6 +329,289 @@ export default function EventCommandCenterPage() {
 
           {!loading && !error ? (
             <>
+              <div className="mt-6 rounded-3xl border border-amber-300/20 bg-slate-950 p-5">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">
+                      Race Command Center
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Live checkpoint operations
+                    </h2>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-400">
+                    Auto-refresh every 10 seconds
+                  </p>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-5">
+                  <div className="rounded-3xl bg-white p-5 text-slate-950">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Checkpoints
+                    </p>
+                    <p className="mt-3 text-5xl font-black">
+                      {formatNumber(race.totalCheckpoints)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-3xl bg-cyan-100 p-5 text-cyan-950">
+                    <p className="text-xs font-black uppercase tracking-[0.2em]">
+                      Total Passages
+                    </p>
+                    <p className="mt-3 text-5xl font-black">
+                      {formatNumber(race.totalCheckpointPassages)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-3xl bg-slate-100 p-5 text-slate-950">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Configured Stations
+                    </p>
+                    <p className="mt-3 text-5xl font-black">
+                      {formatNumber(race.configuredStations)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-3xl bg-emerald-100 p-5 text-emerald-900">
+                    <p className="text-xs font-black uppercase tracking-[0.2em]">
+                      Active Stations
+                    </p>
+                    <p className="mt-3 text-5xl font-black">
+                      {formatNumber(race.activeStations)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-3xl bg-red-100 p-5 text-red-800">
+                    <p className="text-xs font-black uppercase tracking-[0.2em]">
+                      Offline Stations
+                    </p>
+                    <p className="mt-3 text-5xl font-black">
+                      {formatNumber(race.offlineStations)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                <div className="rounded-3xl bg-white p-5 text-slate-950">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                        Checkpoint Progress
+                      </p>
+                      <h2 className="mt-2 text-3xl font-black">
+                        Passage totals
+                      </h2>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-500">
+                      Ordered by checkpoint sequence
+                    </p>
+                  </div>
+
+                  {checkpointSummary.length > 0 ? (
+                    <div className="mt-5 grid gap-3">
+                      {checkpointSummary.map((checkpoint) => (
+                        <div
+                          key={checkpoint.checkpointId}
+                          className="rounded-2xl bg-slate-100 p-4"
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                                Checkpoint {checkpoint.checkpointNo}
+                              </p>
+                              <p className="mt-1 text-xl font-black">
+                                {checkpoint.checkpointName}
+                              </p>
+                              <p className="mt-2 text-sm font-semibold text-slate-500">
+                                Last passage:{" "}
+                                {checkpoint.lastPassageAt
+                                  ? `${relativeTime(
+                                      checkpoint.lastPassageAt
+                                    )} at ${formatTime(
+                                      checkpoint.lastPassageAt
+                                    )}`
+                                  : "No passage yet"}
+                              </p>
+                            </div>
+
+                            <p className="font-mono text-4xl font-black">
+                              {formatNumber(checkpoint.passages)}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+                            <div
+                              className="h-full rounded-full bg-cyan-500"
+                              style={{
+                                width: `${
+                                  checkpoint.passages > 0
+                                    ? Math.max(
+                                        6,
+                                        Math.round(
+                                          (checkpoint.passages /
+                                            maxCheckpointPassages) *
+                                            100
+                                        )
+                                      )
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                      No checkpoints configured for this event.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-3xl bg-white p-5 text-slate-950">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                        Station Health
+                      </p>
+                      <h2 className="mt-2 text-3xl font-black">
+                        Checkpoint devices
+                      </h2>
+                    </div>
+                    <p className="text-sm font-semibold text-slate-500">
+                      Status is based on token state and expiry
+                    </p>
+                  </div>
+
+                  {checkpointStations.length > 0 ? (
+                    <div className="mt-5 grid gap-3">
+                      {checkpointStations.map((station) => (
+                        <div
+                          key={station.stationId}
+                          className="rounded-2xl bg-slate-100 p-4"
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <p className="text-xl font-black">
+                                {station.stationName}
+                              </p>
+                              <p className="mt-1 text-sm font-semibold text-slate-500">
+                                {station.checkpointNo
+                                  ? `Checkpoint ${station.checkpointNo} - `
+                                  : ""}
+                                {station.checkpointName ||
+                                  "No checkpoint assignment"}
+                              </p>
+                            </div>
+
+                            <span
+                              className={`rounded-full border px-4 py-2 text-xs font-black ${stationBadgeClass(
+                                station.status
+                              )}`}
+                            >
+                              {station.status.toUpperCase()}
+                            </span>
+                          </div>
+
+                          <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
+                            <div className="rounded-xl bg-white p-3">
+                              <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                                Last Used
+                              </p>
+                              <p className="mt-1 font-bold">
+                                {station.lastUsedAt
+                                  ? `${relativeTime(
+                                      station.lastUsedAt
+                                    )} at ${formatTime(
+                                      station.lastUsedAt
+                                    )}`
+                                  : "Never"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-white p-3">
+                              <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                                Token
+                              </p>
+                              <p className="mt-1 font-bold">
+                                {station.tokenStatus} - expires{" "}
+                                {formatGenerated(station.expiresAt)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                      No checkpoint station tokens configured.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white p-5 text-slate-950">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Live Checkpoint Feed
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Recent runner passages
+                    </h2>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500">
+                    Latest 20 checkpoint records
+                  </p>
+                </div>
+
+                {recentCheckpointActivity.length > 0 ? (
+                  <div className="mt-5 grid gap-3">
+                    {recentCheckpointActivity.map((passage) => (
+                      <div
+                        key={passage.passageId}
+                        className="flex flex-col gap-3 rounded-2xl bg-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between"
+                      >
+                        <div>
+                          <p className="text-xl font-black">
+                            {passage.attendeeName}
+                          </p>
+                          <p className="mt-1 font-mono text-sm font-bold text-slate-500">
+                            {passage.registrationNumber || "-"}
+                          </p>
+                        </div>
+
+                        <div className="lg:text-center">
+                          <p className="text-sm font-black text-slate-500">
+                            Checkpoint {passage.checkpointNo || "-"}
+                          </p>
+                          <p className="mt-1 font-black">
+                            {passage.checkpointName}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            {passage.stationName}
+                          </p>
+                        </div>
+
+                        <div className="lg:text-right">
+                          <p className="font-mono text-lg font-black">
+                            {formatTime(passage.passedAt)}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            {relativeTime(passage.passedAt)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                    No checkpoint passages yet.
+                  </p>
+                )}
+              </div>
+
               <div className="mt-6 grid gap-4 md:grid-cols-4">
                 <div className="rounded-3xl bg-white p-5 text-slate-950">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
@@ -275,6 +663,7 @@ export default function EventCommandCenterPage() {
                       This is an operational ratio only, not a population attendance percentage.
                     </p>
                   </div>
+
                   <div className="h-4 w-full overflow-hidden rounded-full bg-slate-800 md:max-w-md">
                     <div
                       className="h-full rounded-full bg-emerald-400"
@@ -292,14 +681,18 @@ export default function EventCommandCenterPage() {
 
                   <div className="mt-5 grid gap-3">
                     <div className="rounded-2xl bg-slate-100 p-4">
-                      <p className="text-sm font-black text-slate-500">Last 1 minute</p>
+                      <p className="text-sm font-black text-slate-500">
+                        Last 1 minute
+                      </p>
                       <p className="mt-1 text-4xl font-black">
                         {formatNumber(velocity.last1Min)}
                       </p>
                     </div>
 
                     <div className="rounded-2xl bg-slate-100 p-4">
-                      <p className="text-sm font-black text-slate-500">Last 5 minutes</p>
+                      <p className="text-sm font-black text-slate-500">
+                        Last 5 minutes
+                      </p>
                       <p className="mt-1 text-4xl font-black">
                         {formatNumber(velocity.last5Min)}
                       </p>
@@ -309,7 +702,9 @@ export default function EventCommandCenterPage() {
                     </div>
 
                     <div className="rounded-2xl bg-slate-100 p-4">
-                      <p className="text-sm font-black text-slate-500">Last 15 minutes</p>
+                      <p className="text-sm font-black text-slate-500">
+                        Last 15 minutes
+                      </p>
                       <p className="mt-1 text-4xl font-black">
                         {formatNumber(velocity.last15Min)}
                       </p>
@@ -330,6 +725,7 @@ export default function EventCommandCenterPage() {
                         Single gate check-in
                       </p>
                     </div>
+
                     <div
                       className={`rounded-full border px-4 py-2 text-sm font-black ${scannerBadgeClass(
                         scanner?.status
@@ -340,7 +736,9 @@ export default function EventCommandCenterPage() {
                   </div>
 
                   <div className="mt-6 rounded-2xl bg-slate-100 p-5">
-                    <p className="text-sm font-black text-slate-500">Last Scan</p>
+                    <p className="text-sm font-black text-slate-500">
+                      Last Scan
+                    </p>
                     <p className="mt-2 text-3xl font-black">
                       {secondsAgo(scanner?.secondsSinceLastScan)}
                     </p>
@@ -370,13 +768,21 @@ export default function EventCommandCenterPage() {
                             <p className="font-black">
                               {event?.groupLabel || "Batch"} {item.value}
                             </p>
-                            <p className="font-mono font-black">{item.count}</p>
+                            <p className="font-mono font-black">
+                              {item.count}
+                            </p>
                           </div>
+
                           <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
                             <div
                               className="h-full rounded-full bg-amber-400"
                               style={{
-                                width: `${Math.max(8, Math.round((item.count / maxBatchCount) * 100))}%`,
+                                width: `${Math.max(
+                                  8,
+                                  Math.round(
+                                    (item.count / maxBatchCount) * 100
+                                  )
+                                )}%`,
                               }}
                             />
                           </div>
@@ -397,8 +803,11 @@ export default function EventCommandCenterPage() {
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                       Live Activity
                     </p>
-                    <h2 className="mt-2 text-3xl font-black">Recent Check-ins</h2>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Recent Check-ins
+                    </h2>
                   </div>
+
                   <p className="text-sm font-semibold text-slate-500">
                     Latest 20 successful check-ins
                   </p>
@@ -418,12 +827,18 @@ export default function EventCommandCenterPage() {
                                 G
                               </span>
                             ) : null}
-                            <p className="text-xl font-black">{item.fullName}</p>
+
+                            <p className="text-xl font-black">
+                              {item.fullName}
+                            </p>
                           </div>
+
                           <p className="mt-1 text-sm font-semibold text-slate-500">
-                            {event?.groupLabel || "Batch"} {item.groupValue || "-"}
+                            {event?.groupLabel || "Batch"}{" "}
+                            {item.groupValue || "-"}
                           </p>
                         </div>
+
                         <p className="font-mono text-lg font-black">
                           {formatTime(item.checkedInAt)}
                         </p>
