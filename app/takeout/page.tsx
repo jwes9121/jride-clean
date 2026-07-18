@@ -1801,16 +1801,13 @@ const contact = await fetchOptionalJson(
             <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
           </div>
         ) : authState === "signed_in_profile" ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-900 sm:p-3 sm:text-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold">Passenger verified</div>
-                <div className="hidden text-xs sm:block">Name and phone were loaded from your verified passenger profile. These details are required for booking.</div>
-              </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 sm:text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 font-semibold">Verified passenger</div>
               <button
                 type="button"
                 onClick={logoutPassengerProfile}
-                className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+                className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
               >
                 Logout
               </button>
@@ -1824,9 +1821,12 @@ const contact = await fetchOptionalJson(
           <div className="jride-town-and-vendors space-y-2">
             <div>
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose town</label>
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
+                  <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose your delivery town</label>
+                </div>
                 <span className="rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100">
-                  {vendorTownFilter || "Select"}
+                  {vendorTownFilter ? vendorTownFilter + " selected" : "Not selected"}
                 </span>
               </div>
               <div className="mt-2 grid grid-cols-5 gap-1.5">
@@ -1874,10 +1874,10 @@ const contact = await fetchOptionalJson(
             <div className="jride-vendor-menu-section space-y-2 md:col-span-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Vendor marketplace</div>
-                  <div className="mt-0.5 text-sm font-bold text-slate-950">Choose a store</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 2</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Choose a store</div>
                   <div className="mt-1 text-[11px] text-slate-500">
-                    {vendorTownFilter ? "Browse restaurants and stores in your selected town." : "Choose a town first to show available stores."}
+                    {vendorTownFilter ? "Select a restaurant or store to load its menu." : "Complete Step 1 to show available stores."}
                   </div>
                 </div>
                 {vendorTownFilter ? (
@@ -1889,7 +1889,8 @@ const contact = await fetchOptionalJson(
 
               {!vendorTownFilter ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  Select a town above to browse JRide Takeout vendors.
+                  <div className="font-semibold text-slate-900">Choose your town first.</div>
+                  <div className="mt-1 text-xs">Nearby JRide Takeout vendors will appear here.</div>
                 </div>
                             ) : activeVendors.length === 0 && comingSoonVendors.length === 0 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -1983,7 +1984,7 @@ const contact = await fetchOptionalJson(
                               </span>
                             ) : null}
                             <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
-                              {isSelected ? "Menu loaded" : "View menu"}
+                              {isSelected ? "Viewing menu" : "View menu"}
                             </span>
                           </div>
                         </div>
@@ -2034,23 +2035,18 @@ const contact = await fetchOptionalJson(
               ) : null}
               {vendorId ? (
                 <div className={cls(
-                  "jride-selected-vendor-summary w-full rounded-xl border p-3 text-xs lg:max-w-none",
+                  "jride-selected-vendor-summary flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs lg:max-w-none",
                   vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
                 )}>
-                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500">Selected vendor</div>
-                      <div className="mt-0.5 font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
-                    </div>
-                    <div className={cls(
-                      "rounded-full border px-2 py-1 text-[11px] font-semibold",
-                      vendorClosed ? "border-rose-300 bg-white text-rose-700" : "border-emerald-300 bg-white text-emerald-700"
-                    )}>
-                      {vendorClosed ? "Closed" : "Open"}
-                    </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Ordering from</div>
+                    <div className="truncate font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
                   </div>
-                  <div className="mt-2 text-[11px]">
-                    {vendorClosed ? "This vendor is not accepting new orders right now." : "This vendor is accepting takeout orders."}
+                  <div className={cls(
+                    "shrink-0 rounded-full border px-2 py-1 text-[11px] font-semibold",
+                    vendorClosed ? "border-rose-300 bg-white text-rose-700" : "border-emerald-300 bg-white text-emerald-700"
+                  )}>
+                    {vendorClosed ? "Closed" : "Open"}
                   </div>
                 </div>
               ) : null}
@@ -2059,21 +2055,24 @@ const contact = await fetchOptionalJson(
             {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V16 */}
             <div className="flex items-center justify-between gap-3">
               <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 3</div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
-  Browse menu
-</div>
+                  Browse menu
+                </div>
                 <div className="hidden text-xs text-slate-500 sm:block">
-  Swipe through available meals, drinks, and add-ons.
-</div>
+                  {vendorId.trim() ? "Choose meals, drinks, and add-ons." : "Complete Step 2 to load a store menu."}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => refreshMenu().catch(() => undefined)}
-                className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
-                disabled={menuBusy || !vendorId.trim()}
-              >
-                {menuBusy ? "Loading..." : "Refresh menu"}
-              </button>
+              {vendorId.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => refreshMenu().catch(() => undefined)}
+                  className="rounded-full border bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50 sm:rounded sm:px-4 sm:py-2 sm:text-base"
+                  disabled={menuBusy}
+                >
+                  {menuBusy ? "Loading..." : "Refresh menu"}
+                </button>
+              ) : null}
             </div>
 
             {menuErr ? (
@@ -2083,8 +2082,8 @@ const contact = await fetchOptionalJson(
 
             {!vendorId.trim() ? (
               <div className="mt-2 rounded-xl border border-dashed bg-slate-50 p-4 text-sm text-slate-700">
-                <div className="font-semibold text-slate-900">Select a vendor to view today's menu.</div>
-                <div className="mt-1 text-xs text-slate-500">Available items, prep time, packaging notes, and subtotal will appear here.</div>
+                <div className="font-semibold text-slate-900">Choose a store first.</div>
+                <div className="mt-1 text-xs text-slate-500">Today's menu, preparation time, and item availability will appear here.</div>
               </div>
             ) : menuBusy ? (
               <div className="mt-2 rounded border bg-slate-50 p-3 text-sm text-slate-700">Loading menu...</div>
@@ -2247,21 +2246,23 @@ const contact = await fetchOptionalJson(
               </>
             )}
 
-            <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5 text-sm shadow-sm sm:mt-3 sm:p-3">
-              <div className="flex items-center justify-between">
-                <div className="font-medium">Estimated subtotal</div>
-                <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
-              </div>
-              {packagingEstimate > 0 ? (
-                <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
-                  <span>{premiumPackagingLabel}</span>
-                  <span>{money(packagingEstimate)}</span>
+            {selectedLines.length > 0 ? (
+              <div className="mt-2 rounded-xl border border-slate-200 bg-white p-2.5 text-sm shadow-sm sm:mt-3 sm:p-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">Estimated subtotal</div>
+                  <div className="font-semibold">{money(estimatedSubtotalWithPackaging)}</div>
                 </div>
-              ) : null}
-              <div className="mt-1 text-[11px] text-slate-600">
-                {vendorClosed ? "Ordering is disabled because this vendor is closed." : "This is an estimate for items only. The final delivery fee appears after a driver proposal."}
+                {packagingEstimate > 0 ? (
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
+                    <span>{premiumPackagingLabel}</span>
+                    <span>{money(packagingEstimate)}</span>
+                  </div>
+                ) : null}
+                <div className="mt-1 text-[11px] text-slate-600">
+                  {vendorClosed ? "Ordering is disabled because this vendor is closed." : "Items estimate only. The delivery fee follows after a driver proposal."}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             {cashCollectionRequired ? (
               <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm">
@@ -2658,21 +2659,23 @@ const contact = await fetchOptionalJson(
 
         {/* JRIDE_TAKEOUT_APP_LIKE_UI_V6 */}
         <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:sticky sm:max-w-none sm:rounded-xl sm:border sm:p-3">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-            <div className="min-w-0">
-              <div className="truncate font-bold text-slate-900">{selectedLines.length || 0} item{selectedLines.length === 1 ? "" : "s"}</div>
-              <div className="text-[11px] text-slate-500">Delivery fee follows after driver quote</div>
+          {selectedLines.length > 0 ? (
+            <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <div className="truncate font-bold text-slate-900">{selectedLines.length} item{selectedLines.length === 1 ? "" : "s"}</div>
+                <div className="text-[11px] text-slate-500">Delivery fee follows after driver quote</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[11px] text-slate-500">Subtotal</div>
+                <div className="text-lg font-black text-slate-900">{money(estimatedSubtotalWithPackaging)}</div>
+              </div>
             </div>
-            <div className="shrink-0 text-right">
-              <div className="text-[11px] text-slate-500">Subtotal</div>
-              <div className="text-base font-black text-slate-900">{money(estimatedSubtotalWithPackaging)}</div>
+          ) : (
+            <div className="mb-2 text-center">
+              <div className="text-xs font-bold text-slate-900">Choose a menu item to begin.</div>
+              <div className="mt-0.5 text-[11px] text-slate-500">Your subtotal will appear here.</div>
             </div>
-          </div>
-	  {selectedLines.length === 0 ? (
-  <div className="mb-2 text-center text-[11px] font-medium text-slate-500">
-    Add at least one item to continue.
-  </div>
-) : null}
+          )}
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <button
               type="button"
@@ -2683,12 +2686,15 @@ const contact = await fetchOptionalJson(
                 canSubmit && !submitted ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-400"
               )}
             >
-              {submitted ? "Order sent" : busy ? "Submitting order..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Sign in required" : "Submit order and wait for driver quote"}
+              {submitted ? "Order sent" : busy ? "Submitting order..." : vendorClosed ? "Vendor closed" : authState !== "signed_in_profile" ? "Sign in required" : "Continue"}
             </button>
 
             <a href="/takeout/orders" className="rounded-xl border px-3 py-2.5 text-center text-xs font-bold hover:bg-slate-50">
               Orders
             </a>
+          </div>
+          <div className="mt-1 text-center text-[10px] text-slate-500">
+            Driver quote follows after checkout.
           </div>
 
           {vendorClosed ? (
