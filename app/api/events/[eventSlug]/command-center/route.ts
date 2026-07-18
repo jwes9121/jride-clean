@@ -5,6 +5,52 @@ import { requireStaff } from "@/lib/auth/requireStaff";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type CheckpointRow = {
+  id: string;
+  checkpoint_no: number;
+  checkpoint_name: string;
+  sort_order: number;
+};
+
+type CheckpointStationRow = {
+  id: string;
+  checkpoint_id: string | null;
+  station_name: string;
+  status: string;
+  expires_at: string;
+  last_used_at: string | null;
+};
+
+type RecentPassageRow = {
+  id: string;
+  attendee_id: string;
+  checkpoint_id: string;
+  station_token_id: string;
+  passed_at: string;
+};
+
+function noStore(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function throwIfError(
+  result: {
+    error?: {
+      message?: string;
+    } | null;
+  },
+  fallback: string
+) {
+  if (result.error) {
+    throw new Error(result.error.message || fallback);
+  }
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { eventSlug: string } }
@@ -13,17 +59,12 @@ export async function GET(
     const authorization = await requireStaff(["admin", "dispatcher"]);
 
     if (!authorization.ok) {
-      return NextResponse.json(
+      return noStore(
         {
           success: false,
           error: authorization.error,
         },
-        {
-          status: authorization.status,
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        }
+        authorization.status
       );
     }
 
@@ -35,12 +76,17 @@ export async function GET(
       .eq("slug", params.eventSlug)
       .maybeSingle();
 
-    if (eventError) throw new Error(eventError.message);
+    if (eventError) {
+      throw new Error(eventError.message);
+    }
 
     if (!event?.id) {
-      return NextResponse.json(
-        { success: false, error: "Event not found." },
-        { status: 404 }
+      return noStore(
+        {
+          success: false,
+          error: "Event not found.",
+        },
+        404
       );
     }
 
@@ -51,16 +97,22 @@ export async function GET(
       .eq("type_key", "alumni")
       .maybeSingle();
 
-    if (alumniTypeError) throw new Error(alumniTypeError.message);
+    if (alumniTypeError) {
+      throw new Error(alumniTypeError.message);
+    }
 
     if (!alumniType?.id) {
-      return NextResponse.json(
-        { success: false, error: "Alumni attendee type not found." },
-        { status: 500 }
+      return noStore(
+        {
+          success: false,
+          error: "Alumni attendee type not found.",
+        },
+        500
       );
     }
 
     const now = new Date();
+    const nowIso = now.toISOString();
 
     const [
       registeredAlumniResult,
@@ -73,6 +125,10 @@ export async function GET(
       topBatchesResult,
       recentActivityResult,
       lastCheckinResult,
+      checkpointsResult,
+      totalCheckpointPassagesResult,
+      checkpointStationsResult,
+      recentCheckpointPassagesResult,
     ] = await Promise.all([
       supabase
         .from("event_attendees")
@@ -106,7 +162,10 @@ export async function GET(
         .eq("event_id", event.id)
         .eq("attendance_status", "checked_in")
         .is("merged_into", null)
-        .gte("checked_in_at", new Date(now.getTime() - 60_000).toISOString()),
+        .gte(
+          "checked_in_at",
+          new Date(now.getTime() - 60_000).toISOString()
+        ),
 
       supabase
         .from("event_attendees")
@@ -114,7 +173,10 @@ export async function GET(
         .eq("event_id", event.id)
         .eq("attendance_status", "checked_in")
         .is("merged_into", null)
-        .gte("checked_in_at", new Date(now.getTime() - 300_000).toISOString()),
+        .gte(
+          "checked_in_at",
+          new Date(now.getTime() - 300_000).toISOString()
+        ),
 
       supabase
         .from("event_attendees")
@@ -122,7 +184,10 @@ export async function GET(
         .eq("event_id", event.id)
         .eq("attendance_status", "checked_in")
         .is("merged_into", null)
-        .gte("checked_in_at", new Date(now.getTime() - 900_000).toISOString()),
+        .gte(
+          "checked_in_at",
+          new Date(now.getTime() - 900_000).toISOString()
+        ),
 
       supabase
         .from("event_attendees")
@@ -134,7 +199,9 @@ export async function GET(
 
       supabase
         .from("event_attendees")
-        .select("id,full_name,group_value,attendance_status,checked_in_at,is_disqualified,attendee_type_id")
+        .select(
+          "id,full_name,group_value,attendance_status,checked_in_at,is_disqualified,attendee_type_id"
+        )
         .eq("event_id", event.id)
         .eq("attendance_status", "checked_in")
         .is("merged_into", null)
@@ -149,7 +216,195 @@ export async function GET(
         .is("merged_into", null)
         .order("checked_in_at", { ascending: false })
         .limit(1),
+
+      supabase
+        .from("event_checkpoints")
+        .select("id,checkpoint_no,checkpoint_name,sort_order")
+        .eq("event_id", event.id)
+        .order("sort_order", { ascending: true }),
+
+      supabase
+        .from("event_checkpoint_passages")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", event.id),
+
+      supabase
+        .from("event_station_tokens")
+        .select(
+          "id,checkpoint_id,station_name,status,expires_at,last_used_at"
+        )
+        .eq("event_id", event.id)
+        .eq("station_type", "checkpoint"),
+
+      supabase
+        .from("event_checkpoint_passages")
+        .select(
+          "id,attendee_id,checkpoint_id,station_token_id,passed_at"
+        )
+        .eq("event_id", event.id)
+        .order("passed_at", { ascending: false })
+        .limit(20),
     ]);
+
+    throwIfError(
+      registeredAlumniResult,
+      "Registered alumni count failed."
+    );
+    throwIfError(checkedInResult, "Checked-in count failed.");
+    throwIfError(pendingReviewResult, "Pending-review count failed.");
+    throwIfError(guestsResult, "Guest count failed.");
+    throwIfError(velocity1Result, "One-minute velocity failed.");
+    throwIfError(velocity5Result, "Five-minute velocity failed.");
+    throwIfError(velocity15Result, "Fifteen-minute velocity failed.");
+    throwIfError(topBatchesResult, "Top batches query failed.");
+    throwIfError(recentActivityResult, "Recent activity query failed.");
+    throwIfError(lastCheckinResult, "Latest check-in query failed.");
+    throwIfError(checkpointsResult, "Checkpoint query failed.");
+    throwIfError(
+      totalCheckpointPassagesResult,
+      "Checkpoint passage count failed."
+    );
+    throwIfError(
+      checkpointStationsResult,
+      "Checkpoint station query failed."
+    );
+    throwIfError(
+      recentCheckpointPassagesResult,
+      "Recent checkpoint activity query failed."
+    );
+
+    const checkpoints =
+      (checkpointsResult.data || []) as CheckpointRow[];
+
+    const checkpointStations =
+      (checkpointStationsResult.data || []) as CheckpointStationRow[];
+
+    const recentCheckpointPassages =
+      (recentCheckpointPassagesResult.data || []) as RecentPassageRow[];
+
+    const checkpointMetrics = await Promise.all(
+      checkpoints.map(async (checkpoint) => {
+        const [countResult, lastPassageResult] = await Promise.all([
+          supabase
+            .from("event_checkpoint_passages")
+            .select("id", { count: "exact", head: true })
+            .eq("event_id", event.id)
+            .eq("checkpoint_id", checkpoint.id),
+
+          supabase
+            .from("event_checkpoint_passages")
+            .select("passed_at")
+            .eq("event_id", event.id)
+            .eq("checkpoint_id", checkpoint.id)
+            .order("passed_at", { ascending: false })
+            .limit(1),
+        ]);
+
+        throwIfError(
+          countResult,
+          `Passage count failed for ${checkpoint.checkpoint_name}.`
+        );
+        throwIfError(
+          lastPassageResult,
+          `Latest passage failed for ${checkpoint.checkpoint_name}.`
+        );
+
+        return {
+          checkpointId: checkpoint.id,
+          checkpointName: checkpoint.checkpoint_name,
+          checkpointNo: checkpoint.checkpoint_no,
+          sortOrder: checkpoint.sort_order,
+          passages: countResult.count || 0,
+          lastPassageAt:
+            lastPassageResult.data?.[0]?.passed_at || null,
+        };
+      })
+    );
+
+    const attendeeIds = Array.from(
+      new Set(
+        recentCheckpointPassages
+          .map((row) => row.attendee_id)
+          .filter(Boolean)
+      )
+    );
+
+    const stationTokenIds = Array.from(
+      new Set(
+        recentCheckpointPassages
+          .map((row) => row.station_token_id)
+          .filter(Boolean)
+      )
+    );
+
+    const [passageAttendeesResult, passageStationsResult] =
+      await Promise.all([
+        attendeeIds.length > 0
+          ? supabase
+              .from("event_attendees")
+              .select("id,full_name,registration_number")
+              .eq("event_id", event.id)
+              .in("id", attendeeIds)
+          : Promise.resolve({
+              data: [],
+              error: null,
+            }),
+
+        stationTokenIds.length > 0
+          ? supabase
+              .from("event_station_tokens")
+              .select("id,station_name")
+              .eq("event_id", event.id)
+              .in("id", stationTokenIds)
+          : Promise.resolve({
+              data: [],
+              error: null,
+            }),
+      ]);
+
+    throwIfError(
+      passageAttendeesResult,
+      "Checkpoint attendee lookup failed."
+    );
+    throwIfError(
+      passageStationsResult,
+      "Checkpoint station lookup failed."
+    );
+
+    const checkpointById = new Map(
+      checkpoints.map((checkpoint) => [
+        checkpoint.id,
+        checkpoint,
+      ])
+    );
+
+    const attendeeById = new Map(
+      (passageAttendeesResult.data || []).map((attendee) => [
+        attendee.id,
+        attendee,
+      ])
+    );
+
+    const stationById = new Map(
+      (passageStationsResult.data || []).map((station) => [
+        station.id,
+        station,
+      ])
+    );
+
+    const activeCheckpointStations = checkpointStations.filter(
+      (station) =>
+        station.status === "active" &&
+        new Date(station.expires_at).getTime() > now.getTime()
+    );
+
+    const activeStationIds = new Set(
+      activeCheckpointStations.map((station) => station.id)
+    );
+
+    const offlineCheckpointStations = checkpointStations.filter(
+      (station) => !activeStationIds.has(station.id)
+    );
 
     const batchCounts: Record<string, number> = {};
 
@@ -161,12 +416,20 @@ export async function GET(
     const topBatches = Object.entries(batchCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([value, count]) => ({ value, count }));
+      .map(([value, count]) => ({
+        value,
+        count,
+      }));
 
-    const lastCheckinAt = lastCheckinResult.data?.[0]?.checked_in_at || null;
+    const lastCheckinAt =
+      lastCheckinResult.data?.[0]?.checked_in_at || null;
 
     const secondsSinceLastScan = lastCheckinAt
-      ? Math.floor((now.getTime() - new Date(lastCheckinAt).getTime()) / 1000)
+      ? Math.floor(
+          (now.getTime() -
+            new Date(lastCheckinAt).getTime()) /
+            1000
+        )
       : null;
 
     const scannerStatus =
@@ -176,9 +439,9 @@ export async function GET(
         ? "online"
         : "idle";
 
-    return NextResponse.json({
+    return noStore({
       success: true,
-      generatedAt: now.toISOString(),
+      generatedAt: nowIso,
       event: {
         title: event.name,
         shortName: event.short_name,
@@ -198,26 +461,102 @@ export async function GET(
         last15Min: velocity15Result.count || 0,
       },
       topBatches,
-      recentActivity: (recentActivityResult.data || []).map((attendee) => ({
-        id: attendee.id,
-        fullName: attendee.full_name,
-        groupValue: attendee.group_value,
-        checkedInAt: attendee.checked_in_at,
-        attendeeType: attendee.attendee_type_id === alumniType.id ? "alumni" : "guest",
-      })),
+      recentActivity: (recentActivityResult.data || []).map(
+        (attendee) => ({
+          id: attendee.id,
+          fullName: attendee.full_name,
+          groupValue: attendee.group_value,
+          checkedInAt: attendee.checked_in_at,
+          attendeeType:
+            attendee.attendee_type_id === alumniType.id
+              ? "alumni"
+              : "guest",
+        })
+      ),
       scanner: {
         status: scannerStatus,
         lastCheckinAt,
         secondsSinceLastScan,
       },
+      race: {
+        totalCheckpoints: checkpoints.length,
+        totalCheckpointPassages:
+          totalCheckpointPassagesResult.count || 0,
+        configuredStations: checkpointStations.length,
+        activeStations: activeCheckpointStations.length,
+        offlineStations: offlineCheckpointStations.length,
+      },
+      checkpointSummary: checkpointMetrics,
+      checkpointStations: checkpointStations.map((station) => {
+        const checkpoint = station.checkpoint_id
+          ? checkpointById.get(station.checkpoint_id)
+          : null;
+
+        const expiresAtMs = new Date(
+          station.expires_at
+        ).getTime();
+
+        const isActive =
+          station.status === "active" &&
+          Number.isFinite(expiresAtMs) &&
+          expiresAtMs > now.getTime();
+
+        return {
+          stationId: station.id,
+          stationName: station.station_name,
+          checkpointId: station.checkpoint_id,
+          checkpointName:
+            checkpoint?.checkpoint_name || null,
+          checkpointNo:
+            checkpoint?.checkpoint_no || null,
+          status: isActive ? "online" : "offline",
+          tokenStatus: station.status,
+          expiresAt: station.expires_at,
+          lastUsedAt: station.last_used_at,
+        };
+      }),
+      recentCheckpointActivity:
+        recentCheckpointPassages.map((passage) => {
+          const attendee = attendeeById.get(
+            passage.attendee_id
+          );
+          const checkpoint = checkpointById.get(
+            passage.checkpoint_id
+          );
+          const station = stationById.get(
+            passage.station_token_id
+          );
+
+          return {
+            passageId: passage.id,
+            attendeeId: passage.attendee_id,
+            attendeeName:
+              attendee?.full_name || "Unknown attendee",
+            registrationNumber:
+              attendee?.registration_number || null,
+            checkpointId: passage.checkpoint_id,
+            checkpointName:
+              checkpoint?.checkpoint_name ||
+              "Unknown checkpoint",
+            checkpointNo:
+              checkpoint?.checkpoint_no || null,
+            stationId: passage.station_token_id,
+            stationName:
+              station?.station_name || "Unknown station",
+            passedAt: passage.passed_at,
+          };
+        }),
     });
   } catch (error) {
-    return NextResponse.json(
+    return noStore(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Dashboard load failed.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Dashboard load failed.",
       },
-      { status: 500 }
+      500
     );
   }
 }
