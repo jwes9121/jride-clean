@@ -1822,7 +1822,7 @@ const contact = await fetchOptionalJson(
             <div>
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">{vendorTownFilter ? "Current town" : "Step 1"}</div>
                   <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose your delivery town</label>
                 </div>
                 <span className="rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100">
@@ -1874,7 +1874,7 @@ const contact = await fetchOptionalJson(
             <div className="jride-vendor-menu-section space-y-2 md:col-span-2">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 2</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">{vendorId ? "Store selected" : "Step 2"}</div>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Choose a store</div>
                   <div className="mt-1 text-[11px] text-slate-500">
                     {vendorTownFilter ? "Select a restaurant or store to load its menu." : "Complete Step 1 to show available stores."}
@@ -1984,7 +1984,7 @@ const contact = await fetchOptionalJson(
                               </span>
                             ) : null}
                             <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
-                              {isSelected ? "Viewing menu" : "View menu"}
+                              {isSelected ? "Viewing menu" : "Browse menu"}
                             </span>
                           </div>
                         </div>
@@ -2033,29 +2033,12 @@ const contact = await fetchOptionalJson(
                   </div>
                 </div>
               ) : null}
-              {vendorId ? (
-                <div className={cls(
-                  "jride-selected-vendor-summary flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs lg:max-w-none",
-                  vendorClosed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                )}>
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Ordering from</div>
-                    <div className="truncate font-semibold text-slate-900">{selectedVendor ? vendorLabel(selectedVendor) : "Vendor"}</div>
-                  </div>
-                  <div className={cls(
-                    "shrink-0 rounded-full border px-2 py-1 text-[11px] font-semibold",
-                    vendorClosed ? "border-rose-300 bg-white text-rose-700" : "border-emerald-300 bg-white text-emerald-700"
-                  )}>
-                    {vendorClosed ? "Closed" : "Open"}
-                  </div>
-                </div>
-              ) : null}
 		{/* PHASE2B_MENU_CONSUMPTION */}
           <div className="jride-menu-section w-full min-w-0 md:col-span-2">
             {/* JRIDE_TAKEOUT_DESKTOP_FULL_WIDTH_V16 */}
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 3</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">{vendorId ? "Menu" : "Step 3"}</div>
                 <div className="text-lg font-black tracking-tight text-slate-900">
                   Browse menu
                 </div>
@@ -2208,7 +2191,7 @@ const contact = await fetchOptionalJson(
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-1 text-base font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
+                        <div className="mt-1 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
                           </div>
                         </div>
                       </div>
@@ -2672,8 +2655,8 @@ const contact = await fetchOptionalJson(
             </div>
           ) : (
             <div className="mb-2 text-center">
-              <div className="text-xs font-bold text-slate-900">Choose a menu item to begin.</div>
-              <div className="mt-0.5 text-[11px] text-slate-500">Your subtotal will appear here.</div>
+              <div className="text-xs font-bold text-slate-900">Cart empty</div>
+              <div className="mt-0.5 text-[11px] text-slate-500">Choose a menu item to begin.</div>
             </div>
           )}
           <div className="grid grid-cols-[1fr_auto] gap-2">
