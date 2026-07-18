@@ -1897,7 +1897,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className={cls("jride-vendor-grid grid w-full gap-4", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
+                <div className={cls("jride-vendor-grid grid w-full min-w-0 max-w-full gap-4 overflow-hidden", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
                                     {(vendorId ? activeVendors.filter((v) => vendorKey(v) === vendorId) : activeVendors).map((v) => {
                     const id = vendorKey(v);
@@ -1927,7 +1927,7 @@ const contact = await fetchOptionalJson(
                           refreshMenu(nextVendorId);
                         }}
                         className={cls(
-                          "group flex min-h-[92px] w-full items-start gap-2 rounded-xl border p-2 text-left shadow-[0_8px_20px_rgba(0,0,0,0.14)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:max-w-none",
+                          "group flex min-h-[92px] w-full min-w-0 max-w-full overflow-hidden items-start gap-2 rounded-xl border p-2 text-left shadow-[0_8px_20px_rgba(0,0,0,0.14)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:max-w-none",
                           isClosed
                             ? "border-slate-800 bg-slate-950/50 text-slate-400 grayscale"
                             : isSelected
@@ -3318,6 +3318,7 @@ const contact = await fetchOptionalJson(
     </div>
   );
 }
+
 
 
 
