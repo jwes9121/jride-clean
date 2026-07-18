@@ -129,6 +129,7 @@ export async function GET(
       totalCheckpointPassagesResult,
       checkpointStationsResult,
       recentCheckpointPassagesResult,
+      allCheckpointPassagesResult,
     ] = await Promise.all([
       supabase
         .from("event_attendees")
@@ -244,6 +245,14 @@ export async function GET(
         .eq("event_id", event.id)
         .order("passed_at", { ascending: false })
         .limit(20),
+
+      supabase
+        .from("event_checkpoint_passages")
+        .select(
+          "id,attendee_id,checkpoint_id,station_token_id,passed_at"
+        )
+        .eq("event_id", event.id)
+        .order("passed_at", { ascending: true }),
     ]);
 
     throwIfError(
@@ -272,6 +281,10 @@ export async function GET(
       recentCheckpointPassagesResult,
       "Recent checkpoint activity query failed."
     );
+    throwIfError(
+      allCheckpointPassagesResult,
+      "Runner tracking passage query failed."
+    );
 
     const checkpoints =
       (checkpointsResult.data || []) as CheckpointRow[];
@@ -281,6 +294,9 @@ export async function GET(
 
     const recentCheckpointPassages =
       (recentCheckpointPassagesResult.data || []) as RecentPassageRow[];
+
+    const allCheckpointPassages =
+      (allCheckpointPassagesResult.data || []) as RecentPassageRow[];
 
     const checkpointMetrics = await Promise.all(
       checkpoints.map(async (checkpoint) => {
@@ -439,6 +455,191 @@ export async function GET(
         ? "online"
         : "idle";
 
+    const trackingAttendeeIds = Array.from(
+      new Set(
+        allCheckpointPassages
+          .map((passage) => passage.attendee_id)
+          .filter(Boolean)
+      )
+    );
+
+    const trackingAttendeesResult =
+      trackingAttendeeIds.length > 0
+        ? await supabase
+            .from("event_attendees")
+            .select(
+              "id,full_name,registration_number,group_value,is_disqualified"
+            )
+            .eq("event_id", event.id)
+            .is("merged_into", null)
+            .in("id", trackingAttendeeIds)
+        : {
+            data: [],
+            error: null,
+          };
+
+    throwIfError(
+      trackingAttendeesResult,
+      "Runner tracking attendee query failed."
+    );
+
+    const trackingAttendeeById = new Map(
+      (trackingAttendeesResult.data || []).map(
+        (attendee) => [attendee.id, attendee]
+      )
+    );
+
+    const passagesByAttendee = new Map<
+      string,
+      RecentPassageRow[]
+    >();
+
+    for (const passage of allCheckpointPassages) {
+      const current =
+        passagesByAttendee.get(passage.attendee_id) || [];
+
+      current.push(passage);
+
+      passagesByAttendee.set(
+        passage.attendee_id,
+        current
+      );
+    }
+
+    const runnerTracking = Array.from(
+      passagesByAttendee.entries()
+    )
+      .map(([attendeeId, passages]) => {
+        const attendee =
+          trackingAttendeeById.get(attendeeId);
+
+        if (!attendee) {
+          return null;
+        }
+
+        const uniquePassageByCheckpoint =
+          new Map<string, RecentPassageRow>();
+
+        for (const passage of passages) {
+          if (
+            !uniquePassageByCheckpoint.has(
+              passage.checkpoint_id
+            )
+          ) {
+            uniquePassageByCheckpoint.set(
+              passage.checkpoint_id,
+              passage
+            );
+          }
+        }
+
+        const timeline = checkpoints.map(
+          (checkpoint, index) => {
+            const passage =
+              uniquePassageByCheckpoint.get(
+                checkpoint.id
+              );
+
+            return {
+              checkpointId: checkpoint.id,
+              checkpointNo:
+                checkpoint.checkpoint_no,
+              checkpointName:
+                checkpoint.checkpoint_name,
+              sortOrder:
+                checkpoint.sort_order,
+              sequence: index + 1,
+              status: passage
+                ? "passed"
+                : "pending",
+              passedAt:
+                passage?.passed_at || null,
+            };
+          }
+        );
+
+        const passedTimeline = timeline.filter(
+          (item) => item.status === "passed"
+        );
+
+        const latestCheckpoint =
+          passedTimeline.length > 0
+            ? passedTimeline[
+                passedTimeline.length - 1
+              ]
+            : null;
+
+        const nextCheckpoint =
+          timeline.find(
+            (item) => item.status === "pending"
+          ) || null;
+
+        return {
+          attendeeId,
+          fullName: attendee.full_name,
+          registrationNumber:
+            attendee.registration_number,
+          groupValue: attendee.group_value,
+          isDisqualified:
+            attendee.is_disqualified === true,
+          passedCheckpoints:
+            passedTimeline.length,
+          totalCheckpoints:
+            checkpoints.length,
+          remainingCheckpoints: Math.max(
+            0,
+            checkpoints.length -
+              passedTimeline.length
+          ),
+          progressPercent:
+            checkpoints.length > 0
+              ? Math.round(
+                  (passedTimeline.length /
+                    checkpoints.length) *
+                    100
+                )
+              : 0,
+          isComplete:
+            checkpoints.length > 0 &&
+            passedTimeline.length ===
+              checkpoints.length,
+          latestCheckpoint,
+          nextCheckpoint,
+          lastKnownPassageAt:
+            latestCheckpoint?.passedAt || null,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (
+          a!.passedCheckpoints !==
+          b!.passedCheckpoints
+        ) {
+          return (
+            b!.passedCheckpoints -
+            a!.passedCheckpoints
+          );
+        }
+
+        const aTime = a!.lastKnownPassageAt
+          ? new Date(
+              a!.lastKnownPassageAt
+            ).getTime()
+          : 0;
+
+        const bTime = b!.lastKnownPassageAt
+          ? new Date(
+              b!.lastKnownPassageAt
+            ).getTime()
+          : 0;
+
+        return bTime - aTime;
+      })
+      .map((runner, index) => ({
+        ...runner!,
+        rank: index + 1,
+      }));
+
     return noStore({
       success: true,
       generatedAt: nowIso,
@@ -485,7 +686,14 @@ export async function GET(
         configuredStations: checkpointStations.length,
         activeStations: activeCheckpointStations.length,
         offlineStations: offlineCheckpointStations.length,
+        trackedParticipants:
+          runnerTracking.length,
+        completedParticipants:
+          runnerTracking.filter(
+            (runner) => runner.isComplete
+          ).length,
       },
+      runnerTracking,
       checkpointSummary: checkpointMetrics,
       checkpointStations: checkpointStations.map((station) => {
         const checkpoint = station.checkpoint_id
