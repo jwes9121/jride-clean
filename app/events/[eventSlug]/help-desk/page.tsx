@@ -15,6 +15,29 @@ type GuestRow = {
   relationship: string;
 };
 
+type MedicalCheckpoint = {
+  checkpointId: string;
+  checkpointNo: number;
+  checkpointName: string;
+  sortOrder: number;
+  sequence: number;
+  status: "passed" | "missing";
+  passageId: string | null;
+  passedAt: string | null;
+};
+
+type MedicalLookup = {
+  totalCheckpoints: number;
+  passedCheckpoints: number;
+  missingCheckpoints: number;
+  progressPercent: number;
+  isComplete: boolean;
+  latestCheckpoint: MedicalCheckpoint | null;
+  nextMissingCheckpoint: MedicalCheckpoint | null;
+  lastKnownPassageAt: string | null;
+  checkpointTimeline: MedicalCheckpoint[];
+};
+
 type HelpDeskResult = {
   attendeeId: string;
   fullName: string;
@@ -29,6 +52,7 @@ type HelpDeskResult = {
   disqualificationReason: string | null;
   eventPassUrl: string;
   guests: GuestRow[];
+  medicalLookup: MedicalLookup;
 };
 
 type SearchResponse = {
@@ -123,6 +147,19 @@ function formatCheckedIn(value: string | null) {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    hour12: true,
+  }).format(new Date(value));
+}
+
+function formatPassageTime(value: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
     hour12: true,
   }).format(new Date(value));
 }
@@ -793,6 +830,175 @@ export default function EventHelpDeskPage() {
                   ) : null}
                 </div>
               </div>
+
+              {selected.medicalLookup.totalCheckpoints > 0 ? (
+                <div className="mt-6 rounded-3xl border border-cyan-200 bg-cyan-50 p-5">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-800">
+                        Medical Lookup
+                      </p>
+                      <h3 className="mt-2 text-3xl font-black text-slate-950">
+                        Last known runner position
+                      </h3>
+                    </div>
+
+                    <span
+                      className={`w-fit rounded-full border px-4 py-2 text-xs font-black ${
+                        selected.medicalLookup.isComplete
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                          : selected.isDisqualified
+                          ? "border-red-300 bg-red-100 text-red-800"
+                          : "border-cyan-300 bg-white text-cyan-900"
+                      }`}
+                    >
+                      {selected.isDisqualified
+                        ? "REVIEW REQUIRED"
+                        : selected.medicalLookup.isComplete
+                        ? "FINISHED"
+                        : `${selected.medicalLookup.missingCheckpoints} MISSING`}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-4">
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Progress
+                      </p>
+                      <p className="mt-2 text-3xl font-black text-slate-950">
+                        {selected.medicalLookup.progressPercent}%
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Passed
+                      </p>
+                      <p className="mt-2 text-3xl font-black text-slate-950">
+                        {selected.medicalLookup.passedCheckpoints}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Missing
+                      </p>
+                      <p className="mt-2 text-3xl font-black text-slate-950">
+                        {selected.medicalLookup.missingCheckpoints}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Total
+                      </p>
+                      <p className="mt-2 text-3xl font-black text-slate-950">
+                        {selected.medicalLookup.totalCheckpoints}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 h-4 overflow-hidden rounded-full bg-cyan-100">
+                    <div
+                      className="h-full rounded-full bg-cyan-600"
+                      style={{
+                        width: `${selected.medicalLookup.progressPercent}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Latest Checkpoint
+                      </p>
+                      {selected.medicalLookup.latestCheckpoint ? (
+                        <>
+                          <p className="mt-2 text-xl font-black text-slate-950">
+                            Checkpoint {selected.medicalLookup.latestCheckpoint.checkpointNo} -{" "}
+                            {selected.medicalLookup.latestCheckpoint.checkpointName}
+                          </p>
+                          <p className="mt-2 text-sm font-bold text-slate-500">
+                            {formatPassageTime(
+                              selected.medicalLookup.lastKnownPassageAt
+                            )}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-2 font-bold text-slate-500">
+                          No checkpoint passage recorded.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Next Missing Checkpoint
+                      </p>
+                      {selected.medicalLookup.nextMissingCheckpoint ? (
+                        <p className="mt-2 text-xl font-black text-slate-950">
+                          Checkpoint {selected.medicalLookup.nextMissingCheckpoint.checkpointNo} -{" "}
+                          {selected.medicalLookup.nextMissingCheckpoint.checkpointName}
+                        </p>
+                      ) : (
+                        <p className="mt-2 font-bold text-emerald-700">
+                          All checkpoints recorded.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <details className="mt-5 rounded-2xl bg-white p-4">
+                    <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.15em] text-slate-700">
+                      View Checkpoint Timeline
+                    </summary>
+
+                    <div className="mt-4 grid gap-3">
+                      {selected.medicalLookup.checkpointTimeline.map(
+                        (checkpoint) => (
+                          <div
+                            key={checkpoint.checkpointId}
+                            className={`rounded-2xl border p-4 ${
+                              checkpoint.status === "passed"
+                                ? "border-emerald-200 bg-emerald-50"
+                                : "border-red-200 bg-red-50"
+                            }`}
+                          >
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-500">
+                                  Checkpoint {checkpoint.checkpointNo}
+                                </p>
+                                <p className="mt-1 text-lg font-black text-slate-950">
+                                  {checkpoint.checkpointName}
+                                </p>
+                              </div>
+
+                              <span
+                                className={`w-fit rounded-full px-3 py-1 text-xs font-black ${
+                                  checkpoint.status === "passed"
+                                    ? "bg-emerald-200 text-emerald-900"
+                                    : "bg-red-200 text-red-900"
+                                }`}
+                              >
+                                {checkpoint.status === "passed"
+                                  ? "PASSED"
+                                  : "MISSING"}
+                              </span>
+                            </div>
+
+                            {checkpoint.passedAt ? (
+                              <p className="mt-2 text-sm font-bold text-slate-500">
+                                {formatPassageTime(checkpoint.passedAt)}
+                              </p>
+                            ) : null}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </details>
+                </div>
+              ) : null}
 
               {selected.guests.length > 0 ? (
                 <div className="mt-6 rounded-2xl bg-slate-100 p-4">
