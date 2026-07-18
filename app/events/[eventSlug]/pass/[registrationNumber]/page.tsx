@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { renderQrDataUrl } from "@/lib/events/qr-render";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import EventPassActions from "./EventPassActions";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +12,6 @@ export const metadata: Metadata = {
   },
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const appUrl =
   process.env.NEXT_PUBLIC_APP_URL ||
   process.env.NEXT_PUBLIC_SITE_URL ||
@@ -42,7 +38,6 @@ type AttendeeRow = {
   checked_in_at: string | null;
   is_disqualified: boolean;
   disqualification_reason: string | null;
-  registration_source: string | null;
 };
 
 type GuestLinkRow = {
@@ -63,8 +58,40 @@ type GuestLinkRow = {
     | null;
 };
 
+type RunnerTimelineItem = {
+  checkpointId: string;
+  checkpointNo: number;
+  checkpointName: string;
+  sortOrder: number;
+  sequence: number;
+  status: "passed" | "pending";
+  passageId: string | null;
+  passedAt: string | null;
+};
+
+type RunnerProgress = {
+  totalCheckpoints: number;
+  passedCheckpoints: number;
+  remainingCheckpoints: number;
+  progressPercent: number;
+  isComplete: boolean;
+  latestCheckpoint: RunnerTimelineItem | null;
+  nextCheckpoint: RunnerTimelineItem | null;
+  timeline: RunnerTimelineItem[];
+};
+
+type EventPassApiResponse = {
+  success: boolean;
+  event?: EventRow;
+  attendee?: AttendeeRow;
+  guests?: GuestLinkRow[];
+  runnerProgress?: RunnerProgress;
+  error?: string;
+};
+
 function formatDate(value: string | null): string {
   if (!value) return "Date to be announced";
+
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
     year: "numeric",
@@ -73,6 +100,7 @@ function formatDate(value: string | null): string {
 
 function formatCheckedIn(value: string | null): string {
   if (!value) return "";
+
   return new Intl.DateTimeFormat("en-PH", {
     timeZone: "Asia/Manila",
     month: "short",
@@ -83,10 +111,31 @@ function formatCheckedIn(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatPassageTime(value: string | null): string {
+  if (!value) return "";
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(new Date(value));
+}
+
 function initials(name: string): string {
-  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
   if (parts.length === 0) return "JP";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
@@ -99,8 +148,13 @@ function avatarClass(name: string): string {
     "from-violet-700 to-violet-500",
     "from-slate-700 to-slate-500",
   ];
+
   let hash = 0;
-  for (const char of String(name || "")) hash += char.charCodeAt(0);
+
+  for (const char of String(name || "")) {
+    hash += char.charCodeAt(0);
+  }
+
   return palette[hash % palette.length];
 }
 
@@ -108,7 +162,9 @@ function statusView(attendee: AttendeeRow) {
   if (attendee.is_disqualified) {
     return {
       label: "Invalid",
-      detail: attendee.disqualification_reason || "Please proceed to the Help Desk.",
+      detail:
+        attendee.disqualification_reason ||
+        "Please proceed to the Help Desk.",
       className: "border-red-300 bg-red-100 text-red-800",
       dotClassName: "bg-red-600",
     };
@@ -117,8 +173,11 @@ function statusView(attendee: AttendeeRow) {
   if (attendee.attendance_status === "checked_in") {
     return {
       label: "Checked In",
-      detail: attendee.checked_in_at ? formatCheckedIn(attendee.checked_in_at) : "",
-      className: "border-emerald-300 bg-emerald-100 text-emerald-800",
+      detail: attendee.checked_in_at
+        ? formatCheckedIn(attendee.checked_in_at)
+        : "",
+      className:
+        "border-emerald-300 bg-emerald-100 text-emerald-800",
       dotClassName: "bg-emerald-600",
     };
   }
@@ -126,7 +185,8 @@ function statusView(attendee: AttendeeRow) {
   return {
     label: "Registered",
     detail: "Not yet checked in",
-    className: "border-emerald-300 bg-emerald-100 text-emerald-800",
+    className:
+      "border-emerald-300 bg-emerald-100 text-emerald-800",
     dotClassName: "bg-emerald-600",
   };
 }
@@ -134,13 +194,19 @@ function statusView(attendee: AttendeeRow) {
 function normalizeGuests(rows: GuestLinkRow[]) {
   return rows
     .map((row) => {
-      const guest = Array.isArray(row.guest) ? row.guest[0] : row.guest;
+      const guest = Array.isArray(row.guest)
+        ? row.guest[0]
+        : row.guest;
+
       if (!guest) return null;
+
       return {
         id: guest.id,
         name: guest.full_name,
-        registrationNumber: guest.registration_number,
-        attendanceStatus: guest.attendance_status,
+        registrationNumber:
+          guest.registration_number,
+        attendanceStatus:
+          guest.attendance_status,
         relationship: row.relationship,
       };
     })
@@ -160,10 +226,15 @@ function unavailablePass() {
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
           JRide Events
         </p>
-        <h1 className="mt-5 text-3xl font-bold">Event Pass unavailable.</h1>
+
+        <h1 className="mt-5 text-3xl font-bold">
+          Event Pass unavailable.
+        </h1>
+
         <p className="mt-4 text-slate-300">
           Use Find My Event Pass to retrieve your latest Event Pass.
         </p>
+
         <a
           href="/events"
           className="mt-8 inline-flex rounded-xl bg-amber-400 px-5 py-3 font-semibold text-slate-950"
@@ -175,65 +246,106 @@ function unavailablePass() {
   );
 }
 
+async function loadEventPass(
+  eventSlug: string,
+  registrationNumber: string,
+  token: string
+): Promise<EventPassApiResponse | null> {
+  const endpoint = `${appUrl.replace(
+    /\/$/,
+    ""
+  )}/api/events/${encodeURIComponent(
+    eventSlug
+  )}/pass/${encodeURIComponent(
+    registrationNumber
+  )}?token=${encodeURIComponent(token)}`;
+
+  try {
+    const response = await fetch(endpoint, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    const body =
+      (await response.json()) as EventPassApiResponse;
+
+    if (!response.ok || !body.success) {
+      return null;
+    }
+
+    return body;
+  } catch {
+    return null;
+  }
+}
+
 export default async function EventPassPage({
   params,
   searchParams,
 }: {
-  params: { eventSlug: string; registrationNumber: string };
-  searchParams: { token?: string };
+  params: {
+    eventSlug: string;
+    registrationNumber: string;
+  };
+  searchParams: {
+    token?: string;
+  };
 }) {
   const token = String(searchParams?.token || "").trim();
-  if (!token) return unavailablePass();
 
-  const supabase = supabaseAdmin();
+  if (!token) {
+    return unavailablePass();
+  }
 
-  const { data: event } = await supabase
-    .from("events")
-    .select("id,slug,name,short_name,event_date,venue,group_label")
-    .eq("slug", params.eventSlug)
-    .eq("status", "published")
-    .maybeSingle<EventRow>();
+  const registrationNumber = decodeURIComponent(
+    params.registrationNumber
+  );
 
-  if (!event?.id) return unavailablePass();
+  const response = await loadEventPass(
+    params.eventSlug,
+    registrationNumber,
+    token
+  );
 
-  const { data: attendee } = await supabase
-    .from("event_attendees")
-    .select(
-      "id,full_name,nickname,group_value,registration_number,qr_token,attendance_status,checked_in_at,is_disqualified,disqualification_reason,registration_source"
-    )
-    .eq("event_id", event.id)
-    .eq("registration_number", decodeURIComponent(params.registrationNumber))
-    .eq("qr_token", token)
-    .is("merged_into", null)
-    .maybeSingle<AttendeeRow>();
+  const event = response?.event;
+  const attendee = response?.attendee;
+  const runnerProgress =
+    response?.runnerProgress || null;
 
-  if (!attendee?.id) return unavailablePass();
-
-  const { data: guestRows } = await supabase
-    .from("event_guest_links")
-    .select(
-      "relationship,guest:event_attendees!event_guest_links_guest_attendee_id_fkey(id,full_name,registration_number,attendance_status)"
-    )
-    .eq("event_id", event.id)
-    .eq("primary_attendee_id", attendee.id)
-    .order("created_at", { ascending: true })
-    .returns<GuestLinkRow[]>();
+  if (!event?.id || !attendee?.id) {
+    return unavailablePass();
+  }
 
   const status = statusView(attendee);
-  const guestList = normalizeGuests(guestRows || []);
-  const groupLabel = event.group_label || "Group";
-  const afterEventDate = formatDate(event.event_date);
+  const guestList = normalizeGuests(
+    response?.guests || []
+  );
 
-  const showOnlineInstruction =
-    attendee.registration_source === "online" &&
-    attendee.attendance_status !== "checked_in";
+  const groupLabel =
+    event.group_label || "Group";
 
-  const passUrl = `${appUrl.replace(/\/$/, "")}/events/${encodeURIComponent(
+  const afterEventDate = formatDate(
+    event.event_date
+  );
+
+  const passUrl = `${appUrl.replace(
+    /\/$/,
+    ""
+  )}/events/${encodeURIComponent(
     event.slug
-  )}/pass/${encodeURIComponent(attendee.registration_number)}?token=${encodeURIComponent(
+  )}/pass/${encodeURIComponent(
+    attendee.registration_number
+  )}?token=${encodeURIComponent(
     attendee.qr_token
   )}`;
+
   const qrDataUrl = await renderQrDataUrl(passUrl);
+
+  const showRunnerProgress =
+    runnerProgress &&
+    runnerProgress.totalCheckpoints > 0;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white print:bg-white print:p-0">
@@ -270,12 +382,15 @@ export default async function EventPassPage({
             <p className="text-sm font-semibold tracking-[0.2em] text-amber-200">
               Welcome Home.
             </p>
+
             <h1 className="mt-3 text-2xl font-bold leading-tight">
               {event.name}
             </h1>
+
             <p className="mt-3 text-xs uppercase tracking-[0.25em] text-slate-300">
               Digital Event Platform
             </p>
+
             <p className="mt-1 text-sm text-slate-300">
               Powered by JRide Corporation
             </p>
@@ -289,10 +404,16 @@ export default async function EventPassPage({
             <div
               className={`mx-auto mt-5 flex w-fit items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold ${status.className}`}
             >
-              <span className={`h-2.5 w-2.5 rounded-full ${status.dotClassName}`} />
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${status.dotClassName}`}
+              />
+
               <span>{status.label}</span>
+
               {status.detail ? (
-                <span className="font-semibold opacity-80">- {status.detail}</span>
+                <span className="font-semibold opacity-80">
+                  - {status.detail}
+                </span>
               ) : null}
             </div>
 
@@ -323,6 +444,7 @@ export default async function EventPassPage({
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">
                   Pass No.
                 </p>
+
                 <p className="mt-2 font-mono text-2xl font-black tracking-tight">
                   {attendee.registration_number}
                 </p>
@@ -337,16 +459,167 @@ export default async function EventPassPage({
               />
             </div>
 
-            {showOnlineInstruction ? (
-              <div className="mt-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-5">
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
-                  Online Registration Complete
-                </p>
-                <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">
-                  Thank you for registering online. Please present this Event
-                  Pass at the entrance for faster admission and to skip the
-                  registration queue.
-                </p>
+            {showRunnerProgress ? (
+              <div className="pass-capture-exclude no-print mt-7 rounded-3xl border border-cyan-200 bg-cyan-50 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-800">
+                      Runner Progress
+                    </p>
+
+                    <p className="mt-2 text-3xl font-black text-slate-950">
+                      {runnerProgress.progressPercent}%
+                    </p>
+
+                    <p className="mt-1 text-sm font-semibold text-slate-600">
+                      {runnerProgress.passedCheckpoints} of{" "}
+                      {runnerProgress.totalCheckpoints} checkpoints passed
+                    </p>
+                  </div>
+
+                  <span
+                    className={`rounded-full border px-3 py-2 text-xs font-black ${
+                      runnerProgress.isComplete
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                        : "border-cyan-300 bg-white text-cyan-900"
+                    }`}
+                  >
+                    {runnerProgress.isComplete
+                      ? "FINISHED"
+                      : `${runnerProgress.remainingCheckpoints} REMAINING`}
+                  </span>
+                </div>
+
+                <div className="mt-5 h-4 overflow-hidden rounded-full bg-cyan-100">
+                  <div
+                    className="h-full rounded-full bg-cyan-600"
+                    style={{
+                      width: `${runnerProgress.progressPercent}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  {runnerProgress.latestCheckpoint ? (
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                        Latest Checkpoint
+                      </p>
+
+                      <p className="mt-2 text-lg font-black text-slate-950">
+                        Checkpoint{" "}
+                        {runnerProgress.latestCheckpoint.checkpointNo} -{" "}
+                        {runnerProgress.latestCheckpoint.checkpointName}
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-slate-500">
+                        {formatPassageTime(
+                          runnerProgress.latestCheckpoint.passedAt
+                        )}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {!runnerProgress.isComplete &&
+                  runnerProgress.nextCheckpoint ? (
+                    <div className="rounded-2xl border border-cyan-200 bg-cyan-100 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.15em] text-cyan-800">
+                        Next Checkpoint
+                      </p>
+
+                      <p className="mt-2 text-lg font-black text-slate-950">
+                        Checkpoint{" "}
+                        {runnerProgress.nextCheckpoint.checkpointNo} -{" "}
+                        {runnerProgress.nextCheckpoint.checkpointName}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-5">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                    Checkpoint Timeline
+                  </p>
+
+                  <div className="mt-4 space-y-3">
+                    {runnerProgress.timeline.map(
+                      (checkpoint, index) => (
+                        <div
+                          key={checkpoint.checkpointId}
+                          className="relative flex gap-4"
+                        >
+                          <div className="flex flex-col items-center">
+                            <div
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black ${
+                                checkpoint.status === "passed"
+                                  ? "border-emerald-500 bg-emerald-500 text-white"
+                                  : "border-slate-300 bg-white text-slate-500"
+                              }`}
+                            >
+                              {checkpoint.status === "passed"
+                                ? "OK"
+                                : checkpoint.sequence}
+                            </div>
+
+                            {index <
+                            runnerProgress.timeline.length - 1 ? (
+                              <div
+                                className={`min-h-8 w-0.5 flex-1 ${
+                                  checkpoint.status === "passed"
+                                    ? "bg-emerald-300"
+                                    : "bg-slate-300"
+                                }`}
+                              />
+                            ) : null}
+                          </div>
+
+                          <div className="min-w-0 flex-1 pb-4">
+                            <div
+                              className={`rounded-2xl border p-4 ${
+                                checkpoint.status === "passed"
+                                  ? "border-emerald-200 bg-emerald-50"
+                                  : "border-slate-200 bg-white"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-500">
+                                    Checkpoint{" "}
+                                    {checkpoint.checkpointNo}
+                                  </p>
+
+                                  <p className="mt-1 font-black text-slate-950">
+                                    {checkpoint.checkpointName}
+                                  </p>
+                                </div>
+
+                                <span
+                                  className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                                    checkpoint.status === "passed"
+                                      ? "bg-emerald-200 text-emerald-900"
+                                      : "bg-slate-200 text-slate-600"
+                                  }`}
+                                >
+                                  {checkpoint.status === "passed"
+                                    ? "PASSED"
+                                    : "PENDING"}
+                                </span>
+                              </div>
+
+                              {checkpoint.passedAt ? (
+                                <p className="mt-2 text-sm font-semibold text-slate-500">
+                                  {formatPassageTime(
+                                    checkpoint.passedAt
+                                  )}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -355,16 +628,25 @@ export default async function EventPassPage({
                 <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
                   Guests & Family
                 </h3>
+
                 <div className="mt-4 space-y-3">
                   {guestList.map((guest) => (
-                    <div key={guest.id} className="flex items-start gap-3">
+                    <div
+                      key={guest.id}
+                      className="flex items-start gap-3"
+                    >
                       <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-black text-emerald-700">
                         OK
                       </span>
+
                       <div>
-                        <p className="font-bold">{guest.name}</p>
+                        <p className="font-bold">
+                          {guest.name}
+                        </p>
+
                         <p className="text-sm text-slate-500">
-                          {guest.relationship} - {guest.registrationNumber}
+                          {guest.relationship} -{" "}
+                          {guest.registrationNumber}
                         </p>
                       </div>
                     </div>
@@ -378,14 +660,20 @@ export default async function EventPassPage({
                 event.slug
               )}/pass/${encodeURIComponent(
                 attendee.registration_number
-              )}/image?token=${encodeURIComponent(attendee.qr_token)}`}
+              )}/image?token=${encodeURIComponent(
+                attendee.qr_token
+              )}`}
             />
 
             <div className="pass-capture-exclude no-print mt-7 border-t border-slate-200 pt-5 text-center">
               <p className="text-sm font-semibold text-slate-500">
                 Need another copy?
               </p>
-              <a href="/events" className="mt-2 inline-flex font-bold text-red-800">
+
+              <a
+                href="/events"
+                className="mt-2 inline-flex font-bold text-red-800"
+              >
                 Find My Event Pass
               </a>
             </div>
@@ -394,6 +682,7 @@ export default async function EventPassPage({
               <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
                 After the Event
               </p>
+
               <p className="mt-3 text-sm font-semibold text-slate-600">
                 Photos, certificates, and announcements will appear here after{" "}
                 {afterEventDate}.
@@ -409,4 +698,3 @@ export default async function EventPassPage({
     </main>
   );
 }
-
