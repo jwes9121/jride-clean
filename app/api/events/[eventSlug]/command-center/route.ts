@@ -506,6 +506,17 @@ export async function GET(
       );
     }
 
+    const stallThresholdRaw = String(
+      process.env.EVENT_STALLED_RUNNER_MINUTES || ""
+    ).trim();
+
+    const stallThresholdMinutes =
+      stallThresholdRaw &&
+      Number.isFinite(Number(stallThresholdRaw)) &&
+      Number(stallThresholdRaw) > 0
+        ? Math.floor(Number(stallThresholdRaw))
+        : null;
+
     const runnerTracking = Array.from(
       passagesByAttendee.entries()
     )
@@ -640,6 +651,76 @@ export async function GET(
         rank: index + 1,
       }));
 
+    const stalledParticipants =
+      stallThresholdMinutes === null
+        ? []
+        : runnerTracking
+            .filter((runner) => {
+              if (runner.isComplete) return false;
+              if (!runner.lastKnownPassageAt) return false;
+
+              const lastPassageMs = new Date(
+                runner.lastKnownPassageAt
+              ).getTime();
+
+              if (!Number.isFinite(lastPassageMs)) {
+                return false;
+              }
+
+              const minutesSinceLastPassage =
+                Math.floor(
+                  (now.getTime() - lastPassageMs) /
+                    60_000
+                );
+
+              return (
+                minutesSinceLastPassage >=
+                stallThresholdMinutes
+              );
+            })
+            .map((runner) => {
+              const lastPassageMs = new Date(
+                runner.lastKnownPassageAt as string
+              ).getTime();
+
+              return {
+                attendeeId: runner.attendeeId,
+                fullName: runner.fullName,
+                registrationNumber:
+                  runner.registrationNumber,
+                groupValue: runner.groupValue,
+                isDisqualified:
+                  runner.isDisqualified,
+                rank: runner.rank,
+                passedCheckpoints:
+                  runner.passedCheckpoints,
+                remainingCheckpoints:
+                  runner.remainingCheckpoints,
+                progressPercent:
+                  runner.progressPercent,
+                latestCheckpoint:
+                  runner.latestCheckpoint,
+                nextCheckpoint:
+                  runner.nextCheckpoint,
+                lastKnownPassageAt:
+                  runner.lastKnownPassageAt,
+                minutesSinceLastPassage:
+                  Math.max(
+                    0,
+                    Math.floor(
+                      (now.getTime() -
+                        lastPassageMs) /
+                        60_000
+                    )
+                  ),
+              };
+            })
+            .sort(
+              (a, b) =>
+                b.minutesSinceLastPassage -
+                a.minutesSinceLastPassage
+            );
+
     return noStore({
       success: true,
       generatedAt: nowIso,
@@ -692,7 +773,18 @@ export async function GET(
           runnerTracking.filter(
             (runner) => runner.isComplete
           ).length,
+        stalledParticipants:
+          stalledParticipants.length,
       },
+      stalledDetection: {
+        enabled:
+          stallThresholdMinutes !== null,
+        thresholdMinutes:
+          stallThresholdMinutes,
+        configurationKey:
+          "EVENT_STALLED_RUNNER_MINUTES",
+      },
+      stalledParticipants,
       runnerTracking,
       checkpointSummary: checkpointMetrics,
       checkpointStations: checkpointStations.map((station) => {
