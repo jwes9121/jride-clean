@@ -297,6 +297,162 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const upcomingBookingStatuses = [
+    "fare_accepted",
+    "pickup_fee_pending",
+    "pickup_fee_proposed",
+    "confirmed",
+    "converting",
+  ];
+
+  const { data: upcomingQueueRows, error: upcomingQueueError } = await supabase
+    .from("advance_booking_queue")
+    .select(
+      [
+        "id",
+        "advance_booking_id",
+        "status",
+        "departure_option",
+        "departure_lat",
+        "departure_lng",
+        "departure_set_at",
+      ].join(", ")
+    )
+    .eq("driver_id", auth.driverId)
+    .eq("status", "locked_committed")
+    .order("joined_at", { ascending: true });
+
+  if (upcomingQueueError) {
+    return NextResponse.json(
+      { ok: false, error: upcomingQueueError.message },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
+
+  const upcomingBookingIds = Array.from(
+    new Set(
+      (upcomingQueueRows ?? [])
+        .map((row: any) => row.advance_booking_id)
+        .filter(Boolean)
+    )
+  );
+
+  let upcomingBookings: Record<string, unknown>[] = [];
+
+  if (upcomingBookingIds.length > 0) {
+    const { data: upcomingBookingRows, error: upcomingBookingError } =
+      await supabase
+        .from("advance_bookings")
+        .select(
+          [
+            "id",
+            "pickup_address",
+            "pickup_lat",
+            "pickup_lng",
+            "destination_address",
+            "destination_lat",
+            "destination_lng",
+            "scheduled_pickup_at",
+            "booking_mode",
+            "fare_bracket",
+            "distance_km",
+            "vehicle_type",
+            "status",
+            "proposed_ride_fare",
+            "proposed_platform_fee",
+            "pickup_fee",
+            "total_fare",
+            "committed_driver_id",
+            "committed_at",
+          ].join(", ")
+        )
+        .in("id", upcomingBookingIds)
+        .eq("committed_driver_id", auth.driverId)
+        .in("status", upcomingBookingStatuses)
+        .gt("scheduled_pickup_at", nowIso)
+        .order("scheduled_pickup_at", { ascending: true });
+
+    if (upcomingBookingError) {
+      return NextResponse.json(
+        { ok: false, error: upcomingBookingError.message },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    const upcomingQueueByBookingId = new Map<string, any>();
+    for (const row of upcomingQueueRows ?? []) {
+      const bookingId = String((row as any).advance_booking_id || "");
+      if (bookingId && !upcomingQueueByBookingId.has(bookingId)) {
+        upcomingQueueByBookingId.set(bookingId, row);
+      }
+    }
+
+    upcomingBookings =
+      upcomingBookingRows?.map((booking: any) => {
+        const queue =
+          upcomingQueueByBookingId.get(String(booking.id)) ?? null;
+
+        return {
+          queue_entry_id: queue?.id ?? null,
+          queueEntryId: queue?.id ?? null,
+          advance_booking_id: booking.id,
+          advanceBookingId: booking.id,
+          queue_status: queue?.status ?? null,
+          queueStatus: queue?.status ?? null,
+
+          pickup_label: booking.pickup_address,
+          pickup: booking.pickup_address,
+          pickup_lat: booking.pickup_lat,
+          pickupLat: booking.pickup_lat,
+          pickup_lng: booking.pickup_lng,
+          pickupLng: booking.pickup_lng,
+
+          dropoff_label: booking.destination_address,
+          destination: booking.destination_address,
+          destination_lat: booking.destination_lat,
+          destinationLat: booking.destination_lat,
+          destination_lng: booking.destination_lng,
+          destinationLng: booking.destination_lng,
+
+          scheduled_pickup_at: booking.scheduled_pickup_at,
+          scheduledPickupAt: booking.scheduled_pickup_at,
+          booking_mode: booking.booking_mode,
+          bookingMode: booking.booking_mode,
+          fare_bracket: booking.fare_bracket,
+          fareBracket: booking.fare_bracket,
+          trip_distance_km: booking.distance_km,
+          tripDistanceKm: booking.distance_km,
+          vehicle_type: booking.vehicle_type,
+          vehicleType: booking.vehicle_type,
+          booking_status: booking.status,
+          bookingStatus: booking.status,
+
+          proposed_ride_fare: booking.proposed_ride_fare,
+          proposedRideFare: booking.proposed_ride_fare,
+          proposed_platform_fee: booking.proposed_platform_fee,
+          proposedPlatformFee: booking.proposed_platform_fee,
+          pickup_fee: booking.pickup_fee,
+          pickupFee: booking.pickup_fee,
+          total_fare: booking.total_fare,
+          totalFare: booking.total_fare,
+
+          committed_driver_id: booking.committed_driver_id,
+          committedDriverId: booking.committed_driver_id,
+          committed_at: booking.committed_at,
+          committedAt: booking.committed_at,
+
+          departure_option: queue?.departure_option ?? null,
+          departureOption: queue?.departure_option ?? null,
+          departure_lat: queue?.departure_lat ?? null,
+          departureLat: queue?.departure_lat ?? null,
+          departure_lng: queue?.departure_lng ?? null,
+          departureLng: queue?.departure_lng ?? null,
+          departure_set_at: queue?.departure_set_at ?? null,
+          departureSetAt: queue?.departure_set_at ?? null,
+        };
+      }) ?? [];
+  }
+
   const { data: queueRows, error: queueError } = await supabase
     .from("advance_booking_queue")
     .select("id, advance_booking_id, offer_sent_at, offer_expires_at")
@@ -321,7 +477,7 @@ export async function GET(req: NextRequest) {
 
   if (bookingIds.length === 0) {
     return NextResponse.json(
-      { ok: true, activeClaim, offers: [] },
+      { ok: true, activeClaim, upcomingBookings, offers: [] },
       { headers: noStoreHeaders() }
     );
   }
@@ -397,7 +553,7 @@ export async function GET(req: NextRequest) {
       .filter(Boolean) ?? [];
 
   return NextResponse.json(
-    { ok: true, activeClaim, offers },
+    { ok: true, activeClaim, upcomingBookings, offers },
     { headers: noStoreHeaders() }
   );
 }
