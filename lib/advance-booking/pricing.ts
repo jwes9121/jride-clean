@@ -12,7 +12,6 @@
 import {
   FARE_MATRIX,
   FREE_PICKUP_KM,
-  PICKUP_FEE_RATE_PER_KM,
   PLATFORM_FEE_NORMAL,
   PLATFORM_FEE_STANDARD,
   LATE_NIGHT_BASE_FARE,
@@ -23,6 +22,7 @@ import {
   DAYTIME_END_HOUR_PHT,
 } from "./constants";
 
+import { computeRidePickupFee } from "../pricing/pickupFee";
 import type { BookingMode, FareBracket, PricingInput, PricingResult } from "./types";
 
 // PHT offset from UTC in milliseconds
@@ -111,14 +111,17 @@ export function computeNightPremium(
 
 /**
  * Compute pickup fee.
- * Free if driver departure is within FREE_PICKUP_KM of the pickup point.
- * Otherwise: (distance - FREE_PICKUP_KM) * PICKUP_FEE_RATE_PER_KM, rounded up.
+ *
+ * Uses the shared JRide Ride pickup pricing implementation.
+ *
+ * Business rule:
+ * - First 1.5 km is free.
+ * - Beyond 1.5 km, charge PHP20 per started 500 m block.
+ *
+ * This intentionally matches the production Ride pricing exactly.
  */
 export function computePickupFee(pickupDistanceKm: number): number {
-  if (pickupDistanceKm <= FREE_PICKUP_KM) return 0;
-
-  const chargeableKm = pickupDistanceKm - FREE_PICKUP_KM;
-  return Math.ceil(chargeableKm * PICKUP_FEE_RATE_PER_KM);
+  return computeRidePickupFee(pickupDistanceKm);
 }
 
 /**
