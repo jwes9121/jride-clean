@@ -488,3 +488,118 @@ export async function GET(req: NextRequest) {
     bookings: filtered,
   });
 }
+
+export async function POST(req: NextRequest) {
+  const gate = await requireStaff();
+
+  if (!gate.ok) {
+    return json(403, {
+      ok: false,
+      error: "FORBIDDEN",
+      message: "Forbidden",
+    });
+  }
+
+  const admin = getAdmin();
+
+  if (!admin) {
+    return json(500, {
+      ok: false,
+      error: "SERVER_MISCONFIG",
+      message: "Missing Supabase service role configuration.",
+    });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const action = normalizeStatus(body?.action);
+  const advanceBookingId = text(body?.advanceBookingId);
+  const cancellationReason = text(body?.cancellationReason);
+
+  if (action !== "cancel_booking") {
+    return json(400, {
+      ok: false,
+      error: "INVALID_ACTION",
+      message: "Unsupported dispatcher action.",
+    });
+  }
+
+  if (!advanceBookingId) {
+    return json(400, {
+      ok: false,
+      error: "MISSING_BOOKING_ID",
+      message: "advanceBookingId is required.",
+    });
+  }
+
+  if (!cancellationReason) {
+    return json(400, {
+      ok: false,
+      error: "MISSING_REASON",
+      message: "A cancellation reason is required.",
+    });
+  }
+
+  const { data, error } = await admin.rpc(
+    "dispatcher_cancel_advance_booking",
+    {
+      p_advance_booking_id: advanceBookingId,
+      p_cancellation_reason: cancellationReason,
+    }
+  );
+
+  if (error) {
+    console.error(
+      "[advance-booking-dispatch:cancel:rpc]",
+      error
+    );
+
+    return json(500, {
+      ok: false,
+      error: "RPC_FAILED",
+      message: error.message,
+    });
+  }
+
+  const result = (data ?? {}) as {
+    ok?: boolean;
+    error?: string;
+    message?: string;
+    currentStatus?: string;
+    advanceBookingId?: string;
+    previousStatus?: string;
+    cancelledStatus?: string;
+    releasedQueueCount?: number;
+  };
+
+  if (!result.ok) {
+    const status =
+      result.error === "BOOKING_NOT_FOUND"
+        ? 404
+        : result.error === "MISSING_REASON"
+          ? 400
+          : result.error === "INTERNAL_ERROR"
+            ? 500
+            : 409;
+
+    return json(status, {
+      ok: false,
+      error: result.error || "CANCELLATION_FAILED",
+      message:
+        result.message ||
+        "Advance booking cancellation failed.",
+      currentStatus: result.currentStatus ?? null,
+    });
+  }
+
+  return json(200, {
+    ok: true,
+    action: "cancel_booking",
+    advanceBookingId:
+      result.advanceBookingId || advanceBookingId,
+    previousStatus: result.previousStatus ?? null,
+    cancelledStatus:
+      result.cancelledStatus || "cancelled_dispatcher",
+    releasedQueueCount:
+      Number(result.releasedQueueCount ?? 0),
+  });
+}
