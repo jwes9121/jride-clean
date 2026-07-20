@@ -110,6 +110,15 @@ const ACTIVE = new Set([
   "dispatcher_intervention",
 ]);
 
+const DISPATCHER_CANCELLABLE = new Set([
+  "open",
+  "fare_proposed",
+  "fare_accepted",
+  "pickup_fee_pending",
+  "pickup_fee_proposed",
+  "dispatcher_intervention",
+]);
+
 function text(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -202,6 +211,7 @@ export default function AdvanceBookingDispatchPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -226,6 +236,91 @@ export default function AdvanceBookingDispatchPage() {
     const timer = window.setInterval(() => void load(), 8000);
     return () => window.clearInterval(timer);
   }, []);
+
+  async function cancelBooking(booking: AdvanceBookingRow) {
+    const status = normStatus(booking.status);
+
+    if (!DISPATCHER_CANCELLABLE.has(status)) {
+      setMessage(
+        `Advance booking cannot be dispatcher-cancelled while status is ${titleCase(status)}.`
+      );
+      return;
+    }
+
+    const reasonInput = window.prompt(
+      `Enter the dispatcher cancellation reason for ${booking.id}.`
+    );
+
+    if (reasonInput === null) return;
+
+    const cancellationReason = reasonInput.trim();
+
+    if (!cancellationReason) {
+      setMessage("A cancellation reason is required.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Cancel advance booking ${booking.id}?\n\nPassenger: ${
+        booking.passenger_name || "Unknown Passenger"
+      }\nPickup: ${booking.pickup_address || "Not provided"}\nReason: ${
+        cancellationReason
+      }\n\nThis action is terminal and will release active driver offers.`
+    );
+
+    if (!confirmed) return;
+
+    setCancellingId(booking.id);
+    setMessage("Cancelling advance booking...");
+
+    try {
+      const response = await fetch(
+        "/api/admin/advance-booking-dispatch",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "cancel_booking",
+            advanceBookingId: booking.id,
+            cancellationReason,
+          }),
+        }
+      );
+
+      const data: PageData & {
+        previousStatus?: string | null;
+        cancelledStatus?: string | null;
+        releasedQueueCount?: number;
+      } = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.message ||
+            data.error ||
+            "ADVANCE_BOOKING_CANCELLATION_FAILED"
+        );
+      }
+
+      setMessage(
+        `Advance booking cancelled. Released queue entries: ${Number(
+          data.releasedQueueCount ?? 0
+        )}.`
+      );
+
+      await load();
+      setFilter("cancelled");
+    } catch (error: unknown) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Advance booking cancellation failed."
+      );
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   const counts = useMemo(() => {
     const next: Record<string, number> = {};
@@ -293,8 +388,8 @@ export default function AdvanceBookingDispatchPage() {
             ))}
           </div>
 
-          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-            Phase 2 is read-only. This page cannot cancel, transfer, assign, or modify an advance booking.
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Dispatcher cancellation is enabled only for Open, Fare Proposed, Fare Accepted, Pickup Fee Pending, Pickup Fee Proposed, and Dispatcher Intervention. Confirmed, Converting, Live, Completed, and already-cancelled bookings remain protected.
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
@@ -342,6 +437,37 @@ export default function AdvanceBookingDispatchPage() {
                       <div className={["rounded-xl border p-3", timerClass(queue?.offer_minutes_remaining ?? null)].join(" ")}><div className="text-xs font-bold uppercase tracking-wide">Driver offer timer</div><div className="mt-1 text-lg font-bold">{timerText(queue?.offer_minutes_remaining ?? null)}</div><div className="mt-1 text-xs">Expires: {formatDateTime(queue?.offer_expires_at)}</div></div>
                       <div className={["rounded-xl border p-3", timerClass(queue?.fare_preparation_minutes_remaining ?? null)].join(" ")}><div className="text-xs font-bold uppercase tracking-wide">Fare preparation timer</div><div className="mt-1 text-lg font-bold">{timerText(queue?.fare_preparation_minutes_remaining ?? null)}</div><div className="mt-1 text-xs">Expires: {formatDateTime(queue?.fare_preparation_expires_at)}</div></div>
                       <div className={["rounded-xl border p-3", timerClass(booking.passenger_response_minutes_remaining)].join(" ")}><div className="text-xs font-bold uppercase tracking-wide">Passenger response timer</div><div className="mt-1 text-lg font-bold">{timerText(booking.passenger_response_minutes_remaining)}</div><div className="mt-1 text-xs">Expires: {formatDateTime(booking.passenger_response_expires_at)}</div></div>
+
+                      {DISPATCHER_CANCELLABLE.has(status) ? (
+                        <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                          <div className="text-xs font-bold uppercase tracking-wide text-red-700">
+                            Dispatcher cancellation
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-2 w-full rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => void cancelBooking(booking)}
+                            disabled={cancellingId === booking.id}
+                          >
+                            {cancellingId === booking.id
+                              ? "Cancelling..."
+                              : "Cancel Advance Booking"}
+                          </button>
+                          <div className="mt-2 text-xs text-red-700">
+                            A reason and final confirmation are required. This releases active driver offers and is terminal.
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {status === "confirmed" ||
+                      status === "converting" ||
+                      status === "live" ||
+                      status === "completed" ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                          Dispatcher cancellation is locked for this status.
+                        </div>
+                      ) : null}
+
                       {status.startsWith("cancelled") ? <div className="rounded-xl border border-zinc-300 bg-zinc-50 p-3 text-xs text-zinc-700"><div className="font-bold uppercase tracking-wide">Cancellation</div><div className="mt-1">{booking.cancellation_reason || "No reason recorded"}</div><div className="mt-1">By: {booking.cancelled_by || "Unknown"}</div><div className="mt-1">{formatDateTime(booking.cancelled_at)}</div></div> : null}
                     </aside>
                   </div>
