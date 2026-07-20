@@ -14,6 +14,22 @@ function secondsRemaining(expiresAt: string | null): number {
 }
 
 
+function passengerCountFromNotes(notes: unknown): number | null {
+  const match = String(notes ?? "").match(/\[Passenger count\]\s*(\d+)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const count = Number(match[1]);
+
+  if (!Number.isInteger(count) || count < 1 || count > 4) {
+    return null;
+  }
+
+  return count;
+}
+
 async function releaseAndReofferExpiredClaim(
   driverId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -204,6 +220,7 @@ export async function GET(req: NextRequest) {
           "fare_bracket",
           "distance_km",
           "vehicle_type",
+          "notes",
           "status",
           "proposed_ride_fare",
           "proposed_platform_fee",
@@ -263,6 +280,8 @@ export async function GET(req: NextRequest) {
         tripDistanceKm: activeBookingRow.distance_km,
         vehicle_type: activeBookingRow.vehicle_type,
         vehicleType: activeBookingRow.vehicle_type,
+        passenger_count: passengerCountFromNotes(activeBookingRow.notes),
+        passengerCount: passengerCountFromNotes(activeBookingRow.notes),
         booking_status: activeBookingRow.status,
         bookingStatus: activeBookingRow.status,
         proposed_ride_fare: activeBookingRow.proposed_ride_fare,
@@ -357,6 +376,7 @@ export async function GET(req: NextRequest) {
             "fare_bracket",
             "distance_km",
             "vehicle_type",
+            "notes",
             "status",
             "proposed_ride_fare",
             "proposed_platform_fee",
@@ -424,6 +444,8 @@ export async function GET(req: NextRequest) {
           tripDistanceKm: booking.distance_km,
           vehicle_type: booking.vehicle_type,
           vehicleType: booking.vehicle_type,
+          passenger_count: passengerCountFromNotes(booking.notes),
+          passengerCount: passengerCountFromNotes(booking.notes),
           booking_status: booking.status,
           bookingStatus: booking.status,
 
@@ -494,6 +516,7 @@ export async function GET(req: NextRequest) {
         "fare_bracket",
         "distance_km",
         "vehicle_type",
+        "notes",
       ].join(", ")
     )
     .in("id", bookingIds)
@@ -544,6 +567,8 @@ export async function GET(req: NextRequest) {
           tripDistanceKm: booking.distance_km,
           vehicle_type: booking.vehicle_type,
           vehicleType: booking.vehicle_type,
+          passenger_count: passengerCountFromNotes(booking.notes),
+          passengerCount: passengerCountFromNotes(booking.notes),
           offer_expires_at: row.offer_expires_at,
           offerExpiresAt: row.offer_expires_at,
           seconds_remaining: remaining,
