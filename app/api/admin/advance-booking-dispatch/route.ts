@@ -515,6 +515,12 @@ export async function POST(req: NextRequest) {
   const advanceBookingId = text(body?.advanceBookingId);
   const cancellationReason = text(body?.cancellationReason);
 
+  console.log("[AB Dispatcher] POST body", {
+    action,
+    advanceBookingId,
+    cancellationReason,
+  });
+
   if (action !== "cancel_booking") {
     return json(400, {
       ok: false,
@@ -547,7 +553,13 @@ export async function POST(req: NextRequest) {
     }
   );
 
+  console.log("[AB Dispatcher] RPC result", {
+    data,
+    error,
+  });
+
   if (error) {
+    console.error("[AB Dispatcher] RPC ERROR", error);
     console.error(
       "[advance-booking-dispatch:cancel:rpc]",
       error
@@ -572,6 +584,8 @@ export async function POST(req: NextRequest) {
   };
 
   if (!result.ok) {
+    console.log("[AB Dispatcher] FAILURE", result);
+
     const status =
       result.error === "BOOKING_NOT_FOUND"
         ? 404
@@ -590,6 +604,8 @@ export async function POST(req: NextRequest) {
       currentStatus: result.currentStatus ?? null,
     });
   }
+
+  console.log("[AB Dispatcher] SUCCESS", result);
 
   return json(200, {
     ok: true,
