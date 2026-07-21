@@ -736,17 +736,28 @@ export default function HongaHouseholdsPage() {
                           </td>
 
                           <td className="px-5 py-5">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedHousehold(
-                                  household
-                                )
-                              }
-                              className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white"
-                            >
-                              View Stub
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedHousehold(
+                                    household
+                                  )
+                                }
+                                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-black text-slate-950"
+                              >
+                                View Details
+                              </button>
+
+                              <a
+                                href={`/events/${eventSlug}/distribution/households/${household.id}/stub`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white"
+                              >
+                                Print Stub
+                              </a>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1058,6 +1069,15 @@ export default function HongaHouseholdsPage() {
 
             {selectedHousehold.entitlement ? (
               <>
+                <a
+                  href={`/events/${eventSlug}/distribution/households/${selectedHousehold.id}/stub`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-6 block w-full rounded-2xl bg-amber-400 px-5 py-4 text-center font-black text-slate-950"
+                >
+                  Open Printable Stub
+                </a>
+
                 <div className="mt-6">
                   <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-500">
                     Claim Token
