@@ -306,29 +306,16 @@ export default function HongaClaimScannerPage() {
     controlsRef.current = null;
   }
 
-  function scheduleAutoResume() {
-    clearAutoResumeTimer();
-
-    autoResumeTimerRef.current =
-      window.setTimeout(() => {
-        restartScanner();
-      }, 2000);
-  }
-
   function showResult(
     tone: ResultTone,
-    nextMessage: string,
-    autoResume: boolean
+    nextMessage: string
   ) {
+    clearAutoResumeTimer();
     stopReaderOnly();
 
     setResultTone(tone);
     setScanState("result");
     setMessage(nextMessage);
-
-    if (autoResume) {
-      scheduleAutoResume();
-    }
   }
 
   function showManualReview(
@@ -344,7 +331,8 @@ export default function HongaClaimScannerPage() {
 
   async function submitClaim(
     payload: ClaimPayload,
-    requestSessionId: number
+    requestSessionId: number,
+    claimMethod: "qr" | "manual_search"
   ) {
     if (claimInFlightRef.current) {
       return;
@@ -368,7 +356,7 @@ export default function HongaClaimScannerPage() {
           body: JSON.stringify({
             claimToken:
               payload.claimToken,
-            claimMethod: "qr",
+            claimMethod,
             counterName:
               counterName.trim() ||
               "Pahing Counter",
@@ -433,8 +421,7 @@ export default function HongaClaimScannerPage() {
 
         showResult(
           "success",
-          "Pahing released successfully.",
-          true
+          "Pahing released successfully."
         );
 
         return;
@@ -455,8 +442,7 @@ export default function HongaClaimScannerPage() {
 
         showResult(
           "warning",
-          "Pahing was already claimed.",
-          true
+          "Pahing was already claimed."
         );
 
         return;
@@ -495,9 +481,8 @@ export default function HongaClaimScannerPage() {
         "error",
         data.message ||
           data.error ||
-          "Invalid claim stub.",
-        true
-      );
+          "Invalid claim stub."
+        );
     } catch (error) {
       if (
         requestSessionId !==
@@ -513,9 +498,8 @@ export default function HongaClaimScannerPage() {
         "error",
         error instanceof Error
           ? error.message
-          : "Claim failed.",
-        true
-      );
+          : "Claim failed."
+        );
     } finally {
       if (
         requestSessionId ===
@@ -621,8 +605,7 @@ export default function HongaClaimScannerPage() {
 
               showResult(
                 "error",
-                "Invalid QR. This is not a JRide Honga claim stub.",
-                true
+                "Invalid QR. This is not a JRide Honga claim stub."
               );
 
               return;
@@ -630,7 +613,8 @@ export default function HongaClaimScannerPage() {
 
             void submitClaim(
               payload,
-              mySession
+              mySession,
+              "qr"
             );
           }
         );
@@ -726,8 +710,7 @@ export default function HongaClaimScannerPage() {
 
       showResult(
         "error",
-        "Enter a valid Honga claim token.",
-        false
+        "Enter a valid Honga claim token."
       );
 
       return;
@@ -743,7 +726,8 @@ export default function HongaClaimScannerPage() {
 
     void submitClaim(
       payload,
-      manualSession
+      manualSession,
+      "manual_search"
     );
   }
 
@@ -781,8 +765,8 @@ export default function HongaClaimScannerPage() {
 
   const overlayHint =
     scanState === "manual_review"
-      ? "Manual action required. Resolve the issue, then tap Restart Camera."
-      : "Scanner will resume automatically.";
+      ? "Manual action required. Resolve the issue before continuing."
+      : "Confirm the result, release the Pahing when appropriate, then tap Continue.";
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
@@ -951,6 +935,14 @@ export default function HongaClaimScannerPage() {
               <p className="mt-6 text-sm font-semibold text-white/80">
                 {overlayHint}
               </p>
+
+              <button
+                type="button"
+                onClick={restartScanner}
+                className="mt-6 w-full rounded-2xl bg-white px-6 py-4 text-xl font-black text-slate-950"
+              >
+                Continue
+              </button>
             </div>
           ) : (
             <div className="mt-5 overflow-hidden rounded-3xl border border-slate-700 bg-black">
