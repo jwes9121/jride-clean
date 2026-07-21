@@ -209,6 +209,11 @@ export default function HongaHouseholdsPage() {
       null
     );
 
+  const [createdHousehold, setCreatedHousehold] =
+    React.useState<Household | null>(
+      null
+    );
+
   async function loadHouseholds() {
     setLoading(true);
     setError("");
@@ -344,7 +349,7 @@ export default function HongaHouseholdsPage() {
       await loadHouseholds();
 
       if (payload.household) {
-        setSelectedHousehold(
+        setCreatedHousehold(
           payload.household
         );
       }
@@ -927,6 +932,86 @@ export default function HongaHouseholdsPage() {
           </div>
         </div>
       </section>
+
+      {createdHousehold ? (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 p-4">
+          <div className="mx-auto my-12 max-w-xl rounded-3xl bg-white p-7 shadow-2xl">
+            <div className="rounded-3xl bg-emerald-100 p-6 text-emerald-950">
+              <p className="text-xs font-black uppercase tracking-[0.2em]">
+                Household Registered
+              </p>
+
+              <h2 className="mt-3 text-3xl font-black">
+                {createdHousehold.display_name}
+              </h2>
+
+              <p className="mt-3 font-mono text-lg font-black">
+                {createdHousehold.beneficiary_code}
+              </p>
+            </div>
+
+            <p className="mt-6 text-lg font-bold text-slate-700">
+              The household and Pahing entitlement were created successfully.
+            </p>
+
+            <div className="mt-6 rounded-2xl bg-slate-100 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-500">
+                Pahing Entitlement
+              </p>
+
+              <p className="mt-2 text-3xl font-black">
+                {createdHousehold.entitlement
+                  ? formatQuantity(
+                      createdHousehold
+                        .entitlement
+                        .quantity,
+                      createdHousehold
+                        .entitlement
+                        .unit_label
+                    )
+                  : "No entitlement"}
+              </p>
+            </div>
+
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              <a
+                href={`/events/${eventSlug}/distribution/households/${createdHousehold.id}/stub`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() =>
+                  setCreatedHousehold(null)
+                }
+                className="rounded-2xl bg-amber-400 px-5 py-4 text-center font-black text-slate-950"
+              >
+                Print Stub Now
+              </a>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCreatedHousehold(null)
+                }
+                className="rounded-2xl border border-slate-300 px-5 py-4 font-black text-slate-950"
+              >
+                Print Later
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCreatedHousehold(null);
+                setSelectedHousehold(
+                  createdHousehold
+                );
+              }}
+              className="mt-3 w-full rounded-2xl bg-slate-950 px-5 py-4 font-black text-white"
+            >
+              View Household Details
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {showForm ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 p-4">
