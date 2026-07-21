@@ -187,6 +187,12 @@ export default function HongaHouseholdsPage() {
   const [statusFilter, setStatusFilter] =
     React.useState("all");
 
+  const [municipalityFilter, setMunicipalityFilter] =
+    React.useState("all");
+
+  const [barangayFilter, setBarangayFilter] =
+    React.useState("all");
+
   const [form, setForm] =
     React.useState<FormState>(
       initialForm
@@ -379,47 +385,127 @@ export default function HongaHouseholdsPage() {
   const households =
     data?.households || [];
 
-  const filteredHouseholds =
-    households.filter((household) => {
-      const entitlementStatus =
-        household.entitlement?.status ||
-        "none";
-
-      if (
-        statusFilter !== "all" &&
-        entitlementStatus !==
-          statusFilter
-      ) {
-        return false;
-      }
-
-      const normalizedQuery =
-        query.trim().toLowerCase();
-
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const searchable = [
-        household.display_name,
-        household.beneficiary_code,
-        household.household_head_name,
-        household.mobile_number,
-        household.municipality,
-        household.barangay,
-        household.address_text,
-        household.status,
-        household.entitlement?.status,
-        household.entitlement?.claim_token,
-      ]
+  const municipalities = Array.from(
+    new Set(
+      households
+        .map((household) =>
+          String(
+            household.municipality || ""
+          ).trim()
+        )
         .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+    )
+  ).sort((a, b) =>
+    a.localeCompare(b)
+  );
 
-      return searchable.includes(
-        normalizedQuery
-      );
-    });
+  const barangays = Array.from(
+    new Set(
+      households
+        .filter(
+          (household) =>
+            municipalityFilter === "all" ||
+            household.municipality ===
+              municipalityFilter
+        )
+        .map((household) =>
+          String(
+            household.barangay || ""
+          ).trim()
+        )
+        .filter(Boolean)
+    )
+  ).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  const statusPriority: Record<
+    string,
+    number
+  > = {
+    allocated: 0,
+    none: 1,
+    cancelled: 2,
+    claimed: 3,
+  };
+
+  const filteredHouseholds =
+    households
+      .filter((household) => {
+        const entitlementStatus =
+          household.entitlement?.status ||
+          "none";
+
+        if (
+          statusFilter !== "all" &&
+          entitlementStatus !==
+            statusFilter
+        ) {
+          return false;
+        }
+
+        if (
+          municipalityFilter !== "all" &&
+          household.municipality !==
+            municipalityFilter
+        ) {
+          return false;
+        }
+
+        if (
+          barangayFilter !== "all" &&
+          household.barangay !==
+            barangayFilter
+        ) {
+          return false;
+        }
+
+        const normalizedQuery =
+          query.trim().toLowerCase();
+
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        const searchable = [
+          household.display_name,
+          household.beneficiary_code,
+          household.household_head_name,
+          household.mobile_number,
+          household.municipality,
+          household.barangay,
+          household.address_text,
+          household.status,
+          household.entitlement?.status,
+          household.entitlement?.claim_token,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(
+          normalizedQuery
+        );
+      })
+      .sort((a, b) => {
+        const aStatus =
+          a.entitlement?.status || "none";
+
+        const bStatus =
+          b.entitlement?.status || "none";
+
+        const priorityDifference =
+          (statusPriority[aStatus] ?? 9) -
+          (statusPriority[bStatus] ?? 9);
+
+        if (priorityDifference !== 0) {
+          return priorityDifference;
+        }
+
+        return a.display_name.localeCompare(
+          b.display_name
+        );
+      });
 
   const selectedClaimUrl =
     selectedHousehold?.entitlement
@@ -529,15 +615,66 @@ export default function HongaHouseholdsPage() {
         </div>
 
         <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_190px_190px_180px_auto]">
             <input
               value={query}
               onChange={(event) =>
                 setQuery(event.target.value)
               }
-              placeholder="Search name, code, town, barangay, mobile, or token"
+              placeholder="Search name, code, mobile, or token"
               className="rounded-2xl border border-slate-300 px-4 py-3 font-semibold outline-none focus:border-slate-950"
             />
+
+            <select
+              value={municipalityFilter}
+              onChange={(event) => {
+                setMunicipalityFilter(
+                  event.target.value
+                );
+                setBarangayFilter("all");
+              }}
+              className="rounded-2xl border border-slate-300 px-4 py-3 font-semibold outline-none focus:border-slate-950"
+            >
+              <option value="all">
+                All municipalities
+              </option>
+
+              {municipalities.map(
+                (municipality) => (
+                  <option
+                    key={municipality}
+                    value={municipality}
+                  >
+                    {municipality}
+                  </option>
+                )
+              )}
+            </select>
+
+            <select
+              value={barangayFilter}
+              onChange={(event) =>
+                setBarangayFilter(
+                  event.target.value
+                )
+              }
+              className="rounded-2xl border border-slate-300 px-4 py-3 font-semibold outline-none focus:border-slate-950"
+            >
+              <option value="all">
+                All barangays
+              </option>
+
+              {barangays.map(
+                (barangay) => (
+                  <option
+                    key={barangay}
+                    value={barangay}
+                  >
+                    {barangay}
+                  </option>
+                )
+              )}
+            </select>
 
             <select
               value={statusFilter}
@@ -552,7 +689,7 @@ export default function HongaHouseholdsPage() {
                 All statuses
               </option>
               <option value="allocated">
-                Allocated
+                Unclaimed
               </option>
               <option value="claimed">
                 Claimed
@@ -565,16 +702,37 @@ export default function HongaHouseholdsPage() {
               </option>
             </select>
 
-            <button
-              type="button"
-              onClick={() =>
-                void loadHouseholds()
-              }
-              className="rounded-2xl border border-slate-300 px-5 py-3 font-black"
-            >
-              Refresh
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setMunicipalityFilter(
+                    "all"
+                  );
+                  setBarangayFilter("all");
+                  setStatusFilter("all");
+                }}
+                className="rounded-2xl border border-slate-300 px-4 py-3 font-black"
+              >
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void loadHouseholds()
+                }
+                className="rounded-2xl bg-slate-950 px-4 py-3 font-black text-white"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
+
+          <p className="mt-4 text-sm font-semibold text-slate-500">
+            Unclaimed households are listed first, followed by cancelled and claimed records.
+          </p>
         </div>
 
         <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
