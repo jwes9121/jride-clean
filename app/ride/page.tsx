@@ -226,9 +226,21 @@ function normalizePassengerNameInput(v: string): string {
 }
 
 function isValidPassengerNameInput(v: string): boolean {
-  const parts = normalizePassengerNameInput(v).split(/\s+/).filter(Boolean);
+  const parts = normalizePassengerNameInput(v)
+    .split(/\s+/)
+    .filter(Boolean);
+
   if (parts.length < 2) return false;
-  return parts.every((part) => /^[A-Za-z]{2,}$/.test(part));
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+
+  if (!/^[A-Za-z]{2,}$/.test(first)) return false;
+  if (!/^[A-Za-z]{2,}$/.test(last)) return false;
+
+  return parts
+    .slice(1, -1)
+    .every((part) => /^[A-Za-z]+$/.test(part));
 }
 
 function numOrNull(v: string): number | null {
@@ -1955,7 +1967,7 @@ if (mapRef.current) {
       );
       if (!isValidPassengerNameInput(effectivePassengerName)) {
         setResult(
-          "BOOK_FAILED: INVALID_PASSENGER_NAME - Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.",
+          "BOOK_FAILED: INVALID_PASSENGER_NAME - Passenger name must contain a first name and last name with at least 2 letters each. Middle initials are allowed.",
         );
         setBusy(false);
         return;
@@ -2950,8 +2962,8 @@ if (mapRef.current) {
                 signedInPassengerName || passengerName,
               ) ? (
                 <div className="mt-1 text-xs text-amber-700">
-                  Passenger name must contain at least first name and last name,
-                  using letters only, with at least 2 letters per word.
+                  Passenger name must contain a first name and last name with at least
+                  2 letters each. Middle initials are allowed.
                 </div>
               ) : null}
             </div>

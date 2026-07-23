@@ -372,9 +372,22 @@ function normalizePassengerName(v: unknown): string {
 }
 
 function isValidPassengerName(v: string): boolean {
-  const parts = String(v ?? "").trim().split(/\s+/).filter(Boolean);
+  const parts = String(v ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
   if (parts.length < 2) return false;
-  return parts.every((part) => /^[A-Za-z]{2,}$/.test(part));
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+
+  if (!/^[A-Za-z]{2,}$/.test(first)) return false;
+  if (!/^[A-Za-z]{2,}$/.test(last)) return false;
+
+  return parts
+    .slice(1, -1)
+    .every((part) => /^[A-Za-z]+$/.test(part));
 }
 
 function userDisplayName(user: any): string {
@@ -699,7 +712,7 @@ const boundaryOverrideRequested =
         {
           ok: false,
           code: "INVALID_PASSENGER_NAME",
-          message: "Passenger name must contain at least first name and last name, using letters only, with at least 2 letters per word.",
+          message: "Passenger name must contain a first name and last name with at least 2 letters each. Middle initials are allowed.",
         },
         { status: 400 }
       );
