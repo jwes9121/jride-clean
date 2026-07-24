@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  EVENT_NOT_CHECKIN_OPEN_RESPONSE,
+  isCheckinOpen,
+} from "@/lib/events/checkinLifecycle";
 import { requireEventStation } from "@/lib/events/requireEventStation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -79,7 +83,7 @@ export async function POST(
     const { data: event, error: eventError } =
       await supabase
         .from("events")
-        .select("id,slug")
+        .select("id,slug,status")
         .eq("slug", eventSlug)
         .maybeSingle();
 
@@ -118,6 +122,13 @@ export async function POST(
               : "Checkpoint station token is invalid, expired, or revoked.",
         },
         stationAuthorization.status
+      );
+    }
+
+    if (!isCheckinOpen(event.status)) {
+      return noStore(
+        EVENT_NOT_CHECKIN_OPEN_RESPONSE,
+        409
       );
     }
 

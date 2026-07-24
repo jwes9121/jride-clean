@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  EVENT_NOT_CHECKIN_OPEN_RESPONSE,
+  isCheckinOpen,
+} from "@/lib/events/checkinLifecycle";
 import { requireEventStation } from "@/lib/events/requireEventStation";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +57,7 @@ export async function POST(
 
     const { data: event, error: eventError } = await supabase
       .from("events")
-      .select("id,slug,group_label")
+      .select("id,slug,group_label,status")
       .eq("slug", params.eventSlug)
       .maybeSingle();
 
@@ -70,14 +74,13 @@ export async function POST(
       );
     }
 
-    
     const stationAuthorization =
-  await requireEventStation(
-    supabase,
-    event.id,
-    stationToken,
-    "scanner"
-  );
+      await requireEventStation(
+        supabase,
+        event.id,
+        stationToken,
+        "scanner"
+      );
 
     if (!stationAuthorization.ok) {
       return NextResponse.json(
@@ -91,6 +94,18 @@ export async function POST(
         },
         {
           status: stationAuthorization.status,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
+    if (!isCheckinOpen(event.status)) {
+      return NextResponse.json(
+        EVENT_NOT_CHECKIN_OPEN_RESPONSE,
+        {
+          status: 409,
           headers: {
             "Cache-Control": "no-store",
           },
@@ -223,7 +238,6 @@ export async function POST(
       throw new Error("Check-in update did not return a row.");
     }
 
-    
     const { error: checkinLogError } = await supabase
       .from("event_checkins")
       .insert({
