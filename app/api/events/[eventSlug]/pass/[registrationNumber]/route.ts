@@ -61,7 +61,13 @@ export async function GET(
           "id,slug,name,short_name,event_date,venue,group_label"
         )
         .eq("slug", params.eventSlug)
-        .eq("status", "published")
+        .in("status", [
+          "published",
+          "registration_open",
+          "registration_closed",
+          "live",
+          "completed",
+        ])
         .maybeSingle();
 
     if (eventError) {

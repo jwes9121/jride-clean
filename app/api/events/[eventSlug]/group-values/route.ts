@@ -15,7 +15,13 @@ export async function GET(
       .from("events")
       .select("id,slug,group_label")
       .eq("slug", params.eventSlug)
-      .eq("status", "published")
+      .in("status", [
+        "published",
+        "registration_open",
+        "registration_closed",
+        "live",
+        "completed",
+      ])
       .maybeSingle();
 
     if (eventError) throw new Error(eventError.message);

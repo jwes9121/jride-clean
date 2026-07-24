@@ -36,7 +36,13 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
     .from("events")
     .select("id,slug,name,event_date,venue,description,status")
     .eq("slug", params.eventSlug)
-    .eq("status", "published")
+    .in("status", [
+      "published",
+      "registration_open",
+      "registration_closed",
+      "live",
+      "completed",
+    ])
     .maybeSingle();
 
   if (!event) notFound();

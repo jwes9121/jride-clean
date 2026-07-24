@@ -12,7 +12,13 @@ export default async function EventsPage() {
   const { data: events } = await supabase
     .from("events")
     .select("slug,name,short_name,event_date,venue,description,status")
-    .eq("status", "published")
+    .in("status", [
+      "published",
+      "registration_open",
+      "registration_closed",
+      "live",
+      "completed",
+    ])
     .order("event_date", { ascending: true });
 
   return (

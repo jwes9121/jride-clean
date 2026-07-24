@@ -114,7 +114,13 @@ export async function GET(req, { params }) {
             .from("events")
             .select("id,slug,name,short_name,event_date,venue,group_label")
             .eq("slug", eventSlug)
-            .eq("status", "published")
+            .in("status", [
+                "published",
+                "registration_open",
+                "registration_closed",
+                "live",
+                "completed",
+            ])
             .maybeSingle();
         if (eventError || !event?.id) {
             return new NextResponse("Event not found.", { status: 404 });
