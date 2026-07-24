@@ -43,6 +43,86 @@ function noStore(body: unknown, status = 200) {
   });
 }
 
+type AllowedTransitionRow = {
+  from_status: string;
+  to_status: string;
+};
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { eventSlug: string } }
+) {
+  try {
+    const authorization = await requireStaff(["admin", "dispatcher"]);
+
+    if (!authorization.ok) {
+      return noStore(
+        {
+          success: false,
+          error: authorization.error,
+        },
+        authorization.status
+      );
+    }
+
+    const supabase = supabaseAdmin();
+
+    const { data: event, error: eventError } = await supabase
+      .from("events")
+      .select("id,slug,status")
+      .eq("slug", params.eventSlug)
+      .maybeSingle();
+
+    if (eventError) {
+      throw new Error(eventError.message);
+    }
+
+    if (!event?.id) {
+      return noStore(
+        {
+          success: false,
+          error: "Event not found.",
+        },
+        404
+      );
+    }
+
+    const { data: transitions, error: transitionsError } =
+      await supabase.rpc("event_lifecycle_allowed_transitions");
+
+    if (transitionsError) {
+      throw new Error(transitionsError.message);
+    }
+
+    const validNextStatuses = ((transitions ?? []) as AllowedTransitionRow[])
+      .filter((row) => row.from_status === event.status)
+      .map((row) => row.to_status);
+
+    return noStore({
+      success: true,
+      eventSlug: event.slug,
+      currentStatus: event.status,
+      validNextStatuses,
+      // A dispatcher can view this, but only admin can execute a
+      // transition - the write path (POST, below) enforces that
+      // independently. This flag lets the UI grey out the action buttons
+      // without duplicating the role check itself.
+      canTransition: authorization.staff.role === "admin",
+    });
+  } catch (error) {
+    return noStore(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load lifecycle status.",
+      },
+      500
+    );
+  }
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { eventSlug: string } }
