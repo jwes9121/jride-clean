@@ -2,6 +2,10 @@ import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/requireStaff";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  isCheckinOpen,
+  EVENT_NOT_OPERATIONAL_RESPONSE,
+} from "@/lib/events/checkinLifecycle";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -493,6 +497,10 @@ export async function POST(
         },
         404
       );
+    }
+
+    if (!isCheckinOpen(event.status)) {
+      return noStore(EVENT_NOT_OPERATIONAL_RESPONSE, 409);
     }
 
     if (!program?.id) {
