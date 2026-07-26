@@ -261,10 +261,18 @@ async function syncDriverPresenceSession(opts: {
 }) {
   // JRIDE_DRIVER_SESSION_TELEMETRY_V1
   // Best-effort analytics telemetry only. Never block driver location pings.
+  //
+  // STAGE 8: thin wrapper around jride_touch_driver_presence_session(),
+  // which performs the update-or-insert / close atomically in the DB
+  // (protected by the driver_presence_sessions_one_open_idx unique
+  // index) instead of the old select-then-insert pattern that could
+  // race under concurrent pings. previousStatus is no longer needed
+  // as an RPC input: a session can only be open if it was opened via
+  // the online-like path, so "close whatever open session exists"
+  // reproduces the old branching without it.
   const supabase = opts.supabase;
   const driverId = text(opts.driverId);
   const status = norm(opts.status);
-  const previousStatus = norm(opts.previousStatus);
   const nowIso = text(opts.nowIso) || new Date().toISOString();
   const town = text(opts.town) || null;
   const deviceId = text(opts.deviceId) || null;
@@ -274,41 +282,10 @@ async function syncDriverPresenceSession(opts: {
   }
 
   try {
+    let driverName = text(opts.driverName) || null;
     const onlineLike = new Set(["online", "available", "idle", "waiting"]);
 
-    if (onlineLike.has(status)) {
-      const { data: openSession, error: openErr } = await supabase
-        .from("driver_presence_sessions")
-        .select("id")
-        .eq("driver_id", driverId)
-        .is("logout_at", null)
-        .order("login_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (openErr) {
-        return { attempted: true, ok: false, reason: "open_session_lookup_failed", message: openErr.message };
-      }
-
-      if ((openSession as any)?.id) {
-        const { error: updateErr } = await supabase
-          .from("driver_presence_sessions")
-          .update({
-            status,
-            town,
-            last_seen_at: nowIso,
-            updated_at: nowIso,
-            device_id: deviceId,
-          })
-          .eq("id", (openSession as any).id);
-
-        if (updateErr) {
-          return { attempted: true, ok: false, reason: "open_session_update_failed", message: updateErr.message };
-        }
-
-        return { attempted: true, ok: true, action: "updated_open_session", session_id: (openSession as any).id };
-      }
-
+    if (onlineLike.has(status) && !driverName) {
       const { data: profileRow } = await supabase
         .from("driver_profiles")
         .select("full_name")
@@ -316,71 +293,38 @@ async function syncDriverPresenceSession(opts: {
         .limit(1)
         .maybeSingle();
 
-      const resolvedDriverName = text(opts.driverName) || text((profileRow as any)?.full_name) || null;
-
-      const { error: insertErr } = await supabase
-        .from("driver_presence_sessions")
-        .insert({
-          driver_id: driverId,
-          driver_name: resolvedDriverName,
-          town,
-          status,
-          login_at: nowIso,
-          last_seen_at: nowIso,
-          source: "driver_location_ping",
-          device_id: deviceId,
-          created_at: nowIso,
-          updated_at: nowIso,
-        });
-
-      if (insertErr) {
-        return { attempted: true, ok: false, reason: "open_session_insert_failed", message: insertErr.message };
-      }
-
-      return { attempted: true, ok: true, action: "inserted_open_session" };
+      driverName = text((profileRow as any)?.full_name) || null;
     }
 
-    if (status === "offline" || status === "logout" || status === "logged_out") {
-      const { error: closeErr } = await supabase
-        .from("driver_presence_sessions")
-        .update({
-          status: "offline",
-          logout_at: nowIso,
-          last_seen_at: nowIso,
-          updated_at: nowIso,
-          device_id: deviceId,
-        })
-        .eq("driver_id", driverId)
-        .is("logout_at", null);
-
-      if (closeErr) {
-        return { attempted: true, ok: false, reason: "close_session_failed", message: closeErr.message };
+    const { data: row, error: rpcErr } = await supabase.rpc(
+      "jride_touch_driver_presence_session",
+      {
+        p_driver_id: driverId,
+        p_driver_name: driverName,
+        p_town: town,
+        p_status: status,
+        p_device_id: deviceId,
+        p_seen_at: nowIso,
       }
+    );
 
-      return { attempted: true, ok: true, action: "closed_open_sessions" };
+    if (rpcErr) {
+      return { attempted: true, ok: false, reason: "rpc_failed", message: rpcErr.message };
     }
 
-    if (previousStatus && onlineLike.has(previousStatus) && !onlineLike.has(status)) {
-      const { error: closeErr } = await supabase
-        .from("driver_presence_sessions")
-        .update({
-          status,
-          logout_at: nowIso,
-          last_seen_at: nowIso,
-          updated_at: nowIso,
-          device_id: deviceId,
-        })
-        .eq("driver_id", driverId)
-        .is("logout_at", null);
-
-      if (closeErr) {
-        return { attempted: true, ok: false, reason: "close_non_online_session_failed", message: closeErr.message };
-      }
-
-      return { attempted: true, ok: true, action: "closed_non_online_session" };
+    if (!row) {
+      // Expected no-op: closing branch found nothing open (old branch 4).
+      return { attempted: true, ok: true, skipped: true, reason: "no_open_session_to_touch" };
     }
 
-    return { attempted: true, ok: true, skipped: true, reason: "status_not_session_boundary" };
+    const isOpen = (row as any).logout_at == null;
+    return {
+      attempted: true,
+      ok: true,
+      action: isOpen ? "open_session_synced" : "session_closed",
+      session_id: (row as any).id,
+      close_reason: isOpen ? null : (row as any).close_reason ?? null,
+    };
   } catch (e: any) {
     return { attempted: true, ok: false, reason: "presence_session_exception", message: String(e?.message ?? e) };
   }
