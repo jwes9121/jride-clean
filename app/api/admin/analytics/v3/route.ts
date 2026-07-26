@@ -211,6 +211,40 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const reliabilityById: Record<string, any> = {};
+
+  if (allDriverIds.length > 0) {
+    const reliabilityRes = await admin
+      .from("driver_reliability_summary_v1")
+      .select("driver_id,is_placeholder_driver,is_production_driver,session_count,online_seconds,online_hours,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,duty_check_latest_ping,duty_check_latest_response,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments")
+      .in("driver_id", allDriverIds);
+
+    if (!reliabilityRes.error && Array.isArray(reliabilityRes.data)) {
+      for (const row of reliabilityRes.data as any[]) {
+        const did = s(row?.driver_id);
+        if (!did) continue;
+        reliabilityById[did] = row;
+      }
+    }
+  }
+
+  const incentiveById: Record<string, any> = {};
+
+  if (allDriverIds.length > 0) {
+    const incentiveRes = await admin
+      .from("driver_incentive_summary_v1")
+      .select("driver_id,incentive_period_id,incentive_period_name,incentive_period_start,incentive_period_end,session_count,online_seconds,online_hours,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments")
+      .in("driver_id", allDriverIds);
+
+    if (!incentiveRes.error && Array.isArray(incentiveRes.data)) {
+      for (const row of incentiveRes.data as any[]) {
+        const did = s(row?.driver_id);
+        if (!did) continue;
+        incentiveById[did] = row;
+      }
+    }
+  }
+
   function driverDisplayName(driverId: string, fallback?: any) {
     const identity = driverIdentityById[driverId] || {};
     return s(identity.driver_name) || s(identity.profile_full_name) || s(fallback) || "Unknown Driver";
@@ -368,6 +402,34 @@ export async function GET(req: NextRequest) {
     drivers[did].town = drivers[did].town || s((loc as any)?.town || (loc as any)?.home_town) || null;
 
     if (s((loc as any)?.status).toLowerCase() === "online") summary.online_now += 1;
+  }
+
+  for (const did of Object.keys(drivers)) {
+    const r = reliabilityById[did];
+    drivers[did].is_placeholder_driver = r?.is_placeholder_driver ?? null;
+    drivers[did].is_production_driver = r?.is_production_driver ?? null;
+    drivers[did].online_hours = r?.online_hours ?? null;
+    drivers[did].duty_check_response_rate_pct = r?.duty_check_response_rate_pct ?? null;
+    drivers[did].assignment_progression_pct = r?.assignment_progression_pct ?? null;
+    drivers[did].completion_pct = r?.completion_pct ?? null;
+    drivers[did].unique_assigned_bookings = r?.unique_assigned_bookings ?? null;
+    drivers[did].repeated_assignment_pairs = r?.repeated_assignment_pairs ?? null;
+    drivers[did].has_repeat_assignments = r?.has_repeat_assignments ?? null;
+  }
+
+  // NOTE: prefixed with "incentive_" throughout - the reliability merge
+  // above already uses online_hours, unique_assigned_bookings,
+  // assignment_progression_pct, and completion_pct for ALL-TIME values.
+  // Reusing those names here would silently overwrite the historical
+  // figures with the current-period ones on the same driver row.
+  for (const did of Object.keys(drivers)) {
+    const i = incentiveById[did];
+    drivers[did].incentive_period_name = i?.incentive_period_name ?? null;
+    drivers[did].incentive_online_hours = i?.online_hours ?? null;
+    drivers[did].incentive_unique_assigned_bookings = i?.unique_assigned_bookings ?? null;
+    drivers[did].incentive_completed_assignments = i?.completed_assignments ?? null;
+    drivers[did].incentive_assignment_progression_pct = i?.assignment_progression_pct ?? null;
+    drivers[did].incentive_completion_pct = i?.completion_pct ?? null;
   }
 
   summary.drivers_with_sessions = Object.values(drivers).filter((d: any) => d.login_sessions > 0).length;
@@ -621,6 +683,8 @@ export async function GET(req: NextRequest) {
       login_summary: loginSummary,
       daily_login_summary: dailyLoginSummary,
       performance: driverPerformance,
+      reliability: reliabilityById[driverIdFilter] || null,
+      incentive: incentiveById[driverIdFilter] || null,
             ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,

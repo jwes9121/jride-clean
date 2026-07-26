@@ -28,6 +28,14 @@ function fmtDate(v: any) {
   return d.toLocaleString("en-PH", { timeZone: "Asia/Manila" });
 }
 
+function pct(v: any) {
+  return v == null ? "-" : Number(v).toFixed(2) + "%";
+}
+
+function hours(v: any) {
+  return v == null ? "-" : Number(v).toFixed(2) + "h";
+}
+
 
 function Card(props: { title: string; value: string; sub?: string }) {
   return (
@@ -336,6 +344,11 @@ export default function AnalyticsV3Page() {
                     <th className="p-2">Login Time</th>
                     <th className="p-2">Gross Bookings</th>
 		    <th className="p-2">Driver Earnings</th>
+                    <th className="p-2">Online Hours</th>
+                    <th className="p-2">Duty Check %</th>
+                    <th className="p-2">Progression %</th>
+                    <th className="p-2">Completion %</th>
+                    <th className="p-2">Incentive (Current Period)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -354,6 +367,22 @@ export default function AnalyticsV3Page() {
                       <td className="p-2">{minutes(r.login_minutes)}</td>
                       <td className="p-2">{money(r.gross_revenue)}</td>
 		      <td className="p-2">{money(r.driver_payout)}</td>
+                      <td className="p-2">{hours(r.online_hours)}</td>
+                      <td className="p-2">{pct(r.duty_check_response_rate_pct)}</td>
+                      <td className="p-2">{pct(r.assignment_progression_pct)}</td>
+                      <td className="p-2">{pct(r.completion_pct)}</td>
+                      <td className="p-2">
+                        {r.incentive_period_name == null ? (
+                          <span className="text-slate-400">No activity this incentive period</span>
+                        ) : (
+                          <div className="text-xs">
+                            <div className="font-semibold">{r.incentive_period_name}</div>
+                            <div className="text-slate-500">
+                              {hours(r.incentive_online_hours)} / {count(r.incentive_completed_assignments)} completed
+                            </div>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -507,6 +536,47 @@ export default function AnalyticsV3Page() {
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Cancellation Rate</div><div className="font-bold">{p.cancellation_rate == null ? "-" : p.cancellation_rate + "%"}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Ride / Takeout</div><div className="font-bold">{count(p.ride_bookings)} / {count(p.takeout_bookings)}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Gross Total</div><div className="font-bold">{money(p.gross_total)}</div></div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="font-semibold">Reliability (Historical)</h3>
+                      {(() => {
+                        const rel = driverDetail.reliability;
+                        if (!rel) {
+                          return <div className="mt-2 text-sm text-slate-500">No reliability record.</div>;
+                        }
+                        return (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Online Hours</div><div className="font-bold">{hours(rel.online_hours)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Duty Check Response</div><div className="font-bold">{pct(rel.duty_check_response_rate_pct)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Assignment Progression</div><div className="font-bold">{pct(rel.assignment_progression_pct)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completion</div><div className="font-bold">{pct(rel.completion_pct)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Unique Assigned Bookings</div><div className="font-bold">{count(rel.unique_assigned_bookings)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Repeat Assignments</div><div className="font-bold">{count(rel.repeated_assignment_pairs)}</div></div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="font-semibold">Current Incentive</h3>
+                      {(() => {
+                        const inc = driverDetail.incentive;
+                        if (!inc) {
+                          return <div className="mt-2 text-sm text-slate-500">No activity this incentive period.</div>;
+                        }
+                        return (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="col-span-2 rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Incentive Period</div><div className="font-bold">{inc.incentive_period_name || "-"}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Online Hours</div><div className="font-bold">{hours(inc.online_hours)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Assigned Bookings</div><div className="font-bold">{count(inc.unique_assigned_bookings)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completed Assignments</div><div className="font-bold">{count(inc.completed_assignments)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Duty Check Response</div><div className="font-bold">{pct(inc.duty_check_response_rate_pct)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Progression</div><div className="font-bold">{pct(inc.assignment_progression_pct)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completion</div><div className="font-bold">{pct(inc.completion_pct)}</div></div>
                           </div>
                         );
                       })()}
