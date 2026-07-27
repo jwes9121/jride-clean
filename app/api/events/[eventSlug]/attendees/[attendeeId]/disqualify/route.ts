@@ -73,7 +73,9 @@ export async function POST(
 
     const { data: attendee, error: attendeeError } = await supabase
       .from("event_attendees")
-      .select("id,full_name,registration_number,is_disqualified,merged_into")
+      .select(
+        "id,full_name,registration_number,is_disqualified,disqualification_reason,merged_into"
+      )
       .eq("id", params.attendeeId)
       .eq("event_id", event.id)
       .is("merged_into", null)
@@ -111,6 +113,43 @@ export async function POST(
       .single();
 
     if (updateError) throw new Error(updateError.message);
+
+    const actorId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        authorization.staff.id
+      )
+        ? authorization.staff.id
+        : null;
+
+    const { error: auditError } = await supabase
+      .from("event_audit_logs")
+      .insert({
+        event_id: event.id,
+        attendee_id: updated.id,
+        actor_id: actorId,
+        action: updated.is_disqualified
+          ? "attendee_disqualified"
+          : "attendee_reinstated",
+        details: {
+          actor_identifier: authorization.staff.id,
+          actor_email: authorization.staff.email,
+          actor_name: authorization.staff.name,
+          actor_role: authorization.staff.role,
+          previous_disqualified: attendee.is_disqualified,
+          new_disqualified: updated.is_disqualified,
+          previous_reason: attendee.disqualification_reason,
+          new_reason: updated.disqualification_reason,
+          attendee_name: updated.full_name,
+          registration_number: updated.registration_number,
+        },
+      });
+
+    if (auditError) {
+      console.error(
+        "[events/attendees/disqualify] Audit insert failed:",
+        auditError.message
+      );
+    }
 
     return NextResponse.json({
       success: true,
