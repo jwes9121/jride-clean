@@ -506,6 +506,79 @@ export async function GET(
       );
     }
 
+    // Shared by runnerTracking and participantLookup so both derive the
+    // same checkpoint timeline from the same source data - this was
+    // previously computed inline only for runnerTracking, discarded after
+    // deriving latestCheckpoint/nextCheckpoint, and never returned to the
+    // client (EVT-020-adjacent AUG21-005 extension: Stage 1 fix).
+    function buildCheckpointTimeline(
+      passages: RecentPassageRow[]
+    ) {
+      const uniquePassageByCheckpoint =
+        new Map<string, RecentPassageRow>();
+
+      for (const passage of passages) {
+        if (
+          !uniquePassageByCheckpoint.has(
+            passage.checkpoint_id
+          )
+        ) {
+          uniquePassageByCheckpoint.set(
+            passage.checkpoint_id,
+            passage
+          );
+        }
+      }
+
+      const timeline = checkpoints.map(
+        (checkpoint, index) => {
+          const passage =
+            uniquePassageByCheckpoint.get(
+              checkpoint.id
+            );
+
+          return {
+            checkpointId: checkpoint.id,
+            checkpointNo:
+              checkpoint.checkpoint_no,
+            checkpointName:
+              checkpoint.checkpoint_name,
+            sortOrder:
+              checkpoint.sort_order,
+            sequence: index + 1,
+            status: (passage
+              ? "passed"
+              : "pending") as "passed" | "pending",
+            passedAt:
+              passage?.passed_at || null,
+          };
+        }
+      );
+
+      const passedTimeline = timeline.filter(
+        (item) => item.status === "passed"
+      );
+
+      const latestCheckpoint =
+        passedTimeline.length > 0
+          ? passedTimeline[
+              passedTimeline.length - 1
+            ]
+          : null;
+
+      const nextCheckpoint =
+        timeline.find(
+          (item) => item.status === "pending"
+        ) || null;
+
+      return {
+        timeline,
+        passedTimeline,
+        latestCheckpoint,
+        nextCheckpoint,
+      };
+    }
+
     const stallThresholdRaw = String(
       process.env.EVENT_STALLED_RUNNER_MINUTES || ""
     ).trim();
@@ -528,62 +601,12 @@ export async function GET(
           return null;
         }
 
-        const uniquePassageByCheckpoint =
-          new Map<string, RecentPassageRow>();
-
-        for (const passage of passages) {
-          if (
-            !uniquePassageByCheckpoint.has(
-              passage.checkpoint_id
-            )
-          ) {
-            uniquePassageByCheckpoint.set(
-              passage.checkpoint_id,
-              passage
-            );
-          }
-        }
-
-        const timeline = checkpoints.map(
-          (checkpoint, index) => {
-            const passage =
-              uniquePassageByCheckpoint.get(
-                checkpoint.id
-              );
-
-            return {
-              checkpointId: checkpoint.id,
-              checkpointNo:
-                checkpoint.checkpoint_no,
-              checkpointName:
-                checkpoint.checkpoint_name,
-              sortOrder:
-                checkpoint.sort_order,
-              sequence: index + 1,
-              status: passage
-                ? "passed"
-                : "pending",
-              passedAt:
-                passage?.passed_at || null,
-            };
-          }
-        );
-
-        const passedTimeline = timeline.filter(
-          (item) => item.status === "passed"
-        );
-
-        const latestCheckpoint =
-          passedTimeline.length > 0
-            ? passedTimeline[
-                passedTimeline.length - 1
-              ]
-            : null;
-
-        const nextCheckpoint =
-          timeline.find(
-            (item) => item.status === "pending"
-          ) || null;
+        const {
+          timeline,
+          passedTimeline,
+          latestCheckpoint,
+          nextCheckpoint,
+        } = buildCheckpointTimeline(passages);
 
         return {
           attendeeId,
@@ -614,12 +637,14 @@ export async function GET(
             checkpoints.length > 0 &&
             passedTimeline.length ===
               checkpoints.length,
+          timeline,
           latestCheckpoint,
           nextCheckpoint,
           lastKnownPassageAt:
             latestCheckpoint?.passedAt || null,
         };
       })
+
       .filter(Boolean)
       .sort((a, b) => {
         if (
@@ -650,6 +675,53 @@ export async function GET(
         ...runner!,
         rank: index + 1,
       }));
+
+    // participantLookup is deliberately sourced from event_attendees, not
+    // from allCheckpointPassages / trackingAttendeeIds like runnerTracking
+    // above. runnerTracking only contains attendees who have at least one
+    // recorded checkpoint passage - a registered or checked-in participant
+    // who has not yet passed START (or any checkpoint) is invisible to it.
+    // For a safety/lookup tool that must be able to find anyone on the
+    // roster, that gap is not acceptable (AUG21-005 extension, Stage 2).
+    const rosterAttendeesResult = await supabase
+      .from("event_attendees")
+      .select(
+        "id,full_name,registration_number,group_value,attendance_status,checked_in_at,is_disqualified"
+      )
+      .eq("event_id", event.id)
+      .is("merged_into", null);
+
+    throwIfError(
+      rosterAttendeesResult,
+      "Participant roster query failed."
+    );
+
+    const participantLookup = (
+      rosterAttendeesResult.data || []
+    ).map((attendee) => {
+      const passages =
+        passagesByAttendee.get(attendee.id) || [];
+
+      const { timeline, latestCheckpoint } =
+        buildCheckpointTimeline(passages);
+
+      return {
+        attendeeId: attendee.id,
+        fullName: attendee.full_name,
+        registrationNumber:
+          attendee.registration_number,
+        groupValue: attendee.group_value,
+        attendanceStatus:
+          attendee.attendance_status,
+        checkedInAt: attendee.checked_in_at,
+        isDisqualified:
+          attendee.is_disqualified === true,
+        latestCheckpoint,
+        lastKnownPassageAt:
+          latestCheckpoint?.passedAt || null,
+        timeline,
+      };
+    });
 
     const stalledParticipants =
       stallThresholdMinutes === null
@@ -786,6 +858,7 @@ export async function GET(
       },
       stalledParticipants,
       runnerTracking,
+      participantLookup,
       checkpointSummary: checkpointMetrics,
       checkpointStations: checkpointStations.map((station) => {
         const checkpoint = station.checkpoint_id
