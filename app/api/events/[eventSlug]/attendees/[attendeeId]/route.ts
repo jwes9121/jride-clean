@@ -94,7 +94,9 @@ export async function PATCH(
 
     const { data: attendee, error: attendeeError } = await supabase
       .from("event_attendees")
-      .select("id,event_id")
+      .select(
+        "id,event_id,full_name,mobile_number,nickname,group_value"
+      )
       .eq("id", params.attendeeId)
       .eq("event_id", event.id)
       .is("merged_into", null)
@@ -153,6 +155,55 @@ export async function PATCH(
       );
     }
 
+    const nextNickname = nickname || null;
+
+    const changedFields: Record<
+      string,
+      { previous: string | null; next: string | null }
+    > = {};
+
+    if ((attendee.full_name ?? null) !== fullName) {
+      changedFields.full_name = {
+        previous: attendee.full_name ?? null,
+        next: fullName,
+      };
+    }
+
+    if ((attendee.mobile_number ?? null) !== mobileNumber) {
+      changedFields.mobile_number = {
+        previous: attendee.mobile_number ?? null,
+        next: mobileNumber,
+      };
+    }
+
+    if ((attendee.nickname ?? null) !== nextNickname) {
+      changedFields.nickname = {
+        previous: attendee.nickname ?? null,
+        next: nextNickname,
+      };
+    }
+
+    if ((attendee.group_value ?? null) !== groupValue) {
+      changedFields.group_value = {
+        previous: attendee.group_value ?? null,
+        next: groupValue,
+      };
+    }
+
+    if (Object.keys(changedFields).length === 0) {
+      return NextResponse.json({
+        success: true,
+        attendee: {
+          attendeeId: attendee.id,
+          fullName: attendee.full_name,
+          mobileNumber: attendee.mobile_number,
+          nickname: attendee.nickname,
+          groupValue: attendee.group_value,
+        },
+        noChange: true,
+      });
+    }
+
     const now = new Date().toISOString();
 
     const { data: updated, error: updateError } = await supabase
@@ -160,7 +211,7 @@ export async function PATCH(
       .update({
         full_name: fullName,
         mobile_number: mobileNumber,
-        nickname: nickname || null,
+        nickname: nextNickname,
         group_value: groupValue,
         updated_at: now,
       })
@@ -171,6 +222,39 @@ export async function PATCH(
       .single();
 
     if (updateError) throw new Error(updateError.message);
+
+    const actorId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        authorization.staff.id
+      )
+        ? authorization.staff.id
+        : null;
+
+    const { error: auditError } = await supabase
+      .from("event_audit_logs")
+      .insert({
+        event_id: event.id,
+        attendee_id: updated.id,
+        actor_id: actorId,
+        action: "attendee_edited",
+        details: {
+          actor_identifier: authorization.staff.id,
+          actor_email: authorization.staff.email,
+          actor_name: authorization.staff.name,
+          actor_role: authorization.staff.role,
+          attendee_id: updated.id,
+          changed_fields: changedFields,
+          attendee_name: updated.full_name,
+          registration_number: updated.registration_number,
+        },
+      });
+
+    if (auditError) {
+      console.error(
+        "[events/attendees/edit] Audit insert failed:",
+        auditError.message
+      );
+    }
 
     return NextResponse.json({
       success: true,
