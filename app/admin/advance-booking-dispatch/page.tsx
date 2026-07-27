@@ -22,6 +22,13 @@ type QueueRow = {
   commitment_confirmed: boolean;
 };
 
+type EligibleDriver = {
+  driver_id: string;
+  driver_name: string;
+  driver_status: string | null;
+  distance_km: number;
+};
+
 type AdvanceBookingRow = {
   id: string;
   passenger_id: string | null;
@@ -55,6 +62,7 @@ type AdvanceBookingRow = {
   current_driver_id: string | null;
   current_driver_name: string | null;
   current_driver_status: string | null;
+  eligible_drivers: EligibleDriver[];
   current_offer_queue_id: string | null;
   queue: QueueRow | null;
   passenger_response_expires_at: string | null;
@@ -212,6 +220,10 @@ export default function AdvanceBookingDispatchPage() {
   const [message, setMessage] = useState("");
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [selectedDriverByBooking, setSelectedDriverByBooking] = useState<
+    Record<string, string>
+  >({});
 
   async function load() {
     setLoading(true);
@@ -236,6 +248,96 @@ export default function AdvanceBookingDispatchPage() {
     const timer = window.setInterval(() => void load(), 8000);
     return () => window.clearInterval(timer);
   }, []);
+
+  async function assignDriver(booking: AdvanceBookingRow) {
+    const status = normStatus(booking.status);
+
+    if (status !== "open" || booking.current_offer_queue_id) {
+      setMessage(
+        "This booking is no longer available for dispatcher assignment."
+      );
+      return;
+    }
+
+    const driverId = text(selectedDriverByBooking[booking.id]);
+
+    if (!driverId) {
+      setMessage("Select an eligible driver before assigning.");
+      return;
+    }
+
+    const selectedDriver =
+      booking.eligible_drivers?.find(
+        (driver) => driver.driver_id === driverId
+      ) ?? null;
+
+    const confirmed = window.confirm(
+      `Assign advance booking ${booking.id} to ${
+        selectedDriver?.driver_name || driverId
+      }?\n\nPassenger: ${
+        booking.passenger_name || "Unknown Passenger"
+      }\nPickup: ${booking.pickup_address || "Not provided"}\n\nThe driver will receive fare-preparation rights for 10 minutes.`
+    );
+
+    if (!confirmed) return;
+
+    setAssigningId(booking.id);
+    setMessage("Assigning driver...");
+
+    try {
+      const response = await fetch(
+        "/api/admin/advance-booking-dispatch",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "assign_driver",
+            advanceBookingId: booking.id,
+            driverId,
+          }),
+        }
+      );
+
+      const data: PageData & {
+        driverId?: string;
+        queueEntryId?: string | null;
+        queueStatus?: string | null;
+        farePreparationExpiresAt?: string | null;
+      } = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.message ||
+            data.error ||
+            "ADVANCE_BOOKING_ASSIGNMENT_FAILED"
+        );
+      }
+
+      setMessage(
+        `Driver assigned. Queue status: ${titleCase(
+          data.queueStatus || "tentative_committed"
+        )}.`
+      );
+
+      setSelectedDriverByBooking((current) => {
+        const next = { ...current };
+        delete next[booking.id];
+        return next;
+      });
+
+      await load();
+    } catch (error: unknown) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Advance booking assignment failed."
+      );
+    } finally {
+      setAssigningId(null);
+    }
+  }
 
   async function cancelBooking(booking: AdvanceBookingRow) {
     const status = normStatus(booking.status);
@@ -368,7 +470,7 @@ export default function AdvanceBookingDispatchPage() {
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h1 className="text-2xl font-bold">Advance Booking Dispatch</h1>
-              <p className="mt-1 text-sm text-slate-600">Read-only monitoring board for scheduled rides, driver offers, fare progress, and dispatcher intervention.</p>
+              <p className="mt-1 text-sm text-slate-600">Monitor scheduled rides, manually assign eligible drivers, track fare progress, and handle dispatcher intervention.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
               <span className="rounded-full border bg-slate-50 px-3 py-1">With driver: {summary.withDriver}</span>
@@ -389,7 +491,7 @@ export default function AdvanceBookingDispatchPage() {
           </div>
 
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Dispatcher cancellation is enabled only for Open, Fare Proposed, Fare Accepted, Pickup Fee Pending, Pickup Fee Proposed, and Dispatcher Intervention. Confirmed, Converting, Live, Completed, and already-cancelled bookings remain protected.
+            Manual assignment is available only for Open bookings with no active driver claim. Cancellation remains limited to Open, Fare Proposed, Fare Accepted, Pickup Fee Pending, Pickup Fee Proposed, and Dispatcher Intervention.
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
@@ -437,6 +539,68 @@ export default function AdvanceBookingDispatchPage() {
                       <div className={["rounded-xl border p-3", timerClass(queue?.offer_minutes_remaining ?? null)].join(" ")}><div className="text-xs font-bold uppercase tracking-wide">Driver offer timer</div><div className="mt-1 text-lg font-bold">{timerText(queue?.offer_minutes_remaining ?? null)}</div><div className="mt-1 text-xs">Expires: {formatDateTime(queue?.offer_expires_at)}</div></div>
                       <div className={["rounded-xl border p-3", timerClass(queue?.fare_preparation_minutes_remaining ?? null)].join(" ")}><div className="text-xs font-bold uppercase tracking-wide">Fare preparation timer</div><div className="mt-1 text-lg font-bold">{timerText(queue?.fare_preparation_minutes_remaining ?? null)}</div><div className="mt-1 text-xs">Expires: {formatDateTime(queue?.fare_preparation_expires_at)}</div></div>
                       <div className={["rounded-xl border p-3", timerClass(booking.passenger_response_minutes_remaining)].join(" ")}><div className="text-xs font-bold uppercase tracking-wide">Passenger response timer</div><div className="mt-1 text-lg font-bold">{timerText(booking.passenger_response_minutes_remaining)}</div><div className="mt-1 text-xs">Expires: {formatDateTime(booking.passenger_response_expires_at)}</div></div>
+
+                      {status === "open" &&
+                      !booking.current_offer_queue_id ? (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                          <div className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                            Manual driver assignment
+                          </div>
+
+                          {booking.eligible_drivers?.length > 0 ? (
+                            <>
+                              <select
+                                className="mt-2 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm"
+                                value={
+                                  selectedDriverByBooking[booking.id] || ""
+                                }
+                                onChange={(event) =>
+                                  setSelectedDriverByBooking((current) => ({
+                                    ...current,
+                                    [booking.id]: event.target.value,
+                                  }))
+                                }
+                                disabled={assigningId === booking.id}
+                              >
+                                <option value="">
+                                  Select eligible driver
+                                </option>
+                                {booking.eligible_drivers.map((driver) => (
+                                  <option
+                                    key={driver.driver_id}
+                                    value={driver.driver_id}
+                                  >
+                                    {driver.driver_name} -{" "}
+                                    {Number(driver.distance_km).toFixed(2)} km
+                                  </option>
+                                ))}
+                              </select>
+
+                              <button
+                                type="button"
+                                className="mt-2 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => void assignDriver(booking)}
+                                disabled={
+                                  assigningId === booking.id ||
+                                  !selectedDriverByBooking[booking.id]
+                                }
+                              >
+                                {assigningId === booking.id
+                                  ? "Assigning..."
+                                  : "Assign Driver"}
+                              </button>
+                            </>
+                          ) : (
+                            <div className="mt-2 rounded-lg border border-blue-200 bg-white p-2 text-xs text-blue-800">
+                              No eligible online driver is currently available for this booking.
+                            </div>
+                          )}
+
+                          <div className="mt-2 text-xs text-blue-700">
+                            Assignment starts the driver's 10-minute fare-preparation window. Passenger acceptance is still required before final commitment.
+                          </div>
+                        </div>
+                      ) : null}
 
                       {DISPATCHER_CANCELLABLE.has(status) ? (
                         <div className="rounded-xl border border-red-200 bg-red-50 p-3">

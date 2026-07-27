@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "../../../../auth";
+import {
+  checkDriverEligibility,
+  findNearestEligibleDrivers,
+} from "@/lib/advance-booking/eligibility";
+import { FARE_PREPARATION_TIMEOUT_SECONDS } from "@/lib/advance-booking/constants";
+import type { VehicleType } from "@/lib/advance-booking/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -127,6 +133,8 @@ export async function GET(req: NextRequest) {
         "passenger_id",
         "pickup_town",
         "pickup_address",
+        "pickup_lat",
+        "pickup_lng",
         "destination_address",
         "distance_km",
         "vehicle_type",
@@ -291,8 +299,64 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const eligibleCandidatesByBookingId: Record<
+    string,
+    Array<{ driverId: string; distanceKm: number }>
+  > = {};
+
+  const eligibleDriverIdList: string[] = [];
+
+  await Promise.all(
+    bookingRows.map(async (row: any) => {
+      const bookingId = text(row?.id);
+      const status = normalizeStatus(row?.status);
+      const currentQueueId = text(row?.current_offer_queue_id);
+
+      if (!bookingId || status !== "open" || currentQueueId) {
+        return;
+      }
+
+      const pickupLat = Number(row?.pickup_lat);
+      const pickupLng = Number(row?.pickup_lng);
+      const pickupTown = text(row?.pickup_town);
+      const vehicleType = normalizeStatus(row?.vehicle_type) as VehicleType;
+      const scheduledPickupAt = new Date(text(row?.scheduled_pickup_at));
+
+      if (
+        !Number.isFinite(pickupLat) ||
+        !Number.isFinite(pickupLng) ||
+        !pickupTown ||
+        !["tricycle", "motorcycle"].includes(vehicleType) ||
+        !Number.isFinite(scheduledPickupAt.getTime())
+      ) {
+        eligibleCandidatesByBookingId[bookingId] = [];
+        return;
+      }
+
+      const candidates = await findNearestEligibleDrivers(
+        pickupLat,
+        pickupLng,
+        pickupTown,
+        vehicleType,
+        scheduledPickupAt,
+        bookingId,
+        100
+      );
+
+      eligibleCandidatesByBookingId[bookingId] = candidates;
+
+      for (const candidate of candidates) {
+        eligibleDriverIdList.push(candidate.driverId);
+      }
+    })
+  );
+
   const allDriverIds = Array.from(
-    new Set([...committedDriverIds, ...queueDriverIds])
+    new Set([
+      ...committedDriverIds,
+      ...queueDriverIds,
+      ...eligibleDriverIdList,
+    ])
   );
 
   const driverById: Record<
@@ -387,6 +451,18 @@ export async function GET(req: NextRequest) {
         currentDriverId ||
         null,
       current_driver_status: driver?.driver_status || null,
+
+      eligible_drivers: (
+        eligibleCandidatesByBookingId[text(row?.id)] ?? []
+      ).map((candidate) => ({
+        driver_id: candidate.driverId,
+        driver_name:
+          driverById[candidate.driverId]?.driver_name ||
+          candidate.driverId,
+        driver_status:
+          driverById[candidate.driverId]?.driver_status || null,
+        distance_km: candidate.distanceKm,
+      })),
 
       current_offer_queue_id: queueId || null,
       queue: queue
@@ -514,14 +590,16 @@ export async function POST(req: NextRequest) {
   const action = normalizeStatus(body?.action);
   const advanceBookingId = text(body?.advanceBookingId);
   const cancellationReason = text(body?.cancellationReason);
+  const driverId = text(body?.driverId);
 
   console.log("[AB Dispatcher] POST body", {
     action,
     advanceBookingId,
+    driverId: driverId || null,
     cancellationReason,
   });
 
-  if (action !== "cancel_booking") {
+  if (!["cancel_booking", "assign_driver"].includes(action)) {
     return json(400, {
       ok: false,
       error: "INVALID_ACTION",
@@ -534,6 +612,232 @@ export async function POST(req: NextRequest) {
       ok: false,
       error: "MISSING_BOOKING_ID",
       message: "advanceBookingId is required.",
+    });
+  }
+
+  if (action === "assign_driver") {
+    if (!driverId) {
+      return json(400, {
+        ok: false,
+        error: "MISSING_DRIVER_ID",
+        message: "driverId is required.",
+      });
+    }
+
+    const { data: bookingRow, error: bookingError } = await admin
+      .from("advance_bookings")
+      .select(
+        [
+          "id",
+          "status",
+          "current_offer_queue_id",
+          "pickup_lat",
+          "pickup_lng",
+          "pickup_town",
+          "vehicle_type",
+          "scheduled_pickup_at",
+        ].join(", ")
+      )
+      .eq("id", advanceBookingId)
+      .maybeSingle();
+
+    if (bookingError) {
+      return json(500, {
+        ok: false,
+        error: "BOOKING_READ_FAILED",
+        message: bookingError.message,
+      });
+    }
+
+    if (!bookingRow) {
+      return json(404, {
+        ok: false,
+        error: "BOOKING_NOT_FOUND",
+        message: "Advance booking was not found.",
+      });
+    }
+
+    const bookingStatus = normalizeStatus((bookingRow as any)?.status);
+    const currentOfferQueueId = text(
+      (bookingRow as any)?.current_offer_queue_id
+    );
+
+    if (bookingStatus !== "open") {
+      return json(409, {
+        ok: false,
+        error: "BOOKING_NOT_OPEN",
+        message: "Advance booking is not open for assignment.",
+        currentStatus: bookingStatus,
+      });
+    }
+
+    if (currentOfferQueueId) {
+      return json(409, {
+        ok: false,
+        error: "BOOKING_HAS_ACTIVE_CLAIM",
+        message: "Another driver already owns fare proposal rights.",
+        currentOfferQueueId,
+      });
+    }
+
+    const pickupLat = Number((bookingRow as any)?.pickup_lat);
+    const pickupLng = Number((bookingRow as any)?.pickup_lng);
+    const pickupTown = text((bookingRow as any)?.pickup_town);
+    const vehicleType = normalizeStatus(
+      (bookingRow as any)?.vehicle_type
+    ) as VehicleType;
+    const scheduledPickupAt = new Date(
+      text((bookingRow as any)?.scheduled_pickup_at)
+    );
+
+    if (
+      !Number.isFinite(pickupLat) ||
+      !Number.isFinite(pickupLng) ||
+      !pickupTown ||
+      !["tricycle", "motorcycle"].includes(vehicleType) ||
+      !Number.isFinite(scheduledPickupAt.getTime())
+    ) {
+      return json(500, {
+        ok: false,
+        error: "INVALID_BOOKING_DATA",
+        message:
+          "Advance booking has invalid dispatcher eligibility data.",
+      });
+    }
+
+    const eligibility = await checkDriverEligibility(
+      {
+        driverId,
+        vehicleType,
+        scheduledPickupAt,
+      },
+      pickupLat,
+      pickupLng,
+      advanceBookingId
+    );
+
+    if (!eligibility.eligible) {
+      return json(409, {
+        ok: false,
+        error: "DRIVER_NOT_ELIGIBLE",
+        message:
+          eligibility.reason ||
+          "Selected driver is no longer eligible.",
+      });
+    }
+
+    const freshnessCutoffIso = new Date(
+      Date.now() - 10 * 60 * 1000
+    ).toISOString();
+
+    const { data: selectedLocation, error: selectedLocationError } =
+      await admin
+        .from("driver_locations_latest")
+        .select("town")
+        .eq("driver_id", driverId)
+        .gte("updated_at", freshnessCutoffIso)
+        .maybeSingle();
+
+    if (selectedLocationError) {
+      return json(500, {
+        ok: false,
+        error: "DRIVER_LOCATION_READ_FAILED",
+        message: selectedLocationError.message,
+      });
+    }
+
+    if (
+      normalizeStatus((selectedLocation as any)?.town) !==
+      normalizeStatus(pickupTown)
+    ) {
+      return json(409, {
+        ok: false,
+        error: "DRIVER_NOT_ELIGIBLE",
+        message: "Driver town does not match the pickup town.",
+      });
+    }
+
+    const { data: assignmentData, error: assignmentError } =
+      await admin.rpc(
+        "dispatcher_assign_advance_booking_driver",
+        {
+          p_advance_booking_id: advanceBookingId,
+          p_driver_id: driverId,
+          p_fare_preparation_seconds:
+            FARE_PREPARATION_TIMEOUT_SECONDS,
+        }
+      );
+
+    if (assignmentError) {
+      console.error(
+        "[advance-booking-dispatch:assign:rpc]",
+        assignmentError
+      );
+
+      return json(500, {
+        ok: false,
+        error: "RPC_FAILED",
+        message: assignmentError.message,
+      });
+    }
+
+    const assignmentResult = (assignmentData ?? {}) as {
+      ok?: boolean;
+      error?: string;
+      message?: string;
+      advanceBookingId?: string;
+      driverId?: string;
+      queueEntryId?: string;
+      bookingStatus?: string;
+      queueStatus?: string;
+      farePreparationExpiresAt?: string;
+      currentOfferQueueId?: string;
+    };
+
+    if (!assignmentResult.ok) {
+      const status =
+        assignmentResult.error === "BOOKING_NOT_FOUND" ||
+        assignmentResult.error === "DRIVER_NOT_FOUND"
+          ? 404
+          : assignmentResult.error === "BOOKING_ID_REQUIRED" ||
+              assignmentResult.error === "DRIVER_ID_REQUIRED" ||
+              assignmentResult.error ===
+                "INVALID_FARE_PREPARATION_SECONDS"
+            ? 400
+            : assignmentResult.error === "INTERNAL_ERROR" ||
+                assignmentResult.error ===
+                  "RELATED_RECORD_NOT_FOUND"
+              ? 500
+              : 409;
+
+      return json(status, {
+        ok: false,
+        error:
+          assignmentResult.error || "ASSIGNMENT_FAILED",
+        message:
+          assignmentResult.message ||
+          "Advance booking assignment failed.",
+        currentOfferQueueId:
+          assignmentResult.currentOfferQueueId ?? null,
+      });
+    }
+
+    return json(200, {
+      ok: true,
+      action: "assign_driver",
+      advanceBookingId:
+        assignmentResult.advanceBookingId ||
+        advanceBookingId,
+      driverId: assignmentResult.driverId || driverId,
+      queueEntryId:
+        assignmentResult.queueEntryId ?? null,
+      bookingStatus:
+        assignmentResult.bookingStatus || "open",
+      queueStatus:
+        assignmentResult.queueStatus ||
+        "tentative_committed",
+      farePreparationExpiresAt:
+        assignmentResult.farePreparationExpiresAt ?? null,
     });
   }
 
