@@ -4,7 +4,7 @@ import * as React from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { useParams } from "next/navigation";
 
-type ScanState = "idle" | "scanning" | "result" | "pending_review";
+type ScanState = "idle" | "scanning" | "result" | "manual_action";
 type ResultTone = "success" | "warning" | "error";
 
 type ParsedPass = {
@@ -19,17 +19,22 @@ type CheckpointScanResponse = {
     | "already_recorded"
     | "invalid_token"
     | "attendee_not_eligible"
-    | "checkpoint_not_found"
     | "invalid_request"
     | "station_auth_required"
-    | "server_error";
+    | "checkpoint_not_found"
+    | "event_not_checkin_open"
+    | "server_error"
+    | string;
+  attendeeId?: string;
+  fullName?: string;
+  registrationNumber?: string;
   duplicate?: boolean;
   passageId?: string;
-  passedAt?: string;
+  passedAt?: string | null;
   checkpoint?: {
     id: string;
     name: string;
-    number: number | null;
+    number: number;
     sortOrder: number;
   };
   station?: {
@@ -41,9 +46,6 @@ type CheckpointScanResponse = {
     fullName: string;
     registrationNumber: string;
   };
-  attendeeId?: string;
-  fullName?: string;
-  registrationNumber?: string;
   message?: string;
 };
 
@@ -132,14 +134,14 @@ export default function EventCheckpointScannerPage() {
   const controlsRef = React.useRef<IScannerControls | null>(null);
   const lastScanRef = React.useRef("");
   const cooldownUntilRef = React.useRef(0);
-  const checkingInRef = React.useRef(false);
+  const recordingRef = React.useRef(false);
   const scannerActiveRef = React.useRef(false);
   const autoResumeTimerRef = React.useRef<number | null>(null);
 
   // Station token is held in a ref, not just state, because the ZXing decode
   // callback closes over whatever was in scope when decodeFromVideoDevice was
   // called. Clearing React state alone does not invalidate that closure -
-  // submitCheckpointScan() must read stationTokenRef.current at call time so a
+  // submitCheckpointPassage() must read stationTokenRef.current at call time so a
   // revoked/reset token can never ride along on an in-flight callback.
   const stationTokenRef = React.useRef<string>("");
 
@@ -154,7 +156,7 @@ export default function EventCheckpointScannerPage() {
 
   const [scanState, setScanState] = React.useState<ScanState>("idle");
   const [resultTone, setResultTone] = React.useState<ResultTone>("success");
-  const [message, setMessage] = React.useState("Press Start Scanner to begin.");
+  const [message, setMessage] = React.useState("Press Start Checkpoint Scanner to begin.");
   const [lastRaw, setLastRaw] = React.useState("");
   const [parsed, setParsed] = React.useState<ParsedPass | null>(null);
   const [result, setResult] = React.useState<CheckpointScanResponse | null>(null);
@@ -174,7 +176,7 @@ export default function EventCheckpointScannerPage() {
     clearAutoResumeTimer();
     stopReaderOnly();
     invalidateActiveSession();
-    checkingInRef.current = false;
+    recordingRef.current = false;
     lastScanRef.current = "";
     stationTokenRef.current = "";
     setStationTokenState("");
@@ -224,7 +226,7 @@ export default function EventCheckpointScannerPage() {
     const trimmed = token.trim();
 
     if (!isValidStationTokenShape(trimmed)) {
-      setStationSetupError('Station token must begin with "jrst_".');
+      setStationSetupError('Checkpoint station token must begin with "jrst_".');
       return;
     }
 
@@ -241,13 +243,13 @@ export default function EventCheckpointScannerPage() {
     clearAutoResumeTimer();
     stopReaderOnly();
     invalidateActiveSession();
-    checkingInRef.current = false;
+    recordingRef.current = false;
 
     stationTokenRef.current = trimmed;
     setStationTokenState(trimmed);
     setStationSetupInput("");
     setStationSetupError("");
-    setMessage("Press Start Scanner to begin.");
+    setMessage("Press Start Checkpoint Scanner to begin.");
     setScanState("idle");
   }
 
@@ -264,7 +266,7 @@ export default function EventCheckpointScannerPage() {
     clearAutoResumeTimer();
     stopReaderOnly();
     invalidateActiveSession();
-    checkingInRef.current = false;
+    recordingRef.current = false;
     lastScanRef.current = "";
     clearStationToken();
     setLastRaw("");
@@ -280,7 +282,7 @@ export default function EventCheckpointScannerPage() {
     clearAutoResumeTimer();
     stopReaderOnly();
     invalidateActiveSession();
-    checkingInRef.current = false;
+    recordingRef.current = false;
     lastScanRef.current = "";
     clearStationToken();
     setLastRaw("");
@@ -315,16 +317,16 @@ export default function EventCheckpointScannerPage() {
     }
   }
 
-  function showPendingReview(nextMessage: string) {
+  function showManualAction(nextMessage: string) {
     clearAutoResumeTimer();
     stopReaderOnly();
     setResultTone("warning");
-    setScanState("pending_review");
+    setScanState("manual_action");
     setMessage(nextMessage);
   }
 
-  async function submitCheckpointScan(pass: ParsedPass, requestSessionId: number) {
-    if (checkingInRef.current) return;
+  async function submitCheckpointPassage(pass: ParsedPass, requestSessionId: number) {
+    if (recordingRef.current) return;
 
     // Read the token fresh, at the moment of submission - not from a value
     // captured earlier in a closure. If it is missing, a reset/revocation
@@ -334,7 +336,7 @@ export default function EventCheckpointScannerPage() {
       return;
     }
 
-    checkingInRef.current = true;
+    recordingRef.current = true;
     setParsed(pass);
     setResult(null);
     setMessage("Recording checkpoint passage...");
@@ -361,7 +363,7 @@ export default function EventCheckpointScannerPage() {
 
       // Discard results from a session that is no longer active (reset,
       // revoke, stop, or a new station setup happened while this request
-      // was in flight). Do not touch checkingInRef here - it may already be
+      // was in flight). Do not touch recordingRef here - it may already be
       // owned by a newer session's in-flight request, and this stale call
       // has no business releasing a lock it doesn't hold.
       if (requestSessionId !== sessionIdRef.current) {
@@ -378,21 +380,36 @@ export default function EventCheckpointScannerPage() {
       if (data.success && data.reason === "checkpoint_recorded") {
         navigator.vibrate?.(120);
         successDing();
-        showResult("success", "Checkpoint recorded successfully.", true);
+        showResult(
+          "success",
+          data.message || "Checkpoint recorded successfully.",
+          true
+        );
         return;
       }
 
-      if (data.reason === "already_recorded") {
+      if (data.success && data.reason === "already_recorded") {
         navigator.vibrate?.([100, 80, 100]);
         beep(520, 180);
-        showResult("warning", "Checkpoint already recorded.", true);
+        showResult(
+          "warning",
+          data.message || "Checkpoint was already recorded.",
+          true
+        );
         return;
       }
 
-      if (data.reason === "attendee_not_eligible") {
+      if (
+        res.status === 409 ||
+        data.reason === "attendee_not_eligible" ||
+        data.reason === "checkpoint_not_found" ||
+        data.reason === "event_not_checkin_open"
+      ) {
         navigator.vibrate?.([150, 100, 150]);
         beep(440, 220);
-        showPendingReview("Participant is not eligible at this checkpoint.");
+        showManualAction(
+          data.message || "Manual action is required."
+        );
         return;
       }
 
@@ -416,7 +433,7 @@ export default function EventCheckpointScannerPage() {
       // belongs to the current session. An old, stale request finishing
       // must never clear a lock that a newer session's request now owns.
       if (requestSessionId === sessionIdRef.current) {
-        checkingInRef.current = false;
+        recordingRef.current = false;
       }
     }
   }
@@ -445,7 +462,7 @@ export default function EventCheckpointScannerPage() {
 
     lastScanRef.current = "";
     cooldownUntilRef.current = Date.now() + 500;
-    checkingInRef.current = false;
+    recordingRef.current = false;
     scannerActiveRef.current = true;
     setLastRaw("");
     setParsed(null);
@@ -490,7 +507,7 @@ export default function EventCheckpointScannerPage() {
             return;
           }
 
-          submitCheckpointScan(pass, mySession);
+          submitCheckpointPassage(pass, mySession);
         }
       );
 
@@ -503,7 +520,7 @@ export default function EventCheckpointScannerPage() {
 
       controlsRef.current = controls;
       setScanState("scanning");
-      setMessage("Scanner ready. Point camera at Event Pass QR.");
+      setMessage("Checkpoint scanner ready. Point camera at Event Pass QR.");
     } catch (error) {
       setResult(null);
       setResultTone("error");
@@ -519,7 +536,7 @@ export default function EventCheckpointScannerPage() {
     const restartSessionId = sessionIdRef.current;
     lastScanRef.current = "";
     cooldownUntilRef.current = Date.now() + 500;
-    checkingInRef.current = false;
+    recordingRef.current = false;
     scannerActiveRef.current = true;
     setLastRaw("");
     setParsed(null);
@@ -546,7 +563,7 @@ export default function EventCheckpointScannerPage() {
     clearAutoResumeTimer();
     stopReaderOnly();
     invalidateActiveSession();
-    checkingInRef.current = false;
+    recordingRef.current = false;
     setScanState("idle");
     setMessage("Scanner stopped.");
   }
@@ -561,7 +578,7 @@ export default function EventCheckpointScannerPage() {
 
   const needsStationSetup = stationTokenLoaded && !stationToken;
 
-  const showOverlay = scanState === "result" || scanState === "pending_review";
+  const showOverlay = scanState === "result" || scanState === "manual_action";
 
   const overlayClass =
     resultTone === "success"
@@ -575,15 +592,15 @@ export default function EventCheckpointScannerPage() {
       ? "CHECKPOINT RECORDED"
       : result?.reason === "already_recorded"
       ? "ALREADY RECORDED"
-      : result?.reason === "attendee_not_eligible"
-      ? "NOT ELIGIBLE"
+      : scanState === "manual_action"
+      ? "MANUAL ACTION"
       : resultTone === "error"
       ? "INVALID QR"
-      : "SCANNER RESULT";
+      : "CHECKPOINT RESULT";
 
   const overlayHint =
-    scanState === "pending_review"
-      ? "Manual action required. Verify the participant, then tap Restart Camera."
+    scanState === "manual_action"
+      ? "Manual action required. Verify with the race operations desk, then tap Restart Camera."
       : "Scanner will resume automatically.";
 
   if (!stationTokenLoaded) {
@@ -611,8 +628,8 @@ export default function EventCheckpointScannerPage() {
             </p>
             <h1 className="mt-3 text-3xl font-black">Checkpoint Station Setup</h1>
             <p className="mt-2 text-slate-300">
-              This device is not authorized for {eventSlug}. Enter the station token
-              issued for this checkpoint. This is not an attendee QR token.
+              This device is not authorized for {eventSlug}. Enter the token
+              issued for this checkpoint station. This is not an attendee QR token.
             </p>
 
             <form
@@ -645,7 +662,7 @@ export default function EventCheckpointScannerPage() {
                 type="submit"
                 className="mt-5 w-full rounded-2xl bg-amber-400 px-5 py-4 font-black text-slate-950"
               >
-                Save Station Token
+                Save Checkpoint Token
               </button>
             </form>
           </div>
@@ -664,7 +681,7 @@ export default function EventCheckpointScannerPage() {
                 JRide Events Checkpoint
               </p>
               <h1 className="mt-3 text-3xl font-black">Checkpoint Scanner</h1>
-              <p className="mt-2 text-slate-300">Record participant passage at this checkpoint for {eventSlug}.</p>
+              <p className="mt-2 text-slate-300">Scan participant Event Pass QR codes for {eventSlug}.</p>
             </div>
             <button
               type="button"
@@ -682,16 +699,16 @@ export default function EventCheckpointScannerPage() {
               </p>
               <p className="mt-5 text-5xl font-black leading-tight">{message}</p>
 
-              {result?.attendee || result?.fullName ? (
+              {result?.attendee?.fullName ? (
                 <div className="mt-7 rounded-3xl bg-white p-6 text-slate-950">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                     Participant
                   </p>
                   <p className="mt-2 text-4xl font-black">
-                    {result.attendee?.fullName || result.fullName}
+                    {result.attendee.fullName}
                   </p>
                   <p className="mt-4 font-mono text-2xl font-black">
-                    {result.attendee?.registrationNumber || result.registrationNumber}
+                    {result.attendee.registrationNumber}
                   </p>
 
                   {result.checkpoint ? (
@@ -702,17 +719,21 @@ export default function EventCheckpointScannerPage() {
                       <p className="mt-2 text-2xl font-black">
                         {result.checkpoint.name}
                       </p>
-                      {result.station?.name ? (
-                        <p className="mt-2 text-sm font-semibold text-slate-500">
-                          Station: {result.station.name}
-                        </p>
-                      ) : null}
+                      <p className="mt-1 text-sm font-semibold text-slate-600">
+                        Checkpoint #{result.checkpoint.number}
+                      </p>
                     </div>
                   ) : null}
 
                   {result.passedAt ? (
                     <p className="mt-4 text-base font-semibold text-slate-500">
                       Passage time: {formatPassedAt(result.passedAt)}
+                    </p>
+                  ) : null}
+
+                  {result.station?.name ? (
+                    <p className="mt-2 text-sm font-semibold text-slate-500">
+                      Station: {result.station.name}
                     </p>
                   ) : null}
                 </div>
@@ -749,7 +770,7 @@ export default function EventCheckpointScannerPage() {
           {!showOverlay ? (
             <div className="mt-5 rounded-3xl border border-slate-700 bg-slate-900 p-5">
               <p className="text-sm font-bold uppercase tracking-[0.25em] text-slate-300">
-                SCANNER STATUS
+                CHECKPOINT SCANNER STATUS
               </p>
               <p className="mt-3 text-3xl font-black">{message}</p>
             </div>
@@ -762,7 +783,7 @@ export default function EventCheckpointScannerPage() {
               disabled={scanState === "scanning" || !stationToken}
               className="rounded-2xl bg-amber-400 px-5 py-4 font-black text-slate-950 disabled:opacity-50"
             >
-              Start Scanner
+              Start Checkpoint Scanner
             </button>
             <button
               type="button"
@@ -782,7 +803,7 @@ export default function EventCheckpointScannerPage() {
           </div>
 
           <div className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">
-            Checkpoint field scanner. Records passage only and does not modify event attendance.
+            Checkpoint field scanner. Records passage only; it does not change gate attendance. Full-screen results resume automatically except when manual action is required.
           </div>
         </div>
       </section>
