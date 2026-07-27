@@ -90,22 +90,24 @@ export async function GET(
       );
     }
 
-    const { data: alumniType, error: alumniTypeError } = await supabase
-      .from("event_attendee_types")
-      .select("id")
-      .eq("event_id", event.id)
-      .eq("type_key", "alumni")
-      .maybeSingle();
+    const { data: primaryAttendeeType, error: primaryAttendeeTypeError } =
+      await supabase
+        .from("event_attendee_types")
+        .select("id,type_key,type_label")
+        .eq("event_id", event.id)
+        .eq("is_primary", true)
+        .maybeSingle();
 
-    if (alumniTypeError) {
-      throw new Error(alumniTypeError.message);
+    if (primaryAttendeeTypeError) {
+      throw new Error(primaryAttendeeTypeError.message);
     }
 
-    if (!alumniType?.id) {
+    if (!primaryAttendeeType?.id) {
       return noStore(
         {
           success: false,
-          error: "Alumni attendee type not found.",
+          error:
+            "Primary attendee type is not configured for this event.",
         },
         500
       );
@@ -115,7 +117,7 @@ export async function GET(
     const nowIso = now.toISOString();
 
     const [
-      registeredAlumniResult,
+      registeredPrimaryResult,
       checkedInResult,
       pendingReviewResult,
       guestsResult,
@@ -135,7 +137,7 @@ export async function GET(
         .from("event_attendees")
         .select("id", { count: "exact", head: true })
         .eq("event_id", event.id)
-        .eq("attendee_type_id", alumniType.id)
+        .eq("attendee_type_id", primaryAttendeeType.id)
         .is("merged_into", null),
 
       supabase
@@ -194,7 +196,7 @@ export async function GET(
         .from("event_attendees")
         .select("group_value")
         .eq("event_id", event.id)
-        .eq("attendee_type_id", alumniType.id)
+        .eq("attendee_type_id", primaryAttendeeType.id)
         .eq("attendance_status", "checked_in")
         .is("merged_into", null),
 
@@ -256,8 +258,8 @@ export async function GET(
     ]);
 
     throwIfError(
-      registeredAlumniResult,
-      "Registered alumni count failed."
+      registeredPrimaryResult,
+      "Registered primary attendee count failed."
     );
     throwIfError(checkedInResult, "Checked-in count failed.");
     throwIfError(pendingReviewResult, "Pending-review count failed.");
@@ -804,7 +806,10 @@ export async function GET(
         groupLabel: event.group_label || "Batch",
       },
       summary: {
-        registeredAlumni: registeredAlumniResult.count || 0,
+        registeredAlumni: registeredPrimaryResult.count || 0,
+        registeredParticipants: registeredPrimaryResult.count || 0,
+        primaryAttendeeType: primaryAttendeeType.type_key,
+        primaryAttendeeLabel: primaryAttendeeType.type_label,
         checkedIn: checkedInResult.count || 0,
         pendingReview: pendingReviewResult.count || 0,
         guests: guestsResult.count || 0,
@@ -822,8 +827,8 @@ export async function GET(
           groupValue: attendee.group_value,
           checkedInAt: attendee.checked_in_at,
           attendeeType:
-            attendee.attendee_type_id === alumniType.id
-              ? "alumni"
+            attendee.attendee_type_id === primaryAttendeeType.id
+              ? primaryAttendeeType.type_key
               : "guest",
         })
       ),
