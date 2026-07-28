@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 
 export const VENDOR_SESSION_COOKIE = "jr_vendor_session";
 
-export const VENDOR_SESSION_MAX_AGE_SECONDS =
+const VENDOR_SESSION_MAX_AGE_SECONDS =
   Number(process.env.VENDOR_SESSION_MAX_AGE_SECONDS || "") || 8 * 60 * 60;
 
 const LOGIN_ALLOWED_STATUSES = new Set([
@@ -23,6 +23,24 @@ export type AuthenticatedVendor = {
   vendorName: string;
   town: string;
 };
+
+export type VendorSessionCookieOptions = {
+  httpOnly: true;
+  secure: boolean;
+  sameSite: "lax";
+  path: "/";
+  maxAge: number;
+};
+
+export function vendorSessionCookieOptions(): VendorSessionCookieOptions {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: VENDOR_SESSION_MAX_AGE_SECONDS,
+  };
+}
 
 export type RequireVendorSessionResult =
   | {
