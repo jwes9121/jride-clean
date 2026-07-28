@@ -181,7 +181,8 @@ export function verifyVendorSession(
 
 async function loadAuthenticatedVendor(
   admin: SupabaseClient,
-  vendorId: string
+  vendorId: string,
+  requestId: string
 ): Promise<AuthenticatedVendor | null> {
   const { data, error } = await admin
     .from("vendor_onboarding_credentials")
@@ -189,22 +190,24 @@ async function loadAuthenticatedVendor(
     .eq("vendor_id", vendorId)
     .limit(1)
     .maybeSingle();
-console.log("[loadAuthenticatedVendor] query", {
-  vendorId,
-  data,
-  error: error?.message ?? null,
-});
+  console.log("[loadAuthenticatedVendor] query", {
+    requestId,
+    vendorId,
+    data,
+    error: error?.message ?? null,
+  });
 
   if (error || !data) {
     return null;
   }
 
   const status = String(data.status || "").trim().toLowerCase();
-console.log("[loadAuthenticatedVendor] status", {
-  rawStatus: data.status,
-  normalizedStatus: status,
-  allowed: LOGIN_ALLOWED_STATUSES.has(status),
-});
+  console.log("[loadAuthenticatedVendor] status", {
+    requestId,
+    rawStatus: data.status,
+    normalizedStatus: status,
+    allowed: LOGIN_ALLOWED_STATUSES.has(status),
+  });
 
   if (!LOGIN_ALLOWED_STATUSES.has(status)) {
     return null;
@@ -225,7 +228,8 @@ console.log("[loadAuthenticatedVendor] status", {
 
 export async function requireVendorSession(
   req: NextRequest,
-  admin: SupabaseClient
+  admin: SupabaseClient,
+  requestId = "untracked"
 ): Promise<RequireVendorSessionResult> {
   const token = req.cookies.get(VENDOR_SESSION_COOKIE)?.value;
   const payload = verifyVendorSession(token);
@@ -238,7 +242,7 @@ export async function requireVendorSession(
     };
   }
 
-  const vendor = await loadAuthenticatedVendor(admin, payload.v);
+  const vendor = await loadAuthenticatedVendor(admin, payload.v, requestId);
 
   if (!vendor) {
     return {

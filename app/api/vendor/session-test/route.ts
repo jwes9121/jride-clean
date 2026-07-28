@@ -25,6 +25,14 @@ function getAdmin() {
 }
 
 export async function GET(req: NextRequest) {
+  const requestId =
+    req.nextUrl.searchParams.get("rid")?.trim() ||
+    `vendor-session-${Date.now()}`;
+
+  console.log("[session-test] start", {
+    requestId,
+  });
+
   const admin = getAdmin();
 
   if (!admin) {
@@ -39,7 +47,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const result = await requireVendorSession(req, admin);
+  const result = await requireVendorSession(req, admin, requestId);
 
   const vendorId = result.ok ? result.vendor.vendorId : null;
 
@@ -58,6 +66,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(
     {
+      requestId,
       sessionResult: result,
       diagnostic: {
         vendorId,
