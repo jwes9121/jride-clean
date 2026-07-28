@@ -14,6 +14,49 @@ const ACTIVE_STATUSES = [
   "dispatcher_intervention",
 ];
 
+// Terminal statuses shown in Advance Booking History. cancelled_driver is
+// included for forward-compatibility - as of this writing no RPC in the
+// codebase actually writes it yet (driver-cancellation-after-lock is a
+// separate, not-yet-built "no-show workflow" per earlier design notes),
+// so this array element will simply never match any row today.
+const HISTORY_STATUSES = [
+  "completed",
+  "cancelled_no_driver",
+  "cancelled_passenger",
+  "cancelled_driver",
+];
+
+const HISTORY_LIMIT = 50;
+
+// Same extraction pattern already used in app/api/driver/advance-bookings/
+// offers/route.ts - passenger_count is not a real column, it's encoded as
+// a "[Passenger count] N" prefix line in notes by the Android client.
+function passengerCountFromNotes(notes: unknown): number | null {
+  const match = String(notes ?? "").match(/\[Passenger count\]\s*(\d+)/i);
+  const value = match ? Number(match[1]) : NaN;
+  return Number.isFinite(value) ? value : null;
+}
+
+function computeDisplayStatus(
+  status: string,
+  cancellationReason: string | null
+): string {
+  switch (status) {
+    case "completed":
+      return "COMPLETED";
+    case "cancelled_passenger":
+      return "CANCELLED_BY_PASSENGER";
+    case "cancelled_driver":
+      return "CANCELLED_BY_DRIVER";
+    case "cancelled_no_driver":
+      return cancellationReason === "passenger_response_expired"
+        ? "AUTO_CANCELLED_NO_RESPONSE"
+        : "NO_DRIVER_AVAILABLE";
+    default:
+      return String(status || "").toUpperCase() || "UNKNOWN";
+  }
+}
+
 function noStoreHeaders() {
   return {
     "Cache-Control": "no-store, max-age=0",
@@ -98,6 +141,9 @@ export async function GET(req: NextRequest) {
   const supabase = supabaseAdmin();
   const nowIso = new Date().toISOString();
 
+  // ---------------------------------------------------------------
+  // Current booking - query and response shape UNCHANGED from before.
+  // ---------------------------------------------------------------
   const { data: booking, error: bookingError } = await supabase
     .from("advance_bookings")
     .select(
@@ -152,22 +198,9 @@ export async function GET(req: NextRequest) {
   }
 
   const bookingRow = booking as any;
-
-  if (!bookingRow) {
-    return NextResponse.json(
-      {
-        ok: true,
-        booking: null,
-      },
-      {
-        headers: noStoreHeaders(),
-      }
-    );
-  }
-
   let queue: Record<string, unknown> | null = null;
 
-  if (bookingRow.current_offer_queue_id) {
+  if (bookingRow?.current_offer_queue_id) {
     const { data: queueRow, error: queueError } = await supabase
       .from("advance_booking_queue")
       .select(
@@ -199,10 +232,8 @@ export async function GET(req: NextRequest) {
     queue = (queueRow as any) ?? null;
   }
 
-  return NextResponse.json(
-    {
-      ok: true,
-      booking: {
+  const currentBooking = bookingRow
+    ? {
         id: bookingRow.id,
         passengerId: bookingRow.passenger_id,
         pickupAddress: bookingRow.pickup_address,
@@ -234,7 +265,119 @@ export async function GET(req: NextRequest) {
         departureDistanceKm:
           (queue as any)?.departure_distance_km ?? null,
         queue,
+      }
+    : null;
+
+  // ---------------------------------------------------------------
+  // History - new. Terminal bookings only, most recently updated first.
+  // ---------------------------------------------------------------
+  const { data: historyRows, error: historyError } = await supabase
+    .from("advance_bookings")
+    .select(
+      [
+        "id",
+        "pickup_address",
+        "destination_address",
+        "distance_km",
+        "vehicle_type",
+        "notes",
+        "scheduled_pickup_at",
+        "booking_created_at",
+        "booking_mode",
+        "fare_bracket",
+        "status",
+        "cancellation_reason",
+        "cancelled_at",
+        "cancelled_by",
+        "committed_driver_id",
+        "proposed_ride_fare",
+        "proposed_platform_fee",
+        "pickup_fee",
+        "total_fare",
+        "estimated_total",
+      ].join(", ")
+    )
+    .eq("passenger_id", auth.passengerId)
+    .in("status", HISTORY_STATUSES)
+    .order("updated_at", { ascending: false })
+    .limit(HISTORY_LIMIT);
+
+  if (historyError) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: historyError.message,
       },
+      {
+        status: 500,
+        headers: noStoreHeaders(),
+      }
+    );
+  }
+
+  const historyList = (historyRows ?? []) as any[];
+
+  // Batched driver-name resolution (one query for every distinct driver
+  // across the whole history page, not one query per row).
+  const driverIds = Array.from(
+    new Set(
+      historyList
+        .map((row) => row.committed_driver_id)
+        .filter((id): id is string => !!id)
+    )
+  );
+
+  const driverNameById = new Map<string, string>();
+
+  if (driverIds.length > 0) {
+    const { data: driverRows } = await supabase
+      .from("driver_profiles")
+      .select("driver_id, full_name")
+      .in("driver_id", driverIds);
+
+    for (const row of (driverRows ?? []) as any[]) {
+      const id = String(row?.driver_id || "");
+      const name = String(row?.full_name || "").trim();
+      if (id && name) driverNameById.set(id, name);
+    }
+  }
+
+  const history = historyList.map((row) => ({
+    id: row.id,
+    pickupAddress: row.pickup_address,
+    destinationAddress: row.destination_address,
+    distanceKm: row.distance_km,
+    vehicleType: row.vehicle_type,
+    passengerCount: passengerCountFromNotes(row.notes),
+    notes: row.notes,
+    scheduledPickupAt: row.scheduled_pickup_at,
+    bookingCreatedAt: row.booking_created_at,
+    bookingMode: row.booking_mode,
+    fareBracket: row.fare_bracket,
+    status: row.status,
+    cancellationReason: row.cancellation_reason,
+    displayStatus: computeDisplayStatus(row.status, row.cancellation_reason),
+    cancelledAt: row.cancelled_at,
+    cancelledBy: row.cancelled_by,
+    committedDriverId: row.committed_driver_id,
+    committedDriverName: row.committed_driver_id
+      ? driverNameById.get(String(row.committed_driver_id)) ?? null
+      : null,
+    proposedRideFare: row.proposed_ride_fare,
+    proposedPlatformFee: row.proposed_platform_fee,
+    pickupFee: row.pickup_fee,
+    totalFare: row.total_fare,
+    estimatedTotal: row.estimated_total,
+  }));
+
+  return NextResponse.json(
+    {
+      ok: true,
+      currentBooking,
+      history,
+      // Deprecated alias - remove once PassengerAdvanceBookingActivity is
+      // confirmed updated and deployed to read currentBooking instead.
+      booking: currentBooking,
     },
     {
       headers: noStoreHeaders(),
