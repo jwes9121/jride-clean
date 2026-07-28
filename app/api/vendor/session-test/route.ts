@@ -10,9 +10,7 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     "";
 
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "";
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
   if (!url || !serviceKey) {
     return null;
@@ -43,20 +41,35 @@ export async function GET(req: NextRequest) {
 
   const result = await requireVendorSession(req, admin);
 
-  if (!result.ok) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: result.error,
-      },
-      {
-        status: result.status,
-      }
-    );
+  const vendorId = result.ok ? result.vendor.vendorId : null;
+
+  let credentialRow = null;
+  let credentialError = null;
+
+  if (vendorId) {
+    const credentialQuery = await admin
+      .from("vendor_onboarding_credentials")
+      .select("vendor_id,vendor_name,town,status")
+      .eq("vendor_id", vendorId);
+
+    credentialRow = credentialQuery.data;
+    credentialError = credentialQuery.error?.message || null;
   }
 
-  return NextResponse.json({
-    ok: true,
-    vendor: result.vendor,
-  });
+  return NextResponse.json(
+    {
+      sessionResult: result,
+      diagnostic: {
+        vendorId,
+        credentialRow,
+        credentialError,
+      },
+    },
+    {
+      status: result.ok ? 200 : result.status,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
 }
