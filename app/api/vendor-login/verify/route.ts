@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  signVendorSession,
+  VENDOR_SESSION_COOKIE,
+  vendorSessionCookieOptions,
+} from "@/lib/vendorSession";
 
 export const dynamic = "force-dynamic";
 
@@ -162,11 +167,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return json(200, {
+    const res = NextResponse.json({
       ok: true,
       vendor_id: clean(row.vendor_id),
       vendor: publicVendor(row),
     });
+
+    res.cookies.set(
+      VENDOR_SESSION_COOKIE,
+      signVendorSession(clean(row.vendor_id)),
+      vendorSessionCookieOptions()
+    );
+
+    return res;
   } catch (e: any) {
     return json(500, {
       ok: false,
