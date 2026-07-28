@@ -189,12 +189,22 @@ async function loadAuthenticatedVendor(
     .eq("vendor_id", vendorId)
     .limit(1)
     .maybeSingle();
+console.log("[loadAuthenticatedVendor] query", {
+  vendorId,
+  data,
+  error: error?.message ?? null,
+});
 
   if (error || !data) {
     return null;
   }
 
   const status = String(data.status || "").trim().toLowerCase();
+console.log("[loadAuthenticatedVendor] status", {
+  rawStatus: data.status,
+  normalizedStatus: status,
+  allowed: LOGIN_ALLOWED_STATUSES.has(status),
+});
 
   if (!LOGIN_ALLOWED_STATUSES.has(status)) {
     return null;
