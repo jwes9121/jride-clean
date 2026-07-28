@@ -3,6 +3,79 @@
 import * as React from "react";
 import { useParams } from "next/navigation";
 
+type CheckpointTimelineBase = {
+  checkpointId: string;
+  checkpointNo: number;
+  checkpointName: string;
+  sortOrder: number;
+  sequence: number;
+};
+
+type PassedCheckpointTimelineItem = CheckpointTimelineBase & {
+  status: "passed";
+  passedAt: string;
+};
+
+type PendingCheckpointTimelineItem = CheckpointTimelineBase & {
+  status: "pending";
+  passedAt: null;
+};
+
+type CheckpointTimelineItem =
+  | PassedCheckpointTimelineItem
+  | PendingCheckpointTimelineItem;
+
+type RunnerTrackingItem = {
+  rank: number;
+  attendeeId: string;
+  fullName: string;
+  registrationNumber: string | null;
+  groupValue: string | null;
+  isDisqualified: boolean;
+  passedCheckpoints: number;
+  totalCheckpoints: number;
+  remainingCheckpoints: number;
+  progressPercent: number;
+  isComplete: boolean;
+  timeline: CheckpointTimelineItem[];
+  latestCheckpoint: PassedCheckpointTimelineItem | null;
+  nextCheckpoint: PendingCheckpointTimelineItem | null;
+  lastKnownPassageAt: string | null;
+};
+
+type StalledParticipantItem = {
+  attendeeId: string;
+  fullName: string;
+  registrationNumber: string | null;
+  groupValue: string | null;
+  isDisqualified: boolean;
+  rank: number;
+  passedCheckpoints: number;
+  remainingCheckpoints: number;
+  progressPercent: number;
+  latestCheckpoint: PassedCheckpointTimelineItem | null;
+  nextCheckpoint: PendingCheckpointTimelineItem | null;
+  lastKnownPassageAt: string | null;
+  minutesSinceLastPassage: number;
+};
+
+// participantLookup deliberately has no nextCheckpoint field - it is
+// sourced from the full event_attendees roster (EVT-020-adjacent AUG21-005
+// extension, Stage 2), not from runnerTracking, and is not filtered by
+// primary attendee type (guests remain findable on the safety roster).
+type ParticipantLookupItem = {
+  attendeeId: string;
+  fullName: string;
+  registrationNumber: string | null;
+  groupValue: string | null;
+  attendanceStatus: string | null;
+  checkedInAt: string | null;
+  isDisqualified: boolean;
+  latestCheckpoint: PassedCheckpointTimelineItem | null;
+  lastKnownPassageAt: string | null;
+  timeline: CheckpointTimelineItem[];
+};
+
 type DashboardResponse = {
   success: boolean;
   generatedAt?: string;
@@ -14,7 +87,16 @@ type DashboardResponse = {
     groupLabel: string;
   };
   summary?: {
+    // registeredAlumni is kept for backward compatibility with existing UI
+    // that reads it directly; registeredParticipants is the neutral name
+    // for the same count (Stage 2.5E). Both currently always carry the
+    // same value - the primary-attendee-type count, whatever that type is
+    // for this event (alumni, participant, etc - see primaryAttendeeType
+    // below, a flat string, not a nested object).
     registeredAlumni: number;
+    registeredParticipants: number;
+    primaryAttendeeType: string;
+    primaryAttendeeLabel: string;
     checkedIn: number;
     pendingReview: number;
     guests: number;
@@ -33,7 +115,13 @@ type DashboardResponse = {
     fullName: string;
     groupValue: string | null;
     checkedInAt: string | null;
-    attendeeType: "alumni" | "guest";
+    // Not a fixed "alumni" | "guest" union: this is the event's actual
+    // primary attendee type_key (e.g. "alumni", "participant") when the
+    // attendee is the primary type, otherwise "guest". Still a binary
+    // classification as of Stage 2.5E - a third configured attendee type
+    // (e.g. "volunteer") would currently also be reported as "guest".
+    // Known limitation, not yet generalized; see Stage 2.5E notes.
+    attendeeType: string;
   }[];
   scanner?: {
     status: "online" | "idle" | "unknown";
@@ -48,6 +136,12 @@ type DashboardResponse = {
     offlineStations: number;
     trackedParticipants: number;
     completedParticipants: number;
+    stalledParticipants: number;
+  };
+  stalledDetection?: {
+    enabled: boolean;
+    thresholdMinutes: number | null;
+    configurationKey: string;
   };
   checkpointSummary?: {
     checkpointId: string;
@@ -80,38 +174,9 @@ type DashboardResponse = {
     stationName: string;
     passedAt: string;
   }[];
-  runnerTracking?: {
-    rank: number;
-    attendeeId: string;
-    fullName: string;
-    registrationNumber: string;
-    groupValue: string | null;
-    isDisqualified: boolean;
-    passedCheckpoints: number;
-    totalCheckpoints: number;
-    remainingCheckpoints: number;
-    progressPercent: number;
-    isComplete: boolean;
-    latestCheckpoint: {
-      checkpointId: string;
-      checkpointNo: number;
-      checkpointName: string;
-      sortOrder: number;
-      sequence: number;
-      status: "passed";
-      passedAt: string | null;
-    } | null;
-    nextCheckpoint: {
-      checkpointId: string;
-      checkpointNo: number;
-      checkpointName: string;
-      sortOrder: number;
-      sequence: number;
-      status: "pending";
-      passedAt: null;
-    } | null;
-    lastKnownPassageAt: string | null;
-  }[];
+  stalledParticipants?: StalledParticipantItem[];
+  runnerTracking?: RunnerTrackingItem[];
+  participantLookup?: ParticipantLookupItem[];
   error?: string;
 };
 
@@ -267,6 +332,9 @@ export default function EventCommandCenterPage() {
 
   const summary = data?.summary || {
     registeredAlumni: 0,
+    registeredParticipants: 0,
+    primaryAttendeeType: "",
+    primaryAttendeeLabel: "Participant",
     checkedIn: 0,
     pendingReview: 0,
     guests: 0,
@@ -286,6 +354,7 @@ export default function EventCommandCenterPage() {
     offlineStations: 0,
     trackedParticipants: 0,
     completedParticipants: 0,
+    stalledParticipants: 0,
   };
 
   const topBatches = data?.topBatches || [];
