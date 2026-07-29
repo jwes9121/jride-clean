@@ -180,6 +180,34 @@ function deriveDutyCheckState(ping: any, wasFetched: boolean, nowMs: number) {
   };
 }
 
+
+const DRIVER_LOCATION_STALE_AFTER_SECONDS = 120;
+const ONLINE_LIKE_DRIVER_STATUSES = new Set([
+  "online",
+  "available",
+  "idle",
+  "waiting",
+]);
+
+function driverLocationPresence(location: any) {
+  const rawStatus = String(location?.status || "").trim().toLowerCase();
+  const updatedAt = String(location?.updated_at || "").trim();
+  const updatedMs = updatedAt ? Date.parse(updatedAt) : Number.NaN;
+  const ageSeconds = Number.isFinite(updatedMs)
+    ? Math.max(0, Math.floor((Date.now() - updatedMs) / 1000))
+    : null;
+  const isStale = ageSeconds === null || ageSeconds > DRIVER_LOCATION_STALE_AFTER_SECONDS;
+  const isOnline = !isStale && ONLINE_LIKE_DRIVER_STATUSES.has(rawStatus);
+
+  return {
+    raw_status: rawStatus || null,
+    effective_status: isOnline ? "online" : "offline",
+    updated_at: updatedAt || null,
+    age_seconds: ageSeconds,
+    is_stale: isStale,
+  };
+}
+
 async function loadDriverCatalog(admin: any) {
   const [driversResult, profilesResult, locationsResult] = await Promise.all([
     admin
@@ -223,6 +251,7 @@ async function loadDriverCatalog(admin: any) {
 
     const driver: any = driversById.get(driverId) || {};
     const location: any = locationsById.get(driverId) || {};
+    const presence = driverLocationPresence(location);
 
     catalog.push({
       driver_id: driverId,
@@ -242,14 +271,13 @@ async function loadDriverCatalog(admin: any) {
         location.vehicle_type ||
         null,
       phone: profile.phone || null,
-      online_status:
-        location.status ||
-        driver.driver_status ||
-        "unknown",
-      location_updated_at:
-        location.updated_at ||
-        driver.updated_at ||
-        null,
+      online_status: presence.effective_status,
+      raw_location_status: presence.raw_status,
+      driver_status: driver.driver_status || null,
+      location_updated_at: presence.updated_at,
+      location_age_seconds: presence.age_seconds,
+      location_is_stale: presence.is_stale,
+      online_freshness_seconds: DRIVER_LOCATION_STALE_AFTER_SECONDS,
     });
   }
 
