@@ -283,6 +283,11 @@ export default function EventCommandCenterPage() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState("");
 
+  // Stage 4 - Runner Safety Lookup
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [selectedParticipantId, setSelectedParticipantId] =
+    React.useState<string | null>(null);
+
   async function loadDashboard(background = false) {
     if (background) {
       setRefreshing(true);
@@ -380,6 +385,42 @@ export default function EventCommandCenterPage() {
     1,
     ...checkpointSummary.map((item) => item.passages)
   );
+
+  const participantLookup = data?.participantLookup || [];
+
+  // Stage 4A - filter the full roster by name or registration number.
+  // Deliberately reads from participantLookup, not runnerTracking, so
+  // participants with zero checkpoint passages (including never checked
+  // in) remain findable.
+  const filteredParticipants = React.useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return [];
+    }
+
+    return participantLookup
+      .filter((participant) => {
+        const nameMatch = participant.fullName
+          .toLowerCase()
+          .includes(query);
+
+        const regNumberMatch = (
+          participant.registrationNumber || ""
+        )
+          .toLowerCase()
+          .includes(query);
+
+        return nameMatch || regNumberMatch;
+      })
+      .slice(0, 50);
+  }, [participantLookup, searchQuery]);
+
+  const selectedParticipant =
+    participantLookup.find(
+      (participant) =>
+        participant.attendeeId === selectedParticipantId
+    ) || null;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white">
@@ -715,6 +756,221 @@ export default function EventCommandCenterPage() {
                   <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
                     No checkpoint passages yet.
                   </p>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white p-5 text-slate-950">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Runner Safety Lookup
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Find a participant
+                    </h2>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500">
+                    Searches the full roster, including anyone with no
+                    checkpoint passage yet
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by name or registration number"
+                  className="mt-5 w-full rounded-2xl border border-slate-200 bg-slate-100 p-4 text-base font-semibold text-slate-950 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none"
+                />
+
+                {searchQuery.trim() && (
+                  <p className="mt-3 text-sm font-semibold text-slate-500">
+                    {filteredParticipants.length} match
+                    {filteredParticipants.length === 1 ? "" : "es"}
+                  </p>
+                )}
+
+                {filteredParticipants.length > 0 ? (
+                  <div className="mt-4 grid max-h-80 gap-2 overflow-y-auto">
+                    {filteredParticipants.map((participant) => (
+                      <button
+                        key={participant.attendeeId}
+                        type="button"
+                        onClick={() =>
+                          setSelectedParticipantId(
+                            participant.attendeeId
+                          )
+                        }
+                        className={`flex flex-col gap-1 rounded-2xl border p-4 text-left transition ${
+                          participant.attendeeId ===
+                          selectedParticipantId
+                            ? "border-amber-400 bg-amber-50"
+                            : "border-slate-200 bg-slate-100 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-lg font-black">
+                            {participant.fullName}
+                          </p>
+                          {participant.isDisqualified && (
+                            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-700">
+                              DISQUALIFIED
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-mono text-sm font-bold text-slate-500">
+                          {participant.registrationNumber ||
+                            "No registration number"}
+                        </p>
+                        <p className="text-sm font-semibold text-slate-500">
+                          {participant.attendanceStatus ===
+                          "checked_in"
+                            ? "Checked in"
+                            : "Not checked in"}
+                          {participant.latestCheckpoint
+                            ? ` - furthest: ${participant.latestCheckpoint.checkpointName}`
+                            : " - No checkpoint passage recorded"}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                    {searchQuery.trim()
+                      ? "No matching participant found."
+                      : "Enter a name or registration number to search the roster."}
+                  </p>
+                )}
+
+                {selectedParticipant && (
+                  <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-700">
+                          Selected Participant
+                        </p>
+                        <h3 className="mt-1 text-2xl font-black">
+                          {selectedParticipant.fullName}
+                        </h3>
+                        <p className="mt-1 font-mono text-sm font-bold text-slate-600">
+                          {selectedParticipant.registrationNumber ||
+                            "No registration number"}
+                        </p>
+                      </div>
+                      {selectedParticipant.isDisqualified && (
+                        <span className="rounded-full bg-red-100 px-4 py-2 text-xs font-black text-red-700">
+                          DISQUALIFIED
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                          Group
+                        </p>
+                        <p className="mt-1 font-bold">
+                          {selectedParticipant.groupValue || "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                          Attendance Status
+                        </p>
+                        <p className="mt-1 font-bold">
+                          {selectedParticipant.attendanceStatus ||
+                            "unknown"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                          Checked-in Time
+                        </p>
+                        <p className="mt-1 font-bold">
+                          {selectedParticipant.checkedInAt
+                            ? `${formatTime(
+                                selectedParticipant.checkedInAt
+                              )} (${relativeTime(
+                                selectedParticipant.checkedInAt
+                              )})`
+                            : "Not checked in"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-white p-3">
+                        <p className="text-xs font-black uppercase tracking-[0.15em] text-slate-400">
+                          Furthest Checkpoint
+                        </p>
+                        <p className="mt-1 font-bold">
+                          {selectedParticipant.latestCheckpoint
+                            ? selectedParticipant.latestCheckpoint
+                                .checkpointName
+                            : "No checkpoint passage recorded"}
+                        </p>
+                        {selectedParticipant.latestCheckpoint && (
+                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                            {formatTime(
+                              selectedParticipant.latestCheckpoint
+                                .passedAt
+                            )}{" "}
+                            (
+                            {relativeTime(
+                              selectedParticipant.latestCheckpoint
+                                .passedAt
+                            )}
+                            )
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-700">
+                        Checkpoint Timeline
+                      </p>
+                      <div className="mt-3 grid gap-2">
+                        {selectedParticipant.timeline.length > 0 ? (
+                          selectedParticipant.timeline.map((item) => (
+                            <div
+                              key={item.checkpointId}
+                              className={`flex items-center justify-between rounded-xl p-3 ${
+                                item.status === "passed"
+                                  ? "bg-emerald-100"
+                                  : "bg-slate-100"
+                              }`}
+                            >
+                              <div>
+                                <p className="font-black">
+                                  {item.checkpointName}
+                                </p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                  {item.status === "passed"
+                                    ? "Passed"
+                                    : "Pending"}
+                                </p>
+                              </div>
+                              <p className="text-sm font-bold text-slate-600">
+                                {item.status === "passed"
+                                  ? `${formatTime(
+                                      item.passedAt
+                                    )} (${relativeTime(
+                                      item.passedAt
+                                    )})`
+                                  : "-"}
+                              </p>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="rounded-xl bg-slate-100 p-3 font-semibold text-slate-500">
+                            No checkpoints are configured for this
+                            event.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
