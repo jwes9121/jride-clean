@@ -730,8 +730,16 @@ export async function GET(
         ? []
         : runnerTracking
             .filter((runner) => {
+              // Stage 6 correction: completed and disqualified runners
+              // never belong here, and a runner with no nextCheckpoint has
+              // either finished (already excluded by isComplete above, but
+              // checked explicitly for safety) or the event has zero
+              // configured checkpoints - neither is a "stalled between
+              // checkpoints" case.
               if (runner.isComplete) return false;
+              if (runner.isDisqualified) return false;
               if (!runner.lastKnownPassageAt) return false;
+              if (!runner.nextCheckpoint) return false;
 
               const lastPassageMs = new Date(
                 runner.lastKnownPassageAt
@@ -774,7 +782,14 @@ export async function GET(
                   runner.progressPercent,
                 latestCheckpoint:
                   runner.latestCheckpoint,
+                // nextCheckpoint is kept temporarily alongside
+                // expectedNextCheckpoint (same value) so existing callers
+                // are not broken by the rename. Remove nextCheckpoint here
+                // once the frontend migration to expectedNextCheckpoint is
+                // confirmed complete (Stage 6 follow-up, not this change).
                 nextCheckpoint:
+                  runner.nextCheckpoint,
+                expectedNextCheckpoint:
                   runner.nextCheckpoint,
                 lastKnownPassageAt:
                   runner.lastKnownPassageAt,
@@ -787,6 +802,13 @@ export async function GET(
                         60_000
                     )
                   ),
+                thresholdMinutes: stallThresholdMinutes,
+                // Every item in this array satisfies the overdue filter
+                // above by construction - this field exists so the
+                // frontend has an explicit boolean to key off rather than
+                // re-deriving it from minutesSinceLastPassage vs.
+                // thresholdMinutes itself.
+                isOverdue: true,
               };
             })
             .sort(

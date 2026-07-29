@@ -54,9 +54,15 @@ type StalledParticipantItem = {
   remainingCheckpoints: number;
   progressPercent: number;
   latestCheckpoint: PassedCheckpointTimelineItem | null;
+  // nextCheckpoint is kept temporarily alongside expectedNextCheckpoint
+  // (same value from the backend) during the Stage 6 rename migration -
+  // prefer expectedNextCheckpoint in new code.
   nextCheckpoint: PendingCheckpointTimelineItem | null;
+  expectedNextCheckpoint: PendingCheckpointTimelineItem | null;
   lastKnownPassageAt: string | null;
   minutesSinceLastPassage: number;
+  thresholdMinutes: number;
+  isOverdue: boolean;
 };
 
 // participantLookup deliberately has no nextCheckpoint field - it is
@@ -288,6 +294,25 @@ export default function EventCommandCenterPage() {
   const [selectedParticipantId, setSelectedParticipantId] =
     React.useState<string | null>(null);
 
+  // Stage 5 - expandable timeline per row in the Runner Tracking table
+  const [expandedRunnerIds, setExpandedRunnerIds] = React.useState<
+    Set<string>
+  >(new Set());
+
+  function toggleRunnerExpanded(attendeeId: string) {
+    setExpandedRunnerIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(attendeeId)) {
+        next.delete(attendeeId);
+      } else {
+        next.add(attendeeId);
+      }
+
+      return next;
+    });
+  }
+
   async function loadDashboard(background = false) {
     if (background) {
       setRefreshing(true);
@@ -370,6 +395,11 @@ export default function EventCommandCenterPage() {
   const recentCheckpointActivity =
     data?.recentCheckpointActivity || [];
   const runnerTracking = data?.runnerTracking || [];
+  // Rendered as the "Missing Between Checkpoints" panel (Stage 6). The
+  // internal field name stays stalledParticipants - only the displayed
+  // title uses the operational wording, per the decision to correct and
+  // reuse this existing computation rather than add a parallel one.
+  const stalledParticipants = data?.stalledParticipants || [];
 
   const checkInPct = percent(
     summary.checkedIn,
@@ -1021,100 +1051,330 @@ export default function EventCommandCenterPage() {
                           <th className="px-3 py-2">Latest Known</th>
                           <th className="px-3 py-2">Next</th>
                           <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Timeline</th>
                         </tr>
                       </thead>
 
                       <tbody>
                         {runnerTracking.map((runner) => (
+                          <React.Fragment key={runner.attendeeId}>
+                            <tr className="bg-slate-100 align-top">
+                              <td className="rounded-l-2xl px-3 py-4 font-mono text-xl font-black">
+                                #{runner.rank}
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <p className="text-lg font-black">
+                                  {runner.fullName}
+                                </p>
+                                <p className="mt-1 font-mono text-xs font-bold text-slate-500">
+                                  {runner.registrationNumber ||
+                                    "No registration number"}
+                                </p>
+                                {runner.groupValue ? (
+                                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    {event?.groupLabel || "Group"}{" "}
+                                    {runner.groupValue}
+                                  </p>
+                                ) : null}
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <p className="text-xl font-black">
+                                  {runner.progressPercent}%
+                                </p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                  {runner.passedCheckpoints} passed,{" "}
+                                  {runner.remainingCheckpoints}{" "}
+                                  remaining
+                                </p>
+                                <div className="mt-2 h-2 w-36 overflow-hidden rounded-full bg-slate-200">
+                                  <div
+                                    className="h-full rounded-full bg-cyan-600"
+                                    style={{
+                                      width: `${runner.progressPercent}%`,
+                                    }}
+                                  />
+                                </div>
+                              </td>
+
+                              <td className="px-3 py-4">
+                                {runner.latestCheckpoint ? (
+                                  <>
+                                    <p className="font-black">
+                                      CP{" "}
+                                      {
+                                        runner.latestCheckpoint
+                                          .checkpointNo
+                                      }{" "}
+                                      -{" "}
+                                      {
+                                        runner.latestCheckpoint
+                                          .checkpointName
+                                      }
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                                      {formatTime(
+                                        runner.lastKnownPassageAt
+                                      )}
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-400">
+                                      {relativeTime(
+                                        runner.lastKnownPassageAt
+                                      )}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <p className="font-semibold text-slate-500">
+                                    No passage yet
+                                  </p>
+                                )}
+                              </td>
+
+                              <td className="px-3 py-4">
+                                {runner.nextCheckpoint ? (
+                                  <p className="font-black">
+                                    CP{" "}
+                                    {
+                                      runner.nextCheckpoint
+                                        .checkpointNo
+                                    }{" "}
+                                    -{" "}
+                                    {
+                                      runner.nextCheckpoint
+                                        .checkpointName
+                                    }
+                                  </p>
+                                ) : (
+                                  <p className="font-black text-emerald-700">
+                                    Finished
+                                  </p>
+                                )}
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <span
+                                  className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${
+                                    runner.isDisqualified
+                                      ? "border-red-300 bg-red-100 text-red-800"
+                                      : runner.isComplete
+                                      ? "border-emerald-300 bg-emerald-100 text-emerald-800"
+                                      : "border-cyan-300 bg-cyan-100 text-cyan-900"
+                                  }`}
+                                >
+                                  {runner.isDisqualified
+                                    ? "REVIEW"
+                                    : runner.isComplete
+                                    ? "FINISHED"
+                                    : "ACTIVE"}
+                                </span>
+                              </td>
+
+                              <td className="rounded-r-2xl px-3 py-4">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleRunnerExpanded(
+                                      runner.attendeeId
+                                    )
+                                  }
+                                  className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-400"
+                                >
+                                  {expandedRunnerIds.has(
+                                    runner.attendeeId
+                                  )
+                                    ? "Hide"
+                                    : "Show"}
+                                </button>
+                              </td>
+                            </tr>
+
+                            {expandedRunnerIds.has(
+                              runner.attendeeId
+                            ) && (
+                              <tr>
+                                <td
+                                  colSpan={7}
+                                  className="rounded-2xl bg-white p-4"
+                                >
+                                  {runner.timeline.length > 0 ? (
+                                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                      {runner.timeline.map((item) => (
+                                        <div
+                                          key={item.checkpointId}
+                                          className={`rounded-xl p-3 ${
+                                            item.status === "passed"
+                                              ? "bg-emerald-100"
+                                              : "bg-slate-100"
+                                          }`}
+                                        >
+                                          <p className="font-black">
+                                            {item.checkpointName}
+                                          </p>
+                                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
+                                            {item.status === "passed"
+                                              ? "Passed"
+                                              : "Pending"}
+                                          </p>
+                                          <p className="mt-1 text-xs font-bold text-slate-600">
+                                            {item.status === "passed"
+                                              ? `${formatTime(
+                                                  item.passedAt
+                                                )} (${relativeTime(
+                                                  item.passedAt
+                                                )})`
+                                              : "-"}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="font-semibold text-slate-500">
+                                      No checkpoints are configured
+                                      for this event.
+                                    </p>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                    No participant checkpoint passages recorded yet.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white p-5 text-slate-950">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Checkpoint Evidence Only - No Location Estimation
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Missing Between Checkpoints
+                    </h2>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500">
+                    Runners past the configured threshold since their
+                    last recorded checkpoint. Completed and disqualified
+                    runners are excluded.
+                  </p>
+                </div>
+
+                {stalledParticipants.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto">
+                    <table className="min-w-full border-separate border-spacing-y-2 text-sm">
+                      <thead>
+                        <tr className="text-left text-xs font-black uppercase tracking-[0.15em] text-slate-500">
+                          <th className="px-3 py-2">Runner</th>
+                          <th className="px-3 py-2">
+                            Latest Checkpoint
+                          </th>
+                          <th className="px-3 py-2">
+                            Expected Next
+                          </th>
+                          <th className="px-3 py-2">
+                            Last Recorded Passage
+                          </th>
+                          <th className="px-3 py-2">Elapsed</th>
+                          <th className="px-3 py-2">Threshold</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {stalledParticipants.map((runner) => (
                           <tr
                             key={runner.attendeeId}
-                            className="bg-slate-100 align-top"
+                            className="bg-amber-50 align-top"
                           >
-                            <td className="rounded-l-2xl px-3 py-4 font-mono text-xl font-black">
-                              #{runner.rank}
-                            </td>
-
-                            <td className="px-3 py-4">
+                            <td className="rounded-l-2xl px-3 py-4">
                               <p className="text-lg font-black">
                                 {runner.fullName}
                               </p>
                               <p className="mt-1 font-mono text-xs font-bold text-slate-500">
-                                {runner.registrationNumber}
+                                {runner.registrationNumber ||
+                                  "No registration number"}
                               </p>
                               {runner.groupValue ? (
                                 <p className="mt-1 text-xs font-semibold text-slate-500">
-                                  {event?.groupLabel || "Group"} {runner.groupValue}
+                                  {event?.groupLabel || "Group"}{" "}
+                                  {runner.groupValue}
                                 </p>
                               ) : null}
                             </td>
 
                             <td className="px-3 py-4">
-                              <p className="text-xl font-black">
-                                {runner.progressPercent}%
-                              </p>
-                              <p className="mt-1 text-xs font-semibold text-slate-500">
-                                {runner.passedCheckpoints} passed,{" "}
-                                {runner.remainingCheckpoints} remaining
-                              </p>
-                              <div className="mt-2 h-2 w-36 overflow-hidden rounded-full bg-slate-200">
-                                <div
-                                  className="h-full rounded-full bg-cyan-600"
-                                  style={{
-                                    width: `${runner.progressPercent}%`,
-                                  }}
-                                />
-                              </div>
-                            </td>
-
-                            <td className="px-3 py-4">
                               {runner.latestCheckpoint ? (
-                                <>
-                                  <p className="font-black">
-                                    CP {runner.latestCheckpoint.checkpointNo} -{" "}
-                                    {runner.latestCheckpoint.checkpointName}
-                                  </p>
-                                  <p className="mt-1 text-xs font-semibold text-slate-500">
-                                    {formatTime(runner.lastKnownPassageAt)}
-                                  </p>
-                                  <p className="mt-1 text-xs font-semibold text-slate-400">
-                                    {relativeTime(runner.lastKnownPassageAt)}
-                                  </p>
-                                </>
+                                <p className="font-black">
+                                  CP{" "}
+                                  {
+                                    runner.latestCheckpoint
+                                      .checkpointNo
+                                  }{" "}
+                                  -{" "}
+                                  {
+                                    runner.latestCheckpoint
+                                      .checkpointName
+                                  }
+                                </p>
                               ) : (
                                 <p className="font-semibold text-slate-500">
-                                  No passage yet
+                                  -
                                 </p>
                               )}
                             </td>
 
                             <td className="px-3 py-4">
-                              {runner.nextCheckpoint ? (
+                              {runner.expectedNextCheckpoint ? (
                                 <p className="font-black">
-                                  CP {runner.nextCheckpoint.checkpointNo} -{" "}
-                                  {runner.nextCheckpoint.checkpointName}
+                                  CP{" "}
+                                  {
+                                    runner.expectedNextCheckpoint
+                                      .checkpointNo
+                                  }{" "}
+                                  -{" "}
+                                  {
+                                    runner.expectedNextCheckpoint
+                                      .checkpointName
+                                  }
                                 </p>
                               ) : (
-                                <p className="font-black text-emerald-700">
-                                  Finished
+                                <p className="font-semibold text-slate-500">
+                                  -
                                 </p>
                               )}
+                            </td>
+
+                            <td className="px-3 py-4">
+                              <p className="font-bold">
+                                {formatTime(
+                                  runner.lastKnownPassageAt
+                                )}
+                              </p>
+                            </td>
+
+                            <td className="px-3 py-4">
+                              <p className="font-black">
+                                {runner.minutesSinceLastPassage}{" "}
+                                min
+                              </p>
+                            </td>
+
+                            <td className="px-3 py-4">
+                              <p className="font-semibold text-slate-500">
+                                {runner.thresholdMinutes} min
+                              </p>
                             </td>
 
                             <td className="rounded-r-2xl px-3 py-4">
-                              <span
-                                className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${
-                                  runner.isDisqualified
-                                    ? "border-red-300 bg-red-100 text-red-800"
-                                    : runner.isComplete
-                                    ? "border-emerald-300 bg-emerald-100 text-emerald-800"
-                                    : "border-cyan-300 bg-cyan-100 text-cyan-900"
-                                }`}
-                              >
-                                {runner.isDisqualified
-                                  ? "REVIEW"
-                                  : runner.isComplete
-                                  ? "FINISHED"
-                                  : "ACTIVE"}
+                              <span className="inline-flex rounded-full border border-amber-400 bg-amber-100 px-3 py-2 text-xs font-black text-amber-800">
+                                OVERDUE
                               </span>
                             </td>
                           </tr>
@@ -1124,7 +1384,7 @@ export default function EventCommandCenterPage() {
                   </div>
                 ) : (
                   <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
-                    No participant checkpoint passages recorded yet.
+                    No runners are currently overdue between checkpoints.
                   </p>
                 )}
               </div>
