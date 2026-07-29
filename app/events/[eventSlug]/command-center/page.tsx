@@ -275,6 +275,21 @@ function percent(numerator: number, denominator: number) {
   );
 }
 
+// Stage 7 - display-only severity tier for the Missing Between Checkpoints
+// panel. Not a new overdue computation: every runner passed to this
+// function is already confirmed overdue by the backend filter
+// (stalledParticipants). This only decides how loudly to show it, based
+// on how far past the threshold the elapsed time already is.
+function stalledSeverity(
+  minutesSinceLastPassage: number,
+  thresholdMinutes: number
+): "moderate" | "severe" {
+  if (!thresholdMinutes) return "moderate";
+  return minutesSinceLastPassage >= thresholdMinutes * 2
+    ? "severe"
+    : "moderate";
+}
+
 function ratePerMinute(count: number, minutes: number) {
   if (!minutes) return "0.0";
   return (count / minutes).toFixed(1);
@@ -400,6 +415,7 @@ export default function EventCommandCenterPage() {
   // title uses the operational wording, per the decision to correct and
   // reuse this existing computation rather than add a parallel one.
   const stalledParticipants = data?.stalledParticipants || [];
+  const stalledDetection = data?.stalledDetection;
 
   const checkInPct = percent(
     summary.checkedIn,
@@ -789,7 +805,10 @@ export default function EventCommandCenterPage() {
                 )}
               </div>
 
-              <div className="mt-5 rounded-3xl bg-white p-5 text-slate-950">
+              <div
+                id="runner-safety-lookup"
+                className="mt-5 rounded-3xl bg-white p-5 text-slate-950"
+              >
                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
@@ -1058,7 +1077,10 @@ export default function EventCommandCenterPage() {
                       <tbody>
                         {runnerTracking.map((runner) => (
                           <React.Fragment key={runner.attendeeId}>
-                            <tr className="bg-slate-100 align-top">
+                            <tr
+                              id={`runner-row-${runner.attendeeId}`}
+                              className="bg-slate-100 align-top"
+                            >
                               <td className="rounded-l-2xl px-3 py-4 font-mono text-xl font-black">
                                 #{runner.rank}
                               </td>
@@ -1262,11 +1284,21 @@ export default function EventCommandCenterPage() {
                   <p className="text-sm font-semibold text-slate-500">
                     Runners past the configured threshold since their
                     last recorded checkpoint. Completed and disqualified
-                    runners are excluded.
+                    runners are excluded. Sorted most overdue first.
                   </p>
                 </div>
 
-                {stalledParticipants.length > 0 ? (
+                {!stalledDetection?.enabled ? (
+                  <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
+                    Overdue detection is not configured for this
+                    event. Set the{" "}
+                    <span className="font-mono text-xs">
+                      {stalledDetection?.configurationKey ||
+                        "EVENT_STALLED_RUNNER_MINUTES"}
+                    </span>{" "}
+                    environment variable to enable this panel.
+                  </p>
+                ) : stalledParticipants.length > 0 ? (
                   <div className="mt-5 overflow-x-auto">
                     <table className="min-w-full border-separate border-spacing-y-2 text-sm">
                       <thead>
@@ -1281,110 +1313,214 @@ export default function EventCommandCenterPage() {
                           <th className="px-3 py-2">
                             Last Recorded Passage
                           </th>
-                          <th className="px-3 py-2">Elapsed</th>
-                          <th className="px-3 py-2">Threshold</th>
+                          <th className="px-3 py-2">
+                            Elapsed vs Threshold
+                          </th>
                           <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Actions</th>
                         </tr>
                       </thead>
 
                       <tbody>
-                        {stalledParticipants.map((runner) => (
-                          <tr
-                            key={runner.attendeeId}
-                            className="bg-amber-50 align-top"
-                          >
-                            <td className="rounded-l-2xl px-3 py-4">
-                              <p className="text-lg font-black">
-                                {runner.fullName}
-                              </p>
-                              <p className="mt-1 font-mono text-xs font-bold text-slate-500">
-                                {runner.registrationNumber ||
-                                  "No registration number"}
-                              </p>
-                              {runner.groupValue ? (
-                                <p className="mt-1 text-xs font-semibold text-slate-500">
-                                  {event?.groupLabel || "Group"}{" "}
-                                  {runner.groupValue}
-                                </p>
-                              ) : null}
-                            </td>
+                        {stalledParticipants.map((runner) => {
+                          const severity = stalledSeverity(
+                            runner.minutesSinceLastPassage,
+                            runner.thresholdMinutes
+                          );
 
-                            <td className="px-3 py-4">
-                              {runner.latestCheckpoint ? (
-                                <p className="font-black">
-                                  CP{" "}
-                                  {
-                                    runner.latestCheckpoint
-                                      .checkpointNo
-                                  }{" "}
-                                  -{" "}
-                                  {
-                                    runner.latestCheckpoint
-                                      .checkpointName
-                                  }
-                                </p>
-                              ) : (
-                                <p className="font-semibold text-slate-500">
-                                  -
-                                </p>
-                              )}
-                            </td>
+                          const rowClass =
+                            severity === "severe"
+                              ? "bg-red-50"
+                              : "bg-amber-50";
 
-                            <td className="px-3 py-4">
-                              {runner.expectedNextCheckpoint ? (
-                                <p className="font-black">
-                                  CP{" "}
-                                  {
-                                    runner.expectedNextCheckpoint
-                                      .checkpointNo
-                                  }{" "}
-                                  -{" "}
-                                  {
-                                    runner.expectedNextCheckpoint
-                                      .checkpointName
-                                  }
-                                </p>
-                              ) : (
-                                <p className="font-semibold text-slate-500">
-                                  -
-                                </p>
-                              )}
-                            </td>
+                          const badgeClass =
+                            severity === "severe"
+                              ? "border-red-400 bg-red-100 text-red-800"
+                              : "border-amber-400 bg-amber-100 text-amber-800";
 
-                            <td className="px-3 py-4">
-                              <p className="font-bold">
-                                {formatTime(
-                                  runner.lastKnownPassageAt
+                          const overdueRatio = Math.min(
+                            100,
+                            Math.round(
+                              (runner.minutesSinceLastPassage /
+                                Math.max(
+                                  1,
+                                  runner.thresholdMinutes
+                                )) *
+                                100
+                            )
+                          );
+
+                          return (
+                            <tr
+                              key={runner.attendeeId}
+                              className={`${rowClass} align-top`}
+                            >
+                              <td className="rounded-l-2xl px-3 py-4">
+                                <p className="text-lg font-black">
+                                  {runner.fullName}
+                                </p>
+                                <p className="mt-1 font-mono text-xs font-bold text-slate-500">
+                                  {runner.registrationNumber ||
+                                    "No registration number"}
+                                </p>
+                                {runner.groupValue ? (
+                                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                                    {event?.groupLabel ||
+                                      "Group"}{" "}
+                                    {runner.groupValue}
+                                  </p>
+                                ) : null}
+                              </td>
+
+                              <td className="px-3 py-4">
+                                {runner.latestCheckpoint ? (
+                                  <p className="font-black">
+                                    CP{" "}
+                                    {
+                                      runner.latestCheckpoint
+                                        .checkpointNo
+                                    }{" "}
+                                    -{" "}
+                                    {
+                                      runner.latestCheckpoint
+                                        .checkpointName
+                                    }
+                                  </p>
+                                ) : (
+                                  <p className="font-semibold text-slate-500">
+                                    -
+                                  </p>
                                 )}
-                              </p>
-                            </td>
+                              </td>
 
-                            <td className="px-3 py-4">
-                              <p className="font-black">
-                                {runner.minutesSinceLastPassage}{" "}
-                                min
-                              </p>
-                            </td>
+                              <td className="px-3 py-4">
+                                {runner.expectedNextCheckpoint ? (
+                                  <p className="font-black">
+                                    CP{" "}
+                                    {
+                                      runner
+                                        .expectedNextCheckpoint
+                                        .checkpointNo
+                                    }{" "}
+                                    -{" "}
+                                    {
+                                      runner
+                                        .expectedNextCheckpoint
+                                        .checkpointName
+                                    }
+                                  </p>
+                                ) : (
+                                  <p className="font-semibold text-slate-500">
+                                    -
+                                  </p>
+                                )}
+                              </td>
 
-                            <td className="px-3 py-4">
-                              <p className="font-semibold text-slate-500">
-                                {runner.thresholdMinutes} min
-                              </p>
-                            </td>
+                              <td className="px-3 py-4">
+                                <p className="font-bold">
+                                  {formatTime(
+                                    runner.lastKnownPassageAt
+                                  )}
+                                </p>
+                              </td>
 
-                            <td className="rounded-r-2xl px-3 py-4">
-                              <span className="inline-flex rounded-full border border-amber-400 bg-amber-100 px-3 py-2 text-xs font-black text-amber-800">
-                                OVERDUE
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                              <td className="px-3 py-4">
+                                <p className="text-lg font-black">
+                                  {runner.minutesSinceLastPassage}{" "}
+                                  min{" "}
+                                  <span className="text-xs font-semibold text-slate-500">
+                                    / {runner.thresholdMinutes}{" "}
+                                    min threshold
+                                  </span>
+                                </p>
+                                <div className="mt-2 h-2 w-32 overflow-hidden rounded-full bg-slate-200">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      severity === "severe"
+                                        ? "bg-red-600"
+                                        : "bg-amber-500"
+                                    }`}
+                                    style={{
+                                      width: `${overdueRatio}%`,
+                                    }}
+                                  />
+                                </div>
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <span
+                                  className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${badgeClass}`}
+                                >
+                                  {severity === "severe"
+                                    ? "SEVERELY OVERDUE"
+                                    : "OVERDUE"}
+                                </span>
+                              </td>
+
+                              <td className="rounded-r-2xl px-3 py-4">
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedRunnerIds(
+                                        (current) => {
+                                          const next = new Set(
+                                            current
+                                          );
+                                          next.add(
+                                            runner.attendeeId
+                                          );
+                                          return next;
+                                        }
+                                      );
+                                      document
+                                        .getElementById(
+                                          `runner-row-${runner.attendeeId}`
+                                        )
+                                        ?.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "center",
+                                        });
+                                    }}
+                                    className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-400"
+                                  >
+                                    View Timeline
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSearchQuery(
+                                        runner.registrationNumber ||
+                                          runner.fullName
+                                      );
+                                      setSelectedParticipantId(
+                                        runner.attendeeId
+                                      );
+                                      document
+                                        .getElementById(
+                                          "runner-safety-lookup"
+                                        )
+                                        ?.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "start",
+                                        });
+                                    }}
+                                    className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-400"
+                                  >
+                                    Find in Lookup
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <p className="mt-5 rounded-2xl bg-slate-100 p-4 font-semibold text-slate-500">
-                    No runners are currently overdue between checkpoints.
+                  <p className="mt-5 rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-700">
+                    No runners are currently overdue between
+                    checkpoints.
                   </p>
                 )}
               </div>
