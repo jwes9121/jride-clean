@@ -37,13 +37,21 @@ type DashboardRow = {
   response_seconds: number | null;
   fetch_delay_seconds: number | null;
   was_fetched: boolean;
+  duty_check_state: {
+    code: string;
+    label: string;
+    badge_class: string;
+    incentive_impact: string;
+  };
 };
 
 type Summary = {
   total: number;
-  pending: number;
+  pending_delivery: number;
+  waiting_response: number;
   acknowledged: number;
-  expired: number;
+  expired_not_delivered: number;
+  expired_no_response: number;
   cancelled: number;
   fetched: number;
   never_fetched: number;
@@ -53,9 +61,11 @@ type Summary = {
 
 const EMPTY_SUMMARY: Summary = {
   total: 0,
-  pending: 0,
+  pending_delivery: 0,
+  waiting_response: 0,
   acknowledged: 0,
-  expired: 0,
+  expired_not_delivered: 0,
+  expired_no_response: 0,
   cancelled: 0,
   fetched: 0,
   never_fetched: 0,
@@ -85,21 +95,6 @@ function duration(seconds: number | null | undefined) {
   if (seconds < 60) return seconds + " sec";
   const minutes = Math.floor(seconds / 60);
   return minutes + "m " + (seconds % 60) + "s";
-}
-
-function statusClass(status: string) {
-  switch (String(status || "").toLowerCase()) {
-    case "acknowledged":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    case "expired":
-      return "border-rose-200 bg-rose-50 text-rose-800";
-    case "pending":
-      return "border-amber-200 bg-amber-50 text-amber-800";
-    case "cancelled":
-      return "border-slate-200 bg-slate-50 text-slate-700";
-    default:
-      return "border-slate-200 bg-white text-slate-700";
-  }
 }
 
 function Card({
@@ -266,15 +261,16 @@ export default function DriverAvailabilityPingsPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-widest text-amber-700">
-                Observation mode
+              <div className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900">
+                OBSERVATION MODE - Duty Checks are recorded. No incentive
+                penalties are currently applied. Expired checks will NOT
+                affect rewards until enforcement is enabled.
               </div>
-              <h1 className="mt-1 text-2xl font-bold text-slate-950 md:text-3xl">
+              <h1 className="mt-2 text-2xl font-bold text-slate-950 md:text-3xl">
                 Driver Duty Check
               </h1>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Monitor and send Duty Checks. No automatic incentive penalty
-                is applied.
+                Monitor and send Duty Checks.
               </p>
             </div>
 
@@ -412,6 +408,8 @@ export default function DriverAvailabilityPingsPage() {
 
         <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card label="Checks sent" value={summary.total} />
+          <Card label="Pending delivery" value={summary.pending_delivery} />
+          <Card label="Waiting response" value={summary.waiting_response} />
           <Card
             label="Acknowledged"
             value={summary.acknowledged}
@@ -419,16 +417,22 @@ export default function DriverAvailabilityPingsPage() {
               summary.acknowledgement_rate_percent + "% response rate"
             }
           />
-          <Card label="Expired" value={summary.expired} />
+          <Card
+            label="Expired - not delivered"
+            value={summary.expired_not_delivered}
+          />
+          <Card
+            label="Expired - no response"
+            value={summary.expired_no_response}
+          />
+          <Card label="Fetched" value={summary.fetched} />
+          <Card label="Never fetched" value={summary.never_fetched} />
+          <Card label="Cancelled" value={summary.cancelled} />
           <Card
             label="Average response"
             value={duration(summary.average_response_seconds)}
             detail="Measured from first device fetch"
           />
-          <Card label="Pending" value={summary.pending} />
-          <Card label="Fetched" value={summary.fetched} />
-          <Card label="Never fetched" value={summary.never_fetched} />
-          <Card label="Cancelled" value={summary.cancelled} />
         </section>
 
         <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -589,16 +593,22 @@ export default function DriverAvailabilityPingsPage() {
                         <span
                           className={
                             "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold " +
-                            statusClass(row.status)
+                            row.duty_check_state.badge_class
                           }
                         >
-                          {String(row.status || "").toUpperCase()}
+                          {row.duty_check_state.label}
                         </span>
                         <div className="mt-2 text-xs text-slate-600">
-                          Result: {row.response_result || "-"}
+                          Driver response: {row.response_result || "-"}
                         </div>
                         <div className="text-xs text-slate-500">
                           Fetch count: {row.fetch_count || 0}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-700">
+                          Incentive impact: {row.duty_check_state.incentive_impact}
+                        </div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          Stored status: {String(row.status || "-").toUpperCase()}
                         </div>
                       </td>
 
@@ -644,10 +654,14 @@ export default function DriverAvailabilityPingsPage() {
 
                       <td className="p-3 text-xs">
                         <div>
-                          Responded: {manilaTime(row.responded_at)}
+                          Responded: {row.was_fetched
+                            ? manilaTime(row.responded_at)
+                            : "Not applicable"}
                         </div>
                         <div className="mt-1 font-semibold text-slate-800">
-                          Response time: {duration(row.response_seconds)}
+                          Response time: {row.was_fetched
+                            ? duration(row.response_seconds)
+                            : "Not applicable"}
                         </div>
                       </td>
 

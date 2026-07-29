@@ -117,6 +117,69 @@ function differenceSeconds(
   return Math.max(0, Math.round((end - start) / 1000));
 }
 
+const DUTY_CHECK_STATE: Record<
+  string,
+  { label: string; badge_class: string; incentive_impact: string }
+> = {
+  pending_delivery: {
+    label: "PENDING DELIVERY",
+    badge_class: "border-amber-200 bg-amber-50 text-amber-800",
+    incentive_impact: "None",
+  },
+  waiting_response: {
+    label: "WAITING RESPONSE",
+    badge_class: "border-sky-200 bg-sky-50 text-sky-800",
+    incentive_impact: "None",
+  },
+  expired_not_delivered: {
+    label: "EXPIRED - NOT DELIVERED",
+    badge_class: "border-orange-200 bg-orange-50 text-orange-800",
+    incentive_impact: "None",
+  },
+  expired_no_response: {
+    label: "EXPIRED - NO RESPONSE",
+    badge_class: "border-rose-200 bg-rose-50 text-rose-800",
+    incentive_impact: "None - observation mode",
+  },
+  acknowledged: {
+    label: "ACKNOWLEDGED",
+    badge_class: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    incentive_impact: "None",
+  },
+  cancelled: {
+    label: "CANCELLED",
+    badge_class: "border-slate-200 bg-slate-50 text-slate-700",
+    incentive_impact: "None",
+  },
+};
+
+function deriveDutyCheckState(ping: any, wasFetched: boolean, nowMs: number) {
+  const rawStatus = String(ping?.status || "").trim().toLowerCase();
+  let code: keyof typeof DUTY_CHECK_STATE;
+
+  if (rawStatus === "acknowledged") {
+    code = "acknowledged";
+  } else if (rawStatus === "cancelled") {
+    code = "cancelled";
+  } else {
+    const expiresMs = ping?.expires_at
+      ? new Date(ping.expires_at).getTime()
+      : Number.MAX_SAFE_INTEGER;
+    const expired = Number.isFinite(expiresMs) && expiresMs <= nowMs;
+
+    if (!expired) {
+      code = wasFetched ? "waiting_response" : "pending_delivery";
+    } else {
+      code = wasFetched ? "expired_no_response" : "expired_not_delivered";
+    }
+  }
+
+  return {
+    code,
+    ...DUTY_CHECK_STATE[code],
+  };
+}
+
 async function loadDriverCatalog(admin: any) {
   const [driversResult, profilesResult, locationsResult] = await Promise.all([
     admin
@@ -246,8 +309,11 @@ export async function GET(request: NextRequest) {
       driverCatalog.map((row: any) => [String(row.driver_id), row])
     );
 
+    const nowMs = Date.now();
+
     let rows = pings.map((ping: any) => {
       const driver: any = catalogById.get(String(ping.driver_id || "")) || {};
+      const wasFetched = Boolean(ping.first_seen_at);
 
       return {
         ...ping,
@@ -266,7 +332,8 @@ export async function GET(request: NextRequest) {
           ping.created_at,
           ping.first_seen_at
         ),
-        was_fetched: Boolean(ping.first_seen_at),
+        was_fetched: wasFetched,
+        duty_check_state: deriveDutyCheckState(ping, wasFetched, nowMs),
       };
     });
 
@@ -296,18 +363,31 @@ export async function GET(request: NextRequest) {
 
     const counts = {
       total: rows.length,
-      pending: rows.filter((row: any) => row.status === "pending").length,
-      acknowledged: rows.filter((row: any) => row.status === "acknowledged")
-        .length,
-      expired: rows.filter((row: any) => row.status === "expired").length,
-      cancelled: rows.filter((row: any) => row.status === "cancelled").length,
+      pending_delivery: rows.filter(
+        (row: any) => row.duty_check_state.code === "pending_delivery"
+      ).length,
+      waiting_response: rows.filter(
+        (row: any) => row.duty_check_state.code === "waiting_response"
+      ).length,
+      acknowledged: rows.filter(
+        (row: any) => row.duty_check_state.code === "acknowledged"
+      ).length,
+      expired_not_delivered: rows.filter(
+        (row: any) => row.duty_check_state.code === "expired_not_delivered"
+      ).length,
+      expired_no_response: rows.filter(
+        (row: any) => row.duty_check_state.code === "expired_no_response"
+      ).length,
+      cancelled: rows.filter(
+        (row: any) => row.duty_check_state.code === "cancelled"
+      ).length,
       fetched: rows.filter((row: any) => row.was_fetched).length,
       never_fetched: rows.filter((row: any) => !row.was_fetched).length,
     };
 
     const acknowledgedRows = rows.filter(
       (row: any) =>
-        row.status === "acknowledged" &&
+        row.duty_check_state.code === "acknowledged" &&
         typeof row.response_seconds === "number"
     );
 
