@@ -233,7 +233,7 @@ export async function GET(req: NextRequest) {
   if (allDriverIds.length > 0) {
     const incentiveRes = await admin
       .from("driver_incentive_summary_v1")
-      .select("driver_id,incentive_period_id,incentive_period_name,incentive_period_start,incentive_period_end,session_count,online_seconds,online_hours,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments")
+      .select("driver_id,incentive_period_id,incentive_period_name,incentive_period_start,incentive_period_end,session_count,online_seconds,online_hours,raw_online_seconds,raw_online_hours,eligible_online_seconds,eligible_online_hours,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments")
       .in("driver_id", allDriverIds);
 
     if (!incentiveRes.error && Array.isArray(incentiveRes.data)) {
@@ -426,6 +426,8 @@ export async function GET(req: NextRequest) {
     const i = incentiveById[did];
     drivers[did].incentive_period_name = i?.incentive_period_name ?? null;
     drivers[did].incentive_online_hours = i?.online_hours ?? null;
+    drivers[did].incentive_raw_online_hours = i?.raw_online_hours ?? null;
+    drivers[did].incentive_eligible_online_hours = i?.eligible_online_hours ?? null;
     drivers[did].incentive_unique_assigned_bookings = i?.unique_assigned_bookings ?? null;
     drivers[did].incentive_completed_assignments = i?.completed_assignments ?? null;
     drivers[did].incentive_assignment_progression_pct = i?.assignment_progression_pct ?? null;

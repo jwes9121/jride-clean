@@ -378,7 +378,7 @@ export default function AnalyticsV3Page() {
                           <div className="text-xs">
                             <div className="font-semibold">{r.incentive_period_name}</div>
                             <div className="text-slate-500">
-                              {hours(r.incentive_online_hours)} / {count(r.incentive_completed_assignments)} completed
+                              {hours(r.incentive_raw_online_hours)} raw / {hours(r.incentive_eligible_online_hours)} eligible / {count(r.incentive_completed_assignments)} completed
                             </div>
                           </div>
                         )}
@@ -570,8 +570,12 @@ export default function AnalyticsV3Page() {
                         }
                         return (
                           <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="col-span-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
+                              OBSERVATION MODE - Eligible hours are being measured but are NOT yet used for incentives.
+                            </div>
                             <div className="col-span-2 rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Incentive Period</div><div className="font-bold">{inc.incentive_period_name || "-"}</div></div>
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Online Hours</div><div className="font-bold">{hours(inc.online_hours)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Raw Online Hours</div><div className="font-bold">{hours(inc.raw_online_hours)}</div></div>
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Eligible Online Hours</div><div className="font-bold">{hours(inc.eligible_online_hours)}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Assigned Bookings</div><div className="font-bold">{count(inc.unique_assigned_bookings)}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completed Assignments</div><div className="font-bold">{count(inc.completed_assignments)}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Duty Check Response</div><div className="font-bold">{pct(inc.duty_check_response_rate_pct)}</div></div>
