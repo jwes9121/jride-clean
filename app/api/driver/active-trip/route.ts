@@ -253,6 +253,49 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
 
     const resetBookingCode = jrideActiveTripText((resetRes.data[0] as any)?.booking_code ?? bookingCode);
 
+    const lifecycleRes = await serviceSupabase.rpc(
+      "record_booking_lifecycle_event",
+      {
+        p_booking_id:
+          jrideActiveTripText(
+            (resetRes.data[0] as any)?.id || bookingId
+          ) || null,
+        p_booking_code: resetBookingCode,
+        p_passenger_id:
+          jrideActiveTripText(row?.created_by_user_id) || null,
+        p_driver_id: driverId,
+        p_previous_driver_id: driverId,
+        p_event_type: "assignment_expired",
+        p_status_before:
+          jrideActiveTripText(row?.status) || null,
+        p_status_after: "searching",
+        p_town: jrideActiveTripText(row?.town) || null,
+        p_source: "system",
+        p_actor_type: "system",
+        p_actor_id: null,
+        p_meta: {
+          reason,
+          expiry_type:
+            reason === "ride_fare_proposal_expired"
+              ? "fare_proposal_window"
+              : "driver_accept_window",
+        },
+      }
+    );
+
+    if (lifecycleRes.error) {
+      console.error(
+        "[JRIDE_LIFECYCLE_EVENT_INSERT_FAILED]",
+        JSON.stringify({
+          bookingCode: resetBookingCode,
+          event_type: "assignment_expired",
+          driver_id: driverId,
+          reason,
+          error: lifecycleRes.error.message,
+        })
+      );
+    }
+
     const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
       method: "POST",
       headers: { "content-type": "application/json" },

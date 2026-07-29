@@ -831,6 +831,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const previousDriverId =
+      currentDriverId ||
+      text((booking as any).last_expired_driver_id) ||
+      "";
+
+    const lifecycleEventType = previousDriverId
+      ? "driver_reassigned"
+      : "driver_assigned";
+
+    const lifecycleRes = await supabase.rpc(
+      "record_booking_lifecycle_event",
+      {
+        p_booking_id: bookingDbId,
+        p_booking_code: text(
+          updated?.booking_code ||
+          (booking as any).booking_code
+        ),
+        p_passenger_id:
+          text((booking as any).created_by_user_id) || null,
+        p_driver_id: chosenDriverId,
+        p_previous_driver_id: previousDriverId || null,
+        p_event_type: lifecycleEventType,
+        p_status_before: currentStatus || null,
+        p_status_after: "assigned",
+        p_town: text((booking as any).town) || null,
+        p_source: explicitDriverId ? "dispatcher" : "system",
+        p_actor_type: explicitDriverId ? "admin" : "system",
+        p_actor_id: null,
+        p_meta: {
+          assignment_mode: explicitDriverId ? "manual" : "auto",
+          excluded_driver_id: excludedDriverId || null,
+          emergency_mode: emergencyMode,
+        },
+      }
+    );
+
+    if (lifecycleRes.error) {
+      console.error(
+        "[JRIDE_LIFECYCLE_EVENT_INSERT_FAILED]",
+        JSON.stringify({
+          booking_code: text(
+            updated?.booking_code ||
+            (booking as any).booking_code
+          ),
+          event_type: lifecycleEventType,
+          driver_id: chosenDriverId,
+          error: lifecycleRes.error.message,
+        })
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       booking_id: text(updated?.id || bookingDbId),
