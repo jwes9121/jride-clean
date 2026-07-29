@@ -333,6 +333,37 @@ export async function GET(request: NextRequest) {
     }
 
     const pings = Array.isArray(pingResult.data) ? pingResult.data : [];
+    const pingIds = pings
+      .map((ping: any) => String(ping?.id || "").trim())
+      .filter(Boolean);
+
+    let pingEvents: any[] = [];
+    if (pingIds.length > 0) {
+      const eventResult = await admin
+        .from("driver_availability_ping_events")
+        .select("id,ping_id,event_type,recorded_at,driver_id,device_id,metadata")
+        .in("ping_id", pingIds)
+        .order("recorded_at", { ascending: true });
+
+      if (eventResult.error) {
+        return NextResponse.json(
+          { ok: false, error: eventResult.error.message },
+          { status: 500 }
+        );
+      }
+
+      pingEvents = Array.isArray(eventResult.data) ? eventResult.data : [];
+    }
+
+    const eventsByPingId = new Map<string, any[]>();
+    for (const event of pingEvents) {
+      const pingId = String(event?.ping_id || "").trim();
+      if (!pingId) continue;
+      const list = eventsByPingId.get(pingId) || [];
+      list.push(event);
+      eventsByPingId.set(pingId, list);
+    }
+
     const catalogById = new Map(
       driverCatalog.map((row: any) => [String(row.driver_id), row])
     );
@@ -342,6 +373,17 @@ export async function GET(request: NextRequest) {
     let rows = pings.map((ping: any) => {
       const driver: any = catalogById.get(String(ping.driver_id || "")) || {};
       const wasFetched = Boolean(ping.first_seen_at);
+      const events = eventsByPingId.get(String(ping.id || "")) || [];
+      const manualResponseEvent =
+        [...events]
+          .reverse()
+          .find((event: any) => event.event_type === "manual_response_recorded") ||
+        null;
+      const waiverEvent =
+        [...events]
+          .reverse()
+          .find((event: any) => event.event_type === "violation_waived") ||
+        null;
 
       return {
         ...ping,
@@ -361,6 +403,27 @@ export async function GET(request: NextRequest) {
           ping.first_seen_at
         ),
         was_fetched: wasFetched,
+        events,
+        manual_response: manualResponseEvent
+          ? {
+              recorded_at: manualResponseEvent.recorded_at,
+              response: manualResponseEvent.metadata?.response || null,
+              channel: manualResponseEvent.metadata?.channel || null,
+              note: manualResponseEvent.metadata?.note || null,
+              admin_id: manualResponseEvent.metadata?.admin_id || null,
+              admin_email: manualResponseEvent.metadata?.admin_email || null,
+              admin_name: manualResponseEvent.metadata?.admin_name || null,
+            }
+          : null,
+        violation_waiver: waiverEvent
+          ? {
+              recorded_at: waiverEvent.recorded_at,
+              reason: waiverEvent.metadata?.reason || null,
+              admin_id: waiverEvent.metadata?.admin_id || null,
+              admin_email: waiverEvent.metadata?.admin_email || null,
+              admin_name: waiverEvent.metadata?.admin_name || null,
+            }
+          : null,
         duty_check_state: deriveDutyCheckState(ping, wasFetched, nowMs),
       };
     });
@@ -485,6 +548,204 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json(
         { ok: false, code: "INVALID_JSON", error: "Request body must be valid JSON." },
+        { status: 400 }
+      );
+    }
+
+    const action = String(body?.action || "send").trim().toLowerCase();
+
+    if (action === "manual_response" || action === "waive_violation") {
+      const pingId = String(body?.ping_id || "").trim();
+
+      if (!isUuid(pingId)) {
+        return NextResponse.json(
+          { ok: false, code: "INVALID_PING_ID", error: "Select a valid Duty Check." },
+          { status: 400 }
+        );
+      }
+
+      const admin = supabaseAdmin();
+      const { data: ping, error: pingError } = await admin
+        .from("driver_availability_pings")
+        .select("id,driver_id,status,created_at,expires_at,responded_at,cancelled_at")
+        .eq("id", pingId)
+        .maybeSingle();
+
+      if (pingError) {
+        return NextResponse.json(
+          { ok: false, code: "PING_READ_FAILED", error: pingError.message },
+          { status: 500 }
+        );
+      }
+
+      if (!ping) {
+        return NextResponse.json(
+          { ok: false, code: "PING_NOT_FOUND", error: "Duty Check was not found." },
+          { status: 404 }
+        );
+      }
+
+      const actorMetadata = {
+        admin_id: isUuid(authorization.id) ? authorization.id : null,
+        admin_email: authorization.email || null,
+        admin_name: authorization.name || null,
+        admin_role: authorization.role,
+      };
+
+      if (action === "manual_response") {
+        const response = String(body?.response || "").trim().toLowerCase();
+        const channel = String(body?.channel || "").trim().toLowerCase();
+        const note = String(body?.note || "").trim();
+
+        if (!["available", "not_available"].includes(response)) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "INVALID_MANUAL_RESPONSE",
+              error: "Manual response must be Available or Not available.",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (!["group_chat", "phone_call", "in_person", "other"].includes(channel)) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "INVALID_RESPONSE_CHANNEL",
+              error: "Select a valid response channel.",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (note.length < 5 || note.length > 500) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "INVALID_MANUAL_RESPONSE_NOTE",
+              error: "Enter a note between 5 and 500 characters.",
+            },
+            { status: 400 }
+          );
+        }
+
+        const { data: event, error: eventError } = await admin
+          .from("driver_availability_ping_events")
+          .insert({
+            ping_id: ping.id,
+            event_type: "manual_response_recorded",
+            driver_id: ping.driver_id,
+            device_id: null,
+            metadata: {
+              response,
+              channel,
+              note,
+              ...actorMetadata,
+            },
+          })
+          .select("id,ping_id,event_type,recorded_at,driver_id,device_id,metadata")
+          .single();
+
+        if (eventError) {
+          const duplicate =
+            String(eventError.code || "") === "23505" ||
+            String(eventError.message || "").toLowerCase().includes("duplicate");
+          return NextResponse.json(
+            {
+              ok: false,
+              code: duplicate
+                ? "MANUAL_RESPONSE_ALREADY_RECORDED"
+                : "MANUAL_RESPONSE_RECORD_FAILED",
+              error: duplicate
+                ? "A manual response has already been recorded for this Duty Check."
+                : eventError.message,
+            },
+            { status: duplicate ? 409 : 500 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            ok: true,
+            action: "manual_response_recorded",
+            ping,
+            event,
+          },
+          { status: 201 }
+        );
+      }
+
+      if (!authorization.isAdmin) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "ADMIN_REQUIRED",
+            error: "Only an administrator can waive an incentive violation.",
+          },
+          { status: 403 }
+        );
+      }
+
+      const waiverReason = String(body?.reason || "").trim();
+      if (waiverReason.length < 5 || waiverReason.length > 500) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "INVALID_WAIVER_REASON",
+            error: "Enter a waiver reason between 5 and 500 characters.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const { data: event, error: eventError } = await admin
+        .from("driver_availability_ping_events")
+        .insert({
+          ping_id: ping.id,
+          event_type: "violation_waived",
+          driver_id: ping.driver_id,
+          device_id: null,
+          metadata: {
+            reason: waiverReason,
+            ...actorMetadata,
+          },
+        })
+        .select("id,ping_id,event_type,recorded_at,driver_id,device_id,metadata")
+        .single();
+
+      if (eventError) {
+        const duplicate =
+          String(eventError.code || "") === "23505" ||
+          String(eventError.message || "").toLowerCase().includes("duplicate");
+        return NextResponse.json(
+          {
+            ok: false,
+            code: duplicate
+              ? "VIOLATION_ALREADY_WAIVED"
+              : "VIOLATION_WAIVER_FAILED",
+            error: duplicate
+              ? "This Duty Check violation has already been waived."
+              : eventError.message,
+          },
+          { status: duplicate ? 409 : 500 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          action: "violation_waived",
+          ping,
+          event,
+        },
+        { status: 201 }
+      );
+    }
+
+    if (action !== "send") {
+      return NextResponse.json(
+        { ok: false, code: "INVALID_ACTION", error: "Unsupported Duty Check action." },
         { status: 400 }
       );
     }

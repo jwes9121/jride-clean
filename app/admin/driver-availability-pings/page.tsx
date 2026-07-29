@@ -37,6 +37,22 @@ type DashboardRow = {
   response_seconds: number | null;
   fetch_delay_seconds: number | null;
   was_fetched: boolean;
+  manual_response: {
+    recorded_at: string;
+    response: string | null;
+    channel: string | null;
+    note: string | null;
+    admin_id: string | null;
+    admin_email: string | null;
+    admin_name: string | null;
+  } | null;
+  violation_waiver: {
+    recorded_at: string;
+    reason: string | null;
+    admin_id: string | null;
+    admin_email: string | null;
+    admin_name: string | null;
+  } | null;
   duty_check_state: {
     code: string;
     label: string;
@@ -135,6 +151,14 @@ export default function DriverAvailabilityPingsPage() {
   const [toDate, setToDate] = React.useState("");
   const [selectedDriverId, setSelectedDriverId] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [interventionPingId, setInterventionPingId] = React.useState("");
+  const [interventionType, setInterventionType] = React.useState<
+    "manual_response" | "waive_violation"
+  >("manual_response");
+  const [manualResponse, setManualResponse] = React.useState("available");
+  const [manualChannel, setManualChannel] = React.useState("group_chat");
+  const [interventionNote, setInterventionNote] = React.useState("");
+  const [intervening, setIntervening] = React.useState(false);
 
   const selectedDriver =
     drivers.find((item) => item.driver_id === selectedDriverId) || null;
@@ -252,6 +276,70 @@ export default function DriverAvailabilityPingsPage() {
       setMessage(error?.message || "Unable to send Duty Check.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function submitIntervention(row: DashboardRow) {
+    setMessage("");
+    setSuccessMessage("");
+
+    if (interventionNote.trim().length < 5) {
+      setMessage("Enter an intervention note or waiver reason with at least 5 characters.");
+      return;
+    }
+
+    setIntervening(true);
+
+    try {
+      const payload =
+        interventionType === "manual_response"
+          ? {
+              action: "manual_response",
+              ping_id: row.id,
+              response: manualResponse,
+              channel: manualChannel,
+              note: interventionNote.trim(),
+            }
+          : {
+              action: "waive_violation",
+              ping_id: row.id,
+              reason: interventionNote.trim(),
+            };
+
+      const response = await fetch("/api/admin/driver-availability-pings", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result: any = await response.json().catch(() => ({}));
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(
+          result?.error ||
+            "Unable to record Duty Check intervention (HTTP " +
+              response.status +
+              ")"
+        );
+      }
+
+      setSuccessMessage(
+        interventionType === "manual_response"
+          ? "Manual response recorded without changing the original device response."
+          : "Duty Check violation waived. Eligible hours will no longer be excluded for this check."
+      );
+      setInterventionPingId("");
+      setInterventionNote("");
+      setManualResponse("available");
+      setManualChannel("group_chat");
+      await load();
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to record Duty Check intervention.");
+    } finally {
+      setIntervening(false);
     }
   }
 
@@ -675,6 +763,137 @@ export default function DriverAvailabilityPingsPage() {
                         <div className="mt-2 font-mono text-[10px] text-slate-400">
                           {row.id}
                         </div>
+
+                        {row.manual_response ? (
+                          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-900">
+                            <div className="font-semibold">Manual response recorded</div>
+                            <div>
+                              {String(row.manual_response.response || "-").replaceAll("_", " ")} via{" "}
+                              {String(row.manual_response.channel || "-").replaceAll("_", " ")}
+                            </div>
+                            <div>{row.manual_response.note || "-"}</div>
+                            <div className="mt-1 text-sky-700">
+                              {manilaTime(row.manual_response.recorded_at)} by{" "}
+                              {row.manual_response.admin_name ||
+                                row.manual_response.admin_email ||
+                                row.manual_response.admin_id ||
+                                "admin"}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {row.violation_waiver ? (
+                          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-emerald-900">
+                            <div className="font-semibold">Violation waived</div>
+                            <div>{row.violation_waiver.reason || "-"}</div>
+                            <div className="mt-1 text-emerald-700">
+                              {manilaTime(row.violation_waiver.recorded_at)} by{" "}
+                              {row.violation_waiver.admin_name ||
+                                row.violation_waiver.admin_email ||
+                                row.violation_waiver.admin_id ||
+                                "admin"}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {!row.manual_response ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInterventionPingId(row.id);
+                                setInterventionType("manual_response");
+                                setInterventionNote("");
+                              }}
+                              className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-800"
+                            >
+                              Record manual response
+                            </button>
+                          ) : null}
+
+                          {!row.violation_waiver &&
+                          row.duty_check_state.code === "expired_no_response" ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInterventionPingId(row.id);
+                                setInterventionType("waive_violation");
+                                setInterventionNote("");
+                              }}
+                              className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-800"
+                            >
+                              Waive violation
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {interventionPingId === row.id ? (
+                          <div className="mt-3 rounded-xl border border-slate-300 bg-white p-3">
+                            <div className="text-xs font-semibold uppercase text-slate-600">
+                              {interventionType === "manual_response"
+                                ? "Record manual response"
+                                : "Waive incentive violation"}
+                            </div>
+
+                            {interventionType === "manual_response" ? (
+                              <div className="mt-2 grid gap-2">
+                                <select
+                                  value={manualResponse}
+                                  onChange={(event) => setManualResponse(event.target.value)}
+                                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+                                >
+                                  <option value="available">Available</option>
+                                  <option value="not_available">Not available</option>
+                                </select>
+                                <select
+                                  value={manualChannel}
+                                  onChange={(event) => setManualChannel(event.target.value)}
+                                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+                                >
+                                  <option value="group_chat">Group chat</option>
+                                  <option value="phone_call">Phone call</option>
+                                  <option value="in_person">In person</option>
+                                  <option value="other">Other</option>
+                                </select>
+                              </div>
+                            ) : null}
+
+                            <textarea
+                              value={interventionNote}
+                              onChange={(event) => setInterventionNote(event.target.value)}
+                              maxLength={500}
+                              rows={3}
+                              placeholder={
+                                interventionType === "manual_response"
+                                  ? "Describe what the driver said and why it was not recorded in-app."
+                                  : "Explain why this missed Duty Check should not count against the driver."
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+                            />
+
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => submitIntervention(row)}
+                                disabled={intervening || interventionNote.trim().length < 5}
+                                className="rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                {intervening ? "Saving..." : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInterventionPingId("");
+                                  setInterventionNote("");
+                                }}
+                                disabled={intervening}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
