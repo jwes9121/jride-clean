@@ -513,6 +513,26 @@ export async function GET(
     // previously computed inline only for runnerTracking, discarded after
     // deriving latestCheckpoint/nextCheckpoint, and never returned to the
     // client (EVT-020-adjacent AUG21-005 extension: Stage 1 fix).
+    type CheckpointTimelineEntry =
+      | {
+          checkpointId: string;
+          checkpointNo: number;
+          checkpointName: string;
+          sortOrder: number;
+          sequence: number;
+          status: "passed";
+          passedAt: string;
+        }
+      | {
+          checkpointId: string;
+          checkpointNo: number;
+          checkpointName: string;
+          sortOrder: number;
+          sequence: number;
+          status: "pending";
+          passedAt: null;
+        };
+
     function buildCheckpointTimeline(
       passages: RecentPassageRow[]
     ) {
@@ -532,12 +552,38 @@ export async function GET(
         }
       }
 
-      const timeline = checkpoints.map(
-        (checkpoint, index) => {
+      // Built via explicit branching, not a ternary sharing one object
+      // shape, so each branch's literal "passed"/"pending" status and its
+      // paired passedAt type (string vs. null) are preserved as a real
+      // discriminated union - matching the frontend's
+      // PassedCheckpointTimelineItem / PendingCheckpointTimelineItem
+      // pattern (Stage 3). The previous inline-ternary version produced a
+      // single flat inferred type where status and passedAt were
+      // independently typed (status: "passed" | "pending", passedAt:
+      // string | null), so filtering by status !== "passed" did not
+      // narrow passedAt to non-null - this caused a real build failure
+      // once Stage 8 read .passedAt after such a filter.
+      const timeline: CheckpointTimelineEntry[] =
+        checkpoints.map((checkpoint, index) => {
           const passage =
             uniquePassageByCheckpoint.get(
               checkpoint.id
             );
+
+          if (passage) {
+            return {
+              checkpointId: checkpoint.id,
+              checkpointNo:
+                checkpoint.checkpoint_no,
+              checkpointName:
+                checkpoint.checkpoint_name,
+              sortOrder:
+                checkpoint.sort_order,
+              sequence: index + 1,
+              status: "passed",
+              passedAt: passage.passed_at,
+            };
+          }
 
           return {
             checkpointId: checkpoint.id,
@@ -548,14 +594,10 @@ export async function GET(
             sortOrder:
               checkpoint.sort_order,
             sequence: index + 1,
-            status: (passage
-              ? "passed"
-              : "pending") as "passed" | "pending",
-            passedAt:
-              passage?.passed_at || null,
+            status: "pending",
+            passedAt: null,
           };
-        }
-      );
+        });
 
       const passedTimeline = timeline.filter(
         (item) => item.status === "passed"
@@ -725,6 +767,182 @@ export async function GET(
       };
     });
 
+    // Stage 8 - checkpoint anomaly detection.
+    //
+    // Only two anomaly types are implemented. Duplicate scans and repeat
+    // scans after completion are already prevented atomically by
+    // record_event_checkpoint_passage's
+    // ON CONFLICT (checkpoint_id, attendee_id) DO NOTHING (confirmed via
+    // direct pg_proc inspection of the live function, not assumed from the
+    // calling route). Invalid station/checkpoint pairing is structurally
+    // impossible at scan time: a station token's checkpoint_id is fixed at
+    // issuance and read server-side (requireEventStation.ts), never
+    // supplied by the scanning client. None of those three need dashboard
+    // detection.
+    //
+    // Reuses the checkpointById map already built above for
+    // recentCheckpointActivity/checkpointStations - not redeclared here.
+
+    type CheckpointAnomalyRef = {
+      checkpointId: string;
+      checkpointNo: number;
+      checkpointName: string;
+      sortOrder: number;
+      passedAt: string;
+    };
+
+    type CheckpointAnomalyItem =
+      | {
+          anomalyType: "skipped_checkpoint";
+          attendeeId: string;
+          fullName: string;
+          registrationNumber: string | null;
+          detectedAt: string;
+          passedCheckpoint: CheckpointAnomalyRef;
+          missingCheckpoints: Omit<
+            CheckpointAnomalyRef,
+            "passedAt"
+          >[];
+        }
+      | {
+          anomalyType: "out_of_order";
+          attendeeId: string;
+          fullName: string;
+          registrationNumber: string | null;
+          detectedAt: string;
+          earlierRecordedPassage: CheckpointAnomalyRef;
+          laterRecordedPassage: CheckpointAnomalyRef;
+        };
+
+    const checkpointAnomalies: CheckpointAnomalyItem[] = [];
+
+    for (const runner of runnerTracking) {
+      const attendee = trackingAttendeeById.get(
+        runner.attendeeId
+      );
+
+      if (!attendee) {
+        continue;
+      }
+
+      // Skipped checkpoint: for every passed checkpoint, flag it if any
+      // earlier-in-course-order checkpoint is still pending. Uses the
+      // already-computed, sort_order-ordered timeline - no new query.
+      for (const passedItem of runner.timeline) {
+        if (passedItem.status !== "passed") continue;
+
+        const passedAt = passedItem.passedAt;
+
+        if (!passedAt) continue;
+
+        const missingCheckpoints = runner.timeline.filter(
+          (item) =>
+            item.status === "pending" &&
+            item.sortOrder < passedItem.sortOrder
+        );
+
+        if (missingCheckpoints.length > 0) {
+          checkpointAnomalies.push({
+            anomalyType: "skipped_checkpoint",
+            attendeeId: runner.attendeeId,
+            fullName: attendee.full_name,
+            registrationNumber:
+              attendee.registration_number,
+            detectedAt: passedAt,
+            passedCheckpoint: {
+              checkpointId: passedItem.checkpointId,
+              checkpointNo: passedItem.checkpointNo,
+              checkpointName: passedItem.checkpointName,
+              sortOrder: passedItem.sortOrder,
+              passedAt,
+            },
+            missingCheckpoints: missingCheckpoints.map(
+              (item) => ({
+                checkpointId: item.checkpointId,
+                checkpointNo: item.checkpointNo,
+                checkpointName: item.checkpointName,
+                sortOrder: item.sortOrder,
+              })
+            ),
+          });
+        }
+      }
+
+      // Out-of-order passage: sort this attendee's raw passages
+      // chronologically, track the highest checkpoint sort_order recorded
+      // so far, flag any passage whose checkpoint sort_order is lower than
+      // a checkpoint already recorded earlier in time.
+      const passages = (
+        passagesByAttendee.get(runner.attendeeId) || []
+      )
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.passed_at).getTime() -
+            new Date(b.passed_at).getTime()
+        );
+
+      let highestSoFar: {
+        checkpoint: CheckpointRow;
+        passedAt: string;
+      } | null = null;
+
+      for (const passage of passages) {
+        const checkpoint = checkpointById.get(
+          passage.checkpoint_id
+        );
+
+        if (!checkpoint) continue;
+
+        if (
+          highestSoFar &&
+          checkpoint.sort_order <
+            highestSoFar.checkpoint.sort_order
+        ) {
+          checkpointAnomalies.push({
+            anomalyType: "out_of_order",
+            attendeeId: runner.attendeeId,
+            fullName: attendee.full_name,
+            registrationNumber:
+              attendee.registration_number,
+            detectedAt: passage.passed_at,
+            earlierRecordedPassage: {
+              checkpointId:
+                highestSoFar.checkpoint.id,
+              checkpointNo:
+                highestSoFar.checkpoint
+                  .checkpoint_no,
+              checkpointName:
+                highestSoFar.checkpoint
+                  .checkpoint_name,
+              sortOrder:
+                highestSoFar.checkpoint.sort_order,
+              passedAt: highestSoFar.passedAt,
+            },
+            laterRecordedPassage: {
+              checkpointId: checkpoint.id,
+              checkpointNo: checkpoint.checkpoint_no,
+              checkpointName:
+                checkpoint.checkpoint_name,
+              sortOrder: checkpoint.sort_order,
+              passedAt: passage.passed_at,
+            },
+          });
+        }
+
+        if (
+          !highestSoFar ||
+          checkpoint.sort_order >
+            highestSoFar.checkpoint.sort_order
+        ) {
+          highestSoFar = {
+            checkpoint,
+            passedAt: passage.passed_at,
+          };
+        }
+      }
+    }
+
     const stalledParticipants =
       stallThresholdMinutes === null
         ? []
@@ -886,6 +1104,7 @@ export async function GET(
       stalledParticipants,
       runnerTracking,
       participantLookup,
+      checkpointAnomalies,
       checkpointSummary: checkpointMetrics,
       checkpointStations: checkpointStations.map((station) => {
         const checkpoint = station.checkpoint_id

@@ -82,6 +82,37 @@ type ParticipantLookupItem = {
   timeline: CheckpointTimelineItem[];
 };
 
+type CheckpointAnomalyRef = {
+  checkpointId: string;
+  checkpointNo: number;
+  checkpointName: string;
+  sortOrder: number;
+  passedAt: string;
+};
+
+type CheckpointAnomalyItem =
+  | {
+      anomalyType: "skipped_checkpoint";
+      attendeeId: string;
+      fullName: string;
+      registrationNumber: string | null;
+      detectedAt: string;
+      passedCheckpoint: CheckpointAnomalyRef;
+      missingCheckpoints: Omit<
+        CheckpointAnomalyRef,
+        "passedAt"
+      >[];
+    }
+  | {
+      anomalyType: "out_of_order";
+      attendeeId: string;
+      fullName: string;
+      registrationNumber: string | null;
+      detectedAt: string;
+      earlierRecordedPassage: CheckpointAnomalyRef;
+      laterRecordedPassage: CheckpointAnomalyRef;
+    };
+
 type DashboardResponse = {
   success: boolean;
   generatedAt?: string;
@@ -183,6 +214,7 @@ type DashboardResponse = {
   stalledParticipants?: StalledParticipantItem[];
   runnerTracking?: RunnerTrackingItem[];
   participantLookup?: ParticipantLookupItem[];
+  checkpointAnomalies?: CheckpointAnomalyItem[];
   error?: string;
 };
 
@@ -288,6 +320,42 @@ function stalledSeverity(
   return minutesSinceLastPassage >= thresholdMinutes * 2
     ? "severe"
     : "moderate";
+}
+
+function formatCheckpointList(
+  items: { checkpointNo: number }[]
+) {
+  const labels = items.map((item) => `CP${item.checkpointNo}`);
+
+  if (labels.length === 0) return "";
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+
+  return (
+    labels.slice(0, -1).join(", ") +
+    ", and " +
+    labels[labels.length - 1]
+  );
+}
+
+function anomalyEvidenceText(anomaly: CheckpointAnomalyItem) {
+  if (anomaly.anomalyType === "skipped_checkpoint") {
+    return `Passed CP${
+      anomaly.passedCheckpoint.checkpointNo
+    } while ${formatCheckpointList(
+      anomaly.missingCheckpoints
+    )} remain unrecorded`;
+  }
+
+  return `CP${
+    anomaly.earlierRecordedPassage.checkpointNo
+  } recorded at ${formatTime(
+    anomaly.earlierRecordedPassage.passedAt
+  )} before CP${
+    anomaly.laterRecordedPassage.checkpointNo
+  } recorded at ${formatTime(
+    anomaly.laterRecordedPassage.passedAt
+  )}`;
 }
 
 function ratePerMinute(count: number, minutes: number) {
@@ -416,6 +484,7 @@ export default function EventCommandCenterPage() {
   // reuse this existing computation rather than add a parallel one.
   const stalledParticipants = data?.stalledParticipants || [];
   const stalledDetection = data?.stalledDetection;
+  const checkpointAnomalies = data?.checkpointAnomalies || [];
 
   const checkInPct = percent(
     summary.checkedIn,
@@ -1521,6 +1590,154 @@ export default function EventCommandCenterPage() {
                   <p className="mt-5 rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-700">
                     No runners are currently overdue between
                     checkpoints.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white p-5 text-slate-950">
+                <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                      Recorded Checkpoint Evidence
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black">
+                      Checkpoint Anomalies
+                    </h2>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500">
+                    Skipped checkpoints and out-of-order scans,
+                    derived from recorded passages only
+                  </p>
+                </div>
+
+                {checkpointAnomalies.length > 0 ? (
+                  <div className="mt-5 overflow-x-auto">
+                    <table className="min-w-full border-separate border-spacing-y-2 text-sm">
+                      <thead>
+                        <tr className="text-left text-xs font-black uppercase tracking-[0.15em] text-slate-500">
+                          <th className="px-3 py-2">Runner</th>
+                          <th className="px-3 py-2">Type</th>
+                          <th className="px-3 py-2">Evidence</th>
+                          <th className="px-3 py-2">Detected</th>
+                          <th className="px-3 py-2">Actions</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {checkpointAnomalies.map(
+                          (anomaly, index) => (
+                            <tr
+                              key={`${anomaly.attendeeId}-${anomaly.anomalyType}-${index}`}
+                              className="bg-purple-50 align-top"
+                            >
+                              <td className="rounded-l-2xl px-3 py-4">
+                                <p className="text-lg font-black">
+                                  {anomaly.fullName}
+                                </p>
+                                <p className="mt-1 font-mono text-xs font-bold text-slate-500">
+                                  {anomaly.registrationNumber ||
+                                    "No registration number"}
+                                </p>
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <span
+                                  className={`inline-flex rounded-full border px-3 py-2 text-xs font-black ${
+                                    anomaly.anomalyType ===
+                                    "skipped_checkpoint"
+                                      ? "border-purple-400 bg-purple-100 text-purple-800"
+                                      : "border-indigo-400 bg-indigo-100 text-indigo-800"
+                                  }`}
+                                >
+                                  {anomaly.anomalyType ===
+                                  "skipped_checkpoint"
+                                    ? "SKIPPED"
+                                    : "OUT OF ORDER"}
+                                </span>
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <p className="font-semibold">
+                                  {anomalyEvidenceText(anomaly)}
+                                </p>
+                              </td>
+
+                              <td className="px-3 py-4">
+                                <p className="font-bold">
+                                  {formatTime(
+                                    anomaly.detectedAt
+                                  )}
+                                </p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                  {relativeTime(
+                                    anomaly.detectedAt
+                                  )}
+                                </p>
+                              </td>
+
+                              <td className="rounded-r-2xl px-3 py-4">
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedRunnerIds(
+                                        (current) => {
+                                          const next = new Set(
+                                            current
+                                          );
+                                          next.add(
+                                            anomaly.attendeeId
+                                          );
+                                          return next;
+                                        }
+                                      );
+                                      document
+                                        .getElementById(
+                                          `runner-row-${anomaly.attendeeId}`
+                                        )
+                                        ?.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "center",
+                                        });
+                                    }}
+                                    className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-400"
+                                  >
+                                    View Timeline
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSearchQuery(
+                                        anomaly.registrationNumber ||
+                                          anomaly.fullName
+                                      );
+                                      setSelectedParticipantId(
+                                        anomaly.attendeeId
+                                      );
+                                      document
+                                        .getElementById(
+                                          "runner-safety-lookup"
+                                        )
+                                        ?.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "start",
+                                        });
+                                    }}
+                                    className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-400"
+                                  >
+                                    Find in Lookup
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="mt-5 rounded-2xl bg-emerald-50 p-4 font-semibold text-emerald-700">
+                    No checkpoint anomalies detected.
                   </p>
                 )}
               </div>
