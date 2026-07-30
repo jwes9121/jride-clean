@@ -245,6 +245,28 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const weeklyQualificationById: Record<string, any> = {};
+
+  if (allDriverIds.length > 0) {
+    const weeklyQualificationRes = await admin
+      .from("driver_weekly_qualification_v1")
+      .select(
+        "driver_id,incentive_period_id,total_eligible_seconds,total_eligible_hours,hours_target_day_count,activity_day_count,duty_check_compliant_day_count,qualified_day_count,total_progressed_booking_count,total_unwaived_missed_checks,daily_seconds_required,weekly_seconds_required,required_days,max_missed_checks,weekly_hours_requirement_met,weekly_days_requirement_met,weekly_duty_check_requirement_met,weekly_qualified"
+      )
+      .in("driver_id", allDriverIds);
+
+    if (
+      !weeklyQualificationRes.error &&
+      Array.isArray(weeklyQualificationRes.data)
+    ) {
+      for (const row of weeklyQualificationRes.data as any[]) {
+        const did = s(row?.driver_id);
+        if (!did) continue;
+        weeklyQualificationById[did] = row;
+      }
+    }
+  }
+
   function driverDisplayName(driverId: string, fallback?: any) {
     const identity = driverIdentityById[driverId] || {};
     return s(identity.driver_name) || s(identity.profile_full_name) || s(fallback) || "Unknown Driver";
@@ -432,6 +454,45 @@ export async function GET(req: NextRequest) {
     drivers[did].incentive_completed_assignments = i?.completed_assignments ?? null;
     drivers[did].incentive_assignment_progression_pct = i?.assignment_progression_pct ?? null;
     drivers[did].incentive_completion_pct = i?.completion_pct ?? null;
+  }
+
+  // NOTE: prefixed with "weekly_" throughout. Weekly-tier values
+  // must not overwrite historical metrics or future incentive-tier values.
+  for (const did of Object.keys(drivers)) {
+    const w = weeklyQualificationById[did];
+
+    drivers[did].weekly_incentive_period_id =
+      w?.incentive_period_id ?? null;
+    drivers[did].weekly_total_eligible_hours =
+      w?.total_eligible_hours ?? null;
+    drivers[did].weekly_hours_target_day_count =
+      w?.hours_target_day_count ?? null;
+    drivers[did].weekly_activity_day_count =
+      w?.activity_day_count ?? null;
+    drivers[did].weekly_duty_check_compliant_day_count =
+      w?.duty_check_compliant_day_count ?? null;
+    drivers[did].weekly_qualified_day_count =
+      w?.qualified_day_count ?? null;
+    drivers[did].weekly_total_progressed_booking_count =
+      w?.total_progressed_booking_count ?? null;
+    drivers[did].weekly_total_unwaived_missed_checks =
+      w?.total_unwaived_missed_checks ?? null;
+    drivers[did].weekly_daily_seconds_required =
+      w?.daily_seconds_required ?? null;
+    drivers[did].weekly_seconds_required =
+      w?.weekly_seconds_required ?? null;
+    drivers[did].weekly_required_days =
+      w?.required_days ?? null;
+    drivers[did].weekly_max_missed_checks =
+      w?.max_missed_checks ?? null;
+    drivers[did].weekly_hours_requirement_met =
+      w?.weekly_hours_requirement_met ?? null;
+    drivers[did].weekly_days_requirement_met =
+      w?.weekly_days_requirement_met ?? null;
+    drivers[did].weekly_duty_check_requirement_met =
+      w?.weekly_duty_check_requirement_met ?? null;
+    drivers[did].weekly_qualified =
+      w?.weekly_qualified ?? null;
   }
 
   summary.drivers_with_sessions = Object.values(drivers).filter((d: any) => d.login_sessions > 0).length;
@@ -687,6 +748,8 @@ export async function GET(req: NextRequest) {
       performance: driverPerformance,
       reliability: reliabilityById[driverIdFilter] || null,
       incentive: incentiveById[driverIdFilter] || null,
+      weekly_qualification:
+        weeklyQualificationById[driverIdFilter] || null,
             ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,
