@@ -349,6 +349,7 @@ export default function AnalyticsV3Page() {
                     <th className="p-2">Progression %</th>
                     <th className="p-2">Completion %</th>
                     <th className="p-2">Incentive (Current Period)</th>
+                    <th className="p-2">Weekly Qualification</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -379,6 +380,31 @@ export default function AnalyticsV3Page() {
                             <div className="font-semibold">{r.incentive_period_name}</div>
                             <div className="text-slate-500">
                               {hours(r.incentive_raw_online_hours)} raw / {hours(r.incentive_eligible_online_hours)} eligible / {count(r.incentive_completed_assignments)} completed
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        {r.weekly_incentive_period_id == null ? (
+                          <span className="text-slate-400">No activity this incentive period</span>
+                        ) : (
+                          <div className="text-xs">
+                            <div
+                              className={
+                                "font-semibold " +
+                                (r.weekly_qualified
+                                  ? "text-emerald-700"
+                                  : "text-rose-700")
+                              }
+                            >
+                              {r.weekly_qualified ? "Qualified" : "Not Qualified"}
+                            </div>
+                            <div className="text-slate-500">
+                              {hours(r.weekly_total_eligible_hours)} /{" "}
+                              {hours(Number(r.weekly_seconds_required || 0) / 3600)}{" "}
+                              &middot; {count(r.weekly_qualified_day_count)}/
+                              {count(r.weekly_required_days)} days &middot;{" "}
+                              {count(r.weekly_total_progressed_booking_count)} bookings
                             </div>
                           </div>
                         )}
@@ -581,6 +607,95 @@ export default function AnalyticsV3Page() {
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Duty Check Response</div><div className="font-bold">{pct(inc.duty_check_response_rate_pct)}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Progression</div><div className="font-bold">{pct(inc.assignment_progression_pct)}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Completion</div><div className="font-bold">{pct(inc.completion_pct)}</div></div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="font-semibold">Weekly Qualification</h3>
+                      {(() => {
+                        const wq = driverDetail.weekly_qualification;
+                        if (!wq) {
+                          return (
+                            <div className="mt-2 text-sm text-slate-500">
+                              No activity this incentive period.
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div
+                              className={
+                                "col-span-2 rounded border p-2 text-xs font-semibold " +
+                                (wq.weekly_qualified
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                                  : "border-rose-200 bg-rose-50 text-rose-900")
+                              }
+                            >
+                              {wq.weekly_qualified ? "QUALIFIED" : "NOT QUALIFIED"}
+                            </div>
+
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">
+                                Eligible Hours
+                              </div>
+                              <div className="font-bold">
+                                {hours(wq.total_eligible_hours)} /{" "}
+                                {hours(Number(wq.weekly_seconds_required || 0) / 3600)}{" "}
+                                {wq.weekly_hours_requirement_met ? "✔" : "✖"}
+                              </div>
+                            </div>
+
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">
+                                Qualified Days
+                              </div>
+                              <div className="font-bold">
+                                {count(wq.qualified_day_count)} /{" "}
+                                {count(wq.required_days)}{" "}
+                                {wq.weekly_days_requirement_met ? "✔" : "✖"}
+                              </div>
+                            </div>
+
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">
+                                Activity Days
+                              </div>
+                              <div className="font-bold">
+                                {count(wq.activity_day_count)}
+                              </div>
+                            </div>
+
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">
+                                Duty Check Compliant Days
+                              </div>
+                              <div className="font-bold">
+                                {count(wq.duty_check_compliant_day_count)}
+                              </div>
+                            </div>
+
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">
+                                Progressed Bookings
+                              </div>
+                              <div className="font-bold">
+                                {count(wq.total_progressed_booking_count)}
+                              </div>
+                            </div>
+
+                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="text-xs uppercase text-slate-500">
+                                Unwaived Missed Checks
+                              </div>
+                              <div className="font-bold">
+                                {count(wq.total_unwaived_missed_checks)} /{" "}
+                                {count(wq.max_missed_checks)} allowed{" "}
+                                {wq.weekly_duty_check_requirement_met ? "✔" : "✖"}
+                              </div>
+                            </div>
                           </div>
                         );
                       })()}
