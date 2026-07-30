@@ -37,6 +37,57 @@ function hours(v: any) {
 }
 
 
+// Display order for incentive_qualification's policy_code keys â€” matches
+// driver_incentive_policies.sort_order. Adding a 7th tier means adding one
+// entry here, not a new code path.
+const POLICY_ORDER: string[] = [
+  "WEEKLY",
+  "PHONE_CLAMP",
+  "SHIRT",
+  "MONTHLY",
+  "THERMAL_BAG",
+  "SMARTPHONE",
+];
+
+function IncentiveTierCard(props: { tier: any }) {
+  const t = props.tier;
+  return (
+    <div
+      className={
+        "rounded border p-2 text-xs " +
+        (t.qualified
+          ? "border-emerald-200 bg-emerald-50"
+          : "border-slate-200 bg-slate-50")
+      }
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">{t.display_name || t.policy_code}</span>
+        <span className={t.qualified ? "text-emerald-700" : "text-rose-700"}>
+          {t.qualified ? "Qualified" : "Not Qualified"}
+        </span>
+      </div>
+      <div className="mt-1 text-slate-500">
+        {count(t.achieved_presence_days)}/{count(t.required_presence_days)} days &middot;{" "}
+        {hours(t.achieved_total_hours)}/{hours(t.required_total_hours)}
+        {Number(t.required_booking_count || 0) > 0 ? (
+          <>
+            {" "}
+            &middot; {count(t.achieved_booking_count)}/{count(t.required_booking_count)} bookings
+          </>
+        ) : null}
+      </div>
+      <div className="mt-1 text-slate-400">
+        Cycle {t.cycle_number} &middot; {t.cycle_start} - {t.cycle_end}
+        {t.already_awarded ? (
+          <span className="ml-1 font-semibold text-amber-700">Already awarded</span>
+        ) : t.claimable ? (
+          <span className="ml-1 font-semibold text-emerald-700">Claimable</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function Card(props: { title: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -349,7 +400,7 @@ export default function AnalyticsV3Page() {
                     <th className="p-2">Progression %</th>
                     <th className="p-2">Completion %</th>
                     <th className="p-2">Incentive (Current Period)</th>
-                    <th className="p-2">Weekly Qualification</th>
+                    <th className="p-2">Incentive Qualification</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -385,29 +436,37 @@ export default function AnalyticsV3Page() {
                         )}
                       </td>
                       <td className="p-2">
-                        {r.weekly_incentive_period_id == null ? (
-                          <span className="text-slate-400">No activity this incentive period</span>
-                        ) : (
-                          <div className="text-xs">
-                            <div
-                              className={
-                                "font-semibold " +
-                                (r.weekly_qualified
-                                  ? "text-emerald-700"
-                                  : "text-rose-700")
-                              }
-                            >
-                              {r.weekly_qualified ? "Qualified" : "Not Qualified"}
+                        {(() => {
+                          const iq = r.incentive_qualification || {};
+                          const tiers = POLICY_ORDER.map((code) => iq[code]).filter(Boolean);
+                          if (tiers.length === 0) {
+                            return <span className="text-slate-400">No activity this incentive period</span>;
+                          }
+                          const qualifiedCount = tiers.filter((t: any) => t.qualified).length;
+                          return (
+                            <div className="text-xs">
+                              <div className="font-semibold text-slate-700">
+                                {qualifiedCount}/{tiers.length} tiers qualified
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {tiers.map((t: any) => (
+                                  <span
+                                    key={t.policy_code}
+                                    title={t.display_name}
+                                    className={
+                                      "rounded px-1.5 py-0.5 " +
+                                      (t.qualified
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-slate-100 text-slate-500")
+                                    }
+                                  >
+                                    {t.policy_code}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                            <div className="text-slate-500">
-                              {hours(r.weekly_total_eligible_hours)} /{" "}
-                              {hours(Number(r.weekly_seconds_required || 0) / 3600)}{" "}
-                              &middot; {count(r.weekly_qualified_day_count)}/
-                              {count(r.weekly_required_days)} days &middot;{" "}
-                              {count(r.weekly_total_progressed_booking_count)} bookings
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -613,89 +672,22 @@ export default function AnalyticsV3Page() {
                     </div>
 
                     <div className="rounded-lg border border-slate-200 p-3">
-                      <h3 className="font-semibold">Weekly Qualification</h3>
+                      <h3 className="font-semibold">Incentive Qualification</h3>
                       {(() => {
-                        const wq = driverDetail.weekly_qualification;
-                        if (!wq) {
+                        const iq = driverDetail.incentive_qualification || {};
+                        const tiers = POLICY_ORDER.map((code) => iq[code]).filter(Boolean);
+                        if (tiers.length === 0) {
                           return (
                             <div className="mt-2 text-sm text-slate-500">
                               No activity this incentive period.
                             </div>
                           );
                         }
-
                         return (
-                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                            <div
-                              className={
-                                "col-span-2 rounded border p-2 text-xs font-semibold " +
-                                (wq.weekly_qualified
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                                  : "border-rose-200 bg-rose-50 text-rose-900")
-                              }
-                            >
-                              {wq.weekly_qualified ? "QUALIFIED" : "NOT QUALIFIED"}
-                            </div>
-
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                              <div className="text-xs uppercase text-slate-500">
-                                Eligible Hours
-                              </div>
-                              <div className="font-bold">
-                                {hours(wq.total_eligible_hours)} /{" "}
-                                {hours(Number(wq.weekly_seconds_required || 0) / 3600)}{" "}
-                                {wq.weekly_hours_requirement_met ? "✔" : "✖"}
-                              </div>
-                            </div>
-
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                              <div className="text-xs uppercase text-slate-500">
-                                Qualified Days
-                              </div>
-                              <div className="font-bold">
-                                {count(wq.qualified_day_count)} /{" "}
-                                {count(wq.required_days)}{" "}
-                                {wq.weekly_days_requirement_met ? "✔" : "✖"}
-                              </div>
-                            </div>
-
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                              <div className="text-xs uppercase text-slate-500">
-                                Activity Days
-                              </div>
-                              <div className="font-bold">
-                                {count(wq.activity_day_count)}
-                              </div>
-                            </div>
-
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                              <div className="text-xs uppercase text-slate-500">
-                                Duty Check Compliant Days
-                              </div>
-                              <div className="font-bold">
-                                {count(wq.duty_check_compliant_day_count)}
-                              </div>
-                            </div>
-
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                              <div className="text-xs uppercase text-slate-500">
-                                Progressed Bookings
-                              </div>
-                              <div className="font-bold">
-                                {count(wq.total_progressed_booking_count)}
-                              </div>
-                            </div>
-
-                            <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                              <div className="text-xs uppercase text-slate-500">
-                                Unwaived Missed Checks
-                              </div>
-                              <div className="font-bold">
-                                {count(wq.total_unwaived_missed_checks)} /{" "}
-                                {count(wq.max_missed_checks)} allowed{" "}
-                                {wq.weekly_duty_check_requirement_met ? "✔" : "✖"}
-                              </div>
-                            </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            {tiers.map((t: any) => (
+                              <IncentiveTierCard key={t.policy_code} tier={t} />
+                            ))}
                           </div>
                         );
                       })()}

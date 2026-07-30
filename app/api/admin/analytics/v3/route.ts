@@ -245,24 +245,40 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const weeklyQualificationById: Record<string, any> = {};
+  // Generic multi-tier incentive engine. driver_incentive_claimability_v1
+  // returns one row per driver per policy_code per cycle_number. A policy
+  // can have more than one cycle row over time (e.g. Weekly cycle 1, 2, 3...),
+  // so this groups by [driver_id][policy_code] and keeps only the row with
+  // the highest cycle_number seen for that policy (the most recently started
+  // / current cycle). If a driver has zero days of data in a policy's current
+  // cycle window, no row exists at all for that cycle (the underlying views
+  // are fact-driven, not zero-filled) â€” that policy will be absent from
+  // incentive_qualification for that driver rather than showing zeroed stats.
+  const incentiveQualificationById: Record<string, Record<string, any>> = {};
 
   if (allDriverIds.length > 0) {
-    const weeklyQualificationRes = await admin
-      .from("driver_weekly_qualification_v1")
+    const incentiveQualificationRes = await admin
+      .from("driver_incentive_claimability_v1")
       .select(
-        "driver_id,incentive_period_id,total_eligible_seconds,total_eligible_hours,hours_target_day_count,activity_day_count,duty_check_compliant_day_count,qualified_day_count,total_progressed_booking_count,total_unwaived_missed_checks,daily_seconds_required,weekly_seconds_required,required_days,max_missed_checks,weekly_hours_requirement_met,weekly_days_requirement_met,weekly_duty_check_requirement_met,weekly_qualified"
+        "driver_id,policy_code,display_name,cycle_number,cycle_start,cycle_end,achieved_presence_days,required_presence_days,achieved_total_hours,required_total_hours,achieved_booking_count,required_booking_count,cycle_missed_checks,calendar_cumulative_missed_checks,allowed_missed_checks,miss_check_scope,qualified,already_awarded,claimable"
       )
       .in("driver_id", allDriverIds);
 
     if (
-      !weeklyQualificationRes.error &&
-      Array.isArray(weeklyQualificationRes.data)
+      !incentiveQualificationRes.error &&
+      Array.isArray(incentiveQualificationRes.data)
     ) {
-      for (const row of weeklyQualificationRes.data as any[]) {
+      for (const row of incentiveQualificationRes.data as any[]) {
         const did = s(row?.driver_id);
-        if (!did) continue;
-        weeklyQualificationById[did] = row;
+        const policyCode = s(row?.policy_code);
+        if (!did || !policyCode) continue;
+        if (!incentiveQualificationById[did]) incentiveQualificationById[did] = {};
+        const existing = incentiveQualificationById[did][policyCode];
+        const existingCycle = existing ? Number(existing.cycle_number || 0) : -1;
+        const rowCycle = Number(row?.cycle_number || 0);
+        if (!existing || rowCycle > existingCycle) {
+          incentiveQualificationById[did][policyCode] = row;
+        }
       }
     }
   }
@@ -456,43 +472,11 @@ export async function GET(req: NextRequest) {
     drivers[did].incentive_completion_pct = i?.completion_pct ?? null;
   }
 
-  // NOTE: prefixed with "weekly_" throughout. Weekly-tier values
-  // must not overwrite historical metrics or future incentive-tier values.
+  // Single nested object per driver, keyed by policy_code, instead of a
+  // flat weekly_* field set. Adding a 7th policy row to
+  // driver_incentive_policies requires no change here or in the UI.
   for (const did of Object.keys(drivers)) {
-    const w = weeklyQualificationById[did];
-
-    drivers[did].weekly_incentive_period_id =
-      w?.incentive_period_id ?? null;
-    drivers[did].weekly_total_eligible_hours =
-      w?.total_eligible_hours ?? null;
-    drivers[did].weekly_hours_target_day_count =
-      w?.hours_target_day_count ?? null;
-    drivers[did].weekly_activity_day_count =
-      w?.activity_day_count ?? null;
-    drivers[did].weekly_duty_check_compliant_day_count =
-      w?.duty_check_compliant_day_count ?? null;
-    drivers[did].weekly_qualified_day_count =
-      w?.qualified_day_count ?? null;
-    drivers[did].weekly_total_progressed_booking_count =
-      w?.total_progressed_booking_count ?? null;
-    drivers[did].weekly_total_unwaived_missed_checks =
-      w?.total_unwaived_missed_checks ?? null;
-    drivers[did].weekly_daily_seconds_required =
-      w?.daily_seconds_required ?? null;
-    drivers[did].weekly_seconds_required =
-      w?.weekly_seconds_required ?? null;
-    drivers[did].weekly_required_days =
-      w?.required_days ?? null;
-    drivers[did].weekly_max_missed_checks =
-      w?.max_missed_checks ?? null;
-    drivers[did].weekly_hours_requirement_met =
-      w?.weekly_hours_requirement_met ?? null;
-    drivers[did].weekly_days_requirement_met =
-      w?.weekly_days_requirement_met ?? null;
-    drivers[did].weekly_duty_check_requirement_met =
-      w?.weekly_duty_check_requirement_met ?? null;
-    drivers[did].weekly_qualified =
-      w?.weekly_qualified ?? null;
+    drivers[did].incentive_qualification = incentiveQualificationById[did] || {};
   }
 
   summary.drivers_with_sessions = Object.values(drivers).filter((d: any) => d.login_sessions > 0).length;
@@ -748,8 +732,8 @@ export async function GET(req: NextRequest) {
       performance: driverPerformance,
       reliability: reliabilityById[driverIdFilter] || null,
       incentive: incentiveById[driverIdFilter] || null,
-      weekly_qualification:
-        weeklyQualificationById[driverIdFilter] || null,
+      incentive_qualification:
+        incentiveQualificationById[driverIdFilter] || {},
             ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,
