@@ -615,11 +615,36 @@ export async function GET(
           (item) => item.status === "pending"
         ) || null;
 
+      // Stage 9 fix: lastKnownPassageAt must be the chronologically newest
+      // scan, independent of course sort_order. latestCheckpoint above is
+      // ordered by sort_order (furthest checkpoint reached), which is a
+      // different concept - an out-of-order scan (e.g. CP1, CP3, CP2) means
+      // the furthest checkpoint (CP3) is not the most recently scanned one
+      // (CP2). Computed here from the raw passages array so it is correct
+      // regardless of course order or scan order.
+      const lastKnownPassageAt =
+        passages.length > 0
+          ? passages.reduce<string | null>(
+              (latest, passage) => {
+                if (!latest) {
+                  return passage.passed_at;
+                }
+
+                return new Date(passage.passed_at).getTime() >
+                  new Date(latest).getTime()
+                  ? passage.passed_at
+                  : latest;
+              },
+              null
+            )
+          : null;
+
       return {
         timeline,
         passedTimeline,
         latestCheckpoint,
         nextCheckpoint,
+        lastKnownPassageAt,
       };
     }
 
@@ -650,6 +675,7 @@ export async function GET(
           passedTimeline,
           latestCheckpoint,
           nextCheckpoint,
+          lastKnownPassageAt,
         } = buildCheckpointTimeline(passages);
 
         return {
@@ -684,8 +710,7 @@ export async function GET(
           timeline,
           latestCheckpoint,
           nextCheckpoint,
-          lastKnownPassageAt:
-            latestCheckpoint?.passedAt || null,
+          lastKnownPassageAt,
         };
       })
 
@@ -746,7 +771,7 @@ export async function GET(
       const passages =
         passagesByAttendee.get(attendee.id) || [];
 
-      const { timeline, latestCheckpoint } =
+      const { timeline, latestCheckpoint, lastKnownPassageAt } =
         buildCheckpointTimeline(passages);
 
       return {
@@ -761,8 +786,7 @@ export async function GET(
         isDisqualified:
           attendee.is_disqualified === true,
         latestCheckpoint,
-        lastKnownPassageAt:
-          latestCheckpoint?.passedAt || null,
+        lastKnownPassageAt,
         timeline,
       };
     });
