@@ -13,7 +13,7 @@ export async function GET(
 
     const { data: event, error: eventError } = await supabase
       .from("events")
-      .select("id,slug,group_label")
+      .select("id,slug,name,short_name,group_label")
       .eq("slug", params.eventSlug)
       .in("status", [
         "published",
@@ -45,6 +45,8 @@ export async function GET(
     return NextResponse.json({
       success: true,
       eventSlug: event.slug,
+      eventName: event.name,
+      eventShortName: event.short_name,
       groupLabel: event.group_label,
       values: values || [],
     });

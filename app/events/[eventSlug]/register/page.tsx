@@ -12,6 +12,8 @@ type GroupValue = {
 type GroupValuesResponse = {
   success: boolean;
   eventSlug?: string;
+  eventName?: string;
+  eventShortName?: string;
   groupLabel?: string;
   values?: GroupValue[];
   error?: string;
@@ -60,6 +62,7 @@ export default function EventRegistrationPage() {
   const [groupValues, setGroupValues] = React.useState<GroupValue[]>([]);
   const [loadingGroups, setLoadingGroups] = React.useState(true);
   const [groupError, setGroupError] = React.useState("");
+  const [eventName, setEventName] = React.useState("");
 
   const [fullName, setFullName] = React.useState("");
   const [mobileNumber, setMobileNumber] = React.useState("");
@@ -94,6 +97,7 @@ export default function EventRegistrationPage() {
 
         setGroupLabel(data.groupLabel || "Batch");
         setGroupValues(data.values || []);
+        setEventName(data.eventName || data.eventShortName || "");
       } catch (error) {
         if (!active) return;
         setGroupError(
@@ -255,9 +259,12 @@ export default function EventRegistrationPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
             JRide Events
           </p>
-          <h1 className="mt-4 text-4xl font-black leading-tight">Join the Reunion</h1>
+          <h1 className="mt-4 text-4xl font-black leading-tight">
+            {eventName || "Event Registration"}
+          </h1>
           <p className="mt-3 text-slate-300">
-            Register early and present your Event Pass QR at the entrance for faster check-in.
+            Register now and receive your Event Pass QR. Present your QR during participant
+            registration and at the designated event checkpoint.
           </p>
 
           <div className="mt-6 rounded-2xl bg-slate-950 p-4 text-sm text-slate-300">
