@@ -49,8 +49,50 @@ const POLICY_ORDER: string[] = [
   "SMARTPHONE",
 ];
 
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatShortDate(iso: any) {
+  if (!iso) return "-";
+  // Parsed manually from the YYYY-MM-DD string rather than via Date() to
+  // avoid a timezone-driven off-by-one-day shift on display.
+  const parts = String(iso).split("-");
+  if (parts.length !== 3) return String(iso);
+  const month = MONTH_ABBR[Number(parts[1]) - 1] || parts[1];
+  const day = Number(parts[2]);
+  return month + " " + day;
+}
+
+function formatCycleLabel(cycleNumber: any, cycleWeeks: any) {
+  const n = Number(cycleNumber || 0);
+  const w = Number(cycleWeeks || 0);
+  if (!n || !w) return "Cycle " + cycleNumber;
+  const startWeek = (n - 1) * w + 1;
+  const endWeek = n * w;
+  return w === 1 ? "Week " + startWeek : "Weeks " + startWeek + "-" + endWeek;
+}
+
+function RequirementRow(props: { met: boolean; label: string; value: string }) {
+  return (
+    <div
+      className={
+        "flex items-center justify-between " +
+        (props.met ? "text-emerald-700" : "text-rose-700")
+      }
+    >
+      <span>
+        {props.met ? "\u2714" : "\u2716"} {props.label}
+      </span>
+      <span className="font-semibold">{props.value}</span>
+    </div>
+  );
+}
+
 function IncentiveTierCard(props: { tier: any }) {
   const t = props.tier;
+  const showBookingRow = Number(t.required_booking_count || 0) > 0;
+  const missedChecksDisplay =
+    t.miss_check_scope === "cycle" ? t.cycle_missed_checks : t.calendar_cumulative_missed_checks;
+
   return (
     <div
       className={
@@ -66,18 +108,33 @@ function IncentiveTierCard(props: { tier: any }) {
           {t.qualified ? "Qualified" : "Not Qualified"}
         </span>
       </div>
-      <div className="mt-1 text-slate-500">
-        {count(t.achieved_presence_days)}/{count(t.required_presence_days)} days &middot;{" "}
-        {hours(t.achieved_total_hours)}/{hours(t.required_total_hours)}
-        {Number(t.required_booking_count || 0) > 0 ? (
-          <>
-            {" "}
-            &middot; {count(t.achieved_booking_count)}/{count(t.required_booking_count)} bookings
-          </>
+      <div className="mt-2 space-y-0.5">
+        <RequirementRow
+          met={!!t.presence_requirement_met}
+          label="Presence"
+          value={count(t.achieved_presence_days) + " / " + count(t.required_presence_days)}
+        />
+        <RequirementRow
+          met={!!t.hours_requirement_met}
+          label="Hours"
+          value={hours(t.achieved_total_hours) + " / " + hours(t.required_total_hours)}
+        />
+        {showBookingRow ? (
+          <RequirementRow
+            met={!!t.booking_requirement_met}
+            label="Bookings"
+            value={count(t.achieved_booking_count) + " / " + count(t.required_booking_count)}
+          />
         ) : null}
+        <RequirementRow
+          met={!!t.duty_check_requirement_met}
+          label="Missed Checks"
+          value={count(missedChecksDisplay) + " / " + count(t.allowed_missed_checks)}
+        />
       </div>
       <div className="mt-1 text-slate-400">
-        Cycle {t.cycle_number} &middot; {t.cycle_start} - {t.cycle_end}
+        {formatCycleLabel(t.cycle_number, t.cycle_weeks)} &middot;{" "}
+        {formatShortDate(t.cycle_start)} - {formatShortDate(t.cycle_end)}
         {t.already_awarded ? (
           <span className="ml-1 font-semibold text-amber-700">Already awarded</span>
         ) : t.claimable ? (
@@ -87,6 +144,7 @@ function IncentiveTierCard(props: { tier: any }) {
     </div>
   );
 }
+
 
 function Card(props: { title: string; value: string; sub?: string }) {
   return (
@@ -656,7 +714,7 @@ export default function AnalyticsV3Page() {
                         return (
                           <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                             <div className="col-span-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">
-                              OBSERVATION MODE - Eligible hours are being measured but are NOT yet used for incentives.
+                              OBSERVATION MODE - Incentive qualification is being tracked. Rewards have not yet been activated for operational use.
                             </div>
                             <div className="col-span-2 rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Incentive Period</div><div className="font-bold">{inc.incentive_period_name || "-"}</div></div>
                             <div className="rounded border border-slate-200 bg-slate-50 p-2"><div className="text-xs uppercase text-slate-500">Raw Online Hours</div><div className="font-bold">{hours(inc.raw_online_hours)}</div></div>

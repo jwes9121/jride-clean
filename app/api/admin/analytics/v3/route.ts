@@ -245,7 +245,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Generic multi-tier incentive engine. driver_incentive_claimability_v1
+  // Generic multi-tier incentive engine (replaces the old Weekly-only
+  // driver_weekly_qualification_v1 lookup). driver_incentive_claimability_v1
   // returns one row per driver per policy_code per cycle_number. A policy
   // can have more than one cycle row over time (e.g. Weekly cycle 1, 2, 3...),
   // so this groups by [driver_id][policy_code] and keeps only the row with
@@ -260,9 +261,19 @@ export async function GET(req: NextRequest) {
     const incentiveQualificationRes = await admin
       .from("driver_incentive_claimability_v1")
       .select(
-        "driver_id,policy_code,display_name,cycle_number,cycle_start,cycle_end,achieved_presence_days,required_presence_days,achieved_total_hours,required_total_hours,achieved_booking_count,required_booking_count,cycle_missed_checks,calendar_cumulative_missed_checks,allowed_missed_checks,miss_check_scope,qualified,already_awarded,claimable"
+        "driver_id,policy_code,display_name,cycle_number,cycle_weeks,cycle_start,cycle_end,achieved_presence_days,required_presence_days,achieved_total_hours,required_total_hours,achieved_booking_count,required_booking_count,cycle_missed_checks,calendar_cumulative_missed_checks,allowed_missed_checks,miss_check_scope,presence_requirement_met,hours_requirement_met,booking_requirement_met,duty_check_requirement_met,qualified,already_awarded,claimable"
       )
       .in("driver_id", allDriverIds);
+
+    if (incentiveQualificationRes.error) {
+      console.error(
+        "[ANALYTICS_V3_INCENTIVE_QUALIFICATION_QUERY_FAILED]",
+        JSON.stringify({
+          message: incentiveQualificationRes.error.message,
+          code: (incentiveQualificationRes.error as any)?.code || null,
+        })
+      );
+    }
 
     if (
       !incentiveQualificationRes.error &&
