@@ -39,6 +39,23 @@ async function getAttendeeTypeId(
   return data.id;
 }
 
+async function getPrimaryAttendeeTypeId(
+  supabase: SupabaseClient,
+  eventId: string
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("event_attendee_types")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data?.id) throw new Error("Missing primary attendee type.");
+
+  return data.id;
+}
+
 async function getExistingRegistration(
   supabase: SupabaseClient,
   attendeeId: string
@@ -188,7 +205,10 @@ export async function registerAttendee(
       };
     }
 
-    const alumniTypeId = await getAttendeeTypeId(supabase, event.id, "alumni");
+    const primaryAttendeeTypeId = await getPrimaryAttendeeTypeId(
+      supabase,
+      event.id
+    );
     const guestTypeId = await getAttendeeTypeId(supabase, event.id, "guest");
     const nextNumber = await nextRegistrationNumber(supabase, event.id);
 
@@ -196,7 +216,7 @@ export async function registerAttendee(
       .from("event_attendees")
       .insert({
         event_id: event.id,
-        attendee_type_id: alumniTypeId,
+        attendee_type_id: primaryAttendeeTypeId,
         full_name: cleaned.fullName,
         mobile_number: cleaned.mobileNumber,
         phone_declined: false,
