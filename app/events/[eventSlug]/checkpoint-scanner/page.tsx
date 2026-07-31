@@ -160,6 +160,11 @@ export default function EventCheckpointScannerPage() {
   const [lastRaw, setLastRaw] = React.useState("");
   const [parsed, setParsed] = React.useState<ParsedPass | null>(null);
   const [result, setResult] = React.useState<CheckpointScanResponse | null>(null);
+  // Set only in the camera-start catch block. Distinguishes a camera/
+  // permission failure (nothing to do with the scanned QR) from an actual
+  // scan result, so the overlay doesn't mislabel it "INVALID QR". Cleared
+  // any time a real scan result or manual-action state is shown.
+  const [cameraErrorTitle, setCameraErrorTitle] = React.useState<string | null>(null);
 
   const [stationToken, setStationTokenState] = React.useState<string>("");
   const [stationTokenLoaded, setStationTokenLoaded] = React.useState(false);
@@ -308,6 +313,7 @@ export default function EventCheckpointScannerPage() {
 
   function showResult(tone: ResultTone, nextMessage: string, autoResume: boolean) {
     stopReaderOnly();
+    setCameraErrorTitle(null);
     setResultTone(tone);
     setScanState("result");
     setMessage(nextMessage);
@@ -320,6 +326,7 @@ export default function EventCheckpointScannerPage() {
   function showManualAction(nextMessage: string) {
     clearAutoResumeTimer();
     stopReaderOnly();
+    setCameraErrorTitle(null);
     setResultTone("warning");
     setScanState("manual_action");
     setMessage(nextMessage);
@@ -519,13 +526,33 @@ export default function EventCheckpointScannerPage() {
       }
 
       controlsRef.current = controls;
+      setCameraErrorTitle(null);
       setScanState("scanning");
       setMessage("Checkpoint scanner ready. Point camera at Event Pass QR.");
     } catch (error) {
+      const cameraErrorName =
+        error && typeof error === "object" && "name" in error
+          ? String((error as { name?: unknown }).name)
+          : "";
+
+      const isPermissionError =
+        cameraErrorName === "NotAllowedError" ||
+        cameraErrorName === "PermissionDeniedError" ||
+        cameraErrorName === "SecurityError";
+
+      setCameraErrorTitle(
+        isPermissionError ? "CAMERA PERMISSION REQUIRED" : "CAMERA ERROR"
+      );
       setResult(null);
       setResultTone("error");
       setScanState("result");
-      setMessage(error instanceof Error ? error.message : "Camera failed to start.");
+      setMessage(
+        isPermissionError
+          ? "Camera access was denied. Allow camera permission for this site in your browser settings, then tap Restart Camera."
+          : error instanceof Error
+          ? error.message
+          : "Camera failed to start."
+      );
     }
   }
 
@@ -588,7 +615,9 @@ export default function EventCheckpointScannerPage() {
       : "border-red-300 bg-red-950";
 
   const overlayTitle =
-    result?.reason === "checkpoint_recorded"
+    cameraErrorTitle
+      ? cameraErrorTitle
+      : result?.reason === "checkpoint_recorded"
       ? "CHECKPOINT RECORDED"
       : result?.reason === "already_recorded"
       ? "ALREADY RECORDED"
@@ -697,14 +726,14 @@ export default function EventCheckpointScannerPage() {
               <p className="text-sm font-black uppercase tracking-[0.35em] text-white/70">
                 {overlayTitle}
               </p>
-              <p className="mt-5 text-5xl font-black leading-tight">{message}</p>
+              <p className="mt-5 break-words text-center text-2xl font-black leading-tight sm:text-4xl lg:text-5xl">{message}</p>
 
               {result?.attendee?.fullName ? (
                 <div className="mt-7 rounded-3xl bg-white p-6 text-slate-950">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                     Participant
                   </p>
-                  <p className="mt-2 text-4xl font-black">
+                  <p className="mt-2 break-words text-2xl font-black sm:text-3xl lg:text-4xl">
                     {result.attendee.fullName}
                   </p>
                   <p className="mt-4 font-mono text-2xl font-black">
@@ -742,14 +771,14 @@ export default function EventCheckpointScannerPage() {
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                     Pass Detected
                   </p>
-                  <p className="mt-2 font-mono text-3xl font-black">
+                  <p className="mt-2 break-all font-mono text-xl font-black sm:text-2xl lg:text-3xl">
                     {parsed.registrationNumber}
                   </p>
                 </div>
               ) : null}
 
               {lastRaw && !parsed ? (
-                <p className="mt-6 break-all rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">
+                <p className="mt-6 break-all overflow-x-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-300">
                   {lastRaw}
                 </p>
               ) : null}
