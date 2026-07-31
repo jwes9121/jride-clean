@@ -506,12 +506,14 @@ export default function DriverAvailabilityPingsPage() {
             }
           />
           <Card
-            label="Expired - not delivered"
+            label="Not delivered"
             value={summary.expired_not_delivered}
+            detail="Device never fetched - no incentive impact"
           />
           <Card
-            label="Expired - no response"
+            label="Missed check"
             value={summary.expired_no_response}
+            detail="Delivered, no response - counts toward incentives"
           />
           <Card label="Fetched" value={summary.fetched} />
           <Card label="Never fetched" value={summary.never_fetched} />
