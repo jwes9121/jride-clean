@@ -58,15 +58,10 @@ export default function EventRegistrationPage() {
   const router = useRouter();
   const eventSlug = String(params?.eventSlug || "");
 
-  const [groupLabel, setGroupLabel] = React.useState("Batch");
-  const [groupValues, setGroupValues] = React.useState<GroupValue[]>([]);
-  const [loadingGroups, setLoadingGroups] = React.useState(true);
-  const [groupError, setGroupError] = React.useState("");
   const [eventName, setEventName] = React.useState("");
 
   const [fullName, setFullName] = React.useState("");
   const [mobileNumber, setMobileNumber] = React.useState("");
-  const [groupValue, setGroupValue] = React.useState("");
   const [nickname, setNickname] = React.useState("");
   const [guests, setGuests] = React.useState<GuestForm[]>([]);
 
@@ -78,10 +73,7 @@ export default function EventRegistrationPage() {
   React.useEffect(() => {
     let active = true;
 
-    async function loadGroupValues() {
-      setLoadingGroups(true);
-      setGroupError("");
-
+    async function loadEventName() {
       try {
         const res = await fetch(`/api/events/${eventSlug}/group-values`, {
           cache: "no-store",
@@ -89,26 +81,18 @@ export default function EventRegistrationPage() {
 
         const data = (await res.json()) as GroupValuesResponse;
 
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Failed to load registration options.");
-        }
-
+        if (!res.ok || !data.success) return;
         if (!active) return;
 
-        setGroupLabel(data.groupLabel || "Batch");
-        setGroupValues(data.values || []);
         setEventName(data.eventName || data.eventShortName || "");
-      } catch (error) {
-        if (!active) return;
-        setGroupError(
-          error instanceof Error ? error.message : "Failed to load registration options."
-        );
-      } finally {
-        if (active) setLoadingGroups(false);
+      } catch {
+        // eventName is decorative only (falls back to "Event Registration"
+        // in the render below) - a failed fetch here must not block
+        // registration.
       }
     }
 
-    if (eventSlug) loadGroupValues();
+    if (eventSlug) loadEventName();
 
     return () => {
       active = false;
@@ -133,7 +117,6 @@ export default function EventRegistrationPage() {
   function validateLocal() {
     if (fullName.trim().length < 2) return "Full name is required.";
     if (cleanPhone(mobileNumber).length < 10) return "Valid mobile number is required.";
-    if (!groupValue) return `${groupLabel} is required.`;
 
     for (let i = 0; i < guests.length; i++) {
       if (guests[i].fullName.trim().length < 2) {
@@ -167,7 +150,6 @@ export default function EventRegistrationPage() {
         body: JSON.stringify({
           fullName: fullName.trim(),
           mobileNumber: cleanPhone(mobileNumber),
-          groupValue,
           nickname: nickname.trim() || undefined,
           guests: guests.map((guest) => ({
             fullName: guest.fullName.trim(),
@@ -228,7 +210,7 @@ export default function EventRegistrationPage() {
           <h1 className="mt-4 text-3xl font-black">This registration may already exist.</h1>
           <p className="mt-4 text-slate-300">
             If this is you, use Find My Event Pass. If this is another person with the same
-            name and {groupLabel.toLowerCase()}, continue registration.
+            name, continue registration.
           </p>
 
           <div className="mt-6 grid gap-3">
@@ -305,31 +287,6 @@ export default function EventRegistrationPage() {
                 autoComplete="tel"
               />
             </label>
-
-            <label className="block">
-              <span className="text-sm font-bold text-slate-200">{groupLabel} *</span>
-              <select
-                value={groupValue}
-                onChange={(event) => setGroupValue(event.target.value)}
-                disabled={loadingGroups || !!groupError}
-                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
-              >
-                <option value="">
-                  {loadingGroups ? "Loading..." : `Select ${groupLabel}`}
-                </option>
-                {groupValues.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {groupError ? (
-              <p className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
-                {groupError}
-              </p>
-            ) : null}
 
             <label className="block">
               <span className="text-sm font-bold text-slate-200">Nickname (optional)</span>
@@ -416,7 +373,7 @@ export default function EventRegistrationPage() {
 
             <button
               type="submit"
-              disabled={submitting || loadingGroups || !!groupError}
+              disabled={submitting}
               className="w-full rounded-2xl bg-amber-400 px-5 py-4 text-lg font-black text-slate-950 disabled:opacity-60"
             >
               {submitting ? "Registering..." : "Register"}

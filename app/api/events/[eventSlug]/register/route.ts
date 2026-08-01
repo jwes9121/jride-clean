@@ -17,6 +17,7 @@ export async function POST(
       {
         ...body,
         eventSlug: params.eventSlug,
+        groupValue: "regular_participant",
       },
       {
         source: "online",
