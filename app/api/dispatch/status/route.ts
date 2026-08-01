@@ -175,12 +175,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const updatePayload: Record<string, any> = {
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (nextStatus === "accepted") {
+      updatePayload.driver_fee_proposal_expires_at = new Date(
+        Date.now() + 5 * 60 * 1000
+      ).toISOString();
+      updatePayload.driver_accept_expires_at = null;
+    }
+
     const { error: updateError } = await supabase
       .from("bookings")
-      .update({
-        status: nextStatus,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", booking.id);
 
     if (updateError) {
