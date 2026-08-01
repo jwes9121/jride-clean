@@ -200,7 +200,11 @@ function jrideIsExpiredRideDriverAssignment(row: any, nowMs: number): boolean {
 function jrideIsExpiredRideFareProposalWindow(row: any, nowMs: number): boolean {
   if (!jrideIsRideBooking(row)) return false;
   const status = statusOf(row?.status);
-  if (status !== "fare_proposed") return false;
+  // The fare-proposal window is the time the booking sits at "accepted"
+  // waiting for the driver to submit a proposal — not "fare_proposed",
+  // which is the state AFTER a proposal has already been submitted, by
+  // which point there is nothing left to time out.
+  if (status !== "accepted") return false;
 
   const expiryRaw = jrideActiveTripText(
     row?.driver_fee_proposal_expires_at ?? row?.driverFeeProposalExpiresAt
