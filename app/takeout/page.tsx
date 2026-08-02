@@ -527,22 +527,39 @@ function safeCoord(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function addressToDeliveryPin(row: AddressRow | null | undefined): DeliveryPin | null {
-  if (!row) return null;
-  const lat = safeCoord(row.dropoff_lat ?? row.lat);
-  const lng = safeCoord(row.dropoff_lng ?? row.lng);
-  if (lat == null || lng == null) return null;
-  return { lat, lng };
-}
-
-function addressHasDeliveryPin(row: AddressRow | null | undefined): boolean {
-  return !!addressToDeliveryPin(row);
-}
-
 type DeliveryPin = {
   lat: number;
   lng: number;
 };
+
+function isValidDeliveryPin(pin: DeliveryPin | null | undefined): pin is DeliveryPin {
+  if (!pin) return false;
+
+  const lat = Number(pin.lat);
+  const lng = Number(pin.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  return lat >= 4 && lat <= 22 && lng >= 116 && lng <= 127;
+}
+
+function addressToDeliveryPin(row: AddressRow | null | undefined): DeliveryPin | null {
+  if (!row) return null;
+
+  const lat = safeCoord(row.dropoff_lat ?? row.lat);
+  const lng = safeCoord(row.dropoff_lng ?? row.lng);
+
+  const pin =
+    lat == null || lng == null
+      ? null
+      : { lat, lng };
+
+  return isValidDeliveryPin(pin) ? pin : null;
+}
+
+function addressHasDeliveryPin(row: AddressRow | null | undefined): boolean {
+  return isValidDeliveryPin(addressToDeliveryPin(row));
+}
 
 function deliveryPinLabel(pin: DeliveryPin | null): string {
   if (!pin) return "";
@@ -558,7 +575,12 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const valueRef = useRef<DeliveryPin | null>(value);
   const [mapErr, setMapErr] = useState("");
+
+  useEffect(() => {
+    valueRef.current = isValidDeliveryPin(value) ? value : null;
+  }, [value]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -568,9 +590,10 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
       return;
     }
 
-        const hasInitialPin = !!value;
-    const initialLng = value?.lng ?? 121.1;
-    const initialLat = value?.lat ?? 16.8;
+    const initialPin = isValidDeliveryPin(value) ? value : null;
+    const hasInitialPin = !!initialPin;
+    const initialLng = initialPin?.lng ?? 121.1;
+    const initialLat = initialPin?.lat ?? 16.8;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -614,27 +637,101 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
       return wrap;
     };
 
+    const restoreLastValidMarker = (marker: mapboxgl.Marker) => {
+      const previous = valueRef.current;
+
+      if (isValidDeliveryPin(previous)) {
+        marker.setLngLat([previous.lng, previous.lat]);
+        return;
+      }
+
+      marker.remove();
+
+      if (markerRef.current === marker) {
+        markerRef.current = null;
+      }
+    };
+
+    const acceptCandidate = (
+      lat: number,
+      lng: number,
+      marker?: mapboxgl.Marker | null
+    ): boolean => {
+      const candidate = { lat, lng };
+
+      if (!isValidDeliveryPin(candidate)) {
+        setMapErr(
+          "Invalid map location detected. Reload the map or use device location."
+        );
+
+        if (marker) {
+          restoreLastValidMarker(marker);
+        }
+
+        return false;
+      }
+
+      setMapErr("");
+      valueRef.current = candidate;
+      onChange(candidate);
+
+      return true;
+    };
+
     const placeMarker = (lng: number, lat: number) => {
+      const candidate = { lat, lng };
+
+      if (!isValidDeliveryPin(candidate)) {
+        setMapErr(
+          "Invalid map location detected. Reload the map or use device location."
+        );
+        return;
+      }
+
       if (!markerRef.current) {
-        const marker = new mapboxgl.Marker({ element: createYouAreHereMarker(), draggable: true })
+        const marker = new mapboxgl.Marker({
+          element: createYouAreHereMarker(),
+          draggable: true,
+        })
           .setLngLat([lng, lat])
           .addTo(map);
+
         marker.on("dragend", () => {
           const pos = marker.getLngLat();
-          onChange({ lat: pos.lat, lng: pos.lng });
+          acceptCandidate(pos.lat, pos.lng, marker);
         });
+
         markerRef.current = marker;
       } else {
         markerRef.current.setLngLat([lng, lat]);
       }
     };
 
-    if (value) placeMarker(value.lng, value.lat);
-        if (!value && typeof navigator !== "undefined" && navigator.geolocation) {
+    if (initialPin) {
+      placeMarker(initialPin.lng, initialPin.lat);
+    }
+
+    if (
+      !initialPin &&
+      typeof navigator !== "undefined" &&
+      navigator.geolocation
+    ) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          const candidate = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+
+          if (!isValidDeliveryPin(candidate)) {
+            setMapErr(
+              "Device location returned an invalid Philippine coordinate."
+            );
+            return;
+          }
+
           map.flyTo({
-            center: [pos.coords.longitude, pos.coords.latitude],
+            center: [candidate.lng, candidate.lat],
             zoom: 16,
             essential: true,
           });
@@ -649,10 +746,19 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
     }
 
     map.on("click", (event: mapboxgl.MapMouseEvent) => {
-      const lng = event.lngLat.lng;
-      const lat = event.lngLat.lat;
+      const lng = Number(event.lngLat.lng);
+      const lat = Number(event.lngLat.lat);
+      const candidate = { lat, lng };
+
+      if (!isValidDeliveryPin(candidate)) {
+        setMapErr(
+          "Invalid map location detected. Reload the map or use device location."
+        );
+        return;
+      }
+
       placeMarker(lng, lat);
-      onChange({ lat, lng });
+      acceptCandidate(lat, lng, markerRef.current);
     });
 
     return () => {
@@ -666,34 +772,97 @@ function DeliveryPinPicker({ value, onChange }: { value: DeliveryPin | null; onC
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !value) return;
+    if (!map || !isValidDeliveryPin(value)) return;
+
+    const restoreLastValidMarker = (marker: mapboxgl.Marker) => {
+      const previous = valueRef.current;
+
+      if (isValidDeliveryPin(previous)) {
+        marker.setLngLat([previous.lng, previous.lat]);
+        return;
+      }
+
+      marker.remove();
+
+      if (markerRef.current === marker) {
+        markerRef.current = null;
+      }
+    };
+
     if (!markerRef.current) {
       const marker = new mapboxgl.Marker({ draggable: true })
         .setLngLat([value.lng, value.lat])
         .addTo(map);
+
       marker.on("dragend", () => {
         const pos = marker.getLngLat();
-        onChange({ lat: pos.lat, lng: pos.lng });
+        const candidate = {
+          lat: pos.lat,
+          lng: pos.lng,
+        };
+
+        if (!isValidDeliveryPin(candidate)) {
+          setMapErr(
+            "Invalid map location detected. Reload the map or use device location."
+          );
+          restoreLastValidMarker(marker);
+          return;
+        }
+
+        setMapErr("");
+        valueRef.current = candidate;
+        onChange(candidate);
       });
+
       markerRef.current = marker;
     } else {
       markerRef.current.setLngLat([value.lng, value.lat]);
     }
-    map.flyTo({ center: [value.lng, value.lat], zoom: 16, essential: true });
+
+    map.flyTo({
+      center: [value.lng, value.lat],
+      zoom: 16,
+      essential: true,
+    });
   }, [value, onChange]);
 
   function useDeviceLocation() {
     setMapErr("");
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.geolocation
+    ) {
       setMapErr("Device location is not available on this browser.");
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        onChange({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const candidate = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        if (!isValidDeliveryPin(candidate)) {
+          setMapErr(
+            "Device location returned an invalid Philippine coordinate."
+          );
+          return;
+        }
+
+        valueRef.current = candidate;
+        onChange(candidate);
       },
-      () => setMapErr("Could not read device location. You can tap the map instead."),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      () =>
+        setMapErr(
+          "Could not read device location. You can tap the map instead."
+        ),
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
+      }
     );
   }
 
@@ -2678,7 +2847,15 @@ const contact = await fetchOptionalJson(
                           type="button"
                           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                           onClick={async () => {
-                            if (!deliveryPin || addrBusy) return;
+                            if (addrBusy) return;
+
+                            if (!isValidDeliveryPin(deliveryPin)) {
+                              setAddrErr(
+                                "Select a valid Philippine delivery location before confirming."
+                              );
+                              setShowDeliveryPin(true);
+                              return;
+                            }
 
                             setAddrBusy(true);
                             setAddrErr(null);

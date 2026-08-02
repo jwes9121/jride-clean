@@ -23,10 +23,20 @@ function finiteCoordinate(
   if (value === null || value === undefined || value === "") return null;
 
   const parsed = Number(value);
+
   if (!Number.isFinite(parsed)) return null;
   if (parsed < minimum || parsed > maximum) return null;
 
   return parsed;
+}
+
+function isValidPhilippineDeliveryCoordinate(
+  lat: number | null,
+  lng: number | null
+): boolean {
+  if (lat === null || lng === null) return false;
+
+  return lat >= 4 && lat <= 22 && lng >= 116 && lng <= 127;
 }
 
 async function getPassengerUser(
@@ -250,13 +260,17 @@ export async function POST(req: Request) {
       );
     }
 
-    if (lat === null || lng === null) {
+    if (!isValidPhilippineDeliveryCoordinate(lat, lng)) {
       return NextResponse.json(
         {
           ok: false,
-          error: "ADDRESS_COORDINATES_REQUIRED",
+          error: "INVALID_DELIVERY_COORDINATES",
           message:
-            "A valid exact delivery latitude and longitude are required.",
+            "The exact delivery location must contain valid Philippine coordinates.",
+          details: {
+            lat,
+            lng,
+          },
         },
         { status: 400 }
       );
