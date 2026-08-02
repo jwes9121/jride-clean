@@ -5,18 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
-const passengerToken =
-  typeof window !== "undefined"
-    ? localStorage.getItem("jride_passenger_token") || localStorage.getItem("jride_access_token")
-    : null;
 
-const authHeaders: HeadersInit = {
-  "Content-Type": "application/json",
-};
-
-if (passengerToken) {
-  authHeaders.Authorization = `Bearer ${passengerToken}`;
-}
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -257,29 +246,41 @@ async function getJson(url: string) {
 }
 
 async function postJson(url: string, body: any) {
+  const requestHeaders: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    ...(currentPassengerAuthHeaders() as Record<string, string>),
+  };
+
   const res = await fetch(url, {
     method: "POST",
-    headers: authHeaders,
+    headers: requestHeaders,
     body: JSON.stringify(body),
   });
+
   const j = await res.json().catch(() => ({}));
+
   if (res.status === 401) {
-  if (typeof window !== "undefined") {
-    window.location.href = "/passenger-login?callbackUrl=/takeout";
-  }
-  throw new Error("Passenger session expired.");
-}
+    console.error("TAKEOUT_AUTH_401", {
+      url,
+      error: j?.error || null,
+      message: j?.message || null,
+      authorizationHeaderPresent:
+        typeof requestHeaders.Authorization === "string" &&
+        requestHeaders.Authorization.trim().length > 0,
+    });
 
-if (res.status === 401) {
-  if (typeof window !== "undefined") {
-    window.location.href = "/passenger-login?callbackUrl=/takeout";
+    throw new Error(
+      j?.message ||
+        j?.error ||
+        "Passenger session could not be verified for this request."
+    );
   }
-  throw new Error("Passenger session expired.");
-}
 
-if (!res.ok || (j && j.ok === false)) {
-  throw new Error(j?.message || j?.error || ("HTTP " + res.status));
-}
+  if (!res.ok || (j && j.ok === false)) {
+    throw new Error(j?.message || j?.error || ("HTTP " + res.status));
+  }
+
   return j;
 }
 
