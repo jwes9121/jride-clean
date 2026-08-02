@@ -2598,7 +2598,16 @@ const contact = await fetchOptionalJson(
                   type="radio"
                   name="addrMode"
                   checked={addrMode === "saved"}
-                  onChange={() => setAddrMode("saved")}
+                  onChange={() => {
+                    setAddrMode("saved");
+
+                    const savedPin = addressToDeliveryPin(primary);
+                    setDeliveryPin(savedPin);
+                    setDeliveryPinNeedsConfirmation(false);
+                    setShowDeliveryPin(!savedPin);
+                    setAddrErr(null);
+                    setSubmitted(false);
+                  }}
                   disabled={saved.length === 0}
                 />
                 <span>Use saved address</span>
@@ -2609,7 +2618,15 @@ const contact = await fetchOptionalJson(
                   type="radio"
                   name="addrMode"
                   checked={addrMode === "new"}
-                  onChange={() => setAddrMode("new")}
+                  onChange={() => {
+                    setAddrMode("new");
+                    setSelectedAddressId("");
+                    setDeliveryPin(null);
+                    setDeliveryPinNeedsConfirmation(false);
+                    setShowDeliveryPin(true);
+                    setAddrErr(null);
+                    setSubmitted(false);
+                  }}
                 />
                 <span>Enter a new address</span>
               </label>
