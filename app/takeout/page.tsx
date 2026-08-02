@@ -1406,6 +1406,48 @@ const contact = await fetchOptionalJson(
     }
   }
 
+  async function resetAddressForFreshTakeoutOrder() {
+    setAddrMode("saved");
+    setSelectedAddressId("");
+    setDeliveryPin(null);
+    setDeliveryPinNeedsConfirmation(false);
+    setShowDeliveryPin(false);
+    setNewAddr("");
+    setSaveAddr(true);
+    setSetPrimary(true);
+    setAddrErr(null);
+    setLocalLandmarkOpen(false);
+    setCheckoutStage("browse");
+
+    if (deviceKey) {
+      await refreshAddresses(deviceKey);
+    }
+  }
+
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+
+      resetAddressForFreshTakeoutOrder().catch((error: any) => {
+        setAddrErr(
+          String(
+            error?.message ||
+              error ||
+              "Failed to reload the saved delivery address."
+          )
+        );
+      });
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+    // This listener intentionally handles Firefox and browser bfcache restores.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceKey]);
+
   async function refreshMenu(vId?: string, silent = false) {
     const vid = String(vId || vendorId || "").trim();
     if (!vid) {
@@ -3164,6 +3206,20 @@ const contact = await fetchOptionalJson(
                           setPricingErr(null);
                           setResult("");
                           setLastJson(null);
+                          setQty({});
+                          setNote("");
+                          setPremiumPackagingSelections({});
+                          setReceiptRequested(false);
+
+                          resetAddressForFreshTakeoutOrder().catch((error: any) => {
+                            setAddrErr(
+                              String(
+                                error?.message ||
+                                  error ||
+                                  "Failed to reset the delivery address."
+                              )
+                            );
+                          });
                         }}
                         className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                       >
@@ -3287,6 +3343,20 @@ const contact = await fetchOptionalJson(
                           setPricingErr(null);
                           setResult("");
                           setLastJson(null);
+                          setQty({});
+                          setNote("");
+                          setPremiumPackagingSelections({});
+                          setReceiptRequested(false);
+
+                          resetAddressForFreshTakeoutOrder().catch((error: any) => {
+                            setAddrErr(
+                              String(
+                                error?.message ||
+                                  error ||
+                                  "Failed to reset the delivery address."
+                              )
+                            );
+                          });
                         }}
                         className="mt-3 rounded bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800"
                       >
