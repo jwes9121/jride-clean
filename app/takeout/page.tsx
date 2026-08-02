@@ -1489,28 +1489,46 @@ const contact = await fetchOptionalJson(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted, deviceKey, pricingOrder?.id, pricingOrder?.booking_code, pricingOrder?.takeout_pricing_status, pricingOrder?.vendor_status, pricingOrder?.customer_status, lastJson?.order_id, lastJson?.booking_code]);
 
-  async function saveAddressToDb(addressText: string, makePrimary: boolean, pinOverride?: DeliveryPin | null) {
+  async function saveAddressToDb(
+    addressText: string,
+    makePrimary: boolean,
+    pinOverride?: DeliveryPin | null,
+    addressId?: string | null
+  ): Promise<AddressRow> {
     const addr = cleanDeliveryAddressLabel(addressText);
     if (!addr) throw new Error("Address required");
 
     const pin = pinOverride ?? deliveryPin;
     if (!pin) throw new Error("Exact delivery pin required before saving address");
 
-    await postJson("/api/passenger-addresses", {
+    const result = await postJson("/api/passenger-addresses", {
+      address_id: String(addressId || "").trim() || null,
+      addressId: String(addressId || "").trim() || null,
       device_key: deviceKey,
+      deviceKey: deviceKey,
       address_text: addr,
+      addressText: addr,
       is_primary: makePrimary,
+      isPrimary: makePrimary,
       lat: pin.lat,
       lng: pin.lng,
-      dropoff_lat: pin.lat,
-      dropoff_lng: pin.lng,
-      delivery_pin_lat: pin.lat,
-      delivery_pin_lng: pin.lng,
-      delivery_pin_label: deliveryPinLabel(pin),
-      delivery_pin_coordinates: deliveryPinCoordinateText(pin),
     });
 
+    const persisted = result?.address as AddressRow | undefined;
+
+    if (
+      !persisted ||
+      !persisted.id ||
+      !addressHasDeliveryPin(persisted)
+    ) {
+      throw new Error(
+        "The exact delivery pin was not confirmed in the saved address."
+      );
+    }
+
     await refreshAddresses(deviceKey);
+
+    return persisted;
   }
 
   async function makePrimaryExisting(id: string) {
@@ -1527,7 +1545,14 @@ const contact = await fetchOptionalJson(
       return;
     }
 
-    await saveAddressToDb(row.address_text, true, savedPin);
+    const persisted = await saveAddressToDb(
+      row.address_text,
+      true,
+      savedPin,
+      String(row.id || "")
+    );
+
+    setSelectedAddressId(String(persisted.id || row.id || ""));
   }
 
   function normalizeTakeoutOrders(j: any): TakeoutPricingOrder[] {
@@ -2603,7 +2628,13 @@ const contact = await fetchOptionalJson(
               </div>
               {deliveryPin ? (
                 <div className="mt-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
-                  Exact delivery location saved. Add a landmark in the address box if needed.
+                  {deliveryPinNeedsConfirmation
+                    ? "Exact delivery location selected. Confirm the location below before continuing."
+                    : addrMode === "saved" &&
+                        primary &&
+                        addressHasDeliveryPin(primary)
+                      ? "Exact delivery location saved. Add a landmark in the address box if needed."
+                      : "Exact delivery location confirmed for this order. Add a landmark if needed."}
                 </div>
               ) : (
                 <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-300 bg-white px-3 py-3">
@@ -2646,9 +2677,75 @@ const contact = await fetchOptionalJson(
                         <button
                           type="button"
                           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
-                          onClick={() => {
-                            setDeliveryPinNeedsConfirmation(false);
-                            setShowDeliveryPin(false);
+                          onClick={async () => {
+                            if (!deliveryPin || addrBusy) return;
+
+                            setAddrBusy(true);
+                            setAddrErr(null);
+
+                            try {
+                              if (addrMode === "saved") {
+                                if (!primary?.id) {
+                                  throw new Error(
+                                    "The selected saved address could not be identified."
+                                  );
+                                }
+
+                                const selectedAddressText =
+                                  cleanDeliveryAddressLabel(
+                                    String(
+                                      primary.address_text ||
+                                        primary.label ||
+                                        resolvedDeliveryAddress ||
+                                        ""
+                                    )
+                                  );
+
+                                const persisted = await saveAddressToDb(
+                                  selectedAddressText,
+                                  primary.is_primary === true,
+                                  deliveryPin,
+                                  String(primary.id)
+                                );
+
+                                setSelectedAddressId(
+                                  String(persisted.id || primary.id)
+                                );
+                              } else if (saveAddr) {
+                                const newAddressText =
+                                  cleanDeliveryAddressLabel(
+                                    resolvedDeliveryAddress ||
+                                      newAddr ||
+                                      deliveryPinLabel(deliveryPin)
+                                  );
+
+                                const persisted = await saveAddressToDb(
+                                  newAddressText,
+                                  setPrimary,
+                                  deliveryPin,
+                                  null
+                                );
+
+                                setSelectedAddressId(
+                                  String(persisted.id || "")
+                                );
+                                setAddrMode("saved");
+                              }
+
+                              setDeliveryPinNeedsConfirmation(false);
+                              setShowDeliveryPin(false);
+                            } catch (error: any) {
+                              setAddrErr(
+                                String(
+                                  error?.message ||
+                                    error ||
+                                    "Failed to save the exact delivery location."
+                                )
+                              );
+                              setShowDeliveryPin(true);
+                            } finally {
+                              setAddrBusy(false);
+                            }
                           }}
                         >
                           Confirm location
