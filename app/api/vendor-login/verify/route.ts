@@ -8,7 +8,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const LOGIN_ALLOWED_STATUSES = ["pilot_lagawe", "active"];
+const LOGIN_ALLOWED_STATUSES = ["pilot", "pilot_lagawe", "active"];
 
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
