@@ -2663,6 +2663,7 @@ const contact = await fetchOptionalJson(
                   onChange={() => {
                     setAddrMode("new");
                     setSelectedAddressId("");
+                    setNewAddr("");
                     setDeliveryPin(null);
                     setDeliveryPinNeedsConfirmation(false);
                     setShowDeliveryPin(true);
