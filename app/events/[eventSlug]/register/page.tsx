@@ -256,6 +256,42 @@ export default function EventRegistrationPage() {
             </a>
           </div>
 
+          <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              Special Registration Groups
+            </p>
+
+            <div className="mt-3 space-y-2">
+              <a
+                href={`/events/${eventSlug}/register/batch-2001`}
+                className="block rounded-xl border border-amber-300/40 bg-slate-900 px-4 py-3"
+              >
+                <p className="font-bold text-white">
+                  Register as Batch 2001 Member
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  For official Batch 2001 attendees and their companions.
+                </p>
+              </a>
+
+              <a
+                href={`/events/${eventSlug}/register/golden-jubilarian`}
+                className="block rounded-xl border border-amber-300/40 bg-slate-900 px-4 py-3"
+              >
+                <p className="font-bold text-white">
+                  Register as Golden Jubilarian
+                </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  For Golden Jubilarians and their companions.
+                </p>
+              </a>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              All other participants may use the registration form below.
+            </p>
+          </div>
+
           <form
             className="mt-6 space-y-4"
             onSubmit={(event) => {
