@@ -1,27 +1,28 @@
 "use client";
 
 import * as React from "react";
-import { useParams, useRouter } from "next/navigation";
-
-type GroupValue = {
-  value: string;
-  label: string;
-  sort_order: number;
-};
+import { useParams } from "next/navigation";
 
 type GroupValuesResponse = {
   success: boolean;
-  eventSlug?: string;
   eventName?: string;
   eventShortName?: string;
-  groupLabel?: string;
-  values?: GroupValue[];
-  error?: string;
 };
 
 type GuestForm = {
   fullName: string;
   relationship: string;
+  mobileNumber: string;
+  ticketNumber: string;
+  claimCode: string;
+};
+
+type PersonResult = {
+  attendeeId: string;
+  registrationNumber: string;
+  qrToken: string;
+  relationship?: string;
+  eventPassUrl?: string;
 };
 
 type RegistrationResponse = {
@@ -30,24 +31,20 @@ type RegistrationResponse = {
   registrationNumber?: string;
   qrToken?: string;
   eventPassUrl?: string;
-  existingRegistration?: boolean;
-  existingName?: string;
   message?: string;
-  error?: {
-    code: string;
-    message: string;
-  };
-  identityResolution?: {
-    isDuplicate: boolean;
-    confidence: "high" | "medium" | "low";
-    matchedAttendeeId?: string;
-    registrationNumber?: string | null;
-    matchReasons: string[];
-    requiresReview: boolean;
-  };
+  participationRecorded?: boolean;
+  specialRegistrationNotApplied?: boolean;
+  ticket?: {
+    ticketNumber: string | null;
+    packageName: string | null;
+    price: number | string | null;
+  } | null;
+  guests?: PersonResult[];
+  resultCode?: string;
 };
 
 const relationships = ["Spouse", "Partner", "Child", "Relative", "Friend", "Other"];
+const MAX_GUESTS = 3;
 
 function cleanPhone(value: string) {
   return value.replace(/[^0-9]/g, "");
@@ -55,7 +52,6 @@ function cleanPhone(value: string) {
 
 export default function EventRegistrationPage() {
   const params = useParams<{ eventSlug: string }>();
-  const router = useRouter();
   const eventSlug = String(params?.eventSlug || "");
 
   const [eventName, setEventName] = React.useState("");
@@ -63,12 +59,14 @@ export default function EventRegistrationPage() {
   const [fullName, setFullName] = React.useState("");
   const [mobileNumber, setMobileNumber] = React.useState("");
   const [nickname, setNickname] = React.useState("");
+  const [ticketNumber, setTicketNumber] = React.useState("");
+  const [claimCode, setClaimCode] = React.useState("");
   const [guests, setGuests] = React.useState<GuestForm[]>([]);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState("");
-  const [existingNotice, setExistingNotice] = React.useState("");
-  const [duplicatePrompt, setDuplicatePrompt] = React.useState<RegistrationResponse | null>(null);
+  const [specialNotice, setSpecialNotice] = React.useState<RegistrationResponse | null>(null);
+  const [registrationResult, setRegistrationResult] = React.useState<RegistrationResponse | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -100,8 +98,17 @@ export default function EventRegistrationPage() {
   }, [eventSlug]);
 
   function addGuest() {
-    if (guests.length >= 3) return;
-    setGuests((prev) => [...prev, { fullName: "", relationship: "Spouse" }]);
+    if (guests.length >= MAX_GUESTS) return;
+    setGuests((prev) => [
+      ...prev,
+      {
+        fullName: "",
+        relationship: "Spouse",
+        mobileNumber: "",
+        ticketNumber: "",
+        claimCode: "",
+      },
+    ]);
   }
 
   function updateGuest(index: number, patch: Partial<GuestForm>) {
@@ -118,20 +125,34 @@ export default function EventRegistrationPage() {
     if (fullName.trim().length < 2) return "Full name is required.";
     if (cleanPhone(mobileNumber).length < 10) return "Valid mobile number is required.";
 
+    if (ticketNumber.trim().length < 3 || claimCode.trim().length < 8) {
+      return "Ticket Number and Private Claim Code are required.";
+    }
+
     for (let i = 0; i < guests.length; i++) {
-      if (guests[i].fullName.trim().length < 2) {
+      const guest = guests[i];
+
+      if (guest.fullName.trim().length < 2) {
         return `Guest ${i + 1} name is required.`;
       }
 
-      if (!guests[i].relationship.trim()) {
+      if (!guest.relationship.trim()) {
         return `Guest ${i + 1} relationship is required.`;
+      }
+
+      if (guest.mobileNumber.trim().length > 0 && cleanPhone(guest.mobileNumber).length < 10) {
+        return `Guest ${i + 1}: mobile number must be 10 digits, or left blank.`;
+      }
+
+      if (guest.ticketNumber.trim().length < 3 || guest.claimCode.trim().length < 8) {
+        return `Guest ${i + 1}: Ticket Number and Private Claim Code are required.`;
       }
     }
 
     return "";
   }
 
-  async function submitRegistration(force = false) {
+  async function submitRegistration() {
     const localError = validateLocal();
 
     if (localError) {
@@ -141,7 +162,6 @@ export default function EventRegistrationPage() {
 
     setSubmitting(true);
     setFormError("");
-    setExistingNotice("");
 
     try {
       const res = await fetch(`/api/events/${eventSlug}/register`, {
@@ -151,27 +171,26 @@ export default function EventRegistrationPage() {
           fullName: fullName.trim(),
           mobileNumber: cleanPhone(mobileNumber),
           nickname: nickname.trim() || undefined,
+          ticketNumber: ticketNumber.trim().toUpperCase(),
+          claimCode: claimCode.trim().toUpperCase(),
           guests: guests.map((guest) => ({
             fullName: guest.fullName.trim(),
             relationship: guest.relationship,
-            hasOwnQr: true,
+            mobileNumber: cleanPhone(guest.mobileNumber) || undefined,
+            ticketNumber: guest.ticketNumber.trim().toUpperCase(),
+            claimCode: guest.claimCode.trim().toUpperCase(),
           })),
-          forceDuplicate: force,
         }),
       });
 
       const data = (await res.json()) as RegistrationResponse;
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error?.message || "Registration failed.");
+        throw new Error(data.message || "Registration failed.");
       }
 
-      if (
-        data.identityResolution?.requiresReview &&
-        !force &&
-        data.identityResolution.matchReasons.includes("name_match")
-      ) {
-        setDuplicatePrompt(data);
+      if (data.specialRegistrationNotApplied) {
+        setSpecialNotice(data);
         return;
       }
 
@@ -179,20 +198,11 @@ export default function EventRegistrationPage() {
         throw new Error("Registration succeeded but Event Pass details are missing.");
       }
 
-      const destination = `/events/${eventSlug}/pass/${encodeURIComponent(data.registrationNumber)}?token=${encodeURIComponent(
-        data.qrToken
-      )}`;
-
-      if (data.existingRegistration) {
-        setExistingNotice(
-          data.message ||
-            `This mobile number is already registered. Opening existing Event Pass for ${data.existingName || "the existing registrant"}.`
-        );
-        window.setTimeout(() => router.push(destination), 2000);
-        return;
-      }
-
-      router.push(destination);
+      // No auto-redirect: guests now each have their own independent
+      // Event Pass (their own QR), not a shared one with the primary -
+      // jumping straight to the primary's pass would leave the person to
+      // backtrack for their guests' passes.
+      setRegistrationResult(data);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Registration failed.");
     } finally {
@@ -200,35 +210,88 @@ export default function EventRegistrationPage() {
     }
   }
 
-  if (duplicatePrompt) {
+  if (specialNotice) {
     return (
       <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
         <section className="mx-auto max-w-md rounded-3xl border border-amber-300/40 bg-slate-900 p-6 shadow-2xl">
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
-            Possible Duplicate
+            Already Registered
           </p>
-          <h1 className="mt-4 text-3xl font-black">This registration may already exist.</h1>
+          <h1 className="mt-4 text-3xl font-black">
+            Your registration details were not saved.
+          </h1>
           <p className="mt-4 text-slate-300">
-            If this is you, use Find My Event Pass. If this is another person with the same
-            name, continue registration.
+            {specialNotice.message ||
+              "This mobile number already has an Event Pass. Please visit Event Registration and Assistance so your registration details can be updated."}
           </p>
 
-          <div className="mt-6 grid gap-3">
+          {specialNotice.eventPassUrl ? (
             <a
-              href="/events"
-              className="rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
+              href={specialNotice.eventPassUrl}
+              className="mt-6 block rounded-2xl bg-amber-400 px-5 py-4 text-center font-bold text-slate-950"
             >
-              Find My Event Pass
+              View Your Event Pass
             </a>
-            <button
-              type="button"
-              onClick={() => submitRegistration(true)}
-              disabled={submitting}
-              className="rounded-2xl bg-amber-400 px-5 py-4 font-bold text-slate-950 disabled:opacity-60"
-            >
-              Continue Anyway
-            </button>
+          ) : null}
+
+          <a
+            href={`/events/${eventSlug}/register`}
+            className="mt-3 block rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
+          >
+            Back to Registration
+          </a>
+        </section>
+      </main>
+    );
+  }
+
+  if (registrationResult) {
+    const guestResults = registrationResult.guests || [];
+
+    return (
+      <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+        <section className="mx-auto max-w-md rounded-3xl border border-amber-300/40 bg-slate-900 p-6 shadow-2xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+            Registration Complete
+          </p>
+          <h1 className="mt-4 text-3xl font-black">
+            {guestResults.length > 0
+              ? "Your Event Passes are ready."
+              : "Your Event Pass is ready."}
+          </h1>
+          <p className="mt-4 text-slate-300">
+            {guestResults.length > 0
+              ? "Each person has their own independent QR - view or save each pass below."
+              : "View or save your Event Pass below."}
+          </p>
+
+          <div className="mt-6 space-y-3">
+            {registrationResult.eventPassUrl ? (
+              <a
+                href={registrationResult.eventPassUrl}
+                className="block rounded-2xl bg-amber-400 px-5 py-4 text-center font-bold text-slate-950"
+              >
+                {fullName.trim() || "Your"} Event Pass
+              </a>
+            ) : null}
+
+            {guestResults.map((guest, index) => (
+              <a
+                key={guest.attendeeId}
+                href={guest.eventPassUrl}
+                className="block rounded-2xl border border-amber-300/60 px-5 py-4 text-center font-bold text-white"
+              >
+                {guests[index]?.fullName.trim() || guest.relationship || `Guest ${index + 1}`} Event Pass
+              </a>
+            ))}
           </div>
+
+          <a
+            href={`/events/${eventSlug}/register`}
+            className="mt-6 block rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
+          >
+            Register Another Group
+          </a>
         </section>
       </main>
     );
@@ -245,8 +308,9 @@ export default function EventRegistrationPage() {
             {eventName || "Event Registration"}
           </h1>
           <p className="mt-3 text-slate-300">
-            Register now and receive your Event Pass QR. Present your QR during participant
-            registration and at the designated event checkpoint.
+            Register now and receive your Event Pass QR. A valid ticket
+            number and private claim code are required for every person
+            joining the Fun Walk &amp; Taebo.
           </p>
 
           <div className="mt-6 rounded-2xl bg-slate-950 p-4 text-sm text-slate-300">
@@ -334,18 +398,49 @@ export default function EventRegistrationPage() {
               />
             </label>
 
+            <div className="rounded-2xl border border-amber-300/40 bg-slate-950 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">
+                Ticket Details
+              </p>
+
+              <label className="mt-3 block">
+                <span className="text-sm font-bold text-slate-200">Ticket Number *</span>
+                <input
+                  value={ticketNumber}
+                  onChange={(event) => setTicketNumber(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                  placeholder="e.g. FR-001"
+                  autoCapitalize="characters"
+                />
+              </label>
+
+              <label className="mt-3 block">
+                <span className="text-sm font-bold text-slate-200">
+                  Private Claim Code *
+                </span>
+                <input
+                  value={claimCode}
+                  onChange={(event) => setClaimCode(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                  placeholder="Found on your ticket"
+                  autoCapitalize="characters"
+                />
+              </label>
+            </div>
+
             <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="font-bold">Guests (optional)</p>
                   <p className="mt-1 text-sm text-slate-400">
-                    Add up to 3 guests online. Extra guests can be added at the Help Desk.
+                    Add up to {MAX_GUESTS} guests online, each with their own
+                    ticket. Extra guests can be added at the Help Desk.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={addGuest}
-                  disabled={guests.length >= 3}
+                  disabled={guests.length >= MAX_GUESTS}
                   className="shrink-0 rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
                 >
                   Add
@@ -389,17 +484,59 @@ export default function EventRegistrationPage() {
                           </option>
                         ))}
                       </select>
+
+                      <label className="mt-3 block">
+                        <span className="text-sm font-bold text-slate-200">
+                          Guest Mobile Number (optional)
+                        </span>
+                        <input
+                          value={guest.mobileNumber}
+                          onChange={(event) =>
+                            updateGuest(index, { mobileNumber: event.target.value })
+                          }
+                          className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
+                          placeholder="Optional"
+                          type="tel"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="tel"
+                        />
+                      </label>
+
+                      <label className="mt-3 block">
+                        <span className="text-sm font-bold text-slate-200">
+                          Guest Ticket Number *
+                        </span>
+                        <input
+                          value={guest.ticketNumber}
+                          onChange={(event) =>
+                            updateGuest(index, { ticketNumber: event.target.value })
+                          }
+                          className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                          placeholder="e.g. FR-002"
+                          autoCapitalize="characters"
+                        />
+                      </label>
+
+                      <label className="mt-3 block">
+                        <span className="text-sm font-bold text-slate-200">
+                          Guest Private Claim Code *
+                        </span>
+                        <input
+                          value={guest.claimCode}
+                          onChange={(event) =>
+                            updateGuest(index, { claimCode: event.target.value })
+                          }
+                          className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                          placeholder="Found on their ticket"
+                          autoCapitalize="characters"
+                        />
+                      </label>
                     </div>
                   ))}
                 </div>
               ) : null}
             </div>
-
-            {existingNotice ? (
-              <p className="rounded-2xl bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900">
-                {existingNotice}
-              </p>
-            ) : null}
 
             {formError ? (
               <p className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
