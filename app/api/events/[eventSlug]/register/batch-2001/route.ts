@@ -27,26 +27,7 @@ export async function POST(
   { params }: { params: { eventSlug: string } }
 ) {
   try {
-    console.log("========== BATCH 2001 REGISTER ==========");
-    console.log("req.url =", req.url);
-    console.log("params =", JSON.stringify(params));
-    console.log("params.eventSlug =", JSON.stringify(params?.eventSlug));
-
-    const supabaseUrl =
-      process.env.SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      "";
-
-    console.log(
-      "supabase project ref =",
-      supabaseUrl
-        .replace(/^https:\/\//, "")
-        .split(".")[0]
-    );
-
     const body = await req.json().catch(() => ({}));
-
-    console.log("body =", JSON.stringify(body));
 
     const morningRole = body.morningRole;
 
@@ -126,17 +107,6 @@ export async function POST(
     }
 
     const supabase = supabaseAdmin();
-
-    console.log(
-      "registerAttendee request =",
-      JSON.stringify({
-        eventSlug: params?.eventSlug,
-        groupValue: "batch_2001_member",
-        fullName: body.fullName,
-        mobileNumber: body.mobileNumber,
-        guests: companionsInput.length,
-      })
-    );
 
     const result = await registerAttendee(
       supabase,
