@@ -96,6 +96,7 @@ export default function BatchTwoThousandOneRegistrationPage() {
   const [mobileNumber, setMobileNumber] = React.useState("");
   const [nickname, setNickname] = React.useState("");
   const [companions, setCompanions] = React.useState<CompanionForm[]>([]);
+  const [bringCompanions, setBringCompanions] = React.useState<boolean | null>(null);
   const [morningRole, setMorningRole] = React.useState<"fun_walk" | "assist" | null>(null);
   const [attendLunch, setAttendLunch] = React.useState<boolean | null>(null);
 
@@ -132,6 +133,15 @@ export default function BatchTwoThousandOneRegistrationPage() {
     };
   }, [eventSlug]);
 
+  function handleBringCompanions(next: boolean) {
+    setBringCompanions(next);
+    if (!next) {
+      setCompanions([]);
+    } else if (companions.length === 0) {
+      addCompanion();
+    }
+  }
+
   function addCompanion() {
     if (companions.length >= MAX_COMPANIONS) return;
     setCompanions((prev) => [
@@ -153,6 +163,10 @@ export default function BatchTwoThousandOneRegistrationPage() {
   function validateLocal() {
     if (fullName.trim().length < 2) return "Full name is required.";
     if (cleanPhone(mobileNumber).length < 10) return "Valid mobile number is required.";
+    if (bringCompanions === null) return "Please answer whether you will bring companions.";
+    if (bringCompanions && companions.length === 0) {
+      return "Please add at least one companion or select No.";
+    }
     if (!morningRole) return "Please choose how you will participate.";
     if (attendLunch === null) {
       return "Please answer whether you will attend the Lunch Meet & Greet.";
@@ -378,75 +392,81 @@ export default function BatchTwoThousandOneRegistrationPage() {
                 Add up to {MAX_COMPANIONS} companions. Each receives their own Event Pass QR.
               </p>
 
-              <button
-                type="button"
-                onClick={addCompanion}
-                disabled={companions.length >= MAX_COMPANIONS}
-                className="mt-3 rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
-              >
-                Add Companion
-              </button>
+              <YesNo value={bringCompanions} onChange={handleBringCompanions} />
 
-              {companions.length > 0 ? (
-                <div className="mt-4 space-y-4">
-                  {companions.map((companion, index) => (
-                    <div key={index} className="rounded-2xl border border-slate-700 p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="font-bold">Companion {index + 1}</p>
-                        <button
-                          type="button"
-                          onClick={() => removeCompanion(index)}
-                          className="text-sm font-bold text-red-300"
-                        >
-                          Remove
-                        </button>
-                      </div>
+              {bringCompanions ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={addCompanion}
+                    disabled={companions.length >= MAX_COMPANIONS}
+                    className="mt-4 rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-slate-950 disabled:opacity-50"
+                  >
+                    Add Another Companion
+                  </button>
 
-                      <input
-                        value={companion.fullName}
-                        onChange={(event) =>
-                          updateCompanion(index, { fullName: event.target.value })
-                        }
-                        className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
-                        placeholder="Companion full name"
-                      />
+                  {companions.length > 0 ? (
+                    <div className="mt-4 space-y-4">
+                      {companions.map((companion, index) => (
+                        <div key={index} className="rounded-2xl border border-slate-700 p-4">
+                          <div className="flex items-center justify-between">
+                            <p className="font-bold">Companion #{index + 1}</p>
+                            <button
+                              type="button"
+                              onClick={() => removeCompanion(index)}
+                              className="text-sm font-bold text-red-300"
+                            >
+                              Remove
+                            </button>
+                          </div>
 
-                      <select
-                        value={companion.relationship}
-                        onChange={(event) =>
-                          updateCompanion(index, { relationship: event.target.value })
-                        }
-                        className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
-                      >
-                        {relationships.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
+                          <input
+                            value={companion.fullName}
+                            onChange={(event) =>
+                              updateCompanion(index, { fullName: event.target.value })
+                            }
+                            className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
+                            placeholder="Companion full name"
+                          />
 
-                      <div className="mt-3">
-                        <span className="text-sm font-bold text-slate-200">
-                          Will this companion join the Fun Walk? *
-                        </span>
-                        <YesNo
-                          value={companion.joinFunWalk}
-                          onChange={(next) => updateCompanion(index, { joinFunWalk: next })}
-                        />
-                      </div>
+                          <select
+                            value={companion.relationship}
+                            onChange={(event) =>
+                              updateCompanion(index, { relationship: event.target.value })
+                            }
+                            className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
+                          >
+                            {relationships.map((item) => (
+                              <option key={item} value={item}>
+                                {item}
+                              </option>
+                            ))}
+                          </select>
 
-                      <div className="mt-3">
-                        <span className="text-sm font-bold text-slate-200">
-                          Will this companion attend the Lunch Meet &amp; Greet? *
-                        </span>
-                        <YesNo
-                          value={companion.attendLunch}
-                          onChange={(next) => updateCompanion(index, { attendLunch: next })}
-                        />
-                      </div>
+                          <div className="mt-3">
+                            <span className="text-sm font-bold text-slate-200">
+                              Will this companion join the Fun Walk? *
+                            </span>
+                            <YesNo
+                              value={companion.joinFunWalk}
+                              onChange={(next) => updateCompanion(index, { joinFunWalk: next })}
+                            />
+                          </div>
+
+                          <div className="mt-3">
+                            <span className="text-sm font-bold text-slate-200">
+                              Will this companion attend the Lunch Meet &amp; Greet? *
+                            </span>
+                            <YesNo
+                              value={companion.attendLunch}
+                              onChange={(next) => updateCompanion(index, { attendLunch: next })}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
 
