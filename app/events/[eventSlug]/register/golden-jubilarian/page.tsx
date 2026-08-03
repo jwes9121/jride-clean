@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 
 const MAX_COMPANIONS = 3;
 const relationships = ["Spouse", "Partner", "Child", "Relative", "Friend", "Other"];
@@ -9,7 +9,10 @@ const relationships = ["Spouse", "Partner", "Child", "Relative", "Friend", "Othe
 type CompanionForm = {
   fullName: string;
   relationship: string;
+  mobileNumber: string;
   joinFunWalk: boolean | null;
+  ticketNumber: string;
+  claimCode: string;
   attendLunch: boolean | null;
 };
 
@@ -19,28 +22,34 @@ type GroupValuesResponse = {
   eventShortName?: string;
 };
 
+type CompanionResult = {
+  attendeeId: string;
+  registrationNumber: string;
+  qrToken: string;
+  relationship?: string;
+  eventPassUrl?: string;
+  ticketNumber?: string | null;
+};
+
 type RegistrationResponse = {
   success: boolean;
+  resultCode?: string;
   attendeeId?: string;
   registrationNumber?: string;
   qrToken?: string;
   eventPassUrl?: string;
-  existingRegistration?: boolean;
-  existingName?: string;
   message?: string;
   participationRecorded?: boolean;
   specialRegistrationNotApplied?: boolean;
+  ticket?: {
+    ticketNumber: string | null;
+    packageName: string | null;
+    price: number | string | null;
+  } | null;
+  companions?: CompanionResult[];
   error?: {
     code: string;
     message: string;
-  };
-  identityResolution?: {
-    isDuplicate: boolean;
-    confidence: "high" | "medium" | "low";
-    matchedAttendeeId?: string;
-    registrationNumber?: string | null;
-    matchReasons: string[];
-    requiresReview: boolean;
   };
 };
 
@@ -87,7 +96,6 @@ function YesNo({
 
 export default function GoldenJubilarianRegistrationPage() {
   const params = useParams<{ eventSlug: string }>();
-  const router = useRouter();
   const eventSlug = String(params?.eventSlug || "");
 
   const [eventName, setEventName] = React.useState("");
@@ -98,12 +106,14 @@ export default function GoldenJubilarianRegistrationPage() {
   const [companions, setCompanions] = React.useState<CompanionForm[]>([]);
   const [bringCompanions, setBringCompanions] = React.useState<boolean | null>(null);
   const [joinFunWalk, setJoinFunWalk] = React.useState<boolean | null>(null);
+  const [ticketNumber, setTicketNumber] = React.useState("");
+  const [claimCode, setClaimCode] = React.useState("");
   const [attendLunch, setAttendLunch] = React.useState<boolean | null>(null);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState("");
-  const [duplicatePrompt, setDuplicatePrompt] = React.useState<RegistrationResponse | null>(null);
   const [specialNotice, setSpecialNotice] = React.useState<RegistrationResponse | null>(null);
+  const [registrationResult, setRegistrationResult] = React.useState<RegistrationResponse | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -146,7 +156,15 @@ export default function GoldenJubilarianRegistrationPage() {
     if (companions.length >= MAX_COMPANIONS) return;
     setCompanions((prev) => [
       ...prev,
-      { fullName: "", relationship: "Spouse", joinFunWalk: null, attendLunch: null },
+      {
+        fullName: "",
+        relationship: "Spouse",
+        mobileNumber: "",
+        joinFunWalk: null,
+        ticketNumber: "",
+        claimCode: "",
+        attendLunch: null,
+      },
     ]);
   }
 
@@ -168,6 +186,11 @@ export default function GoldenJubilarianRegistrationPage() {
       return "Please add at least one companion or select No.";
     }
     if (joinFunWalk === null) return "Please answer whether you will join the Fun Walk.";
+    if (joinFunWalk === true) {
+      if (ticketNumber.trim().length < 3 || claimCode.trim().length < 8) {
+        return "Ticket Number and Private Claim Code are required to join the Fun Walk.";
+      }
+    }
     if (attendLunch === null) {
       return "Please answer whether you will attend the Lunch Meet & Greet.";
     }
@@ -187,6 +210,15 @@ export default function GoldenJubilarianRegistrationPage() {
         return `Companion ${i + 1}: please answer whether they will join the Fun Walk.`;
       }
 
+      if (companion.joinFunWalk === true) {
+        if (
+          companion.ticketNumber.trim().length < 3 ||
+          companion.claimCode.trim().length < 8
+        ) {
+          return `Companion ${i + 1}: Ticket Number and Private Claim Code are required to join the Fun Walk.`;
+        }
+      }
+
       if (companion.attendLunch === null) {
         return `Companion ${i + 1}: please answer whether they will attend the Lunch Meet & Greet.`;
       }
@@ -195,7 +227,7 @@ export default function GoldenJubilarianRegistrationPage() {
     return "";
   }
 
-  async function submitRegistration(force = false) {
+  async function submitRegistration() {
     const localError = validateLocal();
 
     if (localError) {
@@ -215,21 +247,29 @@ export default function GoldenJubilarianRegistrationPage() {
           mobileNumber: cleanPhone(mobileNumber),
           nickname: nickname.trim() || undefined,
           joinFunWalk,
+          ticketNumber: joinFunWalk ? ticketNumber.trim().toUpperCase() : undefined,
+          claimCode: joinFunWalk ? claimCode.trim().toUpperCase() : undefined,
           attendLunch,
           companions: companions.map((companion) => ({
             fullName: companion.fullName.trim(),
             relationship: companion.relationship,
+            mobileNumber: cleanPhone(companion.mobileNumber) || undefined,
             joinFunWalk: companion.joinFunWalk,
+            ticketNumber: companion.joinFunWalk
+              ? companion.ticketNumber.trim().toUpperCase()
+              : undefined,
+            claimCode: companion.joinFunWalk
+              ? companion.claimCode.trim().toUpperCase()
+              : undefined,
             attendLunch: companion.attendLunch,
           })),
-          forceDuplicate: force,
         }),
       });
 
       const data = (await res.json()) as RegistrationResponse;
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error?.message || "Registration failed.");
+        throw new Error(data.message || data.error?.message || "Registration failed.");
       }
 
       // Must be checked before the requiresReview branch - a matched
@@ -243,24 +283,16 @@ export default function GoldenJubilarianRegistrationPage() {
         return;
       }
 
-      if (
-        data.identityResolution?.requiresReview &&
-        !force &&
-        data.identityResolution.matchReasons.includes("name_match")
-      ) {
-        setDuplicatePrompt(data);
-        return;
-      }
-
       if (!data.registrationNumber || !data.qrToken) {
         throw new Error("Registration succeeded but Event Pass details are missing.");
       }
 
-      const destination = `/events/${eventSlug}/pass/${encodeURIComponent(data.registrationNumber)}?token=${encodeURIComponent(
-        data.qrToken
-      )}`;
-
-      router.push(destination);
+      // No auto-redirect: companions now each have their own independent
+      // Event Pass (their own QR), not a shared one with the primary.
+      // Jumping straight to the primary's pass would leave the person to
+      // backtrack for their companions' passes, so this shows a link per
+      // person instead.
+      setRegistrationResult(data);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Registration failed.");
     } finally {
@@ -283,6 +315,67 @@ export default function GoldenJubilarianRegistrationPage() {
               "This mobile number already has an Event Pass. Please visit Event Registration and Assistance so your Golden Jubilarian participation details can be updated."}
           </p>
 
+          {specialNotice.eventPassUrl ? (
+            <a
+              href={specialNotice.eventPassUrl}
+              className="mt-6 block rounded-2xl bg-amber-400 px-5 py-4 text-center font-bold text-slate-950"
+            >
+              View Your Event Pass
+            </a>
+          ) : null}
+
+          <a
+            href={`/events/${eventSlug}/register`}
+            className="mt-3 block rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
+          >
+            Back to Registration
+          </a>
+        </section>
+      </main>
+    );
+  }
+
+  if (registrationResult) {
+    const companionResults = registrationResult.companions || [];
+
+    return (
+      <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+        <section className="mx-auto max-w-md rounded-3xl border border-amber-300/40 bg-slate-900 p-6 shadow-2xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+            Registration Complete
+          </p>
+          <h1 className="mt-4 text-3xl font-black">
+            {companionResults.length > 0
+              ? "Your Event Passes are ready."
+              : "Your Event Pass is ready."}
+          </h1>
+          <p className="mt-4 text-slate-300">
+            {companionResults.length > 0
+              ? "Each person has their own independent QR - view or save each pass below."
+              : "View or save your Event Pass below."}
+          </p>
+
+          <div className="mt-6 space-y-3">
+            {registrationResult.eventPassUrl ? (
+              <a
+                href={registrationResult.eventPassUrl}
+                className="block rounded-2xl bg-amber-400 px-5 py-4 text-center font-bold text-slate-950"
+              >
+                {fullName.trim() || "Your"} Event Pass
+              </a>
+            ) : null}
+
+            {companionResults.map((companion, index) => (
+              <a
+                key={companion.attendeeId}
+                href={companion.eventPassUrl}
+                className="block rounded-2xl border border-amber-300/60 px-5 py-4 text-center font-bold text-white"
+              >
+                {companions[index]?.fullName.trim() || companion.relationship || `Companion ${index + 1}`} Event Pass
+              </a>
+            ))}
+          </div>
+
           <a
             href={`/events/${eventSlug}/register`}
             className="mt-6 block rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
@@ -294,39 +387,6 @@ export default function GoldenJubilarianRegistrationPage() {
     );
   }
 
-  if (duplicatePrompt) {
-    return (
-      <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
-        <section className="mx-auto max-w-md rounded-3xl border border-amber-300/40 bg-slate-900 p-6 shadow-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
-            Possible Duplicate
-          </p>
-          <h1 className="mt-4 text-3xl font-black">This registration may already exist.</h1>
-          <p className="mt-4 text-slate-300">
-            If this is you, use Find My Event Pass. If this is another Golden Jubilarian with
-            the same name, continue registration.
-          </p>
-
-          <div className="mt-6 grid gap-3">
-            <a
-              href="/events"
-              className="rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
-            >
-              Find My Event Pass
-            </a>
-            <button
-              type="button"
-              onClick={() => submitRegistration(true)}
-              disabled={submitting}
-              className="rounded-2xl bg-amber-400 px-5 py-4 font-bold text-slate-950 disabled:opacity-60"
-            >
-              Continue Anyway
-            </button>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
@@ -443,14 +503,71 @@ export default function GoldenJubilarianRegistrationPage() {
                             ))}
                           </select>
 
+                          <label className="mt-3 block">
+                            <span className="text-sm font-bold text-slate-200">
+                              Companion Mobile Number (optional)
+                            </span>
+                            <input
+                              value={companion.mobileNumber}
+                              onChange={(event) =>
+                                updateCompanion(index, { mobileNumber: event.target.value })
+                              }
+                              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
+                              placeholder="Optional"
+                              type="tel"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              autoComplete="tel"
+                            />
+                          </label>
+
                           <div className="mt-3">
                             <span className="text-sm font-bold text-slate-200">
                               Will this companion join the Fun Walk? *
                             </span>
+                            <p className="mt-1 text-sm text-slate-400">
+                              Joining the Fun Walk requires a valid ticket and matching private claim code.
+                            </p>
                             <YesNo
                               value={companion.joinFunWalk}
                               onChange={(next) => updateCompanion(index, { joinFunWalk: next })}
                             />
+
+                            {companion.joinFunWalk === true ? (
+                              <div className="mt-3 space-y-3">
+                                <label className="block">
+                                  <span className="text-sm font-bold text-slate-200">
+                                    Companion Ticket Number *
+                                  </span>
+                                  <input
+                                    value={companion.ticketNumber}
+                                    onChange={(event) =>
+                                      updateCompanion(index, {
+                                        ticketNumber: event.target.value,
+                                      })
+                                    }
+                                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                                    placeholder="e.g. FR-002"
+                                    autoCapitalize="characters"
+                                  />
+                                </label>
+
+                                <label className="block">
+                                  <span className="text-sm font-bold text-slate-200">
+                                    Companion Private Claim Code *
+                                  </span>
+                                  <input
+                                    value={companion.claimCode}
+                                    onChange={(event) =>
+                                      updateCompanion(index, { claimCode: event.target.value })
+                                    }
+                                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                                    placeholder="Found on their ticket"
+                                    autoCapitalize="characters"
+                                  />
+                                </label>
+                              </div>
+                            ) : null}
                           </div>
 
                           <div className="mt-3">
@@ -474,7 +591,40 @@ export default function GoldenJubilarianRegistrationPage() {
               <span className="text-sm font-bold text-slate-200">
                 Will you join the Fun Walk? *
               </span>
+              <p className="mt-1 text-sm text-slate-400">
+                Joining the Fun Walk requires a valid ticket and matching private claim code.
+              </p>
               <YesNo value={joinFunWalk} onChange={setJoinFunWalk} />
+
+              {joinFunWalk === true ? (
+                <div className="mt-4 space-y-3">
+                  <label className="block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Ticket Number *
+                    </span>
+                    <input
+                      value={ticketNumber}
+                      onChange={(event) => setTicketNumber(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                      placeholder="e.g. FR-001"
+                      autoCapitalize="characters"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-bold text-slate-200">
+                      Private Claim Code *
+                    </span>
+                    <input
+                      value={claimCode}
+                      onChange={(event) => setClaimCode(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
+                      placeholder="Found on your ticket"
+                      autoCapitalize="characters"
+                    />
+                  </label>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
