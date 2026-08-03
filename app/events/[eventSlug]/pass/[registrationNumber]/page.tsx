@@ -27,17 +27,25 @@ type EventRow = {
   group_label: string | null;
 };
 
+type ParticipationInfo = {
+  funWalk: boolean;
+  assist: boolean;
+  lunchMeetGreet: boolean;
+};
+
 type AttendeeRow = {
   id: string;
   full_name: string;
   nickname: string | null;
   group_value: string;
+  group_value_label: string;
   registration_number: string;
   qr_token: string;
   attendance_status: string;
   checked_in_at: string | null;
   is_disqualified: boolean;
   disqualification_reason: string | null;
+  participation: ParticipationInfo | null;
 };
 
 type GuestLinkRow = {
@@ -85,6 +93,7 @@ type EventPassApiResponse = {
   event?: EventRow;
   attendee?: AttendeeRow;
   guests?: GuestLinkRow[];
+  guestParticipation?: Record<string, ParticipationInfo | null>;
   runnerProgress?: RunnerProgress;
   error?: string;
 };
@@ -191,7 +200,10 @@ function statusView(attendee: AttendeeRow) {
   };
 }
 
-function normalizeGuests(rows: GuestLinkRow[]) {
+function normalizeGuests(
+  rows: GuestLinkRow[],
+  guestParticipation: Record<string, ParticipationInfo | null>
+) {
   return rows
     .map((row) => {
       const guest = Array.isArray(row.guest)
@@ -208,6 +220,8 @@ function normalizeGuests(rows: GuestLinkRow[]) {
         attendanceStatus:
           guest.attendance_status,
         relationship: row.relationship,
+        participation:
+          guestParticipation[guest.id] || null,
       };
     })
     .filter(Boolean) as {
@@ -216,6 +230,7 @@ function normalizeGuests(rows: GuestLinkRow[]) {
     registrationNumber: string;
     attendanceStatus: string;
     relationship: string;
+    participation: ParticipationInfo | null;
   }[];
 }
 
@@ -320,7 +335,8 @@ export default async function EventPassPage({
 
   const status = statusView(attendee);
   const guestList = normalizeGuests(
-    response?.guests || []
+    response?.guests || [],
+    response?.guestParticipation || {}
   );
 
   const groupLabel =
@@ -343,9 +359,28 @@ export default async function EventPassPage({
 
   const qrDataUrl = await renderQrDataUrl(passUrl);
 
-  const showRunnerProgress =
-    runnerProgress &&
+  const hasCheckpoints =
+    runnerProgress !== null &&
     runnerProgress.totalCheckpoints > 0;
+
+  // Ticket-holder-safe default: claim_event_ticket_and_register (the
+  // regular Fun Run ticket path) never writes an event_attendee_participation
+  // row at all, so attendee.participation is null for every regular
+  // ticket-holder - the majority of this event's actual runners. Treating a
+  // missing row the same as fun_walk = false would silently hide Runner
+  // Progress for all of them. Only actively gate on fun_walk when a
+  // participation row genuinely exists (Batch 2001 and Golden Jubilarian
+  // always write one); otherwise preserve the original "does this event
+  // have checkpoints" behavior unchanged.
+  const showRunnerProgress =
+    hasCheckpoints &&
+    (attendee.participation === null ||
+      attendee.participation.funWalk === true);
+
+  const showNotJoiningNotice =
+    hasCheckpoints &&
+    attendee.participation !== null &&
+    attendee.participation.funWalk === false;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white print:bg-white print:p-0">
@@ -437,8 +472,50 @@ export default async function EventPassPage({
               ) : null}
 
               <p className="mt-3 text-lg font-bold text-slate-700">
-                {groupLabel} {attendee.group_value}
+                {groupLabel} {attendee.group_value_label}
               </p>
+
+              {attendee.participation ? (
+                <div className="mt-5 w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                    Participation
+                  </p>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-700">
+                      Fun Walk &amp; Taebo
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${
+                        attendee.participation.funWalk
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {attendee.participation.funWalk
+                        ? "Joining"
+                        : "Not Joining"}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-700">
+                      Lunch Meet &amp; Greet
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${
+                        attendee.participation.lunchMeetGreet
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {attendee.participation.lunchMeetGreet
+                        ? "Attending"
+                        : "Not Attending"}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-5 rounded-2xl bg-slate-100 px-5 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">
@@ -459,7 +536,22 @@ export default async function EventPassPage({
               />
             </div>
 
-            {showRunnerProgress ? (
+            {showNotJoiningNotice ? (
+              <div className="pass-capture-exclude no-print mt-7 rounded-3xl border border-slate-300 bg-slate-100 p-5 text-center">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                  Fun Walk Status
+                </p>
+                <p className="mt-2 text-lg font-black text-slate-800">
+                  Not joining the Fun Walk &amp; Taebo
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-500">
+                  This Event Pass remains valid for event entry and
+                  selected activities.
+                </p>
+              </div>
+            ) : null}
+
+            {showRunnerProgress && runnerProgress ? (
               <div className="pass-capture-exclude no-print mt-7 rounded-3xl border border-cyan-200 bg-cyan-50 p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -639,7 +731,7 @@ export default async function EventPassPage({
                         OK
                       </span>
 
-                      <div>
+                      <div className="flex-1">
                         <p className="font-bold">
                           {guest.name}
                         </p>
@@ -648,6 +740,37 @@ export default async function EventPassPage({
                           {guest.relationship} -{" "}
                           {guest.registrationNumber}
                         </p>
+
+                        {guest.participation ? (
+                          <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold">
+                            <span
+                              className={
+                                guest.participation.funWalk
+                                  ? "text-emerald-700"
+                                  : "text-slate-500"
+                              }
+                            >
+                              Fun Walk:{" "}
+                              {guest.participation.funWalk
+                                ? "Joining"
+                                : "Not Joining"}
+                            </span>
+                            <span
+                              className={
+                                guest.participation
+                                  .lunchMeetGreet
+                                  ? "text-emerald-700"
+                                  : "text-slate-500"
+                              }
+                            >
+                              Lunch:{" "}
+                              {guest.participation
+                                .lunchMeetGreet
+                                ? "Attending"
+                                : "Not Attending"}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))}
