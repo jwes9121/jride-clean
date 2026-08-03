@@ -359,6 +359,8 @@ export default function GoldenJubilarianRegistrationPage() {
             {registrationResult.eventPassUrl ? (
               <a
                 href={registrationResult.eventPassUrl}
+                target="_blank"
+                rel="noopener"
                 className="block rounded-2xl bg-amber-400 px-5 py-4 text-center font-bold text-slate-950"
               >
                 {fullName.trim() || "Your"} Event Pass
@@ -369,6 +371,8 @@ export default function GoldenJubilarianRegistrationPage() {
               <a
                 key={companion.attendeeId}
                 href={companion.eventPassUrl}
+                target="_blank"
+                rel="noopener"
                 className="block rounded-2xl border border-amber-300/60 px-5 py-4 text-center font-bold text-white"
               >
                 {companions[index]?.fullName.trim() || companion.relationship || `Companion ${index + 1}`} Event Pass
@@ -380,7 +384,7 @@ export default function GoldenJubilarianRegistrationPage() {
             href={`/events/${eventSlug}/register`}
             className="mt-6 block rounded-2xl border border-slate-600 px-5 py-4 text-center font-bold text-white"
           >
-            Back to Registration
+            Register Another Group
           </a>
         </section>
       </main>
