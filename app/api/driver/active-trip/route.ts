@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import {
+  logTakeoutFeeProposalExpired,
+  recordTakeoutExpiryLifecycleEvent,
+  resetExpiredTakeoutFeeProposal,
+  triggerTakeoutFeeProposalReassign,
+} from "@/lib/takeout-expiry-recovery";
 
 
 // JRIDE_ACTIVE_TRIP_TAKEOUT_STATUS_SHAPE_V1
@@ -153,33 +159,21 @@ function jrideIsExpiredTakeoutDriverAssignment(row: any, nowMs: number): boolean
 
 function jrideIsExpiredTakeoutFeeProposal(row: any, nowMs: number): boolean {
   if (!jrideIsTakeoutActiveTrip(row)) return false;
-
-  const vendorStatus = jrideActiveTripLower(row.vendor_status ?? row.vendorStatus);
-  const customerStatus = jrideActiveTripLower(row.customer_status ?? row.customerStatus);
-  const driverStatus = jrideActiveTripLower(row.driver_status ?? row.driverStatus);
-  const pricingStatus = jrideActiveTripLower(row.takeout_pricing_status ?? row.pricing_status);
-
-  const waitingForFee =
-    vendorStatus === "driver_accepted" ||
-    customerStatus === "driver_accepted" ||
-    driverStatus === "driver_accepted" ||
-    pricingStatus === "pricing_pending";
-
-  if (!waitingForFee) return false;
+  if (statusOf(row?.status) !== "accepted") return false;
+  if (row?.takeout_customer_confirmed_at) return false;
 
   const expiryRaw = jrideActiveTripText(
-    row.takeout_fee_proposal_expires_at ??
-      row.driver_fee_proposal_expires_at ??
-      row.takeout_fee_expires_at
+    row?.driver_fee_proposal_expires_at
   );
-
   if (!expiryRaw) return false;
 
   const expiryMs = new Date(expiryRaw).getTime();
   if (!Number.isFinite(expiryMs)) return false;
 
   return expiryMs <= nowMs;
-}function jrideIsRideBooking(row: any): boolean {
+}
+
+function jrideIsRideBooking(row: any): boolean {
   return !jrideIsTakeoutActiveTrip(row);
 }
 
@@ -201,7 +195,7 @@ function jrideIsExpiredRideFareProposalWindow(row: any, nowMs: number): boolean 
   if (!jrideIsRideBooking(row)) return false;
   const status = statusOf(row?.status);
   // The fare-proposal window is the time the booking sits at "accepted"
-  // waiting for the driver to submit a proposal — not "fare_proposed",
+  // waiting for the driver to submit a proposal - not "fare_proposed",
   // which is the state AFTER a proposal has already been submitted, by
   // which point there is nothing left to time out.
   if (status !== "accepted") return false;
@@ -403,6 +397,88 @@ async function jrideTriggerTakeoutAutoReassign(req: NextRequest, row: any, drive
     }));
   } catch {}
 }
+async function triggerSharedTakeoutFeeProposalRecovery(
+  req: NextRequest,
+  row: any,
+  driverId: string,
+  reason: string
+) {
+  const bookingId = jrideActiveTripText(
+    row?.id ?? row?.booking_id ?? row?.bookingId
+  );
+  const bookingCode = jrideActiveTripText(
+    row?.booking_code ?? row?.bookingCode
+  );
+  if ((!bookingId && !bookingCode) || !driverId) return;
+
+  try {
+    const serviceSupabase = createServiceSupabase();
+    const resetResult = await resetExpiredTakeoutFeeProposal(serviceSupabase, {
+      bookingId,
+      bookingCode,
+      expiredDriverId: driverId,
+    });
+
+    if (resetResult.error || !resetResult.didReset || !resetResult.bookingId) {
+      if (resetResult.error) {
+        console.error(
+          "[JRIDE_TAKEOUT_FEE_PROPOSAL_RESET_FAILED]",
+          JSON.stringify({
+            bookingCode: bookingCode || null,
+            bookingId: bookingId || null,
+            driverId,
+            reason,
+            error: resetResult.error,
+          })
+        );
+      }
+      return;
+    }
+
+    const reassignResult = await triggerTakeoutFeeProposalReassign(
+      req,
+      resetResult.bookingId,
+      driverId,
+      reason
+    );
+    const reassignmentSuccess = !!reassignResult.payload?.assigned;
+
+    await recordTakeoutExpiryLifecycleEvent(serviceSupabase, {
+      bookingId: resetResult.bookingId,
+      bookingCode: resetResult.bookingCode,
+      expiredDriverId: driverId,
+      townRaw: jrideActiveTripText(row?.town) || null,
+      reason,
+      reassignmentAttempted: reassignResult.attempted,
+      reassignmentSuccess,
+      dispatchStatus: reassignResult.status,
+    });
+
+    logTakeoutFeeProposalExpired({
+      bookingCode: resetResult.bookingCode,
+      expiredDriverId: driverId,
+      expiredAt:
+        jrideActiveTripText(row?.driver_fee_proposal_expires_at) || null,
+      reset: true,
+      reassigned: reassignmentSuccess,
+      newDriverId: null,
+      dispatchPayload: reassignResult.payload,
+      reason,
+    });
+  } catch (err: any) {
+    console.error(
+      "[JRIDE_TAKEOUT_FEE_PROPOSAL_RECOVERY_FAILED]",
+      JSON.stringify({
+        bookingCode: bookingCode || null,
+        bookingId: bookingId || null,
+        driverId,
+        reason,
+        error: String(err?.message ?? err),
+      })
+    );
+  }
+}
+
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const x = Number(v);
@@ -777,7 +853,12 @@ export async function GET(req: NextRequest) {
         return false;
       }
       if (jrideIsExpiredTakeoutFeeProposal(row, nowMs)) {
-        void jrideTriggerTakeoutAutoReassign(req, row, driverId, "fee_proposal_expired");
+        void triggerSharedTakeoutFeeProposalRecovery(
+          req,
+          row,
+          driverId,
+          "fee_proposal_expired"
+        );
         return false;
       }
       if (jrideIsExpiredRideDriverAssignment(row, nowMs)) {

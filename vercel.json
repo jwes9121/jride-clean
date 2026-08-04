@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/advance-booking-lifecycle",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/takeout-expiry-recovery",
+      "schedule": "*/1 * * * *"
     }
   ]
 }
