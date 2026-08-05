@@ -56,6 +56,31 @@ function minutesSince(value: any) {
   return Math.max(0, Math.floor((Date.now() - t) / 60000));
 }
 
+function isExpiredProposalStuck(row: any): boolean {
+  const serviceType = String(row?.service_type || "").trim().toLowerCase();
+  if (serviceType !== "takeout") return false;
+
+  const canonicalStatus = normCanonicalStatus(row?.status);
+  if (canonicalStatus !== "assigned" && canonicalStatus !== "accepted") {
+    return false;
+  }
+
+  const assignedDriverId = String(row?.assigned_driver_id || "").trim();
+  if (!assignedDriverId) return false;
+
+  if (row?.takeout_customer_confirmed_at != null) return false;
+  if (row?.takeout_fee_proposed_at != null) return false;
+  if (row?.takeout_delivery_fee != null) return false;
+
+  const expiryRaw = String(row?.driver_fee_proposal_expires_at || "").trim();
+  if (!expiryRaw) return false;
+
+  const expiryMs = new Date(expiryRaw).getTime();
+  if (!Number.isFinite(expiryMs)) return false;
+
+  return expiryMs <= Date.now();
+}
+
 function pickVendorName(row: any) {
   return String(row?.display_name || row?.vendor_name || row?.name || row?.email || row?.id || "").trim();
 }
@@ -118,7 +143,7 @@ export async function GET(req: NextRequest) {
 
   const ordersRes = await admin
     .from("bookings")
-    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town")
+    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town,driver_fee_proposal_expires_at,takeout_fee_proposed_at,takeout_delivery_fee,takeout_customer_confirmed_at")
     .eq("service_type", "takeout")
     .order("created_at", { ascending: false })
     .limit(500);
@@ -244,6 +269,7 @@ export async function GET(req: NextRequest) {
     const ageMinutes = minutesSince(r.created_at);
     const updateAgeMinutes = minutesSince(r.updated_at || r.created_at);
     const op = orderPriority(workflowStatus, ageMinutes, updateAgeMinutes);
+    const proposalStuck = isExpiredProposalStuck(r);
     const subtotal = Number(r.takeout_items_subtotal || 0);
     const assignedDriverId = String(r.assigned_driver_id || "").trim() || null;
 
@@ -268,8 +294,9 @@ export async function GET(req: NextRequest) {
       town: r.town || null,
       age_minutes: ageMinutes,
       update_age_minutes: updateAgeMinutes,
-      is_stuck: op.stuck,
-      priority: op.priority,
+      is_stuck: op.stuck || proposalStuck,
+      proposal_expiry_stuck: proposalStuck,
+      priority: proposalStuck ? 1 : op.priority,
     };
   });
 
