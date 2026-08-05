@@ -28,6 +28,7 @@ function isAuthorizedCronRequest(req: NextRequest): boolean {
 type CandidateRow = {
   id: string;
   booking_code: string | null;
+  status: string | null;
   assigned_driver_id: string | null;
   driver_fee_proposal_expires_at: string | null;
   town: string | null;
@@ -61,14 +62,16 @@ export async function GET(req: NextRequest) {
   const { data: candidateRows, error: scanError } = await supabase
     .from("bookings")
     .select(
-      "id,booking_code,assigned_driver_id,driver_fee_proposal_expires_at,town"
+      "id,booking_code,status,assigned_driver_id,driver_fee_proposal_expires_at,town"
     )
     .eq("service_type", "takeout")
-    .eq("status", "accepted")
+    .in("status", ["assigned", "accepted"])
     .not("assigned_driver_id", "is", null)
     .not("driver_fee_proposal_expires_at", "is", null)
     .lte("driver_fee_proposal_expires_at", nowIso)
     .is("takeout_customer_confirmed_at", null)
+    .is("takeout_fee_proposed_at", null)
+    .is("takeout_delivery_fee", null)
     .limit(50);
 
   if (scanError) {
@@ -126,6 +129,7 @@ export async function GET(req: NextRequest) {
         reassignmentAttempted: reassignResult.attempted,
         reassignmentSuccess,
         dispatchStatus: reassignResult.status,
+        statusBefore: String(row.status || "unknown"),
       });
 
       logTakeoutFeeProposalExpired({

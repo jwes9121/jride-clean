@@ -159,8 +159,11 @@ function jrideIsExpiredTakeoutDriverAssignment(row: any, nowMs: number): boolean
 
 function jrideIsExpiredTakeoutFeeProposal(row: any, nowMs: number): boolean {
   if (!jrideIsTakeoutActiveTrip(row)) return false;
-  if (statusOf(row?.status) !== "accepted") return false;
+  const status = statusOf(row?.status);
+  if (status !== "assigned" && status !== "accepted") return false;
   if (row?.takeout_customer_confirmed_at) return false;
+  if (row?.takeout_fee_proposed_at) return false;
+  if (row?.takeout_delivery_fee != null) return false;
 
   const expiryRaw = jrideActiveTripText(
     row?.driver_fee_proposal_expires_at
@@ -452,6 +455,7 @@ async function triggerSharedTakeoutFeeProposalRecovery(
       reassignmentAttempted: reassignResult.attempted,
       reassignmentSuccess,
       dispatchStatus: reassignResult.status,
+      statusBefore: statusOf(row?.status) || "unknown",
     });
 
     logTakeoutFeeProposalExpired({

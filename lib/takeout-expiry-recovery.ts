@@ -62,9 +62,11 @@ export async function resetExpiredTakeoutFeeProposal(
       // takeout_route_plan intentionally preserved.
     })
     .eq("service_type", "takeout")
-    .eq("status", "accepted")
+    .in("status", ["assigned", "accepted"])
     .eq("assigned_driver_id", expiredDriverId)
     .is("takeout_customer_confirmed_at", null)
+    .is("takeout_fee_proposed_at", null)
+    .is("takeout_delivery_fee", null)
     .lte("driver_fee_proposal_expires_at", nowIso);
 
   resetQuery = bookingCode
@@ -150,6 +152,7 @@ export async function recordTakeoutExpiryLifecycleEvent(
     reassignmentAttempted: boolean;
     reassignmentSuccess: boolean;
     dispatchStatus: number | null;
+    statusBefore: string;
   }
 ) {
   const lifecycleRes = await serviceSupabase.rpc(
@@ -161,7 +164,7 @@ export async function recordTakeoutExpiryLifecycleEvent(
       p_driver_id: params.expiredDriverId,
       p_previous_driver_id: params.expiredDriverId,
       p_event_type: "assignment_expired",
-      p_status_before: "accepted",
+      p_status_before: params.statusBefore,
       p_status_after: "searching",
       p_town: params.townRaw,
       p_source: "system",
