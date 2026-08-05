@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
       .from("bookings")
       .select("*")
       .eq("created_by_user_id", user.id)
+      .or("service_type.is.null,service_type.neq.takeout")
       .in("status", ACTIVE_STATUSES)
       .order("created_at", { ascending: false })
       .limit(1)

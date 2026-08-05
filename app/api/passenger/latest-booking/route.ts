@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
       .from("bookings")
       .select("booking_code, status, created_at")
       .eq("created_by_user_id", user.id)
+      .or("service_type.is.null,service_type.neq.takeout")
       .in("status", ACTIVE_STATUSES)
       .order("created_at", { ascending: false })
       .limit(1)
