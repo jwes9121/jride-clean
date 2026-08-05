@@ -235,18 +235,16 @@ export default function TakeoutDispatchPage() {
 
   const visibleOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const hasSearch = q.length > 0;
 
-    const filtered = orders.filter((order) => {
-      const matchesSearch =
-        q === "" ||
-        (order.booking_code ?? "").toLowerCase().includes(q) ||
-        (order.customer_name ?? "").toLowerCase().includes(q) ||
-        (order.vendor_name ?? "").toLowerCase().includes(q) ||
-        (order.assigned_driver_name ?? "").toLowerCase().includes(q) ||
-        (order.assigned_driver_phone ?? "").toLowerCase().includes(q);
+    const matchesSearch = (order: TakeoutOrder) =>
+      (order.booking_code ?? "").toLowerCase().includes(q) ||
+      (order.customer_name ?? "").toLowerCase().includes(q) ||
+      (order.vendor_name ?? "").toLowerCase().includes(q) ||
+      (order.assigned_driver_name ?? "").toLowerCase().includes(q) ||
+      (order.assigned_driver_phone ?? "").toLowerCase().includes(q);
 
-      if (!matchesSearch) return false;
-
+    const matchesTab = (order: TakeoutOrder) => {
       const s = orderStatus(order);
       if (filter === "all") return true;
       if (filter === "active") return activeVisible(order);
@@ -257,7 +255,11 @@ export default function TakeoutDispatchPage() {
       if (filter === "picked_up") return s === "picked_up" || s === "delivering";
       if (filter === "cancelled") return s === "cancelled" || s === "canceled";
       return s === filter;
-    });
+    };
+
+    const filtered = orders.filter((order) =>
+      hasSearch ? matchesSearch(order) : matchesTab(order)
+    );
 
     filtered.sort((a, b) => {
       if ((a.priority || 0) !== (b.priority || 0)) return (a.priority || 0) - (b.priority || 0);
@@ -297,7 +299,11 @@ export default function TakeoutDispatchPage() {
                 id="takeout-dispatch-search"
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSearch(value);
+                  if (value.trim()) setFilter("all");
+                }}
                 placeholder="Search booking, customer, vendor, driver or phone..."
                 className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500"
               />
