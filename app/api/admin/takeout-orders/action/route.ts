@@ -1,10 +1,23 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { auth } from "../../../../../auth";
 
 export const dynamic = "force-dynamic";
 
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
+}
+
+function isStaffRole(role: unknown) {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" || r === "dispatcher";
+}
+
+async function requireStaff() {
+  const session = await auth();
+  const role = (session?.user as any)?.role ?? "user";
+  if (!isStaffRole(role)) return { ok: false as const };
+  return { ok: true as const };
 }
 
 function getAdmin() {
@@ -26,6 +39,16 @@ function normalizeAction(value: any) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireStaff();
+
+  if (!gate.ok) {
+    return json(403, {
+      ok: false,
+      error: "FORBIDDEN",
+      message: "Forbidden"
+    });
+  }
+
   const admin = getAdmin();
   if (!admin) {
     return json(500, {
