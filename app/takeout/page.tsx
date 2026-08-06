@@ -896,6 +896,9 @@ export default function TakeoutPage() {
   const [checkoutStage, setCheckoutStage] = useState<"browse" | "delivery">("browse");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [vendorTownFilter, setVendorTownFilter] = useState("");
+  // JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V1: once a town is chosen, collapse the town picker into a summary row.
+  const [townPickerOpen, setTownPickerOpen] = useState(false);
+  const [expandedPackagingIds, setExpandedPackagingIds] = useState<Record<string, boolean>>({});
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [autofillNote, setAutofillNote] = useState("");
@@ -2026,7 +2029,7 @@ const contact = await fetchOptionalJson(
   }
 
   return (
-    <div className="mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
+    <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
       <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
         <div>
           <div className="jride-premium-brand-row">
@@ -2082,72 +2085,103 @@ const contact = await fetchOptionalJson(
           <>
           <div className="jride-town-and-vendors space-y-2">
             <div>
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">{vendorTownFilter ? "Current town" : "Step 1"}</div>
-                  <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose your delivery town</label>
+              {vendorTownFilter && !townPickerOpen ? (
+                /* JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V1: collapsed summary once a town is chosen */
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-900/60 bg-slate-950/70 px-3 py-2">
+                  <div className="min-w-0 text-xs font-bold text-emerald-100">
+                    Town: <span className="text-emerald-300">{vendorTownFilter}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTownPickerOpen(true)}
+                    className="shrink-0 rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100 hover:border-emerald-400"
+                  >
+                    Change
+                  </button>
                 </div>
-                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100">
-                  {vendorTownFilter ? vendorTownFilter + " selected" : "Not selected"}
-                </span>
-              </div>
-              <div className="mt-2 grid grid-cols-5 gap-1.5">
-                {(["Lagawe", "Hingyon", "Banaue", "Lamut", "Kiangan"] as string[])
-  .filter((town) => vendorTowns.includes(town as any))
-  .map((town) => {
-                  const active = vendorTownFilter === town;
-                  return (
-                    <button
-                      key={town}
-                      type="button"
-                      onClick={() => {
-                        const nextTown = normalizeTakeoutTown(town);
-                        setVendorTownFilter(nextTown);
-                        setVendorId("");
-                        setQty({});
-                        setMenu([]);
-                        setVendorClosed(false);
-                        setMenuVendorProfile(null);
-                        setMenuErr(null);
-                        setPremiumPackagingSelections({});
-                        setReceiptRequested(false);
-                        setSubmitted(false);
-                        setResult("");
-                        setLastJson(null);
-                        setPricingOrder(null);
-                      }}
-                      className={cls(
-                        "rounded-2xl border px-2 py-2 text-center text-xs font-black shadow-sm transition",
-                        active
-                          ? "border-emerald-300 bg-emerald-600 text-white shadow-emerald-950/30"
-                          : "border-emerald-900/60 bg-slate-950/70 text-emerald-100 hover:border-emerald-400"
-                      )}
-                    >
-                      <span className="block leading-tight">{town}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-1 text-[11px] text-slate-500">
-                Pick the delivery town first so nearby stores load faster.
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">{vendorTownFilter ? "Current town" : "Step 1"}</div>
+                      <label className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Choose your delivery town</label>
+                    </div>
+                    <span className="rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100">
+                      {vendorTownFilter ? vendorTownFilter + " selected" : "Not selected"}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-5 gap-1.5">
+                    {(["Lagawe", "Hingyon", "Banaue", "Lamut", "Kiangan"] as string[])
+      .filter((town) => vendorTowns.includes(town as any))
+      .map((town) => {
+                      const active = vendorTownFilter === town;
+                      return (
+                        <button
+                          key={town}
+                          type="button"
+                          onClick={() => {
+                            const nextTown = normalizeTakeoutTown(town);
+                            setVendorTownFilter(nextTown);
+                            setVendorId("");
+                            setQty({});
+                            setMenu([]);
+                            setVendorClosed(false);
+                            setMenuVendorProfile(null);
+                            setMenuErr(null);
+                            setPremiumPackagingSelections({});
+                            setReceiptRequested(false);
+                            setSubmitted(false);
+                            setResult("");
+                            setLastJson(null);
+                            setPricingOrder(null);
+                            setTownPickerOpen(false);
+                          }}
+                          className={cls(
+                            "rounded-2xl border px-2 py-2 text-center text-xs font-black shadow-sm transition",
+                            active
+                              ? "border-emerald-300 bg-emerald-600 text-white shadow-emerald-950/30"
+                              : "border-emerald-900/60 bg-slate-950/70 text-emerald-100 hover:border-emerald-400"
+                          )}
+                        >
+                          <span className="block leading-tight">{town}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Pick the delivery town first so nearby stores load faster.
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="jride-vendor-menu-section space-y-2 md:col-span-2">
-              <div className="flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">{vendorId ? "Store selected" : "Step 2"}</div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Choose a store</div>
-                  <div className="mt-1 text-[11px] text-slate-500">
-                    {vendorTownFilter ? "Select a restaurant or store to load its menu." : "Complete Step 1 to show available stores."}
+              {vendorTownFilter && !vendorId ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-900/50 bg-slate-950/55 px-3 py-2">
+                  <div className="min-w-0 text-xs font-black text-emerald-100">
+                    Serving <span className="text-emerald-300">{vendorTownFilter}</span>
+                  </div>
+                  <div className="shrink-0 text-[10px] font-bold text-emerald-200">
+                    {visibleVendors.length} local {visibleVendors.length === 1 ? "store" : "stores"}
                   </div>
                 </div>
-                {vendorTownFilter ? (
-                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-800">
-                    {visibleVendors.length} {visibleVendors.length === 1 ? "store" : "stores"}
+              ) : null}
+
+              {vendorId ? (
+                /* JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V1: the compact store card below already names the store, so skip the step header entirely. */
+                null
+              ) : (
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Step 2</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Choose a store</div>
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      {vendorTownFilter ? "Select a restaurant or store to load its menu." : "Complete Step 1 to show available stores."}
+                    </div>
                   </div>
-                ) : null}
-              </div>
+
+                </div>
+              )}
 
               {!vendorTownFilter ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
@@ -2172,6 +2206,52 @@ const contact = await fetchOptionalJson(
                     const logoUrl = vendorUploadedLogoUrl(v);
                     const prep = prepMinutes((v as any).prep_time_minutes ?? (v as any).default_prep_time_minutes ?? 15);
                     const hasPremiumPackaging = v.premium_packaging_enabled === true;
+                    if (isSelected) {
+                      /* JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V1: compact single-row summary once a store is chosen,
+                         so the screen is dedicated to the menu below instead of the full browsing card. */
+                      return (
+                        <div
+                          key={id}
+                          className="flex w-full min-w-0 max-w-full items-center gap-2 rounded-xl border border-emerald-400 bg-emerald-950 p-2 text-white ring-2 ring-emerald-300/30 sm:gap-3 sm:rounded-2xl sm:p-3"
+                        >
+                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-emerald-500/40 bg-slate-950 sm:h-12 sm:w-12">
+                            {logoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-center text-[8px] font-extrabold uppercase tracking-[0.1em] text-emerald-200">
+                                No logo
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-black leading-tight text-white sm:text-base">{label}</div>
+                            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-200">
+                              <span className={isClosed ? "text-rose-200" : "text-emerald-300"}>{isClosed ? "Closed" : "Open"}</span>
+                              <span className="text-emerald-500">&middot;</span>
+                              <span>{prep} min</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVendorId("");
+                              setQty({});
+                              setMenu([]);
+                              setVendorClosed(false);
+                              setMenuVendorProfile(null);
+                              setMenuErr(null);
+                              setPremiumPackagingSelections({});
+                              setReceiptRequested(false);
+                              setSubmitted(false);
+                            }}
+                            className="shrink-0 rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100 hover:border-emerald-400"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      );
+                    }
                     return (
                       <button
                         key={id}
@@ -2193,9 +2273,7 @@ const contact = await fetchOptionalJson(
                           "group flex min-h-[92px] w-full min-w-0 max-w-full overflow-hidden items-start gap-2 rounded-xl border p-2 text-left shadow-[0_8px_20px_rgba(0,0,0,0.14)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:max-w-none",
                           isClosed
                             ? "border-slate-800 bg-slate-950/50 text-slate-400 grayscale"
-                            : isSelected
-                              ? "border-emerald-400 bg-emerald-950 text-white ring-2 ring-emerald-300/30"
-                              : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
+                            : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
                         )}
                       >
                         <div className="mt-0.5 h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-emerald-500/40 bg-slate-950 sm:mt-1 sm:h-20 sm:w-20 sm:rounded-3xl">
@@ -2246,7 +2324,7 @@ const contact = await fetchOptionalJson(
                               </span>
                             ) : null}
                             <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
-                              {isSelected ? "Viewing menu" : "Browse menu"}
+                              Browse menu
                             </span>
                           </div>
                         </div>
@@ -2348,8 +2426,8 @@ const contact = await fetchOptionalJson(
                     <input
                       value={menuSearchTerm}
                       onChange={(e) => setMenuSearchTerm(e.target.value)}
-                      placeholder="Search menu items"
-                      className="h-9 w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-3 text-xs font-semibold text-emerald-50 outline-none placeholder:text-slate-400 focus:border-emerald-400 sm:h-auto sm:px-4 sm:py-2 sm:text-sm"
+                      placeholder="Search food, dishes..."
+                      className="h-12 w-full rounded-full border border-emerald-900/50 bg-slate-950/70 px-4 text-sm font-semibold text-emerald-50 outline-none placeholder:text-slate-400 focus:border-emerald-400"
                     />
                   </label>
                   <label className="block min-w-0">
@@ -2357,7 +2435,7 @@ const contact = await fetchOptionalJson(
                     <select
                       value={menuSortMode}
                       onChange={(e) => setMenuSortMode(e.target.value as typeof menuSortMode)}
-                      className="h-9 w-full rounded-full border border-emerald-900/60 bg-slate-950/70 px-2 text-xs font-bold text-emerald-50 outline-none focus:border-emerald-400 sm:h-auto sm:px-4 sm:py-2 sm:text-sm"
+                      className="h-12 w-full rounded-full border border-emerald-900/50 bg-slate-950/70 px-3 text-xs font-bold text-emerald-50 outline-none focus:border-emerald-400 sm:px-4 sm:text-sm"
                     >
                       <option value="recommended">Recommended</option>
                       <option value="price_asc">Price low to high</option>
@@ -2412,7 +2490,7 @@ const contact = await fetchOptionalJson(
                     >
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-start gap-2 sm:gap-3">
-                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-10 w-10 shrink-0 rounded-lg border object-cover shadow-sm sm:h-[70px] sm:w-[70px] sm:rounded-xl" /> : null}
+                          {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-16 w-16 shrink-0 rounded-xl border object-cover shadow-sm sm:h-[72px] sm:w-[72px] sm:rounded-xl" /> : null}
                           <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-col items-start gap-1">
                           <div className="line-clamp-2 break-words text-sm font-extrabold leading-tight tracking-tight text-slate-900 sm:text-lg">{m.name}</div>
@@ -2426,14 +2504,33 @@ const contact = await fetchOptionalJson(
                         {m.description ? (
                           <div className="mt-0.5 min-w-0 break-words line-clamp-1 text-[11px] leading-snug text-slate-600 sm:mt-1 sm:line-clamp-2 sm:text-xs">{m.description}</div>
                         ) : null}
-                        <div className="mt-1 inline-flex max-w-full self-start break-words rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-semibold text-slate-700 sm:mt-2 sm:px-2.5 sm:text-[10px]">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
-                        {Number(m.remaining_quantity) > 0 ? (
-                          <div className="mt-0.5 text-[10px] font-semibold text-emerald-700 sm:mt-1 sm:text-[11px]">Remaining today: {Number(m.remaining_quantity)}</div>
-                        ) : null}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-slate-500 sm:mt-2 sm:text-[11px]">
+                          <span>{prepMinutes(m.prep_time_minutes)} min prep</span>
+                          {Number(m.remaining_quantity) > 0 ? (
+                            <>
+                              <span aria-hidden="true">&middot;</span>
+                              <span className="text-emerald-700">{Number(m.remaining_quantity)} left today</span>
+                            </>
+                          ) : null}
+                        </div>
                         {m.packaging_note ? (
-                          <div className="mt-0.5 line-clamp-1 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-1 text-[10px] font-medium leading-tight text-amber-800 sm:mt-2 sm:line-clamp-2 sm:rounded-xl sm:p-2 sm:text-[11px]">
-                            Packaging: {m.packaging_note}
-                          </div>
+                          expandedPackagingIds[m.id] ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPackagingIds((prev) => ({ ...prev, [m.id]: false }))}
+                              className="mt-0.5 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-1 text-left text-[10px] font-medium leading-tight text-amber-800 sm:mt-2 sm:rounded-xl sm:p-2 sm:text-[11px]"
+                            >
+                              Packaging: {m.packaging_note}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedPackagingIds((prev) => ({ ...prev, [m.id]: true }))}
+                              className="mt-0.5 self-start text-[9px] font-semibold text-amber-700 underline decoration-dotted underline-offset-2 sm:mt-1 sm:text-[10px]"
+                            >
+                              &#9432; Packaging
+                            </button>
+                          )
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
                           <label className="mt-0.5 flex min-w-0 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50 px-1.5 py-1 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
@@ -2460,32 +2557,42 @@ const contact = await fetchOptionalJson(
                         </div>
                       </div>
 
-                      <div className="mt-1 grid w-full grid-cols-[32px_minmax(64px,1fr)_32px] items-center gap-1 sm:mt-4 sm:grid-cols-[42px_minmax(80px,1fr)_42px] sm:gap-2">
+                      {q <= 0 ? (
                         <button
                           type="button"
-                          className="h-8 w-8 rounded-full border bg-white text-xs font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-10 sm:w-10 sm:text-sm"
-                          disabled={disabled || q <= 0}
-                          onClick={() => setItemQty(m.id, q - 1)}
-                        >
-                          -
-                        </button>
-                        <input
-                          className="h-8 w-full rounded-full border px-2 text-center text-xs font-black sm:h-10 sm:text-sm"
-                          value={String(q)}
-                          onChange={(e) => setItemQty(m.id, Number(e.target.value))}
-                          disabled={disabled}
-                          inputMode="numeric"
-                        />
-                        <button
-                          type="button"
-                          className="h-8 w-8 rounded-full border bg-white text-xs font-black shadow-sm hover:bg-black/5 disabled:opacity-50 sm:h-10 sm:w-10 sm:text-sm"
+                          className="mt-2 h-10 w-full rounded-full border border-emerald-500/50 bg-emerald-600 px-4 text-sm font-black text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:mt-4"
                           disabled={disabled || plusDisabled}
-                          title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
-                          onClick={() => setItemQty(m.id, q + 1)}
+                          title={plusDisabled ? "No stock remaining for this item today." : "Add item"}
+                          onClick={() => setItemQty(m.id, 1)}
                         >
-                          +
+                          Add
                         </button>
-                      </div>
+                      ) : (
+                        <div className="mt-2 grid w-full grid-cols-[40px_minmax(64px,1fr)_40px] items-center gap-2 sm:mt-4 sm:grid-cols-[42px_minmax(80px,1fr)_42px]">
+                          <button
+                            type="button"
+                            className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                            disabled={disabled}
+                            onClick={() => setItemQty(m.id, q - 1)}
+                            aria-label={`Remove one ${m.name}`}
+                          >
+                            -
+                          </button>
+                          <div className="flex h-10 items-center justify-center rounded-full border px-2 text-center text-sm font-black">
+                            {q}
+                          </div>
+                          <button
+                            type="button"
+                            className="h-10 w-10 rounded-full border bg-white text-sm font-black shadow-sm hover:bg-black/5 disabled:opacity-50"
+                            disabled={disabled || plusDisabled}
+                            title={plusDisabled ? "No more stock remaining for this item today." : "Add one"}
+                            onClick={() => setItemQty(m.id, q + 1)}
+                            aria-label={`Add one ${m.name}`}
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -3026,7 +3133,7 @@ const contact = await fetchOptionalJson(
         </div>
 
         {/* JRIDE_TAKEOUT_APP_LIKE_UI_V6 */}
-        <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:sticky sm:max-w-none sm:rounded-xl sm:border sm:p-3">
+        <div className="jride-takeout-cart fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:sticky sm:max-w-none sm:rounded-xl sm:border sm:p-3">
           {selectedLines.length > 0 ? (
             <div className="mb-2 flex items-center justify-between gap-3 text-xs">
               <div className="min-w-0">
@@ -3467,7 +3574,7 @@ const contact = await fetchOptionalJson(
             color: #bbf7d0 !important;
           }
 
-          body .mx-auto.w-full.max-w-5xl {
+          .jride-takeout-page {
             max-width: min(100%, 72rem) !important;
             min-height: 100vh;
             padding-top: 0.75rem !important;
@@ -3583,7 +3690,7 @@ const contact = await fetchOptionalJson(
           }
 
           body button.bg-slate-900,
-          body .sticky.bottom-0 button:not(:disabled) {
+          .jride-takeout-cart button:not(:disabled) {
             background: linear-gradient(135deg, #86efac 0%, #22c55e 48%, #14b8a6 100%) !important;
             color: #061014 !important;
             box-shadow: 0 14px 32px rgba(34, 197, 94, 0.24) !important;
@@ -3596,7 +3703,7 @@ const contact = await fetchOptionalJson(
             box-shadow: none !important;
           }
 
-          body .sticky.bottom-0 {
+          .jride-takeout-cart {
             left: 0;
             right: 0;
             margin-left: -0.75rem;
@@ -3607,7 +3714,7 @@ const contact = await fetchOptionalJson(
             backdrop-filter: blur(18px);
           }
 
-          body .sticky.bottom-0::before {
+          .jride-takeout-cart::before {
             content: "";
             position: absolute;
             inset: 0.55rem auto auto 1rem;
@@ -3619,7 +3726,7 @@ const contact = await fetchOptionalJson(
             pointer-events: none;
           }
 
-          body .sticky.bottom-0::after {
+          .jride-takeout-cart::after {
             content: "JR";
             position: absolute;
             left: 1.95rem;
@@ -3630,13 +3737,13 @@ const contact = await fetchOptionalJson(
             pointer-events: none;
           }
 
-          body .sticky.bottom-0 button {
+          .jride-takeout-cart button {
             border-radius: 1rem !important;
             min-height: 3.1rem;
             font-weight: 900 !important;
           }
 
-          body .sticky.bottom-0 a[href="/takeout/orders"] {
+          .jride-takeout-cart a[href="/takeout/orders"] {
             min-height: 3.1rem;
             display: flex;
             align-items: center;
@@ -3713,7 +3820,7 @@ const contact = await fetchOptionalJson(
           }
 
           @media (max-width: 640px) {
-            body .mx-auto.w-full.max-w-5xl {
+            .jride-takeout-page {
               max-width: 30rem !important;
               padding-left: 0.65rem !important;
               padding-right: 0.65rem !important;
