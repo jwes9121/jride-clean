@@ -2204,7 +2204,7 @@ const contact = await fetchOptionalJson(
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
-                <div className={cls("jride-vendor-grid grid w-full min-w-0 max-w-full gap-4 overflow-hidden", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4")}>
+                <div className={cls("jride-vendor-grid grid w-full min-w-0 max-w-full gap-4 overflow-hidden", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
                                     {(vendorId ? activeVendors.filter((v) => vendorKey(v) === vendorId) : activeVendors).map((v) => {
                     const id = vendorKey(v);
@@ -2257,7 +2257,7 @@ const contact = await fetchOptionalJson(
                             }}
                             className="shrink-0 rounded-full border border-emerald-700/40 bg-emerald-950/60 px-2.5 py-1 text-[10px] font-black text-emerald-100 hover:border-emerald-400"
                           >
-                            Change
+                            Browse stores
                           </button>
                         </div>
                       );
@@ -2280,63 +2280,52 @@ const contact = await fetchOptionalJson(
                           refreshMenu(nextVendorId);
                         }}
                         className={cls(
-                          "group flex min-h-[92px] w-full min-w-0 max-w-full overflow-hidden items-start gap-2 rounded-xl border p-2 text-left shadow-[0_8px_20px_rgba(0,0,0,0.14)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[170px] sm:gap-4 sm:rounded-3xl sm:p-5 sm:shadow-[0_18px_50px_rgba(0,0,0,0.22)] sm:max-w-none",
+                          "group flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl border p-2 text-left shadow-[0_8px_20px_rgba(0,0,0,0.14)] transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:gap-3 sm:rounded-2xl sm:p-2.5 sm:shadow-[0_12px_32px_rgba(0,0,0,0.18)] sm:max-w-none",
                           isClosed
                             ? "border-slate-800 bg-slate-950/50 text-slate-400 grayscale"
                             : "border-emerald-900/70 bg-slate-950/80 text-white hover:border-emerald-400"
                         )}
                       >
-                        <div className="mt-0.5 h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-emerald-500/40 bg-slate-950 sm:mt-1 sm:h-20 sm:w-20 sm:rounded-3xl">
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-emerald-500/40 bg-slate-950 sm:h-14 sm:w-14">
                           {logoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={logoUrl} alt={`${label} logo`} className="h-full w-full object-cover" />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-200">
-                              No logo uploaded
+                            <div className="flex h-full w-full items-center justify-center px-1 text-center text-[8px] font-extrabold uppercase tracking-[0.1em] text-emerald-200">
+                              No logo
                             </div>
                           )}
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
-                            <div className="min-w-0">
-                              <div className="line-clamp-2 break-words text-base font-black leading-tight text-white sm:text-xl">
-                                {label}
-                              </div>
-                              <div className="mt-0.5 text-xs font-semibold text-emerald-100 sm:mt-1 sm:text-sm">
-                                {town}
-                              </div>
-                            </div>
-
-                            <span
-                              className={cls(
-                                "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black",
-                                isClosed
-                                  ? "border-rose-300/70 bg-rose-500/10 text-rose-100"
-                                  : "border-emerald-400/60 bg-emerald-500/15 text-emerald-100"
-                              )}
-                            >
+                          <div className="line-clamp-1 break-words text-sm font-black leading-tight text-white sm:text-base">
+                            {label}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs font-semibold text-emerald-100">
+                            {town}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold sm:text-xs">
+                            <span className={cls("flex items-center gap-1", isClosed ? "text-rose-300" : "text-emerald-300")}>
+                              <span className={cls("h-1.5 w-1.5 shrink-0 rounded-full", isClosed ? "bg-rose-400" : "bg-emerald-400")} aria-hidden="true" />
                               {isClosed ? "Closed" : "Open"}
                             </span>
-                          </div>
-
-                          <p className="mt-1 hidden line-clamp-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:mt-3 sm:block">
-                            {String((v as any).tagline || (v as any).description || "").trim() || "Fresh local meals and takeout favorites delivered to your location."}
-                          </p>
-
-                          <div className="mt-2 flex flex-row flex-wrap items-center gap-1.5 sm:mt-4 sm:gap-3">
-                            <span className="rounded-full border border-emerald-500/40 bg-slate-950/70 px-2 py-1 text-[10px] font-bold text-emerald-100 sm:px-3 sm:py-1.5 sm:text-xs">
-                              Prep time: {prep} min
-                            </span>
+                            <span className="text-emerald-700" aria-hidden="true">&middot;</span>
+                            <span className="text-emerald-200">Prep: {prep} min</span>
                             {hasPremiumPackaging ? (
-                              <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-2 py-1 text-[10px] font-bold text-amber-100 sm:px-3 sm:py-1.5 sm:text-xs">
-                                Premium packaging
-                              </span>
+                              <>
+                                <span className="text-emerald-700" aria-hidden="true">&middot;</span>
+                                <span className="text-amber-200">Premium packaging</span>
+                              </>
                             ) : null}
-                            <span className="rounded-full border border-emerald-500/40 px-3 py-1.5 text-xs font-black text-emerald-100 sm:ml-auto">
-                              Browse menu
-                            </span>
                           </div>
+                          {(() => {
+                            const realDescription = String((v as any).tagline || (v as any).description || "").trim();
+                            return realDescription ? (
+                              <p className="mt-1 hidden line-clamp-1 text-xs leading-snug text-slate-300 sm:block">
+                                {realDescription}
+                              </p>
+                            ) : null;
+                          })()}
                         </div>
                       </button>
                     );
@@ -2511,10 +2500,9 @@ const contact = await fetchOptionalJson(
                             <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">Unavailable</span>
                           ) : null}
                         </div>
-                        {m.description ? (
-                          <div className="mt-0.5 min-w-0 break-words line-clamp-1 text-[11px] leading-snug text-slate-600 sm:mt-1 sm:line-clamp-2 sm:text-xs">{m.description}</div>
-                        ) : null}
-                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-slate-500 sm:mt-2 sm:text-[11px]">
+                        {/* JRIDE_TAKEOUT_MENU_CARD_HIERARCHY_V1: price is the second thing users see, right after the name */}
+                        <div className="mt-0.5 text-base font-black tracking-tight text-slate-900 sm:mt-1 sm:text-lg">{money(toNum(m.price))}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-slate-500 sm:text-[11px]">
                           <span>{prepMinutes(m.prep_time_minutes)} min prep</span>
                           {Number(m.remaining_quantity) > 0 ? (
                             <>
@@ -2528,7 +2516,7 @@ const contact = await fetchOptionalJson(
                             <button
                               type="button"
                               onClick={() => setExpandedPackagingIds((prev) => ({ ...prev, [m.id]: false }))}
-                              className="mt-0.5 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-1 text-left text-[10px] font-medium leading-tight text-amber-800 sm:mt-2 sm:rounded-xl sm:p-2 sm:text-[11px]"
+                              className="mt-0.5 rounded-lg border border-amber-200 bg-amber-50 px-1.5 py-1 text-left text-[10px] font-medium leading-tight text-amber-800 sm:mt-1 sm:rounded-xl sm:p-2 sm:text-[11px]"
                             >
                               Packaging: {m.packaging_note}
                             </button>
@@ -2536,17 +2524,16 @@ const contact = await fetchOptionalJson(
                             <button
                               type="button"
                               onClick={() => setExpandedPackagingIds((prev) => ({ ...prev, [m.id]: true }))}
-                              className="mt-0.5 self-start text-[9px] font-semibold text-amber-700 underline decoration-dotted underline-offset-2 sm:mt-1 sm:text-[10px]"
+                              className="mt-0.5 self-start text-[9px] font-semibold text-amber-700 underline decoration-dotted underline-offset-2 sm:text-[10px]"
                             >
                               &#9432; Packaging
                             </button>
                           )
                         ) : null}
                         {itemPremiumPackagingEnabled(m) ? (
-                          <label className="mt-0.5 flex min-w-0 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50 px-1.5 py-1 text-[10px] font-semibold leading-tight text-emerald-800 sm:mt-2 sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs">
+                          <label className="mt-1 flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-emerald-800 sm:text-xs">
                             <input
                               type="checkbox"
-                              className="mt-0.5"
                               checked={premiumPackagingSelections[m.id] === true}
                               disabled={disabled}
                               onChange={(e) => {
@@ -2555,14 +2542,14 @@ const contact = await fetchOptionalJson(
                                 setItemPremiumPackaging(m.id, checked);
                               }}
                             />
-                            <span className="min-w-0 flex-1">
-                              <span className="line-clamp-2 break-words font-semibold">
-                                Add {itemPremiumPackagingLabel(m)} (+{money(itemPremiumPackagingFee(m))} each)
-                              </span>
+                            <span className="min-w-0 truncate">
+                              Premium packaging (+{money(itemPremiumPackagingFee(m))})
                             </span>
                           </label>
                         ) : null}
-                        <div className="mt-1 text-lg font-black tracking-tight text-slate-900 sm:mt-3 sm:text-xl">{money(toNum(m.price))}</div>
+                        {m.description ? (
+                          <div className="mt-1 min-w-0 break-words line-clamp-1 text-[11px] leading-snug text-slate-500 sm:line-clamp-2 sm:text-xs">{m.description}</div>
+                        ) : null}
                           </div>
                         </div>
                       </div>
@@ -3756,10 +3743,10 @@ const contact = await fetchOptionalJson(
           .jride-takeout-cart::before {
             content: "";
             position: absolute;
-            left: 0.8rem;
-            top: 0.65rem;
-            width: 2.65rem;
-            height: 2.65rem;
+            left: 0.85rem;
+            top: 0.75rem;
+            width: 2.15rem;
+            height: 2.15rem;
             border-radius: 999px;
             border: 1px solid rgba(34, 197, 94, 0.36);
             background: radial-gradient(
@@ -3774,11 +3761,11 @@ const contact = await fetchOptionalJson(
           .jride-takeout-cart::after {
             content: "JR";
             position: absolute;
-            left: 1.52rem;
-            top: 1.52rem;
+            left: 1.4rem;
+            top: 1.38rem;
             color: #bbf7d0;
             font-weight: 900;
-            font-size: 0.72rem;
+            font-size: 0.6rem;
             line-height: 1;
             pointer-events: none;
           }
