@@ -680,13 +680,14 @@ export default function RidePage() {
   const walletBlocked = walletOk === false || walletLocked;
 
   const allowSubmit =
+    !authLoading &&
     !!fromLabel.trim() &&
     numOrNull(pickupLat) !== null &&
     numOrNull(pickupLng) !== null &&
     !!toLabel.trim() &&
     numOrNull(dropLat) !== null &&
     numOrNull(dropLng) !== null &&
-    !!passengerName.trim() &&
+    isValidPassengerNameInput(signedInPassengerName || passengerName) &&
     feesAck &&
     !busy;
 
@@ -1913,13 +1914,16 @@ if (mapRef.current) {
 
   async function submit() {
     setResult("");
-    setBusy(true);
+
+    if (authLoading) {
+      setResult("Please wait while your passenger profile is loading.");
+      return;
+    }
+
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    preBookingSearchRef.current = true;
-    setPreBookingSearch(true);
     searchAbortRef.current = false;
     storedSet("");
     setActiveCode("");
@@ -1973,6 +1977,8 @@ if (mapRef.current) {
         return;
       }
 
+      setBusy(true);
+
       if (!geoOrLocalOk) {
         const geoAllowed = await refreshGeoGate(true);
         if (!geoAllowed && !norm(localVerify)) {
@@ -2010,6 +2016,9 @@ if (mapRef.current) {
         }
         return;
       }
+
+      preBookingSearchRef.current = true;
+      setPreBookingSearch(true);
 
       const payload = {
         passenger_name: effectivePassengerName,
@@ -3171,8 +3180,10 @@ if (mapRef.current) {
               {preBookingSearch
                 ? "Searching for drivers..."
                 : busy
-                  ? "Booking..."
-                  : "Request Ride"}
+                  ? "Checking eligibility..."
+                  : authLoading
+                    ? "Loading passenger profile..."
+                    : "Request Ride"}
             </button>
 
             {result && (
