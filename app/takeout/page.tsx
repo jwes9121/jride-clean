@@ -896,7 +896,7 @@ export default function TakeoutPage() {
   const [checkoutStage, setCheckoutStage] = useState<"browse" | "delivery">("browse");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [vendorTownFilter, setVendorTownFilter] = useState("");
-  // JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V1: once a town is chosen, collapse the town picker into a summary row.
+  // JRIDE_TAKEOUT_COMPACT_TOPBAR_CART_FIX_V25: once a town is chosen, collapse the town picker into a summary row.
   const [townPickerOpen, setTownPickerOpen] = useState(false);
   const [expandedPackagingIds, setExpandedPackagingIds] = useState<Record<string, boolean>>({});
   const [customerName, setCustomerName] = useState("");
@@ -2030,19 +2030,31 @@ const contact = await fetchOptionalJson(
 
   return (
     <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
-      <div className="sticky top-0 z-20 -mx-2.5 -mt-2 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
-        <div>
-          <div className="jride-premium-brand-row">
-            <a href="/passenger" className="jride-premium-nav-pill" aria-label="Go to JRide passenger home">Home</a>
-            <div className="jride-premium-title">JRide <span>Takeout</span></div>
-          </div>
-          <div className="hidden text-sm text-slate-600 sm:block">
-            Choose a vendor, pick your items, then confirm the delivery fee after a driver proposal.
-          </div>
+      <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
+        <div className="grid grid-cols-3 overflow-hidden rounded-full border border-emerald-500/40 bg-slate-950/80">
+          <a
+            href="/passenger"
+            aria-label="Go to JRide passenger home"
+            className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+          >
+            Home
+          </a>
+
+          <a
+            href="/takeout/orders"
+            className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+          >
+            Orders
+          </a>
+
+          <button
+            type="button"
+            onClick={logoutPassengerProfile}
+            className="flex min-h-11 items-center justify-center px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+          >
+            Logout
+          </button>
         </div>
-        <a href="/takeout/orders" className="shrink-0 rounded-full border px-3 py-1.5 text-center text-xs font-bold hover:bg-slate-50 sm:w-auto sm:rounded-lg sm:py-3 sm:text-sm">
-          My orders
-        </a>
       </div>
 
       <div className="mt-4">
@@ -2064,17 +2076,8 @@ const contact = await fetchOptionalJson(
             <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
           </div>
         ) : authState === "signed_in_profile" ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 sm:text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 font-semibold">Verified passenger</div>
-              <button
-                type="button"
-                onClick={logoutPassengerProfile}
-                className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
-              >
-                Logout
-              </button>
-            </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900 sm:text-sm">
+            Verified passenger
           </div>
         ) : null}
       </div>
@@ -3134,63 +3137,68 @@ const contact = await fetchOptionalJson(
 
         {/* JRIDE_TAKEOUT_APP_LIKE_UI_V6 */}
         <div className="jride-takeout-cart fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md border-t bg-white/95 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.16)] backdrop-blur sm:sticky sm:max-w-none sm:rounded-xl sm:border sm:p-3">
-          {selectedLines.length > 0 ? (
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-              <div className="min-w-0">
-                <div className="truncate font-bold text-slate-900">{selectedLines.length} item{selectedLines.length === 1 ? "" : "s"}</div>
-                <div className="text-[11px] text-slate-500">Delivery fee follows after driver quote</div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+            <div className="min-w-0 pl-12">
+              <div className="truncate text-sm font-black text-slate-900">
+                {selectedLines.length > 0
+                  ? `${selectedLines.reduce((sum, line) => sum + line.qty, 0)} item${selectedLines.reduce((sum, line) => sum + line.qty, 0) === 1 ? "" : "s"}`
+                  : "Cart empty"}
               </div>
-              <div className="shrink-0 text-right">
-                <div className="text-[11px] text-slate-500">Subtotal</div>
-                <div className="text-lg font-black text-slate-900">{money(estimatedSubtotalWithPackaging)}</div>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-2 text-center">
-              <div className="text-xs font-bold text-slate-900">Cart empty</div>
-              <div className="mt-0.5 text-[11px] text-slate-500">Choose a menu item to begin.</div>
-            </div>
-          )}
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <button
-              type="button"
-              onClick={checkoutStage === "browse" ? openDeliveryStage : submit}
-              disabled={
-                submitted ||
-                busy ||
-                (checkoutStage === "browse" ? !canOpenDelivery : !canReviewAndSubmit)
-              }
-              className={cls(
-                "rounded-xl px-3 py-2.5 text-sm font-black text-white shadow-md",
-                !submitted &&
-                  !busy &&
-                  (checkoutStage === "browse" ? canOpenDelivery : canReviewAndSubmit)
-                  ? "bg-slate-900 hover:bg-slate-800"
-                  : "bg-slate-400"
-              )}
-            >
-              {submitted
-                ? "Order sent"
-                : busy
-                  ? "Submitting order..."
-                  : vendorClosed
-                    ? "Vendor closed"
-                    : authState !== "signed_in_profile"
-                      ? "Sign in required"
-                      : checkoutStage === "browse"
-                        ? selectedLines.length > 0
-                          ? "Continue to delivery details"
-                          : "Continue"
-                        : deliveryPin && !deliveryPinNeedsConfirmation
-                          ? "Review and submit order"
-                          : "Confirm delivery location"}
-            </button>
 
-            <a href="/takeout/orders" className="rounded-xl border px-3 py-2.5 text-center text-xs font-bold hover:bg-slate-50">
-              Orders
-            </a>
+              <div className="mt-0.5 line-clamp-2 text-[11px] leading-tight text-slate-500">
+                {selectedLines.length > 0
+                  ? "Delivery fee follows after driver quote"
+                  : "Choose a menu item to begin."}
+              </div>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Subtotal
+              </div>
+              <div className="mt-0.5 whitespace-nowrap text-lg font-black leading-none text-slate-900">
+                {money(estimatedSubtotalWithPackaging)}
+              </div>
+            </div>
           </div>
-          <div className="mt-1 text-center text-[10px] text-slate-500">
+
+          <button
+            type="button"
+            onClick={checkoutStage === "browse" ? openDeliveryStage : submit}
+            disabled={
+              submitted ||
+              busy ||
+              (checkoutStage === "browse"
+                ? !canOpenDelivery
+                : !canReviewAndSubmit)
+            }
+            className={cls(
+              "mt-3 w-full rounded-xl px-3 py-3 text-sm font-black shadow-md",
+              !submitted &&
+                !busy &&
+                (checkoutStage === "browse"
+                  ? canOpenDelivery
+                  : canReviewAndSubmit)
+                ? "bg-slate-900 text-white hover:bg-slate-800"
+                : "bg-slate-400 text-white"
+            )}
+          >
+            {submitted
+              ? "Order sent"
+              : busy
+                ? "Submitting order..."
+                : vendorClosed
+                  ? "Vendor closed"
+                  : authState !== "signed_in_profile"
+                    ? "Sign in required"
+                    : checkoutStage === "browse"
+                      ? "Continue to delivery details"
+                      : deliveryPin && !deliveryPinNeedsConfirmation
+                        ? "Review and submit order"
+                        : "Confirm delivery location"}
+          </button>
+
+          <div className="mt-1.5 text-center text-[10px] leading-tight text-slate-500">
             {checkoutStage === "browse"
               ? "Add items, then continue to delivery details."
               : deliveryPin && !deliveryPinNeedsConfirmation
@@ -3199,7 +3207,9 @@ const contact = await fetchOptionalJson(
           </div>
 
           {vendorClosed ? (
-            <div className="mt-1 text-[11px] font-medium text-rose-700">Cannot place order: vendor is closed.</div>
+            <div className="mt-1 text-center text-[11px] font-medium text-rose-700">
+              Cannot place order: vendor is closed.
+            </div>
           ) : null}
         </div>
 
@@ -3530,6 +3540,22 @@ const contact = await fetchOptionalJson(
             gap: 0.75rem;
           }
 
+          .jride-takeout-topbar {
+            background: linear-gradient(
+              180deg,
+              rgba(4, 16, 21, 0.98),
+              rgba(2, 12, 17, 0.98)
+            ) !important;
+          }
+
+          .jride-takeout-topbar a,
+          .jride-takeout-topbar button {
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: var(--jr-text) !important;
+          }
+
           .jride-premium-title {
             color: var(--jr-text);
             font-weight: 900;
@@ -3558,8 +3584,7 @@ const contact = await fetchOptionalJson(
             letter-spacing: -0.06em;
           }
 
-          .jride-premium-nav-pill,
-          a[href="/takeout/orders"] {
+          .jride-premium-nav-pill {
             border: 1px solid rgba(34, 197, 94, 0.32) !important;
             background: rgba(6, 16, 20, 0.74) !important;
             color: var(--jr-text) !important;
@@ -3568,7 +3593,6 @@ const contact = await fetchOptionalJson(
             backdrop-filter: blur(10px);
           }
 
-          a[href="/takeout/orders"]:hover,
           .jride-premium-nav-pill:hover {
             background: rgba(34, 197, 94, 0.13) !important;
             color: #bbf7d0 !important;
@@ -3704,51 +3728,64 @@ const contact = await fetchOptionalJson(
           }
 
           .jride-takeout-cart {
+            position: fixed;
             left: 0;
             right: 0;
-            margin-left: -0.75rem;
-            margin-right: -0.75rem;
+            margin-left: auto;
+            margin-right: auto;
+            overflow: hidden;
             border-top: 1px solid rgba(34, 197, 94, 0.28) !important;
-            background: linear-gradient(180deg, rgba(6, 16, 20, 0.82), rgba(2, 6, 23, 0.97)) !important;
-            box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.46), 0 -1px 0 rgba(34, 197, 94, 0.22) !important;
+            background: linear-gradient(
+              180deg,
+              rgba(6, 16, 20, 0.96),
+              rgba(2, 6, 23, 0.99)
+            ) !important;
+            box-shadow:
+              0 -18px 48px rgba(0, 0, 0, 0.46),
+              0 -1px 0 rgba(34, 197, 94, 0.22) !important;
             backdrop-filter: blur(18px);
           }
 
           .jride-takeout-cart::before {
             content: "";
             position: absolute;
-            inset: 0.55rem auto auto 1rem;
-            width: 3.15rem;
-            height: 3.15rem;
+            left: 0.8rem;
+            top: 0.65rem;
+            width: 2.65rem;
+            height: 2.65rem;
             border-radius: 999px;
             border: 1px solid rgba(34, 197, 94, 0.36);
-            background: radial-gradient(circle at 50% 35%, rgba(134, 239, 172, 0.38), rgba(34, 197, 94, 0.16) 55%, rgba(2,6,23,0.30));
+            background: radial-gradient(
+              circle at 50% 35%,
+              rgba(134, 239, 172, 0.38),
+              rgba(34, 197, 94, 0.16) 55%,
+              rgba(2, 6, 23, 0.3)
+            );
             pointer-events: none;
           }
 
           .jride-takeout-cart::after {
             content: "JR";
             position: absolute;
-            left: 1.95rem;
-            top: 1.35rem;
+            left: 1.52rem;
+            top: 1.52rem;
             color: #bbf7d0;
             font-weight: 900;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
+            line-height: 1;
             pointer-events: none;
           }
 
           .jride-takeout-cart button {
-            border-radius: 1rem !important;
             min-height: 3.1rem;
+            border-radius: 1rem !important;
             font-weight: 900 !important;
           }
 
-          .jride-takeout-cart a[href="/takeout/orders"] {
-            min-height: 3.1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
+          @media (min-width: 640px) {
+            .jride-takeout-cart {
+              position: sticky;
+            }
           }
 
           body .mapboxgl-map {
