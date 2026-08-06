@@ -2032,24 +2032,41 @@ const contact = await fetchOptionalJson(
   return (
     <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
       <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-1.5 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
-        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V1: remove redundant web Home/Orders; keep only account state and logout. */}
+        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V2: Home/Orders restored for desktop browser nav. The Android
+            WebView shell (PassengerRideWebViewActivity.kt) hides these two exact selectors client-side,
+            so the app shows only Verified + Logout while desktop keeps full navigation. */}
         <div className="flex items-center justify-between gap-2">
-          {authState === "signed_in_profile" ? (
-            <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-slate-950/80 px-2 py-1 text-[10px] font-black text-emerald-200 sm:text-xs">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
-              Verified
-            </span>
-          ) : (
-            <span />
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <a
+              href="/passenger"
+              aria-label="Go to JRide passenger home"
+              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-1.5 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Home
+            </a>
+            {authState === "signed_in_profile" ? (
+              <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-slate-950/80 px-2 py-1 text-[10px] font-black text-emerald-200 sm:text-xs">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+                Verified
+              </span>
+            ) : null}
+          </div>
 
-          <button
-            type="button"
-            onClick={logoutPassengerProfile}
-            className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-2 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-          >
-            Logout
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href="/takeout/orders"
+              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-1.5 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Orders
+            </a>
+            <button
+              type="button"
+              onClick={logoutPassengerProfile}
+              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-2 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2083,6 +2100,11 @@ const contact = await fetchOptionalJson(
                 <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-900/60 bg-slate-950/70 px-3 py-2">
                   <div className="min-w-0 text-xs font-bold text-emerald-100">
                     Town: <span className="text-emerald-300">{vendorTownFilter}</span>
+                    {!vendorId ? (
+                      <span className="ml-1.5 font-semibold text-emerald-500">
+                        &middot; {visibleVendors.length} local {visibleVendors.length === 1 ? "store" : "stores"}
+                      </span>
+                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -2149,17 +2171,6 @@ const contact = await fetchOptionalJson(
             </div>
 
             <div className="jride-vendor-menu-section space-y-2 md:col-span-2">
-              {vendorTownFilter && !vendorId ? (
-                <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-900/50 bg-slate-950/55 px-3 py-2">
-                  <div className="min-w-0 text-xs font-black text-emerald-100">
-                    Serving <span className="text-emerald-300">{vendorTownFilter}</span>
-                  </div>
-                  <div className="shrink-0 text-[10px] font-bold text-emerald-200">
-                    {visibleVendors.length} local {visibleVendors.length === 1 ? "store" : "stores"}
-                  </div>
-                </div>
-              ) : null}
-
               {vendorId ? (
                 /* JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V1: the compact store card below already names the store, so skip the step header entirely. */
                 null
