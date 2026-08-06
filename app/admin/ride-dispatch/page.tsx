@@ -113,6 +113,7 @@ function statusClass(status: string | null, stuck: boolean) {
 
 export default function RideDispatchPage() {
   const [filter, setFilter] = useState("active");
+  const [search, setSearch] = useState("");
   const [rides, setRides] = useState<RideRow[]>([]);
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -224,7 +225,18 @@ export default function RideDispatchPage() {
   }, [rides]);
 
   const visibleRides = useMemo(() => {
-    const filtered = rides.filter((ride) => {
+    const q = search.trim().toLowerCase();
+    const hasSearch = q.length > 0;
+
+    const matchesSearch = (ride: RideRow) =>
+      (ride.booking_code ?? "").toLowerCase().includes(q) ||
+      (ride.passenger_name ?? "").toLowerCase().includes(q) ||
+      (ride.assigned_driver_name ?? "").toLowerCase().includes(q) ||
+      (ride.assigned_driver_phone ?? "").toLowerCase().includes(q) ||
+      (ride.from_label ?? "").toLowerCase().includes(q) ||
+      (ride.to_label ?? "").toLowerCase().includes(q);
+
+    const matchesTab = (ride: RideRow) => {
       const s = normStatus(ride.status);
       if (filter === "all") return true;
       if (filter === "active") return ACTIVE.has(s);
@@ -232,7 +244,11 @@ export default function RideDispatchPage() {
       if (filter === "stuck") return !!ride.is_stuck;
       if (filter === "cancelled") return s === "cancelled" || s === "canceled";
       return s === filter;
-    });
+    };
+
+    const filtered = rides.filter((ride) =>
+      hasSearch ? matchesSearch(ride) : matchesTab(ride)
+    );
 
     filtered.sort((a, b) => {
       if ((a.priority || 0) !== (b.priority || 0)) return (a.priority || 0) - (b.priority || 0);
@@ -240,7 +256,7 @@ export default function RideDispatchPage() {
     });
 
     return filtered;
-  }, [rides, filter]);
+  }, [rides, filter, search]);
 
   const eligibleDrivers = useMemo(() => drivers.filter((d) => d.assign_eligible), [drivers]);
 
@@ -260,6 +276,35 @@ export default function RideDispatchPage() {
               <button className="rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-slate-50" onClick={() => load()} disabled={loading}>
                 {loading ? "Refreshing..." : "Refresh"}
               </button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label htmlFor="ride-dispatch-search" className="mb-1 block text-sm font-semibold text-slate-700">
+              Search rides
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                id="ride-dispatch-search"
+                type="search"
+                value={search}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSearch(value);
+                  if (value.trim()) setFilter("all");
+                }}
+                placeholder="Search booking, passenger, driver, phone, pickup or dropoff..."
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500"
+              />
+              {search ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Clear search
+                </button>
+              ) : null}
             </div>
           </div>
 
