@@ -1,6 +1,5 @@
 "use client";
 
-// TAKEOUT_BUILD_20260807_0543_V1
 // JRIDE_TAKEOUT_ACCOUNT_BAR_COMPRESSION_V1
 // JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
@@ -2032,19 +2031,12 @@ const contact = await fetchOptionalJson(
 
   return (
     <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
-      {/* TAKEOUT_BUILD_20260807_0543_V1: temporary deployment/cache diagnostic marker. Remove after Android-vs-desktop verification. */}
-      <div
-        className="fixed bottom-1 right-1 z-[9999] rounded bg-black/70 px-1.5 py-0.5 font-mono text-[9px] text-emerald-300"
-        aria-hidden="true"
-      >
-        TAKEOUT_BUILD_20260807_0543_V1
-      </div>
       <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-1.5 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
-        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V3: single row — Home / Verified+Logout (centered in the
-            middle gap) / Orders. The Android WebView shell still hides the Home/Orders selectors,
-            collapsing this to just the centered Verified+Logout group inside the app. */}
-        <div className="grid grid-cols-3 items-center gap-2">
-          <div className="justify-self-start">
+        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V4:
+            Navigation actions stay together on the left; account state stays together on the right.
+            Verified is a status label, not a button, so it no longer competes visually with navigation. */}
+        <div className="flex items-center justify-between gap-3">
+          <nav className="flex min-w-0 items-center gap-2" aria-label="Takeout navigation">
             <a
               href="/passenger"
               aria-label="Go to JRide passenger home"
@@ -2052,15 +2044,23 @@ const contact = await fetchOptionalJson(
             >
               Home
             </a>
-          </div>
 
-          <div className="flex min-w-0 items-center justify-self-center gap-2">
+            <a
+              href="/takeout/orders"
+              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-1.5 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Orders
+            </a>
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-2">
             {authState === "signed_in_profile" ? (
-              <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-slate-950/80 px-2 py-1 text-[10px] font-black text-emerald-200 sm:text-xs">
+              <span className="flex items-center gap-1 text-[10px] font-black text-emerald-300 sm:text-xs">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
                 Verified
               </span>
             ) : null}
+
             <button
               type="button"
               onClick={logoutPassengerProfile}
@@ -2068,15 +2068,6 @@ const contact = await fetchOptionalJson(
             >
               Logout
             </button>
-          </div>
-
-          <div className="justify-self-end">
-            <a
-              href="/takeout/orders"
-              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-1.5 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-            >
-              Orders
-            </a>
           </div>
         </div>
       </div>
