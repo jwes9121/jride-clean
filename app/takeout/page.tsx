@@ -1,5 +1,6 @@
 "use client";
 
+// JRIDE_TAKEOUT_ACCOUNT_BAR_COMPRESSION_V1
 // JRIDE_TAKEOUT_STICKY_MENU_CONTROLS_V24
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -2030,66 +2031,48 @@ const contact = await fetchOptionalJson(
 
   return (
     <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
-      <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
-        {/* JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V3: Verified is a fixed-position badge, not a grid cell, so the
-            Home/Orders/Logout pill never reflows when auth state changes. */}
+      <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-1.5 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
+        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V1: remove redundant web Home/Orders; keep only account state and logout. */}
         <div className="flex items-center justify-between gap-2">
           {authState === "signed_in_profile" ? (
             <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-slate-950/80 px-2 py-1 text-[10px] font-black text-emerald-200 sm:text-xs">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
               Verified
             </span>
-          ) : null}
+          ) : (
+            <span />
+          )}
 
-          <div className="ml-auto grid grid-cols-3 overflow-hidden rounded-full border border-emerald-500/40 bg-slate-950/80">
-            <a
-              href="/passenger"
-              aria-label="Go to JRide passenger home"
-              className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-            >
-              Home
-            </a>
-
-            <a
-              href="/takeout/orders"
-              className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-            >
-              Orders
-            </a>
-
-            <button
-              type="button"
-              onClick={logoutPassengerProfile}
-              className="flex min-h-11 items-center justify-center px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-            >
-              Logout
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={logoutPassengerProfile}
+            className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-2 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
-      <div className="mt-4">
-        {authState === "guest" ? (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold">Sign in required</div>
-                <div className="text-xs">Only verified JRide passengers with profile name and phone can place takeout orders.</div>
-              </div>
-              <a href="/passenger-login?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
-                Sign in to book
-              </a>
+      {authState === "guest" ? (
+        <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold">Sign in required</div>
+              <div className="text-xs">Only verified JRide passengers with profile name and phone can place takeout orders.</div>
             </div>
+            <a href="/passenger-login?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
+              Sign in to book
+            </a>
           </div>
-        ) : authState === "signed_in_missing_profile" ? (
-          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-            <div className="font-semibold">Verified passenger profile required</div>
-            <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
-          </div>
-        ) : null}
-      </div>
+        </div>
+      ) : authState === "signed_in_missing_profile" ? (
+        <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+          <div className="font-semibold">Verified passenger profile required</div>
+          <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
+        </div>
+      ) : null}
 
-      <div className="mt-3 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-4 sm:p-5">
+      <div className="mt-1.5 rounded-2xl border bg-white p-2.5 shadow-md sm:mt-2 sm:p-5">
         <div className="jride-takeout-form-grid grid gap-2.5 md:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] md:gap-5">
           {checkoutStage === "browse" ? (
           <>
@@ -3540,14 +3523,6 @@ const contact = await fetchOptionalJson(
               rgba(4, 16, 21, 0.98),
               rgba(2, 12, 17, 0.98)
             ) !important;
-          }
-
-          .jride-takeout-topbar a,
-          .jride-takeout-topbar button {
-            border-radius: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            color: var(--jr-text) !important;
           }
 
           .jride-premium-title {
