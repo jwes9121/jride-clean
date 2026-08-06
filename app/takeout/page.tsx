@@ -2031,29 +2031,40 @@ const contact = await fetchOptionalJson(
   return (
     <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
       <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
-        <div className="grid grid-cols-3 overflow-hidden rounded-full border border-emerald-500/40 bg-slate-950/80">
-          <a
-            href="/passenger"
-            aria-label="Go to JRide passenger home"
-            className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-          >
-            Home
-          </a>
+        {/* JRIDE_TAKEOUT_CONTEXT_COMPRESSION_V3: Verified is a fixed-position badge, not a grid cell, so the
+            Home/Orders/Logout pill never reflows when auth state changes. */}
+        <div className="flex items-center justify-between gap-2">
+          {authState === "signed_in_profile" ? (
+            <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-slate-950/80 px-2 py-1 text-[10px] font-black text-emerald-200 sm:text-xs">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+              Verified
+            </span>
+          ) : null}
 
-          <a
-            href="/takeout/orders"
-            className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-          >
-            Orders
-          </a>
+          <div className="ml-auto grid grid-cols-3 overflow-hidden rounded-full border border-emerald-500/40 bg-slate-950/80">
+            <a
+              href="/passenger"
+              aria-label="Go to JRide passenger home"
+              className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Home
+            </a>
 
-          <button
-            type="button"
-            onClick={logoutPassengerProfile}
-            className="flex min-h-11 items-center justify-center px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-          >
-            Logout
-          </button>
+            <a
+              href="/takeout/orders"
+              className="flex min-h-11 items-center justify-center border-r border-emerald-500/20 px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Orders
+            </a>
+
+            <button
+              type="button"
+              onClick={logoutPassengerProfile}
+              className="flex min-h-11 items-center justify-center px-3 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2074,10 +2085,6 @@ const contact = await fetchOptionalJson(
           <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
             <div className="font-semibold">Verified passenger profile required</div>
             <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
-          </div>
-        ) : authState === "signed_in_profile" ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900 sm:text-sm">
-            Verified passenger
           </div>
         ) : null}
       </div>
