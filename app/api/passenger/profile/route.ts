@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 
 function noStoreHeaders() {
   return {
@@ -128,7 +129,7 @@ export async function GET(req: NextRequest) {
     try {
       const { data } = await supabase
         .from("passenger_profiles")
-        .select("user_id, full_name, phone, email")
+        .select("user_id, full_name, phone, email, photo_url")
         .eq("user_id", authRes.userId)
         .limit(1);
 
@@ -206,6 +207,8 @@ export async function GET(req: NextRequest) {
           full_name: text(profile?.full_name) || null,
           phone: text(profile?.phone) || authRes.phone || null,
           email: text(profile?.email) || authRes.email || null,
+          photo_url: text(profile?.photo_url) || null,
+          passenger_photo_url: text(profile?.photo_url) || null,
           saved_address_count: savedAddressCount,
         },
         recent_trips: (tripRows ?? []).map((row: any) =>
@@ -219,6 +222,234 @@ export async function GET(req: NextRequest) {
       {
         ok: false,
         error: "PASSENGER_PROFILE_ROUTE_FAILED",
+        message: String(err?.message ?? err),
+      },
+      { status: 500, headers: noStoreHeaders() }
+    );
+  }
+}
+export async function POST(req: NextRequest) {
+  try {
+    const authRes = await resolvePassengerFromBearer(req);
+
+    if (!authRes.ok) {
+      return NextResponse.json(authRes, {
+        status: 401,
+        headers: noStoreHeaders(),
+      });
+    }
+
+    const form = await req.formData();
+    const file = form.get("photo");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_REQUIRED",
+          message: "Missing photo file.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    const contentType = text(file.type).toLowerCase();
+    const allowedTypes = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+
+    if (!allowedTypes.has(contentType)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_TYPE_NOT_ALLOWED",
+          message: "Use JPG, PNG, or WEBP.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    // Large normal phone photos are accepted and resized automatically.
+    // The hard limit protects server memory from abusive or malformed input.
+    const maxInputBytes = 20 * 1024 * 1024;
+
+    if (file.size <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_EMPTY",
+          message: "The selected photo is empty.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    if (file.size > maxInputBytes) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_TOO_LARGE",
+          message: "Photo must be 20MB or smaller.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    let processedBytes: Buffer;
+
+    try {
+      const inputBytes = Buffer.from(await file.arrayBuffer());
+
+      processedBytes = await sharp(inputBytes, {
+        failOn: "none",
+        limitInputPixels: 10000 * 10000,
+      })
+        .rotate()
+        .resize({
+          width: 512,
+          height: 512,
+          fit: "cover",
+          position: "centre",
+          withoutEnlargement: true,
+        })
+        .webp({
+          quality: 82,
+          effort: 4,
+        })
+        .toBuffer();
+    } catch {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_PROCESSING_FAILED",
+          message: "Could not process the uploaded photo.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    if (processedBytes.length <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_PROCESSING_EMPTY",
+          message: "The processed photo is empty.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    const maxStoredBytes = 1024 * 1024;
+
+    if (processedBytes.length > maxStoredBytes) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_PROCESSED_TOO_LARGE",
+          message: "The processed photo exceeds the storage limit.",
+        },
+        { status: 400, headers: noStoreHeaders() }
+      );
+    }
+
+    const supabase = getSupabase();
+    const storagePath =
+      `profiles/${authRes.userId}/avatar.webp`;
+
+    const uploadRes = await supabase.storage
+      .from("passenger-assets")
+      .upload(storagePath, processedBytes, {
+        contentType: "image/webp",
+        upsert: true,
+        cacheControl: "3600",
+      });
+
+    if (uploadRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_UPLOAD_FAILED",
+          message: uploadRes.error.message,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from("passenger-assets")
+      .getPublicUrl(storagePath);
+
+    const basePhotoUrl = text(publicUrlData?.publicUrl);
+    const photoUrl = basePhotoUrl
+      ? `${basePhotoUrl}?v=${Date.now()}`
+      : "";
+
+    if (!photoUrl) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_PUBLIC_URL_FAILED",
+          message: "Could not create the passenger photo URL.",
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    const updateRes = await supabase
+      .from("passenger_profiles")
+      .update({
+        photo_url: photoUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", authRes.userId)
+      .select("user_id, photo_url")
+      .maybeSingle();
+
+    if (updateRes.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PHOTO_PROFILE_UPDATE_FAILED",
+          message: updateRes.error.message,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    if (!updateRes.data?.user_id) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "PASSENGER_PROFILE_NOT_FOUND",
+          message: "Passenger profile row was not found.",
+        },
+        { status: 404, headers: noStoreHeaders() }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        passenger_id: authRes.userId,
+        photo_url: text(updateRes.data.photo_url) || photoUrl,
+        passenger_photo_url:
+          text(updateRes.data.photo_url) || photoUrl,
+        processed: {
+          width: 512,
+          height: 512,
+          format: "webp",
+          bytes: processedBytes.length,
+        },
+      },
+      { status: 200, headers: noStoreHeaders() }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "PASSENGER_PHOTO_UPLOAD_FAILED",
         message: String(err?.message ?? err),
       },
       { status: 500, headers: noStoreHeaders() }
