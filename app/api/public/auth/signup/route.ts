@@ -125,12 +125,47 @@ export async function POST(req: NextRequest) {
           full_name,
           phone,
           email: contact_email || email,
+          town_origin,
+          barangay_origin: barangay_origin || null,
         },
         { onConflict: "user_id" }
       );
 
     if (profileErr) {
-      return bad("Signup profile sync failed: " + profileErr.message, 500);
+      const rollback = await supabase.auth.admin.deleteUser(userId);
+
+      if (rollback.error) {
+        console.error("PASSENGER_SIGNUP_ROLLBACK_FAILED", {
+          user_id: userId,
+          profile_error: profileErr.message,
+          rollback_error: rollback.error.message,
+        });
+
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "SIGNUP_PARTIAL_ACCOUNT",
+            message:
+              "Signup could not finish and the incomplete account could not be removed automatically. Please contact JRide support before trying again.",
+          },
+          { status: 500 }
+        );
+      }
+
+      console.error("PASSENGER_SIGNUP_PROFILE_SYNC_FAILED_ROLLED_BACK", {
+        user_id: userId,
+        profile_error: profileErr.message,
+      });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "SIGNUP_PROFILE_SYNC_FAILED",
+          message:
+            "Signup could not finish, so the incomplete account was removed. Please try signing up again.",
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
