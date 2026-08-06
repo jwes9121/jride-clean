@@ -2032,11 +2032,11 @@ const contact = await fetchOptionalJson(
   return (
     <div className="jride-takeout-page mx-auto w-full max-w-md overflow-x-hidden px-2.5 py-2 pb-28 sm:max-w-7xl sm:px-4 md:p-6 md:pb-40 2xl:max-w-[1500px]">
       <div className="jride-takeout-topbar sticky top-0 z-20 -mx-2.5 -mt-2 border-b bg-white/95 px-3 py-1.5 shadow-sm backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none">
-        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V2: Home/Orders restored for desktop browser nav. The Android
-            WebView shell (PassengerRideWebViewActivity.kt) hides these two exact selectors client-side,
-            so the app shows only Verified + Logout while desktop keeps full navigation. */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
+        {/* JRIDE_TAKEOUT_COMPACT_ACCOUNT_BAR_V3: single row — Home / Verified+Logout (centered in the
+            middle gap) / Orders. The Android WebView shell still hides the Home/Orders selectors,
+            collapsing this to just the centered Verified+Logout group inside the app. */}
+        <div className="grid grid-cols-3 items-center gap-2">
+          <div className="justify-self-start">
             <a
               href="/passenger"
               aria-label="Go to JRide passenger home"
@@ -2044,28 +2044,31 @@ const contact = await fetchOptionalJson(
             >
               Home
             </a>
+          </div>
+
+          <div className="flex min-w-0 items-center justify-self-center gap-2">
             {authState === "signed_in_profile" ? (
               <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-slate-950/80 px-2 py-1 text-[10px] font-black text-emerald-200 sm:text-xs">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
                 Verified
               </span>
             ) : null}
+            <button
+              type="button"
+              onClick={logoutPassengerProfile}
+              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-1.5 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
+            >
+              Logout
+            </button>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="justify-self-end">
             <a
               href="/takeout/orders"
               className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-1.5 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
             >
               Orders
             </a>
-            <button
-              type="button"
-              onClick={logoutPassengerProfile}
-              className="shrink-0 rounded-full border border-emerald-500/40 bg-slate-950/80 px-3 py-2 text-xs font-black text-emerald-50 hover:bg-emerald-500/10 sm:text-sm"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </div>
