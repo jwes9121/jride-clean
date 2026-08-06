@@ -272,8 +272,13 @@ function clampPax(vehicle: string, raw: string): string {
 
 function getToken(): string {
   if (typeof window === "undefined") return "";
+
   try {
-    return String(localStorage.getItem(TOKEN_KEY) || "").trim();
+    const token =
+      localStorage.getItem(TOKEN_KEY) ||
+      localStorage.getItem("jride_passenger_token");
+
+    return String(token || "").trim();
   } catch {
     return "";
   }
@@ -704,58 +709,64 @@ export default function RidePage() {
   React.useEffect(() => {
     let alive = true;
 
-    function pickName(j: any): string {
-      return norm(
-        j?.user?.name ??
-          j?.user?.full_name ??
-          j?.user?.display_name ??
-          j?.user?.passenger_name ??
-          j?.profile?.full_name ??
-          j?.profile?.name ??
-          j?.session?.user?.name ??
-          j?.session?.user?.full_name ??
-          j?.data?.user?.name ??
-          j?.data?.user?.full_name ??
-          j?.name ??
-          "",
-      );
-    }
-
     (async () => {
       try {
-        const r = await fetch("/api/public/auth/session", {
+        const sessionResponse = await fetch("/api/public/auth/session", {
           method: "GET",
           credentials: "include",
           cache: "no-store",
         });
-        const j: any = await r.json().catch(() => null);
+
+        const sessionJson: any = await sessionResponse
+          .json()
+          .catch(() => null);
+
         if (!alive) return;
 
-        const isAuthed = !!(j?.authed || j?.ok || j?.user || j?.session);
-        const sessionName = pickName(j);
+        const isAuthed = !!(
+          sessionJson?.authed ||
+          sessionJson?.user ||
+          sessionJson?.session
+        );
 
         setAuthed(isAuthed);
-        setAccountName(sessionName);
+        setAccountName("");
+        setSignedInPassengerName("");
 
-        if (sessionName) {
-          setSignedInPassengerName(sessionName);
-          setPassengerName((prev) => norm(prev) || sessionName);
-        } else {
-          const recent = readRecentTrips();
-          const fallbackName = norm(recent?.[0]?.passenger_name ?? "");
-          if (fallbackName)
-            setPassengerName((prev) => norm(prev) || fallbackName);
+        if (!isAuthed) {
+          return;
         }
+
+        // Signed-in passengers must use the canonical passenger profile name.
+        // Session metadata and previous booking history are not identity sources.
+        setPassengerName("");
+
+        const profileResponse = await getJsonAuth("/api/passenger/profile");
+
+        if (!alive) return;
+
+        if (!profileResponse.ok) {
+          setAccountName("");
+          setSignedInPassengerName("");
+          return;
+        }
+
+        const profileName = normalizePassengerNameInput(
+          profileResponse.json?.profile?.full_name || "",
+        );
+
+        setAccountName(profileName);
+        setSignedInPassengerName(profileName);
       } catch {
         if (!alive) return;
+
         setAuthed(false);
         setAccountName("");
-        const recent = readRecentTrips();
-        const fallbackName = norm(recent?.[0]?.passenger_name ?? "");
-        if (fallbackName)
-          setPassengerName((prev) => norm(prev) || fallbackName);
+        setSignedInPassengerName("");
       } finally {
-        if (alive) setAuthLoading(false);
+        if (alive) {
+          setAuthLoading(false);
+        }
       }
     })();
 
@@ -2946,25 +2957,25 @@ if (mapRef.current) {
               <input
                 className={[
                   "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm",
-                  signedInPassengerName
+                  authed
                     ? "border-emerald-200 bg-emerald-50/50 text-slate-700"
                     : "border-slate-200 bg-white",
                 ].join(" ")}
                 placeholder="Name"
                 value={signedInPassengerName || passengerName}
                 onChange={(e) => {
-                  if (signedInPassengerName) return;
+                  if (authed) return;
                   setPassengerName(
                     e.target.value
                       .replace(/[^A-Za-z\s]/g, "")
                       .replace(/\s+/g, " "),
                   );
                 }}
-                readOnly={!!norm(signedInPassengerName)}
+                readOnly={authed}
               />
-              {signedInPassengerName ? (
+              {authed && signedInPassengerName ? (
                 <div className="mt-1 text-xs text-slate-500">
-                  Autofilled from your signed-in passenger account.
+                  Loaded from your JRide passenger profile.
                 </div>
               ) : null}
               {!isValidPassengerNameInput(
