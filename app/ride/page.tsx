@@ -2987,16 +2987,28 @@ if (mapRef.current) {
 
               <div>
                 <label className="text-xs font-medium">Passengers</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={vehicleType === "motorcycle" ? 1 : 4}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm"
-                  value={passengerCount}
+                <select
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                  value={vehicleType === "motorcycle" ? "1" : passengerCount}
                   onChange={(e) =>
-                    setPassengerCount(clampPax(vehicleType, e.target.value))
+                    setPassengerCount(
+                      vehicleType === "motorcycle"
+                        ? "1"
+                        : clampPax(vehicleType, e.target.value),
+                    )
                   }
-                />
+                  disabled={vehicleType === "motorcycle"}
+                  aria-label="Passengers"
+                >
+                  <option value="1">1</option>
+                  {vehicleType === "tricycle" ? (
+                    <>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                    </>
+                  ) : null}
+                </select>
               </div>
             </div>
 
