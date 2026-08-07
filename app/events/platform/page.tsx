@@ -1,4 +1,4 @@
-import * as React from "react";
+﻿import * as React from "react";
 import Image from "next/image";
 import type { Metadata } from "next";
 
@@ -457,13 +457,32 @@ export default function JRideEventsPlatformPage() {
           </p>
 
           <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-            <p className="text-sm font-bold text-slate-300">
-              Request-a-demo and contact buttons will be connected once the
-              official JRide Events sales contact channel is confirmed.
+            <p className="text-lg font-black text-white">
+              Ready to plan your event?
             </p>
+            <p className="mt-1 text-sm text-slate-400">
+              Talk to our JRide Events Sales Team.
+            </p>
+
+            <div className="mt-4 flex flex-col justify-center gap-3 sm:flex-row">
+              <a
+                href="tel:+639173052981"
+                className="rounded-xl bg-amber-400 px-5 py-3 text-sm font-black text-slate-950"
+              >
+                Call / Text: 0917 305 2981
+              </a>
+
+              <a
+                href="mailto:info@jride.net"
+                className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-white"
+              >
+                Email: info@jride.net
+              </a>
+            </div>
           </div>
         </div>
       </section>
     </main>
   );
 }
+
