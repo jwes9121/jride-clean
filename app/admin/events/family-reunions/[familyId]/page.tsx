@@ -137,7 +137,7 @@ export default function FamilyReunionDetailPage() {
 
     try {
       const response = await fetch(
-        `/api/family-reunions/${encodeURIComponent(familyId)}`,
+        `/api/events/family-reunions/${encodeURIComponent(familyId)}`,
         {
           method: "GET",
           cache: "no-store",
@@ -189,7 +189,7 @@ export default function FamilyReunionDetailPage() {
 
     try {
       const response = await fetch(
-        `/api/family-reunions/${encodeURIComponent(
+        `/api/events/family-reunions/${encodeURIComponent(
           familyId
         )}/relationship-finder`,
         {
@@ -234,7 +234,7 @@ export default function FamilyReunionDetailPage() {
 
     try {
       const response = await fetch(
-        `/api/family-reunions/${encodeURIComponent(familyId)}/people`,
+        `/api/events/family-reunions/${encodeURIComponent(familyId)}/people`,
         {
           method: "POST",
           headers: {
@@ -284,7 +284,7 @@ export default function FamilyReunionDetailPage() {
 
     try {
       const response = await fetch(
-        `/api/family-reunions/${encodeURIComponent(
+        `/api/events/family-reunions/${encodeURIComponent(
           familyId
         )}/relationships`,
         {
@@ -370,7 +370,7 @@ export default function FamilyReunionDetailPage() {
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
       <div className="mx-auto max-w-6xl">
         <Link
-          href="/admin/family-reunions"
+          href="/admin/events/family-reunions"
           className="text-sm font-bold text-amber-300"
         >
           Back to Family Reunions
@@ -400,7 +400,7 @@ export default function FamilyReunionDetailPage() {
               </div>
 
               <Link
-                href={`/admin/family-reunions/${familyId}/tree`}
+                href={`/admin/events/family-reunions/${familyId}/tree`}
                 className="rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-slate-950"
               >
                 Open Family Tree

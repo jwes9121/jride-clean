@@ -44,7 +44,7 @@ export default function FamilyReunionsAdminPage() {
       setError(null);
 
       try {
-        const response = await fetch("/api/family-reunions", {
+        const response = await fetch("/api/events/family-reunions", {
           method: "GET",
           cache: "no-store",
         });
@@ -94,7 +94,7 @@ export default function FamilyReunionsAdminPage() {
     setCreating(true);
 
     try {
-      const response = await fetch("/api/family-reunions", {
+      const response = await fetch("/api/events/family-reunions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -112,7 +112,7 @@ export default function FamilyReunionsAdminPage() {
         return;
       }
 
-      router.push(`/admin/family-reunions/${data.family.id}`);
+      router.push(`/admin/events/family-reunions/${data.family.id}`);
     } catch (createFailure) {
       setCreateError(
         createFailure instanceof Error
@@ -253,7 +253,7 @@ export default function FamilyReunionsAdminPage() {
             {families.map((family) => (
               <Link
                 key={family.id}
-                href={`/admin/family-reunions/${family.id}`}
+                href={`/admin/events/family-reunions/${family.id}`}
                 className="rounded-3xl border border-slate-800 bg-slate-900 p-6 transition hover:border-amber-300/50"
               >
                 <div className="flex items-start justify-between gap-4">

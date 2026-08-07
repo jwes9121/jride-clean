@@ -638,7 +638,7 @@ export default function FamilyTreePage() {
         }
 
         const response = await fetch(
-          `/api/family-reunions/${encodeURIComponent(
+          `/api/events/family-reunions/${encodeURIComponent(
             familyId
           )}/tree?${query.toString()}`,
           {
@@ -703,14 +703,14 @@ export default function FamilyTreePage() {
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            href={`/admin/family-reunions/${familyId}`}
+            href={`/admin/events/family-reunions/${familyId}`}
             className="text-sm font-bold text-amber-300"
           >
             Back to Family Project
           </Link>
           <span className="text-slate-700">/</span>
           <Link
-            href="/admin/family-reunions"
+            href="/admin/events/family-reunions"
             className="text-sm font-bold text-slate-400"
           >
             All Family Reunions
