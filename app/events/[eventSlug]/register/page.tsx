@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useParams } from "next/navigation";
+import Image from "next/image";
 
 type GroupValuesResponse = {
   success: boolean;
@@ -281,7 +282,7 @@ export default function EventRegistrationPage() {
                 href={guest.eventPassUrl}
                 className="block rounded-2xl border border-amber-300/60 px-5 py-4 text-center font-bold text-white"
               >
-                {guests[index]?.fullName.trim() || guest.relationship || `Guest ${index + 1}`} Event Pass
+                {guest.relationship || `Guest ${index + 1}`} Event Pass
               </a>
             ))}
           </div>
@@ -300,16 +301,43 @@ export default function EventRegistrationPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
       <section className="mx-auto max-w-md">
-        <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
-            JRide Events
-          </p>
-          <h1 className="mt-4 text-4xl font-black leading-tight">
-            {eventName || "Event Registration"}
-          </h1>
-          <p className="mt-3 text-slate-300">
-            Register now and receive your Event Pass QR. A valid ticket
-            number and private claim code are required for every person
+        <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl">
+          <a
+            href="/events/about"
+            className="block relative aspect-[4/3] w-full bg-slate-950"
+          >
+            <Image
+              src="/events/b2001-fun-run-logo.png"
+              alt="Batch 2001 Fun Run with Zumba"
+              fill
+              priority
+              sizes="(max-width: 640px) 100vw, 448px"
+              className="object-contain"
+            />
+          </a>
+
+          <div className="px-6 pt-4 text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">
+              Powered by JRide Events
+            </p>
+            <a
+              href="/events/about"
+              className="mt-2 inline-block text-sm font-bold text-amber-300 hover:underline"
+            >
+              See how this platform works →
+            </a>
+          </div>
+
+          <div className="p-6">
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-300">
+              JRide Events
+            </p>
+            <h1 className="mt-4 text-4xl font-black leading-tight">
+              {eventName || "Event Registration"}
+            </h1>
+            <p className="mt-3 text-slate-300">
+              Register now and receive your Event Pass QR. A valid ticket
+              number and private claim code are required for every person
             joining the Fun Walk &amp; Taebo.
           </p>
 
@@ -552,6 +580,7 @@ export default function EventRegistrationPage() {
               {submitting ? "Registering..." : "Register"}
             </button>
           </form>
+          </div>
         </div>
       </section>
     </main>
