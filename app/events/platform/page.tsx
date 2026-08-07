@@ -16,13 +16,8 @@ type FeatureCard = {
   title: string;
   description: string;
   bullets: string[];
-  // Screenshot slot label only - no image asset wired up yet. Deliberately
-  // not using stock photography or repurposed dev/test screenshots (which
-  // may contain real QR tokens or placeholder attendee data never meant
-  // to be public-facing) - swap this placeholder for a real captured
-  // screenshot from the live platform before this section is considered
-  // finished.
   screenshotLabel: string;
+  imageSrc: string;
 };
 
 const occasions: Occasion[] = [
@@ -50,6 +45,7 @@ const features: FeatureCard[] = [
       "Existing-registration detection",
     ],
     screenshotLabel: "Registration form",
+    imageSrc: "/platform/registration.png",
   },
   {
     title: "Secure Ticket Validation",
@@ -61,6 +57,7 @@ const features: FeatureCard[] = [
       "Atomic claim transaction",
     ],
     screenshotLabel: "Ticket details form",
+    imageSrc: "/platform/ticket-validation.png",
   },
   {
     title: "QR Event Passes",
@@ -71,6 +68,7 @@ const features: FeatureCard[] = [
       "Downloadable and printable",
     ],
     screenshotLabel: "Event Pass",
+    imageSrc: "/platform/event-pass.png",
   },
   {
     title: "Family & Guest Registration",
@@ -81,6 +79,7 @@ const features: FeatureCard[] = [
       "Party-level and per-person reporting",
     ],
     screenshotLabel: "Guest list on Event Pass",
+    imageSrc: "/platform/guest-registration.png",
   },
   {
     title: "Check-in Scanner",
@@ -91,6 +90,7 @@ const features: FeatureCard[] = [
       "Attendance logged in real time",
     ],
     screenshotLabel: "Scanner screen",
+    imageSrc: "/platform/scanner.png",
   },
   {
     title: "Checkpoint Tracking",
@@ -101,6 +101,7 @@ const features: FeatureCard[] = [
       "Missing-between-checkpoints detection",
     ],
     screenshotLabel: "Runner Progress panel",
+    imageSrc: "/platform/runner-progress.png",
   },
   {
     title: "Command Center",
@@ -111,6 +112,7 @@ const features: FeatureCard[] = [
       "Checkpoint anomaly detection",
     ],
     screenshotLabel: "Command Center dashboard",
+    imageSrc: "/platform/command-center.png",
   },
   {
     title: "Reports & Analytics",
@@ -121,6 +123,7 @@ const features: FeatureCard[] = [
       "CSV export",
     ],
     screenshotLabel: "Reports panel",
+    imageSrc: "/platform/reports.png",
   },
   {
     title: "Raffle System",
@@ -131,6 +134,7 @@ const features: FeatureCard[] = [
       "Tamper-resistant selection",
     ],
     screenshotLabel: "Raffle draw screen",
+    imageSrc: "/platform/raffle.png",
   },
   {
     title: "Distribution",
@@ -141,6 +145,7 @@ const features: FeatureCard[] = [
       "Distribution reporting",
     ],
     screenshotLabel: "Distribution claim screen",
+    imageSrc: "/platform/distribution.png",
   },
 ];
 
@@ -202,7 +207,13 @@ const perfectFor = [
   "Private Occasions",
 ];
 
-function PlatformPreview({ label }: { label: string }) {
+function PlatformPreview({
+  label,
+  imageSrc,
+}: {
+  label: string;
+  imageSrc: string;
+}) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
@@ -214,16 +225,14 @@ function PlatformPreview({ label }: { label: string }) {
         </span>
       </div>
 
-      <div className="flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 text-center">
-        <div>
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-300/30 bg-amber-300/10 text-sm font-black text-amber-300">
-            JR
-          </div>
-          <p className="mt-4 text-sm font-black text-white">{label}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Production screenshot slot
-          </p>
-        </div>
+      <div className="relative aspect-[4/3] w-full bg-slate-950">
+        <Image
+          src={imageSrc}
+          alt={`${label} preview`}
+          fill
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          className="object-cover object-top"
+        />
       </div>
     </div>
   );
@@ -333,7 +342,7 @@ export default function JRideEventsPlatformPage() {
                 key={feature.title}
                 className="rounded-3xl border border-slate-800 bg-slate-900 p-5"
               >
-                <PlatformPreview label={feature.screenshotLabel} />
+                <PlatformPreview label={feature.screenshotLabel} imageSrc={feature.imageSrc} />
 
                 <h3 className="mt-4 text-lg font-black">{feature.title}</h3>
                 <p className="mt-2 text-sm text-slate-400">
