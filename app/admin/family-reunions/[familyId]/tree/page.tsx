@@ -196,7 +196,18 @@ function TreeDiagram({
   parentLinks: TreeEdge[];
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const unitRefs = React.useRef(new Map<string, HTMLDivElement>());
+
+  // These anchors intentionally have different meanings:
+  // - primaryRefs: the blood-line person's own card.
+  // - coupleAnchorRefs: the midpoint of the explicit spouse connector.
+  //
+  // A person's incoming lineage must terminate on their own card, while
+  // children shared by an explicit spouse pair descend from the marriage
+  // midpoint. Keeping these anchors separate prevents an in-law spouse from
+  // looking like a child of the preceding generation.
+  const primaryRefs = React.useRef(new Map<string, HTMLDivElement>());
+  const coupleAnchorRefs = React.useRef(new Map<string, HTMLDivElement>());
+
   const [connectors, setConnectors] = React.useState<Connector[]>([]);
 
   const units = React.useMemo(
@@ -212,15 +223,31 @@ function TreeDiagram({
     [generations]
   );
 
+  const visiblePeopleById = React.useMemo(() => {
+    const map = new Map<string, TreePerson>();
+
+    for (const generation of generations) {
+      for (const person of generation.people) {
+        map.set(person.id, person);
+      }
+    }
+
+    return map;
+  }, [generations]);
+
   const unitKeyByPersonId = React.useMemo(() => {
     const map = new Map<string, string>();
 
+    // A visible blood-line person always owns their own unit.
     for (const generation of units) {
       for (const unit of generation.units) {
         map.set(unit.primary.id, unit.key);
       }
     }
 
+    // An in-law spouse that is outside the selected descendant line maps to
+    // the visible spouse's couple unit. Never overwrite a visible person's
+    // own unit.
     for (const generation of units) {
       for (const unit of generation.units) {
         for (const spouse of unit.spouses) {
@@ -234,41 +261,73 @@ function TreeDiagram({
     return map;
   }, [units]);
 
-  const visibleChildIds = React.useMemo(
-    () =>
-      new Set(
-        generations.flatMap((generation) =>
-          generation.people.map((person) => person.id)
-        )
-      ),
-    [generations]
-  );
-
-  const connectorPairs = React.useMemo(() => {
-    const pairs = new Map<
-      string,
-      { parentUnitKey: string; childUnitKey: string }
-    >();
+  const connectorPlans = React.useMemo(() => {
+    const linksByChild = new Map<string, TreeEdge[]>();
 
     for (const link of parentLinks) {
-      if (!visibleChildIds.has(link.childPersonId)) continue;
+      if (!visiblePeopleById.has(link.childPersonId)) continue;
 
-      const parentUnitKey = unitKeyByPersonId.get(link.parentPersonId);
-      const childUnitKey = unitKeyByPersonId.get(link.childPersonId);
+      const existing = linksByChild.get(link.childPersonId) ?? [];
+      existing.push(link);
+      linksByChild.set(link.childPersonId, existing);
+    }
 
-      if (!parentUnitKey || !childUnitKey || parentUnitKey === childUnitKey) {
+    const plans: {
+      key: string;
+      sourcePersonId: string;
+      sourceUnitKey: string;
+      targetPersonId: string;
+      useCoupleAnchor: boolean;
+    }[] = [];
+
+    for (const [childPersonId, childLinks] of linksByChild.entries()) {
+      const mappedParents = childLinks
+        .map((link) => ({
+          parentPersonId: link.parentPersonId,
+          unitKey: unitKeyByPersonId.get(link.parentPersonId) || "",
+        }))
+        .filter((item) => item.unitKey);
+
+      if (mappedParents.length === 0) continue;
+
+      // Collapse two recorded parents into one visual connector only when
+      // both resolve to the same explicit spouse/couple unit.
+      const uniqueUnitKeys = Array.from(
+        new Set(mappedParents.map((item) => item.unitKey))
+      );
+
+      if (uniqueUnitKeys.length === 1) {
+        const sourceUnitKey = uniqueUnitKeys[0];
+        const parentIdsInSameUnit = new Set(
+          mappedParents.map((item) => item.parentPersonId)
+        );
+
+        plans.push({
+          key: `${sourceUnitKey}:${childPersonId}`,
+          sourcePersonId: mappedParents[0].parentPersonId,
+          sourceUnitKey,
+          targetPersonId: childPersonId,
+          useCoupleAnchor: parentIdsInSameUnit.size >= 2,
+        });
+
         continue;
       }
 
-      const key = `${parentUnitKey}:${childUnitKey}`;
-      pairs.set(key, {
-        parentUnitKey,
-        childUnitKey,
-      });
+      // If parents are genuinely in different visible units, preserve both
+      // factual parent connectors rather than manufacturing a couple.
+      for (const parent of mappedParents) {
+        plans.push({
+          key: `${parent.parentPersonId}:${childPersonId}`,
+          sourcePersonId: parent.parentPersonId,
+          sourceUnitKey: parent.unitKey,
+          targetPersonId: childPersonId,
+          useCoupleAnchor: false,
+        });
+      }
     }
 
-    return Array.from(pairs.values());
-  }, [parentLinks, unitKeyByPersonId, visibleChildIds]);
+    return plans;
+  }, [parentLinks, unitKeyByPersonId, visiblePeopleById]);
 
   const calculateConnectors = React.useCallback(() => {
     const container = containerRef.current;
@@ -281,30 +340,44 @@ function TreeDiagram({
     const containerRect = container.getBoundingClientRect();
     const next: Connector[] = [];
 
-    for (const pair of connectorPairs) {
-      const parent = unitRefs.current.get(pair.parentUnitKey);
-      const child = unitRefs.current.get(pair.childUnitKey);
+    for (const plan of connectorPlans) {
+      const source = plan.useCoupleAnchor
+        ? coupleAnchorRefs.current.get(plan.sourceUnitKey)
+        : primaryRefs.current.get(plan.sourcePersonId);
 
-      if (!parent || !child) continue;
+      const target = primaryRefs.current.get(plan.targetPersonId);
 
-      const parentRect = parent.getBoundingClientRect();
-      const childRect = child.getBoundingClientRect();
+      if (!source || !target) continue;
+
+      const sourceRect = source.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
 
       const startX =
-        parentRect.left - containerRect.left + parentRect.width / 2;
-      const startY = parentRect.bottom - containerRect.top;
-      const endX = childRect.left - containerRect.left + childRect.width / 2;
-      const endY = childRect.top - containerRect.top;
+        sourceRect.left - containerRect.left + sourceRect.width / 2;
+
+      // For a couple, descend from the visual marriage-line midpoint.
+      // For a single parent, descend from the bottom center of that person's
+      // own card.
+      const startY = plan.useCoupleAnchor
+        ? sourceRect.top - containerRect.top + sourceRect.height / 2
+        : sourceRect.bottom - containerRect.top;
+
+      // Incoming lineage always terminates at the selected blood-line
+      // person's own card, never at the center of a couple unit.
+      const endX =
+        targetRect.left - containerRect.left + targetRect.width / 2;
+      const endY = targetRect.top - containerRect.top;
+
       const midY = startY + (endY - startY) / 2;
 
       next.push({
-        key: `${pair.parentUnitKey}:${pair.childUnitKey}`,
+        key: plan.key,
         d: `M ${startX} ${startY} V ${midY} H ${endX} V ${endY}`,
       });
     }
 
     setConnectors(next);
-  }, [connectorPairs]);
+  }, [connectorPlans]);
 
   React.useLayoutEffect(() => {
     calculateConnectors();
@@ -317,7 +390,11 @@ function TreeDiagram({
 
     observer.observe(container);
 
-    for (const element of unitRefs.current.values()) {
+    for (const element of primaryRefs.current.values()) {
+      observer.observe(element);
+    }
+
+    for (const element of coupleAnchorRefs.current.values()) {
       observer.observe(element);
     }
 
@@ -329,11 +406,22 @@ function TreeDiagram({
     };
   }, [calculateConnectors, units]);
 
-  function setUnitRef(unitKey: string, element: HTMLDivElement | null) {
+  function setPrimaryRef(personId: string, element: HTMLDivElement | null) {
     if (element) {
-      unitRefs.current.set(unitKey, element);
+      primaryRefs.current.set(personId, element);
     } else {
-      unitRefs.current.delete(unitKey);
+      primaryRefs.current.delete(personId);
+    }
+  }
+
+  function setCoupleAnchorRef(
+    unitKey: string,
+    element: HTMLDivElement | null
+  ) {
+    if (element) {
+      coupleAnchorRefs.current.set(unitKey, element);
+    } else {
+      coupleAnchorRefs.current.delete(unitKey);
     }
   }
 
@@ -370,26 +458,38 @@ function TreeDiagram({
                 {generation.units.map((unit) => (
                   <div
                     key={unit.key}
-                    ref={(element) => setUnitRef(unit.key, element)}
                     className="flex items-center justify-center"
                   >
-                    <PersonCard
-                      person={unit.primary}
-                      compact
-                      showSpouses={false}
-                    />
+                    <div
+                      ref={(element) =>
+                        setPrimaryRef(unit.primary.id, element)
+                      }
+                    >
+                      <PersonCard
+                        person={unit.primary}
+                        compact
+                        showSpouses={false}
+                      />
+                    </div>
 
                     {unit.spouses.map((spouse) => (
                       <React.Fragment
                         key={`${unit.primary.id}:${spouse.personId}`}
                       >
-                        <div className="mx-3 flex items-center gap-1">
-                          <span className="h-px w-7 bg-rose-300/80" />
+                        <div
+                          ref={(element) =>
+                            setCoupleAnchorRef(unit.key, element)
+                          }
+                          className="mx-3 flex h-8 items-center gap-1"
+                          aria-label={`${unit.primary.fullName} and ${spouse.fullName} spouse connection`}
+                        >
+                          <span className="h-px w-8 bg-rose-300/80" />
                           <span className="text-xs font-black text-rose-300">
                             =
                           </span>
-                          <span className="h-px w-7 bg-rose-300/80" />
+                          <span className="h-px w-8 bg-rose-300/80" />
                         </div>
+
                         <CoupleCompanionCard spouse={spouse} />
                       </React.Fragment>
                     ))}
