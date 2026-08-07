@@ -70,6 +70,41 @@ type ReunionEventsResponse = {
   eligibleEvents?: ReunionEvent[];
 };
 
+type ParticipationAttendee = {
+  attendeeId: string;
+  fullName: string;
+  nickname: string | null;
+  mobileNumber: string | null;
+  registrationNumber: string | null;
+  registrationStatus: string;
+  attendanceStatus: string;
+  registeredAt: string;
+  checkedInAt: string | null;
+  isDisqualified: boolean;
+};
+
+type ParticipationPerson = {
+  familyPersonId: string;
+  fullName: string;
+  nickname: string | null;
+  locationText: string | null;
+  locationBucket: string | null;
+  linkId: string | null;
+  attendee: ParticipationAttendee | null;
+};
+
+type ParticipationResponse = {
+  success: boolean;
+  error?: string;
+  people?: ParticipationPerson[];
+  availableAttendees?: ParticipationAttendee[];
+  totals?: {
+    familyPeople: number;
+    linkedPeople: number;
+    availableAttendees: number;
+  };
+};
+
 const IFUGAO_TOWNS = [
   "Aguinaldo",
   "Alfonso Lista",
@@ -153,6 +188,59 @@ export default function FamilyReunionDetailPage() {
   const [eventsError, setEventsError] = React.useState<string | null>(null);
   const [linkingEvent, setLinkingEvent] = React.useState(false);
   const [linkSuccess, setLinkSuccess] = React.useState<string | null>(null);
+
+  const [expandedEventId, setExpandedEventId] = React.useState<string | null>(null);
+  const [participationPeople, setParticipationPeople] =
+    React.useState<ParticipationPerson[]>([]);
+  const [availableAttendees, setAvailableAttendees] =
+    React.useState<ParticipationAttendee[]>([]);
+  const [participationLoading, setParticipationLoading] = React.useState(false);
+  const [participationError, setParticipationError] =
+    React.useState<string | null>(null);
+  const [selectedAttendeeByPerson, setSelectedAttendeeByPerson] =
+    React.useState<Record<string, string>>({});
+  const [linkingPersonId, setLinkingPersonId] = React.useState<string | null>(null);
+
+  const loadParticipation = React.useCallback(
+    async (eventId: string) => {
+      setParticipationLoading(true);
+      setParticipationError(null);
+
+      try {
+        const response = await fetch(
+          `/api/events/family-reunions/${encodeURIComponent(
+            familyId
+          )}/reunion-events/${encodeURIComponent(eventId)}/participation`,
+          { method: "GET", cache: "no-store" }
+        );
+
+        const data = (await response.json()) as ParticipationResponse;
+
+        if (!response.ok || !data.success) {
+          setParticipationError(
+            data.error || "Failed to load family participation."
+          );
+          setParticipationPeople([]);
+          setAvailableAttendees([]);
+          return;
+        }
+
+        setParticipationPeople(data.people || []);
+        setAvailableAttendees(data.availableAttendees || []);
+      } catch (error) {
+        setParticipationError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load family participation."
+        );
+        setParticipationPeople([]);
+        setAvailableAttendees([]);
+      } finally {
+        setParticipationLoading(false);
+      }
+    },
+    [familyId]
+  );
 
   const loadReunionEvents = React.useCallback(async () => {
     setEventsLoading(true);
@@ -268,6 +356,62 @@ export default function FamilyReunionDetailPage() {
       );
     } finally {
       setLinkingEvent(false);
+    }
+  }
+
+  async function linkFamilyMemberToAttendee(
+    eventId: string,
+    familyPersonId: string
+  ) {
+    const attendeeId = selectedAttendeeByPerson[familyPersonId] || "";
+
+    setParticipationError(null);
+
+    if (!attendeeId) {
+      setParticipationError("Choose an attendee for this family member.");
+      return;
+    }
+
+    setLinkingPersonId(familyPersonId);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/reunion-events/${encodeURIComponent(eventId)}/participation`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            familyPersonId,
+            attendeeId,
+          }),
+        }
+      );
+
+      const data = (await response.json()) as ParticipationResponse;
+
+      if (!response.ok || !data.success) {
+        setParticipationError(
+          data.error || "Failed to link family member to attendee."
+        );
+        return;
+      }
+
+      setSelectedAttendeeByPerson((current) => ({
+        ...current,
+        [familyPersonId]: "",
+      }));
+
+      await loadParticipation(eventId);
+    } catch (error) {
+      setParticipationError(
+        error instanceof Error
+          ? error.message
+          : "Failed to link family member to attendee."
+      );
+    } finally {
+      setLinkingPersonId(null);
     }
   }
 
@@ -534,12 +678,180 @@ export default function FamilyReunionDetailPage() {
                           <p className="mt-1 text-sm text-slate-400">
                             Status: {event.status}
                           </p>
-                          <Link
-                            href={`/admin/events/${event.slug}/lifecycle`}
-                            className="mt-3 inline-flex rounded-lg border border-amber-300/40 px-3 py-2 text-xs font-black text-amber-300"
-                          >
-                            Open Event Lifecycle
-                          </Link>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link
+                              href={`/admin/events/${event.slug}/lifecycle`}
+                              className="inline-flex rounded-lg border border-amber-300/40 px-3 py-2 text-xs font-black text-amber-300"
+                            >
+                              Open Event Lifecycle
+                            </Link>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (expandedEventId === event.eventId) {
+                                  setExpandedEventId(null);
+                                  setParticipationPeople([]);
+                                  setAvailableAttendees([]);
+                                  setParticipationError(null);
+                                } else {
+                                  setExpandedEventId(event.eventId);
+                                  void loadParticipation(event.eventId);
+                                }
+                              }}
+                              className="rounded-lg border border-cyan-300/40 px-3 py-2 text-xs font-black text-cyan-300"
+                            >
+                              {expandedEventId === event.eventId
+                                ? "Close Participation"
+                                : "Family Participation"}
+                            </button>
+                          </div>
+
+                          {expandedEventId === event.eventId ? (
+                            <div className="mt-4 border-t border-slate-800 pt-4">
+                              <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-300">
+                                Family Participation
+                              </p>
+
+                              {participationLoading ? (
+                                <p className="mt-3 text-sm text-slate-400">
+                                  Loading family participation...
+                                </p>
+                              ) : participationError ? (
+                                <div className="mt-3 rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+                                  {participationError}
+                                </div>
+                              ) : participationPeople.length === 0 ? (
+                                <p className="mt-3 text-sm text-slate-400">
+                                  No family members have been added to this
+                                  genealogy project yet.
+                                </p>
+                              ) : (
+                                <div className="mt-3 space-y-3">
+                                  {participationPeople.map((person) => (
+                                    <div
+                                      key={person.familyPersonId}
+                                      className="rounded-xl border border-slate-800 bg-slate-900 p-3"
+                                    >
+                                      <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                          <p className="font-black text-white">
+                                            {person.fullName}
+                                          </p>
+                                          <p className="mt-1 text-xs text-slate-400">
+                                            {person.locationBucket ||
+                                              person.locationText ||
+                                              "Location not recorded"}
+                                          </p>
+                                        </div>
+
+                                        {person.attendee ? (
+                                          <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-300">
+                                            Linked
+                                          </span>
+                                        ) : (
+                                          <span className="rounded-full bg-slate-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-300">
+                                            Not Linked
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {person.attendee ? (
+                                        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300">
+                                          <p>
+                                            Attendee:{" "}
+                                            <span className="font-bold text-white">
+                                              {person.attendee.fullName}
+                                            </span>
+                                          </p>
+                                          <p className="mt-1">
+                                            Registration:{" "}
+                                            {person.attendee.registrationNumber ||
+                                              "No registration number"}
+                                          </p>
+                                          <p className="mt-1">
+                                            Attendance:{" "}
+                                            {person.attendee.attendanceStatus}
+                                          </p>
+                                          {person.attendee.checkedInAt ? (
+                                            <p className="mt-1">
+                                              Checked in:{" "}
+                                              {person.attendee.checkedInAt}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                      ) : availableAttendees.length > 0 ? (
+                                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                          <select
+                                            value={
+                                              selectedAttendeeByPerson[
+                                                person.familyPersonId
+                                              ] || ""
+                                            }
+                                            onChange={(changeEvent) =>
+                                              setSelectedAttendeeByPerson(
+                                                (current) => ({
+                                                  ...current,
+                                                  [person.familyPersonId]:
+                                                    changeEvent.target.value,
+                                                })
+                                              )
+                                            }
+                                            className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
+                                          >
+                                            <option value="">
+                                              Choose event attendee
+                                            </option>
+                                            {availableAttendees.map(
+                                              (attendee) => (
+                                                <option
+                                                  key={attendee.attendeeId}
+                                                  value={attendee.attendeeId}
+                                                >
+                                                  {attendee.fullName}
+                                                  {attendee.registrationNumber
+                                                    ? ` - ${attendee.registrationNumber}`
+                                                    : ""}
+                                                </option>
+                                              )
+                                            )}
+                                          </select>
+
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void linkFamilyMemberToAttendee(
+                                                event.eventId,
+                                                person.familyPersonId
+                                              )
+                                            }
+                                            disabled={
+                                              linkingPersonId ===
+                                                person.familyPersonId ||
+                                              !selectedAttendeeByPerson[
+                                                person.familyPersonId
+                                              ]
+                                            }
+                                            className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
+                                          >
+                                            {linkingPersonId ===
+                                            person.familyPersonId
+                                              ? "Linking..."
+                                              : "Match Attendee"}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <p className="mt-3 text-xs text-slate-500">
+                                          No unmatched attendees are available
+                                          for this event.
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
