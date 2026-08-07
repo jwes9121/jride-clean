@@ -206,6 +206,7 @@ function TreeDiagram({
   // midpoint. Keeping these anchors separate prevents an in-law spouse from
   // looking like a child of the preceding generation.
   const primaryRefs = React.useRef(new Map<string, HTMLDivElement>());
+  const spouseRefs = React.useRef(new Map<string, HTMLDivElement>());
   const coupleAnchorRefs = React.useRef(new Map<string, HTMLDivElement>());
 
   const [connectors, setConnectors] = React.useState<Connector[]>([]);
@@ -341,26 +342,40 @@ function TreeDiagram({
     const next: Connector[] = [];
 
     for (const plan of connectorPlans) {
-      const source = plan.useCoupleAnchor
-        ? coupleAnchorRefs.current.get(plan.sourceUnitKey)
-        : primaryRefs.current.get(plan.sourcePersonId);
-
       const target = primaryRefs.current.get(plan.targetPersonId);
 
-      if (!source || !target) continue;
+      if (!target) continue;
 
-      const sourceRect = source.getBoundingClientRect();
+      let startX = 0;
+      let startY = 0;
+
+      if (plan.useCoupleAnchor) {
+        const primary = primaryRefs.current.get(plan.sourceUnitKey);
+        const spouse = spouseRefs.current.get(plan.sourceUnitKey);
+
+        if (!primary || !spouse) continue;
+
+        const primaryRect = primary.getBoundingClientRect();
+        const spouseRect = spouse.getBoundingClientRect();
+
+        // Exact geometric midpoint of the visible marriage gap:
+        // primary card right edge <---- midpoint ----> spouse card left edge.
+        startX =
+          (primaryRect.right + spouseRect.left) / 2 - containerRect.left;
+        startY =
+          (primaryRect.top + primaryRect.bottom) / 2 - containerRect.top;
+      } else {
+        const source = primaryRefs.current.get(plan.sourcePersonId);
+
+        if (!source) continue;
+
+        const sourceRect = source.getBoundingClientRect();
+        startX =
+          sourceRect.left - containerRect.left + sourceRect.width / 2;
+        startY = sourceRect.bottom - containerRect.top;
+      }
+
       const targetRect = target.getBoundingClientRect();
-
-      const startX =
-        sourceRect.left - containerRect.left + sourceRect.width / 2;
-
-      // For a couple, descend from the visual marriage-line midpoint.
-      // For a single parent, descend from the bottom center of that person's
-      // own card.
-      const startY = plan.useCoupleAnchor
-        ? sourceRect.top - containerRect.top + sourceRect.height / 2
-        : sourceRect.bottom - containerRect.top;
 
       // Incoming lineage always terminates at the selected blood-line
       // person's own card, never at the center of a couple unit.
@@ -398,6 +413,10 @@ function TreeDiagram({
       observer.observe(element);
     }
 
+    for (const element of spouseRefs.current.values()) {
+      observer.observe(element);
+    }
+
     window.addEventListener("resize", calculateConnectors);
 
     return () => {
@@ -422,6 +441,14 @@ function TreeDiagram({
       coupleAnchorRefs.current.set(unitKey, element);
     } else {
       coupleAnchorRefs.current.delete(unitKey);
+    }
+  }
+
+  function setSpouseRef(unitKey: string, element: HTMLDivElement | null) {
+    if (element) {
+      spouseRefs.current.set(unitKey, element);
+    } else {
+      spouseRefs.current.delete(unitKey);
     }
   }
 
@@ -490,7 +517,11 @@ function TreeDiagram({
                           <span className="h-px w-8 bg-rose-300/80" />
                         </div>
 
-                        <CoupleCompanionCard spouse={spouse} />
+                        <div
+                          ref={(element) => setSpouseRef(unit.key, element)}
+                        >
+                          <CoupleCompanionCard spouse={spouse} />
+                        </div>
                       </React.Fragment>
                     ))}
                   </div>
