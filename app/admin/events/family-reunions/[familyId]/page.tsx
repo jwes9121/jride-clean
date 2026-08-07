@@ -55,6 +55,21 @@ type EditorResponse = {
   error?: string;
 };
 
+type ReunionEvent = {
+  linkId?: string;
+  linkedAt?: string;
+  eventId: string;
+  slug: string;
+  status: string;
+};
+
+type ReunionEventsResponse = {
+  success: boolean;
+  error?: string;
+  linkedEvents?: ReunionEvent[];
+  eligibleEvents?: ReunionEvent[];
+};
+
 const IFUGAO_TOWNS = [
   "Aguinaldo",
   "Alfonso Lista",
@@ -131,6 +146,48 @@ export default function FamilyReunionDetailPage() {
   const [relationshipSuccess, setRelationshipSuccess] =
     React.useState<string | null>(null);
 
+  const [linkedEvents, setLinkedEvents] = React.useState<ReunionEvent[]>([]);
+  const [eligibleEvents, setEligibleEvents] = React.useState<ReunionEvent[]>([]);
+  const [selectedEventId, setSelectedEventId] = React.useState("");
+  const [eventsLoading, setEventsLoading] = React.useState(true);
+  const [eventsError, setEventsError] = React.useState<string | null>(null);
+  const [linkingEvent, setLinkingEvent] = React.useState(false);
+  const [linkSuccess, setLinkSuccess] = React.useState<string | null>(null);
+
+  const loadReunionEvents = React.useCallback(async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/reunion-events`,
+        { method: "GET", cache: "no-store" }
+      );
+
+      const data = (await response.json()) as ReunionEventsResponse;
+
+      if (!response.ok || !data.success) {
+        setEventsError(data.error || "Failed to load reunion events.");
+        setLinkedEvents([]);
+        setEligibleEvents([]);
+        return;
+      }
+
+      setLinkedEvents(data.linkedEvents || []);
+      setEligibleEvents(data.eligibleEvents || []);
+    } catch (error) {
+      setEventsError(
+        error instanceof Error ? error.message : "Failed to load reunion events."
+      );
+      setLinkedEvents([]);
+      setEligibleEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [familyId]);
+
   const loadFamily = React.useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -169,7 +226,50 @@ export default function FamilyReunionDetailPage() {
 
   React.useEffect(() => {
     void loadFamily();
-  }, [loadFamily]);
+    void loadReunionEvents();
+  }, [loadFamily, loadReunionEvents]);
+
+  async function linkExistingEvent() {
+    setEventsError(null);
+    setLinkSuccess(null);
+
+    if (!selectedEventId) {
+      setEventsError("Choose an event to link.");
+      return;
+    }
+
+    setLinkingEvent(true);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/reunion-events`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId: selectedEventId }),
+        }
+      );
+
+      const data = (await response.json()) as ReunionEventsResponse;
+
+      if (!response.ok || !data.success) {
+        setEventsError(data.error || "Failed to link reunion event.");
+        return;
+      }
+
+      setLinkSuccess("Event linked to this family project.");
+      setSelectedEventId("");
+      await loadReunionEvents();
+    } catch (error) {
+      setEventsError(
+        error instanceof Error ? error.message : "Failed to link reunion event."
+      );
+    } finally {
+      setLinkingEvent(false);
+    }
+  }
 
   async function findRelationship() {
     setFindError(null);
@@ -406,6 +506,101 @@ export default function FamilyReunionDetailPage() {
                 Open Family Tree
               </Link>
             </div>
+
+            <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">
+                JRide Events
+              </p>
+              <h2 className="mt-2 text-2xl font-black">Reunion Events</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Link this permanent family genealogy to an existing JRide
+                Event. The linked event keeps its existing lifecycle and status.
+              </p>
+
+              {eventsLoading ? (
+                <p className="mt-5 text-sm text-slate-400">
+                  Loading reunion events...
+                </p>
+              ) : (
+                <>
+                  {linkedEvents.length > 0 ? (
+                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                      {linkedEvents.map((event) => (
+                        <div
+                          key={event.eventId}
+                          className="rounded-2xl border border-slate-700 bg-slate-950 p-4"
+                        >
+                          <p className="font-black text-white">{event.slug}</p>
+                          <p className="mt-1 text-sm text-slate-400">
+                            Status: {event.status}
+                          </p>
+                          <Link
+                            href={`/admin/events/${event.slug}/lifecycle`}
+                            className="mt-3 inline-flex rounded-lg border border-amber-300/40 px-3 py-2 text-xs font-black text-amber-300"
+                          >
+                            Open Event Lifecycle
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-5 rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-400">
+                      No reunion events are linked to this family yet.
+                    </div>
+                  )}
+
+                  <div className="mt-5 border-t border-slate-800 pt-5">
+                    <p className="text-sm font-black text-white">
+                      Link Existing Event
+                    </p>
+
+                    {eligibleEvents.length > 0 ? (
+                      <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                        <select
+                          value={selectedEventId}
+                          onChange={(event) =>
+                            setSelectedEventId(event.target.value)
+                          }
+                          className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                        >
+                          <option value="">Choose unlinked event</option>
+                          {eligibleEvents.map((event) => (
+                            <option key={event.eventId} value={event.eventId}>
+                              {event.slug} - {event.status}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => void linkExistingEvent()}
+                          disabled={linkingEvent || !selectedEventId}
+                          className="rounded-xl bg-amber-400 px-5 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                        >
+                          {linkingEvent ? "Linking..." : "Link Event"}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">
+                        No unlinked JRide Events are currently available.
+                      </p>
+                    )}
+                  </div>
+
+                  {eventsError ? (
+                    <div className="mt-4 rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+                      {eventsError}
+                    </div>
+                  ) : null}
+
+                  {linkSuccess ? (
+                    <div className="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+                      {linkSuccess}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
 
             <section className="mt-8">
               <h2 className="text-xl font-black">Family Members</h2>
