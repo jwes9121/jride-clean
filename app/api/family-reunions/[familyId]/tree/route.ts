@@ -282,6 +282,24 @@ export async function GET(
       visiblePeople.map((person) => [person.id, person] as const)
     );
 
+    // Fetch every biological parent recorded for each visible person, not
+    // only the parent edge used to reach that person from the selected root.
+    // This allows an in-law spouse outside the descendant line to participate
+    // in the couple unit without becoming a false descendant.
+    const { data: completeParentRows, error: completeParentsError } =
+      await supabase
+        .from("family_parent_child")
+        .select("parent_person_id,child_person_id,relationship_type")
+        .in("child_person_id", visiblePersonIds)
+        .eq("relationship_type", "biological");
+
+    if (completeParentsError) {
+      throw new Error(completeParentsError.message);
+    }
+
+    const completeBiologicalParents =
+      (completeParentRows ?? []) as ParentChildRow[];
+
     const spouseRowsByPair = new Map<string, SpouseRow>();
 
     if (visiblePersonIds.length > 0) {
@@ -332,7 +350,7 @@ export async function GET(
 
     const parentIdsByChildId = new Map<string, string[]>();
 
-    for (const edge of allEdges) {
+    for (const edge of completeBiologicalParents) {
       const existing = parentIdsByChildId.get(edge.child_person_id) ?? [];
       if (!existing.includes(edge.parent_person_id)) {
         existing.push(edge.parent_person_id);
@@ -346,6 +364,9 @@ export async function GET(
         personId: string;
         fullName: string;
         status: string;
+        locationText: string | null;
+        locationBucket: string | null;
+        isLiving: boolean;
       }[]
     >();
 
@@ -359,6 +380,9 @@ export async function GET(
           personId: personB.id,
           fullName: personB.full_name,
           status: spouse.status,
+          locationText: personB.location_text,
+          locationBucket: personB.location_bucket,
+          isLiving: personB.is_living,
         });
         spouseSummariesByPersonId.set(personA.id, aList);
 
@@ -367,6 +391,9 @@ export async function GET(
           personId: personA.id,
           fullName: personA.full_name,
           status: spouse.status,
+          locationText: personA.location_text,
+          locationBucket: personA.location_bucket,
+          isLiving: personA.is_living,
         });
         spouseSummariesByPersonId.set(personB.id, bList);
       }
@@ -430,6 +457,11 @@ export async function GET(
           childPersonId: edge.child_person_id,
           relationshipType: edge.relationship_type,
         })),
+      parentLinks: completeBiologicalParents.map((edge) => ({
+        parentPersonId: edge.parent_person_id,
+        childPersonId: edge.child_person_id,
+        relationshipType: edge.relationship_type,
+      })),
       spouses: spouseRows.map((row) => ({
         personAId: row.person_a_id,
         personBId: row.person_b_id,

@@ -30,6 +30,9 @@ type TreePerson = {
     personId: string;
     fullName: string;
     status: string;
+    locationText: string | null;
+    locationBucket: string | null;
+    isLiving: boolean;
   }[];
 };
 
@@ -57,6 +60,7 @@ type TreeResponse = {
   generationLimit?: number;
   generations?: TreeGeneration[];
   edges?: TreeEdge[];
+  parentLinks?: TreeEdge[];
 };
 
 type ViewMode = "tree" | "list";
@@ -82,10 +86,12 @@ function PersonCard({
   person,
   nodeRef,
   compact = false,
+  showSpouses = true,
 }: {
   person: TreePerson;
   nodeRef?: (element: HTMLDivElement | null) => void;
   compact?: boolean;
+  showSpouses?: boolean;
 }) {
   return (
     <article
@@ -118,7 +124,7 @@ function PersonCard({
 
       <p className="mt-3 text-sm text-slate-400">{locationLabel(person)}</p>
 
-      {person.spouses.length > 0 ? (
+      {showSpouses && person.spouses.length > 0 ? (
         <div className="mt-3 border-t border-slate-800 pt-3">
           <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
             Spouse{person.spouses.length > 1 ? "s" : ""}
@@ -142,34 +148,127 @@ function PersonCard({
   );
 }
 
+function CoupleCompanionCard({
+  spouse,
+}: {
+  spouse: TreePerson["spouses"][number];
+}) {
+  const location =
+    spouse.locationText && spouse.locationBucket
+      ? spouse.locationText === spouse.locationBucket
+        ? spouse.locationText
+        : `${spouse.locationText} - ${spouse.locationBucket}`
+      : spouse.locationText || spouse.locationBucket || "Location not recorded";
+
+  return (
+    <article className="w-[300px] rounded-2xl border border-rose-300/30 bg-slate-950 p-4 shadow-lg shadow-black/10">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="line-clamp-2 min-h-[2.5rem] font-black leading-5 text-white">
+            {spouse.fullName}
+          </p>
+          <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-rose-300">
+            Spouse - {spouse.status}
+          </p>
+        </div>
+
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${
+            spouse.isLiving
+              ? "bg-emerald-400/10 text-emerald-300"
+              : "bg-slate-700 text-slate-300"
+          }`}
+        >
+          {spouse.isLiving ? "Living" : "Deceased"}
+        </span>
+      </div>
+
+      <p className="mt-3 text-sm text-slate-400">{location}</p>
+    </article>
+  );
+}
+
 function TreeDiagram({
   generations,
-  edges,
+  parentLinks,
 }: {
   generations: TreeGeneration[];
-  edges: TreeEdge[];
+  parentLinks: TreeEdge[];
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const nodeRefs = React.useRef(new Map<string, HTMLDivElement>());
+  const unitRefs = React.useRef(new Map<string, HTMLDivElement>());
   const [connectors, setConnectors] = React.useState<Connector[]>([]);
 
-  const visibleIds = React.useMemo(() => {
-    return new Set(
-      generations.flatMap((generation) =>
-        generation.people.map((person) => person.id)
-      )
-    );
-  }, [generations]);
-
-  const visibleEdges = React.useMemo(
+  const units = React.useMemo(
     () =>
-      edges.filter(
-        (edge) =>
-          visibleIds.has(edge.parentPersonId) &&
-          visibleIds.has(edge.childPersonId)
-      ),
-    [edges, visibleIds]
+      generations.map((generation) => ({
+        generation: generation.generation,
+        units: generation.people.map((person) => ({
+          key: person.id,
+          primary: person,
+          spouses: person.spouses,
+        })),
+      })),
+    [generations]
   );
+
+  const unitKeyByPersonId = React.useMemo(() => {
+    const map = new Map<string, string>();
+
+    for (const generation of units) {
+      for (const unit of generation.units) {
+        map.set(unit.primary.id, unit.key);
+      }
+    }
+
+    for (const generation of units) {
+      for (const unit of generation.units) {
+        for (const spouse of unit.spouses) {
+          if (!map.has(spouse.personId)) {
+            map.set(spouse.personId, unit.key);
+          }
+        }
+      }
+    }
+
+    return map;
+  }, [units]);
+
+  const visibleChildIds = React.useMemo(
+    () =>
+      new Set(
+        generations.flatMap((generation) =>
+          generation.people.map((person) => person.id)
+        )
+      ),
+    [generations]
+  );
+
+  const connectorPairs = React.useMemo(() => {
+    const pairs = new Map<
+      string,
+      { parentUnitKey: string; childUnitKey: string }
+    >();
+
+    for (const link of parentLinks) {
+      if (!visibleChildIds.has(link.childPersonId)) continue;
+
+      const parentUnitKey = unitKeyByPersonId.get(link.parentPersonId);
+      const childUnitKey = unitKeyByPersonId.get(link.childPersonId);
+
+      if (!parentUnitKey || !childUnitKey || parentUnitKey === childUnitKey) {
+        continue;
+      }
+
+      const key = `${parentUnitKey}:${childUnitKey}`;
+      pairs.set(key, {
+        parentUnitKey,
+        childUnitKey,
+      });
+    }
+
+    return Array.from(pairs.values());
+  }, [parentLinks, unitKeyByPersonId, visibleChildIds]);
 
   const calculateConnectors = React.useCallback(() => {
     const container = containerRef.current;
@@ -182,9 +281,9 @@ function TreeDiagram({
     const containerRect = container.getBoundingClientRect();
     const next: Connector[] = [];
 
-    for (const edge of visibleEdges) {
-      const parent = nodeRefs.current.get(edge.parentPersonId);
-      const child = nodeRefs.current.get(edge.childPersonId);
+    for (const pair of connectorPairs) {
+      const parent = unitRefs.current.get(pair.parentUnitKey);
+      const child = unitRefs.current.get(pair.childUnitKey);
 
       if (!parent || !child) continue;
 
@@ -199,13 +298,13 @@ function TreeDiagram({
       const midY = startY + (endY - startY) / 2;
 
       next.push({
-        key: `${edge.parentPersonId}:${edge.childPersonId}`,
+        key: `${pair.parentUnitKey}:${pair.childUnitKey}`,
         d: `M ${startX} ${startY} V ${midY} H ${endX} V ${endY}`,
       });
     }
 
     setConnectors(next);
-  }, [visibleEdges]);
+  }, [connectorPairs]);
 
   React.useLayoutEffect(() => {
     calculateConnectors();
@@ -214,13 +313,11 @@ function TreeDiagram({
 
     if (!container || typeof ResizeObserver === "undefined") return;
 
-    const observer = new ResizeObserver(() => {
-      calculateConnectors();
-    });
+    const observer = new ResizeObserver(calculateConnectors);
 
     observer.observe(container);
 
-    for (const element of nodeRefs.current.values()) {
+    for (const element of unitRefs.current.values()) {
       observer.observe(element);
     }
 
@@ -230,22 +327,19 @@ function TreeDiagram({
       observer.disconnect();
       window.removeEventListener("resize", calculateConnectors);
     };
-  }, [calculateConnectors, generations]);
+  }, [calculateConnectors, units]);
 
-  function setNodeRef(personId: string, element: HTMLDivElement | null) {
+  function setUnitRef(unitKey: string, element: HTMLDivElement | null) {
     if (element) {
-      nodeRefs.current.set(personId, element);
+      unitRefs.current.set(unitKey, element);
     } else {
-      nodeRefs.current.delete(personId);
+      unitRefs.current.delete(unitKey);
     }
   }
 
   return (
     <div className="mt-8 overflow-x-auto rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
-      <div
-        ref={containerRef}
-        className="relative min-w-[980px] pb-4"
-      >
+      <div ref={containerRef} className="relative min-w-[1180px] pb-4">
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
@@ -264,7 +358,7 @@ function TreeDiagram({
         </svg>
 
         <div className="relative z-10 space-y-20">
-          {generations.map((generation) => (
+          {units.map((generation) => (
             <section key={generation.generation}>
               <div className="mb-4 text-center">
                 <span className="inline-flex rounded-full border border-amber-300/30 bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
@@ -272,14 +366,34 @@ function TreeDiagram({
                 </span>
               </div>
 
-              <div className="flex justify-center gap-14 px-8">
-                {generation.people.map((person) => (
-                  <PersonCard
-                    key={person.id}
-                    person={person}
-                    compact
-                    nodeRef={(element) => setNodeRef(person.id, element)}
-                  />
+              <div className="flex justify-center gap-16 px-8">
+                {generation.units.map((unit) => (
+                  <div
+                    key={unit.key}
+                    ref={(element) => setUnitRef(unit.key, element)}
+                    className="flex items-center justify-center"
+                  >
+                    <PersonCard
+                      person={unit.primary}
+                      compact
+                      showSpouses={false}
+                    />
+
+                    {unit.spouses.map((spouse) => (
+                      <React.Fragment
+                        key={`${unit.primary.id}:${spouse.personId}`}
+                      >
+                        <div className="mx-3 flex items-center gap-1">
+                          <span className="h-px w-7 bg-rose-300/80" />
+                          <span className="text-xs font-black text-rose-300">
+                            =
+                          </span>
+                          <span className="h-px w-7 bg-rose-300/80" />
+                        </div>
+                        <CoupleCompanionCard spouse={spouse} />
+                      </React.Fragment>
+                    ))}
+                  </div>
                 ))}
               </div>
             </section>
@@ -373,7 +487,11 @@ export default function FamilyTreePage() {
   const [generationLimit, setGenerationLimit] = React.useState(5);
   const [generations, setGenerations] = React.useState<TreeGeneration[]>([]);
   const [edges, setEdges] = React.useState<TreeEdge[]>([]);
+  const [parentLinks, setParentLinks] = React.useState<TreeEdge[]>([]);
   const [viewMode, setViewMode] = React.useState<ViewMode>("tree");
+
+  const effectiveParentLinks =
+    parentLinks.length > 0 ? parentLinks : edges;
 
   const loadTree = React.useCallback(
     async (rootPersonId?: string, generationsToShow = generationLimit) => {
@@ -404,6 +522,7 @@ export default function FamilyTreePage() {
           setError(data.error || "Failed to load family tree.");
           setGenerations([]);
           setEdges([]);
+          setParentLinks([]);
           return;
         }
 
@@ -414,6 +533,7 @@ export default function FamilyTreePage() {
         setGenerationLimit(data.generationLimit || generationsToShow);
         setGenerations(data.generations || []);
         setEdges(data.edges || []);
+        setParentLinks(data.parentLinks || []);
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -422,6 +542,7 @@ export default function FamilyTreePage() {
         );
         setGenerations([]);
         setEdges([]);
+        setParentLinks([]);
       } finally {
         setLoading(false);
       }
@@ -576,7 +697,10 @@ export default function FamilyTreePage() {
             </p>
           </div>
         ) : viewMode === "tree" ? (
-          <TreeDiagram generations={generations} edges={edges} />
+          <TreeDiagram
+            generations={generations}
+            parentLinks={effectiveParentLinks}
+          />
         ) : (
           <ListView generations={generations} />
         )}
