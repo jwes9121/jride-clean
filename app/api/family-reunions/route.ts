@@ -14,6 +14,11 @@ function noStore(body: unknown, status = 200) {
   });
 }
 
+function cleanText(value: unknown, maxLength: number) {
+  const text = String(value || "").trim();
+  return text ? text.slice(0, maxLength) : "";
+}
+
 export async function GET(_req: NextRequest) {
   try {
     const authorization = await requireStaff(["admin", "dispatcher"]);
@@ -78,6 +83,75 @@ export async function GET(_req: NextRequest) {
           error instanceof Error
             ? error.message
             : "Failed to load family reunions.",
+      },
+      500
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const authorization = await requireStaff(["admin", "dispatcher"]);
+
+    if (!authorization.ok) {
+      return noStore(
+        {
+          success: false,
+          error: authorization.error,
+        },
+        authorization.status
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const name = cleanText(body.name, 200);
+    const description = cleanText(body.description, 2000);
+
+    if (!name) {
+      return noStore(
+        {
+          success: false,
+          error: "Family reunion name is required.",
+        },
+        400
+      );
+    }
+
+    const supabase = supabaseAdmin();
+
+    const { data: family, error: insertError } = await supabase
+      .from("families")
+      .insert({
+        name,
+        description: description || null,
+      })
+      .select("id,name,description,created_at,updated_at")
+      .single();
+
+    if (insertError) throw new Error(insertError.message);
+
+    return noStore(
+      {
+        success: true,
+        family: {
+          id: family.id,
+          name: family.name,
+          description: family.description,
+          createdAt: family.created_at,
+          updatedAt: family.updated_at,
+          peopleCount: 0,
+        },
+      },
+      201
+    );
+  } catch (error) {
+    return noStore(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create family reunion.",
       },
       500
     );
