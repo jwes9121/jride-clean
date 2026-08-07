@@ -303,7 +303,7 @@ export default function EventRegistrationPage() {
       <section className="mx-auto max-w-md">
         <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl">
           <a
-            href="/events/about"
+            href="/events/platform"
             className="block relative aspect-[4/3] w-full bg-slate-950"
           >
             <Image
@@ -321,7 +321,7 @@ export default function EventRegistrationPage() {
               Powered by JRide Events
             </p>
             <a
-              href="/events/about"
+              href="/events/platform"
               className="mt-2 inline-block text-sm font-bold text-amber-300 hover:underline"
             >
               See how this platform works →
