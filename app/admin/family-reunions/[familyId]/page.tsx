@@ -234,7 +234,7 @@ export default function FamilyReunionDetailPage() {
             </div>
 
             <section className="mt-8">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black">Family Members</h2>
                   <p className="mt-1 text-sm text-slate-400">
@@ -242,6 +242,13 @@ export default function FamilyReunionDetailPage() {
                     project.
                   </p>
                 </div>
+
+                <Link
+                  href={`/admin/family-reunions/${familyId}/tree`}
+                  className="rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-black text-slate-950"
+                >
+                  Open Family Tree
+                </Link>
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
