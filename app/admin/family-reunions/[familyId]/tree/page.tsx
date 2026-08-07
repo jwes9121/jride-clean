@@ -92,14 +92,14 @@ function PersonCard({
       ref={nodeRef}
       data-person-id={person.id}
       className={`rounded-2xl border border-slate-700 bg-slate-950 shadow-lg shadow-black/10 ${
-        compact ? "w-[220px] p-3" : "p-4"
+        compact ? "w-[300px] p-4" : "p-4"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-black text-white">{person.fullName}</p>
+          <p className="line-clamp-2 min-h-[2.5rem] font-black leading-5 text-white">{person.fullName}</p>
           {person.nickname ? (
-            <p className="mt-1 truncate text-sm text-slate-400">
+            <p className="mt-1 line-clamp-2 text-sm text-slate-400">
               "{person.nickname}"
             </p>
           ) : null}
@@ -244,7 +244,7 @@ function TreeDiagram({
     <div className="mt-8 overflow-x-auto rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
       <div
         ref={containerRef}
-        className="relative min-w-[760px] pb-4"
+        className="relative min-w-[980px] pb-4"
       >
         <svg
           aria-hidden="true"
@@ -272,7 +272,7 @@ function TreeDiagram({
                 </span>
               </div>
 
-              <div className="flex justify-center gap-8 px-6">
+              <div className="flex justify-center gap-14 px-8">
                 {generation.people.map((person) => (
                   <PersonCard
                     key={person.id}
@@ -465,7 +465,7 @@ export default function FamilyTreePage() {
           </Link>
         </div>
 
-        <div className="mt-6 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="mt-6 flex flex-col gap-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">
               Family Tree
@@ -480,7 +480,7 @@ export default function FamilyTreePage() {
             ) : null}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[760px]">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:min-w-[860px]">
             <label className="block">
               <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                 Starting Ancestor
