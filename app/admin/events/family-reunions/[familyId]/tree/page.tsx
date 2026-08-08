@@ -198,7 +198,11 @@ function TreeDiagram({
   parentLinks: TreeEdge[];
   outsideParents: TreePerson[];
 }) {
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const rootNodeRef = React.useRef<HTMLDivElement | null>(null);
+  const [zoom, setZoom] = React.useState(1);
+  const [manualZoom, setManualZoom] = React.useState(false);
 
   // These anchors intentionally have different meanings:
   // - primaryRefs: the blood-line person's own card.
@@ -490,9 +494,126 @@ function TreeDiagram({
     }
   }
 
+  const fitTree = React.useCallback(() => {
+    const viewport = viewportRef.current;
+    const container = containerRef.current;
+
+    if (!viewport || !container) return;
+
+    const naturalWidth = Math.max(container.scrollWidth, container.offsetWidth);
+    const availableWidth = Math.max(320, viewport.clientWidth - 24);
+
+    if (naturalWidth <= 0) return;
+
+    const nextZoom = Math.min(
+      1,
+      Math.max(0.35, availableWidth / naturalWidth)
+    );
+
+    setZoom(nextZoom);
+    setManualZoom(false);
+  }, []);
+
+  const centerRoot = React.useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const viewport = viewportRef.current;
+      const root = rootNodeRef.current;
+
+      if (!viewport || !root) return;
+
+      const rootCenter =
+        (root.offsetLeft + root.offsetWidth / 2) * zoom;
+
+      viewport.scrollTo({
+        left: Math.max(0, rootCenter - viewport.clientWidth / 2),
+        behavior,
+      });
+    },
+    [zoom]
+  );
+
+  React.useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      fitTree();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitTree, generations, outsideParents]);
+
+  React.useEffect(() => {
+    if (manualZoom) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      centerRoot("auto");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [centerRoot, manualZoom, zoom]);
+
+  function changeZoom(delta: number) {
+    setManualZoom(true);
+    setZoom((current) =>
+      Math.min(1.5, Math.max(0.35, Number((current + delta).toFixed(2))))
+    );
+  }
+
   return (
-    <div className="mt-8 overflow-x-auto rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
-      <div ref={containerRef} className="relative w-max min-w-full pb-4">
+    <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => changeZoom(-0.1)}
+          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-black text-slate-300"
+        >
+          -
+        </button>
+
+        <button
+          type="button"
+          onClick={fitTree}
+          className="rounded-lg border border-amber-300/40 bg-slate-950 px-3 py-2 text-xs font-black text-amber-300"
+        >
+          Fit Tree
+        </button>
+
+        <span className="min-w-[58px] text-center text-xs font-black text-slate-300">
+          {Math.round(zoom * 100)}%
+        </span>
+
+        <button
+          type="button"
+          onClick={() => changeZoom(0.1)}
+          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-black text-slate-300"
+        >
+          +
+        </button>
+
+        <button
+          type="button"
+          onClick={() => centerRoot()}
+          className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-black text-slate-300"
+        >
+          Center Root
+        </button>
+      </div>
+
+      <div
+        ref={viewportRef}
+        className="overflow-auto rounded-2xl"
+      >
+        <div
+          style={{
+            width: `${100 / zoom}%`,
+          }}
+        >
+          <div
+            ref={containerRef}
+            className="relative w-max min-w-full pb-4"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: "top left",
+            }}
+          >
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
@@ -526,9 +647,16 @@ function TreeDiagram({
                     className="flex items-center justify-center"
                   >
                     <div
-                      ref={(element) =>
-                        setPrimaryRef(unit.primary.id, element)
-                      }
+                      ref={(element) => {
+                        setPrimaryRef(unit.primary.id, element);
+
+                        if (
+                          generation.generation === 1 &&
+                          generation.units[0]?.primary.id === unit.primary.id
+                        ) {
+                          rootNodeRef.current = element;
+                        }
+                      }}
                     >
                       <PersonCard
                         person={unit.primary}
@@ -589,6 +717,8 @@ function TreeDiagram({
               </div>
             </section>
           ))}
+        </div>
+          </div>
         </div>
       </div>
     </div>
