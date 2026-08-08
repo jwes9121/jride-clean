@@ -242,6 +242,7 @@ export default function FamilyReunionDetailPage() {
   const [quickWriteSuccess, setQuickWriteSuccess] =
     React.useState<string | null>(null);
   const [quickCreateOverride, setQuickCreateOverride] = React.useState(false);
+  const [chartActivePersonId, setChartActivePersonId] = React.useState("");
 
   const [people, setPeople] = React.useState<FamilyPerson[]>([]);
 
@@ -394,6 +395,12 @@ export default function FamilyReunionDetailPage() {
         data.family.displayRootPersonId || "";
 
       setQuickAnchorPersonId((current) => {
+        if (current) return current;
+
+        return loadedDisplayRootPersonId || data.people?.[0]?.id || "";
+      });
+
+      setChartActivePersonId((current) => {
         if (current) return current;
 
         return loadedDisplayRootPersonId || data.people?.[0]?.id || "";
@@ -1006,6 +1013,47 @@ export default function FamilyReunionDetailPage() {
     [quickCurrentMatches, quickName]
   );
 
+  const chartActivePerson = React.useMemo(
+    () => people.find((person) => person.id === chartActivePersonId) || null,
+    [chartActivePersonId, people]
+  );
+
+  const chartPeople = React.useMemo(
+    () =>
+      [...people].sort((a, b) => {
+        const generationA = generationByPersonId[a.id] || 999;
+        const generationB = generationByPersonId[b.id] || 999;
+
+        if (generationA !== generationB) {
+          return generationA - generationB;
+        }
+
+        return a.fullName.localeCompare(b.fullName, "en");
+      }),
+    [generationByPersonId, people]
+  );
+
+  function activateChartEntry(
+    personId: string,
+    relationship: "child" | "spouse"
+  ) {
+    setChartActivePersonId(personId);
+    setQuickAnchorPersonId(personId);
+    setQuickRelationship(relationship);
+    setQuickName("");
+    setQuickCurrentMatches([]);
+    setQuickOtherMatches([]);
+    setQuickCreateOverride(false);
+    setQuickWriteError(null);
+    setQuickWriteSuccess(null);
+
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("quick-family-entry-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   const quickLocationBucketHint = React.useMemo(() => {
     if (quickLocationScope === "ifugao_municipality") {
       return "Choose the Ifugao municipality.";
@@ -1167,7 +1215,166 @@ export default function FamilyReunionDetailPage() {
               ) : null}
             </section>
 
-                        <section className="mt-8 rounded-3xl border border-cyan-300/20 bg-slate-900 p-6">
+            <section className="mt-8 rounded-3xl border border-cyan-300/20 bg-slate-900 p-6">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">
+                Family Branch Entry
+              </p>
+              <h2 className="mt-2 text-2xl font-black">
+                Build the Family from a Person
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Choose a person, then add a child or spouse directly from that
+                person's card. Generation labels are derived from the Family
+                Tree Root.
+              </p>
+
+              {people.length === 0 ? (
+                <p className="mt-5 text-sm text-slate-400">
+                  Add the first family member in Advanced Genealogy Editor.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                    <label>
+                      <span className="text-xs font-bold text-slate-300">
+                        Current Person
+                      </span>
+                      <select
+                        value={chartActivePersonId}
+                        onChange={(event) => {
+                          const personId = event.target.value;
+                          setChartActivePersonId(personId);
+                          setQuickAnchorPersonId(personId);
+                          setQuickName("");
+                          setQuickCurrentMatches([]);
+                          setQuickOtherMatches([]);
+                          setQuickCreateOverride(false);
+                          setQuickWriteError(null);
+                          setQuickWriteSuccess(null);
+                        }}
+                        className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                      >
+                        {chartPeople.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.fullName}
+                            {generationByPersonId[person.id]
+                              ? ` - Generation ${generationByPersonId[person.id]}`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <Link
+                      href={`/admin/events/family-reunions/${familyId}/tree`}
+                      className="rounded-xl border border-amber-300/40 px-4 py-3 text-center text-sm font-black text-amber-300"
+                    >
+                      Open Full Tree
+                    </Link>
+                  </div>
+
+                  {chartActivePerson ? (
+                    <div className="mt-5 flex justify-center">
+                      <div className="w-full max-w-xl rounded-2xl border border-cyan-300/30 bg-slate-950 p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xl font-black text-white">
+                              {chartActivePerson.fullName}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-400">
+                              {chartActivePerson.locationText ||
+                                chartActivePerson.locationBucket ||
+                                "Location not recorded"}
+                            </p>
+                          </div>
+
+                          {generationByPersonId[chartActivePerson.id] ? (
+                            <span className="rounded-full bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-300">
+                              Generation {generationByPersonId[chartActivePerson.id]}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold text-slate-400">
+                              Outside root path
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              activateChartEntry(chartActivePerson.id, "child")
+                            }
+                            className="rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950"
+                          >
+                            + Child
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              activateChartEntry(chartActivePerson.id, "spouse")
+                            }
+                            className="rounded-xl border border-rose-300/40 bg-rose-400/10 px-4 py-3 text-sm font-black text-rose-200"
+                          >
+                            + Spouse
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-6">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                      Family Members
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {chartPeople.map((person) => (
+                        <button
+                          key={person.id}
+                          type="button"
+                          onClick={() => {
+                            setChartActivePersonId(person.id);
+                            setQuickAnchorPersonId(person.id);
+                            setQuickName("");
+                            setQuickCurrentMatches([]);
+                            setQuickOtherMatches([]);
+                            setQuickCreateOverride(false);
+                            setQuickWriteError(null);
+                            setQuickWriteSuccess(null);
+                          }}
+                          className={`rounded-xl border p-4 text-left transition ${
+                            chartActivePersonId === person.id
+                              ? "border-cyan-300 bg-cyan-950/20"
+                              : "border-slate-800 bg-slate-950 hover:border-slate-600"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-black text-white">
+                                {person.fullName}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                {person.locationBucket ||
+                                  person.locationText ||
+                                  "Location not recorded"}
+                              </p>
+                            </div>
+                            {generationByPersonId[person.id] ? (
+                              <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
+                                G{generationByPersonId[person.id]}
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section id="quick-family-entry-form" className="mt-8 rounded-3xl border border-cyan-300/20 bg-slate-900 p-6">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">
                 Quick Family Entry
               </p>
@@ -1189,6 +1396,7 @@ export default function FamilyReunionDetailPage() {
                     value={quickAnchorPersonId}
                     onChange={(event) => {
                       setQuickAnchorPersonId(event.target.value);
+                      setChartActivePersonId(event.target.value);
                       setQuickCreateOverride(false);
                       setQuickWriteError(null);
                       setQuickWriteSuccess(null);
