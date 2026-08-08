@@ -56,7 +56,7 @@ export async function GET(
 
     const { data: family, error: familyError } = await supabase
       .from("families")
-      .select("id,name,description,created_at,updated_at")
+      .select("id,name,description,display_root_person_id,created_at,updated_at")
       .eq("id", familyId)
       .maybeSingle();
 
@@ -88,6 +88,7 @@ export async function GET(
         id: family.id,
         name: family.name,
         description: family.description,
+        displayRootPersonId: family.display_root_person_id,
         createdAt: family.created_at,
         updatedAt: family.updated_at,
       },

@@ -25,6 +25,7 @@ type FamilyResponse = {
     id: string;
     name: string;
     description: string | null;
+    displayRootPersonId: string | null;
   };
   people?: FamilyPerson[];
 };
@@ -155,6 +156,12 @@ export default function FamilyReunionDetailPage() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [familyName, setFamilyName] = React.useState("");
   const [familyDescription, setFamilyDescription] = React.useState("");
+  const [displayRootPersonId, setDisplayRootPersonId] =
+    React.useState<string | null>(null);
+  const [selectedRootPersonId, setSelectedRootPersonId] = React.useState("");
+  const [savingRoot, setSavingRoot] = React.useState(false);
+  const [rootError, setRootError] = React.useState<string | null>(null);
+  const [rootSuccess, setRootSuccess] = React.useState<string | null>(null);
   const [people, setPeople] = React.useState<FamilyPerson[]>([]);
 
   const [personAId, setPersonAId] = React.useState("");
@@ -299,6 +306,8 @@ export default function FamilyReunionDetailPage() {
 
       setFamilyName(data.family.name);
       setFamilyDescription(data.family.description || "");
+      setDisplayRootPersonId(data.family.displayRootPersonId || null);
+      setSelectedRootPersonId(data.family.displayRootPersonId || "");
       setPeople(data.people || []);
     } catch (error) {
       setLoadError(
@@ -412,6 +421,54 @@ export default function FamilyReunionDetailPage() {
       );
     } finally {
       setLinkingPersonId(null);
+    }
+  }
+
+  async function saveDisplayRoot() {
+    setRootError(null);
+    setRootSuccess(null);
+    setSavingRoot(true);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(familyId)}/root`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rootPersonId: selectedRootPersonId || null,
+          }),
+        }
+      );
+
+      const data = (await response.json()) as {
+        success: boolean;
+        error?: string;
+        family?: {
+          displayRootPersonId: string | null;
+        };
+      };
+
+      if (!response.ok || !data.success || !data.family) {
+        setRootError(data.error || "Failed to update family tree root.");
+        return;
+      }
+
+      setDisplayRootPersonId(data.family.displayRootPersonId || null);
+      setSelectedRootPersonId(data.family.displayRootPersonId || "");
+      setRootSuccess(
+        data.family.displayRootPersonId
+          ? "Family Tree Root updated."
+          : "Family Tree Root cleared."
+      );
+    } catch (error) {
+      setRootError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update family tree root."
+      );
+    } finally {
+      setSavingRoot(false);
     }
   }
 
@@ -590,6 +647,12 @@ export default function FamilyReunionDetailPage() {
     setFindError(null);
   }
 
+  const displayRootPerson = React.useMemo(
+    () =>
+      people.find((person) => person.id === displayRootPersonId) || null,
+    [people, displayRootPersonId]
+  );
+
   const locationBucketHint = React.useMemo(() => {
     if (personForm.locationScope === "ifugao_municipality") {
       return "Use the Ifugao municipality.";
@@ -650,6 +713,86 @@ export default function FamilyReunionDetailPage() {
                 Open Family Tree
               </Link>
             </div>
+
+            <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">
+                Family Tree Root
+              </p>
+              <h2 className="mt-2 text-2xl font-black">
+                Generation Anchor
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                This person is Generation 1 for Quick Entry and Generation
+                View. Generation numbers are derived from the genealogy graph
+                and are never stored on individual people.
+              </p>
+
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                  Current Root
+                </p>
+                <p className="mt-2 font-black text-white">
+                  {displayRootPerson
+                    ? displayRootPerson.fullName
+                    : "Not selected"}
+                </p>
+                {displayRootPerson?.locationBucket ? (
+                  <p className="mt-1 text-sm text-slate-400">
+                    {displayRootPerson.locationBucket}
+                  </p>
+                ) : null}
+              </div>
+
+              {people.length > 0 ? (
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <select
+                    value={selectedRootPersonId}
+                    onChange={(event) => {
+                      setSelectedRootPersonId(event.target.value);
+                      setRootError(null);
+                      setRootSuccess(null);
+                    }}
+                    className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                  >
+                    <option value="">No root selected</option>
+                    {people.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {personLabel(person)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => void saveDisplayRoot()}
+                    disabled={
+                      savingRoot ||
+                      selectedRootPersonId === (displayRootPersonId || "")
+                    }
+                    className="rounded-xl bg-amber-400 px-5 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                  >
+                    {savingRoot ? "Saving..." : "Save Family Tree Root"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-5 text-sm text-slate-400">
+                  Add at least one family member before selecting a Family Tree
+                  Root.
+                </p>
+              )}
+
+              {rootError ? (
+                <div className="mt-4 rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+                  {rootError}
+                </div>
+              ) : null}
+
+              {rootSuccess ? (
+                <div className="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+                  {rootSuccess}
+                </div>
+              ) : null}
+            </section>
 
             <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">
