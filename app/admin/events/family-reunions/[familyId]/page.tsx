@@ -667,6 +667,13 @@ export default function FamilyReunionDetailPage() {
       return;
     }
 
+    if (mode === "create_new" && quickHasExactNameMatch) {
+      setQuickWriteError(
+        "An exact-name person already exists. Use the existing record instead."
+      );
+      return;
+    }
+
     setQuickWriting(true);
 
     try {
@@ -959,6 +966,17 @@ export default function FamilyReunionDetailPage() {
   const quickHasMatches =
     quickCurrentMatches.length > 0 || quickOtherMatches.length > 0;
 
+  const quickHasExactNameMatch = React.useMemo(() => {
+    const normalizedQuickName = quickName.trim().toLowerCase();
+
+    if (!normalizedQuickName) return false;
+
+    return [...quickCurrentMatches, ...quickOtherMatches].some(
+      (candidate) =>
+        candidate.fullName.trim().toLowerCase() === normalizedQuickName
+    );
+  }, [quickCurrentMatches, quickOtherMatches, quickName]);
+
   const quickAnchorPerson = React.useMemo(
     () => people.find((person) => person.id === quickAnchorPersonId) || null,
     [people, quickAnchorPersonId]
@@ -1171,6 +1189,7 @@ export default function FamilyReunionDetailPage() {
                     value={quickAnchorPersonId}
                     onChange={(event) => {
                       setQuickAnchorPersonId(event.target.value);
+                      setQuickCreateOverride(false);
                       setQuickWriteError(null);
                       setQuickWriteSuccess(null);
                     }}
@@ -1194,6 +1213,7 @@ export default function FamilyReunionDetailPage() {
                       type="button"
                       onClick={() => {
                         setQuickRelationship("child");
+                        setQuickCreateOverride(false);
                         setQuickWriteError(null);
                         setQuickWriteSuccess(null);
                       }}
@@ -1209,6 +1229,7 @@ export default function FamilyReunionDetailPage() {
                       type="button"
                       onClick={() => {
                         setQuickRelationship("spouse");
+                        setQuickCreateOverride(false);
                         setQuickWriteError(null);
                         setQuickWriteSuccess(null);
                       }}
@@ -1514,7 +1535,19 @@ export default function FamilyReunionDetailPage() {
                   Create New Person
                 </p>
 
-                {quickHasMatches && !quickCreateOverride ? (
+                {quickHasExactNameMatch ? (
+                  <div className="mt-3 rounded-xl border border-red-700 bg-red-950/20 p-4">
+                    <p className="text-sm font-black text-red-200">
+                      Exact-name person already exists.
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-red-100/80">
+                      Normal Quick Entry will not create another person with
+                      this exact name. Review and use the existing record above.
+                      A separate same-name-person workflow can be used later
+                      when two genuinely different people share the same name.
+                    </p>
+                  </div>
+                ) : quickHasMatches && !quickCreateOverride ? (
                   <div className="mt-3 rounded-xl border border-amber-700 bg-amber-950/20 p-4">
                     <p className="text-sm font-black text-amber-200">
                       Existing records may match this person.
@@ -1522,8 +1555,7 @@ export default function FamilyReunionDetailPage() {
                     <p className="mt-2 text-xs leading-5 text-amber-100/80">
                       Use an existing person above when it is the same
                       individual. Create another record only when this is
-                      genuinely a different person with the same or similar
-                      name.
+                      genuinely a different person with a similar name.
                     </p>
                     <button
                       type="button"
@@ -1543,7 +1575,8 @@ export default function FamilyReunionDetailPage() {
 
                 <div
                   className={`mt-4 grid gap-4 sm:grid-cols-2 ${
-                    quickHasMatches && !quickCreateOverride
+                    quickHasExactNameMatch ||
+                    (quickHasMatches && !quickCreateOverride)
                       ? "pointer-events-none opacity-40"
                       : ""
                   }`}
@@ -1658,6 +1691,7 @@ export default function FamilyReunionDetailPage() {
                     quickWriting ||
                     !quickAnchorPersonId ||
                     !quickName.trim() ||
+                    quickHasExactNameMatch ||
                     (quickHasMatches && !quickCreateOverride) ||
                     (Boolean(quickLocationScope) &&
                       !Boolean(quickLocationBucket))
