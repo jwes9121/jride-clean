@@ -152,6 +152,15 @@ type TreeGenerationResponse = {
   }[];
 };
 
+type QuickEntryWriteResponse = {
+  success: boolean;
+  resultCode?: string;
+  error?: string;
+  message?: string;
+  personId?: string | null;
+  relationshipId?: string | null;
+};
+
 const IFUGAO_TOWNS = [
   "Aguinaldo",
   "Alfonso Lista",
@@ -222,6 +231,16 @@ export default function FamilyReunionDetailPage() {
   const [generationByPersonId, setGenerationByPersonId] =
     React.useState<Record<string, number>>({});
   const [generationLoading, setGenerationLoading] = React.useState(false);
+  const [generationRefreshKey, setGenerationRefreshKey] = React.useState(0);
+
+  const [quickSex, setQuickSex] = React.useState("unspecified");
+  const [quickLocationText, setQuickLocationText] = React.useState("");
+  const [quickLocationScope, setQuickLocationScope] = React.useState("");
+  const [quickLocationBucket, setQuickLocationBucket] = React.useState("");
+  const [quickWriting, setQuickWriting] = React.useState(false);
+  const [quickWriteError, setQuickWriteError] = React.useState<string | null>(null);
+  const [quickWriteSuccess, setQuickWriteSuccess] =
+    React.useState<string | null>(null);
 
   const [people, setPeople] = React.useState<FamilyPerson[]>([]);
 
@@ -548,7 +567,7 @@ export default function FamilyReunionDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [displayRootPersonId, familyId]);
+  }, [displayRootPersonId, familyId, generationRefreshKey]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -618,6 +637,88 @@ export default function FamilyReunionDetailPage() {
       window.clearTimeout(timer);
     };
   }, [familyId, quickAnchorPersonId, quickName, quickRelationship]);
+
+  function resetQuickNewPersonFields() {
+    setQuickName("");
+    setQuickSex("unspecified");
+    setQuickLocationText("");
+    setQuickLocationScope("");
+    setQuickLocationBucket("");
+    setQuickCurrentMatches([]);
+    setQuickOtherMatches([]);
+  }
+
+  async function runQuickEntry(
+    mode: "create_new" | "use_existing",
+    existingPersonId?: string
+  ) {
+    setQuickWriteError(null);
+    setQuickWriteSuccess(null);
+
+    if (!quickAnchorPersonId) {
+      setQuickWriteError("Choose the family member to add to.");
+      return;
+    }
+
+    if (mode === "create_new" && !quickName.trim()) {
+      setQuickWriteError("Enter the new person's name.");
+      return;
+    }
+
+    setQuickWriting(true);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/quick-add/write`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            anchorPersonId: quickAnchorPersonId,
+            relationshipKind: quickRelationship,
+            mode,
+            existingPersonId: existingPersonId || null,
+            fullName: mode === "create_new" ? quickName.trim() : null,
+            sex: mode === "create_new" ? quickSex : null,
+            locationText:
+              mode === "create_new" ? quickLocationText.trim() : null,
+            locationScope:
+              mode === "create_new" ? quickLocationScope : null,
+            locationBucket:
+              mode === "create_new" ? quickLocationBucket.trim() : null,
+          }),
+        }
+      );
+
+      const data = (await response.json()) as QuickEntryWriteResponse;
+
+      if (!response.ok || !data.success) {
+        setQuickWriteError(data.error || "Quick Entry failed.");
+        return;
+      }
+
+      setQuickWriteSuccess(data.message || "Quick Entry saved.");
+
+      if (mode === "create_new") {
+        resetQuickNewPersonFields();
+      }
+
+      await loadFamily();
+      setGenerationRefreshKey((current) => current + 1);
+
+      if (expandedEventId) {
+        await loadParticipation(expandedEventId);
+      }
+    } catch (error) {
+      setQuickWriteError(
+        error instanceof Error ? error.message : "Quick Entry failed."
+      );
+    } finally {
+      setQuickWriting(false);
+    }
+  }
 
   async function saveDisplayRoot() {
     setRootError(null);
@@ -877,6 +978,26 @@ export default function FamilyReunionDetailPage() {
     [quickCurrentMatches, quickName]
   );
 
+  const quickLocationBucketHint = React.useMemo(() => {
+    if (quickLocationScope === "ifugao_municipality") {
+      return "Choose the Ifugao municipality.";
+    }
+
+    if (quickLocationScope === "philippines_ncr") {
+      return "NCR is used automatically.";
+    }
+
+    if (quickLocationScope === "philippines_province") {
+      return "Enter the province, for example Nueva Vizcaya.";
+    }
+
+    if (quickLocationScope === "overseas_country") {
+      return "Enter the country, for example Canada.";
+    }
+
+    return "Location classification is optional.";
+  }, [quickLocationScope]);
+
   const locationBucketHint = React.useMemo(() => {
     if (personForm.locationScope === "ifugao_municipality") {
       return "Use the Ifugao municipality.";
@@ -1018,16 +1139,17 @@ export default function FamilyReunionDetailPage() {
               ) : null}
             </section>
 
-            <section className="mt-8 rounded-3xl border border-cyan-300/20 bg-slate-900 p-6">
+                        <section className="mt-8 rounded-3xl border border-cyan-300/20 bg-slate-900 p-6">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">
                 Quick Family Entry
               </p>
               <h2 className="mt-2 text-2xl font-black">
-                Visual Entry Preview
+                Add a Child or Spouse
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">
-                Search first before creating a new person. This preview does
-                not write or change genealogy records.
+                Search existing family records before creating a new person.
+                New-person creation and the relationship are saved together in
+                one database operation.
               </p>
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
@@ -1037,9 +1159,11 @@ export default function FamilyReunionDetailPage() {
                   </label>
                   <select
                     value={quickAnchorPersonId}
-                    onChange={(event) =>
-                      setQuickAnchorPersonId(event.target.value)
-                    }
+                    onChange={(event) => {
+                      setQuickAnchorPersonId(event.target.value);
+                      setQuickWriteError(null);
+                      setQuickWriteSuccess(null);
+                    }}
                     className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
                   >
                     <option value="">Choose family member</option>
@@ -1058,7 +1182,11 @@ export default function FamilyReunionDetailPage() {
                   <div className="mt-2 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
                     <button
                       type="button"
-                      onClick={() => setQuickRelationship("child")}
+                      onClick={() => {
+                        setQuickRelationship("child");
+                        setQuickWriteError(null);
+                        setQuickWriteSuccess(null);
+                      }}
                       className={`rounded-lg px-3 py-2 text-sm font-black ${
                         quickRelationship === "child"
                           ? "bg-cyan-300 text-slate-950"
@@ -1069,7 +1197,11 @@ export default function FamilyReunionDetailPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setQuickRelationship("spouse")}
+                      onClick={() => {
+                        setQuickRelationship("spouse");
+                        setQuickWriteError(null);
+                        setQuickWriteSuccess(null);
+                      }}
                       className={`rounded-lg px-3 py-2 text-sm font-black ${
                         quickRelationship === "spouse"
                           ? "bg-cyan-300 text-slate-950"
@@ -1103,7 +1235,7 @@ export default function FamilyReunionDetailPage() {
                     <span className="font-black text-white">
                       {quickAnchorGeneration}
                     </span>
-                    . A child added here would appear as Generation{" "}
+                    . A child added here will appear as Generation{" "}
                     <span className="font-black text-cyan-300">
                       {quickAnchorGeneration + 1}
                     </span>
@@ -1111,7 +1243,8 @@ export default function FamilyReunionDetailPage() {
                   </p>
                 ) : quickRelationship === "spouse" ? (
                   <p className="mt-2 text-sm text-slate-400">
-                    Spouse relationships do not create a new generation.
+                    A spouse is displayed with the selected person and does not
+                    create a new generation.
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-slate-400">
@@ -1127,18 +1260,15 @@ export default function FamilyReunionDetailPage() {
                 </span>
                 <input
                   value={quickName}
-                  onChange={(event) => setQuickName(event.target.value)}
-                  placeholder="Start typing a name, for example Andi Lim"
+                  onChange={(event) => {
+                    setQuickName(event.target.value);
+                    setQuickWriteError(null);
+                    setQuickWriteSuccess(null);
+                  }}
+                  placeholder="Type the child's or spouse's name"
                   className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
                 />
               </label>
-
-              {quickName.trim().length > 0 &&
-              quickName.trim().length < 2 ? (
-                <p className="mt-3 text-xs text-slate-500">
-                  Enter at least 2 characters to search existing records.
-                </p>
-              ) : null}
 
               {quickSearching ? (
                 <p className="mt-4 text-sm text-slate-400">
@@ -1156,92 +1286,114 @@ export default function FamilyReunionDetailPage() {
               quickName.trim().length >= 2 &&
               !quickSearchError ? (
                 <div className="mt-5 space-y-5">
-                  {exactCurrentMatches.length > 0 ? (
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-300">
-                        Exact Match in This Family
-                      </p>
-                      <div className="mt-2 space-y-2">
-                        {exactCurrentMatches.map((candidate) => (
-                          <div
-                            key={candidate.candidateId}
-                            className="rounded-xl border border-emerald-300/30 bg-slate-950 p-4"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-black text-white">
-                                  {candidate.fullName}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {candidate.locationBucket ||
-                                    candidate.locationText ||
-                                    "Location not recorded"}
-                                </p>
-                                <p className="mt-2 text-xs text-slate-500">
-                                  Biological parents:{" "}
-                                  {candidate.biologicalParentCount}
-                                </p>
-                                {candidate.biologicalParents.length > 0 ? (
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {candidate.biologicalParents
-                                      .map((parent) => parent.fullName)
-                                      .join(", ")}
-                                  </p>
-                                ) : null}
-                              </div>
-
-                              <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-300">
-                                {candidate.quickAddDecision.replaceAll(
-                                  "_",
-                                  " "
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {otherCurrentMatches.length > 0 ? (
+                  {[...exactCurrentMatches, ...otherCurrentMatches].length > 0 ? (
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-300">
-                        Other Possible Matches in This Family
+                        Possible Matches in This Family
                       </p>
                       <div className="mt-2 space-y-2">
-                        {otherCurrentMatches.map((candidate) => (
-                          <div
-                            key={candidate.candidateId}
-                            className="rounded-xl border border-slate-700 bg-slate-950 p-4"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-black text-white">
-                                  {candidate.fullName}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {candidate.locationBucket ||
-                                    candidate.locationText ||
-                                    "Location not recorded"}
-                                </p>
-                                <p className="mt-2 text-xs text-slate-500">
-                                  Similarity:{" "}
-                                  {Math.round(
-                                    candidate.similarityScore * 100
-                                  )}
-                                  %
-                                </p>
-                              </div>
+                        {[...exactCurrentMatches, ...otherCurrentMatches].map(
+                          (candidate) => {
+                            const hardCycle =
+                              candidate.quickAddDecision ===
+                              "CYCLE_WOULD_BE_CREATED";
+                            const needsAdvanced =
+                              candidate.quickAddDecision ===
+                              "ADVANCED_EDITOR_REQUIRED";
+                            const alreadyLinked =
+                              candidate.quickAddDecision === "ALREADY_LINKED";
+                            const canUse =
+                              quickRelationship === "spouse"
+                                ? candidate.candidateId !== quickAnchorPersonId
+                                : candidate.quickAddDecision === "SAFE_TO_LINK";
 
-                              <span className="rounded-full bg-slate-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-300">
-                                {candidate.quickAddDecision.replaceAll(
-                                  "_",
-                                  " "
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                            return (
+                              <div
+                                key={candidate.candidateId}
+                                className={`rounded-xl border p-4 ${
+                                  hardCycle
+                                    ? "border-red-700 bg-red-950/20"
+                                    : needsAdvanced
+                                    ? "border-amber-700 bg-amber-950/10"
+                                    : "border-slate-700 bg-slate-950"
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-black text-white">
+                                      {candidate.fullName}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-400">
+                                      {candidate.locationBucket ||
+                                        candidate.locationText ||
+                                        "Location not recorded"}
+                                    </p>
+                                    <p className="mt-2 text-xs text-slate-500">
+                                      Similarity:{" "}
+                                      {Math.round(
+                                        candidate.similarityScore * 100
+                                      )}
+                                      %
+                                    </p>
+                                    {quickRelationship === "child" ? (
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        Biological parents:{" "}
+                                        {candidate.biologicalParentCount}
+                                      </p>
+                                    ) : null}
+                                  </div>
+
+                                  {hardCycle ? (
+                                    <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-red-300">
+                                      Cannot Link
+                                    </span>
+                                  ) : needsAdvanced ? (
+                                    <span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
+                                      Review Required
+                                    </span>
+                                  ) : alreadyLinked ? (
+                                    <span className="rounded-full bg-slate-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-300">
+                                      Already Linked
+                                    </span>
+                                  ) : (
+                                    <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-emerald-300">
+                                      Possible Existing Person
+                                    </span>
+                                  )}
+                                </div>
+
+                                {hardCycle ? (
+                                  <div className="mt-3 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
+                                    Cannot add this relationship. It would
+                                    create an ancestry loop.
+                                  </div>
+                                ) : needsAdvanced ? (
+                                  <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
+                                    This person already has two or more
+                                    biological parents. Review the relationship
+                                    in Advanced Genealogy Editor.
+                                  </div>
+                                ) : canUse ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void runQuickEntry(
+                                        "use_existing",
+                                        candidate.candidateId
+                                      )
+                                    }
+                                    disabled={quickWriting}
+                                    className="mt-3 rounded-lg bg-emerald-300 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
+                                  >
+                                    {quickWriting
+                                      ? "Saving..."
+                                      : `Use Existing ${candidate.fullName}`}
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          }
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -1252,97 +1404,243 @@ export default function FamilyReunionDetailPage() {
                         Possible Matches in Other Family Projects
                       </p>
                       <div className="mt-2 space-y-2">
-                        {quickOtherMatches.map((candidate) => (
-                          <div
-                            key={candidate.candidateId}
-                            className="rounded-xl border border-amber-300/20 bg-slate-950 p-4"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-black text-white">
-                                  {candidate.fullName}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {candidate.locationBucket ||
-                                    candidate.locationText ||
-                                    "Location not recorded"}
-                                </p>
-                                <p className="mt-2 text-xs text-amber-200">
-                                  Organized under:{" "}
-                                  {candidate.organizationalFamily?.name ||
-                                    "Unassigned family"}
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  Biological parents:{" "}
-                                  {candidate.biologicalParentCount}
-                                </p>
+                        {quickOtherMatches.map((candidate) => {
+                          const hardCycle =
+                            candidate.quickAddDecision ===
+                            "CYCLE_WOULD_BE_CREATED";
+                          const needsAdvanced =
+                            candidate.quickAddDecision ===
+                            "ADVANCED_EDITOR_REQUIRED";
+                          const alreadyLinked =
+                            candidate.quickAddDecision === "ALREADY_LINKED";
+                          const canUse =
+                            quickRelationship === "spouse"
+                              ? candidate.candidateId !== quickAnchorPersonId
+                              : candidate.quickAddDecision === "SAFE_TO_LINK";
+
+                          return (
+                            <div
+                              key={candidate.candidateId}
+                              className={`rounded-xl border p-4 ${
+                                hardCycle
+                                  ? "border-red-700 bg-red-950/20"
+                                  : needsAdvanced
+                                  ? "border-amber-700 bg-amber-950/10"
+                                  : "border-amber-300/20 bg-slate-950"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-black text-white">
+                                    {candidate.fullName}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-400">
+                                    {candidate.locationBucket ||
+                                      candidate.locationText ||
+                                      "Location not recorded"}
+                                  </p>
+                                  <p className="mt-2 text-xs text-amber-200">
+                                    Organized under:{" "}
+                                    {candidate.organizationalFamily?.name ||
+                                      "Unassigned family"}
+                                  </p>
+                                  {quickRelationship === "child" ? (
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Biological parents:{" "}
+                                      {candidate.biologicalParentCount}
+                                    </p>
+                                  ) : null}
+                                </div>
+
+                                <span className="text-xs text-slate-500">
+                                  {Math.round(candidate.similarityScore * 100)}%
+                                  match
+                                </span>
                               </div>
 
-                              <div className="text-right">
-                                <p className="text-xs text-slate-500">
-                                  Similarity{" "}
-                                  {Math.round(
-                                    candidate.similarityScore * 100
-                                  )}
-                                  %
+                              {hardCycle ? (
+                                <div className="mt-3 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
+                                  Cannot add this relationship. It would
+                                  create an ancestry loop.
+                                </div>
+                              ) : needsAdvanced ? (
+                                <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
+                                  Review required. This person already has two
+                                  or more biological parents.
+                                </div>
+                              ) : alreadyLinked ? (
+                                <p className="mt-3 text-xs text-slate-400">
+                                  This relationship already exists.
                                 </p>
-                                <p
-                                  className={`mt-2 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${
-                                    candidate.quickAddDecision ===
-                                    "CYCLE_WOULD_BE_CREATED"
-                                      ? "bg-red-500/10 text-red-300"
-                                      : candidate.quickAddDecision ===
-                                        "ADVANCED_EDITOR_REQUIRED"
-                                      ? "bg-amber-400/10 text-amber-300"
-                                      : candidate.quickAddDecision ===
-                                        "SAFE_TO_LINK"
-                                      ? "bg-emerald-400/10 text-emerald-300"
-                                      : "bg-slate-700 text-slate-300"
-                                  }`}
+                              ) : canUse ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void runQuickEntry(
+                                      "use_existing",
+                                      candidate.candidateId
+                                    )
+                                  }
+                                  disabled={quickWriting}
+                                  className="mt-3 rounded-lg bg-emerald-300 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
                                 >
-                                  {candidate.quickAddDecision.replaceAll(
-                                    "_",
-                                    " "
-                                  )}
-                                </p>
-                              </div>
+                                  {quickWriting
+                                    ? "Saving..."
+                                    : `Use Existing ${candidate.fullName}`}
+                                </button>
+                              ) : null}
                             </div>
-
-                            {candidate.quickAddDecision ===
-                            "CYCLE_WOULD_BE_CREATED" ? (
-                              <div className="mt-3 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
-                                Cannot add this relationship. It would create
-                                an ancestry loop.
-                              </div>
-                            ) : candidate.quickAddDecision ===
-                              "ADVANCED_EDITOR_REQUIRED" ? (
-                              <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
-                                Review required. This person already has two or
-                                more biological parents. Use the Advanced
-                                Genealogy Editor before changing relationships.
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                    </div>
-                  ) : null}
-
-                  {exactCurrentMatches.length === 0 &&
-                  otherCurrentMatches.length === 0 &&
-                  quickOtherMatches.length === 0 ? (
-                    <div className="rounded-xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-400">
-                      No possible existing person was found. A future writable
-                      Quick Entry step can offer Create New Person here.
                     </div>
                   ) : null}
                 </div>
               ) : null}
 
-              <div className="mt-5 rounded-xl border border-cyan-300/20 bg-cyan-950/10 p-3 text-xs leading-5 text-cyan-100">
-                Preview only: no Create Person, Use Existing Person, parent-child,
-                or spouse write is enabled in this milestone.
+              <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-white">
+                  Create New Person
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Use this only when the matches above are not the same person.
+                </p>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label>
+                    <span className="text-xs font-bold text-slate-300">
+                      Sex
+                    </span>
+                    <select
+                      value={quickSex}
+                      onChange={(event) => setQuickSex(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white"
+                    >
+                      <option value="unspecified">Unspecified</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span className="text-xs font-bold text-slate-300">
+                      Detailed Place
+                    </span>
+                    <input
+                      value={quickLocationText}
+                      onChange={(event) =>
+                        setQuickLocationText(event.target.value)
+                      }
+                      placeholder="Example: Lagawe or Quezon City"
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white"
+                    />
+                  </label>
+
+                  <label>
+                    <span className="text-xs font-bold text-slate-300">
+                      Reporting Classification
+                    </span>
+                    <select
+                      value={quickLocationScope}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setQuickLocationScope(next);
+                        setQuickLocationBucket(
+                          next === "philippines_ncr" ? "NCR" : ""
+                        );
+                      }}
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white"
+                    >
+                      <option value="">Not classified yet</option>
+                      <option value="ifugao_municipality">
+                        Ifugao Municipality
+                      </option>
+                      <option value="philippines_province">
+                        Philippine Province
+                      </option>
+                      <option value="philippines_ncr">NCR</option>
+                      <option value="overseas_country">
+                        Overseas Country
+                      </option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span className="text-xs font-bold text-slate-300">
+                      Reporting Bucket
+                    </span>
+                    {quickLocationScope === "ifugao_municipality" ? (
+                      <select
+                        value={quickLocationBucket}
+                        onChange={(event) =>
+                          setQuickLocationBucket(event.target.value)
+                        }
+                        className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white"
+                      >
+                        <option value="">Choose town</option>
+                        {IFUGAO_TOWNS.map((town) => (
+                          <option key={town} value={town}>
+                            {town}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={quickLocationBucket}
+                        disabled={
+                          !quickLocationScope ||
+                          quickLocationScope === "philippines_ncr"
+                        }
+                        onChange={(event) =>
+                          setQuickLocationBucket(event.target.value)
+                        }
+                        placeholder={
+                          quickLocationScope === "philippines_province"
+                            ? "Example: Nueva Vizcaya"
+                            : quickLocationScope === "overseas_country"
+                            ? "Example: Canada"
+                            : ""
+                        }
+                        className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white disabled:opacity-50"
+                      />
+                    )}
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      {quickLocationBucketHint}
+                    </p>
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void runQuickEntry("create_new")}
+                  disabled={
+                    quickWriting ||
+                    !quickAnchorPersonId ||
+                    !quickName.trim() ||
+                    (Boolean(quickLocationScope) &&
+                      !Boolean(quickLocationBucket))
+                  }
+                  className="mt-5 w-full rounded-xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                >
+                  {quickWriting
+                    ? "Saving..."
+                    : quickRelationship === "child"
+                    ? `Create ${quickName.trim() || "Person"} as Child`
+                    : `Create ${quickName.trim() || "Person"} as Spouse`}
+                </button>
               </div>
+
+              {quickWriteError ? (
+                <div className="mt-4 rounded-xl border border-red-800 bg-red-950/40 p-3 text-sm text-red-200">
+                  {quickWriteError}
+                </div>
+              ) : null}
+
+              {quickWriteSuccess ? (
+                <div className="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+                  {quickWriteSuccess}
+                </div>
+              ) : null}
             </section>
 
             <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
