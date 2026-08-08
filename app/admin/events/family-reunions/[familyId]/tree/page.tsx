@@ -646,43 +646,57 @@ function TreeDiagram({
                     key={unit.key}
                     className="flex items-center justify-center"
                   >
-                    <div
-                      ref={(element) => {
-                        setPrimaryRef(unit.primary.id, element);
+                    <div className="flex items-center gap-3">
+                      <div
+                        ref={(element) => {
+                          setPrimaryRef(unit.primary.id, element);
 
-                        if (
-                          generation.generation === 1 &&
-                          generation.units[0]?.primary.id === unit.primary.id
-                        ) {
-                          rootNodeRef.current = element;
-                        }
-                      }}
-                    >
-                      <PersonCard
-                        person={unit.primary}
-                        compact
-                        showSpouses={false}
-                      />
+                          if (
+                            generation.generation === 1 &&
+                            generation.units[0]?.primary.id === unit.primary.id
+                          ) {
+                            rootNodeRef.current = element;
+                          }
+                        }}
+                      >
+                        <PersonCard
+                          person={unit.primary}
+                          compact
+                          showSpouses={false}
+                        />
+                      </div>
 
                       {(supplementalParentsByChildId.get(unit.primary.id) ?? []).map(
                         (parent) => (
-                          <div
+                          <React.Fragment
                             key={`${unit.primary.id}:outside-parent:${parent.id}`}
-                            className="mt-2 w-[300px] rounded-xl border border-cyan-300/30 bg-cyan-950/10 p-3"
                           >
-                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-300">
-                              Other Biological Parent
-                            </p>
-                            <p className="mt-1 text-sm font-black text-white">
-                              {parent.fullName}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-400">
-                              {locationLabel(parent)}
-                            </p>
-                            <p className="mt-1 text-[10px] text-slate-500">
-                              Outside selected descendant path
-                            </p>
-                          </div>
+                            <div
+                              className="flex h-8 items-center gap-1"
+                              aria-hidden="true"
+                            >
+                              <span className="h-px w-5 bg-cyan-300/70" />
+                              <span className="text-[10px] font-black text-cyan-300">
+                                +
+                              </span>
+                              <span className="h-px w-5 bg-cyan-300/70" />
+                            </div>
+
+                            <div className="w-[260px] rounded-xl border border-cyan-300/30 bg-slate-950 p-3 shadow-lg shadow-black/10">
+                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-300">
+                                Other Biological Parent
+                              </p>
+                              <p className="mt-1 text-sm font-black text-white">
+                                {parent.fullName}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                {locationLabel(parent)}
+                              </p>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                Outside selected descendant path
+                              </p>
+                            </div>
+                          </React.Fragment>
                         )
                       )}
                     </div>
