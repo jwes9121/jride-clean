@@ -189,32 +189,6 @@ function CoupleCompanionCard({
   );
 }
 
-function OutsideParentCard({
-  person,
-  nodeRef,
-}: {
-  person: TreePerson;
-  nodeRef?: (element: HTMLDivElement | null) => void;
-}) {
-  return (
-    <article
-      ref={nodeRef}
-      className="w-[260px] rounded-2xl border border-cyan-300/30 bg-slate-950 p-4 shadow-lg shadow-black/10"
-    >
-      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-300">
-        Other Biological Parent
-      </p>
-      <p className="mt-2 line-clamp-2 font-black leading-5 text-white">
-        {person.fullName}
-      </p>
-      <p className="mt-2 text-sm text-slate-400">{locationLabel(person)}</p>
-      <p className="mt-2 text-[10px] text-slate-500">
-        Outside selected descendant path
-      </p>
-    </article>
-  );
-}
-
 function TreeDiagram({
   generations,
   parentLinks,
@@ -237,7 +211,6 @@ function TreeDiagram({
   const primaryRefs = React.useRef(new Map<string, HTMLDivElement>());
   const spouseRefs = React.useRef(new Map<string, HTMLDivElement>());
   const coupleAnchorRefs = React.useRef(new Map<string, HTMLDivElement>());
-  const outsideParentRefs = React.useRef(new Map<string, HTMLDivElement>());
 
   const [connectors, setConnectors] = React.useState<Connector[]>([]);
 
@@ -271,14 +244,25 @@ function TreeDiagram({
     [outsideParents]
   );
 
-  const outsideParentsByChildId = React.useMemo(() => {
+  const supplementalParentsByChildId = React.useMemo(() => {
     const map = new Map<string, TreePerson[]>();
 
     for (const link of parentLinks) {
       if (!visiblePeopleById.has(link.childPersonId)) continue;
-
       const parent = outsideParentById.get(link.parentPersonId);
       if (!parent) continue;
+
+      const child = visiblePeopleById.get(link.childPersonId);
+      const representedAsSpouse = child
+        ? child.parentIds.some((parentId) => {
+            const visibleParent = visiblePeopleById.get(parentId);
+            return visibleParent?.spouses.some(
+              (spouse) => spouse.personId === parent.id
+            );
+          })
+        : false;
+
+      if (representedAsSpouse) continue;
 
       const existing = map.get(link.childPersonId) ?? [];
       if (!existing.some((person) => person.id === parent.id)) {
@@ -339,11 +323,7 @@ function TreeDiagram({
       const mappedParents = childLinks
         .map((link) => ({
           parentPersonId: link.parentPersonId,
-          unitKey:
-            unitKeyByPersonId.get(link.parentPersonId) ||
-            (outsideParentById.has(link.parentPersonId)
-              ? `outside:${link.parentPersonId}`
-              : ""),
+          unitKey: unitKeyByPersonId.get(link.parentPersonId) || "",
         }))
         .filter((item) => item.unitKey);
 
@@ -386,12 +366,7 @@ function TreeDiagram({
     }
 
     return plans;
-  }, [
-    outsideParentById,
-    parentLinks,
-    unitKeyByPersonId,
-    visiblePeopleById,
-  ]);
+  }, [parentLinks, unitKeyByPersonId, visiblePeopleById]);
 
   const calculateConnectors = React.useCallback(() => {
     const container = containerRef.current;
@@ -428,9 +403,7 @@ function TreeDiagram({
         startY =
           (primaryRect.top + primaryRect.bottom) / 2 - containerRect.top;
       } else {
-        const source =
-          primaryRefs.current.get(plan.sourcePersonId) ||
-          outsideParentRefs.current.get(plan.sourcePersonId);
+        const source = primaryRefs.current.get(plan.sourcePersonId);
 
         if (!source) continue;
 
@@ -482,10 +455,6 @@ function TreeDiagram({
       observer.observe(element);
     }
 
-    for (const element of outsideParentRefs.current.values()) {
-      observer.observe(element);
-    }
-
     window.addEventListener("resize", calculateConnectors);
 
     return () => {
@@ -521,20 +490,9 @@ function TreeDiagram({
     }
   }
 
-  function setOutsideParentRef(
-    personId: string,
-    element: HTMLDivElement | null
-  ) {
-    if (element) {
-      outsideParentRefs.current.set(personId, element);
-    } else {
-      outsideParentRefs.current.delete(personId);
-    }
-  }
-
   return (
     <div className="mt-8 overflow-x-auto rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
-      <div ref={containerRef} className="relative min-w-[1180px] pb-4">
+      <div ref={containerRef} className="relative w-max min-w-full pb-4">
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
@@ -561,31 +519,12 @@ function TreeDiagram({
                 </span>
               </div>
 
-              <div className="flex justify-center gap-16 px-8">
-                {generation.units.map((unit) => {
-                  const outsideParents =
-                    outsideParentsByChildId.get(unit.primary.id) ?? [];
-
-                  return (
+              <div className="mx-auto flex w-max min-w-full justify-center gap-16 px-8">
+                {generation.units.map((unit) => (
                   <div
                     key={unit.key}
-                    className="flex flex-col items-center justify-center"
+                    className="flex items-center justify-center"
                   >
-                    {outsideParents.length > 0 ? (
-                      <div className="mb-6 flex flex-wrap justify-center gap-4">
-                        {outsideParents.map((parent) => (
-                          <OutsideParentCard
-                            key={`${unit.primary.id}:${parent.id}`}
-                            person={parent}
-                            nodeRef={(element) =>
-                              setOutsideParentRef(parent.id, element)
-                            }
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-
-                    <div className="flex items-center justify-center">
                     <div
                       ref={(element) =>
                         setPrimaryRef(unit.primary.id, element)
@@ -596,6 +535,28 @@ function TreeDiagram({
                         compact
                         showSpouses={false}
                       />
+
+                      {(supplementalParentsByChildId.get(unit.primary.id) ?? []).map(
+                        (parent) => (
+                          <div
+                            key={`${unit.primary.id}:outside-parent:${parent.id}`}
+                            className="mt-2 w-[300px] rounded-xl border border-cyan-300/30 bg-cyan-950/10 p-3"
+                          >
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-300">
+                              Other Biological Parent
+                            </p>
+                            <p className="mt-1 text-sm font-black text-white">
+                              {parent.fullName}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {locationLabel(parent)}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-500">
+                              Outside selected descendant path
+                            </p>
+                          </div>
+                        )
+                      )}
                     </div>
 
                     {unit.spouses.map((spouse) => (
@@ -623,10 +584,8 @@ function TreeDiagram({
                         </div>
                       </React.Fragment>
                     ))}
-                    </div>
                   </div>
-                  );
-                })}
+                ))}
               </div>
             </section>
           ))}
