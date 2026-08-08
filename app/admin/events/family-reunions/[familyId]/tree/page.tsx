@@ -727,8 +727,10 @@ function TreeDiagram({
 
 function ListView({
   generations,
+  outsideParents,
 }: {
   generations: TreeGeneration[];
+  outsideParents: TreePerson[];
 }) {
   const personNameById = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -739,8 +741,12 @@ function ListView({
       }
     }
 
+    for (const person of outsideParents) {
+      map.set(person.id, person.fullName);
+    }
+
     return map;
-  }, [generations]);
+  }, [generations, outsideParents]);
 
   return (
     <div className="mt-8 space-y-0">
@@ -781,6 +787,7 @@ function ListView({
                               personNameById.get(parentId) ||
                               "Recorded parent"
                           )
+                          .sort((a, b) => a.localeCompare(b, "en"))
                           .join(", ")}
                       </p>
                     </div>
@@ -1028,7 +1035,10 @@ export default function FamilyTreePage() {
             outsideParents={outsideParents}
           />
         ) : (
-          <ListView generations={generations} />
+          <ListView
+            generations={generations}
+            outsideParents={outsideParents}
+          />
         )}
       </div>
     </main>
