@@ -300,6 +300,19 @@ export async function GET(
     const completeBiologicalParents =
       (completeParentRows ?? []) as ParentChildRow[];
 
+    const outsideParentIds = Array.from(
+      new Set(
+        completeBiologicalParents
+          .map((edge) => edge.parent_person_id)
+          .filter((id) => !visiblePeopleById.has(id))
+      )
+    );
+
+    const outsideParentPeople = await loadPeopleByIds(
+      supabase,
+      outsideParentIds
+    );
+
     const spouseRowsByPair = new Map<string, SpouseRow>();
 
     if (visiblePersonIds.length > 0) {
@@ -461,6 +474,19 @@ export async function GET(
         parentPersonId: edge.parent_person_id,
         childPersonId: edge.child_person_id,
         relationshipType: edge.relationship_type,
+      })),
+      outsideParents: outsideParentPeople.map((person) => ({
+        id: person.id,
+        familyId: person.family_id,
+        fullName: person.full_name,
+        nickname: person.nickname,
+        sex: person.sex,
+        birthDate: person.birth_date,
+        deathDate: person.death_date,
+        isLiving: person.is_living,
+        locationText: person.location_text,
+        locationScope: person.location_scope,
+        locationBucket: person.location_bucket,
       })),
       spouses: spouseRows.map((row) => ({
         personAId: row.person_a_id,
