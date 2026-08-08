@@ -241,6 +241,7 @@ export default function FamilyReunionDetailPage() {
   const [quickWriteError, setQuickWriteError] = React.useState<string | null>(null);
   const [quickWriteSuccess, setQuickWriteSuccess] =
     React.useState<string | null>(null);
+  const [quickCreateOverride, setQuickCreateOverride] = React.useState(false);
 
   const [people, setPeople] = React.useState<FamilyPerson[]>([]);
 
@@ -646,6 +647,7 @@ export default function FamilyReunionDetailPage() {
     setQuickLocationBucket("");
     setQuickCurrentMatches([]);
     setQuickOtherMatches([]);
+    setQuickCreateOverride(false);
   }
 
   async function runQuickEntry(
@@ -703,6 +705,11 @@ export default function FamilyReunionDetailPage() {
 
       if (mode === "create_new") {
         resetQuickNewPersonFields();
+      } else {
+        setQuickName("");
+        setQuickCurrentMatches([]);
+        setQuickOtherMatches([]);
+        setQuickCreateOverride(false);
       }
 
       await loadFamily();
@@ -948,6 +955,9 @@ export default function FamilyReunionDetailPage() {
       people.find((person) => person.id === displayRootPersonId) || null,
     [people, displayRootPersonId]
   );
+
+  const quickHasMatches =
+    quickCurrentMatches.length > 0 || quickOtherMatches.length > 0;
 
   const quickAnchorPerson = React.useMemo(
     () => people.find((person) => person.id === quickAnchorPersonId) || null,
@@ -1262,6 +1272,7 @@ export default function FamilyReunionDetailPage() {
                   value={quickName}
                   onChange={(event) => {
                     setQuickName(event.target.value);
+                    setQuickCreateOverride(false);
                     setQuickWriteError(null);
                     setQuickWriteSuccess(null);
                   }}
@@ -1502,11 +1513,41 @@ export default function FamilyReunionDetailPage() {
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-white">
                   Create New Person
                 </p>
-                <p className="mt-2 text-xs leading-5 text-slate-400">
-                  Use this only when the matches above are not the same person.
-                </p>
 
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {quickHasMatches && !quickCreateOverride ? (
+                  <div className="mt-3 rounded-xl border border-amber-700 bg-amber-950/20 p-4">
+                    <p className="text-sm font-black text-amber-200">
+                      Existing records may match this person.
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                      Use an existing person above when it is the same
+                      individual. Create another record only when this is
+                      genuinely a different person with the same or similar
+                      name.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setQuickCreateOverride(true)}
+                      className="mt-3 rounded-lg border border-amber-500 px-3 py-2 text-xs font-black text-amber-200"
+                    >
+                      Create a Different Person Anyway
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    {quickCreateOverride
+                      ? "Duplicate warning acknowledged. Confirm the details below before creating a separate person."
+                      : "No existing match is currently blocking new-person entry."}
+                  </p>
+                )}
+
+                <div
+                  className={`mt-4 grid gap-4 sm:grid-cols-2 ${
+                    quickHasMatches && !quickCreateOverride
+                      ? "pointer-events-none opacity-40"
+                      : ""
+                  }`}
+                >
                   <label>
                     <span className="text-xs font-bold text-slate-300">
                       Sex
@@ -1617,6 +1658,7 @@ export default function FamilyReunionDetailPage() {
                     quickWriting ||
                     !quickAnchorPersonId ||
                     !quickName.trim() ||
+                    (quickHasMatches && !quickCreateOverride) ||
                     (Boolean(quickLocationScope) &&
                       !Boolean(quickLocationBucket))
                   }
@@ -1638,7 +1680,10 @@ export default function FamilyReunionDetailPage() {
 
               {quickWriteSuccess ? (
                 <div className="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 p-3 text-sm text-emerald-200">
-                  {quickWriteSuccess}
+                  <p className="font-bold">{quickWriteSuccess}</p>
+                  <p className="mt-1 text-xs text-emerald-100/80">
+                    Ready to add another relative.
+                  </p>
                 </div>
               ) : null}
             </section>
