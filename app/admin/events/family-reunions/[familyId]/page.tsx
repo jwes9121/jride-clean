@@ -1302,6 +1302,24 @@ export default function FamilyReunionDetailPage() {
                 />
               </label>
 
+              {quickHasExactNameMatch ? (
+                <div className="mt-4 rounded-xl border border-red-700 bg-red-950/20 p-4">
+                  <p className="text-sm font-black text-red-200">
+                    Exact-name person already exists.
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-red-100/80">
+                    {[...quickCurrentMatches, ...quickOtherMatches].some(
+                      (candidate) =>
+                        candidate.fullName.trim().toLowerCase() ===
+                          quickName.trim().toLowerCase() &&
+                        candidate.quickAddDecision === "ALREADY_LINKED"
+                    )
+                      ? `${quickName.trim()} already exists and this relationship is already recorded. No action is needed.`
+                      : "Use the existing record shown below. Normal Quick Entry will not create another person with this exact name."}
+                  </p>
+                </div>
+              ) : null}
+
               {quickSearching ? (
                 <p className="mt-4 text-sm text-slate-400">
                   Searching existing family records...
@@ -1536,15 +1554,9 @@ export default function FamilyReunionDetailPage() {
                 </p>
 
                 {quickHasExactNameMatch ? (
-                  <div className="mt-3 rounded-xl border border-red-700 bg-red-950/20 p-4">
-                    <p className="text-sm font-black text-red-200">
-                      Exact-name person already exists.
-                    </p>
-                    <p className="mt-2 text-xs leading-5 text-red-100/80">
-                      Normal Quick Entry will not create another person with
-                      this exact name. Review and use the existing record above.
-                      A separate same-name-person workflow can be used later
-                      when two genuinely different people share the same name.
+                  <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+                    <p className="text-xs font-bold text-slate-400">
+                      Creation is disabled because an exact-name record exists above.
                     </p>
                   </div>
                 ) : quickHasMatches && !quickCreateOverride ? (
