@@ -243,6 +243,7 @@ export default function FamilyReunionDetailPage() {
     React.useState<string | null>(null);
   const [quickCreateOverride, setQuickCreateOverride] = React.useState(false);
   const [chartActivePersonId, setChartActivePersonId] = React.useState("");
+  const [chartEntryOpen, setChartEntryOpen] = React.useState(false);
 
   const [people, setPeople] = React.useState<FamilyPerson[]>([]);
 
@@ -728,6 +729,12 @@ export default function FamilyReunionDetailPage() {
 
       await loadFamily();
       setGenerationRefreshKey((current) => current + 1);
+      setChartEntryOpen(false);
+
+      if (data.personId) {
+        setChartActivePersonId(data.personId);
+        setQuickAnchorPersonId(data.personId);
+      }
 
       if (expandedEventId) {
         await loadParticipation(expandedEventId);
@@ -1046,12 +1053,7 @@ export default function FamilyReunionDetailPage() {
     setQuickCreateOverride(false);
     setQuickWriteError(null);
     setQuickWriteSuccess(null);
-
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById("quick-family-entry-form")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setChartEntryOpen(true);
   }
 
   const quickLocationBucketHint = React.useMemo(() => {
@@ -1320,6 +1322,276 @@ export default function FamilyReunionDetailPage() {
                             + Spouse
                           </button>
                         </div>
+
+                        {chartEntryOpen ? (
+                          <div className="mt-5 border-t border-slate-800 pt-5">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-cyan-300">
+                                  {quickRelationship === "child"
+                                    ? `Add Child of ${chartActivePerson.fullName}`
+                                    : `Add Spouse of ${chartActivePerson.fullName}`}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-400">
+                                  Search runs automatically before creation.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setChartEntryOpen(false);
+                                  setQuickName("");
+                                  setQuickCurrentMatches([]);
+                                  setQuickOtherMatches([]);
+                                  setQuickCreateOverride(false);
+                                  setQuickWriteError(null);
+                                  setQuickWriteSuccess(null);
+                                }}
+                                className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+
+                            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
+                              {quickRelationship === "child" &&
+                              generationByPersonId[chartActivePerson.id] ? (
+                                <>
+                                  Generation{" "}
+                                  <span className="font-black text-white">
+                                    {generationByPersonId[chartActivePerson.id]}
+                                  </span>
+                                  {" -> "}
+                                  child will appear as Generation{" "}
+                                  <span className="font-black text-cyan-300">
+                                    {generationByPersonId[chartActivePerson.id] + 1}
+                                  </span>
+                                </>
+                              ) : quickRelationship === "spouse" ? (
+                                "Spouse stays beside this person and does not create a new generation."
+                              ) : (
+                                "Generation preview is unavailable for this person."
+                              )}
+                            </div>
+
+                            <label className="mt-4 block">
+                              <span className="text-xs font-bold text-slate-300">
+                                Person's Name
+                              </span>
+                              <input
+                                value={quickName}
+                                onChange={(event) => {
+                                  setQuickName(event.target.value);
+                                  setQuickCreateOverride(false);
+                                  setQuickWriteError(null);
+                                  setQuickWriteSuccess(null);
+                                }}
+                                placeholder={
+                                  quickRelationship === "child"
+                                    ? "Type the child's name"
+                                    : "Type the spouse's name"
+                                }
+                                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white"
+                              />
+                            </label>
+
+                            {quickSearching ? (
+                              <p className="mt-3 text-xs text-slate-400">
+                                Searching existing family records...
+                              </p>
+                            ) : null}
+
+                            {quickSearchError ? (
+                              <div className="mt-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-200">
+                                {quickSearchError}
+                              </div>
+                            ) : null}
+
+                            {quickHasExactNameMatch ? (
+                              <div className="mt-3 rounded-lg border border-red-700 bg-red-950/20 p-3 text-xs text-red-200">
+                                Exact-name person already exists. Use the existing record below.
+                              </div>
+                            ) : null}
+
+                            {!quickSearching &&
+                            quickName.trim().length >= 2 &&
+                            !quickSearchError &&
+                            quickHasMatches ? (
+                              <div className="mt-4 space-y-2">
+                                {[...quickCurrentMatches, ...quickOtherMatches].map(
+                                  (candidate) => {
+                                    const hardCycle =
+                                      candidate.quickAddDecision ===
+                                      "CYCLE_WOULD_BE_CREATED";
+                                    const needsAdvanced =
+                                      candidate.quickAddDecision ===
+                                      "ADVANCED_EDITOR_REQUIRED";
+                                    const alreadyLinked =
+                                      candidate.quickAddDecision ===
+                                      "ALREADY_LINKED";
+                                    const canUse =
+                                      quickRelationship === "spouse"
+                                        ? candidate.candidateId !==
+                                          quickAnchorPersonId
+                                        : candidate.quickAddDecision ===
+                                          "SAFE_TO_LINK";
+
+                                    return (
+                                      <div
+                                        key={`chart:${candidate.candidateId}`}
+                                        className={`rounded-xl border p-3 ${
+                                          hardCycle
+                                            ? "border-red-700 bg-red-950/20"
+                                            : needsAdvanced
+                                            ? "border-amber-700 bg-amber-950/10"
+                                            : "border-slate-700 bg-slate-900"
+                                        }`}
+                                      >
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                          <div>
+                                            <p className="text-sm font-black text-white">
+                                              {candidate.fullName}
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-400">
+                                              {candidate.locationBucket ||
+                                                candidate.locationText ||
+                                                "Location not recorded"}
+                                            </p>
+                                            {candidate.matchScope ===
+                                            "OTHER_FAMILY" ? (
+                                              <p className="mt-1 text-[11px] text-amber-300">
+                                                Organized under:{" "}
+                                                {candidate.organizationalFamily
+                                                  ?.name || "Unassigned family"}
+                                              </p>
+                                            ) : null}
+                                          </div>
+                                          <span className="text-[11px] text-slate-500">
+                                            {Math.round(
+                                              candidate.similarityScore * 100
+                                            )}
+                                            % match
+                                          </span>
+                                        </div>
+
+                                        {hardCycle ? (
+                                          <p className="mt-2 text-xs text-red-300">
+                                            Cannot link: ancestry cycle would be created.
+                                          </p>
+                                        ) : needsAdvanced ? (
+                                          <p className="mt-2 text-xs text-amber-300">
+                                            Review required in Advanced Genealogy Editor.
+                                          </p>
+                                        ) : alreadyLinked ? (
+                                          <p className="mt-2 text-xs text-slate-400">
+                                            This relationship already exists.
+                                          </p>
+                                        ) : canUse ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void runQuickEntry(
+                                                "use_existing",
+                                                candidate.candidateId
+                                              )
+                                            }
+                                            disabled={quickWriting}
+                                            className="mt-3 rounded-lg bg-emerald-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
+                                          >
+                                            Use Existing {candidate.fullName}
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  }
+                                )}
+                              </div>
+                            ) : null}
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              <label>
+                                <span className="text-xs font-bold text-slate-300">
+                                  Sex
+                                </span>
+                                <select
+                                  value={quickSex}
+                                  onChange={(event) =>
+                                    setQuickSex(event.target.value)
+                                  }
+                                  disabled={
+                                    quickHasExactNameMatch ||
+                                    (quickHasMatches && !quickCreateOverride)
+                                  }
+                                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white disabled:opacity-40"
+                                >
+                                  <option value="unspecified">Unspecified</option>
+                                  <option value="male">Male</option>
+                                  <option value="female">Female</option>
+                                </select>
+                              </label>
+
+                              <label>
+                                <span className="text-xs font-bold text-slate-300">
+                                  Detailed Place
+                                </span>
+                                <input
+                                  value={quickLocationText}
+                                  onChange={(event) =>
+                                    setQuickLocationText(event.target.value)
+                                  }
+                                  disabled={
+                                    quickHasExactNameMatch ||
+                                    (quickHasMatches && !quickCreateOverride)
+                                  }
+                                  placeholder="Example: Lagawe or Quezon City"
+                                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white disabled:opacity-40"
+                                />
+                              </label>
+                            </div>
+
+                            {quickHasMatches &&
+                            !quickHasExactNameMatch &&
+                            !quickCreateOverride ? (
+                              <div className="mt-4 rounded-lg border border-amber-700 bg-amber-950/20 p-3">
+                                <p className="text-xs text-amber-200">
+                                  Existing records may match this person. Use an
+                                  existing record above when appropriate.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setQuickCreateOverride(true)}
+                                  className="mt-2 rounded-lg border border-amber-500 px-3 py-2 text-xs font-black text-amber-200"
+                                >
+                                  Different Person - Continue Creating
+                                </button>
+                              </div>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => void runQuickEntry("create_new")}
+                              disabled={
+                                quickWriting ||
+                                !quickName.trim() ||
+                                quickHasExactNameMatch ||
+                                (quickHasMatches && !quickCreateOverride)
+                              }
+                              className="mt-4 w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                            >
+                              {quickWriting
+                                ? "Saving..."
+                                : quickRelationship === "child"
+                                ? `Create ${quickName.trim() || "Person"} as Child`
+                                : `Create ${quickName.trim() || "Person"} as Spouse`}
+                            </button>
+
+                            {quickWriteError ? (
+                              <div className="mt-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-200">
+                                {quickWriteError}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
