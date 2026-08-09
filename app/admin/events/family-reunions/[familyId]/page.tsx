@@ -1474,16 +1474,67 @@ export default function FamilyReunionDetailPage() {
                                           </span>
                                         </div>
 
+                                        {candidate.fullName
+                                          .trim()
+                                          .toLowerCase() !==
+                                        quickName.trim().toLowerCase() ? (
+                                          <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                              Possible Same Person
+                                            </p>
+                                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                              <div>
+                                                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+                                                  Existing Record
+                                                </p>
+                                                <p className="mt-1 text-xs font-black text-white">
+                                                  {candidate.fullName}
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">
+                                                  You Entered
+                                                </p>
+                                                <p className="mt-1 text-xs font-black text-white">
+                                                  {quickName.trim()}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <p className="mt-2 text-[11px] leading-5 text-slate-400">
+                                              Similar names may still be different
+                                              people. Suffixes such as Jr., Sr.,
+                                              II, III, IV, and middle names can be
+                                              identity-significant.
+                                            </p>
+                                          </div>
+                                        ) : null}
+
                                         {hardCycle ? (
-                                          <p className="mt-2 text-xs text-red-300">
-                                            Cannot link: ancestry cycle would be created.
-                                          </p>
+                                          <div className="mt-3 rounded-lg border border-red-800 bg-red-950/30 p-3">
+                                            <p className="text-xs font-black text-red-200">
+                                              Linking this existing record is not allowed.
+                                            </p>
+                                            <p className="mt-1 text-[11px] leading-5 text-red-100/80">
+                                              Using {candidate.fullName} here would
+                                              create an ancestry cycle. This does not
+                                              mean the name you entered is invalid. If
+                                              this is genuinely another person, you may
+                                              continue creating a separate record.
+                                            </p>
+                                          </div>
                                         ) : needsAdvanced ? (
-                                          <p className="mt-2 text-xs text-amber-300">
-                                            Review required in Advanced Genealogy Editor.
-                                          </p>
+                                          <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3">
+                                            <p className="text-xs font-black text-amber-200">
+                                              Existing record needs review before linking.
+                                            </p>
+                                            <p className="mt-1 text-[11px] leading-5 text-amber-100/80">
+                                              This person already has two or more
+                                              biological parents. Review the relationship
+                                              in Advanced Genealogy Editor.
+                                            </p>
+                                          </div>
                                         ) : alreadyLinked ? (
-                                          <p className="mt-2 text-xs text-slate-400">
+                                          <p className="mt-3 text-xs text-slate-400">
                                             This relationship already exists.
                                           </p>
                                         ) : canUse ? (
@@ -1562,7 +1613,7 @@ export default function FamilyReunionDetailPage() {
                                   onClick={() => setQuickCreateOverride(true)}
                                   className="mt-2 rounded-lg border border-amber-500 px-3 py-2 text-xs font-black text-amber-200"
                                 >
-                                  Different Person - Continue Creating
+                                  This Is A Different Person
                                 </button>
                               </div>
                             ) : null}
