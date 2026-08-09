@@ -244,6 +244,8 @@ export default function FamilyReunionDetailPage() {
   const [quickCreateOverride, setQuickCreateOverride] = React.useState(false);
   const [chartActivePersonId, setChartActivePersonId] = React.useState("");
   const [chartEntryOpen, setChartEntryOpen] = React.useState(false);
+  const [advancedQuickEntryOpen, setAdvancedQuickEntryOpen] =
+    React.useState(false);
 
   const [people, setPeople] = React.useState<FamilyPerson[]>([]);
 
@@ -1697,7 +1699,40 @@ export default function FamilyReunionDetailPage() {
               )}
             </section>
 
-            <section id="quick-family-entry-form" className="mt-8 rounded-3xl border border-cyan-300/20 bg-slate-900 p-6">
+            <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                    Advanced Quick Entry
+                  </p>
+                  <h2 className="mt-2 text-xl font-black text-white">
+                    Manual Quick Entry Fallback
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                    Use this only when the inline Family Branch Entry workflow
+                    is not suitable. It uses the same duplicate search and
+                    genealogy write safeguards.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAdvancedQuickEntryOpen((current) => !current)
+                  }
+                  className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-black text-slate-300"
+                >
+                  {advancedQuickEntryOpen
+                    ? "Close Advanced Quick Entry"
+                    : "Open Advanced Quick Entry"}
+                </button>
+              </div>
+
+              {advancedQuickEntryOpen ? (
+                <div
+                  id="quick-family-entry-form"
+                  className="mt-6 border-t border-slate-800 pt-6"
+                >
               <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">
                 Quick Family Entry
               </p>
@@ -2261,6 +2296,9 @@ export default function FamilyReunionDetailPage() {
                   <p className="mt-1 text-xs text-emerald-100/80">
                     Ready to add another relative.
                   </p>
+                </div>
+              ) : null}
+
                 </div>
               ) : null}
             </section>
