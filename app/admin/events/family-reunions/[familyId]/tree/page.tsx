@@ -381,6 +381,11 @@ function TreeDiagram({
     }
 
     const containerRect = container.getBoundingClientRect();
+
+    // getBoundingClientRect() returns already-scaled screen coordinates.
+    // SVG path coordinates live inside the unscaled canvas and are scaled
+    // once by the canvas transform. Divide relative screen coordinates by
+    // zoom so connector positions are not scaled a second time.
     const next: Connector[] = [];
 
     for (const plan of connectorPlans) {
@@ -403,9 +408,13 @@ function TreeDiagram({
         // Exact geometric midpoint of the visible marriage gap:
         // primary card right edge <---- midpoint ----> spouse card left edge.
         startX =
-          (primaryRect.right + spouseRect.left) / 2 - containerRect.left;
+          ((primaryRect.right + spouseRect.left) / 2 -
+            containerRect.left) /
+          zoom;
         startY =
-          (primaryRect.top + primaryRect.bottom) / 2 - containerRect.top;
+          ((primaryRect.top + primaryRect.bottom) / 2 -
+            containerRect.top) /
+          zoom;
       } else {
         const source = primaryRefs.current.get(plan.sourcePersonId);
 
@@ -413,8 +422,12 @@ function TreeDiagram({
 
         const sourceRect = source.getBoundingClientRect();
         startX =
-          sourceRect.left - containerRect.left + sourceRect.width / 2;
-        startY = sourceRect.bottom - containerRect.top;
+          (sourceRect.left -
+            containerRect.left +
+            sourceRect.width / 2) /
+          zoom;
+        startY =
+          (sourceRect.bottom - containerRect.top) / zoom;
       }
 
       const targetRect = target.getBoundingClientRect();
@@ -422,8 +435,12 @@ function TreeDiagram({
       // Incoming lineage always terminates at the selected blood-line
       // person's own card, never at the center of a couple unit.
       const endX =
-        targetRect.left - containerRect.left + targetRect.width / 2;
-      const endY = targetRect.top - containerRect.top;
+        (targetRect.left -
+          containerRect.left +
+          targetRect.width / 2) /
+        zoom;
+      const endY =
+        (targetRect.top - containerRect.top) / zoom;
 
       const midY = startY + (endY - startY) / 2;
 
@@ -434,7 +451,7 @@ function TreeDiagram({
     }
 
     setConnectors(next);
-  }, [connectorPlans]);
+  }, [connectorPlans, zoom]);
 
   React.useLayoutEffect(() => {
     calculateConnectors();
