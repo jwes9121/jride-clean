@@ -903,7 +903,7 @@ export default function TakeoutPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [autofillNote, setAutofillNote] = useState("");
-  const [authState, setAuthState] = useState<"unknown" | "guest" | "signed_in_profile" | "signed_in_missing_profile">("unknown");
+  const [authState, setAuthState] = useState<"unknown" | "guest" | "signed_in_profile" | "signed_in_unverified" | "signed_in_missing_profile">("unknown");
 
   // Phase 2B.0 - DB-backed addresses (pilot via device_key)
   const [deviceKey, setDeviceKey] = useState("");
@@ -1249,7 +1249,10 @@ function selectedAddressTown(
   }, [vendorId, authState, customerName, customerPhone, deliveryPin, selectedLines.length, vendorClosed, busy]);
 
 
-  const canOpenDelivery = selectedLines.length > 0 && !vendorClosed;
+  const canOpenDelivery =
+    selectedLines.length > 0 &&
+    !vendorClosed &&
+    authState === "signed_in_profile";
   const canReviewAndSubmit = canSubmit && !deliveryPinNeedsConfirmation;
 
   function openDeliveryStage() {
@@ -1296,6 +1299,13 @@ const contact = await fetchOptionalJson(
       contact?.signed_in === true ||
       contact?.authenticated === true ||
       !!firstString(contact?.user_id, contact?.passenger_id, contact?.profile?.id, contact?.data?.id);
+
+    // /api/public/auth/session is the authoritative frontend verification
+    // contract. A complete profile is not the same as approved verification.
+    const passengerVerificationKnown =
+      passengerSession?.authed === true &&
+      typeof passengerSession?.verified === "boolean";
+    const passengerVerified = passengerSession?.verified === true;
 
     const profileSources: any[] = [];
 
@@ -1344,17 +1354,32 @@ const contact = await fetchOptionalJson(
 
     const loaded = [profileName ? "profile name" : "", profilePhone ? "profile phone" : "", profileAddress ? "profile address" : ""].filter(Boolean);
 
-    if (signedIn && profileName && profilePhone) {
+    if (signedIn && profileName && profilePhone && passengerVerified) {
       setAuthState("signed_in_profile");
-      setAutofillNote("Signed in. Loaded from verified passenger contact: " + loaded.join(", ") + ". These details are required for booking.");
+      setAutofillNote(
+        "Signed in. Loaded from verified passenger profile: " +
+          loaded.join(", ") +
+          "."
+      );
+    } else if (signedIn && profileName && profilePhone) {
+      setAuthState("signed_in_unverified");
+      setAutofillNote(
+        passengerVerificationKnown
+          ? "Signed in, but passenger verification is not approved. Complete verification before placing a takeout order."
+          : "Signed in, but passenger verification could not be confirmed. Refresh the page before trying again."
+      );
     } else if (signedIn) {
       setAuthState("signed_in_missing_profile");
-      setAutofillNote("Signed in, but a complete verified passenger name and phone were not found. Booking is blocked until the profile is fixed.");
+      setAutofillNote(
+        "Signed in, but a complete passenger name and phone were not found. Booking is blocked until the profile is fixed."
+      );
     } else {
       setCustomerName("");
       setCustomerPhone("");
       setAuthState("guest");
-      setAutofillNote("Not signed in. Sign in with your passenger phone number and password to book.");
+      setAutofillNote(
+        "Not signed in. Sign in with your passenger phone number and password to book."
+      );
     }
   }
 
@@ -1875,6 +1900,13 @@ const contact = await fetchOptionalJson(
         return;
       }
 
+      if (authState === "signed_in_unverified") {
+        setResult(
+          "Passenger verification is required before placing a takeout order."
+        );
+        return;
+      }
+
       if (authState !== "signed_in_profile" || !customerName.trim() || !customerPhone.trim()) {
         setResult("Only signed-in verified passengers with profile name and phone can place takeout orders.");
         return;
@@ -2059,6 +2091,11 @@ const contact = await fetchOptionalJson(
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
                 Verified
               </span>
+            ) : authState === "signed_in_unverified" ? (
+              <span className="flex items-center gap-1 text-[10px] font-black text-amber-300 sm:text-xs">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" aria-hidden="true" />
+                Verification required
+              </span>
             ) : null}
 
             <button
@@ -2084,10 +2121,17 @@ const contact = await fetchOptionalJson(
             </a>
           </div>
         </div>
+      ) : authState === "signed_in_unverified" ? (
+        <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-semibold">Passenger verification required</div>
+          <div className="text-xs">
+            Your passenger profile has a name and phone, but verification is not approved or could not be confirmed. Complete verification in your JRide Passenger Profile before placing a Takeout order.
+          </div>
+        </div>
       ) : authState === "signed_in_missing_profile" ? (
         <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-          <div className="font-semibold">Verified passenger profile required</div>
-          <div className="text-xs">We could not load a complete verified passenger profile with name and phone. Booking is blocked until the profile is fixed.</div>
+          <div className="font-semibold">Complete passenger profile required</div>
+          <div className="text-xs">We could not load a complete passenger profile with both name and phone. Booking is blocked until the profile is fixed.</div>
         </div>
       ) : null}
 
@@ -2680,18 +2724,21 @@ const contact = await fetchOptionalJson(
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-700">Verified passenger name (required)</label>
+            <label className="text-xs font-medium text-slate-700">Passenger name (required)</label>
             <input
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              readOnly={authState === "signed_in_profile"}
+              readOnly={
+                authState === "signed_in_profile" ||
+                authState === "signed_in_unverified"
+              }
               placeholder=""
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-700">Verified passenger phone (required)</label>
+            <label className="text-xs font-medium text-slate-700">Passenger phone (required)</label>
             <input
               className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={customerPhone}
@@ -2699,7 +2746,10 @@ const contact = await fetchOptionalJson(
                 const digitsOnly = e.target.value.replace(/[^0-9]/g, "");
                 setCustomerPhone(digitsOnly);
               }}
-              readOnly={authState === "signed_in_profile"}
+              readOnly={
+                authState === "signed_in_profile" ||
+                authState === "signed_in_unverified"
+              }
               placeholder="09xx..."
             />
           </div>
@@ -3152,6 +3202,23 @@ const contact = await fetchOptionalJson(
             </div>
           </div>
 
+          {result &&
+          !["completed", "cancelled"].includes(
+            normText(
+              pricingOrder?.customer_status ||
+                pricingOrder?.vendor_status ||
+                ""
+            ).toLowerCase()
+          ) ? (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-semibold text-amber-900"
+            >
+              {result}
+            </div>
+          ) : null}
+
           <button
             type="button"
             onClick={checkoutStage === "browse" ? openDeliveryStage : submit}
@@ -3179,9 +3246,11 @@ const contact = await fetchOptionalJson(
                 ? "Submitting order..."
                 : vendorClosed
                   ? "Vendor closed"
-                  : authState !== "signed_in_profile"
-                    ? "Sign in required"
-                    : checkoutStage === "browse"
+                  : authState === "signed_in_unverified"
+                    ? "Verification required"
+                    : authState !== "signed_in_profile"
+                      ? "Sign in required"
+                      : checkoutStage === "browse"
                       ? "Continue to delivery details"
                       : deliveryPin && !deliveryPinNeedsConfirmation
                         ? "Review and submit order"
@@ -3189,11 +3258,13 @@ const contact = await fetchOptionalJson(
           </button>
 
           <div className="mt-1.5 text-center text-[10px] leading-tight text-slate-500">
-            {checkoutStage === "browse"
-              ? "Add items, then continue to delivery details."
-              : deliveryPin && !deliveryPinNeedsConfirmation
-                ? "Review your details, then submit. Driver quote follows."
-                : "Set and confirm the exact delivery location to continue."}
+            {authState === "signed_in_unverified"
+              ? "Complete passenger verification before placing a takeout order."
+              : checkoutStage === "browse"
+                ? "Add items, then continue to delivery details."
+                : deliveryPin && !deliveryPinNeedsConfirmation
+                  ? "Review your details, then submit. Driver quote follows."
+                  : "Set and confirm the exact delivery location to continue."}
           </div>
 
           {vendorClosed ? (
@@ -3203,9 +3274,6 @@ const contact = await fetchOptionalJson(
           ) : null}
         </div>
 
-        {result && !["completed", "cancelled"].includes(normText(pricingOrder?.customer_status || pricingOrder?.vendor_status || "").toLowerCase()) ? (
-          <div className="sticky bottom-3 z-20 mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">{result}</div>
-        ) : null}
 
         {submitted ? (
           <div className="mt-3 rounded border bg-white p-4 text-sm">
