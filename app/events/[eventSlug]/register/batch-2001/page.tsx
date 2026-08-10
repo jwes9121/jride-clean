@@ -13,6 +13,21 @@ type CompanionForm = {
   attendLunch: boolean | null;
 };
 
+type CompanionField =
+  | "fullName"
+  | "relationship"
+  | "joinFunWalk"
+  | "attendLunch";
+
+type ValidationIssue = {
+  fieldId: string;
+  message: string;
+};
+
+function companionFieldId(index: number, field: CompanionField) {
+  return `companion-${index}-${field}`;
+}
+
 type GroupValuesResponse = {
   success: boolean;
   eventName?: string;
@@ -102,6 +117,7 @@ export default function BatchTwoThousandOneRegistrationPage() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState("");
+  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
   const [duplicatePrompt, setDuplicatePrompt] = React.useState<RegistrationResponse | null>(null);
   const [specialNotice, setSpecialNotice] = React.useState<RegistrationResponse | null>(null);
 
@@ -133,78 +149,212 @@ export default function BatchTwoThousandOneRegistrationPage() {
     };
   }, [eventSlug]);
 
+  function clearFieldError(fieldId: string) {
+    setFieldErrors((current) => {
+      if (!current[fieldId]) return current;
+
+      const next = { ...current };
+      delete next[fieldId];
+      return next;
+    });
+    setFormError("");
+  }
+
+  function clearCompanionErrors() {
+    setFieldErrors((current) => {
+      const next: Record<string, string> = {};
+
+      for (const [key, value] of Object.entries(current)) {
+        if (
+          !key.startsWith("companion-") &&
+          key !== "bring-companions-question"
+        ) {
+          next[key] = value;
+        }
+      }
+
+      return next;
+    });
+    setFormError("");
+  }
+
+  function focusValidationIssue(issue: ValidationIssue) {
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(issue.fieldId);
+
+      if (!target) return;
+
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      window.setTimeout(() => {
+        const focusTarget = target.matches("input, select, button")
+          ? target
+          : target.querySelector<HTMLElement>("input, select, button");
+
+        focusTarget?.focus({ preventScroll: true });
+      }, 350);
+    });
+  }
+
   function handleBringCompanions(next: boolean) {
     setBringCompanions(next);
+    clearFieldError("bring-companions-question");
+
     if (!next) {
       setCompanions([]);
-    } else if (companions.length === 0) {
-      addCompanion();
+      clearCompanionErrors();
+      return;
     }
-  }
 
-  function addCompanion() {
-    if (companions.length >= MAX_COMPANIONS) return;
-    setCompanions((prev) => [
-      ...prev,
-      { fullName: "", relationship: "Spouse", joinFunWalk: null, attendLunch: null },
-    ]);
-  }
-
-  function updateCompanion(index: number, patch: Partial<CompanionForm>) {
-    setCompanions((prev) =>
-      prev.map((companion, i) => (i === index ? { ...companion, ...patch } : companion))
+    setCompanions((current) =>
+      current.length === 0
+        ? [
+            {
+              fullName: "",
+              relationship: "Spouse",
+              joinFunWalk: null,
+              attendLunch: null,
+            },
+          ]
+        : current
     );
   }
 
-  function removeCompanion(index: number) {
-    setCompanions((prev) => prev.filter((_, i) => i !== index));
+  function addCompanion() {
+    setCompanions((current) => {
+      if (current.length >= MAX_COMPANIONS) return current;
+
+      return [
+        ...current,
+        {
+          fullName: "",
+          relationship: "Spouse",
+          joinFunWalk: null,
+          attendLunch: null,
+        },
+      ];
+    });
+    clearFieldError("bring-companions-question");
   }
 
-  function validateLocal() {
-    if (fullName.trim().length < 2) return "Full name is required.";
-    if (cleanPhone(mobileNumber).length < 10) return "Valid mobile number is required.";
-    if (bringCompanions === null) return "Please answer whether you will bring companions.";
+  function updateCompanion(index: number, patch: Partial<CompanionForm>) {
+    setCompanions((current) =>
+      current.map((companion, i) =>
+        i === index ? { ...companion, ...patch } : companion
+      )
+    );
+
+    for (const field of Object.keys(patch) as CompanionField[]) {
+      clearFieldError(companionFieldId(index, field));
+    }
+  }
+
+  function removeCompanion(index: number) {
+    setCompanions((current) => current.filter((_, i) => i !== index));
+
+    // Companion indexes may shift after removal, so clear every companion
+    // field error rather than leaving an error attached to the wrong row.
+    clearCompanionErrors();
+  }
+
+  function validateLocal(): ValidationIssue | null {
+    if (fullName.trim().length < 2) {
+      return {
+        fieldId: "primary-full-name",
+        message: "Full name is required.",
+      };
+    }
+
+    if (cleanPhone(mobileNumber).length < 10) {
+      return {
+        fieldId: "primary-mobile-number",
+        message: "Valid mobile number is required.",
+      };
+    }
+
+    if (bringCompanions === null) {
+      return {
+        fieldId: "bring-companions-question",
+        message: "Please answer whether you will bring companions.",
+      };
+    }
+
     if (bringCompanions && companions.length === 0) {
-      return "Please add at least one companion or select No.";
+      return {
+        fieldId: "bring-companions-question",
+        message: "Please add at least one companion or select No.",
+      };
     }
-    if (!morningRole) return "Please choose how you will participate.";
+
+    if (bringCompanions) {
+      for (let i = 0; i < companions.length; i++) {
+        const companion = companions[i];
+
+        if (companion.fullName.trim().length < 2) {
+          return {
+            fieldId: companionFieldId(i, "fullName"),
+            message: `Companion ${i + 1} name is required.`,
+          };
+        }
+
+        if (!companion.relationship.trim()) {
+          return {
+            fieldId: companionFieldId(i, "relationship"),
+            message: `Companion ${i + 1} relationship is required.`,
+          };
+        }
+
+        if (companion.joinFunWalk === null) {
+          return {
+            fieldId: companionFieldId(i, "joinFunWalk"),
+            message: `Companion ${i + 1}: please answer whether they will join the Fun Walk.`,
+          };
+        }
+
+        if (companion.attendLunch === null) {
+          return {
+            fieldId: companionFieldId(i, "attendLunch"),
+            message: `Companion ${i + 1}: please answer whether they will attend the Lunch Meet & Greet.`,
+          };
+        }
+      }
+    }
+
+    if (!morningRole) {
+      return {
+        fieldId: "morning-role-question",
+        message: "Please choose how you will participate.",
+      };
+    }
+
     if (attendLunch === null) {
-      return "Please answer whether you will attend the Lunch Meet & Greet.";
+      return {
+        fieldId: "primary-lunch-question",
+        message: "Please answer whether you will attend the Lunch Meet & Greet.",
+      };
     }
 
-    for (let i = 0; i < companions.length; i++) {
-      const companion = companions[i];
-
-      if (companion.fullName.trim().length < 2) {
-        return `Companion ${i + 1} name is required.`;
-      }
-
-      if (!companion.relationship.trim()) {
-        return `Companion ${i + 1} relationship is required.`;
-      }
-
-      if (companion.joinFunWalk === null) {
-        return `Companion ${i + 1}: please answer whether they will join the Fun Walk.`;
-      }
-
-      if (companion.attendLunch === null) {
-        return `Companion ${i + 1}: please answer whether they will attend the Lunch Meet & Greet.`;
-      }
-    }
-
-    return "";
+    return null;
   }
 
   async function submitRegistration(force = false) {
-    const localError = validateLocal();
+    const validationIssue = validateLocal();
 
-    if (localError) {
-      setFormError(localError);
+    if (validationIssue) {
+      setFormError(validationIssue.message);
+      setFieldErrors({
+        [validationIssue.fieldId]: validationIssue.message,
+      });
+      focusValidationIssue(validationIssue);
       return;
     }
 
     setSubmitting(true);
     setFormError("");
+    setFieldErrors({});
 
     try {
       const res = await fetch(`/api/events/${eventSlug}/register/batch-2001`, {
@@ -354,26 +504,70 @@ export default function BatchTwoThousandOneRegistrationPage() {
             <label className="block">
               <span className="text-sm font-bold text-slate-200">Full Name *</span>
               <input
+                id="primary-full-name"
                 value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                onChange={(event) => {
+                  setFullName(event.target.value);
+                  clearFieldError("primary-full-name");
+                }}
+                aria-invalid={Boolean(fieldErrors["primary-full-name"])}
+                aria-describedby={
+                  fieldErrors["primary-full-name"]
+                    ? "primary-full-name-error"
+                    : undefined
+                }
+                className={`mt-2 w-full rounded-2xl border bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300 ${
+                  fieldErrors["primary-full-name"]
+                    ? "border-red-400"
+                    : "border-slate-700"
+                }`}
                 placeholder="Juan Dela Cruz"
                 autoComplete="name"
               />
+              {fieldErrors["primary-full-name"] ? (
+                <p
+                  id="primary-full-name-error"
+                  className="mt-2 text-sm font-semibold text-red-300"
+                >
+                  {fieldErrors["primary-full-name"]}
+                </p>
+              ) : null}
             </label>
 
             <label className="block">
               <span className="text-sm font-bold text-slate-200">Mobile Number *</span>
               <input
+                id="primary-mobile-number"
                 value={mobileNumber}
-                onChange={(event) => setMobileNumber(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
+                onChange={(event) => {
+                  setMobileNumber(event.target.value);
+                  clearFieldError("primary-mobile-number");
+                }}
+                aria-invalid={Boolean(fieldErrors["primary-mobile-number"])}
+                aria-describedby={
+                  fieldErrors["primary-mobile-number"]
+                    ? "primary-mobile-number-error"
+                    : undefined
+                }
+                className={`mt-2 w-full rounded-2xl border bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300 ${
+                  fieldErrors["primary-mobile-number"]
+                    ? "border-red-400"
+                    : "border-slate-700"
+                }`}
                 placeholder="09171234567"
                 type="tel"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 autoComplete="tel"
               />
+              {fieldErrors["primary-mobile-number"] ? (
+                <p
+                  id="primary-mobile-number-error"
+                  className="mt-2 text-sm font-semibold text-red-300"
+                >
+                  {fieldErrors["primary-mobile-number"]}
+                </p>
+              ) : null}
             </label>
 
             <label className="block">
@@ -386,13 +580,26 @@ export default function BatchTwoThousandOneRegistrationPage() {
               />
             </label>
 
-            <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <div
+              id="bring-companions-question"
+              className={`rounded-2xl border bg-slate-950 p-4 ${
+                fieldErrors["bring-companions-question"]
+                  ? "border-red-400"
+                  : "border-slate-700"
+              }`}
+            >
               <p className="font-bold">Will you bring companions?</p>
               <p className="mt-1 text-sm text-slate-400">
                 Add up to {MAX_COMPANIONS} companions. Each receives their own Event Pass QR.
               </p>
 
               <YesNo value={bringCompanions} onChange={handleBringCompanions} />
+
+              {fieldErrors["bring-companions-question"] ? (
+                <p className="mt-3 text-sm font-semibold text-red-300">
+                  {fieldErrors["bring-companions-question"]}
+                </p>
+              ) : null}
 
               {bringCompanions ? (
                 <>
@@ -421,20 +628,57 @@ export default function BatchTwoThousandOneRegistrationPage() {
                           </div>
 
                           <input
+                            id={companionFieldId(index, "fullName")}
                             value={companion.fullName}
                             onChange={(event) =>
-                              updateCompanion(index, { fullName: event.target.value })
+                              updateCompanion(index, {
+                                fullName: event.target.value,
+                              })
                             }
-                            className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
+                            aria-invalid={Boolean(
+                              fieldErrors[companionFieldId(index, "fullName")]
+                            )}
+                            aria-describedby={
+                              fieldErrors[companionFieldId(index, "fullName")]
+                                ? `${companionFieldId(index, "fullName")}-error`
+                                : undefined
+                            }
+                            className={`mt-3 w-full rounded-xl border bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300 ${
+                              fieldErrors[companionFieldId(index, "fullName")]
+                                ? "border-red-400"
+                                : "border-slate-700"
+                            }`}
                             placeholder="Companion full name"
                           />
+                          {fieldErrors[companionFieldId(index, "fullName")] ? (
+                            <p
+                              id={`${companionFieldId(index, "fullName")}-error`}
+                              className="mt-2 text-sm font-semibold text-red-300"
+                            >
+                              {fieldErrors[companionFieldId(index, "fullName")]}
+                            </p>
+                          ) : null}
 
                           <select
+                            id={companionFieldId(index, "relationship")}
                             value={companion.relationship}
                             onChange={(event) =>
-                              updateCompanion(index, { relationship: event.target.value })
+                              updateCompanion(index, {
+                                relationship: event.target.value,
+                              })
                             }
-                            className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
+                            aria-invalid={Boolean(
+                              fieldErrors[
+                                companionFieldId(index, "relationship")
+                              ]
+                            )}
+                            className={`mt-3 w-full rounded-xl border bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300 ${
+                              fieldErrors[
+                                companionFieldId(index, "relationship")
+                              ]
+                                ? "border-red-400"
+                                : "border-slate-700"
+                            }`}
                           >
                             {relationships.map((item) => (
                               <option key={item} value={item}>
@@ -442,25 +686,84 @@ export default function BatchTwoThousandOneRegistrationPage() {
                               </option>
                             ))}
                           </select>
+                          {fieldErrors[
+                            companionFieldId(index, "relationship")
+                          ] ? (
+                            <p className="mt-2 text-sm font-semibold text-red-300">
+                              {
+                                fieldErrors[
+                                  companionFieldId(index, "relationship")
+                                ]
+                              }
+                            </p>
+                          ) : null}
 
-                          <div className="mt-3">
+                          <div
+                            id={companionFieldId(index, "joinFunWalk")}
+                            className={`mt-3 rounded-xl ${
+                              fieldErrors[
+                                companionFieldId(index, "joinFunWalk")
+                              ]
+                                ? "border border-red-400 bg-red-950/20 p-3"
+                                : ""
+                            }`}
+                          >
                             <span className="text-sm font-bold text-slate-200">
                               Will this companion join the Fun Walk? *
                             </span>
                             <YesNo
                               value={companion.joinFunWalk}
-                              onChange={(next) => updateCompanion(index, { joinFunWalk: next })}
+                              onChange={(next) =>
+                                updateCompanion(index, {
+                                  joinFunWalk: next,
+                                })
+                              }
                             />
+                            {fieldErrors[
+                              companionFieldId(index, "joinFunWalk")
+                            ] ? (
+                              <p className="mt-2 text-sm font-semibold text-red-300">
+                                {
+                                  fieldErrors[
+                                    companionFieldId(index, "joinFunWalk")
+                                  ]
+                                }
+                              </p>
+                            ) : null}
                           </div>
 
-                          <div className="mt-3">
+                          <div
+                            id={companionFieldId(index, "attendLunch")}
+                            className={`mt-3 rounded-xl ${
+                              fieldErrors[
+                                companionFieldId(index, "attendLunch")
+                              ]
+                                ? "border border-red-400 bg-red-950/20 p-3"
+                                : ""
+                            }`}
+                          >
                             <span className="text-sm font-bold text-slate-200">
                               Will this companion attend the Lunch Meet &amp; Greet? *
                             </span>
                             <YesNo
                               value={companion.attendLunch}
-                              onChange={(next) => updateCompanion(index, { attendLunch: next })}
+                              onChange={(next) =>
+                                updateCompanion(index, {
+                                  attendLunch: next,
+                                })
+                              }
                             />
+                            {fieldErrors[
+                              companionFieldId(index, "attendLunch")
+                            ] ? (
+                              <p className="mt-2 text-sm font-semibold text-red-300">
+                                {
+                                  fieldErrors[
+                                    companionFieldId(index, "attendLunch")
+                                  ]
+                                }
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -470,14 +773,24 @@ export default function BatchTwoThousandOneRegistrationPage() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <div
+              id="morning-role-question"
+              className={`rounded-2xl border bg-slate-950 p-4 ${
+                fieldErrors["morning-role-question"]
+                  ? "border-red-400"
+                  : "border-slate-700"
+              }`}
+            >
               <span className="text-sm font-bold text-slate-200">
                 How will you participate? *
               </span>
               <div className="mt-2 grid grid-cols-1 gap-3">
                 <button
                   type="button"
-                  onClick={() => setMorningRole("fun_walk")}
+                  onClick={() => {
+                    setMorningRole("fun_walk");
+                    clearFieldError("morning-role-question");
+                  }}
                   aria-pressed={morningRole === "fun_walk"}
                   className={`rounded-xl border px-4 py-3 text-left font-bold transition ${
                     morningRole === "fun_walk"
@@ -489,7 +802,10 @@ export default function BatchTwoThousandOneRegistrationPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMorningRole("assist")}
+                  onClick={() => {
+                    setMorningRole("assist");
+                    clearFieldError("morning-role-question");
+                  }}
                   aria-pressed={morningRole === "assist"}
                   className={`rounded-xl border px-4 py-3 text-left font-bold transition ${
                     morningRole === "assist"
@@ -500,18 +816,44 @@ export default function BatchTwoThousandOneRegistrationPage() {
                   Assist during the Event
                 </button>
               </div>
+              {fieldErrors["morning-role-question"] ? (
+                <p className="mt-3 text-sm font-semibold text-red-300">
+                  {fieldErrors["morning-role-question"]}
+                </p>
+              ) : null}
             </div>
 
-            <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <div
+              id="primary-lunch-question"
+              className={`rounded-2xl border bg-slate-950 p-4 ${
+                fieldErrors["primary-lunch-question"]
+                  ? "border-red-400"
+                  : "border-slate-700"
+              }`}
+            >
               <span className="text-sm font-bold text-slate-200">
                 Will you attend the Lunch Meet &amp; Greet with the Junior Batch and the Golden
                 Jubilarians? *
               </span>
-              <YesNo value={attendLunch} onChange={setAttendLunch} />
+              <YesNo
+                value={attendLunch}
+                onChange={(next) => {
+                  setAttendLunch(next);
+                  clearFieldError("primary-lunch-question");
+                }}
+              />
+              {fieldErrors["primary-lunch-question"] ? (
+                <p className="mt-3 text-sm font-semibold text-red-300">
+                  {fieldErrors["primary-lunch-question"]}
+                </p>
+              ) : null}
             </div>
 
             {formError ? (
-              <p className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800">
+              <p
+                role="alert"
+                className="rounded-2xl bg-red-100 px-4 py-3 text-sm font-semibold text-red-800"
+              >
                 {formError}
               </p>
             ) : null}
