@@ -161,6 +161,44 @@ type QuickEntryWriteResponse = {
   relationshipId?: string | null;
 };
 
+type BulkChildMode = "create_new" | "use_existing";
+type BulkChildReviewState =
+  | "unreviewed"
+  | "reviewing"
+  | "reviewed"
+  | "error";
+
+type BulkChildDraft = {
+  rowId: string;
+  fullName: string;
+  sex: string;
+  locationText: string;
+  reviewState: BulkChildReviewState;
+  currentMatches: QuickAddCandidate[];
+  otherMatches: QuickAddCandidate[];
+  selectedMode: BulkChildMode | null;
+  selectedExistingPersonId: string | null;
+  differentPersonConfirmed: boolean;
+  error: string | null;
+};
+
+type BulkChildrenWriteResponse = {
+  success: boolean;
+  resultCode?: string;
+  error?: string;
+  processedCount?: number;
+  message?: string;
+  results?: {
+    clientRowId: string | null;
+    mode: BulkChildMode;
+    personId: string;
+    relationshipId: string;
+    resultCode: string;
+    message: string;
+  }[];
+};
+
+
 const IFUGAO_TOWNS = [
   "Aguinaldo",
   "Alfonso Lista",
@@ -201,6 +239,30 @@ function emptyPersonForm() {
     locationBucket: "",
     notes: "",
   };
+}
+
+let bulkChildRowSequence = 0;
+
+function createBulkChildDraft(): BulkChildDraft {
+  bulkChildRowSequence += 1;
+
+  return {
+    rowId: `bulk-child-${bulkChildRowSequence}`,
+    fullName: "",
+    sex: "unspecified",
+    locationText: "",
+    reviewState: "unreviewed",
+    currentMatches: [],
+    otherMatches: [],
+    selectedMode: null,
+    selectedExistingPersonId: null,
+    differentPersonConfirmed: false,
+    error: null,
+  };
+}
+
+function normalizedName(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export default function FamilyReunionDetailPage() {
@@ -244,6 +306,16 @@ export default function FamilyReunionDetailPage() {
   const [quickCreateOverride, setQuickCreateOverride] = React.useState(false);
   const [chartActivePersonId, setChartActivePersonId] = React.useState("");
   const [chartEntryOpen, setChartEntryOpen] = React.useState(false);
+  const [bulkChildrenOpen, setBulkChildrenOpen] = React.useState(false);
+  const [bulkChildren, setBulkChildren] = React.useState<BulkChildDraft[]>([
+    createBulkChildDraft(),
+    createBulkChildDraft(),
+    createBulkChildDraft(),
+  ]);
+  const [bulkReviewing, setBulkReviewing] = React.useState(false);
+  const [bulkSaving, setBulkSaving] = React.useState(false);
+  const [bulkError, setBulkError] = React.useState<string | null>(null);
+  const [bulkSuccess, setBulkSuccess] = React.useState<string | null>(null);
   const [advancedQuickEntryOpen, setAdvancedQuickEntryOpen] =
     React.useState(false);
 
@@ -1042,6 +1114,322 @@ export default function FamilyReunionDetailPage() {
     [generationByPersonId, people]
   );
 
+  function resetBulkChildren(clearSuccess = true) {
+    setBulkChildren([
+      createBulkChildDraft(),
+      createBulkChildDraft(),
+      createBulkChildDraft(),
+    ]);
+    setBulkReviewing(false);
+    setBulkSaving(false);
+    setBulkError(null);
+    if (clearSuccess) {
+      setBulkSuccess(null);
+    }
+  }
+
+  function updateBulkChild(
+    rowId: string,
+    patch: Partial<BulkChildDraft>,
+    resetReview = false
+  ) {
+    setBulkChildren((current) =>
+      current.map((row) =>
+        row.rowId === rowId
+          ? {
+              ...row,
+              ...patch,
+              ...(resetReview
+                ? {
+                    reviewState: "unreviewed" as BulkChildReviewState,
+                    currentMatches: [],
+                    otherMatches: [],
+                    selectedMode: null,
+                    selectedExistingPersonId: null,
+                    differentPersonConfirmed: false,
+                    error: null,
+                  }
+                : {}),
+            }
+          : row
+      )
+    );
+    setBulkError(null);
+    setBulkSuccess(null);
+  }
+
+  function addBulkChildRow() {
+    setBulkChildren((current) =>
+      current.length >= 20
+        ? current
+        : [...current, createBulkChildDraft()]
+    );
+  }
+
+  function removeBulkChildRow(rowId: string) {
+    setBulkChildren((current) => {
+      const next = current.filter((row) => row.rowId !== rowId);
+      return next.length > 0 ? next : [createBulkChildDraft()];
+    });
+    setBulkError(null);
+    setBulkSuccess(null);
+  }
+
+  async function reviewBulkChildren() {
+    if (!chartActivePersonId) {
+      setBulkError("Choose the parent for this batch.");
+      return;
+    }
+
+    const rowsToReview = bulkChildren.filter(
+      (row) => row.fullName.trim().length > 0
+    );
+
+    if (rowsToReview.length === 0) {
+      setBulkError("Enter at least one child name.");
+      return;
+    }
+
+    setBulkReviewing(true);
+    setBulkError(null);
+    setBulkSuccess(null);
+
+    const reviewedRows = await Promise.all(
+      bulkChildren.map(async (row) => {
+        const query = row.fullName.trim();
+
+        if (!query) {
+          return {
+            ...row,
+            reviewState: "unreviewed" as BulkChildReviewState,
+            currentMatches: [],
+            otherMatches: [],
+            selectedMode: null,
+            selectedExistingPersonId: null,
+            differentPersonConfirmed: false,
+            error: null,
+          };
+        }
+
+        try {
+          const params = new URLSearchParams({
+            q: query,
+            proposedParentId: chartActivePersonId,
+          });
+
+          const response = await fetch(
+            `/api/events/family-reunions/${encodeURIComponent(
+              familyId
+            )}/quick-add/candidates?${params.toString()}`,
+            { method: "GET", cache: "no-store" }
+          );
+
+          const data =
+            (await response.json()) as QuickAddCandidatesResponse;
+
+          if (!response.ok || !data.success) {
+            return {
+              ...row,
+              reviewState: "error" as BulkChildReviewState,
+              currentMatches: [],
+              otherMatches: [],
+              selectedMode: null,
+              selectedExistingPersonId: null,
+              differentPersonConfirmed: false,
+              error:
+                data.error ||
+                "Failed to review this child against existing people.",
+            };
+          }
+
+          const currentMatches = data.currentFamilyMatches || [];
+          const otherMatches = data.otherFamilyMatches || [];
+          const hasMatches =
+            currentMatches.length > 0 || otherMatches.length > 0;
+
+          return {
+            ...row,
+            reviewState: "reviewed" as BulkChildReviewState,
+            currentMatches,
+            otherMatches,
+            selectedMode: hasMatches
+              ? null
+              : ("create_new" as BulkChildMode),
+            selectedExistingPersonId: null,
+            differentPersonConfirmed: !hasMatches,
+            error: null,
+          };
+        } catch (error) {
+          return {
+            ...row,
+            reviewState: "error" as BulkChildReviewState,
+            currentMatches: [],
+            otherMatches: [],
+            selectedMode: null,
+            selectedExistingPersonId: null,
+            differentPersonConfirmed: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to review this child.",
+          };
+        }
+      })
+    );
+
+    setBulkChildren(reviewedRows);
+    setBulkReviewing(false);
+  }
+
+  function selectBulkExistingPerson(
+    rowId: string,
+    candidate: QuickAddCandidate
+  ) {
+    if (candidate.quickAddDecision !== "SAFE_TO_LINK") return;
+
+    updateBulkChild(rowId, {
+      selectedMode: "use_existing",
+      selectedExistingPersonId: candidate.candidateId,
+      differentPersonConfirmed: false,
+      error: null,
+    });
+  }
+
+  function confirmBulkDifferentPerson(rowId: string) {
+    updateBulkChild(rowId, {
+      selectedMode: "create_new",
+      selectedExistingPersonId: null,
+      differentPersonConfirmed: true,
+      error: null,
+    });
+  }
+
+  async function saveBulkChildren() {
+    const activeRows = bulkChildren.filter(
+      (row) => row.fullName.trim().length > 0
+    );
+
+    if (!chartActivePersonId) {
+      setBulkError("Choose the parent for this batch.");
+      return;
+    }
+
+    if (activeRows.length === 0) {
+      setBulkError("Enter at least one child name.");
+      return;
+    }
+
+    const unreviewedIndex = activeRows.findIndex(
+      (row) => row.reviewState !== "reviewed"
+    );
+
+    if (unreviewedIndex >= 0) {
+      setBulkError(
+        `Review child row ${unreviewedIndex + 1} before saving.`
+      );
+      return;
+    }
+
+    const unresolvedIndex = activeRows.findIndex(
+      (row) => !row.selectedMode
+    );
+
+    if (unresolvedIndex >= 0) {
+      setBulkError(
+        `Resolve the possible matches for child row ${
+          unresolvedIndex + 1
+        }.`
+      );
+      return;
+    }
+
+    setBulkSaving(true);
+    setBulkError(null);
+    setBulkSuccess(null);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/quick-add/bulk-children`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            anchorPersonId: chartActivePersonId,
+            children: activeRows.map((row) => ({
+              clientRowId: row.rowId,
+              mode: row.selectedMode,
+              existingPersonId:
+                row.selectedMode === "use_existing"
+                  ? row.selectedExistingPersonId
+                  : null,
+              fullName:
+                row.selectedMode === "create_new"
+                  ? row.fullName.trim()
+                  : null,
+              sex: row.sex,
+              locationText: row.locationText.trim() || null,
+              locationScope: null,
+              locationBucket: null,
+            })),
+          }),
+        }
+      );
+
+      const data = (await response.json()) as BulkChildrenWriteResponse;
+
+      if (!response.ok || !data.success) {
+        setBulkError(
+          data.error ||
+            "Bulk child entry failed. No children were saved."
+        );
+        return;
+      }
+
+      setBulkSuccess(
+        data.message ||
+          `${data.processedCount || activeRows.length} children added.`
+      );
+
+      const createdRowIds = new Set(
+        activeRows
+          .filter((row) => row.selectedMode === "create_new")
+          .map((row) => row.rowId)
+      );
+      const lastCreated = [...(data.results || [])]
+        .reverse()
+        .find(
+          (result) =>
+            result.clientRowId &&
+            createdRowIds.has(result.clientRowId)
+        );
+
+      await loadFamily();
+      setGenerationRefreshKey((current) => current + 1);
+
+      if (lastCreated?.personId) {
+        setChartActivePersonId(lastCreated.personId);
+        setQuickAnchorPersonId(lastCreated.personId);
+      }
+
+      setBulkChildrenOpen(false);
+      resetBulkChildren(false);
+
+      if (expandedEventId) {
+        await loadParticipation(expandedEventId);
+      }
+    } catch (error) {
+      setBulkError(
+        error instanceof Error
+          ? error.message
+          : "Bulk child entry failed. No children were saved."
+      );
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
   function activateChartEntry(
     personId: string,
     relationship: "child" | "spouse"
@@ -1055,6 +1443,7 @@ export default function FamilyReunionDetailPage() {
     setQuickCreateOverride(false);
     setQuickWriteError(null);
     setQuickWriteSuccess(null);
+    setBulkChildrenOpen(false);
     setChartEntryOpen(true);
   }
 
@@ -1255,6 +1644,9 @@ export default function FamilyReunionDetailPage() {
                           setQuickCreateOverride(false);
                           setQuickWriteError(null);
                           setQuickWriteSuccess(null);
+                          setChartEntryOpen(false);
+                          setBulkChildrenOpen(false);
+                          resetBulkChildren();
                         }}
                         className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
                       >
@@ -1303,7 +1695,7 @@ export default function FamilyReunionDetailPage() {
                           )}
                         </div>
 
-                        <div className="mt-5 grid grid-cols-2 gap-3">
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
                           <button
                             type="button"
                             onClick={() =>
@@ -1323,7 +1715,386 @@ export default function FamilyReunionDetailPage() {
                           >
                             + Spouse
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChartEntryOpen(false);
+                              setBulkChildrenOpen(true);
+                              resetBulkChildren();
+                            }}
+                            className="rounded-xl border border-amber-300/40 bg-amber-400/10 px-4 py-3 text-sm font-black text-amber-200"
+                          >
+                            + Multiple Children
+                          </button>
                         </div>
+
+                        {bulkSuccess && !bulkChildrenOpen ? (
+                          <div className="mt-4 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+                            {bulkSuccess}
+                          </div>
+                        ) : null}
+
+                        {bulkChildrenOpen ? (
+                          <div className="mt-5 border-t border-slate-800 pt-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-amber-300">
+                                  Add Multiple Children of {chartActivePerson.fullName}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-slate-400">
+                                  Enter the children first, review possible
+                                  existing people, then save the entire batch
+                                  atomically. If one row fails, none are saved.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBulkChildrenOpen(false);
+                                  resetBulkChildren();
+                                }}
+                                className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+
+                            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
+                              {generationByPersonId[chartActivePerson.id] ? (
+                                <>
+                                  Every new child will appear as Generation{" "}
+                                  <span className="font-black text-amber-300">
+                                    {generationByPersonId[chartActivePerson.id] + 1}
+                                  </span>
+                                  .
+                                </>
+                              ) : (
+                                "Generation labels will be derived after saving."
+                              )}
+                            </div>
+
+                            <div className="mt-4 space-y-4">
+                              {bulkChildren.map((row, rowIndex) => {
+                                const matches = [
+                                  ...row.currentMatches,
+                                  ...row.otherMatches,
+                                ];
+                                const exactMatches = matches.filter(
+                                  (candidate) =>
+                                    normalizedName(candidate.fullName) ===
+                                    normalizedName(row.fullName)
+                                );
+                                const fuzzyMatches = matches.filter(
+                                  (candidate) =>
+                                    normalizedName(candidate.fullName) !==
+                                    normalizedName(row.fullName)
+                                );
+
+                                return (
+                                  <div
+                                    key={row.rowId}
+                                    className="rounded-2xl border border-slate-700 bg-slate-900 p-4"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <p className="font-black text-white">
+                                        Child {rowIndex + 1}
+                                      </p>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          removeBulkChildRow(row.rowId)
+                                        }
+                                        className="text-xs font-black text-red-300"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+
+                                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                                      <label className="sm:col-span-1">
+                                        <span className="text-xs font-bold text-slate-300">
+                                          Full Name
+                                        </span>
+                                        <input
+                                          value={row.fullName}
+                                          onChange={(event) =>
+                                            updateBulkChild(
+                                              row.rowId,
+                                              {
+                                                fullName:
+                                                  event.target.value,
+                                              },
+                                              true
+                                            )
+                                          }
+                                          placeholder="Child's full name"
+                                          className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                                        />
+                                      </label>
+
+                                      <label>
+                                        <span className="text-xs font-bold text-slate-300">
+                                          Sex
+                                        </span>
+                                        <select
+                                          value={row.sex}
+                                          onChange={(event) =>
+                                            updateBulkChild(
+                                              row.rowId,
+                                              { sex: event.target.value },
+                                              false
+                                            )
+                                          }
+                                          className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                                        >
+                                          <option value="unspecified">
+                                            Unspecified
+                                          </option>
+                                          <option value="male">Male</option>
+                                          <option value="female">
+                                            Female
+                                          </option>
+                                        </select>
+                                      </label>
+
+                                      <label>
+                                        <span className="text-xs font-bold text-slate-300">
+                                          Detailed Place
+                                        </span>
+                                        <input
+                                          value={row.locationText}
+                                          onChange={(event) =>
+                                            updateBulkChild(
+                                              row.rowId,
+                                              {
+                                                locationText:
+                                                  event.target.value,
+                                              },
+                                              false
+                                            )
+                                          }
+                                          placeholder="Optional"
+                                          className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                                        />
+                                      </label>
+                                    </div>
+
+                                    {row.reviewState === "error" ? (
+                                      <div className="mt-3 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
+                                        {row.error}
+                                      </div>
+                                    ) : null}
+
+                                    {row.reviewState === "reviewed" &&
+                                    row.fullName.trim() ? (
+                                      <div className="mt-4">
+                                        {matches.length === 0 ? (
+                                          <div className="rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+                                            No possible existing person was
+                                            found. This row is ready to create
+                                            a new child.
+                                          </div>
+                                        ) : (
+                                          <div className="space-y-3">
+                                            {exactMatches.length > 0 ? (
+                                              <div className="rounded-lg border border-red-800 bg-red-950/20 p-3">
+                                                <p className="text-xs font-black text-red-200">
+                                                  Exact-name record found.
+                                                </p>
+                                                <p className="mt-1 text-[11px] leading-5 text-red-100/80">
+                                                  Bulk entry will not create a
+                                                  second exact-name person.
+                                                  Choose a safe existing record
+                                                  below, rename the row, or use
+                                                  single Chart Entry for a
+                                                  special same-name case.
+                                                </p>
+                                              </div>
+                                            ) : null}
+
+                                            {matches.map((candidate) => {
+                                              const canUse =
+                                                candidate.quickAddDecision ===
+                                                "SAFE_TO_LINK";
+                                              const selected =
+                                                row.selectedMode ===
+                                                  "use_existing" &&
+                                                row.selectedExistingPersonId ===
+                                                  candidate.candidateId;
+
+                                              return (
+                                                <div
+                                                  key={`${row.rowId}:${candidate.candidateId}`}
+                                                  className={`rounded-lg border p-3 ${
+                                                    selected
+                                                      ? "border-emerald-300 bg-emerald-950/20"
+                                                      : candidate.quickAddDecision ===
+                                                        "CYCLE_WOULD_BE_CREATED"
+                                                      ? "border-red-800 bg-red-950/20"
+                                                      : candidate.quickAddDecision ===
+                                                        "ADVANCED_EDITOR_REQUIRED"
+                                                      ? "border-amber-800 bg-amber-950/20"
+                                                      : "border-slate-700 bg-slate-950"
+                                                  }`}
+                                                >
+                                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div>
+                                                      <p className="text-sm font-black text-white">
+                                                        {candidate.fullName}
+                                                      </p>
+                                                      <p className="mt-1 text-xs text-slate-400">
+                                                        {candidate.locationBucket ||
+                                                          candidate.locationText ||
+                                                          "Location not recorded"}
+                                                      </p>
+                                                      {candidate.matchScope ===
+                                                      "OTHER_FAMILY" ? (
+                                                        <p className="mt-1 text-[11px] text-amber-300">
+                                                          Other family:{" "}
+                                                          {candidate
+                                                            .organizationalFamily
+                                                            ?.name ||
+                                                            "Unassigned"}
+                                                        </p>
+                                                      ) : null}
+                                                    </div>
+                                                    <span className="text-[11px] text-slate-500">
+                                                      {Math.round(
+                                                        candidate.similarityScore *
+                                                          100
+                                                      )}
+                                                      % match
+                                                    </span>
+                                                  </div>
+
+                                                  {canUse ? (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        selectBulkExistingPerson(
+                                                          row.rowId,
+                                                          candidate
+                                                        )
+                                                      }
+                                                      className="mt-3 rounded-lg bg-emerald-300 px-3 py-2 text-xs font-black text-slate-950"
+                                                    >
+                                                      {selected
+                                                        ? "Existing Person Selected"
+                                                        : `Use Existing ${candidate.fullName}`}
+                                                    </button>
+                                                  ) : candidate.quickAddDecision ===
+                                                    "ALREADY_LINKED" ? (
+                                                    <p className="mt-2 text-xs text-slate-400">
+                                                      This relationship already
+                                                      exists.
+                                                    </p>
+                                                  ) : candidate.quickAddDecision ===
+                                                    "CYCLE_WOULD_BE_CREATED" ? (
+                                                    <p className="mt-2 text-xs text-red-300">
+                                                      This existing record cannot
+                                                      be linked here because it
+                                                      would create an ancestry
+                                                      cycle.
+                                                    </p>
+                                                  ) : (
+                                                    <p className="mt-2 text-xs text-amber-300">
+                                                      Review this existing
+                                                      record in Advanced
+                                                      Genealogy Editor.
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+
+                                            {exactMatches.length === 0 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  confirmBulkDifferentPerson(
+                                                    row.rowId
+                                                  )
+                                                }
+                                                className={`rounded-lg border px-3 py-2 text-xs font-black ${
+                                                  row.selectedMode ===
+                                                  "create_new"
+                                                    ? "border-cyan-300 bg-cyan-950/20 text-cyan-200"
+                                                    : "border-amber-500 text-amber-200"
+                                                }`}
+                                              >
+                                                {row.selectedMode ===
+                                                "create_new"
+                                                  ? "New Person Selected"
+                                                  : "This Is A Different Person"}
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        )}
+
+                                        {row.selectedMode ? (
+                                          <p className="mt-3 text-xs font-bold text-emerald-300">
+                                            Ready:{" "}
+                                            {row.selectedMode ===
+                                            "create_new"
+                                              ? "create a new child"
+                                              : "link the selected existing person"}
+                                            .
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-3">
+                              <button
+                                type="button"
+                                onClick={addBulkChildRow}
+                                disabled={bulkChildren.length >= 20}
+                                className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-300 disabled:opacity-40"
+                              >
+                                Add Another Row
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => void reviewBulkChildren()}
+                                disabled={bulkReviewing}
+                                className="rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200 disabled:opacity-50"
+                              >
+                                {bulkReviewing
+                                  ? "Reviewing Children..."
+                                  : "Review Children"}
+                              </button>
+                            </div>
+
+                            {bulkError ? (
+                              <div className="mt-4 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
+                                {bulkError}
+                              </div>
+                            ) : null}
+
+                            {bulkSuccess ? (
+                              <div className="mt-4 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+                                {bulkSuccess}
+                              </div>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => void saveBulkChildren()}
+                              disabled={bulkSaving || bulkReviewing}
+                              className="mt-4 w-full rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                            >
+                              {bulkSaving
+                                ? "Saving Entire Batch..."
+                                : "Save Reviewed Children"}
+                            </button>
+                          </div>
+                        ) : null}
 
                         {chartEntryOpen ? (
                           <div className="mt-5 border-t border-slate-800 pt-5">
@@ -1667,6 +2438,9 @@ export default function FamilyReunionDetailPage() {
                             setQuickCreateOverride(false);
                             setQuickWriteError(null);
                             setQuickWriteSuccess(null);
+                            setChartEntryOpen(false);
+                            setBulkChildrenOpen(false);
+                            resetBulkChildren();
                           }}
                           className={`rounded-xl border p-4 text-left transition ${
                             chartActivePersonId === person.id
