@@ -318,6 +318,15 @@ function isApprovedStatus(v: unknown): boolean {
   return t === "approved_admin" || t === "approved" || t === "verified";
 }
 
+function hasRequiredPassengerNameParts(value: unknown): boolean {
+  const parts = String(value ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return parts.length >= 2;
+}
+
 async function getTakeoutRequestUser(req: NextRequest, admin: any): Promise<any | null> {
   const token = getBearerToken(req);
   if (token) {
@@ -451,6 +460,18 @@ async function requireVerifiedTakeoutPassenger(req: NextRequest, admin: any): Pr
         ok: false,
         error: "PASSENGER_PROFILE_INCOMPLETE",
         message: "Your verified passenger profile must have both name and phone number before booking takeout.",
+      }),
+    };
+  }
+
+  if (!hasRequiredPassengerNameParts(resolvedName)) {
+    return {
+      ok: false,
+      response: json(409, {
+        ok: false,
+        error: "PASSENGER_NAME_TWO_WORDS_REQUIRED",
+        message:
+          "Your approved passenger profile must contain at least two name parts. Please contact JRide support to correct your full name before placing a Takeout order.",
       }),
     };
   }
